@@ -17,11 +17,11 @@ flowchart LR
 
 | ID | Question | Outcome feeds | Result |
 | --- | --- | --- | --- |
-| S-01 | Does `omp-rpc` (tag of the pinned omp) compile for `wasm32-unknown-unknown`? If not: fork with an optional `client` feature, or vendor the generated `wire.rs` with a script that copies it from the tag. | ARC-011 | **Done (M0):** compiles as-is; `pmo-core` depends on it directly. |
+| S-01 | Does `omp-rpc` (tag of the pinned omp) compile for `wasm32-unknown-unknown`? If not: fork with an optional `client` feature, or vendor the generated `wire.rs` with a script that copies it from the tag. | ARC-011 | **Done (M0):** compiles as-is; `omfp-core` depends on it directly. |
 | S-02 | omp against `fake-llm`: custom `openai-completions` provider streams text and tool calls; which `config.yml` keys make a run offline and deterministic (catalog refresh, update check, title, memory, advisor); how to detect stray network access. | TST-020/021, 06 fake LLM section | **Done (M0):** text round trip works; background catalog discovery cannot be disabled, so tests run behind a deny proxy with a list of known discovery hosts (06). |
 | S-03 | Code highlighting on wasm and desktop: candidate libraries, wasm size and speed on a 5k-line file. | UI-090 | |
 | S-04 | Dioxus 0.7 desktop on NixOS in the dev shell: window opens (webkitgtk), native WebSocket client, `document::eval` bridge with xterm.js on both platforms. | UI-001, TRM-021 | |
-| S-05 | `dx` 0.7.10 + nixpkgs `wasm-bindgen-cli` 0.2.130: pin `wasm-bindgen = "=0.2.130"` in the workspace and check `dx build --platform web` uses the shell's binary without downloading another. | 01 | **Done (M0):** `dx build -p pmo-ui --platform web` uses the shell's wasm-bindgen; nothing downloaded. dx 0.7.10 panics on glob `default-members`, so the workspace sets none. |
+| S-05 | `dx` 0.7.10 + nixpkgs `wasm-bindgen-cli` 0.2.130: pin `wasm-bindgen = "=0.2.130"` in the workspace and check `dx build --platform web` uses the shell's binary without downloading another. | 01 | **Done (M0):** `dx build -p omfp-ui --platform web` uses the shell's wasm-bindgen; nothing downloaded. dx 0.7.10 panics on glob `default-members`, so the workspace sets none. |
 | S-06 | Transcript virtualization in Dioxus with variable-height items, streaming at the bottom. | UI-042 | |
 | S-07 | Multi-workspace threads: `/add-dir` and `/remove-dir` over RPC (idle and busy); repo-level context files (`AGENTS.md`) and rules picked up from `--add-dir` roots when cwd is the thread home; injecting a per-thread MCP server through `<home>/.omp/mcp.json` (08). | DMN-029, DMN-030, 08 | **Done (M1):** `/add-dir` over RPC is a local command (no model turn) that adds the root live; `AGENTS.md` of every `--add-dir` root reaches the model, but only when the session is bound at launch (`--session-dir … --continue`, DMN-030); `<home>/.omp/mcp.json` is honored and its headers are sent. `/add-dir` while the thread is busy is still unverified against real omp (DMN-029). |
 | S-08 | Workspaces from PRs: fetching a PR head (GitHub via `gh`, generic `refs/pull/N/head`), storing PR metadata, detecting merged/closed PRs. | DMN-022 | |
@@ -29,22 +29,22 @@ flowchart LR
 ## M0 — Foundations (done)
 
 Scope: Cargo workspace with all crates as empty shells; `justfile`; `cargo xtask spec-trace`; `fake-llm` minimal;
-`pmo-testkit` with temp git repos and isolated omp agent dir; spikes S-01, S-02, S-05.
+`omfp-testkit` with temp git repos and isolated omp agent dir; spikes S-01, S-02, S-05.
 
 Acceptance:
 
 - `just ci` is green in the dev shell (with empty-but-compiling crates).
-- `pmo-core` and `pmo-protocol` build for `wasm32-unknown-unknown`.
+- `omfp-core` and `omfp-protocol` build for `wasm32-unknown-unknown`.
 - Version test: the omp tag in `flake.lock`, the `omp-rpc` git tag in `Cargo.toml`, and `omp --version` agree (ENV-010).
 - Contract test "hello": omp `rpc-ui` + `fake-llm` answers a prompt with scripted text; frames recorded as fixture.
 
 Requirements traced for this milestone are listed in `milestones.toml`.
 
-## M1 — Headless daemon
+## M1 — Headless daemon (done)
 
 Scope: DMN-001..072 except host tools beyond `open_in_editor` and PR workspaces (DMN-022, after S-08); PRT-001..034;
 JSON Schemas for protocol methods (AGT-007); ThreadState reducer for messages, tools, queue, process state, interactions;
-spike S-07; the single `pmo` binary with the `daemon` subcommand (D-15). At the end of M1 the project is renamed to
+spike S-07; the single `omfp` binary with the `daemon` subcommand (D-15). At the end of M1 the project is renamed to
 **omfp** (crates, binary, docs).
 
 Acceptance:
@@ -57,6 +57,13 @@ Acceptance:
   equals the daemon's state.
 - Process crash → `Failed` with stderr tail; next prompt restarts and history reloads.
 - Idle reaper stops an unwatched settled thread (L1 with paused time).
+
+Result: all acceptance scenarios pass as L3 contract tests against real omp 18.18.6 (`crates/omfp-daemon/tests/
+contract_daemon.rs`), the supervisor runs L1 tests on a fake launcher replaying the recorded fixtures with paused time,
+and the server runs L2 tests with a native WebSocket client. `omfp daemon` serves `system.hello` and publishes
+`daemon.json`. Known limits from omp-rpc 18.18.6: no exit code on crash (DMN-035), no drain window on shutdown
+(DMN-005), prompt ids unique per process epoch (PRT-030). Open: `/add-dir` on a busy thread (S-07), PR workspaces
+(S-08), `terminal.*`.
 
 ## M2 — Web UI MVP
 
@@ -74,10 +81,10 @@ Acceptance: E2E-06; every specialized card has fixture-driven L4 tests for succe
 
 ## M4 — Desktop
 
-Scope: ARC-003, DMN-004, UI-004, UI-005, native transport, TST-033, `pmo desktop` (finds or starts the local daemon in the
+Scope: ARC-003, DMN-004, UI-004, UI-005, native transport, TST-033, `omfp desktop` (finds or starts the local daemon in the
 background and opens one more window on it, D-15/D-16); spike S-04 first.
 
-Acceptance: desktop smoke test passes under `xvfb-run`; a second `pmo desktop` opens another window on the same daemon,
+Acceptance: desktop smoke test passes under `xvfb-run`; a second `omfp desktop` opens another window on the same daemon,
 each window selecting a different thread; a browser attaches to the same daemon and sees the same threads; transport
 suite (TST-030) passes for both implementations.
 
@@ -111,7 +118,7 @@ Acceptance: all of the above documented and green in CI.
 ## M8 — Agent control
 
 Scope: turn [08](08-agent-control.md) into requirements, then: scoped principals per thread, tool registry adapters (RPC
-host tools, `pmo://` host URIs, MCP server), view documents and their renderers, view events, safety limits and audit
+host tools, `omfp://` host URIs, MCP server), view documents and their renderers, view events, safety limits and audit
 log.
 
 Acceptance: an orchestrating thread (scripted with `fake-llm`) creates two workspaces in two repositories, spawns two

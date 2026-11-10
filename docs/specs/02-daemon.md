@@ -1,4 +1,4 @@
-# 02 — Daemon (`pmo daemon`)
+# 02 — Daemon (`omfp daemon`)
 
 The daemon owns repositories, workspaces, threads and omp processes. It serves the protocol in [03](03-protocol.md) and, in web
 mode, the UI's static files.
@@ -6,18 +6,18 @@ mode, the UI's static files.
 ## Startup and configuration
 
 ```text
-pmo daemon [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-dir DIR] [--allow-omp-mismatch]
+omfp daemon [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-dir DIR] [--allow-omp-mismatch]
 ```
 
 | ID | Requirement |
 | --- | --- |
-| DMN-001 | On startup the daemon MUST run `omp --version` and compare it with `pmo_core::OMP_VERSION` (the version of the `omp-rpc` tag, see [01](01-dev-environment.md)). On mismatch it MUST refuse to start unless `--allow-omp-mismatch` is given, in which case a warning is also shown in the UI. |
+| DMN-001 | On startup the daemon MUST run `omp --version` and compare it with `omfp_core::OMP_VERSION` (the version of the `omp-rpc` tag, see [01](01-dev-environment.md)). On mismatch it MUST refuse to start unless `--allow-omp-mismatch` is given, in which case a warning is also shown in the UI. |
 | DMN-002 | The default `--bind` MUST be `127.0.0.1:7420`; any address and port MAY be configured. Exposure beyond the machine (tunnels, reverse proxies, TLS) is the deployer's job (D-13). |
 | DMN-003 | On first run the daemon MUST generate a random token (≥ 256 bits) in `<data-dir>/token` with mode `0600`; every WebSocket connection MUST present it (see PRT-002). |
-| DMN-004 | The daemon MUST also work as a library (`pmo_daemon::start(config) -> DaemonHandle` exposing the bound address and token) for in-process use by the desktop app (ARC-003). |
+| DMN-004 | The daemon MUST also work as a library (`omfp_daemon::start(config) -> DaemonHandle` exposing the bound address and token) for in-process use by the desktop app (ARC-003). |
 | DMN-005 | On SIGTERM/SIGINT or `DaemonHandle::shutdown` the daemon MUST stop every omp process and finish within 10 s. Stopping closes the `omp-rpc` client, which closes omp's stdin and then terminates its process group (SIGTERM, SIGKILL after 1 s); omp-rpc 18.18.6 gives omp no longer drain window. |
 | DMN-006 | The omp binary MUST be resolved in this order: `--omp-bin`; the omp bundled next to the daemon executable (packaging, D-14); `omp` on `PATH` (dev shell). The resolved path is logged at startup. |
-| DMN-007 | At most one daemon MUST run per data directory (exclusive lock file). A running daemon MUST publish its address in `<data-dir>/daemon.json` (removed on shutdown), so local clients such as `pmo desktop` can find it and authenticate with the `token` file (D-16). |
+| DMN-007 | At most one daemon MUST run per data directory (exclusive lock file). A running daemon MUST publish its address in `<data-dir>/daemon.json` (removed on shutdown), so local clients such as `omfp desktop` can find it and authenticate with the `token` file (D-16). |
 
 ## Persistence (SQLite)
 
@@ -46,7 +46,7 @@ A `Git` port (trait) with a real implementation over the `git` CLI (`tokio::proc
 | ID | Requirement |
 | --- | --- |
 | DMN-020 | Registering a repository MUST verify the path is the root of a git repository (`git rev-parse --show-toplevel`) and reject duplicates. Registration is optional: no other feature may require it. |
-| DMN-021 | Creating a managed workspace MUST run `git worktree add` in the target repository: new branch (`-b <branch> <path> <base_ref>`, default branch name `pmo/<slug>-<suffix>`, unique in the repo) or existing branch. The repository may be registered or given by path. |
+| DMN-021 | Creating a managed workspace MUST run `git worktree add` in the target repository: new branch (`-b <branch> <path> <base_ref>`, default branch name `omfp/<slug>-<suffix>`, unique in the repo) or existing branch. The repository may be registered or given by path. |
 | DMN-022 | Creating a workspace **from a PR** (URL or `owner/repo#N`) MUST fetch the PR head into a local branch, create the worktree on it, and store `pr_url`/`pr_number`. |
 | DMN-023 | **Adopting** an existing directory MUST record it as `adopted` (git or not); the daemon MUST never delete an adopted directory, only forget it. |
 | DMN-024 | Removing a managed workspace MUST refuse when it has uncommitted changes unless forced, and MUST refuse while a thread with a live process uses it. The branch is kept unless explicitly requested. |
@@ -131,7 +131,7 @@ dialogs).
 
 Mapping between protocol commands ([03](03-protocol.md)) and omp RPC commands. All go through the thread actor.
 
-| pmo command | omp RPC |
+| omfp command | omp RPC |
 | --- | --- |
 | `thread.prompt` | `prompt` (with `streamingBehavior` `steer`/`followUp` when the thread is `Busy`) |
 | `thread.steer` / `thread.follow_up` | `steer` / `follow_up` |

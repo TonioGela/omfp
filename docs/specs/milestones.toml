@@ -18,7 +18,7 @@ requirements = [
 ]
 
 [M1]
-status = "in-progress"
+status = "done"
 requirements = [
   # Architecture
   "ARC-001",

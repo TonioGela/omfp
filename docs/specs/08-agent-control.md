@@ -31,11 +31,11 @@ Convenience tools on top:
 
 | Tool | What it does |
 | --- | --- |
-| `pmo_call` | Calls any protocol method by name with JSON params (the escape hatch: nothing is out of reach) |
-| `pmo_thread_wait` | Waits for a thread's `prompt_result` or settled state; returns its last assistant text |
-| `pmo_ui_mount` / `_update` / `_remove` | Mounts a UI piece (inline code or a saved component) with parameters |
-| `pmo_component_save` / `_list` | Saves a UI piece to the library / lists the library |
-| `pmo_notify` | Attention flag + desktop notification |
+| `omfp_call` | Calls any protocol method by name with JSON params (the escape hatch: nothing is out of reach) |
+| `omfp_thread_wait` | Waits for a thread's `prompt_result` or settled state; returns its last assistant text |
+| `omfp_ui_mount` / `_update` / `_remove` | Mounts a UI piece (inline code or a saved component) with parameters |
+| `omfp_component_save` / `_list` | Saves a UI piece to the library / lists the library |
+| `omfp_notify` | Attention flag + desktop notification |
 
 ## Delivery to agents
 
@@ -44,8 +44,8 @@ One tool registry in the daemon, several adapters:
 | Adapter | Reaches | Notes |
 | --- | --- | --- |
 | **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for `open_in_editor` (DMN-060). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
-| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside pmo, other MCP-capable agents | Injected per thread through `<thread home>/.omp/mcp.json` (project config follows the cwd, D-11), with the thread's token in the `Authorization` header — verified in S-07. |
-| **Host URI scheme** `pmo://` (`set_host_uri_schemes`) | RPC threads | State for the agent's `read` tool: `pmo://threads`, `pmo://threads/<id>`, `pmo://ui/…`. |
+| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside omfp, other MCP-capable agents | Injected per thread through `<thread home>/.omp/mcp.json` (project config follows the cwd, D-11), with the thread's token in the `Authorization` header — verified in S-07. |
+| **Host URI scheme** `omfp://` (`set_host_uri_schemes`) | RPC threads | State for the agent's `read` tool: `omfp://threads`, `omfp://threads/<id>`, `omfp://ui/…`. |
 | **JS SDK** | UI pieces | The same API from inside a UI piece (below). |
 
 ## Agent-made UI (JavaScript)
@@ -97,8 +97,8 @@ any assets), so it can be reviewed and versioned like a skill:
 | Project | `.omfp/ui/` in a repository | everyone working on the repository (git) |
 | Thread draft | the thread's home | that thread, until saved |
 
-An agent saves a piece with `pmo_component_save`; the user can do the same with "save as component" on any mounted
-piece. Agents discover the library through `pmo_component_list` and `pmo://ui/`. Mounted instances record the
+An agent saves a piece with `omfp_component_save`; the user can do the same with "save as component" on any mounted
+piece. Agents discover the library through `omfp_component_list` and `omfp://ui/`. Mounted instances record the
 component version (content hash).
 
 **Open points (spike before M8)**: the exact SDK surface and widget kit; how pieces load on desktop (custom protocol vs
@@ -123,5 +123,5 @@ by X", a cascade stop for everything a thread spawned, and an activity log of ag
 | AGT-004 | The UI uses a panel registry, not a fixed layout (UI-024). |
 | AGT-005 | Threads are not bound to repositories, and workspaces can be attached and detached live (ARC-008, DMN-029). |
 | AGT-006 | Host tools are registered from a single registry in the daemon (DMN-060), so adding tools needs no change in the supervisor. |
-| AGT-007 | Protocol methods are self-describing: params and results have JSON Schemas generated from `pmo-protocol` types (`schemars`), checked by golden tests, so agent tool schemas can be derived automatically. |
+| AGT-007 | Protocol methods are self-describing: params and results have JSON Schemas generated from `omfp-protocol` types (`schemars`), checked by golden tests, so agent tool schemas can be derived automatically. |
 | AGT-008 | No operation an agent could reasonably perform may require a human in the loop by design (e.g. creating a thread or workspace has no mandatory interactive step); where confirmation is required, it goes through interactions (DMN-050), which agent-originated requests can raise too. |

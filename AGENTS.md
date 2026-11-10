@@ -1,17 +1,17 @@
 # AGENTS.md
 
-Guidance for coding agents working on **pmo** (to be renamed **omfp** at the end of M1): a GUI client (Dioxus, web +
-desktop) for the omp coding agent (oh-my-pi). One binary, `pmo`: `pmo daemon` runs the daemon (one
-`omp --mode rpc-ui` process per thread, WebSocket API, web UI); `pmo desktop` (M4) opens one more window on the local
+Guidance for coding agents working on **omfp** (formerly pmo, renamed at the end of M1): a GUI client (Dioxus, web +
+desktop) for the omp coding agent (oh-my-pi). One binary, `omfp`: `omfp daemon` runs the daemon (one
+`omp --mode rpc-ui` process per thread, WebSocket API, web UI); `omfp desktop` (M4) opens one more window on the local
 daemon, starting it in the background if needed (D-15, D-16: many windows, one daemon, each window picks its thread).
 Long-term direction (M8, D-17): agents get full access to the protocol and build arbitrary JavaScript UI pieces with an
 `omfp` SDK; never design something that would only be reachable from the human UI.
 
 ## Read first
 
-- `docs/specs/README.md` — index, conventions, decision log (D-01…D-14), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results; `docs/specs/milestones.toml` — requirement IDs per
-  milestone (enforced by `cargo xtask spec-trace`).
+- `docs/specs/README.md` — index, conventions, decision log (D-01…D-17), open questions.
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0 and M1 done; next: M2, web UI MVP);
+  `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
 ## Ground rules
@@ -34,7 +34,7 @@ just ci                          # lint, check-versions, spec-trace, check-wasm,
 just test                        # fast tests (no omp process)
 just test-contract               # contract tests against the pinned omp + fake LLM
 just record-fixtures             # re-record fixtures/ (review the diff!)
-just build-web                   # dx build -p pmo-ui --platform web
+just build-web                   # dx build -p omfp-ui --platform web
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
 cargo xtask check-versions       # omp / omp-rpc / wasm-bindgen / dioxus pins agree
 ```
@@ -45,14 +45,15 @@ Clippy runs with `pedantic` as errors. Notable: `assert_is_empty` forbids `asser
 ## Layout
 
 ```text
-crates/pmo-core      reducer over omp events (ThreadEvent → ThreadState); no I/O; compiles to wasm
-crates/pmo-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wasm
-crates/pmo-daemon    daemon library: omp adapter (omp.rs), agent port (agent.rs), event log, store, workspaces,
-                     threads, supervisor, WebSocket server; `pmo_daemon::run` backs `pmo daemon`
-crates/pmo-ui        the app: Dioxus UI (features web / desktop) and the `pmo` binary with subcommands
-crates/fake-llm      scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
-crates/pmo-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
-xtask                spec-trace, check-versions
+crates/omfp-core      reducer over omp events (ThreadEvent → ThreadState); no I/O; compiles to wasm
+crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wasm
+crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs),
+                      supervisor, event log, store, workspaces, threads, host tools, WebSocket server;
+                      `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`)
+crates/omfp-ui        the app: Dioxus UI (features web / desktop) and the `omfp` binary with subcommands
+crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
+crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
+xtask                 spec-trace, check-versions
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)
 ```
@@ -60,7 +61,7 @@ fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios
 ## Version pinning
 
 omp is pinned in three places that must agree (checked by `cargo xtask check-versions`): the `oh-my-pi` flake input
-tag, the `omp-rpc` git tag in `Cargo.toml`, and `pmo_core::OMP_VERSION`. To upgrade, follow the playbook in
+tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upgrade, follow the playbook in
 `docs/specs/01-dev-environment.md` (ENV-020).
 
 ## omp facts learned the hard way (omp 18.18.6)
@@ -81,9 +82,9 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `pmo_core::OMP_VERSION`. To upgr
 
 ## Tooling gotchas
 
-- `dx` 0.7.10 panics when the workspace has glob `default-members`: keep none; build with `dx build -p pmo-ui`.
+- `dx` 0.7.10 panics when the workspace has glob `default-members`: keep none; build with `dx build -p omfp-ui`.
 - nixpkgs' `dioxus-cli` needs `zstd` (overridden in `flake.nix`); `convco` does not build, so commitizen checks
   commit messages.
 - `typos` skips `fixtures/` (streamed deltas split words).
 - Fixtures are normalized (timestamps, durations, UUIDs, random ids, temp roots); if a re-record shows churn, add the
-  volatile field to `pmo_testkit::normalize_frame` rather than accepting noise.
+  volatile field to `omfp_testkit::normalize_frame` rather than accepting noise.

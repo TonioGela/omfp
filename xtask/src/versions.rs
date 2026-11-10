@@ -19,7 +19,7 @@ pub struct Observed {
     pub cargo_tag: String,
     /// Commit of the `omp-rpc` git source in `Cargo.lock`.
     pub cargo_rev: String,
-    /// `pmo_core::OMP_VERSION`.
+    /// `omfp_core::OMP_VERSION`.
     pub code_version: String,
     /// Version printed by `omp --version`.
     pub omp_version: String,
@@ -47,7 +47,7 @@ pub fn mismatches(observed: &Observed) -> Vec<String> {
     let expected_tag = format!("v{}", observed.code_version);
     if observed.flake_ref != expected_tag {
         problems.push(format!(
-            "ENV-010: flake.lock oh-my-pi ref `{}` != v(pmo_core::OMP_VERSION) `{expected_tag}`",
+            "ENV-010: flake.lock oh-my-pi ref `{}` != v(omfp_core::OMP_VERSION) `{expected_tag}`",
             observed.flake_ref
         ));
     }
@@ -65,7 +65,7 @@ pub fn mismatches(observed: &Observed) -> Vec<String> {
     }
     if observed.omp_version != observed.code_version {
         problems.push(format!(
-            "ENV-010: `omp --version` is `{}` but pmo_core::OMP_VERSION is `{}`",
+            "ENV-010: `omp --version` is `{}` but omfp_core::OMP_VERSION is `{}`",
             observed.omp_version, observed.code_version
         ));
     }
@@ -168,7 +168,7 @@ pub fn observe(root: &Path) -> anyhow::Result<Observed> {
         flake_rev,
         cargo_tag,
         cargo_rev,
-        code_version: pmo_core::OMP_VERSION.to_owned(),
+        code_version: omfp_core::OMP_VERSION.to_owned(),
         omp_version: tool_version("omp")?,
         wasm_bindgen_crate: cargo_package_version(&cargo_lock, "wasm-bindgen")?,
         wasm_bindgen_cli: tool_version("wasm-bindgen")?,

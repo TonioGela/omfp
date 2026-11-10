@@ -1,0 +1,31 @@
+[package]
+name = "omfp-ui"
+description = "The omfp binary: `omfp daemon` natively, the Dioxus UI on the web (and desktop)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+# The single binary (D-15).
+[[bin]]
+name = "omfp"
+path = "src/main.rs"
+
+[dependencies]
+dioxus.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+clap.workspace = true
+omfp-daemon.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Pinned to the dev shell's wasm-bindgen-cli (ENV-012); unused directly.
+wasm-bindgen.workspace = true
+
+[features]
+default = []
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+
+[lints]
+workspace = true

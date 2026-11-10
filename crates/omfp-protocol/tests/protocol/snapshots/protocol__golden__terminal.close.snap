@@ -1,0 +1,20 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "terminal.close",
+    "params": {
+      "terminalId": "01JD8X3Q4T9V2W6Y5Z7A1B3C8H"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {},
+    "type": "response"
+  }
+}

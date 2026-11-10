@@ -1,0 +1,35 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "subscribe",
+    "params": {
+      "since": {
+        "epoch": "e7",
+        "seq": 1200
+      },
+      "topic": "thread/01JD8X3Q4T9V2W6Y5Z7A1B3C4D"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "epoch": "e9",
+      "mode": "snapshot",
+      "seq": 40,
+      "state": {
+        "queue": {
+          "followUp": [],
+          "steering": []
+        },
+        "transcript": []
+      }
+    },
+    "type": "response"
+  }
+}

@@ -1,5 +1,5 @@
 {
-  description = "pmo: native + web GUI for oh-my-pi (Dioxus) — development environment only";
+  description = "omfp: native + web GUI for oh-my-pi (Dioxus) — development environment only";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -176,7 +176,7 @@
 
             shellHook = ''
               ${config.pre-commit.installationScript}
-              echo "pmo dev shell — $(omp --version 2>/dev/null | head -n1), $(rustc --version), dx $(dx --version 2>/dev/null)"
+              echo "omfp dev shell — $(omp --version 2>/dev/null | head -n1), $(rustc --version), dx $(dx --version 2>/dev/null)"
             '';
           };
         };

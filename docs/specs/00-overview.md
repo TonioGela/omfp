@@ -47,10 +47,10 @@ erDiagram
 ```mermaid
 flowchart LR
   subgraph client["Clients (one or more)"]
-    W["pmo-ui (web, wasm)"]
-    D["pmo-ui (desktop, webview)"]
+    W["omfp-ui (web, wasm)"]
+    D["omfp-ui (desktop, webview)"]
   end
-  subgraph daemon["pmo daemon"]
+  subgraph daemon["omfp daemon"]
     WS[WebSocket server + static files]
     TS[ThreadService]
     SUP[AgentSupervisor]
@@ -70,12 +70,12 @@ flowchart LR
 
 | ID | Requirement |
 | --- | --- |
-| ARC-001 | The daemon (`pmo daemon`) MUST be the only process that launches omp and speaks the RPC protocol. |
+| ARC-001 | The daemon (`omfp daemon`) MUST be the only process that launches omp and speaks the RPC protocol. |
 | ARC-002 | The UI MUST communicate only with the daemon, through the protocol in [03](03-protocol.md), on both web and desktop. |
-| ARC-003 | `pmo desktop` MUST connect to the local daemon for its data directory when one is running (DMN-007), otherwise start one in the background (`127.0.0.1`, random port) and connect to it; the UI connects like a web client (D-15, D-16). |
+| ARC-003 | `omfp desktop` MUST connect to the local daemon for its data directory when one is running (DMN-007), otherwise start one in the background (`127.0.0.1`, random port) and connect to it; the UI connects like a web client (D-15, D-16). |
 | ARC-004 | Several clients MUST be able to connect to the same daemon at once and see the same state. |
 | ARC-005 | Each thread MUST have at most one live omp process at a time (RPC or terminal, never both). |
-| ARC-006 | A thread's visible state MUST derive from the `pmo-core` reducer applied to its event sequence; daemon and UI run the same code. |
+| ARC-006 | A thread's visible state MUST derive from the `omfp-core` reducer applied to its event sequence; daemon and UI run the same code. |
 | ARC-007 | **API-first** (D-12): every action available in the UI MUST be a protocol method; the UI holds no business logic that another client could not reproduce through the protocol. |
 | ARC-008 | Threads MUST NOT be bound to a single repository: a thread has an ordered list of zero or more workspaces, and workspaces can be attached and detached during the thread's life (D-11). |
 | ARC-009 | Every created entity (thread, workspace, view) MUST record its provenance: `user` or the id of the thread whose agent created it (needed by 08). |
@@ -84,20 +84,20 @@ flowchart LR
 
 ```text
 crates/
-  pmo-protocol/   UI↔daemon protocol types (serde). Compiles to wasm.
-  pmo-core/       Domain model and pure reducer over omp events. Compiles to wasm. No I/O.
-  pmo-daemon/     Daemon library (tokio, axum, rusqlite, omp-rpc, portable-pty): `pmo_daemon::start`, `pmo_daemon::run`.
-  pmo-ui/         The app: Dioxus UI (`web` and `desktop` features) and the single `pmo` binary (D-15).
+  omfp-protocol/   UI↔daemon protocol types (serde). Compiles to wasm.
+  omfp-core/       Domain model and pure reducer over omp events. Compiles to wasm. No I/O.
+  omfp-daemon/     Daemon library (tokio, axum, rusqlite, omp-rpc, portable-pty): `omfp_daemon::start`, `omfp_daemon::run`.
+  omfp-ui/         The app: Dioxus UI (`web` and `desktop` features) and the single `omfp` binary (D-15).
   fake-llm/       Scripted OpenAI-compatible server for tests (lib + bin).
-  pmo-testkit/    Test helpers: temporary git repos, isolated omp agent dir, test daemon.
+  omfp-testkit/    Test helpers: temporary git repos, isolated omp agent dir, test daemon.
 e2e/              End-to-end tests (WebDriver) against the web build.
 ```
 
 | ID | Requirement |
 | --- | --- |
-| ARC-010 | `pmo-protocol` and `pmo-core` MUST compile for `wasm32-unknown-unknown` and MUST NOT use tokio, `std::process` or the filesystem. |
-| ARC-011 | `pmo-core` MUST reuse `omp_rpc::wire` types for omp events and messages instead of redefining them. The whole `omp-rpc` crate compiles for wasm (S-01), but `pmo-core` and the UI use only its `wire` module; its process client is for the daemon. |
-| ARC-012 | System dependencies (git, omp, PTY, clock, ID generation) MUST sit behind traits ("ports") in `pmo-daemon`, so component tests can use fake implementations. |
+| ARC-010 | `omfp-protocol` and `omfp-core` MUST compile for `wasm32-unknown-unknown` and MUST NOT use tokio, `std::process` or the filesystem. |
+| ARC-011 | `omfp-core` MUST reuse `omp_rpc::wire` types for omp events and messages instead of redefining them. The whole `omp-rpc` crate compiles for wasm (S-01), but `omfp-core` and the UI use only its `wire` module; its process client is for the daemon. |
+| ARC-012 | System dependencies (git, omp, PTY, clock, ID generation) MUST sit behind traits ("ports") in `omfp-daemon`, so component tests can use fake implementations. |
 
 ## Main flow: one prompt
 
@@ -127,8 +127,8 @@ sequenceDiagram
 ## On-disk data
 
 ```text
-$XDG_DATA_HOME/pmo/            (default ~/.local/share/pmo)
-  pmo.db                        SQLite: repositories, workspaces, threads, tags, settings
+$XDG_DATA_HOME/omfp/            (default ~/.local/share/omfp)
+  omfp.db                        SQLite: repositories, workspaces, threads, tags, settings
   token                         access token (mode 0600)
   threads/<thread-id>/sessions/ sessionDir passed to omp (open_session)
   threads/<thread-id>/omp.log   omp stderr

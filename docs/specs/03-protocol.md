@@ -1,7 +1,7 @@
 # 03 — UI ↔ daemon protocol
 
 One WebSocket per client at `/api/ws`. JSON text frames for requests, responses and events; binary frames only for
-terminal data ([05](05-terminal.md)). All types live in `pmo-protocol` (serde), shared by daemon and UI.
+terminal data ([05](05-terminal.md)). All types live in `omfp-protocol` (serde), shared by daemon and UI.
 
 ## Connection and authentication
 
@@ -10,7 +10,7 @@ sequenceDiagram
   participant C as Client
   participant D as daemon
   C->>D: WS upgrade /api/ws (Origin checked)
-  C->>D: {"type":"request","id":"1","method":"system.hello","params":{"token":"…","protocol":1,"client":"pmo-ui/web"}}
+  C->>D: {"type":"request","id":"1","method":"system.hello","params":{"token":"…","protocol":1,"client":"omfp-ui/web"}}
   D-->>C: {"type":"response","id":"1","ok":true,"result":{"protocol":1,"daemon":"0.1.0","omp":"18.18.6","warnings":[]}}
   C->>D: subscribe index, thread/<id>, …
 ```
@@ -59,13 +59,13 @@ Topics: `index` (repositories, workspaces, threads with their summaries and tags
 
 // answer B: position unknown or too old — full state, then live events after `seq`
 { "type": "response", "id": "c7", "ok": true,
-  "result": { "mode": "snapshot", "epoch": "e9", "seq": 40, "state": { /* pmo_core::ThreadState */ } } }
+  "result": { "mode": "snapshot", "epoch": "e9", "seq": 40, "state": { /* omfp_core::ThreadState */ } } }
 ```
 
 | ID | Requirement |
 | --- | --- |
 | PRT-020 | `subscribe` with `since` inside the thread's ring buffer (same `epoch`, `seq` ≥ oldest kept) MUST replay the missing events in order; otherwise it MUST return a snapshot. Without `since`, it returns a snapshot. |
-| PRT-021 | The snapshot MUST be the `pmo_core::ThreadState` produced by the daemon's reducer at exactly `seq`; applying the following events with the same reducer MUST produce the same state the daemon has (invariant tested by property tests, TST-011). |
+| PRT-021 | The snapshot MUST be the `omfp_core::ThreadState` produced by the daemon's reducer at exactly `seq`; applying the following events with the same reducer MUST produce the same state the daemon has (invariant tested by property tests, TST-011). |
 | PRT-022 | Events for a topic MUST be delivered in strictly increasing `seq` order without gaps. A client that observes a gap or a new `epoch` without a snapshot MUST resubscribe. |
 | PRT-023 | Each client has a bounded outbound queue. On overflow the daemon MUST drop that client's topic, send `resync_required` for it, and keep the connection open; the client resubscribes and gets a snapshot. |
 | PRT-024 | `unsubscribe { topic }` MUST stop delivery for that topic. Closing the socket unsubscribes everything. |
@@ -117,7 +117,7 @@ Topics: `index` (repositories, workspaces, threads with their summaries and tags
 | ID | Requirement |
 | --- | --- |
 | PRT-030 | `thread.prompt` MUST return as soon as omp admits the prompt (omp's `prompt` response), not when the turn ends. The UI tracks completion through `prompt_result` with the same `promptId`. omp numbers requests per process, so a `promptId` is unique only within the thread's current epoch; the reducer drops prompt results when a new process starts (History). |
-| PRT-031 | Every method MUST be covered by a golden-JSON test (insta snapshot of request and response) in `pmo-protocol`, so changes to the wire format are always explicit in review. |
-| PRT-032 | `pmo-protocol` MUST version breaking changes by bumping `protocol`; the daemon supports the current and the previous version during a transition. |
+| PRT-031 | Every method MUST be covered by a golden-JSON test (insta snapshot of request and response) in `omfp-protocol`, so changes to the wire format are always explicit in review. |
+| PRT-032 | `omfp-protocol` MUST version breaking changes by bumping `protocol`; the daemon supports the current and the previous version during a transition. |
 | PRT-033 | No method may assume a human UI is on the other end: every method is usable by scripts and, later, agents (D-12). The `client` field of `system.hello` and the resulting principal are recorded as provenance on created entities (ARC-009). |
 | PRT-034 | Authorization MUST be resolved once per connection into a `Principal` and checked in one place (a method → permission table), so scoped principals (per-thread agent tokens, [08](08-agent-control.md)) can be added without touching method handlers. Today there is one principal: the owner token. |

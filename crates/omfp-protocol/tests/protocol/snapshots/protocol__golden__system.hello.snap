@@ -1,0 +1,29 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "system.hello",
+    "params": {
+      "client": "omfp-ui/web",
+      "protocol": 1,
+      "token": "3f9c1e…"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "daemon": "0.1.0",
+      "omp": "18.18.6",
+      "protocol": 1,
+      "warnings": [
+        "omp version mismatch allowed (--allow-omp-mismatch)"
+      ]
+    },
+    "type": "response"
+  }
+}

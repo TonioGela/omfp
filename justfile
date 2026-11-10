@@ -14,15 +14,15 @@ test-contract:
 
 # Re-record omp fixtures under fixtures/omp/<version>/ (TST-012)
 record-fixtures:
-    PMO_RECORD_FIXTURES=1 just test-contract
+    OMFP_RECORD_FIXTURES=1 just test-contract
 
 # spec: ARC-010 — the shared crates compile for the browser
 check-wasm:
-    cargo check -p pmo-core -p pmo-protocol --target wasm32-unknown-unknown
+    cargo check -p omfp-core -p omfp-protocol --target wasm32-unknown-unknown
 
-# Web bundle in target/dx/pmo-ui (dx uses the dev shell's wasm-bindgen)
+# Web bundle in target/dx/omfp (dx uses the dev shell's wasm-bindgen)
 build-web:
-    dx build -p pmo-ui --platform web
+    dx build -p omfp-ui --platform web
 
 # Formatting and lints
 lint:
@@ -43,7 +43,7 @@ deny:
 
 # Mutation testing of the pure crates (TST-005); pass `--in-diff <file>` to limit it to a change
 mutants *args:
-    cargo mutants --test-tool nextest -p pmo-core -p pmo-protocol -p fake-llm -p xtask {{ args }}
+    cargo mutants --test-tool nextest -p omfp-core -p omfp-protocol -p fake-llm -p xtask {{ args }}
 
 # Coverage report (HTML in target/llvm-cov/html)
 cov:

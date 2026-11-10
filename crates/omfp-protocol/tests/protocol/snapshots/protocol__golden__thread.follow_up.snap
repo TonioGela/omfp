@@ -1,0 +1,21 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "thread.follow_up",
+    "params": {
+      "text": "Then run the tests",
+      "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {},
+    "type": "response"
+  }
+}

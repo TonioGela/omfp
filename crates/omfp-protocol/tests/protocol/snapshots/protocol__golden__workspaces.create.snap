@@ -1,0 +1,35 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "workspaces.create",
+    "params": {
+      "baseRef": "origin/main",
+      "repo": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "baseRef": "origin/main",
+      "branch": "omfp/checkout-v2-k3p9",
+      "createdAt": 1794268800000,
+      "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
+      "kind": "managed_worktree",
+      "path": "/home/dev/.local/share/omfp/worktrees/shop-frontend/checkout-v2",
+      "provenance": {
+        "client": "omfp-ui/web",
+        "createdBy": {
+          "kind": "user"
+        }
+      },
+      "repositoryId": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F"
+    },
+    "type": "response"
+  }
+}

@@ -3772,6 +3772,82 @@ dependencies = [
 ]
 
 [[package]]
+name = "omfp-core"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "omp-rpc",
+ "proptest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "omfp-daemon"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "fake-llm",
+ "futures",
+ "getrandom 0.4.3",
+ "hex",
+ "insta",
+ "omfp-core",
+ "omfp-protocol",
+ "omfp-testkit",
+ "omp-rpc",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "subtle",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-stream",
+ "tokio-tungstenite 0.30.0",
+ "tracing",
+ "tracing-subscriber",
+ "ulid",
+]
+
+[[package]]
+name = "omfp-protocol"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "omfp-core",
+ "schemars",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "omfp-testkit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "fake-llm",
+ "omfp-core",
+ "omp-rpc",
+ "regex",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
+name = "omfp-ui"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "dioxus",
+ "omfp-daemon",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "omp-rpc"
 version = "0.1.0"
 source = "git+https://github.com/can1357/oh-my-pi?tag=v18.18.6#9058ab9d229663e229e2867824ba6df6f21e9e59"
@@ -4059,82 +4135,6 @@ name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
-
-[[package]]
-name = "pmo-core"
-version = "0.1.0"
-dependencies = [
- "insta",
- "omp-rpc",
- "proptest",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "pmo-daemon"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "axum",
- "clap",
- "fake-llm",
- "futures",
- "getrandom 0.4.3",
- "hex",
- "insta",
- "omp-rpc",
- "pmo-core",
- "pmo-protocol",
- "pmo-testkit",
- "rusqlite",
- "serde",
- "serde_json",
- "subtle",
- "tempfile",
- "thiserror 2.0.21",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite 0.30.0",
- "tracing",
- "tracing-subscriber",
- "ulid",
-]
-
-[[package]]
-name = "pmo-protocol"
-version = "0.1.0"
-dependencies = [
- "insta",
- "pmo-core",
- "schemars",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "pmo-testkit"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "fake-llm",
- "omp-rpc",
- "pmo-core",
- "regex",
- "serde_json",
- "tempfile",
- "tokio",
-]
-
-[[package]]
-name = "pmo-ui"
-version = "0.1.0"
-dependencies = [
- "clap",
- "dioxus",
- "pmo-daemon",
- "wasm-bindgen",
-]
 
 [[package]]
 name = "png"
@@ -7104,7 +7104,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "pmo-core",
+ "omfp-core",
  "regex",
  "serde",
  "serde_json",

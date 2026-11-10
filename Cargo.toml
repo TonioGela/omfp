@@ -10,13 +10,13 @@ publish = false
 
 [workspace.dependencies]
 # Internal crates
-pmo-core = { path = "crates/pmo-core" }
-pmo-protocol = { path = "crates/pmo-protocol" }
-pmo-daemon = { path = "crates/pmo-daemon" }
+omfp-core = { path = "crates/omfp-core" }
+omfp-protocol = { path = "crates/omfp-protocol" }
+omfp-daemon = { path = "crates/omfp-daemon" }
 fake-llm = { path = "crates/fake-llm" }
-pmo-testkit = { path = "crates/pmo-testkit" }
+omfp-testkit = { path = "crates/omfp-testkit" }
 
-# omp RPC client: the tag MUST match the oh-my-pi flake input and pmo_core::OMP_VERSION (ENV-010).
+# omp RPC client: the tag MUST match the oh-my-pi flake input and omfp_core::OMP_VERSION (ENV-010).
 omp-rpc = { git = "https://github.com/can1357/oh-my-pi", tag = "v18.18.6" }
 
 # UI: dioxus minor MUST match `dx`, wasm-bindgen MUST equal the shell's wasm-bindgen-cli (ENV-012).

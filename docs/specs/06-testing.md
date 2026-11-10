@@ -24,7 +24,7 @@ code exists because a test citing that ID asked for it.
 
 ```mermaid
 flowchart BT
-  L0["L0 unit — pure code (pmo-core, pmo-protocol, vm/)"]
+  L0["L0 unit — pure code (omfp-core, omfp-protocol, vm/)"]
   L1["L1 component — daemon modules with fake ports"]
   L2["L2 integration — real git, SQLite, WebSocket"]
   L3["L3 contract — real pinned omp + fake LLM"]
@@ -37,16 +37,16 @@ flowchart BT
 | --- | --- | --- | --- |
 | L0 | Reducer, view-models, protocol (de)serialization, naming/slug rules, `ask` validation, ring buffer, state machines | `cargo nextest`, `proptest`, `insta` | `just test` |
 | L1 | ThreadService, AgentSupervisor, WorktreeManager, interactions, idle reaper — against `FakeGit`, `FakeAgent` (scripted omp frames), `FakeClock`, `FakePty` | `tokio::test(start_paused = true)` | `just test` |
-| L2 | Real `git` on temp repos, real SQLite file, real WebSocket server with a native protocol client | `pmo-testkit` | `just test` |
-| L3 | Our assumptions about omp: real pinned `omp --mode rpc-ui` talking to `fake-llm` (`crates/*/tests/contract_*.rs`) | `pmo-testkit`, `fake-llm` | `just test-contract` |
+| L2 | Real `git` on temp repos, real SQLite file, real WebSocket server with a native protocol client | `omfp-testkit` | `just test` |
+| L3 | Our assumptions about omp: real pinned `omp --mode rpc-ui` talking to `fake-llm` (`crates/*/tests/contract_*.rs`) | `omfp-testkit`, `fake-llm` | `just test-contract` |
 | L4 | Components rendered via `VirtualDom` + `dioxus-ssr`, asserted with selectors and HTML snapshots; browser-only code (web transport, xterm bridge) | `scraper`, `insta`, `wasm-bindgen-test` in headless Chromium | `just test`, `just test-wasm` |
 | L5 | Critical user journeys on the web build | `thirtyfour` (WebDriver) + `chromedriver` + Chromium | `just test-e2e` |
 
 | ID | Requirement |
 | --- | --- |
-| TST-010 | `pmo-core`'s reducer MUST have example tests for every event kind it handles, plus property tests. |
+| TST-010 | `omfp-core`'s reducer MUST have example tests for every event kind it handles, plus property tests. |
 | TST-011 | Property tests MUST check at least: (a) rebuilding an assistant message from `messageUpdates: "delta"` events equals the `message_end` content for any generated message; (b) snapshot → serialize → deserialize → apply remaining events equals applying all events (PRT-021); (c) queue chips always equal the last `queue_update`. |
-| TST-012 | Contract tests (L3) MUST record each scenario as a fixture file written with `just record-fixtures` and normalized so that re-recording only shows real changes (wall-clock and duration fields zeroed; random ids, UUIDs, session-file timestamps and temporary paths replaced). Two formats: raw omp stdout frames (`fixtures/omp/<version>/`, M0 smoke) and the daemon's reducer inputs, `pmo_core::ThreadEvent` as JSON lines (`fixtures/threads/<version>/`, recorded through the daemon's omp adapter). L0/L1/L4 tests replay the thread fixtures, so the whole stack is tested against real omp output without starting omp. |
+| TST-012 | Contract tests (L3) MUST record each scenario as a fixture file written with `just record-fixtures` and normalized so that re-recording only shows real changes (wall-clock and duration fields zeroed; random ids, UUIDs, session-file timestamps and temporary paths replaced). Two formats: raw omp stdout frames (`fixtures/omp/<version>/`, M0 smoke) and the daemon's reducer inputs, `omfp_core::ThreadEvent` as JSON lines (`fixtures/threads/<version>/`, recorded through the daemon's omp adapter). L0/L1/L4 tests replay the thread fixtures, so the whole stack is tested against real omp output without starting omp. |
 | TST-013 | Contract tests MUST fail fast with a clear message if `omp --version` differs from the pinned version (DMN-001). |
 | TST-014 | L1 fakes MUST be driven by the same fixture format as TST-012, so a fake never invents frames omp does not send. |
 
@@ -62,7 +62,7 @@ An OpenAI-compatible server (axum) that answers from a script, making omp runs d
 - Every received request is recorded and exposed in-process (and at `GET /__requests`) for assertions.
 - An unexpected request (script exhausted or no match) answers 500 and fails the test with the request body.
 
-omp runs in an isolated environment (`pmo_testkit::OmpEnv`): its own `HOME`, agent directory (`PI_CODING_AGENT_DIR`,
+omp runs in an isolated environment (`omfp_testkit::OmpEnv`): its own `HOME`, agent directory (`PI_CODING_AGENT_DIR`,
 see upstream `environment-variables.md`), XDG directories and working directory, with provider credentials removed
 from the environment. The agent directory holds a `models.yml` with a custom provider (shape from upstream `models.md`):
 
@@ -86,13 +86,13 @@ and a `config.yml` setting `modelRoles.default: fake/scripted`; omp is launched 
 Spike S-02 found that omp always runs a background model-catalog discovery at startup: the shared catalog
 (`catalog.stencil.so`) and the model lists of keyless providers. No setting turns it off entirely
 (`disabledProviders` removes the keyless providers but not the shared catalog). Contract tests therefore run omp behind
-`pmo_testkit::DenyProxy`, an HTTP(S) proxy set in `HTTP_PROXY`/`HTTPS_PROXY` (loopback excluded with `NO_PROXY`) that
+`omfp_testkit::DenyProxy`, an HTTP(S) proxy set in `HTTP_PROXY`/`HTTPS_PROXY` (loopback excluded with `NO_PROXY`) that
 refuses and records every connection. The discovery requests fail at once, so runs stay offline and deterministic.
 
 | ID | Requirement |
 | --- | --- |
 | TST-020 | `fake-llm` itself is developed test-first: its own tests check SSE framing, tool-call chunking and request recording. |
-| TST-021 | Contract tests MUST run omp behind the deny proxy and fail when omp tries to reach a host outside `pmo_testkit::KNOWN_DISCOVERY_HOSTS`. That list is reviewed on every omp upgrade. |
+| TST-021 | Contract tests MUST run omp behind the deny proxy and fail when omp tries to reach a host outside `omfp_testkit::KNOWN_DISCOVERY_HOSTS`. That list is reviewed on every omp upgrade. |
 
 ## UI testing
 
@@ -101,7 +101,7 @@ refuses and records every connection. The discovery requests fail at once, so ru
 | TST-030 | Transport suite: the same tests run against both `Transport` implementations (native in L2, web in `wasm-bindgen-test` against a daemon started by the test harness) — hello, auth failure, subscribe/snapshot, replay, reconnect (UI-001). |
 | TST-031 | Components get `data-testid` attributes for L4/L5 selectors; tests never select by CSS class or text that is likely to change. |
 | TST-032 | HTML snapshots MUST be normalized (generated ids and timestamps stripped) so they only change when markup really changes. |
-| TST-033 | The desktop build has a smoke test: start with `PMO_SMOKE=1` under a virtual X server, connect to the in-process daemon, render the shell, exit 0. |
+| TST-033 | The desktop build has a smoke test: start with `OMFP_SMOKE=1` under a virtual X server, connect to the in-process daemon, render the shell, exit 0. |
 
 ## End-to-end scenarios (L5)
 
@@ -132,10 +132,10 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 | `just test-contract` | L3 against the pinned omp (needs the dev shell) |
 | `just test-wasm` | `wasm-bindgen-test` in headless Chromium |
 | `just test-e2e` | L5 (builds the web bundle first) |
-| `just mutants` | `cargo mutants` on `pmo-core`, `pmo-protocol`, `pmo-ui/vm` (`--in-diff` for changed code) |
+| `just mutants` | `cargo mutants` on `omfp-core`, `omfp-protocol`, `omfp-ui/vm` (`--in-diff` for changed code) |
 | `just cov` | `cargo llvm-cov` report |
 | `just ci` | everything above + `spec-trace`, `clippy -D warnings`, `fmt --check`, `cargo deny check` |
 
 | ID | Requirement |
 | --- | --- |
-| TST-050 | Gates for `just ci`: no surviving mutants in `pmo-core` and `pmo-protocol` (exceptions listed with a reason in `mutants.toml`); line coverage ≥ 90% for `pmo-core`, `pmo-protocol`, `pmo-ui/vm`, ≥ 75% for `pmo-daemon`. |
+| TST-050 | Gates for `just ci`: no surviving mutants in `omfp-core` and `omfp-protocol` (exceptions listed with a reason in `mutants.toml`); line coverage ≥ 90% for `omfp-core`, `omfp-protocol`, `omfp-ui/vm`, ≥ 75% for `omfp-daemon`. |
