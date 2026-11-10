@@ -19,6 +19,9 @@ pub struct Cli {
     /// Data directory (default: `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`).
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
+    /// Where new workspace folders are made (DMN-020; default: `~/omfp/workspaces`).
+    #[arg(long)]
+    pub workspaces_root: Option<PathBuf>,
     /// omp executable; default: the bundled one, else `omp` on PATH (DMN-006).
     #[arg(long)]
     pub omp_bin: Option<PathBuf>,
@@ -47,6 +50,7 @@ pub struct Cli {
 pub struct Config {
     pub bind: SocketAddr,
     pub data_dir: PathBuf,
+    pub workspaces_root: PathBuf,
     pub omp_bin: Option<PathBuf>,
     pub static_dir: Option<PathBuf>,
     pub allow_omp_mismatch: bool,
@@ -67,11 +71,17 @@ impl Config {
             Some(dir) => dir,
             None => xdg_data_home
                 .filter(|dir| dir.is_absolute())
-                .or_else(|| home.map(|home| home.join(".local/share")))
+                .or_else(|| home.as_ref().map(|home| home.join(".local/share")))
                 .map(|base| base.join("omfp"))
                 .ok_or(
                     "cannot determine a data directory: set --data-dir, XDG_DATA_HOME or HOME",
                 )?,
+        };
+        let workspaces_root = match cli.workspaces_root {
+            Some(dir) => dir,
+            None => home
+                .map(|home| home.join("omfp").join("workspaces"))
+                .ok_or("cannot determine the workspaces root: set --workspaces-root or HOME")?,
         };
         if cli.max_processes == 0 {
             return Err("--max-processes must be at least 1".into());
@@ -79,6 +89,7 @@ impl Config {
         Ok(Self {
             bind: cli.bind,
             data_dir,
+            workspaces_root,
             omp_bin: cli.omp_bin,
             static_dir: cli.static_dir,
             allow_omp_mismatch: cli.allow_omp_mismatch,
@@ -137,19 +148,36 @@ mod tests {
             PathBuf::from("/home/u/.local/share/omfp")
         );
         assert!(config(None, None).is_err());
-        let explicit = Config::from_cli(parse(&["--data-dir", "/d"]), None, None).unwrap();
+        let explicit = Config::from_cli(
+            parse(&["--data-dir", "/d", "--workspaces-root", "/w"]),
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(explicit.data_dir, PathBuf::from("/d"));
+        assert_eq!(explicit.workspaces_root, PathBuf::from("/w"));
+    }
+
+    // spec: DMN-020
+    #[test]
+    fn workspace_folders_go_under_home_by_default() {
+        let config = Config::from_cli(parse(&[]), None, Some("/home/u".into())).unwrap();
+        assert_eq!(
+            config.workspaces_root,
+            PathBuf::from("/home/u/omfp/workspaces")
+        );
+        assert!(Config::from_cli(parse(&["--data-dir", "/d"]), None, None).is_err());
     }
 
     // spec: DMN-034, DMN-038, DMN-041
     #[test]
     fn idle_timeout_process_limit_and_event_buffer_have_spec_defaults() {
-        let config = Config::from_cli(parse(&[]), Some("/x".into()), None).unwrap();
+        let config = Config::from_cli(parse(&[]), None, Some("/h".into())).unwrap();
         assert_eq!(config.idle_timeout, Duration::from_mins(15));
         assert_eq!(config.max_processes, 8);
         assert_eq!(config.event_buffer, 2000);
         assert!(
-            Config::from_cli(parse(&["--max-processes", "0"]), Some("/x".into()), None).is_err()
+            Config::from_cli(parse(&["--max-processes", "0"]), None, Some("/h".into())).is_err()
         );
     }
 

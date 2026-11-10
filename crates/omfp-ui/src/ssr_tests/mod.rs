@@ -5,10 +5,11 @@ use std::sync::LazyLock;
 
 use dioxus::prelude::*;
 use omfp_core::{ProcessState, ThreadState};
+use omfp_protocol::{RepoKind, WorkspaceRepo};
 use regex::Regex;
 use scraper::{ElementRef, Html, Selector};
 
-use crate::test_support::{repository, thread, workspace};
+use crate::test_support::{repo, repository, thread, workspace};
 use crate::{App, ConnectionView, ThreadView, UiState, ViewInput};
 
 mod composer;
@@ -90,19 +91,28 @@ pub fn attr<'a>(element: ElementRef<'a>, name: &str) -> Option<&'a str> {
     element.value().attr(name)
 }
 
-/// An index of two repositories, four workspaces and four threads: `t-checkout` awaits input (fe#412 + be:main,
-/// tagged `release`), `t-flaky` runs (be:main + be:flaky), `t-scratch` failed (no workspace), `t-idle` is idle on an
-/// adopted directory.
+/// An index of two repositories, four workspaces and four threads: `t-checkout` awaits input (workspace `checkout`:
+/// a worktree `fe:feat/checkout` and a link `be:main`, tagged `release`), `t-flaky` runs (`flaky`: a worktree
+/// `be:flaky`), `t-scratch` failed (`scratch`, empty), `t-idle` is idle in `notes`, a folder the daemon does not own.
 pub fn index() -> ViewInput {
-    let mut pr = workspace("w-fe", Some("r-fe"), Some("feat/checkout"));
-    pr.pr_number = Some(412);
-    pr.pr_url = Some("https://example.test/fe/pull/412".to_owned());
-    let mut checkout = thread("t-checkout", "checkout-v2", &["w-fe", "w-be"]);
+    let mut linked = repo("w-checkout", "be", "main");
+    linked.kind = RepoKind::Link {
+        target: "/src/be".to_owned(),
+    };
+    linked.canonical_path = "/src/be".to_owned();
+    let named = |id: &str, name: &str, repos: Vec<WorkspaceRepo>| {
+        let mut workspace = workspace(id, repos);
+        workspace.name = name.to_owned();
+        workspace
+    };
+    let mut notes = named("w-notes", "notes", Vec::new());
+    notes.owned = false;
+    let mut checkout = thread("t-checkout", "checkout-v2", "w-checkout");
     checkout.needs_attention = true;
     checkout.tags = vec!["release".to_owned()];
-    let mut flaky = thread("t-flaky", "flaky-tests", &["w-be", "w-be2"]);
+    let mut flaky = thread("t-flaky", "flaky-tests", "w-flaky");
     flaky.settled = false;
-    let mut scratch = thread("t-scratch", "scratch", &[]);
+    let mut scratch = thread("t-scratch", "scratch", "w-scratch");
     scratch.process = ProcessState::Failed {
         message: "omp exited".to_owned(),
         exit_code: Some(1),
@@ -112,16 +122,20 @@ pub fn index() -> ViewInput {
         connection: ConnectionView::Connected,
         repositories: vec![repository("r-fe", "fe"), repository("r-be", "be")],
         workspaces: vec![
-            pr,
-            workspace("w-be", Some("r-be"), Some("main")),
-            workspace("w-be2", Some("r-be"), Some("flaky")),
-            workspace("w-adopted", None, None),
+            named(
+                "w-checkout",
+                "checkout",
+                vec![repo("w-checkout", "fe", "feat/checkout"), linked],
+            ),
+            named("w-flaky", "flaky", vec![repo("w-flaky", "be", "flaky")]),
+            named("w-scratch", "scratch", Vec::new()),
+            notes,
         ],
         threads: vec![
             checkout,
             flaky,
             scratch,
-            thread("t-idle", "idle-notes", &["w-adopted"]),
+            thread("t-idle", "idle-notes", "w-notes"),
         ],
         ..ViewInput::default()
     }

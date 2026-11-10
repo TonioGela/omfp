@@ -19,18 +19,19 @@ use omfp_protocol::method::{
     ThreadGoal, ThreadLabel, ThreadModels, ThreadNavigate, ThreadPrompt, ThreadQueuePromote,
     ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking, ThreadState, ThreadSteer,
     ThreadStop, ThreadSubagentCancel, ThreadSubagentMessages, ThreadSubagentSteer, ThreadSubagents,
-    ThreadThinkingLevels, ThreadTree, ThreadsArchive, ThreadsAttach, ThreadsCreate, ThreadsDelete,
-    ThreadsDetach, ThreadsUnarchive, ThreadsUpdate, Unsubscribe, WorkspacesAdopt, WorkspacesCreate,
-    WorkspacesDiff, WorkspacesForget, WorkspacesRemove, WorkspacesStatus,
+    ThreadThinkingLevels, ThreadTree, ThreadsArchive, ThreadsCreate, ThreadsDelete,
+    ThreadsUnarchive, ThreadsUpdate, Unsubscribe, WorkspacesAddRepo, WorkspacesCreate,
+    WorkspacesDiff, WorkspacesRemove, WorkspacesRemoveRepo, WorkspacesRescan, WorkspacesStatus,
+    WorkspacesUpdate,
 };
 use omfp_protocol::{
-    AddRepositoryParams, AdoptWorkspaceParams, AttachWorkspaceParams, BashParams, BtwParams,
-    CompactParams, CreateThreadParams, CreateWorkspaceParams, DetachWorkspaceParams, Empty,
-    ForkParams, GoalParams, HelloParams, InteractionResponse, LabelParams, MessageParams,
-    NavigateParams, PromptParams, QueueMessageParams, RemoveWorkspaceParams, RepositoryRef,
-    RespondParams, SetModelParams, SetThinkingParams, SubagentMessagesParams, SubagentRef,
-    SubagentSteerParams, SubscribeParams, SubscribeResult, ThreadRef, Topic, TopicParams,
-    UpdateThreadParams, WorkspaceDiffParams, WorkspaceRef,
+    AddRepoParams, AddRepositoryParams, BashParams, BtwParams, CompactParams, CreateThreadParams,
+    CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams, InteractionResponse,
+    LabelParams, MessageParams, NavigateParams, PromptParams, QueueMessageParams, RemoveRepoParams,
+    RemoveWorkspaceParams, RepoRef, RepoSource, RepositoryRef, RespondParams, SetModelParams,
+    SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
+    SubscribeResult, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
+    UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
 };
 use tempfile::TempDir;
 
@@ -50,6 +51,8 @@ async fn daemon() -> TestDaemon {
         "127.0.0.1:0",
         "--data-dir",
         data_dir.to_str().unwrap(),
+        "--workspaces-root",
+        dir.path().join("workspaces").to_str().unwrap(),
     ])
     .unwrap();
     let config = Config::from_cli(cli, None, None).unwrap();
@@ -96,7 +99,7 @@ fn fixture(name: &str) -> FakeRun {
 fn new_thread(title: &str) -> CreateThreadParams {
     CreateThreadParams {
         title: title.into(),
-        workspace_ids: Vec::new(),
+        workspace: ThreadWorkspace::default(),
         tags: Vec::new(),
         model: None,
         thinking_level: None,
@@ -152,42 +155,65 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
         .await;
     let listed = client.typed::<ReposList>(Empty {}).await;
     assert_eq!(listed.repositories, std::slice::from_ref(&repository));
-    let managed = client
+    let workspace = client
         .typed::<WorkspacesCreate>(CreateWorkspaceParams {
-            repo: repository.id.clone(),
-            branch: Some("feature".into()),
-            base_ref: Some("main".into()),
+            name: Some("checkout".into()),
+            path: None,
         })
         .await;
-    let adopted = client
-        .typed::<WorkspacesAdopt>(AdoptWorkspaceParams {
-            path: daemon.folder("plain"),
+    let workspace_ref = || WorkspaceRef {
+        workspace_id: workspace.id.clone(),
+    };
+    let renamed = client
+        .typed::<WorkspacesUpdate>(UpdateWorkspaceParams {
+            workspace_id: workspace.id.clone(),
+            name: "checkout-v2".into(),
         })
         .await;
-    let status = client
-        .typed::<WorkspacesStatus>(WorkspaceRef {
-            workspace_id: managed.id.clone(),
+    assert_eq!(renamed.name, "checkout-v2");
+    let added = client
+        .typed::<WorkspacesAddRepo>(AddRepoParams {
+            workspace_id: workspace.id.clone(),
+            name: None,
+            source: RepoSource::Worktree {
+                repo: repository.id.clone(),
+                branch: Some("feature".into()),
+                base_ref: Some("main".into()),
+            },
         })
         .await;
+    assert_eq!(added.repos.len(), 1);
+    let rescanned = client.typed::<WorkspacesRescan>(workspace_ref()).await;
+    assert_eq!(rescanned.repos, added.repos);
+    let repo = RepoRef {
+        workspace_id: workspace.id.clone(),
+        repo: "repo".into(),
+    };
+    let status = client.typed::<WorkspacesStatus>(repo).await;
     assert_eq!(status.branch.as_deref(), Some("feature"));
     client
         .typed::<WorkspacesDiff>(WorkspaceDiffParams {
-            workspace_id: managed.id.clone(),
+            workspace_id: workspace.id.clone(),
+            repo: "repo".into(),
             path: None,
             cursor: None,
         })
         .await;
-
-    client
-        .typed::<WorkspacesRemove>(RemoveWorkspaceParams {
-            workspace_id: managed.id,
+    let emptied = client
+        .typed::<WorkspacesRemoveRepo>(RemoveRepoParams {
+            workspace_id: workspace.id.clone(),
+            name: "repo".into(),
             force: true,
             delete_branch: true,
         })
         .await;
+    assert_eq!(emptied.repos, Vec::new());
+
     client
-        .typed::<WorkspacesForget>(WorkspaceRef {
-            workspace_id: adopted.id,
+        .typed::<WorkspacesRemove>(RemoveWorkspaceParams {
+            workspace_id: workspace.id.clone(),
+            delete_folder: true,
+            force: false,
         })
         .await;
     client
@@ -203,11 +229,6 @@ async fn thread_management_methods_return_their_declared_results() {
     let daemon = daemon().await;
     let mut client = daemon.client().await;
     let thread = client.typed::<ThreadsCreate>(new_thread("typed")).await;
-    let workspace = client
-        .typed::<WorkspacesAdopt>(AdoptWorkspaceParams {
-            path: daemon.folder("ws"),
-        })
-        .await;
 
     let updated = client
         .typed::<ThreadsUpdate>(UpdateThreadParams {
@@ -220,23 +241,9 @@ async fn thread_management_methods_return_their_declared_results() {
         (updated.title.as_str(), updated.tags),
         ("renamed", vec!["tag".to_owned()])
     );
-    let attached = client
-        .typed::<ThreadsAttach>(AttachWorkspaceParams {
-            thread_id: thread.id.clone(),
-            workspace_id: workspace.id.clone(),
-            position: None,
-        })
-        .await;
-    assert_eq!(attached.workspace_ids, std::slice::from_ref(&workspace.id));
     let git = client.typed::<ThreadGit>(thread_ref(&thread.id)).await;
-    assert_eq!(git.workspaces.len(), 1);
-    let detached = client
-        .typed::<ThreadsDetach>(DetachWorkspaceParams {
-            thread_id: thread.id.clone(),
-            workspace_id: workspace.id,
-        })
-        .await;
-    assert_eq!(detached.workspace_ids, Vec::<String>::new());
+    assert_eq!(git.workspace_id, thread.workspace_id);
+    assert_eq!(git.repos, Vec::new());
 
     client.typed::<ThreadsArchive>(thread_ref(&thread.id)).await;
     client

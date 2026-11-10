@@ -486,8 +486,8 @@ mod tests {
     #[test]
     fn the_index_sets_unread_baselines_and_the_selected_thread_stays_seen() {
         let mut ui = UiState::default();
-        let mut first = thread("t1", "one", &[]);
-        let mut second = thread("t2", "two", &[]);
+        let mut first = thread("t1", "one", "w");
+        let mut second = thread("t2", "two", "w");
         first.updated_at = 5;
         second.updated_at = 7;
         let updates = ui.seen_updates(&[first.clone(), second.clone()]);

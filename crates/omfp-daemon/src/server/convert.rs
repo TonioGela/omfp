@@ -1,10 +1,11 @@
 //! Conversions between the daemon's records and the protocol's DTOs and errors (PRT-011).
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use omfp_protocol::{
     CreatedBy, DiffPage, ErrorBody, ErrorCode, FileChange, FileDiff, FileStatus, GitStatus,
-    Provenance, Repository, ThreadSummary, Workspace, WorkspaceKind,
+    Provenance, RepoKind, Repository, ThreadSummary, Workspace, WorkspaceRepo,
 };
 use serde_json::json;
 
@@ -12,7 +13,7 @@ use crate::git::{self, GitError};
 use crate::store::{self, StoreError};
 use crate::supervisor::{SupervisorError, ThreadStatus};
 use crate::threads::ThreadError;
-use crate::workspaces::WorkspaceError;
+use crate::workspaces::{self, Discovered, WorkspaceError};
 
 pub(crate) fn bad_request(message: impl Into<String>) -> ErrorBody {
     ErrorBody::new(ErrorCode::BadRequest, message)
@@ -31,6 +32,7 @@ impl From<StoreError> for ErrorBody {
             StoreError::InvalidPath(_) => ErrorCode::BadRequest,
             StoreError::UnknownSchemaVersion { .. }
             | StoreError::Json(_)
+            | StoreError::Migration(_)
             | StoreError::Sqlite(_) => ErrorCode::Internal,
         };
         ErrorBody::new(code, message)
@@ -40,7 +42,6 @@ impl From<StoreError> for ErrorBody {
 pub(crate) fn thread_error(error: ThreadError) -> ErrorBody {
     match error {
         ThreadError::Store(error) => ErrorBody::from(error),
-        ThreadError::DuplicateWorkspace(_) => bad_request(error.to_string()),
         ThreadError::Io(_) => internal(error),
     }
 }
@@ -55,10 +56,14 @@ pub(crate) fn workspace_error(error: WorkspaceError) -> ErrorBody {
         | WorkspaceError::NotARepository(_)
         | WorkspaceError::NotARepositoryRoot(_)
         | WorkspaceError::DetachedHead(_)
+        | WorkspaceError::InvalidName(_)
+        | WorkspaceError::IsRoot(_)
+        | WorkspaceError::Unsupported(_)
         | WorkspaceError::Git(GitError::NotARepository(_)) => ErrorCode::BadRequest,
-        WorkspaceError::Dirty(_) | WorkspaceError::InUse(_) | WorkspaceError::Adopted(_) => {
-            ErrorCode::Conflict
-        }
+        WorkspaceError::NoSuchRepo { .. } => ErrorCode::NotFound,
+        WorkspaceError::Dirty(_)
+        | WorkspaceError::EntryExists(_)
+        | WorkspaceError::HasThreads(_) => ErrorCode::Conflict,
         WorkspaceError::Git(_) => ErrorCode::GitError,
         WorkspaceError::Store(_) | WorkspaceError::Io(_) => ErrorCode::Internal,
     };
@@ -68,10 +73,12 @@ pub(crate) fn workspace_error(error: WorkspaceError) -> ErrorBody {
 pub(crate) fn supervisor_error(error: SupervisorError) -> ErrorBody {
     let error = match error {
         SupervisorError::Thread(error) => return thread_error(error),
+        SupervisorError::Workspace(error) => return workspace_error(error),
         other => other,
     };
     let code = match &error {
         SupervisorError::Thread(_)
+        | SupervisorError::Workspace(_)
         | SupervisorError::ShuttingDown
         | SupervisorError::Internal(_) => ErrorCode::Internal,
         SupervisorError::LimitReached(_) => ErrorCode::LimitReached,
@@ -114,19 +121,49 @@ pub(crate) fn repository(repo: &store::Repository) -> Repository {
     }
 }
 
-pub(crate) fn workspace(ws: &store::Workspace, clients: &HashMap<String, String>) -> Workspace {
+/// The protocol's workspace: the record, its discovered repositories (with the other workspaces holding the same
+/// checkout, from `holders`), and its threads (DMN-027).
+pub(crate) fn workspace(
+    ws: &store::Workspace,
+    repos: &[Discovered],
+    thread_ids: Vec<String>,
+    holders: &HashMap<PathBuf, Vec<String>>,
+    clients: &HashMap<String, String>,
+) -> Workspace {
+    let text = |path: &std::path::Path| path.to_string_lossy().into_owned();
     Workspace {
         id: ws.id.clone(),
-        path: ws.path.to_string_lossy().into_owned(),
-        kind: match ws.kind {
-            store::WorkspaceKind::ManagedWorktree => WorkspaceKind::ManagedWorktree,
-            store::WorkspaceKind::Adopted => WorkspaceKind::Adopted,
-        },
-        repository_id: ws.repository_id.clone(),
-        branch: ws.branch.clone(),
-        base_ref: ws.base_ref.clone(),
-        pr_url: ws.pr_url.clone(),
-        pr_number: ws.pr_number.and_then(|number| u64::try_from(number).ok()),
+        name: ws.name.clone(),
+        path: text(&ws.path),
+        owned: ws.owned,
+        repos: repos
+            .iter()
+            .map(|repo| WorkspaceRepo {
+                name: repo.name.clone(),
+                path: text(&repo.path),
+                kind: match &repo.kind {
+                    workspaces::RepoKind::Link { target } => RepoKind::Link {
+                        target: text(target),
+                    },
+                    workspaces::RepoKind::Worktree { main } => {
+                        RepoKind::Worktree { main: text(main) }
+                    }
+                    workspaces::RepoKind::Clone => RepoKind::Clone,
+                },
+                branch: repo.branch.clone(),
+                head: repo.head.clone(),
+                is_root: repo.is_root,
+                canonical_path: text(&repo.canonical),
+                shared_with: holders
+                    .get(&repo.canonical)
+                    .into_iter()
+                    .flatten()
+                    .filter(|id| **id != ws.id)
+                    .cloned()
+                    .collect(),
+            })
+            .collect(),
+        thread_ids,
         provenance: provenance(&ws.created_by, clients.get(&ws.id)),
         created_at: ws.created_at,
     }
@@ -142,7 +179,7 @@ pub(crate) fn thread_summary(
         id: thread.id.clone(),
         title: thread.title.clone(),
         tags: thread.tags.clone(),
-        workspace_ids: thread.workspace_ids.clone(),
+        workspace_id: thread.workspace_id.clone(),
         process: status.process,
         settled: status.settled,
         needs_attention: status.needs_attention,
@@ -232,6 +269,7 @@ pub(crate) fn git_status(status: &git::GitStatus, base_ref: Option<&str>, diff: 
         base_ref: base_ref.map(str::to_owned),
         ahead: count(status.ahead),
         behind: count(status.behind),
+        dirty: status.dirty,
         files: status
             .files
             .iter()

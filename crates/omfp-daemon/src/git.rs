@@ -72,13 +72,22 @@ pub trait Git: Send + Sync + std::fmt::Debug {
     /// Checked-out branch; `None` when HEAD is detached.
     fn current_branch(&self, dir: &Path) -> Result<Option<String>>;
 
+    /// Commit id of HEAD; `None` before the first commit.
+    fn head(&self, dir: &Path) -> Result<Option<String>>;
+
+    /// The upstream of the checked-out branch (`origin/main`); `None` without one or on a detached HEAD.
+    fn upstream(&self, dir: &Path) -> Result<Option<String>>;
+
+    /// `git clone <url> <dest>` (DMN-024); `dest` must not exist.
+    fn clone_repo(&self, url: &str, dest: &Path) -> Result<()>;
+
     /// URL of `remote`, if configured.
     fn remote_url(&self, repo: &Path, remote: &str) -> Result<Option<String>>;
 
     /// Whether the local branch exists.
     fn branch_exists(&self, repo: &Path, branch: &str) -> Result<bool>;
 
-    /// `git worktree add` (DMN-021).
+    /// `git worktree add` (DMN-024).
     fn worktree_add(&self, repo: &Path, path: &Path, branch: &WorktreeBranch) -> Result<()>;
 
     /// `git worktree remove`, with `--force` when asked.
@@ -215,6 +224,40 @@ impl Git for GitCli {
             Some(1) => Ok(None),
             _ => Err(failed(&args, &output)),
         }
+    }
+
+    fn head(&self, dir: &Path) -> Result<Option<String>> {
+        let args = ["rev-parse", "--verify", "--quiet", "HEAD^{commit}"];
+        let output = self.output(dir, &args)?;
+        match output.status.code() {
+            Some(0) => Ok(Some(line(&output.stdout))),
+            Some(1) => Ok(None),
+            _ => Err(failed(&args, &output)),
+        }
+    }
+
+    fn upstream(&self, dir: &Path) -> Result<Option<String>> {
+        let args = [
+            "rev-parse",
+            "--abbrev-ref",
+            "--symbolic-full-name",
+            "@{upstream}",
+        ];
+        let output = self.output(dir, &args)?;
+        // git exits with 128 both without an upstream and on a detached HEAD.
+        Ok(output.status.success().then(|| line(&output.stdout)))
+    }
+
+    fn clone_repo(&self, url: &str, dest: &Path) -> Result<()> {
+        let parent = dest.parent().unwrap_or(dest);
+        let args: [&OsStr; 5] = [
+            "clone".as_ref(),
+            "--quiet".as_ref(),
+            "--".as_ref(),
+            url.as_ref(),
+            dest.as_os_str(),
+        ];
+        self.run(parent, &args).map(drop)
     }
 
     fn remote_url(&self, repo: &Path, remote: &str) -> Result<Option<String>> {

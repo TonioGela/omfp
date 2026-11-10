@@ -25,11 +25,10 @@ pub(crate) fn Sidebar() -> Element {
     let groups = group_threads(
         &input.threads,
         &input.workspaces,
-        &input.repositories,
         state.grouping,
         &state.filter,
     );
-    let options = filter_options(&input.threads, &input.workspaces, &input.repositories);
+    let options = filter_options(&input.threads, &input.workspaces);
     let waiting = input
         .threads
         .iter()
@@ -194,11 +193,7 @@ fn ThreadRow(thread_id: String) -> Element {
     let status = ThreadStatus::of(thread);
     let selected = state.selected.as_deref() == Some(thread_id.as_str());
     let unread = is_unread(thread, &state.seen, state.selected.as_deref());
-    let chips = workspace_chips(
-        &thread.workspace_ids,
-        &input.workspaces,
-        &input.repositories,
-    );
+    let chips = workspace_chips(&thread.workspace_id, &input.workspaces);
     let title = thread.title.clone();
     drop(state);
     drop(input);
@@ -221,7 +216,7 @@ fn ThreadRow(thread_id: String) -> Element {
                 if !chips.is_empty() {
                     span { class: "chips",
                         for chip in chips {
-                            WorkspaceChipView { key: "{chip.workspace_id}", chip, link: false }
+                            WorkspaceChipView { key: "{chip.key}", chip }
                         }
                     }
                 }

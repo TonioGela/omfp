@@ -27,7 +27,7 @@ pub enum CreatedBy {
     },
 }
 
-/// A registered git repository (DMN-020).
+/// A known git repository: a shortcut for adding repositories to workspaces (DMN-021).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Repository {
@@ -41,36 +41,66 @@ pub struct Repository {
     pub created_at: i64,
 }
 
-/// How the daemon owns a workspace directory.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkspaceKind {
-    /// A git worktree the daemon created and may remove (DMN-021).
-    ManagedWorktree,
-    /// An existing directory the daemon only records and never deletes (DMN-023).
-    Adopted,
-}
-
-/// A directory threads can work in.
+/// A folder threads work in; its repositories are its top-level entries (D-11, DMN-020).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Workspace {
     pub id: String,
-    /// Absolute path.
+    /// Unique among workspaces.
+    pub name: String,
+    /// Absolute path of the folder, unique among workspaces.
     pub path: String,
-    pub kind: WorkspaceKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub repository_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub branch: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_ref: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pr_url: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pr_number: Option<u64>,
+    /// The daemon created the folder and may delete it (DMN-028).
+    pub owned: bool,
+    /// Repositories discovered in the folder (DMN-022): the folder itself first when it is a git root, then the
+    /// entries by name.
+    pub repos: Vec<WorkspaceRepo>,
+    /// Threads living in the workspace, archived ones included, oldest first (DMN-027).
+    pub thread_ids: Vec<String>,
     pub provenance: Provenance,
     pub created_at: i64,
+}
+
+/// A repository discovered in a workspace folder (DMN-022).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceRepo {
+    /// Entry name in the folder; the folder's own name for the root.
+    pub name: String,
+    /// Path inside the workspace (the symlink path for a link, never its target).
+    pub path: String,
+    #[serde(flatten)]
+    pub kind: RepoKind,
+    /// `None` on a detached HEAD.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// Commit id of HEAD; `None` before the first commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head: Option<String>,
+    /// The workspace folder itself is this repository.
+    pub is_root: bool,
+    /// The checkout with symlinks resolved: entries with the same canonical path are the same files (DMN-027).
+    pub canonical_path: String,
+    /// Other workspaces holding the same checkout (same canonical path), so clients can warn (DMN-027).
+    pub shared_with: Vec<String>,
+}
+
+/// How a repository sits in its workspace folder (DMN-022).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RepoKind {
+    /// A symlink to a repository elsewhere.
+    Link {
+        /// The symlink's target, as written in the link.
+        target: String,
+    },
+    /// A linked git worktree.
+    Worktree {
+        /// Root of the main working tree (`git rev-parse --git-common-dir`).
+        main: String,
+    },
+    /// A repository of its own (a clone, or a folder initialized in place).
+    Clone,
 }
 
 /// What the thread list shows about a thread.
@@ -80,8 +110,8 @@ pub struct ThreadSummary {
     pub id: String,
     pub title: String,
     pub tags: Vec<String>,
-    /// Attached workspaces in order (ARC-008).
-    pub workspace_ids: Vec<String>,
+    /// The workspace the thread lives in: its omp cwd (ARC-008, DMN-029).
+    pub workspace_id: String,
     /// `omfp_core::ProcessState`.
     #[schemars(with = "serde_json::Value")]
     pub process: ProcessState,
@@ -105,19 +135,31 @@ pub struct IndexSnapshot {
     pub threads: Vec<ThreadSummary>,
 }
 
-/// Git state of a workspace relative to its base ref (DMN-026).
+/// Git status of one repository of a workspace (the `workspace/<id>` topic, DMN-026).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoStatus {
+    /// The repository's name in the workspace.
+    pub name: String,
+    pub status: GitStatus,
+}
+
+/// Git state of a repository relative to its upstream or base ref (DMN-026).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct GitStatus {
     /// `None` on a detached HEAD.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    /// What `ahead`/`behind` count against: the branch's upstream; absent without one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base_ref: Option<String>,
     /// Commits on HEAD not in the base ref.
     pub ahead: u32,
     /// Commits in the base ref not on HEAD.
     pub behind: u32,
+    /// Uncommitted changes, untracked files included.
+    pub dirty: bool,
     /// Files changed since the base ref, committed or not.
     pub files: Vec<FileChange>,
 }

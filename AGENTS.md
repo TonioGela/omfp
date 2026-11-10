@@ -1,17 +1,18 @@
 # AGENTS.md
 
-Guidance for coding agents working on **omfp** (formerly pmo, renamed at the end of M1): a GUI client (Dioxus, web +
-desktop) for the omp coding agent (oh-my-pi). One binary, `omfp`: `omfp daemon` runs the daemon (one
-`omp --mode rpc-ui` process per thread, WebSocket API, web UI); `omfp desktop` (M4) opens one more window on the local
-daemon, starting it in the background if needed (D-15, D-16: many windows, one daemon, each window picks its thread).
-Long-term direction (M8, D-17): agents get full access to the protocol and build arbitrary JavaScript UI pieces with an
-`omfp` SDK; never design something that would only be reachable from the human UI.
+Guidance for coding agents working on **omfp** (formerly pmo, renamed at the end of M1): a GUI client (web + desktop)
+for the omp coding agent (oh-my-pi). One binary, `omfp`: `omfp daemon` runs the daemon (one `omp --mode rpc-ui`
+process per thread, WebSocket API, web UI); `omfp desktop` (M7, Tauri) opens one more window on the local daemon,
+starting it in the background if needed (D-15, D-16). Threads run in **workspace folders** whose top-level entries are
+repositories (D-11). The UI moves from Dioxus to **TypeScript/React with Bun** in M3 (D-18); the current Dioxus UI
+(`omfp-ui`) and `omfp-client` will be deleted then. Direction (D-17): agents get full access to the protocol and build
+widgets in JavaScript (M4, M10); never design something that would only be reachable from the human UI.
 
 ## Read first
 
-- `docs/specs/README.md` — index, conventions, decision log (D-01…D-17), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0, M1 and M2 done; next: M3, tools and changes);
-  `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
+- `docs/specs/README.md` — index, conventions, decision log (D-01…D-18), open questions.
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M2 and M2b done; next: M3
+  TypeScript UI); `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
 ## Ground rules
@@ -51,8 +52,10 @@ Clippy runs with `pedantic` as errors. Notable: `assert_is_empty` forbids `asser
 crates/omfp-core      reducer over omp events (ThreadEvent → ThreadState); no I/O; compiles to wasm
 crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wasm
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs),
-                      supervisor, event log, store, workspaces, threads, host tools, WebSocket server;
-                      `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`)
+                      supervisor (launch in the workspace folder, root sync), agent conventions (conventions.rs),
+                      event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
+                      workspaces/scan.rs, add/remove repo), threads, git port + FakeGit, host tools, WebSocket
+                      server; `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`)
 crates/omfp-client    protocol client without UI: Transport (native tokio-tungstenite / web-sys WebSocket), session
                       (hello, subscriptions, reconnect backoff), model (index, ThreadState per thread, dirty set)
 crates/omfp-ui        the app: Dioxus UI (features web / desktop), the host glue (host/: client model → view input
@@ -77,7 +80,11 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   `AGENTS.md`) are lost if the session is switched later with `open_session` (S-07). `open_session` on the same dir is
   then a no-op that reports `resumed`.
 - The generated `SetEventFilterCommand` lacks `messageUpdates`; the daemon sends its own frame for delta mode.
-- `/add-dir` and `/remove-dir` work over RPC as `prompt` (local command, no model turn).
+- `/add-dir` and `/remove-dir` work over RPC as `prompt` (local command, no model turn), but omp refuses them while
+  the agent streams ("Cannot add a directory while streaming."): the daemon syncs roots of a busy thread once its
+  session settles.
+- `--session-dir <dir> --continue` resumes the newest session of that directory whatever the cwd, so a thread keeps
+  its session when it moves to another workspace folder (migration 3).
 - The `ask` tool takes one HTML `<form>` and walks it with `select`/`input`/`editor` dialogs, not the RPC `ask` dialog.
 - At startup omp always fetches its model catalog (`catalog.stencil.so` + keyless providers) and no setting disables
   it: contract tests run omp behind `DenyProxy` and fail on hosts outside `KNOWN_DISCOVERY_HOSTS`.

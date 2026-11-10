@@ -6,7 +6,8 @@ use std::sync::Arc;
 
 use omfp_core::wire::{ImageContent, ThinkingLevel};
 use omfp_protocol::{
-    Call, Empty, ErrorBody, PromptBehavior, PromptResult, RepositoryList, ThreadGit, WorkspaceGit,
+    Call, CreateWorkspaceParams, Empty, ErrorBody, PromptBehavior, PromptResult, RepositoryList,
+    ThreadGit, ThreadWorkspace,
 };
 use omp_rpc::{
     BashCommand, BtwCommand, CancelSubagentCommand, CompactCommand, FollowUpCommand, ForkCommand,
@@ -24,8 +25,9 @@ use super::convert::{
 };
 use super::services::Services;
 use crate::agent::OmpCall;
+use crate::store::Provenance;
 use crate::threads::NewThread;
-use crate::workspaces::{NewWorkspace, RemoveOptions, RepoRef};
+use crate::workspaces::{NewWorkspace, RepoRef, RepoSource, WorkspaceError};
 
 type Reply = Result<Value, ErrorBody>;
 
@@ -64,26 +66,47 @@ fn repo_ref(repo: String) -> RepoRef {
     }
 }
 
+/// A `workspaces.add_repo` source in the daemon's terms; PR sources wait for S-08.
+fn repo_source(source: omfp_protocol::RepoSource) -> Result<RepoSource, ErrorBody> {
+    Ok(match source {
+        omfp_protocol::RepoSource::Link { path } => RepoSource::Link(PathBuf::from(path)),
+        omfp_protocol::RepoSource::Worktree {
+            repo,
+            branch,
+            base_ref,
+        } => RepoSource::Worktree {
+            repo: repo_ref(repo),
+            branch,
+            base_ref,
+        },
+        omfp_protocol::RepoSource::Clone { url } => RepoSource::Clone(url),
+        omfp_protocol::RepoSource::Pr { .. } => {
+            return Err(workspace_error(WorkspaceError::Unsupported(
+                "adding a pull request (S-08)",
+            )));
+        }
+    })
+}
+
 /// Runs a method for `principal`. Authorization already happened (PRT-034).
 pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: Call) -> Reply {
     match call {
         Call::SystemHello(_) | Call::Subscribe(_) | Call::Unsubscribe(_) => {
             Err(bad_request("handled by the connection"))
         }
-        call @ (Call::ReposAdd(_)
-        | Call::ReposRemove(_)
-        | Call::ReposList(_)
-        | Call::WorkspacesCreate(_)
-        | Call::WorkspacesFromPr(_)
-        | Call::WorkspacesAdopt(_)
+        call @ (Call::ReposAdd(_) | Call::ReposRemove(_) | Call::ReposList(_)) => {
+            repositories(services, call).await
+        }
+        call @ (Call::WorkspacesCreate(_)
+        | Call::WorkspacesUpdate(_)
         | Call::WorkspacesRemove(_)
-        | Call::WorkspacesForget(_)
+        | Call::WorkspacesRescan(_)
+        | Call::WorkspacesAddRepo(_)
+        | Call::WorkspacesRemoveRepo(_)
         | Call::WorkspacesStatus(_)
         | Call::WorkspacesDiff(_)) => workspaces(services, principal, call).await,
         call @ (Call::ThreadsCreate(_)
         | Call::ThreadsUpdate(_)
-        | Call::ThreadsAttach(_)
-        | Call::ThreadsDetach(_)
         | Call::ThreadsArchive(_)
         | Call::ThreadsUnarchive(_)
         | Call::ThreadsDelete(_)
@@ -96,11 +119,8 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
     }
 }
 
-#[allow(clippy::too_many_lines)] // One arm per method.
-async fn workspaces(services: &Services, principal: &Principal, call: Call) -> Reply {
+async fn repositories(services: &Services, call: Call) -> Reply {
     let workspaces = Arc::clone(&services.workspaces);
-    let store = Arc::clone(&services.store);
-    let client = principal.client().to_owned();
     let reply = match call {
         Call::ReposAdd(params) => {
             let repo = blocking(move || {
@@ -127,80 +147,114 @@ async fn workspaces(services: &Services, principal: &Principal, call: Call) -> R
                 repositories: repositories.iter().map(convert::repository).collect(),
             });
         }
+        _ => return Err(internal("not a repository method")),
+    };
+    services.refresh_index_quietly().await;
+    reply
+}
+
+/// Creates a workspace as `workspaces.create` does; `fallback_name` names it when the params do not.
+async fn create_workspace(
+    services: &Services,
+    params: CreateWorkspaceParams,
+    fallback_name: Option<String>,
+    created_by: Provenance,
+    client: String,
+) -> Result<String, ErrorBody> {
+    let workspaces = Arc::clone(&services.workspaces);
+    let store = Arc::clone(&services.store);
+    let new = NewWorkspace {
+        name: params.name,
+        fallback_name,
+        path: params.path.map(PathBuf::from),
+        created_by,
+    };
+    let id = blocking(move || {
+        let view = workspaces.create(new).map_err(workspace_error)?;
+        store.set_created_client(&view.workspace.id, &client)?;
+        Ok(view.workspace.id)
+    })
+    .await?;
+    services.refresh_index_quietly().await;
+    Ok(id)
+}
+
+#[allow(clippy::too_many_lines)] // One arm per method.
+async fn workspaces(services: &Services, principal: &Principal, call: Call) -> Reply {
+    let workspaces = Arc::clone(&services.workspaces);
+    let id = match call {
         Call::WorkspacesCreate(params) => {
-            let mut new = NewWorkspace::new(repo_ref(params.repo));
-            new.branch = params.branch;
-            new.base_ref = params.base_ref;
-            new.created_by = principal.created_by();
-            let workspace = blocking(move || {
-                let workspace = workspaces.create(new).map_err(workspace_error)?;
-                store.set_created_client(&workspace.id, &client)?;
-                let clients = store.created_clients()?;
-                Ok(convert::workspace(&workspace, &clients))
+            let client = principal.client().to_owned();
+            create_workspace(services, params, None, principal.created_by(), client).await?
+        }
+        Call::WorkspacesUpdate(params) => {
+            let id = params.workspace_id.clone();
+            blocking(move || {
+                workspaces
+                    .rename(&params.workspace_id, &params.name)
+                    .map_err(workspace_error)
             })
             .await?;
-            ok(&workspace)
-        }
-        Call::WorkspacesFromPr(_) => {
-            return Err(bad_request(
-                "workspaces from pull requests are not supported yet (M3, DMN-022)",
-            ));
-        }
-        Call::WorkspacesAdopt(params) => {
-            let created_by = principal.created_by();
-            let workspace = blocking(move || {
-                let workspace = workspaces
-                    .adopt(Path::new(&params.path), created_by)
-                    .map_err(workspace_error)?;
-                store.set_created_client(&workspace.id, &client)?;
-                let clients = store.created_clients()?;
-                Ok(convert::workspace(&workspace, &clients))
-            })
-            .await?;
-            ok(&workspace)
+            id
         }
         Call::WorkspacesRemove(params) => {
-            let options = RemoveOptions {
-                force: params.force,
-                delete_branch: params.delete_branch,
-                in_use_by_live_thread: services.workspace_in_use(&params.workspace_id).await?,
-            };
             blocking(move || {
                 workspaces
-                    .remove(&params.workspace_id, options)
+                    .remove(&params.workspace_id, params.delete_folder, params.force)
                     .map_err(workspace_error)
             })
             .await?;
-            empty()
+            services.refresh_index_quietly().await;
+            return empty();
         }
-        Call::WorkspacesForget(params) => {
-            let in_use = services.workspace_in_use(&params.workspace_id).await?;
+        Call::WorkspacesRescan(params) => params.workspace_id,
+        Call::WorkspacesAddRepo(params) => {
+            let id = params.workspace_id.clone();
+            let source = repo_source(params.source)?;
             blocking(move || {
                 workspaces
-                    .forget(&params.workspace_id, in_use)
+                    .add_repo(&params.workspace_id, params.name.as_deref(), source)
                     .map_err(workspace_error)
             })
             .await?;
-            empty()
+            id
+        }
+        Call::WorkspacesRemoveRepo(params) => {
+            let id = params.workspace_id.clone();
+            blocking(move || {
+                workspaces
+                    .remove_repo(
+                        &params.workspace_id,
+                        &params.name,
+                        params.force,
+                        params.delete_branch,
+                    )
+                    .map_err(workspace_error)
+            })
+            .await?;
+            id
         }
         Call::WorkspacesStatus(params) => {
-            return match services.workspace_status(&params.workspace_id).await? {
-                Some(status) => ok(&status),
-                None => Err(bad_request(format!(
-                    "workspace {} is not a git repository",
-                    params.workspace_id
-                ))),
+            services.rescan(&params.workspace_id).await?;
+            let repos = services.workspace_status(&params.workspace_id).await?;
+            return match repos.into_iter().find(|repo| repo.name == params.repo) {
+                Some(repo) => ok(&repo.status),
+                None => Err(workspace_error(WorkspaceError::NoSuchRepo {
+                    workspace: params.workspace_id,
+                    name: params.repo,
+                })),
             };
         }
         Call::WorkspacesDiff(params) => {
-            let id = params.workspace_id.clone();
-            let diff = blocking(move || workspaces.diff(&id).map_err(workspace_error)).await?;
-            let Some(diff) = diff else {
-                return Err(bad_request(format!(
-                    "workspace {} is not a git repository",
-                    params.workspace_id
-                )));
-            };
+            services.rescan(&params.workspace_id).await?;
+            let (workspace_id, repo) = (params.workspace_id.clone(), params.repo.clone());
+            let diff = blocking(move || {
+                let repo = workspaces
+                    .repo(&workspace_id, &repo)
+                    .map_err(workspace_error)?;
+                workspaces.diff(&repo).map_err(workspace_error)
+            })
+            .await?;
             return ok(&diff_page(
                 &diff,
                 params.path.as_deref(),
@@ -209,49 +263,88 @@ async fn workspaces(services: &Services, principal: &Principal, call: Call) -> R
         }
         _ => return Err(internal("not a workspace method")),
     };
-    services.refresh_index_quietly().await;
-    reply
+    // Every workspace method rescans (DMN-023); a change reaches the index and the live threads' roots.
+    services.rescan(&id).await?;
+    ok(&services.workspace_summary(&id).await?)
 }
 
-#[allow(clippy::too_many_lines)] // One arm per method.
-async fn threads(services: &Services, principal: &Principal, call: Call) -> Reply {
+/// `threads.create`: the thread in an existing workspace or a new one named after the title, then its first
+/// message.
+async fn create_thread(
+    services: &Services,
+    principal: &Principal,
+    params: omfp_protocol::CreateThreadParams,
+) -> Reply {
+    let client = principal.client().to_owned();
+    let (workspace_id, created) = match params.workspace {
+        ThreadWorkspace::Id(id) => (id, false),
+        ThreadWorkspace::New(new) => {
+            let fallback = Some(params.title.clone());
+            let id = create_workspace(
+                services,
+                new,
+                fallback,
+                principal.created_by(),
+                client.clone(),
+            )
+            .await?;
+            (id, true)
+        }
+    };
+    let new = NewThread {
+        title: params.title,
+        workspace_id: workspace_id.clone(),
+        tags: params.tags,
+        model: params.model,
+        thinking_level: params.thinking_level.map(thinking_name).transpose()?,
+        approval_mode: params.approval_mode,
+        created_by: principal.created_by(),
+    };
     let threads = Arc::clone(&services.threads);
     let store = Arc::clone(&services.store);
+    let created_thread = blocking(move || {
+        let thread = threads.create(new).map_err(thread_error)?;
+        store.set_created_client(&thread.id, &client)?;
+        Ok(thread)
+    })
+    .await;
+    let thread = match created_thread {
+        Ok(thread) => thread,
+        Err(error) => {
+            if created {
+                // Best effort: the new folder had no other use.
+                let workspaces = Arc::clone(&services.workspaces);
+                let _ = blocking(move || {
+                    workspaces
+                        .remove(&workspace_id, true, false)
+                        .map_err(workspace_error)
+                })
+                .await;
+                services.refresh_index_quietly().await;
+            }
+            return Err(error);
+        }
+    };
+    if let Some(text) = params.prompt {
+        let command = PromptCommand {
+            message: text,
+            images: None,
+            streaming_behavior: None,
+        };
+        if let Err(error) = services.supervisor.prompt(&thread.id, command).await {
+            services.refresh_index_quietly().await;
+            // The thread exists; say which one so the client can retry the prompt.
+            return Err(supervisor_error(error).with_details(json!({ "threadId": thread.id })));
+        }
+    }
+    ok(&services.thread_summary(&thread.id).await?)
+}
+
+async fn threads(services: &Services, principal: &Principal, call: Call) -> Reply {
+    let threads = Arc::clone(&services.threads);
     let supervisor = &services.supervisor;
     match call {
-        Call::ThreadsCreate(params) => {
-            let new = NewThread {
-                title: params.title,
-                workspace_ids: params.workspace_ids,
-                tags: params.tags,
-                model: params.model,
-                thinking_level: params.thinking_level.map(thinking_name).transpose()?,
-                approval_mode: params.approval_mode,
-                created_by: principal.created_by(),
-            };
-            let client = principal.client().to_owned();
-            let thread = blocking(move || {
-                let thread = threads.create(new).map_err(thread_error)?;
-                store.set_created_client(&thread.id, &client)?;
-                Ok(thread)
-            })
-            .await?;
-            if let Some(text) = params.prompt {
-                let command = PromptCommand {
-                    message: text,
-                    images: None,
-                    streaming_behavior: None,
-                };
-                if let Err(error) = supervisor.prompt(&thread.id, command).await {
-                    services.refresh_index_quietly().await;
-                    // The thread exists; say which one so the client can retry the prompt.
-                    return Err(
-                        supervisor_error(error).with_details(json!({ "threadId": thread.id }))
-                    );
-                }
-            }
-            ok(&services.thread_summary(&thread.id).await?)
-        }
+        Call::ThreadsCreate(params) => create_thread(services, principal, params).await,
         Call::ThreadsUpdate(params) => {
             let id = params.thread_id.clone();
             blocking(move || {
@@ -269,23 +362,6 @@ async fn threads(services: &Services, principal: &Principal, call: Call) -> Repl
             })
             .await?;
             ok(&services.thread_summary(&id).await?)
-        }
-        Call::ThreadsAttach(params) => {
-            let position = params
-                .position
-                .map(|position| usize::try_from(position).unwrap_or(usize::MAX));
-            supervisor
-                .attach(&params.thread_id, &params.workspace_id, position)
-                .await
-                .map_err(supervisor_error)?;
-            ok(&services.thread_summary(&params.thread_id).await?)
-        }
-        Call::ThreadsDetach(params) => {
-            supervisor
-                .detach(&params.thread_id, &params.workspace_id)
-                .await
-                .map_err(supervisor_error)?;
-            ok(&services.thread_summary(&params.thread_id).await?)
         }
         Call::ThreadsArchive(params) => {
             supervisor
@@ -316,15 +392,12 @@ async fn threads(services: &Services, principal: &Principal, call: Call) -> Repl
         Call::ThreadGit(params) => {
             let id = params.thread_id.clone();
             let thread = blocking(move || threads.get(&id).map_err(thread_error)).await?;
-            let mut workspaces = Vec::new();
-            for workspace_id in thread.workspace_ids {
-                let status = services.workspace_status(&workspace_id).await?;
-                workspaces.push(WorkspaceGit {
-                    workspace_id,
-                    status,
-                });
-            }
-            ok(&ThreadGit { workspaces })
+            services.rescan(&thread.workspace_id).await?;
+            let repos = services.workspace_status(&thread.workspace_id).await?;
+            ok(&ThreadGit {
+                workspace_id: thread.workspace_id,
+                repos,
+            })
         }
         _ => Err(internal("not a threads method")),
     }

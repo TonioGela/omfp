@@ -2,12 +2,12 @@
 
 use std::collections::BTreeMap;
 
-use omfp_protocol::{FileChange, FileStatus, GitStatus};
+use omfp_protocol::{FileChange, FileStatus, GitStatus, RepoStatus};
 
 use super::{Page, attr, index, normalize, render, selecting, text};
 use crate::local::Theme;
 use crate::panels::Placement;
-use crate::vm::new_thread::{NewThreadForm, WorkspaceChoice};
+use crate::vm::new_thread::{NewThreadForm, RepoChoice};
 use crate::vm::threads::{Dimension, Filter, Grouping};
 use crate::{ConnectionView, UiState, ViewInput};
 
@@ -64,20 +64,21 @@ fn the_sidebar_lists_threads_with_state_badges_unread_marks_and_workspace_chips(
     let checkout = page.all("[data-thread-id=\"t-checkout\"] [data-testid=\"workspace-chip\"]");
     let chips: Vec<(String, Option<&str>)> = checkout
         .into_iter()
-        .map(|chip| (text(chip), attr(chip, "data-cwd")))
+        .map(|chip| (text(chip), attr(chip, "data-kind")))
         .collect();
     assert_eq!(
         chips,
         vec![
-            ("⌂fe:feat/checkout#412".to_owned(), Some("true")),
-            ("be:main".to_owned(), Some("false"))
+            ("⌂checkout".to_owned(), Some("workspace")),
+            ("fe:feat/checkout".to_owned(), Some("worktree")),
+            ("be:main".to_owned(), Some("link"))
         ]
     );
 }
 
 // spec: UI-022
 #[test]
-fn grouping_by_workspace_shows_a_thread_under_each_of_its_workspaces() {
+fn grouping_by_workspace_shows_each_thread_under_its_workspace() {
     let ui = UiState {
         grouping: Grouping::By(Dimension::Workspace),
         ..UiState::default()
@@ -105,11 +106,10 @@ fn grouping_by_workspace_shows_a_thread_under_each_of_its_workspaces() {
     assert_eq!(
         groups,
         vec![
-            ("be:flaky".to_owned(), ids(&["t-flaky"])),
-            ("be:main".to_owned(), ids(&["t-checkout", "t-flaky"])),
-            ("fe:feat/checkout".to_owned(), ids(&["t-checkout"])),
-            ("w-adopted".to_owned(), ids(&["t-idle"])),
-            ("No workspace".to_owned(), ids(&["t-scratch"])),
+            ("checkout".to_owned(), ids(&["t-checkout"])),
+            ("flaky".to_owned(), ids(&["t-flaky"])),
+            ("notes".to_owned(), ids(&["t-idle"])),
+            ("scratch".to_owned(), ids(&["t-scratch"])),
         ]
     );
 }
@@ -120,7 +120,7 @@ fn filters_by_key_and_text_narrow_the_list_and_offer_every_key() {
     let ui = UiState {
         filter: Filter {
             text: "flaky".to_owned(),
-            key: Some((Dimension::Repository, "r-be".to_owned())),
+            key: Some((Dimension::Repository, "/src/be".to_owned())),
             ..Filter::default()
         },
         ..UiState::default()
@@ -138,13 +138,12 @@ fn filters_by_key_and_text_narrow_the_list_and_offer_every_key() {
             "all",
             "Archived",
             "tag: release",
-            "workspace: be:flaky",
-            "workspace: be:main",
-            "workspace: fe:feat/checkout",
-            "workspace: w-adopted",
+            "workspace: checkout",
+            "workspace: flaky",
+            "workspace: notes",
+            "workspace: scratch",
             "repository: be",
             "repository: fe",
-            "pr: fe#412",
         ]
     );
 }
@@ -242,19 +241,16 @@ fn the_attention_shortcut_is_offered_with_the_number_of_waiting_threads() {
 
 // spec: UI-023, UI-092
 #[test]
-fn the_new_thread_dialog_offers_every_workspace_source_and_traps_focus() {
+fn the_new_thread_dialog_offers_every_repository_source_and_traps_focus() {
     let form = NewThreadForm {
         title: "checkout".to_owned(),
-        workspaces: vec![
-            WorkspaceChoice::Existing {
-                workspace_id: "w-fe".to_owned(),
-            },
-            WorkspaceChoice::NewWorktree {
+        repos: vec![
+            RepoChoice::NewWorktree {
                 repo: "r-be".to_owned(),
                 branch: String::new(),
                 base_ref: String::new(),
             },
-            WorkspaceChoice::Adopt {
+            RepoChoice::Link {
                 path: "/tmp/x".to_owned(),
             },
         ],
@@ -282,9 +278,9 @@ fn the_new_thread_dialog_offers_every_workspace_source_and_traps_focus() {
         .into_iter()
         .filter_map(|line| attr(line, "data-kind"))
         .collect();
-    assert_eq!(kinds, vec!["existing", "worktree", "adopt"]);
-    assert!(text(page.testid("workspace-choice")[0]).starts_with("1 (cwd)"));
-    for add in ["add-existing", "add-worktree", "add-adopt"] {
+    assert_eq!(kinds, vec!["worktree", "link"]);
+    assert!(text(page.testid("workspace-choice")[0]).starts_with('1'));
+    for add in ["add-worktree", "add-link"] {
         assert_ne!(attr(page.one(add), "disabled"), Some("true"), "{add}");
     }
     assert_eq!(attr(page.one("add-pr"), "disabled"), Some("true"));
@@ -323,23 +319,28 @@ fn panels_render_where_the_registry_places_them() {
 
 // spec: UI-025
 #[test]
-fn the_workspaces_panel_lists_threads_git_status_pr_and_warns_on_shared_workspaces() {
+fn the_workspaces_panel_lists_threads_repositories_git_status_and_warns_on_shared_workspaces() {
     let mut input = index();
+    input.threads[2].workspace_id = "w-flaky".to_owned();
     input.git.insert(
-        "w-be".to_owned(),
-        GitStatus {
-            branch: Some("main".to_owned()),
-            base_ref: None,
-            ahead: 0,
-            behind: 0,
-            files: vec![FileChange {
-                path: "a.rs".to_owned(),
-                old_path: None,
-                status: FileStatus::Modified,
-                additions: 2,
-                deletions: 1,
-            }],
-        },
+        "w-flaky".to_owned(),
+        vec![RepoStatus {
+            name: "be".to_owned(),
+            status: GitStatus {
+                branch: Some("main".to_owned()),
+                base_ref: None,
+                ahead: 0,
+                behind: 0,
+                dirty: true,
+                files: vec![FileChange {
+                    path: "a.rs".to_owned(),
+                    old_path: None,
+                    status: FileStatus::Modified,
+                    additions: 2,
+                    deletions: 1,
+                }],
+            },
+        }],
     );
     let page = Page::new(input, UiState::default());
     let shared: Vec<&str> = page
@@ -348,19 +349,17 @@ fn the_workspaces_panel_lists_threads_git_status_pr_and_warns_on_shared_workspac
         .filter(|row| attr(*row, "data-shared") == Some("true"))
         .filter_map(|row| attr(row, "data-workspace-id"))
         .collect();
-    assert_eq!(shared, vec!["w-be"]);
+    assert_eq!(shared, vec!["w-flaky"]);
     assert_eq!(text(page.one("shared-warning")), "⚠ shared by 2 threads");
-    assert_eq!(
-        attr(page.one("workspace-pr"), "href"),
-        Some("https://example.test/fe/pull/412")
-    );
     assert_eq!(text(page.one("git-status")), "main · 1 file +2 −1");
-    assert_eq!(
-        page.testid("remove-workspace").len(),
-        3,
-        "adopted directories are not removable"
-    );
-    for form in ["create-worktree", "adopt-workspace", "add-repository"] {
+    let kinds: Vec<&str> = page
+        .testid("workspace-repo")
+        .into_iter()
+        .filter_map(|repo| attr(repo, "data-kind"))
+        .collect();
+    assert_eq!(kinds, vec!["worktree", "link", "worktree"]);
+    assert_eq!(page.testid("remove-repo").len(), 3);
+    for form in ["create-worktree", "link-repo", "add-repository"] {
         page.one(form);
     }
 }
@@ -394,7 +393,7 @@ fn the_workspaces_panel_lists_registered_repositories_with_their_worktrees() {
             ),
             (
                 "r-be",
-                "be | 2 worktrees | /src/be | base main | New worktree | Remove…"
+                "be | 1 worktree | /src/be | base main | New worktree | Remove…"
             ),
         ])
     );

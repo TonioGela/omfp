@@ -4,12 +4,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use omfp_daemon::paths::DataDir;
-use omfp_daemon::store::{Provenance, Store, StoreError, Workspace, WorkspaceKind, new_id, now_ms};
-use omfp_daemon::threads::{Attachment, DirChange, NewThread, ThreadError, Threads};
+use omfp_daemon::store::{Provenance, Store, StoreError, Workspace, new_id, now_ms};
+use omfp_daemon::threads::{NewThread, ThreadError, Threads};
 use tempfile::TempDir;
 
 struct Env {
     _dir: TempDir,
+    base: PathBuf,
     data: DataDir,
     store: Arc<Store>,
     threads: Threads,
@@ -17,161 +18,123 @@ struct Env {
 
 fn env() -> Env {
     let dir = TempDir::new().unwrap();
-    let data = DataDir::new(dir.path().canonicalize().unwrap().join("data"));
+    let base = dir.path().canonicalize().unwrap();
+    let data = DataDir::new(base.join("data"));
     std::fs::create_dir_all(data.root()).unwrap();
-    let store = Arc::new(Store::open(&data.db()).unwrap());
+    let store = Arc::new(Store::open(&data.db(), &base.join("workspaces")).unwrap());
     let threads = Threads::new(store.clone(), data.clone());
     Env {
         _dir: dir,
+        base,
         data,
         store,
         threads,
     }
 }
 
+/// The sorted entry names of a directory.
+fn entries(dir: &std::path::Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    names
+}
+
 impl Env {
-    /// Records an adopted workspace at a made-up path; the thread service never touches workspace directories.
+    /// Records a workspace on an empty folder; the thread service never touches it.
     fn workspace(&self, name: &str) -> Workspace {
+        let path = self.base.join("work").join(name);
+        std::fs::create_dir_all(&path).unwrap();
         let ws = Workspace {
             id: new_id(),
-            path: PathBuf::from("/work").join(name),
-            kind: WorkspaceKind::Adopted,
-            repository_id: None,
-            branch: None,
-            base_ref: None,
-            pr_url: None,
-            pr_number: None,
+            name: name.into(),
+            path,
+            owned: false,
             created_by: Provenance::User,
             created_at: now_ms(),
-            removed_at: None,
         };
         self.store.insert_workspace(&ws).unwrap();
         ws
     }
 }
 
-// spec: DMN-028, ARC-020
+fn assert_not_found<T: std::fmt::Debug>(result: Result<T, ThreadError>) {
+    let error = result.unwrap_err();
+    assert!(
+        matches!(error, ThreadError::Store(StoreError::NotFound { .. })),
+        "{error:?}"
+    );
+}
+
+// spec: ARC-008, ARC-020
 #[test]
-fn a_new_thread_gets_its_own_home_and_session_directories() {
+fn a_new_thread_lives_in_its_workspace_with_its_own_session_directory() {
     let env = env();
+    let ws = env.workspace("shop");
 
-    let thread = env.threads.create(NewThread::new("Fix login")).unwrap();
+    let thread = env
+        .threads
+        .create(NewThread::new("Fix login", &ws.id))
+        .unwrap();
 
-    assert!(env.data.thread_home(&thread.id).is_dir());
+    assert_eq!(thread.workspace_id, ws.id);
     assert_eq!(thread.session_dir, env.data.thread_sessions(&thread.id));
     assert!(thread.session_dir.is_dir());
+    // The private directory holds sessions only: no home, nothing in the workspace.
+    assert_eq!(entries(&env.data.thread(&thread.id)), ["sessions"]);
+    assert_eq!(entries(&ws.path), Vec::<String>::new());
     assert_eq!(thread.title, "Fix login");
     assert_eq!(thread.omp_session_id, None);
+    assert_eq!(thread.created_by, Provenance::User);
     assert_eq!(env.threads.list().unwrap(), vec![thread]);
 }
 
 // spec: ARC-008, ARC-009
 #[test]
-fn a_thread_records_workspaces_tags_settings_and_provenance() {
+fn a_thread_records_tags_settings_and_provenance() {
     let env = env();
-    let a = env.workspace("a");
-    let b = env.workspace("b");
-    let parent = env.threads.create(NewThread::new("parent")).unwrap();
+    let ws = env.workspace("shop");
+    let parent = env
+        .threads
+        .create(NewThread::new("parent", &ws.id))
+        .unwrap();
 
     let thread = env
         .threads
         .create(NewThread {
-            workspace_ids: vec![b.id.clone(), a.id.clone()],
             tags: vec!["login".into(), "auth".into()],
             model: Some("fake/scripted".into()),
             thinking_level: Some("high".into()),
             approval_mode: Some("always-ask".into()),
             created_by: Provenance::Thread(parent.id.clone()),
-            ..NewThread::new("child")
+            ..NewThread::new("child", &ws.id)
         })
         .unwrap();
 
-    assert_eq!(thread.workspace_ids, vec![b.id, a.id]);
     assert_eq!(thread.tags, vec!["auth", "login"]);
     assert_eq!(thread.model.as_deref(), Some("fake/scripted"));
     assert_eq!(thread.thinking_level.as_deref(), Some("high"));
     assert_eq!(thread.approval_mode.as_deref(), Some("always-ask"));
     assert_eq!(thread.created_by, Provenance::Thread(parent.id));
     assert_eq!(env.threads.get(&thread.id).unwrap(), thread);
-    assert_eq!(
-        env.threads.workspace_paths(&thread.id).unwrap(),
-        vec![PathBuf::from("/work/b"), PathBuf::from("/work/a")]
-    );
 }
 
 // spec: ARC-009
 #[test]
 fn creation_is_refused_for_unknown_creators_or_workspaces() {
     let env = env();
-    let ws = env.workspace("a");
+    let ws = env.workspace("shop");
 
-    let errors = [
-        env.threads
-            .create(NewThread {
-                created_by: Provenance::Thread("01JUNKNOWN0000000000000000".into()),
-                ..NewThread::new("x")
-            })
-            .unwrap_err(),
-        env.threads
-            .create(NewThread {
-                workspace_ids: vec!["missing".into()],
-                ..NewThread::new("x")
-            })
-            .unwrap_err(),
-    ];
-    for error in errors {
-        assert!(
-            matches!(error, ThreadError::Store(StoreError::NotFound { .. })),
-            "{error:?}"
-        );
-    }
-    let duplicate = env
-        .threads
-        .create(NewThread {
-            workspace_ids: vec![ws.id.clone(), ws.id.clone()],
-            ..NewThread::new("x")
-        })
-        .unwrap_err();
-    assert!(
-        matches!(duplicate, ThreadError::DuplicateWorkspace(_)),
-        "{duplicate:?}"
-    );
+    assert_not_found(env.threads.create(NewThread {
+        created_by: Provenance::Thread("01JUNKNOWN0000000000000000".into()),
+        ..NewThread::new("x", &ws.id)
+    }));
+    assert_not_found(env.threads.create(NewThread::new("x", "missing")));
+
     assert_eq!(env.threads.list().unwrap(), Vec::new());
-}
-
-// spec: ARC-008, DMN-029
-#[test]
-fn attaching_and_detaching_keeps_the_order_and_reports_directory_changes() {
-    let env = env();
-    let [a, b, c] = ["a", "b", "c"].map(|name| env.workspace(name));
-    let ids =
-        |list: &[&Workspace]| -> Vec<String> { list.iter().map(|ws| ws.id.clone()).collect() };
-    let thread = env.threads.create(NewThread::new("t")).unwrap();
-
-    let Attachment { change, .. } = env.threads.attach(&thread.id, &a.id, None).unwrap();
-    assert_eq!(change, Some(DirChange::Added(a.path.clone())));
-    env.threads.attach(&thread.id, &b.id, None).unwrap();
-    let first = env.threads.attach(&thread.id, &c.id, Some(0)).unwrap();
-    assert_eq!(first.thread.workspace_ids, ids(&[&c, &a, &b]));
-    assert_eq!(first.change, Some(DirChange::Added(c.path.clone())));
-
-    // Moving an attached workspace only reorders.
-    let moved = env.threads.attach(&thread.id, &c.id, Some(9)).unwrap();
-    assert_eq!(moved.thread.workspace_ids, ids(&[&a, &b, &c]));
-    assert_eq!(moved.change, None);
-    let again = env.threads.attach(&thread.id, &a.id, None).unwrap();
-    assert_eq!(again.thread.workspace_ids, ids(&[&a, &b, &c]));
-    assert_eq!(again.change, None);
-
-    let detached = env.threads.detach(&thread.id, &a.id).unwrap();
-    assert_eq!(detached.thread.workspace_ids, ids(&[&b, &c]));
-    assert_eq!(detached.change, Some(DirChange::Removed(a.path.clone())));
-    let noop = env.threads.detach(&thread.id, &a.id).unwrap();
-    assert_eq!(noop.change, None);
-    assert_eq!(
-        env.threads.get(&thread.id).unwrap().workspace_ids,
-        ids(&[&b, &c])
-    );
+    assert!(!env.data.root().join("threads").exists());
 }
 
 // spec: DMN-027
@@ -179,28 +142,26 @@ fn attaching_and_detaching_keeps_the_order_and_reports_directory_changes() {
 fn a_workspace_can_be_shared_by_threads() {
     let env = env();
     let ws = env.workspace("shared");
-    let one = env
-        .threads
-        .create(NewThread {
-            workspace_ids: vec![ws.id.clone()],
-            ..NewThread::new("one")
-        })
-        .unwrap();
-    let two = env.threads.create(NewThread::new("two")).unwrap();
+    let other = env.workspace("other");
 
-    let attached = env.threads.attach(&two.id, &ws.id, None).unwrap();
+    let one = env.threads.create(NewThread::new("one", &ws.id)).unwrap();
+    let two = env.threads.create(NewThread::new("two", &ws.id)).unwrap();
 
-    assert_eq!(attached.change, Some(DirChange::Added(ws.path.clone())));
     assert_eq!(
         env.store.workspace_thread_ids(&ws.id).unwrap(),
         vec![one.id, two.id]
+    );
+    assert_eq!(
+        env.store.workspace_thread_ids(&other.id).unwrap(),
+        Vec::<String>::new()
     );
 }
 
 #[test]
 fn title_tags_settings_session_and_archive_are_updated() {
     let env = env();
-    let thread = env.threads.create(NewThread::new("t")).unwrap();
+    let ws = env.workspace("shop");
+    let thread = env.threads.create(NewThread::new("t", &ws.id)).unwrap();
 
     env.threads.rename(&thread.id, "Renamed").unwrap();
     env.threads
@@ -221,27 +182,49 @@ fn title_tags_settings_session_and_archive_are_updated() {
     assert_eq!(archived.thinking_level.as_deref(), Some("low"));
     assert_eq!(archived.omp_session_id.as_deref(), Some("sess-1"));
     assert!(archived.archived_at.is_some());
+    assert_eq!(env.threads.unarchive(&thread.id).unwrap().archived_at, None);
 }
 
+// spec: DMN-029
 #[test]
-fn deleting_a_thread_removes_its_directory_but_never_its_workspaces() {
+fn the_session_roots_are_recorded() {
     let env = env();
-    let ws = env.workspace("a");
-    let thread = env
-        .threads
-        .create(NewThread {
-            workspace_ids: vec![ws.id.clone()],
-            ..NewThread::new("t")
-        })
+    let ws = env.workspace("shop");
+    let thread = env.threads.create(NewThread::new("t", &ws.id)).unwrap();
+    assert_eq!(
+        env.threads.roots(&thread.id).unwrap(),
+        Vec::<PathBuf>::new()
+    );
+
+    let [api, web] = ["api", "web"].map(|name| ws.path.join(name));
+    env.threads
+        .set_roots(&thread.id, &[web.clone(), api.clone()])
         .unwrap();
+    assert_eq!(
+        env.threads.roots(&thread.id).unwrap(),
+        vec![api, web.clone()]
+    );
+    env.threads
+        .set_roots(&thread.id, std::slice::from_ref(&web))
+        .unwrap();
+    assert_eq!(env.threads.roots(&thread.id).unwrap(), vec![web]);
+
+    assert_not_found(env.threads.set_roots("missing", &[]));
+}
+
+// spec: DMN-028
+#[test]
+fn deleting_a_thread_removes_its_directory_but_never_its_workspace() {
+    let env = env();
+    let ws = env.workspace("shop");
+    std::fs::write(ws.path.join("README"), "keep").unwrap();
+    let thread = env.threads.create(NewThread::new("t", &ws.id)).unwrap();
 
     env.threads.delete(&thread.id).unwrap();
 
     assert!(!env.data.thread(&thread.id).exists());
     assert_eq!(env.threads.list().unwrap(), Vec::new());
-    assert_eq!(env.store.workspaces().unwrap(), vec![ws]);
-    assert!(matches!(
-        env.threads.delete(&thread.id),
-        Err(ThreadError::Store(StoreError::NotFound { .. }))
-    ));
+    assert_eq!(env.store.workspaces().unwrap(), vec![ws.clone()]);
+    assert_eq!(entries(&ws.path), ["README"]);
+    assert_not_found(env.threads.delete(&thread.id));
 }

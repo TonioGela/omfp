@@ -37,12 +37,6 @@ impl DataDir {
         self.root.join("threads").join(thread_id)
     }
 
-    /// The thread's omp cwd (DMN-028).
-    #[must_use]
-    pub fn thread_home(&self, thread_id: &str) -> PathBuf {
-        self.thread(thread_id).join("home")
-    }
-
     /// The thread's omp session directory (ARC-020).
     #[must_use]
     pub fn thread_sessions(&self, thread_id: &str) -> PathBuf {
@@ -53,15 +47,6 @@ impl DataDir {
     #[must_use]
     pub fn thread_log(&self, thread_id: &str) -> PathBuf {
         self.thread(thread_id).join("omp.log")
-    }
-
-    /// A daemon-managed worktree.
-    #[must_use]
-    pub fn worktree(&self, repo_slug: &str, workspace_slug: &str) -> PathBuf {
-        self.root
-            .join("worktrees")
-            .join(repo_slug)
-            .join(workspace_slug)
     }
 }
 
@@ -77,20 +62,12 @@ mod tests {
         assert_eq!(data.token(), Path::new("/data/omfp/token"));
         assert_eq!(data.thread("T1"), Path::new("/data/omfp/threads/T1"));
         assert_eq!(
-            data.thread_home("T1"),
-            Path::new("/data/omfp/threads/T1/home")
-        );
-        assert_eq!(
             data.thread_sessions("T1"),
             Path::new("/data/omfp/threads/T1/sessions")
         );
         assert_eq!(
             data.thread_log("T1"),
             Path::new("/data/omfp/threads/T1/omp.log")
-        );
-        assert_eq!(
-            data.worktree("app", "fix-1"),
-            Path::new("/data/omfp/worktrees/app/fix-1")
         );
     }
 }

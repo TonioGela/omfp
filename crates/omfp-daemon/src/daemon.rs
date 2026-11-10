@@ -16,6 +16,7 @@ use tracing::{info, warn};
 
 use crate::agent::{AgentLauncher, OmpLauncher};
 use crate::config::{Cli, Config, web_bundle};
+use crate::conventions;
 use crate::git::{Git, GitCli};
 use crate::omp_binary;
 use crate::paths::DataDir;
@@ -235,25 +236,38 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
     let lock = lock_data_dir(&data_dir)?;
     let data = DataDir::new(&data_dir);
     let token = Token::load_or_create(&data.token()).context("cannot read or create the token")?;
-    let store = Arc::new(Store::open(&data.db()).context("cannot open the database")?);
+    let workspaces_root = std::path::absolute(&config.workspaces_root)?;
+    let store =
+        Arc::new(Store::open(&data.db(), &workspaces_root).context("cannot open the database")?);
     let threads = Arc::new(Threads::new(Arc::clone(&store), data.clone()));
-    let workspaces = Arc::new(Workspaces::new(Arc::clone(&store), ports.git, data.clone()));
+    let workspaces = Arc::new(Workspaces::new(
+        Arc::clone(&store),
+        ports.git,
+        workspaces_root,
+    ));
+    let agent_dir = conventions::omp_agent_dir(&ports.omp_env, std::env::var_os("HOME").as_deref());
     let supervisor = Supervisor::new(
         ports.launcher,
         Arc::clone(&threads),
+        Arc::clone(&workspaces),
         data.clone(),
         SupervisorConfig {
             omp_env: ports.omp_env,
             max_processes: config.max_processes,
             idle_timeout: config.idle_timeout,
             event_capacity: config.event_buffer,
+            agent_dir,
             ..SupervisorConfig::new(ports.omp_program)
         },
     );
     let services = Services::new(store, threads, workspaces, supervisor.clone())
         .await
         .map_err(|error| anyhow::anyhow!(error.message))?;
-    let background = vec![supervisor.spawn_reaper(), services.spawn_index_updates()];
+    let background = vec![
+        supervisor.spawn_reaper(),
+        services.spawn_index_updates(),
+        services.spawn_rescans(),
+    ];
 
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use omfp_core::wire::{ExtensionUiRequest, ModelInfo, SessionState, ThinkingLevel};
 use omfp_core::{Resolution, ThreadState};
-use omfp_protocol::{GitStatus, Repository, ThreadSummary, Workspace};
+use omfp_protocol::{RepoStatus, Repository, ThreadSummary, Workspace};
 
 use crate::intent::IntentOutcome;
 
@@ -17,8 +17,8 @@ pub struct ViewInput {
     pub repositories: Vec<Repository>,
     pub workspaces: Vec<Workspace>,
     pub threads: Vec<ThreadSummary>,
-    /// Last known git status per workspace id (`workspace/<id>` topic or `workspaces.status`).
-    pub git: BTreeMap<String, GitStatus>,
+    /// Last known git status of the repositories per workspace id (`workspace/<id>` topic or `workspaces.status`).
+    pub git: BTreeMap<String, Vec<RepoStatus>>,
     /// Subscribed threads by thread id.
     pub open: BTreeMap<String, ThreadView>,
     /// Results of dispatched intents, oldest first, each with a sequence number that increases by at least one per

@@ -206,7 +206,7 @@ fn live(model: &Model, topic: &Topic, mode: StartMode) -> bool {
 pub async fn create_thread(client: &Client, title: &str) -> String {
     let params = CreateThreadParams {
         title: title.to_owned(),
-        workspace_ids: Vec::new(),
+        workspace: omfp_protocol::ThreadWorkspace::default(),
         tags: Vec::new(),
         model: None,
         thinking_level: None,

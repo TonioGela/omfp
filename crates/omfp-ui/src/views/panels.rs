@@ -1,11 +1,14 @@
 //! Panel regions fed by the registry (UI-024) and the Workspaces panel (UI-025).
 
 use dioxus::prelude::*;
+use omfp_protocol::RepoSource;
 
 use super::Ctx;
-use crate::intent::{Intent, WorkspaceSource};
+use crate::intent::Intent;
 use crate::panels::{PanelContent, Placement};
-use crate::vm::workspaces::{RepositoryRow, WorkspaceRow, repository_rows, workspace_rows};
+use crate::vm::workspaces::{
+    RepoRow, RepositoryRow, WorkspaceRow, repository_rows, workspace_rows,
+};
 
 fn panel_ids(ctx: Ctx, placement: Placement) -> Vec<String> {
     ctx.ui
@@ -155,24 +158,26 @@ fn take(mut field: Signal<String>) -> String {
     value
 }
 
-/// All workspaces with their threads, git status and PR link; create, adopt, remove; the registered repositories
-/// (UI-025).
+/// All workspaces with their threads and repositories (git status, removal); forms adding a worktree or a link to the
+/// selected thread's workspace (a new workspace without a selected thread); the registered repositories (UI-025).
 #[component]
 fn WorkspacesPanel() -> Element {
     let ctx = Ctx::get();
     let input = ctx.input.read();
-    let rows = workspace_rows(
-        &input.workspaces,
-        &input.repositories,
-        &input.threads,
-        &input.git,
-    );
+    let rows = workspace_rows(&input.workspaces, &input.threads, &input.git);
     let registered = repository_rows(&input.repositories, &input.workspaces);
     let repositories: Vec<(String, String)> = input
         .repositories
         .iter()
         .map(|repository| (repository.id.clone(), repository.name.clone()))
         .collect();
+    let target = ctx.ui.read().selected.as_ref().and_then(|selected| {
+        input
+            .threads
+            .iter()
+            .find(|thread| thread.id == *selected)
+            .map(|thread| thread.workspace_id.clone())
+    });
     drop(input);
     let confirm_remove: Signal<Option<String>> = use_signal(|| None);
     let worktree_repo = use_signal(String::new);
@@ -183,8 +188,8 @@ fn WorkspacesPanel() -> Element {
                     WorkspaceRowView { key: "{row.id}", row, confirm_remove }
                 }
             }
-            WorktreeForm { repositories, worktree_repo }
-            AdoptForm {}
+            WorktreeForm { repositories, worktree_repo, target: target.clone() }
+            LinkForm { target }
             Repositories { rows: registered, worktree_repo }
         }
     }
@@ -273,7 +278,7 @@ fn RepositoryRowView(
     }
 }
 
-/// One workspace: label, kind, shared warning, path, PR link, git status, threads, removal.
+/// One workspace: name, ownership, shared warning, path, threads, and its repositories.
 #[component]
 fn WorkspaceRowView(row: WorkspaceRow, confirm_remove: Signal<Option<String>>) -> Element {
     let ctx = Ctx::get();
@@ -285,8 +290,8 @@ fn WorkspaceRowView(row: WorkspaceRow, confirm_remove: Signal<Option<String>>) -
             "data-workspace-id": "{row.id}",
             "data-shared": row.shared,
             div { class: "workspace-title",
-                strong { "{row.label}" }
-                span { class: "workspace-kind", if row.managed { " worktree" } else { " adopted" } }
+                strong { "{row.name}" }
+                span { class: "workspace-kind", if row.owned { " owned" } else { " folder" } }
                 if row.shared {
                     span {
                         class: "warning",
@@ -297,23 +302,22 @@ fn WorkspaceRowView(row: WorkspaceRow, confirm_remove: Signal<Option<String>>) -
                 }
             }
             code { class: "workspace-path", "{row.path}" }
-            if let (Some(number), Some(url)) = (row.pr_number, row.pr_url.as_ref()) {
-                a { "data-testid": "workspace-pr", href: "{url}", target: "_blank", rel: "noopener noreferrer", "PR #{number}" }
-            }
             div { class: "workspace-git",
-                match row.git.as_ref() {
-                    Some(git) => rsx! {
-                        span { "data-testid": "git-status", "{git}" }
-                    },
-                    None => rsx! {
-                        span { class: "muted", "git status unknown" }
-                    },
+                if row.repos.is_empty() {
+                    span { class: "muted", "no repository" }
                 }
                 button {
                     r#type: "button",
                     "data-testid": "refresh-workspace",
                     onclick: move |_| ctx.send(Intent::RefreshWorkspace { workspace_id: refresh_id.clone() }),
                     "Refresh"
+                }
+            }
+            if !row.repos.is_empty() {
+                ul { class: "workspace-threads", "aria-label": "Repositories",
+                    for repo in row.repos.iter().cloned() {
+                        RepoRowView { key: "{repo.name}", workspace_id: row.id.clone(), repo, confirm_remove }
+                    }
                 }
             }
             if !row.threads.is_empty() {
@@ -325,51 +329,70 @@ fn WorkspaceRowView(row: WorkspaceRow, confirm_remove: Signal<Option<String>>) -
                     }
                 }
             }
-            if row.managed {
-                RemoveWorkspace { workspace_id: row.id.clone(), confirm_remove }
-            }
         }
     }
 }
 
-/// Removing a managed worktree takes a confirmation.
+/// One repository of a workspace: label, kind, git status, and its removal, which takes a confirmation.
 #[component]
-fn RemoveWorkspace(workspace_id: String, confirm_remove: Signal<Option<String>>) -> Element {
+fn RepoRowView(
+    workspace_id: String,
+    repo: RepoRow,
+    confirm_remove: Signal<Option<String>>,
+) -> Element {
     let ctx = Ctx::get();
     let mut confirm_remove = confirm_remove;
-    if confirm_remove().as_deref() != Some(workspace_id.as_str()) {
-        return rsx! {
-            button {
-                r#type: "button",
-                "data-testid": "remove-workspace",
-                onclick: move |_| confirm_remove.set(Some(workspace_id.clone())),
-                "Remove…"
-            }
-        };
-    }
+    let id = format!("{workspace_id}/{}", repo.name);
+    let confirming = confirm_remove().as_deref() == Some(id.as_str());
     rsx! {
-        button {
-            r#type: "button",
-            class: "danger",
-            "data-testid": "confirm-remove-workspace",
-            onclick: move |_| {
-                confirm_remove.set(None);
-                ctx.send(Intent::RemoveWorkspace {
-                    workspace_id: workspace_id.clone(),
-                    force: false,
-                    delete_branch: false,
-                });
-            },
-            "Remove the worktree"
+        li { "data-testid": "workspace-repo", "data-kind": repo.kind,
+            strong { "{repo.label}" }
+            span { class: "workspace-kind", " {repo.kind} " }
+            match repo.git.as_ref() {
+                Some(git) => rsx! {
+                    span { "data-testid": "git-status", "{git}" }
+                },
+                None => rsx! {
+                    span { class: "muted", "git status unknown" }
+                },
+            }
+            if confirming {
+                button {
+                    r#type: "button",
+                    class: "danger",
+                    "data-testid": "confirm-remove-repo",
+                    onclick: move |_| {
+                        confirm_remove.set(None);
+                        ctx.send(Intent::RemoveRepo {
+                            workspace_id: workspace_id.clone(),
+                            name: repo.name.clone(),
+                            force: false,
+                            delete_branch: false,
+                        });
+                    },
+                    "Remove {repo.name}"
+                }
+                button { r#type: "button", onclick: move |_| confirm_remove.set(None), "Keep" }
+            } else {
+                button {
+                    r#type: "button",
+                    "data-testid": "remove-repo",
+                    onclick: move |_| confirm_remove.set(Some(id.clone())),
+                    "Remove…"
+                }
+            }
         }
-        button { r#type: "button", onclick: move |_| confirm_remove.set(None), "Keep" }
     }
 }
 
-/// A new managed worktree of a registered repository; `worktree_repo` is the chosen one, which a repository row can
-/// preselect.
+/// A new worktree of a registered repository in `target` (a new workspace when `None`); `worktree_repo` is the chosen
+/// repository, which a repository row can preselect.
 #[component]
-fn WorktreeForm(repositories: Vec<(String, String)>, worktree_repo: Signal<String>) -> Element {
+fn WorktreeForm(
+    repositories: Vec<(String, String)>,
+    worktree_repo: Signal<String>,
+    target: Option<String>,
+) -> Element {
     let ctx = Ctx::get();
     let mut worktree_repo = worktree_repo;
     let mut worktree_branch = use_signal(String::new);
@@ -382,11 +405,14 @@ fn WorktreeForm(repositories: Vec<(String, String)>, worktree_repo: Signal<Strin
                 let repo = take(worktree_repo);
                 let branch = take(worktree_branch);
                 if !repo.is_empty() {
-                    ctx.send(Intent::CreateWorkspace(WorkspaceSource::NewWorktree {
-                        repo,
-                        branch: (!branch.is_empty()).then_some(branch),
-                        base_ref: None,
-                    }));
+                    ctx.send(Intent::AddRepo {
+                        workspace_id: target.clone(),
+                        source: RepoSource::Worktree {
+                            repo,
+                            branch: (!branch.is_empty()).then_some(branch),
+                            base_ref: None,
+                        },
+                    });
                 }
             },
             select {
@@ -409,29 +435,32 @@ fn WorktreeForm(repositories: Vec<(String, String)>, worktree_repo: Signal<Strin
     }
 }
 
-/// Records an existing directory as a workspace.
+/// Links a directory into `target` (a new workspace when `None`).
 #[component]
-fn AdoptForm() -> Element {
+fn LinkForm(target: Option<String>) -> Element {
     let ctx = Ctx::get();
-    let mut adopt_path = use_signal(String::new);
+    let mut link_path = use_signal(String::new);
     rsx! {
         form {
             class: "inline-form",
-            "data-testid": "adopt-workspace",
+            "data-testid": "link-repo",
             onsubmit: move |event: FormEvent| {
                 event.prevent_default();
-                let path = take(adopt_path);
+                let path = take(link_path);
                 if !path.is_empty() {
-                    ctx.send(Intent::CreateWorkspace(WorkspaceSource::Adopt { path }));
+                    ctx.send(Intent::AddRepo {
+                        workspace_id: target.clone(),
+                        source: RepoSource::Link { path },
+                    });
                 }
             },
             input {
-                "aria-label": "Directory to adopt",
+                "aria-label": "Directory to link",
                 placeholder: "/path/to/directory",
-                value: "{adopt_path}",
-                oninput: move |event| adopt_path.set(event.value()),
+                value: "{link_path}",
+                oninput: move |event| link_path.set(event.value()),
             }
-            button { r#type: "submit", "Adopt" }
+            button { r#type: "submit", "Link" }
         }
     }
 }

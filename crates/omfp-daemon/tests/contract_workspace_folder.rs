@@ -7,7 +7,7 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
-use common::{Harness, TIMEOUT, prompt, start};
+use common::{Harness, TIMEOUT, prompt, start, system_prompt, workspace_roots};
 use fake_llm::{Reply, Step, ToolCall};
 use omfp_daemon::omp::LaunchSpec;
 use omfp_testkit::{OmpSession, TempRepo};
@@ -25,7 +25,7 @@ struct Workspace {
 
 impl Workspace {
     fn new(harness: &Harness) -> Self {
-        let ws = harness.thread.path().join("home");
+        let ws = harness.workspace();
         std::fs::create_dir_all(&ws).unwrap();
         let backend = TempRepo::new().unwrap();
         backend
@@ -55,33 +55,6 @@ impl Workspace {
     fn external(&self) -> String {
         self.external.path().display().to_string()
     }
-}
-
-/// The system prompt of a recorded chat-completions request.
-fn system_prompt(request: &Value) -> String {
-    request["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|message| message["role"] == "system" || message["role"] == "developer")
-        .map(|message| match &message["content"] {
-            Value::String(text) => text.clone(),
-            other => other.to_string(),
-        })
-        .collect()
-}
-
-/// The `<workspace-roots>` list of a system prompt, one path per entry.
-fn workspace_roots(prompt: &str) -> Vec<String> {
-    let Some(start) = prompt.find("<workspace-roots>") else {
-        return Vec::new();
-    };
-    let end = prompt[start..].find("</workspace-roots>").unwrap() + start;
-    prompt[start..end]
-        .lines()
-        .filter_map(|line| line.strip_prefix("- "))
-        .map(str::to_owned)
-        .collect()
 }
 
 /// The text content of the tool result answering `call_id`.

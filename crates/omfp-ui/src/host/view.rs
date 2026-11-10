@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use omfp_client::model::{ConnectionStatus, Dirty, Model};
 use omfp_core::wire::{ModelInfo, SessionState, ThinkingLevel};
-use omfp_protocol::GitStatus;
+use omfp_protocol::RepoStatus;
 
 use crate::input::{ClosedInteraction, ConnectionView, OutcomeEntry, ThreadDetails, ViewInput};
 use crate::intent::IntentOutcome;
@@ -27,10 +27,10 @@ pub enum Effect {
         models: Option<Vec<ModelInfo>>,
         thinking_levels: Option<Vec<ThinkingLevel>>,
     },
-    /// A workspace's git status (`None`: not a git repository).
+    /// The git status of a workspace's repositories.
     Git {
         workspace_id: String,
-        status: Option<GitStatus>,
+        repos: Vec<RepoStatus>,
     },
 }
 
@@ -77,16 +77,10 @@ impl ViewSync {
                 .collect();
         }
         for workspace_id in &dirty.workspaces {
-            match model.workspaces().get(workspace_id) {
-                Some(Some(status)) => {
-                    input.git.insert(workspace_id.clone(), status.clone());
-                }
-                Some(None) => {
-                    input.git.remove(workspace_id);
-                }
-                // Unsubscribed: the last status fetched stays.
-                None => {}
+            if let Some(repos) = model.workspaces().get(workspace_id) {
+                input.git.insert(workspace_id.clone(), repos.clone());
             }
+            // Unsubscribed: the last status fetched stays.
         }
     }
 
@@ -121,15 +115,9 @@ impl ViewSync {
             }
             Effect::Git {
                 workspace_id,
-                status: Some(status),
+                repos,
             } => {
-                input.git.insert(workspace_id, status);
-            }
-            Effect::Git {
-                workspace_id,
-                status: None,
-            } => {
-                input.git.remove(&workspace_id);
+                input.git.insert(workspace_id, repos);
             }
         }
     }
@@ -163,12 +151,13 @@ mod tests {
 
     use omfp_core::ThreadEvent;
     use omfp_protocol::{
-        EventFrame, HelloResult, IndexEvent, IndexSnapshot, SubscribeResult, Topic, TopicEvent,
+        EventFrame, GitStatus, HelloResult, IndexEvent, IndexSnapshot, SubscribeResult, Topic,
+        TopicEvent,
     };
 
     use super::*;
     use crate::input::ThreadView;
-    use crate::test_support::{fixture_events, repository, thread, workspace};
+    use crate::test_support::{fixture_events, repo, repository, thread, workspace};
 
     fn sync_once(sync: &mut ViewSync, input: &mut ViewInput, model: &mut Model) {
         let dirty = model.take_dirty();
@@ -194,10 +183,10 @@ mod tests {
         let index = IndexSnapshot {
             repositories: vec![repository("r1", "front")],
             workspaces: vec![
-                workspace("w2", Some("r1"), None),
-                workspace("w1", None, None),
+                workspace("w2", vec![repo("w2", "front", "main")]),
+                workspace("w1", Vec::new()),
             ],
-            threads: vec![thread("t1", "one", &["w1"])],
+            threads: vec![thread("t1", "one", "w1")],
         };
         snapshot(
             &mut model,
@@ -262,7 +251,7 @@ mod tests {
             vec!["w1", "w2"],
             "index order is id order"
         );
-        assert_eq!(input.threads, vec![thread("t1", "one", &["w1"])]);
+        assert_eq!(input.threads, vec![thread("t1", "one", "w1")]);
 
         // A change the dirty set does not name is left alone.
         input.threads.clear();
@@ -374,29 +363,33 @@ mod tests {
 
     #[test]
     fn git_statuses_come_from_workspace_topics_and_refreshes() {
-        let status = GitStatus {
-            branch: Some("feat".into()),
-            base_ref: None,
-            ahead: 1,
-            behind: 0,
-            files: Vec::new(),
-        };
+        let repos = vec![RepoStatus {
+            name: "fe".into(),
+            status: GitStatus {
+                branch: Some("feat".into()),
+                base_ref: None,
+                ahead: 1,
+                behind: 0,
+                dirty: false,
+                files: Vec::new(),
+            },
+        }];
         let mut input = ViewInput::default();
         let mut sync = ViewSync::default();
         sync.apply_effect(
             &mut input,
             Effect::Git {
                 workspace_id: "w1".into(),
-                status: Some(status.clone()),
+                repos: repos.clone(),
             },
         );
-        assert_eq!(input.git.get("w1"), Some(&status));
+        assert_eq!(input.git.get("w1"), Some(&repos));
 
         let mut model = index_model();
         let topic = Topic::Workspace("w1".into());
-        snapshot(&mut model, &topic, serde_json::Value::Null);
+        snapshot(&mut model, &topic, serde_json::json!([]));
         sync_once(&mut sync, &mut input, &mut model);
-        assert_eq!(input.git.get("w1"), None, "not a git repository");
+        assert_eq!(input.git.get("w1"), Some(&Vec::new()), "no repository");
 
         let index_event = EventFrame {
             topic: Topic::Index,

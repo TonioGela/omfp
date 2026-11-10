@@ -3,24 +3,24 @@
 
 use omfp_core::wire::{AskAnswer, GoalOp, ImageContent, QueuedMessageQueue, ThinkingLevel};
 use omfp_protocol::{
-    AddRepositoryParams, AdoptWorkspaceParams, AttachWorkspaceParams, BashParams, BtwParams, Call,
-    CompactParams, CreateThreadParams, CreateWorkspaceParams, DetachWorkspaceParams, DiffPage,
-    Empty, FileDiff, ForkParams, GoalParams, HelloParams, HelloResult, IndexSnapshot,
-    InteractionResponse, LabelParams, ListTerminalsParams, METHODS, MessageParams, Method,
-    NavigateParams, OpenTerminalParams, OpenTerminalResult, PROTOCOL_VERSION, Position,
-    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, RemoveWorkspaceParams,
-    RepositoryList, RepositoryRef, Request, ResizeTerminalParams, RespondParams, Response,
-    ServerFrame, SetModelParams, SetThinkingParams, SubagentMessagesParams, SubagentRef,
-    SubagentSteerParams, SubscribeParams, SubscribeResult, TerminalInfo, TerminalKind,
-    TerminalList, TerminalRef, ThreadGit, ThreadRef, Topic, TopicParams, UpdateThreadParams,
-    WorkspaceDiffParams, WorkspaceFromPrParams, WorkspaceGit, WorkspaceRef, decode_request, method,
+    AddRepoParams, AddRepositoryParams, BashParams, BtwParams, Call, CompactParams,
+    CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileDiff, ForkParams, GoalParams,
+    HelloParams, HelloResult, IndexSnapshot, InteractionResponse, LabelParams, ListTerminalsParams,
+    METHODS, MessageParams, Method, NavigateParams, OpenTerminalParams, OpenTerminalResult,
+    PROTOCOL_VERSION, Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams,
+    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepositoryList, RepositoryRef,
+    Request, ResizeTerminalParams, RespondParams, Response, ServerFrame, SetModelParams,
+    SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
+    SubscribeResult, TerminalInfo, TerminalKind, TerminalList, TerminalRef, ThreadGit, ThreadRef,
+    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
+    WorkspaceDiffParams, WorkspaceRef, decode_request, method,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::samples::{
-    OTHER_WORKSPACE_ID, REPO_ID, TERMINAL_ID, THREAD_ID, WORKSPACE_ID, adopted_workspace,
-    git_status, managed_workspace, pr_workspace, repository, thread,
+    REPO_ID, TERMINAL_ID, THREAD_ID, WORKSPACE_ID, git_status, repo_statuses, repository,
+    root_workspace, thread, workspace,
 };
 
 const REQUEST_ID: &str = "c42";
@@ -144,52 +144,69 @@ fn repository_examples() -> Vec<(&'static str, Value)> {
     ]
 }
 
+fn workspace_ref() -> WorkspaceRef {
+    WorkspaceRef {
+        workspace_id: WORKSPACE_ID.to_owned(),
+    }
+}
+
 fn workspace_examples() -> Vec<(&'static str, Value)> {
     vec![
         example::<method::WorkspacesCreate>(
             CreateWorkspaceParams {
-                repo: REPO_ID.to_owned(),
-                branch: None,
-                base_ref: Some("origin/main".to_owned()),
+                name: Some("checkout-v2".to_owned()),
+                path: None,
             },
-            &managed_workspace(),
+            &workspace(),
         ),
-        example::<method::WorkspacesFromPr>(
-            WorkspaceFromPrParams {
-                pr: "acme/shop-frontend#412".to_owned(),
-                repo: Some("/home/dev/src/shop-frontend".to_owned()),
+        example::<method::WorkspacesUpdate>(
+            UpdateWorkspaceParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                name: "checkout-v2".to_owned(),
             },
-            &pr_workspace(),
-        ),
-        example::<method::WorkspacesAdopt>(
-            AdoptWorkspaceParams {
-                path: "/home/dev/notes".to_owned(),
-            },
-            &adopted_workspace(),
+            &workspace(),
         ),
         example::<method::WorkspacesRemove>(
             RemoveWorkspaceParams {
                 workspace_id: WORKSPACE_ID.to_owned(),
-                force: true,
+                delete_folder: true,
+                force: false,
+            },
+            &Empty {},
+        ),
+        example::<method::WorkspacesRescan>(workspace_ref(), &workspace()),
+        example::<method::WorkspacesAddRepo>(
+            AddRepoParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                name: None,
+                source: RepoSource::Worktree {
+                    repo: REPO_ID.to_owned(),
+                    branch: None,
+                    base_ref: Some("origin/main".to_owned()),
+                },
+            },
+            &workspace(),
+        ),
+        example::<method::WorkspacesRemoveRepo>(
+            RemoveRepoParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                name: "backend".to_owned(),
+                force: false,
                 delete_branch: false,
             },
-            &Empty {},
-        ),
-        example::<method::WorkspacesForget>(
-            WorkspaceRef {
-                workspace_id: OTHER_WORKSPACE_ID.to_owned(),
-            },
-            &Empty {},
+            &workspace(),
         ),
         example::<method::WorkspacesStatus>(
-            WorkspaceRef {
+            RepoRef {
                 workspace_id: WORKSPACE_ID.to_owned(),
+                repo: "shop-frontend".to_owned(),
             },
             &git_status(),
         ),
         example::<method::WorkspacesDiff>(
             WorkspaceDiffParams {
                 workspace_id: WORKSPACE_ID.to_owned(),
+                repo: "shop-frontend".to_owned(),
                 path: None,
                 cursor: Some("p2".to_owned()),
             },
@@ -210,7 +227,10 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
         example::<method::ThreadsCreate>(
             CreateThreadParams {
                 title: "Checkout v2".to_owned(),
-                workspace_ids: vec![WORKSPACE_ID.to_owned(), OTHER_WORKSPACE_ID.to_owned()],
+                workspace: ThreadWorkspace::New(CreateWorkspaceParams {
+                    name: Some("checkout-v2".to_owned()),
+                    path: None,
+                }),
                 tags: vec!["checkout-v2".to_owned()],
                 model: Some("anthropic/claude-sonnet-4-5".to_owned()),
                 thinking_level: Some(ThinkingLevel::High),
@@ -224,21 +244,6 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
                 thread_id: THREAD_ID.to_owned(),
                 title: Some("Checkout v2".to_owned()),
                 tags: Some(vec!["checkout-v2".to_owned()]),
-            },
-            &thread(),
-        ),
-        example::<method::ThreadsAttach>(
-            AttachWorkspaceParams {
-                thread_id: THREAD_ID.to_owned(),
-                workspace_id: OTHER_WORKSPACE_ID.to_owned(),
-                position: Some(1),
-            },
-            &thread(),
-        ),
-        example::<method::ThreadsDetach>(
-            DetachWorkspaceParams {
-                thread_id: THREAD_ID.to_owned(),
-                workspace_id: OTHER_WORKSPACE_ID.to_owned(),
             },
             &thread(),
         ),
@@ -497,16 +502,8 @@ fn tool_examples() -> Vec<(&'static str, Value)> {
         example::<method::ThreadGit>(
             thread_ref(),
             &ThreadGit {
-                workspaces: vec![
-                    WorkspaceGit {
-                        workspace_id: WORKSPACE_ID.to_owned(),
-                        status: Some(git_status()),
-                    },
-                    WorkspaceGit {
-                        workspace_id: OTHER_WORKSPACE_ID.to_owned(),
-                        status: None,
-                    },
-                ],
+                workspace_id: WORKSPACE_ID.to_owned(),
+                repos: repo_statuses(),
             },
         ),
         example::<method::ThreadState>(
@@ -675,7 +672,7 @@ fn interaction_responses_carry_exactly_one_answer_key() {
 fn index_snapshot_lists_repositories_workspaces_and_threads() {
     let snapshot = IndexSnapshot {
         repositories: vec![repository()],
-        workspaces: vec![managed_workspace(), adopted_workspace()],
+        workspaces: vec![workspace(), root_workspace()],
         threads: vec![thread()],
     };
     let text = serde_json::to_string(&snapshot).unwrap();
@@ -684,4 +681,75 @@ fn index_snapshot_lists_repositories_workspaces_and_threads() {
         snapshot
     );
     insta::assert_json_snapshot!("index_snapshot", snapshot);
+}
+
+// spec: DMN-022, DMN-027
+#[test]
+fn a_discovered_repository_carries_its_kind_inline() {
+    let repos = serde_json::to_value(&workspace().repos).unwrap();
+    assert_eq!(repos[0]["kind"], "link");
+    assert_eq!(repos[0]["target"], "/home/dev/src/shop-backend");
+    assert_eq!(repos[0]["sharedWith"], json!([root_workspace().id]));
+    assert_eq!(repos[1]["kind"], "worktree");
+    assert_eq!(repos[1]["main"], "/home/dev/src/shop-frontend");
+    let root = serde_json::to_value(&root_workspace().repos[0]).unwrap();
+    assert_eq!(
+        (root["kind"].clone(), root["isRoot"].clone()),
+        (json!("clone"), json!(true))
+    );
+}
+
+// spec: DMN-024
+#[test]
+fn repository_sources_are_tagged_by_kind() {
+    let cases = [
+        (
+            RepoSource::Link {
+                path: "/src/app".to_owned(),
+            },
+            json!({ "kind": "link", "path": "/src/app" }),
+        ),
+        (
+            RepoSource::Worktree {
+                repo: "/src/app".to_owned(),
+                branch: Some("fix".to_owned()),
+                base_ref: None,
+            },
+            json!({ "kind": "worktree", "repo": "/src/app", "branch": "fix" }),
+        ),
+        (
+            RepoSource::Clone {
+                url: "https://example.com/app.git".to_owned(),
+            },
+            json!({ "kind": "clone", "url": "https://example.com/app.git" }),
+        ),
+    ];
+    for (source, expected) in cases {
+        assert_eq!(serde_json::to_value(&source).unwrap(), expected);
+        assert_eq!(
+            serde_json::from_value::<RepoSource>(expected).unwrap(),
+            source
+        );
+    }
+}
+
+// spec: DMN-020
+#[test]
+fn a_new_thread_gets_a_new_workspace_unless_one_is_named() {
+    let decode = |params: Value| serde_json::from_value::<CreateThreadParams>(params).unwrap();
+    assert_eq!(
+        decode(json!({ "title": "Fix" })).workspace,
+        ThreadWorkspace::New(CreateWorkspaceParams::default())
+    );
+    assert_eq!(
+        decode(json!({ "title": "Fix", "workspace": { "id": WORKSPACE_ID } })).workspace,
+        ThreadWorkspace::Id(WORKSPACE_ID.to_owned())
+    );
+    assert_eq!(
+        decode(json!({ "title": "Fix", "workspace": { "new": { "path": "/src/app" } } })).workspace,
+        ThreadWorkspace::New(CreateWorkspaceParams {
+            name: None,
+            path: Some("/src/app".to_owned()),
+        })
+    );
 }

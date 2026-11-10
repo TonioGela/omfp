@@ -111,7 +111,7 @@ tags), `thread/<id>` (one thread), `workspace/<id>` (git status of each reposito
 | `thread.tree` / `.navigate` / `.fork` / `.label` | `threadId`, `entryId?`, … | tree / result |
 | `thread.subagents` / `.subagent_messages` / `.subagent_steer` / `.subagent_cancel` | `threadId`, `subagentId`, … | `{ subagents }` / transcript page / `{}` |
 | `thread.goal` / `thread.btw` / `thread.bash` | per 02 | `{ goal, state }` / `{ record }` / bash result |
-| `thread.git` | `threadId` | per-workspace status summary (convenience over `workspaces.status`) |
+| `thread.git` | `threadId` | `{ workspaceId, repos }`: the status of every repository of the thread's workspace (convenience over `workspaces.status`) |
 | `thread.restart` / `thread.stop` | `threadId` | `{}` |
 | `interaction.respond` | `threadId`, `interactionId`, `response` (`value` \| `confirmed` \| `cancelled` \| `answers`) | `{}` or `already_resolved` |
 | `terminal.*` | see [05](05-terminal.md) | |

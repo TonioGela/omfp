@@ -22,9 +22,9 @@ use serde_json::Value;
 pub struct LaunchSpec {
     /// omp executable (DMN-006).
     pub program: PathBuf,
-    /// Working directory: the thread home (DMN-028).
+    /// Working directory: the thread's workspace folder (DMN-030).
     pub cwd: PathBuf,
-    /// Attached workspaces, passed as `--add-dir` in order (DMN-030).
+    /// The workspace's repositories, passed as `--add-dir` in order (DMN-029).
     pub add_dirs: Vec<PathBuf>,
     /// Directory holding the thread's omp sessions (ARC-020).
     pub session_dir: PathBuf,
@@ -32,7 +32,7 @@ pub struct LaunchSpec {
     pub model: Option<String>,
     /// omp `--approval-mode` value.
     pub approval_mode: Option<String>,
-    /// Text passed as `--append-system-prompt` (replaces any discovered `APPEND_SYSTEM.md`).
+    /// Text passed as `--append-system-prompt`: the daemon's conventions and the user's append prompt (DMN-030).
     pub append_system_prompt: Option<String>,
     /// File receiving omp's stderr (DMN-036).
     pub stderr_log: PathBuf,
@@ -319,8 +319,11 @@ mod tests {
     fn spec() -> LaunchSpec {
         LaunchSpec {
             program: "omp".into(),
-            cwd: "/data/threads/t1/home".into(),
-            add_dirs: vec!["/wt/frontend".into(), "/wt/backend".into()],
+            cwd: "/ws/checkout".into(),
+            add_dirs: vec![
+                "/ws/checkout/frontend".into(),
+                "/ws/checkout/backend".into(),
+            ],
             session_dir: "/data/threads/t1/sessions".into(),
             model: Some("anthropic/claude".into()),
             approval_mode: Some("always-ask".into()),
@@ -332,7 +335,7 @@ mod tests {
 
     // spec: DMN-030
     #[test]
-    fn args_run_rpc_ui_with_one_add_dir_per_workspace_in_order() {
+    fn args_run_rpc_ui_with_one_add_dir_per_repository_in_order() {
         let args: Vec<String> = spec()
             .args()
             .into_iter()
@@ -347,9 +350,9 @@ mod tests {
                 "/data/threads/t1/sessions",
                 "--continue",
                 "--add-dir",
-                "/wt/frontend",
+                "/ws/checkout/frontend",
                 "--add-dir",
-                "/wt/backend",
+                "/ws/checkout/backend",
                 "--model",
                 "anthropic/claude",
                 "--approval-mode",
@@ -385,12 +388,12 @@ mod tests {
         );
     }
 
-    // spec: DMN-028, DMN-036
+    // spec: DMN-030, DMN-036
     #[test]
-    fn command_runs_in_the_thread_home_and_creates_its_directories() {
+    fn command_runs_in_the_workspace_folder_and_creates_its_directories() {
         let root = tempfile::tempdir().unwrap();
         let mut spec = spec();
-        spec.cwd = root.path().join("home");
+        spec.cwd = root.path().join("workspace");
         spec.session_dir = root.path().join("sessions");
         spec.stderr_log = root.path().join("logs/omp.log");
         spec.env = vec![("KEEP".into(), Some("1".into())), ("DROP".into(), None)];

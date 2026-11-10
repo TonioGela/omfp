@@ -1,14 +1,17 @@
 //! L2: CRUD on the SQLite store.
 
+use std::collections::HashMap;
+use std::path::PathBuf;
+
 use omfp_daemon::store::{
-    Provenance, Repository, Store, StoreError, Thread, Workspace, WorkspaceKind, new_id, now_ms,
+    Provenance, Repository, Store, StoreError, Thread, Workspace, new_id, now_ms,
 };
 use serde_json::json;
 use tempfile::TempDir;
 
 fn open() -> (TempDir, Store) {
     let dir = TempDir::new().unwrap();
-    let store = Store::open(&dir.path().join("omfp.db")).unwrap();
+    let store = Store::open(&dir.path().join("omfp.db"), &dir.path().join("workspaces")).unwrap();
     (dir, store)
 }
 
@@ -23,28 +26,24 @@ fn repository(path: &str) -> Repository {
     }
 }
 
-fn workspace(path: &str, repository_id: Option<&str>) -> Workspace {
+fn workspace(name: &str, path: &str) -> Workspace {
     Workspace {
         id: new_id(),
+        name: name.into(),
         path: path.into(),
-        kind: WorkspaceKind::ManagedWorktree,
-        repository_id: repository_id.map(str::to_owned),
-        branch: Some("omfp/x-1".into()),
-        base_ref: Some("main".into()),
-        pr_url: None,
-        pr_number: None,
+        owned: false,
         created_by: Provenance::User,
         created_at: now_ms(),
-        removed_at: None,
     }
 }
 
-fn thread(created_by: Provenance, workspace_ids: Vec<String>) -> Thread {
+fn thread(created_by: Provenance, workspace_id: &str) -> Thread {
     let id = new_id();
     Thread {
         session_dir: format!("/data/threads/{id}/sessions").into(),
         id,
         title: "Fix login".into(),
+        workspace_id: workspace_id.into(),
         omp_session_id: None,
         approval_mode: Some("always-ask".into()),
         model: Some("fake/scripted".into()),
@@ -52,9 +51,21 @@ fn thread(created_by: Provenance, workspace_ids: Vec<String>) -> Thread {
         created_by,
         created_at: now_ms(),
         archived_at: None,
-        workspace_ids,
         tags: vec!["auth".into(), "backend".into()],
     }
+}
+
+/// A store holding one workspace.
+fn with_workspace() -> (TempDir, Store, Workspace) {
+    let (dir, store) = open();
+    let ws = workspace("shop", "/work/shop");
+    store.insert_workspace(&ws).unwrap();
+    (dir, store, ws)
+}
+
+fn assert_conflict<T: std::fmt::Debug>(result: Result<T, StoreError>) {
+    let error = result.unwrap_err();
+    assert!(matches!(error, StoreError::Conflict(_)), "{error:?}");
 }
 
 #[test]
@@ -75,16 +86,13 @@ fn repositories_round_trip_and_are_listed() {
     assert_eq!(store.repositories().unwrap(), vec![repo]);
 }
 
-// spec: DMN-020
+// spec: DMN-021
 #[test]
 fn a_repository_path_is_registered_once() {
     let (_dir, store) = open();
     store.insert_repository(&repository("/src/app")).unwrap();
 
-    let error = store
-        .insert_repository(&repository("/src/app"))
-        .unwrap_err();
-    assert!(matches!(error, StoreError::Conflict(_)), "{error:?}");
+    assert_conflict(store.insert_repository(&repository("/src/app")));
 }
 
 #[test]
@@ -95,117 +103,128 @@ fn unknown_ids_are_not_found() {
         store.workspace("nope").unwrap_err(),
         store.thread("nope").unwrap_err(),
         store.delete_repository("nope").unwrap_err(),
+        store.rename_workspace("nope", "x").unwrap_err(),
+        store.delete_workspace("nope").unwrap_err(),
         store.delete_thread("nope").unwrap_err(),
         store.set_thread_title("nope", "x").unwrap_err(),
+        store.set_thread_tags("nope", &[]).unwrap_err(),
+        store.set_thread_roots("nope", &[]).unwrap_err(),
+        store.set_created_client("nope", "cli").unwrap_err(),
     ] {
         assert!(matches!(error, StoreError::NotFound { .. }), "{error:?}");
     }
 }
 
-// spec: DMN-020
+// spec: DMN-021
 #[test]
-fn unregistering_a_repository_keeps_its_workspaces() {
-    let (_dir, store) = open();
+fn unregistering_a_repository_keeps_the_workspaces() {
+    let (_dir, store, ws) = with_workspace();
     let repo = repository("/src/app");
     store.insert_repository(&repo).unwrap();
-    let ws = workspace("/data/worktrees/app/x-1", Some(&repo.id));
-    store.insert_workspace(&ws).unwrap();
 
     store.delete_repository(&repo.id).unwrap();
 
     assert_eq!(store.repositories().unwrap(), Vec::new());
-    assert_eq!(store.workspace(&ws.id).unwrap().repository_id, None);
+    assert_eq!(store.workspaces().unwrap(), vec![ws]);
 }
 
+// spec: DMN-020
 #[test]
-fn a_live_workspace_path_is_unique_but_reusable_after_removal() {
-    let (_dir, store) = open();
-    let first = workspace("/work/a", None);
-    store.insert_workspace(&first).unwrap();
+fn workspaces_round_trip_by_id_path_and_name() {
+    let (_dir, store, shop) = with_workspace();
+    let owned = Workspace {
+        owned: true,
+        created_by: Provenance::Thread("01JAGENT".into()),
+        ..workspace("Fix login", "/omfp/workspaces/fix-login")
+    };
+    store.insert_workspace(&owned).unwrap();
 
-    let error = store
-        .insert_workspace(&workspace("/work/a", None))
-        .unwrap_err();
-    assert!(matches!(error, StoreError::Conflict(_)), "{error:?}");
-
-    store.mark_workspace_removed(&first.id, 42).unwrap();
-    let second = workspace("/work/a", None);
-    store.insert_workspace(&second).unwrap();
-
-    assert_eq!(store.workspace(&first.id).unwrap().removed_at, Some(42));
-    assert_eq!(store.workspaces().unwrap(), vec![second.clone()]);
+    assert_eq!(store.workspace(&owned.id).unwrap(), owned);
     assert_eq!(
-        store.live_workspace_by_path("/work/a".as_ref()).unwrap(),
-        Some(second)
+        store.workspace_by_path("/work/shop".as_ref()).unwrap(),
+        Some(shop.clone())
     );
+    assert_eq!(
+        store.workspace_by_path("/work/none".as_ref()).unwrap(),
+        None
+    );
+    assert!(store.workspace_name_taken("Fix login").unwrap());
+    assert!(!store.workspace_name_taken("fix login").unwrap());
+    assert_eq!(store.workspaces().unwrap(), vec![shop, owned]);
 }
 
-// spec: DMN-027
+// spec: DMN-020
 #[test]
-fn removing_a_workspace_detaches_it_from_threads() {
-    let (_dir, store) = open();
-    let a = workspace("/work/a", None);
-    let b = workspace("/work/b", None);
-    store.insert_workspace(&a).unwrap();
-    store.insert_workspace(&b).unwrap();
-    let t = thread(Provenance::User, vec![a.id.clone(), b.id.clone()]);
+fn workspace_names_and_paths_are_unique() {
+    let (_dir, store, ws) = with_workspace();
+
+    assert_conflict(store.insert_workspace(&workspace("shop", "/work/other")));
+    assert_conflict(store.insert_workspace(&workspace("other", "/work/shop")));
+    assert_eq!(store.workspaces().unwrap(), vec![ws]);
+}
+
+// spec: DMN-020
+#[test]
+fn renaming_a_workspace_keeps_names_unique() {
+    let (_dir, store, ws) = with_workspace();
+    let other = workspace("other", "/work/other");
+    store.insert_workspace(&other).unwrap();
+
+    assert_conflict(store.rename_workspace(&ws.id, "other"));
+    store.rename_workspace(&ws.id, "Shop v2").unwrap();
+
+    assert_eq!(store.workspace(&ws.id).unwrap().name, "Shop v2");
+    assert!(!store.workspace_name_taken("shop").unwrap());
+    assert_eq!(store.workspace(&other.id).unwrap(), other);
+}
+
+// spec: DMN-028
+#[test]
+fn a_workspace_with_threads_is_not_deleted() {
+    let (_dir, store, ws) = with_workspace();
+    let t = thread(Provenance::User, &ws.id);
     store.insert_thread(&t).unwrap();
+    store.set_thread_archived_at(&t.id, Some(7)).unwrap();
 
-    store.mark_workspace_removed(&a.id, now_ms()).unwrap();
+    // Archived threads still live in the workspace.
+    assert_conflict(store.delete_workspace(&ws.id));
+    assert_eq!(store.workspaces().unwrap(), vec![ws.clone()]);
 
-    assert_eq!(store.thread(&t.id).unwrap().workspace_ids, vec![b.id]);
+    store.delete_thread(&t.id).unwrap();
+    store.delete_workspace(&ws.id).unwrap();
+    assert_eq!(store.workspaces().unwrap(), Vec::new());
+}
+
+// spec: ARC-008, ARC-009, DMN-027
+#[test]
+fn threads_round_trip_with_their_workspace_tags_and_provenance() {
+    let (_dir, store, ws) = with_workspace();
+    let other = workspace("other", "/work/other");
+    store.insert_workspace(&other).unwrap();
+    let parent = thread(Provenance::User, &ws.id);
+    store.insert_thread(&parent).unwrap();
+    let child = thread(Provenance::Thread(parent.id.clone()), &ws.id);
+    store.insert_thread(&child).unwrap();
+
+    assert_eq!(store.thread(&child.id).unwrap(), child);
     assert_eq!(
-        store.workspace_thread_ids(&a.id).unwrap(),
+        store.threads().unwrap(),
+        vec![parent.clone(), child.clone()]
+    );
+    assert_eq!(
+        store.workspace_thread_ids(&ws.id).unwrap(),
+        vec![parent.id, child.id]
+    );
+    assert_eq!(
+        store.workspace_thread_ids(&other.id).unwrap(),
         Vec::<String>::new()
     );
 }
 
-// spec: ARC-008, ARC-009
-#[test]
-fn threads_round_trip_with_ordered_workspaces_tags_and_provenance() {
-    let (_dir, store) = open();
-    let a = workspace("/work/a", None);
-    let b = workspace("/work/b", None);
-    store.insert_workspace(&a).unwrap();
-    store.insert_workspace(&b).unwrap();
-    let parent = thread(Provenance::User, Vec::new());
-    store.insert_thread(&parent).unwrap();
-    let child = thread(
-        Provenance::Thread(parent.id.clone()),
-        vec![b.id.clone(), a.id.clone()],
-    );
-    store.insert_thread(&child).unwrap();
-
-    assert_eq!(store.thread(&child.id).unwrap(), child);
-    assert_eq!(store.threads().unwrap(), vec![parent, child.clone()]);
-    assert_eq!(store.workspace_thread_ids(&a.id).unwrap(), vec![child.id]);
-}
-
-// spec: ARC-008
-#[test]
-fn thread_workspaces_are_replaced_in_order() {
-    let (_dir, store) = open();
-    let ids: Vec<String> = ["/w/a", "/w/b", "/w/c"]
-        .into_iter()
-        .map(|path| {
-            let ws = workspace(path, None);
-            store.insert_workspace(&ws).unwrap();
-            ws.id
-        })
-        .collect();
-    let t = thread(Provenance::User, ids.clone());
-    store.insert_thread(&t).unwrap();
-
-    let reordered = vec![ids[2].clone(), ids[0].clone()];
-    store.set_thread_workspaces(&t.id, &reordered).unwrap();
-
-    assert_eq!(store.thread(&t.id).unwrap().workspace_ids, reordered);
-}
-
 #[test]
 fn thread_fields_are_updated() {
-    let (_dir, store) = open();
-    let t = thread(Provenance::User, Vec::new());
+    let (_dir, store, ws) = with_workspace();
+    let t = thread(Provenance::User, &ws.id);
     store.insert_thread(&t).unwrap();
 
     store.set_thread_title(&t.id, "Renamed").unwrap();
@@ -232,6 +251,65 @@ fn thread_fields_are_updated() {
             ..t
         }
     );
+}
+
+// spec: DMN-029
+#[test]
+fn thread_roots_are_replaced_and_listed_sorted() {
+    let (_dir, store, ws) = with_workspace();
+    let t = thread(Provenance::User, &ws.id);
+    store.insert_thread(&t).unwrap();
+    assert_eq!(store.thread_roots(&t.id).unwrap(), Vec::<PathBuf>::new());
+
+    let [api, web] = ["/work/shop/api", "/work/shop/web"].map(PathBuf::from);
+    store
+        .set_thread_roots(&t.id, &[web.clone(), api.clone(), web.clone()])
+        .unwrap();
+    assert_eq!(store.thread_roots(&t.id).unwrap(), vec![api, web.clone()]);
+
+    store
+        .set_thread_roots(&t.id, std::slice::from_ref(&web))
+        .unwrap();
+    assert_eq!(store.thread_roots(&t.id).unwrap(), vec![web]);
+    store.set_thread_roots(&t.id, &[]).unwrap();
+    assert_eq!(store.thread_roots(&t.id).unwrap(), Vec::<PathBuf>::new());
+}
+
+// spec: ARC-009, PRT-033
+#[test]
+fn the_creating_client_is_recorded_for_threads_and_workspaces() {
+    let (_dir, store, ws) = with_workspace();
+    let t = thread(Provenance::User, &ws.id);
+    store.insert_thread(&t).unwrap();
+    let silent = thread(Provenance::User, &ws.id);
+    store.insert_thread(&silent).unwrap();
+    assert_eq!(store.created_clients().unwrap(), HashMap::new());
+
+    store.set_created_client(&t.id, "omfp-ui").unwrap();
+    store.set_created_client(&ws.id, "omfp-cli").unwrap();
+
+    assert_eq!(
+        store.created_clients().unwrap(),
+        HashMap::from([
+            (t.id.clone(), "omfp-ui".to_owned()),
+            (ws.id.clone(), "omfp-cli".to_owned()),
+        ])
+    );
+}
+
+// spec: ARC-009
+#[test]
+fn provenance_must_name_an_existing_thread() {
+    let (_dir, store, ws) = with_workspace();
+    let t = thread(Provenance::User, &ws.id);
+    store.insert_thread(&t).unwrap();
+
+    store.check_provenance(&Provenance::User).unwrap();
+    store.check_provenance(&Provenance::Thread(t.id)).unwrap();
+    let error = store
+        .check_provenance(&Provenance::Thread("01JUNKNOWN".into()))
+        .unwrap_err();
+    assert!(matches!(error, StoreError::NotFound { .. }), "{error:?}");
 }
 
 #[test]

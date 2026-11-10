@@ -9,6 +9,7 @@ use std::sync::Arc;
 use clap::Parser;
 use client::{Client, Follower};
 use omfp_core::ThreadEvent;
+use omfp_core::wire::{RpcAgentEvent, RpcNotification};
 use omfp_daemon::agent::{FakeLauncher, FakeReply, FakeRun};
 use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
@@ -20,24 +21,34 @@ use tempfile::TempDir;
 struct TestDaemon {
     handle: DaemonHandle,
     launcher: FakeLauncher,
+    git: Arc<FakeGit>,
     dir: TempDir,
 }
 
 fn config(dir: &Path, args: &[&str]) -> Config {
     let data_dir = dir.to_str().unwrap();
+    let workspaces = dir.join("workspaces");
     let cli = Cli::try_parse_from(
-        ["daemon", "--bind", "127.0.0.1:0", "--data-dir", data_dir]
-            .into_iter()
-            .chain(args.iter().copied()),
+        [
+            "daemon",
+            "--bind",
+            "127.0.0.1:0",
+            "--data-dir",
+            data_dir,
+            "--workspaces-root",
+            workspaces.to_str().unwrap(),
+        ]
+        .into_iter()
+        .chain(args.iter().copied()),
     )
     .unwrap();
     Config::from_cli(cli, None, None).unwrap()
 }
 
-fn ports(launcher: &FakeLauncher) -> Ports {
+fn ports(launcher: &FakeLauncher, git: &Arc<FakeGit>) -> Ports {
     Ports {
         launcher: Arc::new(launcher.clone()),
-        git: Arc::new(FakeGit::new()),
+        git: Arc::clone(git) as _,
         omp_program: "omp".into(),
         omp_version: omfp_core::OMP_VERSION.into(),
         omp_env: Vec::new(),
@@ -48,12 +59,14 @@ fn ports(launcher: &FakeLauncher) -> Ports {
 async fn daemon(args: &[&str]) -> TestDaemon {
     let dir = tempfile::tempdir().unwrap();
     let launcher = FakeLauncher::new();
-    let handle = start_with(config(dir.path(), args), ports(&launcher))
+    let git = Arc::new(FakeGit::new());
+    let handle = start_with(config(dir.path(), args), ports(&launcher, &git))
         .await
         .unwrap();
     TestDaemon {
         handle,
         launcher,
+        git,
         dir,
     }
 }
@@ -186,6 +199,7 @@ async fn the_library_daemon_serves_until_shutdown_then_stops_omp_and_closes_clie
         handle,
         launcher: _launcher,
         dir,
+        ..
     } = daemon;
     handle.shutdown().await.unwrap();
 
@@ -209,7 +223,8 @@ async fn one_daemon_per_data_directory_published_in_daemon_json() {
             .unwrap();
     assert_eq!(written["addr"], first.handle.addr().to_string());
 
-    let second = start_with(config(&data_dir, &[]), ports(&FakeLauncher::new())).await;
+    let fresh = || ports(&FakeLauncher::new(), &Arc::new(FakeGit::new()));
+    let second = start_with(config(&data_dir, &[]), fresh()).await;
     let error = second.unwrap_err().to_string();
     assert!(error.contains("already running"), "{error}");
     assert!(error.contains(&first.handle.addr().to_string()), "{error}");
@@ -217,9 +232,7 @@ async fn one_daemon_per_data_directory_published_in_daemon_json() {
     first.handle.shutdown().await.unwrap();
     assert_eq!(discover(&data_dir).unwrap(), None);
     // The directory is free again.
-    let again = start_with(config(&data_dir, &[]), ports(&FakeLauncher::new()))
-        .await
-        .unwrap();
+    let again = start_with(config(&data_dir, &[]), fresh()).await.unwrap();
     again.shutdown().await.unwrap();
 }
 
@@ -424,16 +437,16 @@ async fn omp_errors_reach_the_client_with_omps_code() {
 async fn created_entities_record_the_creating_client() {
     let daemon = daemon(&[]).await;
     let mut script = daemon.client("script/nightly").await;
-    let folder = daemon.dir.path().join("adopted");
+    let folder = daemon.dir.path().join("existing");
     std::fs::create_dir_all(&folder).unwrap();
 
     let workspace = script
-        .ok("workspaces.adopt", json!({ "path": folder }))
+        .ok("workspaces.create", json!({ "path": folder }))
         .await;
     let thread = script
         .ok(
             "threads.create",
-            json!({ "title": "from a script", "workspaceIds": [workspace["id"]] }),
+            json!({ "title": "from a script", "workspace": { "id": workspace["id"] } }),
         )
         .await;
 
@@ -451,8 +464,8 @@ fn superset_params(thread: &str, workspace: &str) -> Value {
     json!({
         "threadId": thread, "workspaceId": workspace, "repositoryId": "01NOREPO", "repo": "01NOREPO",
         "path": "/nonexistent", "pr": "owner/repo#1", "title": "t", "text": "hello", "message": "hello",
-        "provider": "fake", "modelId": "scripted", "level": "low", "entryId": "e1", "subagentId": "s1",
-        "op": "get", "question": "why?", "command": "true", "interactionId": "i1",
+        "name": "n", "provider": "fake", "modelId": "scripted", "level": "low", "entryId": "e1",
+        "subagentId": "s1", "op": "get", "question": "why?", "command": "true", "interactionId": "i1",
         "response": { "cancelled": true }, "kind": "shell", "cols": 80, "rows": 24, "terminalId": "x",
         "topic": "index"
     })
@@ -463,13 +476,13 @@ fn superset_params(thread: &str, workspace: &str) -> Value {
 async fn every_method_is_served_to_a_script_client() {
     let daemon = daemon(&[]).await;
     let mut script = daemon.client("script/smoke").await;
-    let thread = create_thread(&mut script).await;
-    let folder = daemon.dir.path().join("ws");
-    std::fs::create_dir_all(&folder).unwrap();
-    let workspace = script
-        .ok("workspaces.adopt", json!({ "path": folder }))
+    let thread = script
+        .ok("threads.create", json!({ "title": "smoke" }))
         .await;
-    let params = superset_params(&thread, workspace["id"].as_str().unwrap());
+    let params = superset_params(
+        thread["id"].as_str().unwrap(),
+        thread["workspaceId"].as_str().unwrap(),
+    );
 
     let mut failures = Vec::new();
     for method in omfp_protocol::METHODS {
@@ -489,42 +502,150 @@ async fn every_method_is_served_to_a_script_client() {
     assert_eq!(failures, Vec::<String>::new());
 }
 
-// spec: DMN-029
+impl TestDaemon {
+    /// A fake repository outside every workspace.
+    fn external_repo(&self, name: &str) -> std::path::PathBuf {
+        let path = self.dir.path().join("src").join(name);
+        std::fs::create_dir_all(&path).unwrap();
+        self.git.add_repo(&path, "main");
+        std::fs::canonicalize(path).unwrap()
+    }
+
+    /// Local commands (`/add-dir`, `/remove-dir`) the thread's first process got.
+    fn local_commands(&self) -> Vec<String> {
+        self.launcher
+            .process(0)
+            .calls()
+            .into_iter()
+            .filter_map(|call| match call {
+                omfp_daemon::agent::FakeCall::Prompt(prompt) if prompt.message.starts_with('/') => {
+                    Some(prompt.message)
+                }
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+/// The next index event upserting workspace `id`.
+async fn next_workspace(client: &mut Client, id: &Value) -> Value {
+    loop {
+        let event = client.event("index").await;
+        if event["event"]["kind"] == "workspace_upserted"
+            && event["event"]["workspace"]["id"] == *id
+        {
+            return event["event"]["workspace"].clone();
+        }
+    }
+}
+
+// spec: DMN-020, DMN-024, DMN-025, DMN-029, ARC-008
 #[tokio::test(flavor = "multi_thread")]
-async fn attaching_a_workspace_live_sends_add_dir() {
+async fn linking_a_repository_into_a_live_threads_workspace_adds_its_root_and_unlinking_removes_it()
+{
     let daemon = daemon(&[]).await;
     let mut client = daemon.client("test").await;
-    let thread = create_thread(&mut client).await;
-    client
-        .ok("thread.state", json!({ "threadId": thread }))
+    let thread = client
+        .ok("threads.create", json!({ "title": "Checkout v2" }))
         .await;
-    let folder = daemon.dir.path().join("live");
-    std::fs::create_dir_all(&folder).unwrap();
-    let workspace = client
-        .ok("workspaces.adopt", json!({ "path": folder }))
-        .await;
+    let id = thread["id"].clone();
+    let workspace_id = thread["workspaceId"].clone();
+    client.ok("thread.state", json!({ "threadId": id })).await;
+    let target = daemon.external_repo("shop-frontend");
 
-    let summary = client
+    let linked = client
         .ok(
-            "threads.attach",
-            json!({ "threadId": thread, "workspaceId": workspace["id"] }),
+            "workspaces.add_repo",
+            json!({ "workspaceId": workspace_id, "source": { "kind": "link", "path": target } }),
+        )
+        .await;
+    assert_eq!(linked["name"], "Checkout v2");
+    assert!(
+        linked["path"]
+            .as_str()
+            .unwrap()
+            .ends_with("/workspaces/checkout-v2"),
+        "{linked}"
+    );
+    assert_eq!(linked["owned"], true);
+    assert_eq!(linked["threadIds"], json!([id]));
+    let repo = &linked["repos"][0];
+    assert_eq!(
+        (&repo["name"], &repo["kind"], &repo["target"]),
+        (&json!("shop-frontend"), &json!("link"), &json!(target))
+    );
+    let link = repo["path"].as_str().unwrap().to_owned();
+    client
+        .ok(
+            "workspaces.remove_repo",
+            json!({ "workspaceId": workspace_id, "name": "shop-frontend" }),
         )
         .await;
 
-    assert_eq!(summary["workspaceIds"], json!([workspace["id"]]));
-    let prompts: Vec<String> = daemon
-        .launcher
-        .process(0)
-        .calls()
-        .into_iter()
-        .filter_map(|call| match call {
-            omfp_daemon::agent::FakeCall::Prompt(prompt) => Some(prompt.message),
+    assert_eq!(
+        daemon.local_commands(),
+        [format!("/add-dir {link}"), format!("/remove-dir {link}")]
+    );
+    assert!(target.is_dir(), "the link's target is never touched");
+    let removal = client
+        .call(
+            "workspaces.remove",
+            json!({ "workspaceId": workspace_id, "deleteFolder": true }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        removal["code"], "conflict",
+        "a thread lives there (DMN-028)"
+    );
+}
+
+// spec: DMN-023, DMN-029, DMN-022
+#[tokio::test(flavor = "multi_thread")]
+async fn a_repository_the_agent_links_appears_after_its_tool_run() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let thread = client
+        .ok("threads.create", json!({ "title": "agent work" }))
+        .await;
+    let (id, workspace_id) = (thread["id"].clone(), thread["workspaceId"].clone());
+    client.ok("thread.state", json!({ "threadId": id })).await;
+    client.ok("subscribe", json!({ "topic": "index" })).await;
+    let folder = client
+        .ok("workspaces.rescan", json!({ "workspaceId": workspace_id }))
+        .await["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let link = Path::new(&folder).join("lib");
+    std::os::unix::fs::symlink(daemon.external_repo("lib"), &link).unwrap();
+    let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/threads")
+        .join(omfp_core::OMP_VERSION)
+        .join("bash_tool_call.jsonl");
+    let tool_end = std::fs::read_to_string(fixture_path)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<ThreadEvent>(line).unwrap())
+        .find_map(|event| match event {
+            ThreadEvent::Omp {
+                frame: frame @ RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(_)),
+            } => Some(frame),
             _ => None,
         })
-        .collect();
+        .unwrap();
+
+    daemon.launcher.process(0).emit(vec![tool_end]);
+
+    let workspace = next_workspace(&mut client, &workspace_id).await;
+    assert_eq!(workspace["repos"][0]["name"], "lib");
+    assert_eq!(workspace["repos"][0]["path"], json!(link));
+    while daemon.local_commands().is_empty() {
+        tokio::task::yield_now().await;
+    }
     assert_eq!(
-        prompts,
-        [format!("/add-dir {}", workspace["path"].as_str().unwrap())]
+        daemon.local_commands(),
+        [format!("/add-dir {}", link.display())]
     );
 }
 

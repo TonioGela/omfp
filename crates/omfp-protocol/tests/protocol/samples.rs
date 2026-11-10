@@ -2,8 +2,8 @@
 
 use omfp_core::ProcessState;
 use omfp_protocol::{
-    CreatedBy, FileChange, FileStatus, GitStatus, Provenance, Repository, ThreadSummary, Workspace,
-    WorkspaceKind,
+    CreatedBy, FileChange, FileStatus, GitStatus, Provenance, RepoKind, RepoStatus, Repository,
+    ThreadSummary, Workspace, WorkspaceRepo,
 };
 
 pub const REPO_ID: &str = "01JD8X3Q4T9V2W6Y5Z7A1B3C6F";
@@ -32,47 +32,68 @@ pub fn repository() -> Repository {
     }
 }
 
-pub fn managed_workspace() -> Workspace {
+pub fn workspace() -> Workspace {
     Workspace {
         id: WORKSPACE_ID.to_owned(),
-        path: "/home/dev/.local/share/omfp/worktrees/shop-frontend/checkout-v2".to_owned(),
-        kind: WorkspaceKind::ManagedWorktree,
-        repository_id: Some(REPO_ID.to_owned()),
-        branch: Some("omfp/checkout-v2-k3p9".to_owned()),
-        base_ref: Some("origin/main".to_owned()),
-        pr_url: None,
-        pr_number: None,
+        name: "checkout-v2".to_owned(),
+        path: "/home/dev/omfp/workspaces/checkout-v2".to_owned(),
+        owned: true,
+        repos: vec![
+            WorkspaceRepo {
+                name: "backend".to_owned(),
+                path: "/home/dev/omfp/workspaces/checkout-v2/backend".to_owned(),
+                kind: RepoKind::Link {
+                    target: "/home/dev/src/shop-backend".to_owned(),
+                },
+                branch: Some("main".to_owned()),
+                head: Some("f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a".to_owned()),
+                is_root: false,
+                canonical_path: "/home/dev/src/shop-backend".to_owned(),
+                shared_with: vec![OTHER_WORKSPACE_ID.to_owned()],
+            },
+            WorkspaceRepo {
+                name: "shop-frontend".to_owned(),
+                path: "/home/dev/omfp/workspaces/checkout-v2/shop-frontend".to_owned(),
+                kind: RepoKind::Worktree {
+                    main: "/home/dev/src/shop-frontend".to_owned(),
+                },
+                branch: Some("omfp/checkout-v2-1".to_owned()),
+                head: Some("0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d".to_owned()),
+                is_root: false,
+                canonical_path: "/home/dev/omfp/workspaces/checkout-v2/shop-frontend".to_owned(),
+                shared_with: Vec::new(),
+            },
+        ],
+        thread_ids: vec![THREAD_ID.to_owned()],
         provenance: user_provenance(),
         created_at: CREATED_AT,
     }
 }
 
-pub fn pr_workspace() -> Workspace {
+/// An existing folder that is itself a repository, recorded by an agent.
+pub fn root_workspace() -> Workspace {
     Workspace {
-        branch: Some("feature/checkout-v2".to_owned()),
-        pr_url: Some("https://github.com/acme/shop-frontend/pull/412".to_owned()),
-        pr_number: Some(412),
+        id: OTHER_WORKSPACE_ID.to_owned(),
+        name: "shop-backend".to_owned(),
+        path: "/home/dev/src/shop-backend".to_owned(),
+        owned: false,
+        repos: vec![WorkspaceRepo {
+            name: "shop-backend".to_owned(),
+            path: "/home/dev/src/shop-backend".to_owned(),
+            kind: RepoKind::Clone,
+            branch: Some("main".to_owned()),
+            head: Some("f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a".to_owned()),
+            is_root: true,
+            canonical_path: "/home/dev/src/shop-backend".to_owned(),
+            shared_with: vec![WORKSPACE_ID.to_owned()],
+        }],
+        thread_ids: Vec::new(),
         provenance: Provenance {
             created_by: CreatedBy::Thread {
                 thread_id: THREAD_ID.to_owned(),
             },
             client: Some("omfp-agent".to_owned()),
         },
-        ..managed_workspace()
-    }
-}
-
-pub fn adopted_workspace() -> Workspace {
-    Workspace {
-        id: OTHER_WORKSPACE_ID.to_owned(),
-        path: "/home/dev/notes".to_owned(),
-        kind: WorkspaceKind::Adopted,
-        repository_id: None,
-        branch: None,
-        base_ref: None,
-        pr_url: None,
-        pr_number: None,
-        provenance: user_provenance(),
         created_at: CREATED_AT,
     }
 }
@@ -82,7 +103,7 @@ pub fn thread() -> ThreadSummary {
         id: THREAD_ID.to_owned(),
         title: "Checkout v2".to_owned(),
         tags: vec!["checkout-v2".to_owned()],
-        workspace_ids: vec![WORKSPACE_ID.to_owned(), OTHER_WORKSPACE_ID.to_owned()],
+        workspace_id: WORKSPACE_ID.to_owned(),
         process: ProcessState::Stopped,
         settled: true,
         needs_attention: false,
@@ -93,12 +114,33 @@ pub fn thread() -> ThreadSummary {
     }
 }
 
+pub fn repo_statuses() -> Vec<RepoStatus> {
+    vec![
+        RepoStatus {
+            name: "backend".to_owned(),
+            status: GitStatus {
+                branch: Some("main".to_owned()),
+                base_ref: None,
+                ahead: 0,
+                behind: 0,
+                dirty: false,
+                files: Vec::new(),
+            },
+        },
+        RepoStatus {
+            name: "shop-frontend".to_owned(),
+            status: git_status(),
+        },
+    ]
+}
+
 pub fn git_status() -> GitStatus {
     GitStatus {
-        branch: Some("omfp/checkout-v2-k3p9".to_owned()),
+        branch: Some("omfp/checkout-v2-1".to_owned()),
         base_ref: Some("origin/main".to_owned()),
         ahead: 2,
         behind: 1,
+        dirty: true,
         files: vec![
             FileChange {
                 path: "src/checkout.rs".to_owned(),

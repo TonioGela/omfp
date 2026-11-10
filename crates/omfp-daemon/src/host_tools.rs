@@ -19,17 +19,17 @@ pub const OPEN_IN_EDITOR: &str = "open_in_editor";
 /// Receives the events a host tool adds to its thread.
 pub type Emit = Arc<dyn Fn(ThreadEvent) + Send + Sync>;
 
-/// The host tools of one thread: `home` resolves relative paths (it is omp's cwd, DMN-028) and `emit` delivers the
-/// presentation events to the thread's clients.
+/// The host tools of one thread: `cwd` (omp's working directory, the thread's workspace folder, DMN-030) resolves
+/// relative paths and `emit` delivers the presentation events to the thread's clients.
 #[must_use]
-pub fn thread_tools(home: PathBuf, emit: Emit) -> Vec<HostTool> {
-    vec![open_in_editor(home, emit)]
+pub fn thread_tools(cwd: PathBuf, emit: Emit) -> Vec<HostTool> {
+    vec![open_in_editor(cwd, emit)]
 }
 
 /// `open_in_editor { path, line? }`: asks the user's UI to open a file (an `open_url` presentation event with a
 /// `file://` URL, `#L<line>` when a line is given).
 #[must_use]
-pub fn open_in_editor(home: PathBuf, emit: Emit) -> HostTool {
+pub fn open_in_editor(cwd: PathBuf, emit: Emit) -> HostTool {
     let parameters = json!({
         "type": "object",
         "properties": {
@@ -50,7 +50,7 @@ pub fn open_in_editor(home: PathBuf, emit: Emit) -> HostTool {
         "Opens a file in the user's editor so they can look at it or edit it.",
         parameters,
         move |arguments, context| {
-            run_open_in_editor(&arguments, || context.is_cancelled(), &home, &*emit)
+            run_open_in_editor(&arguments, || context.is_cancelled(), &cwd, &*emit)
         },
     )
     .label("Open in editor")
@@ -61,7 +61,7 @@ pub fn open_in_editor(home: PathBuf, emit: Emit) -> HostTool {
 pub fn run_open_in_editor(
     arguments: &Map<String, Value>,
     is_cancelled: impl Fn() -> bool,
-    home: &Path,
+    cwd: &Path,
     emit: &dyn Fn(ThreadEvent),
 ) -> Result<HostToolOutput, HostToolError> {
     if is_cancelled() {
@@ -78,7 +78,7 @@ pub fn run_open_in_editor(
             None => return Err("`line` must be a positive integer".into()),
         },
     };
-    let path = home.join(path);
+    let path = cwd.join(path);
     let mut url = file_url(&path);
     let mut shown = path.display().to_string();
     if let Some(line) = line {
@@ -132,7 +132,7 @@ mod tests {
         let result = run_open_in_editor(
             &args(arguments),
             || cancelled,
-            Path::new("/data/threads/t1/home"),
+            Path::new("/ws/checkout"),
             &|event| events.lock().unwrap().push(event),
         );
         let result = match result {
@@ -168,14 +168,11 @@ mod tests {
 
     // spec: DMN-060
     #[test]
-    fn relative_paths_start_at_the_thread_home_and_are_url_encoded() {
+    fn relative_paths_start_at_the_workspace_folder_and_are_url_encoded() {
         let (result, events) = run(json!({ "path": "notes/a b.md" }), false);
 
         assert!(result.is_ok());
-        assert_eq!(
-            opened_url(&events),
-            "file:///data/threads/t1/home/notes/a%20b.md"
-        );
+        assert_eq!(opened_url(&events), "file:///ws/checkout/notes/a%20b.md");
     }
 
     // spec: DMN-061

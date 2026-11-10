@@ -1,15 +1,15 @@
-//! M1 acceptance (07-roadmap, "M1 — Headless daemon"), L3: the real daemon (`start_with` on the real ports) with the
-//! pinned omp, the fake LLM and temporary git repositories, driven by a native protocol client.
+//! M1 and M2b acceptance (07-roadmap), L3: the real daemon (`start_with` on the real ports) with the pinned omp, the
+//! fake LLM and temporary git repositories, driven by a native protocol client.
 
 mod client;
 mod common;
 
 use std::net::SocketAddr;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
 use client::{Client, Follower};
-use common::Harness;
+use common::{Harness, system_prompt, workspace_roots};
 use fake_llm::{Reply, Step, ToolCall};
 use omfp_core::wire::{AgentMessage, ExtensionUiRequest, SelectUiRequest};
 use omfp_core::{ProcessState, ThreadState};
@@ -28,12 +28,15 @@ impl Daemon {
     async fn start(harness: &Harness) -> Self {
         let data = tempfile::tempdir().unwrap();
         let omp = omp_bin();
+        let workspaces = data.path().join("workspaces");
         let cli = Cli::try_parse_from([
             "daemon",
             "--bind",
             "127.0.0.1:0",
             "--data-dir",
             data.path().to_str().unwrap(),
+            "--workspaces-root",
+            workspaces.to_str().unwrap(),
             "--omp-bin",
             &omp,
         ])
@@ -105,15 +108,27 @@ fn repo_with_marker(marker: &str) -> TempRepo {
     repo
 }
 
-async fn managed_workspace(client: &mut Client, repo: &Path) -> (String, PathBuf) {
-    let workspace = client
-        .ok("workspaces.create", json!({ "repo": repo }))
+/// Adds a repository to the workspace; returns the workspace and the new repository's path in it.
+async fn add_repo(client: &mut Client, workspace: &str, source: Value) -> PathBuf {
+    let before = client
+        .ok("workspaces.rescan", json!({ "workspaceId": workspace }))
+        .await["repos"]
+        .as_array()
+        .unwrap()
+        .len();
+    let updated = client
+        .ok(
+            "workspaces.add_repo",
+            json!({ "workspaceId": workspace, "source": source }),
+        )
         .await;
-    assert_eq!(workspace["kind"], "managed_worktree");
-    (
-        workspace["id"].as_str().unwrap().to_owned(),
-        PathBuf::from(workspace["path"].as_str().unwrap()),
-    )
+    let repos = updated["repos"].as_array().unwrap();
+    assert_eq!(repos.len(), before + 1, "{updated}");
+    let added = repos
+        .iter()
+        .find(|repo| repo["kind"] == source["kind"])
+        .unwrap();
+    PathBuf::from(added["path"].as_str().unwrap())
 }
 
 fn assistant_texts(state: &ThreadState) -> Vec<String> {
@@ -137,71 +152,101 @@ async fn prompt(client: &mut Client, thread: &str, text: &str) -> String {
     result["promptId"].as_str().unwrap().to_owned()
 }
 
-// spec: ARC-008, DMN-029, DMN-030, PRT-030, ARC-001
+const USER_APPEND: &str = "User append marker: quince-5";
+
+// spec: ARC-008, DMN-029, DMN-030, DMN-024, DMN-025, PRT-030, ARC-001
 #[tokio::test(flavor = "multi_thread")]
-async fn a_thread_spanning_two_repositories_prompts_and_gains_a_third_workspace_live() {
+#[allow(clippy::too_many_lines)] // One acceptance journey, step by step.
+async fn a_thread_in_a_workspace_folder_sees_its_repositories_the_conventions_and_the_users_append_file()
+ {
     let harness = Harness::new(vec![
         Step::reply(Reply::text("Hello from both repositories.")),
-        Step::reply(Reply::text("Now with three.")),
+        Step::reply(Reply::text("Now with the worktree.")),
+        Step::reply(Reply::text("Back to one.")),
     ])
     .await;
+    std::fs::write(
+        harness.env.agent_dir().join("APPEND_SYSTEM.md"),
+        format!("{USER_APPEND}\n"),
+    )
+    .unwrap();
     let frontend = repo_with_marker("kumquat-17");
     let backend = repo_with_marker("rutabaga-42");
-    let later = repo_with_marker("persimmon-9");
     let daemon = Daemon::start(&harness).await;
     let mut client = daemon.client("acceptance").await;
-
-    let (front_ws, front_path) = managed_workspace(&mut client, frontend.path()).await;
-    let (back_ws, back_path) = managed_workspace(&mut client, backend.path()).await;
-    assert!(
-        front_path.starts_with(daemon.data.path()) && back_path.starts_with(daemon.data.path())
-    );
     let thread = client
         .ok(
             "threads.create",
-            json!({ "title": "full stack", "workspaceIds": [front_ws, back_ws], "model": model() }),
+            json!({ "title": "Full stack", "model": model() }),
         )
         .await;
-    let thread = thread["id"].as_str().unwrap().to_owned();
+    let (thread, workspace) = (
+        thread["id"].as_str().unwrap().to_owned(),
+        thread["workspaceId"].as_str().unwrap().to_owned(),
+    );
+    let link = add_repo(
+        &mut client,
+        &workspace,
+        json!({ "kind": "link", "path": frontend.path() }),
+    )
+    .await;
+    let folder = link.parent().unwrap().to_owned();
     let mut view = Follower::snapshot(&mut client, &thread, None).await;
 
     let first = prompt(&mut client, &thread, "hello").await;
     view.until(&mut client, settled_after(&first)).await;
 
-    let texts = assistant_texts(&view.state);
+    let system = system_prompt(&harness.fake.requests()[0]);
     assert!(
-        texts
-            .last()
-            .unwrap()
-            .contains("Hello from both repositories."),
-        "{texts:?}"
+        system.contains("kumquat-17"),
+        "the link's AGENTS.md: {system}"
     );
-    let request = harness.fake.requests()[0].to_string();
+    assert_eq!(workspace_roots(&system), [link.display().to_string()]);
+    let conventions = omfp_daemon::conventions::workspace_conventions("Full stack", &folder);
     assert!(
-        request.contains("kumquat-17") && request.contains("rutabaga-42"),
-        "both roots reach the model"
+        system.ends_with(&format!("{conventions}\n\n{USER_APPEND}")),
+        "the daemon's conventions, then the user's APPEND_SYSTEM.md, end the prompt: {}",
+        &system[system.len().saturating_sub(1200)..]
     );
 
-    let (later_ws, later_path) = managed_workspace(&mut client, later.path()).await;
-    let summary = client
-        .ok(
-            "threads.attach",
-            json!({ "threadId": thread, "workspaceId": later_ws }),
-        )
-        .await;
-    assert_eq!(
-        summary["workspaceIds"],
-        json!([front_ws, back_ws, later_ws])
-    );
+    let worktree = add_repo(
+        &mut client,
+        &workspace,
+        json!({ "kind": "worktree", "repo": backend.path() }),
+    )
+    .await;
     let second = prompt(&mut client, &thread, "and now?").await;
     view.until(&mut client, settled_after(&second)).await;
-
-    let request = harness.fake.requests()[1].to_string();
+    let system = system_prompt(&harness.fake.requests()[1]);
     assert!(
-        request.contains(&later_path.display().to_string()),
-        "the live /add-dir root reaches the model"
+        system.contains("rutabaga-42"),
+        "the live /add-dir root: {system}"
     );
-    assert_eq!(assistant_texts(&view.state).len(), 2);
+    assert_eq!(
+        workspace_roots(&system),
+        [link.display().to_string(), worktree.display().to_string()]
+    );
+
+    client
+        .ok(
+            "workspaces.remove_repo",
+            json!({ "workspaceId": workspace, "name": link.file_name().unwrap().to_str() }),
+        )
+        .await;
+    let third = prompt(&mut client, &thread, "one left?").await;
+    view.until(&mut client, settled_after(&third)).await;
+    let system = system_prompt(&harness.fake.requests()[2]);
+    assert_eq!(
+        workspace_roots(&system),
+        [worktree.display().to_string()],
+        "/remove-dir detached the link from the session"
+    );
+    assert!(!system.contains("kumquat-17"), "{system}");
+    assert!(
+        frontend.path().join("AGENTS.md").is_file(),
+        "the target stays"
+    );
+    assert_eq!(assistant_texts(&view.state).len(), 3);
     // The daemon's state equals what the client reduced from the stream (PRT-021).
     let latest = Follower::snapshot(&mut client, &thread, None).await;
     assert_eq!(latest.state, view.state);

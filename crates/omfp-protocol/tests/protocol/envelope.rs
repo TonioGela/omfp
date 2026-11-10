@@ -9,7 +9,7 @@ use omfp_protocol::{
 };
 use serde_json::{Value, json};
 
-use crate::samples::{THREAD_ID, WORKSPACE_ID, git_status, thread};
+use crate::samples::{THREAD_ID, WORKSPACE_ID, repo_statuses, thread};
 
 fn round_trip(frame: &ServerFrame) -> Value {
     let text = serde_json::to_string(frame).expect("frame serializes");
@@ -143,7 +143,7 @@ fn workspace_event_frame() {
         epoch: "e1".to_owned(),
         seq: 1,
         event: TopicEvent::Workspace(WorkspaceEvent::Status {
-            status: git_status(),
+            repos: repo_statuses(),
         }),
     });
     let golden = round_trip(&frame);

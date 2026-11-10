@@ -27,12 +27,15 @@ struct NativeHarness {
 }
 
 fn config(data_dir: &Path, bind: SocketAddr) -> Config {
+    let workspaces = data_dir.join("workspaces");
     let cli = Cli::try_parse_from([
         "daemon",
         "--bind",
         &bind.to_string(),
         "--data-dir",
         data_dir.to_str().unwrap(),
+        "--workspaces-root",
+        workspaces.to_str().unwrap(),
     ])
     .unwrap();
     Config::from_cli(cli, None, None).unwrap()

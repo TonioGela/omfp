@@ -3,14 +3,15 @@
 //! topics. Agents can later drive the same intents (D-17).
 
 use omfp_core::wire::{ImageContent, QueuedMessageQueue, ThinkingLevel};
-use omfp_protocol::{InteractionResponse, PromptBehavior};
+use omfp_protocol::{InteractionResponse, PromptBehavior, RepoSource};
 
 /// One user action.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
     /// The user opened a thread: subscribe to `thread/<id>` and fetch its [`crate::ThreadDetails`].
     SelectThread { thread_id: String },
-    /// Creates the requested workspaces in order, then `threads.create` with all of them (UI-023).
+    /// `threads.create` in a new workspace, then `workspaces.add_repo` for each repository and the first
+    /// `thread.prompt` (UI-023).
     CreateThread(NewThread),
     /// `threads.update`; `None` fields stay unchanged.
     UpdateThread {
@@ -24,29 +25,23 @@ pub enum Intent {
     UnarchiveThread { thread_id: String },
     /// `threads.delete`; the workspaces are kept (UI-026).
     DeleteThread { thread_id: String },
-    /// `threads.attach`, appended.
-    AttachWorkspace {
-        thread_id: String,
-        workspace_id: String,
-    },
-    /// `threads.detach`.
-    DetachWorkspace {
-        thread_id: String,
-        workspace_id: String,
-    },
     /// `repos.add`.
     AddRepository { path: String },
     /// `repos.remove`; its workspaces stay (UI-025).
     RemoveRepository { repository_id: String },
-    /// `workspaces.create`, `workspaces.from_pr` or `workspaces.adopt`, without a thread.
-    CreateWorkspace(WorkspaceSource),
-    /// `workspaces.remove`.
-    RemoveWorkspace {
+    /// `workspaces.add_repo` into `workspace_id`, or into a new workspace (`workspaces.create` first) when `None`.
+    AddRepo {
+        workspace_id: Option<String>,
+        source: RepoSource,
+    },
+    /// `workspaces.remove_repo`.
+    RemoveRepo {
         workspace_id: String,
+        name: String,
         force: bool,
         delete_branch: bool,
     },
-    /// `workspaces.status`, stored in [`crate::ViewInput::git`].
+    /// `workspaces.rescan`, then `workspaces.status` of each repository, stored in [`crate::ViewInput::git`].
     RefreshWorkspace { workspace_id: String },
     /// `thread.prompt`; `behavior` is set when the thread is busy (UI-061).
     Prompt {
@@ -100,27 +95,10 @@ pub enum QueueOp {
 pub struct NewThread {
     pub title: String,
     pub tags: Vec<String>,
-    /// Attached in this order; the first one is the thread's cwd. May be empty.
-    pub workspaces: Vec<WorkspaceSource>,
-    /// First message, sent once the thread exists.
+    /// Added to the thread's new workspace in this order. May be empty.
+    pub repos: Vec<RepoSource>,
+    /// First message, sent once the repositories are in place.
     pub prompt: Option<String>,
-}
-
-/// Where a workspace comes from.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkspaceSource {
-    /// An existing workspace.
-    Existing { workspace_id: String },
-    /// A new managed worktree (`workspaces.create`); `repo` is a registered repository id or a path.
-    NewWorktree {
-        repo: String,
-        branch: Option<String>,
-        base_ref: Option<String>,
-    },
-    /// A worktree on a pull request's head (`workspaces.from_pr`).
-    FromPr { pr: String, repo: Option<String> },
-    /// An existing directory (`workspaces.adopt`).
-    Adopt { path: String },
 }
 
 /// What the host reports back about a dispatched intent.

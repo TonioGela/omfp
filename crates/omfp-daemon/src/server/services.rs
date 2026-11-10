@@ -1,11 +1,13 @@
 //! What request handlers use: the store-backed services, the agent supervisor, and the logs of the `index` and
-//! `workspace/<id>` topics.
+//! `workspace/<id>` topics. Workspace folders are rescanned here (DMN-023), and a change reaches the index and the
+//! roots of the live threads in the workspace (DMN-029).
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use omfp_protocol::{
-    ErrorBody, GitStatus, IndexEvent, IndexSnapshot, ThreadSummary, WorkspaceEvent,
+    ErrorBody, IndexEvent, IndexSnapshot, RepoStatus, ThreadSummary, Workspace, WorkspaceEvent,
 };
 use tokio::task::JoinHandle;
 use tracing::warn;
@@ -15,13 +17,13 @@ use crate::event_log::EventLog;
 use crate::store::{Store, StoreError, new_id, now_ms};
 use crate::supervisor::Supervisor;
 use crate::threads::Threads;
-use crate::workspaces::Workspaces;
+use crate::workspaces::{WorkspaceView, Workspaces};
 
 /// The `index` topic: repositories, workspaces and thread summaries.
 pub(crate) type IndexLog = EventLog<IndexEvent, IndexSnapshot>;
 
-/// A `workspace/<id>` topic: the workspace's git status, `None` outside git.
-pub(crate) type WorkspaceLog = EventLog<WorkspaceEvent, Option<GitStatus>>;
+/// A `workspace/<id>` topic: the git status of each repository of the workspace.
+pub(crate) type WorkspaceLog = EventLog<WorkspaceEvent, Vec<RepoStatus>>;
 
 const INDEX_CAPACITY: usize = 512;
 const WORKSPACE_CAPACITY: usize = 16;
@@ -60,9 +62,9 @@ fn apply_index(state: &mut IndexSnapshot, event: &IndexEvent) {
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // `EventLog` takes `fn(&mut S, &E)`.
-fn apply_workspace(state: &mut Option<GitStatus>, event: &WorkspaceEvent) {
+fn apply_workspace(state: &mut Vec<RepoStatus>, event: &WorkspaceEvent) {
     match event {
-        WorkspaceEvent::Status { status } => *state = Some(status.clone()),
+        WorkspaceEvent::Status { repos } => state.clone_from(repos),
     }
 }
 
@@ -86,6 +88,7 @@ async fn blocking<T: Send + 'static>(
 }
 
 impl Services {
+    /// The services over the daemon's stores; every workspace is scanned first (DMN-023).
     pub async fn new(
         store: Arc<Store>,
         threads: Arc<Threads>,
@@ -111,8 +114,82 @@ impl Services {
             refresh: Arc::new(tokio::sync::Mutex::new(())),
             workspace_logs: Arc::new(Mutex::new(HashMap::new())),
         };
+        let workspaces = Arc::clone(&services.workspaces);
+        blocking(move || {
+            for ws in workspaces.list().map_err(workspace_error)? {
+                if let Err(error) = workspaces.rescan(&ws.id) {
+                    warn!(workspace = %ws.id, %error, "cannot scan the workspace folder");
+                }
+            }
+            Ok(())
+        })
+        .await?;
         services.refresh_index().await?;
         Ok(services)
+    }
+
+    /// Rescans the workspace of every thread that finishes a tool execution (DMN-023).
+    pub fn spawn_rescans(&self) -> JoinHandle<()> {
+        let mut tool_ends = self.supervisor.subscribe_tool_ends();
+        let services = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let thread_id = match tool_ends.recv().await {
+                    Ok(thread_id) => thread_id,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                };
+                let threads = Arc::clone(&services.threads);
+                let workspace = blocking(move || {
+                    threads
+                        .get(&thread_id)
+                        .map(|thread| thread.workspace_id)
+                        .map_err(convert::thread_error)
+                })
+                .await;
+                let result = match workspace {
+                    Ok(workspace_id) => services.rescan(&workspace_id).await.map(drop),
+                    Err(error) => Err(error),
+                };
+                if let Err(error) = result {
+                    warn!(error = %error.message, "rescan after a tool run failed");
+                }
+            }
+        })
+    }
+
+    /// Rescans a workspace folder (DMN-023): a change updates the `index` topic, and the live threads in the
+    /// workspace get their roots synced (DMN-029).
+    pub async fn rescan(&self, id: &str) -> Result<WorkspaceView, ErrorBody> {
+        let workspaces = Arc::clone(&self.workspaces);
+        let workspace_id = id.to_owned();
+        let (view, changed) =
+            blocking(move || workspaces.rescan(&workspace_id).map_err(workspace_error)).await?;
+        if changed {
+            self.refresh_index_quietly().await;
+        }
+        self.sync_roots(id).await?;
+        Ok(view)
+    }
+
+    /// Syncs the roots of the live threads living in workspace `id` with its last scan (DMN-029).
+    pub async fn sync_roots(&self, id: &str) -> Result<(), ErrorBody> {
+        let store = Arc::clone(&self.store);
+        let workspace_id = id.to_owned();
+        let thread_ids = blocking(move || {
+            store
+                .workspace_thread_ids(&workspace_id)
+                .map_err(ErrorBody::from)
+        })
+        .await?;
+        for thread_id in thread_ids {
+            if self.supervisor.is_running(&thread_id)
+                && let Err(error) = self.supervisor.sync_roots(&thread_id).await
+            {
+                warn!(thread = %thread_id, %error, "root sync failed");
+            }
+        }
+        Ok(())
     }
 
     /// Keeps thread summaries current when processes start, stop, settle or ask something.
@@ -135,10 +212,10 @@ impl Services {
         let current = Arc::new(self.index.with_state(Clone::clone));
         let previous = Arc::clone(&current);
         let store = Arc::clone(&self.store);
+        let workspaces = Arc::clone(&self.workspaces);
         let supervisor = self.supervisor.clone();
         let fresh =
-            blocking(move || load_index(&store, &supervisor, &previous).map_err(ErrorBody::from))
-                .await?;
+            blocking(move || load_index(&store, &workspaces, &supervisor, &previous)).await?;
         for event in diff_index(&current, fresh) {
             self.index.push(event);
         }
@@ -165,19 +242,17 @@ impl Services {
             })
     }
 
-    /// Whether a thread with a live omp process uses the workspace (DMN-024).
-    pub async fn workspace_in_use(&self, id: &str) -> Result<bool, ErrorBody> {
-        let store = Arc::clone(&self.store);
-        let workspace_id = id.to_owned();
-        let threads = blocking(move || {
-            store
-                .workspace_thread_ids(&workspace_id)
-                .map_err(ErrorBody::from)
-        })
-        .await?;
-        Ok(threads
-            .iter()
-            .any(|thread| self.supervisor.is_running(thread)))
+    /// The workspace as published on the `index` topic.
+    pub async fn workspace_summary(&self, id: &str) -> Result<Workspace, ErrorBody> {
+        self.refresh_index().await?;
+        self.index
+            .with_state(|index| index.workspaces.iter().find(|ws| ws.id == id).cloned())
+            .ok_or_else(|| {
+                ErrorBody::from(StoreError::NotFound {
+                    entity: "workspace",
+                    id: id.to_owned(),
+                })
+            })
     }
 
     /// The log of `workspace/<id>`, its status refreshed.
@@ -194,7 +269,7 @@ impl Services {
         Arc::clone(logs.entry(id.to_owned()).or_insert_with(|| {
             Arc::new(EventLog::new(
                 new_id(),
-                None,
+                Vec::new(),
                 apply_workspace,
                 WORKSPACE_CAPACITY,
                 LIVE_BUFFER,
@@ -202,57 +277,78 @@ impl Services {
         }))
     }
 
-    /// The workspace's git status now (DMN-026), published on its topic when it changed; `None` outside git.
-    pub async fn workspace_status(&self, id: &str) -> Result<Option<GitStatus>, ErrorBody> {
+    /// The git status of every repository of the workspace now (DMN-026), published on its topic when it changed.
+    pub async fn workspace_status(&self, id: &str) -> Result<Vec<RepoStatus>, ErrorBody> {
         let workspaces = Arc::clone(&self.workspaces);
         let workspace_id = id.to_owned();
-        let status = blocking(move || {
-            let ws = workspaces.get(&workspace_id).map_err(workspace_error)?;
-            let Some(status) = workspaces.status(&workspace_id).map_err(workspace_error)? else {
-                return Ok(None);
-            };
-            let diff = workspaces
-                .diff(&workspace_id)
-                .map_err(workspace_error)?
-                .unwrap_or_default();
-            Ok(Some(convert::git_status(
-                &status,
-                ws.base_ref.as_deref(),
-                &diff,
-            )))
+        let repos = blocking(move || {
+            let repos = workspaces
+                .discovered(&workspace_id)
+                .map_err(workspace_error)?;
+            repos
+                .iter()
+                .map(|repo| {
+                    let (status, upstream) = workspaces.status(repo).map_err(workspace_error)?;
+                    let diff = workspaces.diff(repo).map_err(workspace_error)?;
+                    Ok(RepoStatus {
+                        name: repo.name.clone(),
+                        status: convert::git_status(&status, upstream.as_deref(), &diff),
+                    })
+                })
+                .collect::<Result<Vec<_>, ErrorBody>>()
         })
         .await?;
         let log = self.workspace_log_entry(id);
-        if let Some(status) = &status
-            && log.with_state(|current| current.as_ref() != Some(status))
-        {
+        if log.with_state(|current| *current != repos) {
             log.push(WorkspaceEvent::Status {
-                status: status.clone(),
+                repos: repos.clone(),
             });
         }
-        Ok(status)
+        Ok(repos)
     }
 }
 
-/// The index as stored now; thread summaries keep their `updated_at` unless something in them changed.
+/// The index as stored and scanned now; thread summaries keep their `updated_at` unless something in them changed.
 fn load_index(
     store: &Store,
+    workspaces: &Workspaces,
     supervisor: &Supervisor,
     previous: &IndexSnapshot,
-) -> Result<IndexSnapshot, StoreError> {
+) -> Result<IndexSnapshot, ErrorBody> {
     let clients = store.created_clients()?;
     let repositories = store
         .repositories()?
         .iter()
         .map(convert::repository)
         .collect();
-    let workspaces = store
-        .workspaces()?
+    let threads = store.threads()?;
+    let mut scanned = Vec::new();
+    for ws in workspaces.list().map_err(workspace_error)? {
+        let repos = workspaces.discovered(&ws.id).map_err(workspace_error)?;
+        scanned.push((ws, repos));
+    }
+    // Which workspaces hold each checkout (DMN-027).
+    let mut holders: HashMap<PathBuf, Vec<String>> = HashMap::new();
+    for (ws, repos) in &scanned {
+        for repo in repos {
+            holders
+                .entry(repo.canonical.clone())
+                .or_default()
+                .push(ws.id.clone());
+        }
+    }
+    let workspaces = scanned
         .iter()
-        .map(|ws| convert::workspace(ws, &clients))
+        .map(|(ws, repos)| {
+            let thread_ids = threads
+                .iter()
+                .filter(|thread| thread.workspace_id == ws.id)
+                .map(|thread| thread.id.clone())
+                .collect();
+            convert::workspace(ws, repos, thread_ids, &holders, &clients)
+        })
         .collect();
-    let threads = store
-        .threads()?
+    let threads = threads
         .iter()
         .map(|thread| {
             let before = previous

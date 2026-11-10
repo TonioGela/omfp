@@ -23,7 +23,14 @@ fn repository(marker: &str) -> TempRepo {
 async fn a_thread_on_a_new_worktree_streams_its_reply_and_goes_idle() -> anyhow::Result<()> {
     let repo = repository("kumquat-17");
     let journey = Journey::start(
-        vec![Step::reply(Reply::text("Hello from the new worktree."))],
+        vec![
+            Step::reply(Reply::tool_calls(vec![ToolCall::new(
+                "call_bash_1",
+                "bash",
+                json!({ "command": "pwd && cat */AGENTS.md" }),
+            )])),
+            Step::reply(Reply::text("Hello from the new worktree.")),
+        ],
         Settings::default(),
     )
     .await?;
@@ -48,18 +55,30 @@ async fn a_thread_on_a_new_worktree_streams_its_reply_and_goes_idle() -> anyhow:
         .await?;
     journey.click("[data-testid=create-thread]").await?;
     let thread = journey.opened("worktree journey").await?;
-    let chip = journey
-        .text("[data-testid=thread-header] [data-testid=workspace-chip]")
+    // The workspace chip (named after the title), then the new worktree on its branch.
+    let chips = journey
+        .until("the worktree chip", async |page| {
+            let chips = page
+                .texts("[data-testid=thread-header] [data-testid=workspace-chip]")
+                .await?;
+            Ok((chips.len() == 2).then_some(chips))
+        })
         .await?;
-    assert!(chip.contains("feat-e2e"), "{chip}");
+    assert!(chips[0].contains("worktree journey"), "{chips:?}");
+    assert!(chips[1].contains("feat-e2e"), "{chips:?}");
 
     journey.send("hello").await?;
     journey.reply("Hello from the new worktree.").await?;
     journey.status(&thread, "idle").await?;
-    let request = journey.fake.requests()[0].to_string();
+    // The agent runs in the workspace folder, the worktree inside it.
+    let request = journey.fake.requests()[1].to_string();
+    assert!(
+        request.contains("/workspaces/worktree-journey"),
+        "the cwd is the workspace folder: {request}"
+    );
     assert!(
         request.contains("kumquat-17"),
-        "the worktree's AGENTS.md reaches the model"
+        "the worktree is an entry of the workspace folder"
     );
     journey.finish("E2E-01").await
 }
@@ -426,45 +445,54 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
     journey.finish("E2E-05").await
 }
 
-/// Registers both repositories and creates one worktree of each from the Workspaces panel.
-async fn two_worktrees(journey: &Journey, front: &TempRepo, back: &TempRepo) -> anyhow::Result<()> {
-    // Two repositories, one worktree each, from the Workspaces panel.
-    for repo in [&front, &back] {
-        journey
-            .type_into(
-                "[data-testid=add-repository] input",
-                &repo.path().to_string_lossy(),
-            )
-            .await?;
-        journey.click("[data-testid=add-repository] button").await?;
-    }
+/// Adds a new worktree of `front` (registered first) and a link to `back` to the selected thread's workspace from the
+/// Workspaces panel.
+async fn worktree_and_link(
+    journey: &Journey,
+    front: &TempRepo,
+    back: &TempRepo,
+) -> anyhow::Result<()> {
     journey
-        .until("both repositories", async |page| {
+        .type_into(
+            "[data-testid=add-repository] input",
+            &front.path().to_string_lossy(),
+        )
+        .await?;
+    journey.click("[data-testid=add-repository] button").await?;
+    journey
+        .until("the repository", async |page| {
             let options = page.texts("[data-testid=create-worktree] option").await?;
-            Ok((options.len() == 3).then_some(()))
+            Ok((options.len() == 2).then_some(()))
         })
         .await?;
-    for (index, branch) in [(2, "front-branch"), (3, "back-branch")] {
-        journey
-            .element("[data-testid=create-worktree] select")
-            .await?
-            .find(By::Css(format!("option:nth-child({index})")))
-            .await?
-            .click()
-            .await?;
-        journey
-            .type_into("[data-testid=create-worktree] input", branch)
-            .await?;
-        journey
-            .click("[data-testid=create-worktree] button")
-            .await?;
-    }
     journey
-        .until("both worktrees", async |page| {
-            Ok((page.texts("[data-testid=workspace-row]").await?.len() == 2).then_some(()))
-        })
+        .element("[data-testid=create-worktree] select")
+        .await?
+        .find(By::Css("option:nth-child(2)"))
+        .await?
+        .click()
         .await?;
-    Ok(())
+    journey
+        .type_into("[data-testid=create-worktree] input", "front-branch")
+        .await?;
+    journey
+        .click("[data-testid=create-worktree] button")
+        .await?;
+    journey
+        .type_into(
+            "[data-testid=link-repo] input",
+            &back.path().to_string_lossy(),
+        )
+        .await?;
+    journey.click("[data-testid=link-repo] button").await?;
+    journey
+        .until("the workspace and both repository chips", async |page| {
+            let chips = page
+                .texts("[data-testid=thread-header] [data-testid=workspace-chip]")
+                .await?;
+            Ok((chips.len() == 3).then_some(()))
+        })
+        .await
 }
 
 // spec: E2E-08, UI-021, UI-022, UI-025, UI-092
@@ -476,11 +504,7 @@ async fn a_thread_on_two_repositories_shows_under_both_when_grouped_by_repositor
     let journey = Journey::start(Vec::new(), Settings::default()).await?;
     journey.connected().await?;
 
-    two_worktrees(&journey, &front, &back).await?;
-    // The Workspaces panel and its forms fit the side column at a 1400 px window.
-    journey.fits("[data-testid=side-panels]").await?;
-
-    // Alt+N opens the new-thread dialog with the title focused (UI-092); no workspace.
+    // Alt+N opens the new-thread dialog with the title focused (UI-092); no repository.
     journey
         .element("[data-testid=sidebar]")
         .await?
@@ -508,23 +532,10 @@ async fn a_thread_on_two_repositories_shows_under_both_when_grouped_by_repositor
     journey.click("[data-testid=create-thread]").await?;
     let thread = journey.opened("two repositories").await?;
 
-    // Attach both from the header, one after the other.
-    for attached in 1..=2 {
-        let attach = journey.element("[data-testid=attach-workspace]").await?;
-        attach
-            .find(By::Css("option:nth-child(2)"))
-            .await?
-            .click()
-            .await?;
-        journey
-            .until(&format!("{attached} workspace chips"), async |page| {
-                let chips = page
-                    .texts("[data-testid=thread-header] [data-testid=workspace-chip]")
-                    .await?;
-                Ok((chips.len() == attached).then_some(()))
-            })
-            .await?;
-    }
+    // A worktree and a link from two places, into the thread's workspace.
+    worktree_and_link(&journey, &front, &back).await?;
+    // The Workspaces panel and its forms fit the side column at a 1400 px window.
+    journey.fits("[data-testid=side-panels]").await?;
 
     journey
         .select("[data-testid=grouping]", "repository")

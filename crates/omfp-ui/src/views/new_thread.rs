@@ -1,13 +1,12 @@
-//! The new-thread dialog (UI-023): title, tags, first message, and any combination of workspaces. It traps focus
-//! (UI-092): the shell behind it is inert and focus sentinels at both ends wrap Tab around.
+//! The new-thread dialog (UI-023): title, tags, first message, and the repositories of the thread's new workspace. It
+//! traps focus (UI-092): the shell behind it is inert and focus sentinels at both ends wrap Tab around.
 
 use std::rc::Rc;
 
 use dioxus::prelude::*;
 
 use super::Ctx;
-use crate::vm::new_thread::{NewThreadForm, WorkspaceChoice};
-use crate::vm::threads::workspace_label;
+use crate::vm::new_thread::{NewThreadForm, RepoChoice};
 
 /// Updates the open form, if any.
 fn edit(mut ui: Signal<crate::UiState>, change: impl FnOnce(&mut NewThreadForm)) {
@@ -36,16 +35,6 @@ pub(crate) fn NewThreadDialog() -> Element {
     let first: Signal<Option<Rc<MountedData>>> = use_signal(|| None);
     let last: Signal<Option<Rc<MountedData>>> = use_signal(|| None);
     let input = ctx.input.read();
-    let workspaces: Vec<(String, String)> = input
-        .workspaces
-        .iter()
-        .map(|workspace| {
-            (
-                workspace.id.clone(),
-                workspace_label(workspace, &input.repositories),
-            )
-        })
-        .collect();
     let repositories: Vec<(String, String)> = input
         .repositories
         .iter()
@@ -83,7 +72,7 @@ pub(crate) fn NewThreadDialog() -> Element {
                         }
                     },
                     TitleAndTags { title: form.title.clone(), tags: form.tags.clone(), first }
-                    WorkspaceChoices { choices: form.workspaces.clone(), workspaces, repositories }
+                    RepoChoices { choices: form.repos.clone(), repositories }
                     label {
                         "First message (optional)"
                         textarea {
@@ -147,33 +136,21 @@ fn TitleAndTags(title: String, tags: String, first: Signal<Option<Rc<MountedData
     }
 }
 
-/// The workspace lines and the buttons adding one of each source (UI-023).
+/// The repository lines and the buttons adding one of each source (UI-023).
 #[component]
-fn WorkspaceChoices(
-    choices: Vec<WorkspaceChoice>,
-    workspaces: Vec<(String, String)>,
-    repositories: Vec<(String, String)>,
-) -> Element {
+fn RepoChoices(choices: Vec<RepoChoice>, repositories: Vec<(String, String)>) -> Element {
     let ui = Ctx::get().ui;
-    let none_to_pick = workspaces.is_empty();
     rsx! {
         fieldset { class: "workspace-choices",
-            legend { "Workspaces (optional; the first is the working directory)" }
+            legend { "Repositories (optional) of the thread's new workspace" }
             for (index, choice) in choices.into_iter().enumerate() {
-                WorkspaceLine { key: "{index}", index, choice, workspaces: workspaces.clone(), repositories: repositories.clone() }
+                RepoLine { key: "{index}", index, choice, repositories: repositories.clone() }
             }
             div { class: "choice-buttons",
                 button {
                     r#type: "button",
-                    "data-testid": "add-existing",
-                    disabled: none_to_pick,
-                    onclick: move |_| edit(ui, |form| form.workspaces.push(WorkspaceChoice::Existing { workspace_id: String::new() })),
-                    "+ Existing workspace"
-                }
-                button {
-                    r#type: "button",
                     "data-testid": "add-worktree",
-                    onclick: move |_| edit(ui, |form| form.workspaces.push(WorkspaceChoice::NewWorktree {
+                    onclick: move |_| edit(ui, |form| form.repos.push(RepoChoice::NewWorktree {
                         repo: String::new(),
                         branch: String::new(),
                         base_ref: String::new(),
@@ -184,82 +161,60 @@ fn WorkspaceChoices(
                     r#type: "button",
                     "data-testid": "add-pr",
                     disabled: true,
-                    title: "Workspaces from pull requests are not supported by the daemon yet",
+                    title: "Worktrees from pull requests are not supported by the daemon yet",
                     "+ From PR"
                 }
                 button {
                     r#type: "button",
-                    "data-testid": "add-adopt",
-                    onclick: move |_| edit(ui, |form| form.workspaces.push(WorkspaceChoice::Adopt { path: String::new() })),
-                    "+ Adopt directory"
+                    "data-testid": "add-link",
+                    onclick: move |_| edit(ui, |form| form.repos.push(RepoChoice::Link { path: String::new() })),
+                    "+ Link directory"
                 }
             }
         }
     }
 }
 
-/// Changes workspace line `index` of the open form.
-fn set_choice(ui: Signal<crate::UiState>, index: usize, change: impl FnOnce(&mut WorkspaceChoice)) {
+/// Changes repository line `index` of the open form.
+fn set_choice(ui: Signal<crate::UiState>, index: usize, change: impl FnOnce(&mut RepoChoice)) {
     edit(ui, |form| {
-        if let Some(choice) = form.workspaces.get_mut(index) {
+        if let Some(choice) = form.repos.get_mut(index) {
             change(choice);
         }
     });
 }
 
-/// One workspace of the form.
+/// One repository of the form.
 #[component]
-fn WorkspaceLine(
-    index: usize,
-    choice: WorkspaceChoice,
-    workspaces: Vec<(String, String)>,
-    repositories: Vec<(String, String)>,
-) -> Element {
+fn RepoLine(index: usize, choice: RepoChoice, repositories: Vec<(String, String)>) -> Element {
     let ui = Ctx::get().ui;
     let line = index + 1;
     let kind = choice.token();
     rsx! {
         div { class: "workspace-choice", "data-testid": "workspace-choice", "data-kind": kind,
-            span { class: "choice-index", if index == 0 { "{line} (cwd)" } else { "{line}" } }
+            span { class: "choice-index", "{line}" }
             match choice {
-                WorkspaceChoice::Existing { workspace_id } => rsx! {
-                    select {
-                        "aria-label": "Workspace {line}",
-                        value: "{workspace_id}",
-                        onchange: move |event| {
-                            let value = event.value();
-                            set_choice(ui, index, move |choice| *choice = WorkspaceChoice::Existing { workspace_id: value });
-                        },
-                        option { value: "", "Workspace…" }
-                        for (id, label) in workspaces {
-                            option { key: "{id}", value: "{id}", selected: *id == workspace_id, "{label}" }
-                        }
-                    }
-                },
-                WorkspaceChoice::NewWorktree { repo, branch, base_ref } => rsx! {
+                RepoChoice::NewWorktree { repo, branch, base_ref } => rsx! {
                     WorktreeInputs { index, repo, branch, base_ref, repositories }
                 },
-                WorkspaceChoice::FromPr { pr, .. } => rsx! {
-                    span { "PR {pr}" }
-                },
-                WorkspaceChoice::Adopt { path } => rsx! {
+                RepoChoice::Link { path } => rsx! {
                     input {
-                        "aria-label": "Directory of workspace {line}",
+                        "aria-label": "Directory of repository {line}",
                         placeholder: "/path/to/directory",
                         value: "{path}",
                         oninput: move |event| {
                             let value = event.value();
-                            set_choice(ui, index, move |choice| *choice = WorkspaceChoice::Adopt { path: value });
+                            set_choice(ui, index, move |choice| *choice = RepoChoice::Link { path: value });
                         },
                     }
                 },
             }
             button {
                 r#type: "button",
-                "aria-label": "Remove workspace {line}",
+                "aria-label": "Remove repository {line}",
                 onclick: move |_| edit(ui, |form| {
-                    if index < form.workspaces.len() {
-                        form.workspaces.remove(index);
+                    if index < form.repos.len() {
+                        form.repos.remove(index);
                     }
                 }),
                 "×"
@@ -282,14 +237,14 @@ fn WorktreeInputs(
     rsx! {
         input {
             "data-testid": "worktree-repo",
-            "aria-label": "Repository of workspace {line} (registered id or path)",
+            "aria-label": "Repository {line} (registered id or path)",
             placeholder: "repository or /path",
             list: "new-thread-repositories",
             value: "{repo}",
             oninput: move |event| {
                 let value = event.value();
                 set_choice(ui, index, move |choice| {
-                    if let WorkspaceChoice::NewWorktree { repo, .. } = choice {
+                    if let RepoChoice::NewWorktree { repo, .. } = choice {
                         *repo = value;
                     }
                 });
@@ -302,13 +257,13 @@ fn WorktreeInputs(
         }
         input {
             "data-testid": "worktree-branch",
-            "aria-label": "Branch of workspace {line}",
+            "aria-label": "Branch of repository {line}",
             placeholder: "branch (optional)",
             value: "{branch}",
             oninput: move |event| {
                 let value = event.value();
                 set_choice(ui, index, move |choice| {
-                    if let WorkspaceChoice::NewWorktree { branch, .. } = choice {
+                    if let RepoChoice::NewWorktree { branch, .. } = choice {
                         *branch = value;
                     }
                 });
@@ -316,13 +271,13 @@ fn WorktreeInputs(
         }
         input {
             "data-testid": "worktree-base",
-            "aria-label": "Base ref of workspace {line}",
+            "aria-label": "Base ref of repository {line}",
             placeholder: "base (optional)",
             value: "{base_ref}",
             oninput: move |event| {
                 let value = event.value();
                 set_choice(ui, index, move |choice| {
-                    if let WorkspaceChoice::NewWorktree { base_ref, .. } = choice {
+                    if let RepoChoice::NewWorktree { base_ref, .. } = choice {
                         *base_ref = value;
                     }
                 });

@@ -16,11 +16,38 @@ expression: snapshot
   "workspaces": [
     {
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
-      "path": "/home/dev/.local/share/omfp/worktrees/shop-frontend/checkout-v2",
-      "kind": "managed_worktree",
-      "repositoryId": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F",
-      "branch": "omfp/checkout-v2-k3p9",
-      "baseRef": "origin/main",
+      "name": "checkout-v2",
+      "path": "/home/dev/omfp/workspaces/checkout-v2",
+      "owned": true,
+      "repos": [
+        {
+          "name": "backend",
+          "path": "/home/dev/omfp/workspaces/checkout-v2/backend",
+          "kind": "link",
+          "target": "/home/dev/src/shop-backend",
+          "branch": "main",
+          "head": "f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a",
+          "isRoot": false,
+          "canonicalPath": "/home/dev/src/shop-backend",
+          "sharedWith": [
+            "01JD8X3Q4T9V2W6Y5Z7A1B3C7G"
+          ]
+        },
+        {
+          "name": "shop-frontend",
+          "path": "/home/dev/omfp/workspaces/checkout-v2/shop-frontend",
+          "kind": "worktree",
+          "main": "/home/dev/src/shop-frontend",
+          "branch": "omfp/checkout-v2-1",
+          "head": "0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d",
+          "isRoot": false,
+          "canonicalPath": "/home/dev/omfp/workspaces/checkout-v2/shop-frontend",
+          "sharedWith": []
+        }
+      ],
+      "threadIds": [
+        "01JD8X3Q4T9V2W6Y5Z7A1B3C4D"
+      ],
       "provenance": {
         "createdBy": {
           "kind": "user"
@@ -31,13 +58,30 @@ expression: snapshot
     },
     {
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C7G",
-      "path": "/home/dev/notes",
-      "kind": "adopted",
+      "name": "shop-backend",
+      "path": "/home/dev/src/shop-backend",
+      "owned": false,
+      "repos": [
+        {
+          "name": "shop-backend",
+          "path": "/home/dev/src/shop-backend",
+          "kind": "clone",
+          "branch": "main",
+          "head": "f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a",
+          "isRoot": true,
+          "canonicalPath": "/home/dev/src/shop-backend",
+          "sharedWith": [
+            "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+          ]
+        }
+      ],
+      "threadIds": [],
       "provenance": {
         "createdBy": {
-          "kind": "user"
+          "kind": "thread",
+          "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D"
         },
-        "client": "omfp-ui/web"
+        "client": "omfp-agent"
       },
       "createdAt": 1794268800000
     }
@@ -49,10 +93,7 @@ expression: snapshot
       "tags": [
         "checkout-v2"
       ],
-      "workspaceIds": [
-        "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
-        "01JD8X3Q4T9V2W6Y5Z7A1B3C7G"
-      ],
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
       "process": {
         "state": "stopped"
       },

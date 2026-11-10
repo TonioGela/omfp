@@ -23,35 +23,25 @@ pub(crate) fn StatusBadge(status: ThreadStatus, testid: &'static str) -> Element
     }
 }
 
-/// `repo:branch #PR`, marked when it is the thread's cwd. With `link`, the PR number links to the PR.
+/// The workspace's name, marked as the thread's cwd, or a repository's `name:branch` with its kind.
 #[component]
-pub(crate) fn WorkspaceChipView(chip: WorkspaceChip, link: bool) -> Element {
-    let title = if chip.cwd {
+pub(crate) fn WorkspaceChipView(chip: WorkspaceChip) -> Element {
+    let workspace = chip.is_workspace();
+    let title = if workspace {
         "Working directory"
     } else {
-        "Workspace"
+        chip.kind
     };
     rsx! {
         span {
             class: "chip",
             "data-testid": "workspace-chip",
-            "data-workspace-id": "{chip.workspace_id}",
-            "data-cwd": chip.cwd,
+            "data-kind": chip.kind,
             title,
-            if chip.cwd {
+            if workspace {
                 span { class: "chip-cwd", "aria-label": "cwd", "⌂" }
             }
             "{chip.label}"
-            if let Some(number) = chip.pr_number {
-                match (link, &chip.pr_url) {
-                    (true, Some(url)) => rsx! {
-                        a { class: "chip-pr", href: "{url}", target: "_blank", rel: "noopener noreferrer", "#{number}" }
-                    },
-                    _ => rsx! {
-                        span { class: "chip-pr", "#{number}" }
-                    },
-                }
-            }
         }
     }
 }

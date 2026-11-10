@@ -27,7 +27,7 @@ mod test_support;
 pub use input::{
     ClosedInteraction, ConnectionView, OutcomeEntry, ThreadDetails, ThreadView, ViewInput,
 };
-pub use intent::{Intent, IntentOutcome, NewThread, QueueOp, WorkspaceSource};
+pub use intent::{Intent, IntentOutcome, NewThread, QueueOp};
 pub use local::UiState;
 pub use views::app::App;
 pub use views::token::TokenPrompt;

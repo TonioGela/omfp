@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 use omfp_core::ProcessState;
-use omfp_protocol::{Repository, ThreadSummary, Workspace};
+use omfp_protocol::{RepoKind, ThreadSummary, Workspace, WorkspaceRepo};
 
 /// What a thread's badge says.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,66 +81,72 @@ impl ThreadStatus {
     }
 }
 
-/// A workspace as shown next to a thread.
+/// A thread's workspace, or one of its repositories, as shown next to the thread.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceChip {
-    pub workspace_id: String,
-    /// `repo:branch`, `repo`, or the directory name of a workspace outside any repository.
+    /// Unique among a thread's chips: the workspace id, then `<workspace id>/<repository name>`.
+    pub key: String,
+    /// `workspace` (the thread's cwd), or the repository's kind: `link`, `worktree` or `clone`.
+    pub kind: &'static str,
+    /// The workspace's name, or the repository's `name:branch` (`name` on a detached HEAD).
     pub label: String,
-    pub pr_number: Option<u64>,
-    pub pr_url: Option<String>,
-    /// The first workspace is the thread's cwd.
-    pub cwd: bool,
 }
 
-/// Chips of `workspace_ids` in order; unknown ids are skipped.
-#[must_use]
-pub fn workspace_chips(
-    workspace_ids: &[String],
-    workspaces: &[Workspace],
-    repositories: &[Repository],
-) -> Vec<WorkspaceChip> {
-    workspace_ids
-        .iter()
-        .filter_map(|id| workspaces.iter().find(|workspace| workspace.id == *id))
-        .enumerate()
-        .map(|(index, workspace)| WorkspaceChip {
-            workspace_id: workspace.id.clone(),
-            label: workspace_label(workspace, repositories),
-            pr_number: workspace.pr_number,
-            pr_url: workspace.pr_url.clone(),
-            cwd: index == 0,
-        })
-        .collect()
-}
-
-/// `repo:branch`, `repo`, or the last path component.
-#[must_use]
-pub fn workspace_label(workspace: &Workspace, repositories: &[Repository]) -> String {
-    let repository =
-        repository_of(workspace, repositories).map(|repository| repository.name.as_str());
-    match (repository, workspace.branch.as_deref()) {
-        (Some(repository), Some(branch)) => format!("{repository}:{branch}"),
-        (Some(repository), None) => repository.to_owned(),
-        (None, _) => basename(&workspace.path).to_owned(),
+impl WorkspaceChip {
+    /// The chip of the workspace itself, the thread's cwd.
+    #[must_use]
+    pub fn is_workspace(&self) -> bool {
+        self.kind == "workspace"
     }
 }
 
-fn repository_of<'a>(
-    workspace: &Workspace,
-    repositories: &'a [Repository],
-) -> Option<&'a Repository> {
-    let id = workspace.repository_id.as_deref()?;
-    repositories.iter().find(|repository| repository.id == id)
+/// The chip of workspace `workspace_id`, then one per repository in folder order; none for an unknown id.
+#[must_use]
+pub fn workspace_chips(workspace_id: &str, workspaces: &[Workspace]) -> Vec<WorkspaceChip> {
+    let Some(workspace) = workspaces
+        .iter()
+        .find(|workspace| workspace.id == workspace_id)
+    else {
+        return Vec::new();
+    };
+    std::iter::once(WorkspaceChip {
+        key: workspace.id.clone(),
+        kind: "workspace",
+        label: workspace.name.clone(),
+    })
+    .chain(workspace.repos.iter().map(|repo| WorkspaceChip {
+        key: format!("{}/{}", workspace.id, repo.name),
+        kind: repo_kind(&repo.kind),
+        label: repo_label(repo),
+    }))
+    .collect()
 }
 
-/// Last non-empty path component.
+/// `link`, `worktree` or `clone`.
 #[must_use]
-pub fn basename(path: &str) -> &str {
-    path.trim_end_matches('/')
-        .rsplit('/')
-        .next()
-        .unwrap_or(path)
+pub fn repo_kind(kind: &RepoKind) -> &'static str {
+    match kind {
+        RepoKind::Link { .. } => "link",
+        RepoKind::Worktree { .. } => "worktree",
+        RepoKind::Clone => "clone",
+    }
+}
+
+/// `name:branch`, or `name` on a detached HEAD.
+#[must_use]
+pub fn repo_label(repo: &WorkspaceRepo) -> String {
+    match &repo.branch {
+        Some(branch) => format!("{}:{branch}", repo.name),
+        None => repo.name.clone(),
+    }
+}
+
+/// What makes repositories of different workspaces the same one: a worktree's main working tree, else the checkout.
+fn repo_identity(repo: &WorkspaceRepo) -> &str {
+    match &repo.kind {
+        RepoKind::Worktree { main } => main,
+        RepoKind::Link { .. } | RepoKind::Clone => &repo.canonical_path,
+    }
 }
 
 /// A key threads can be grouped and filtered by (UI-022).
@@ -149,11 +155,10 @@ pub enum Dimension {
     Tag,
     Workspace,
     Repository,
-    Pr,
 }
 
 impl Dimension {
-    pub const ALL: [Self; 4] = [Self::Tag, Self::Workspace, Self::Repository, Self::Pr];
+    pub const ALL: [Self; 3] = [Self::Tag, Self::Workspace, Self::Repository];
 
     /// Token used in form values.
     #[must_use]
@@ -162,7 +167,6 @@ impl Dimension {
             Self::Tag => "tag",
             Self::Workspace => "workspace",
             Self::Repository => "repository",
-            Self::Pr => "pr",
         }
     }
 
@@ -179,7 +183,6 @@ impl Dimension {
             Self::Tag => "Untagged",
             Self::Workspace => "No workspace",
             Self::Repository => "No repository",
-            Self::Pr => "No PR",
         }
     }
 }
@@ -230,18 +233,16 @@ pub struct GroupKey {
     pub label: String,
 }
 
-/// The keys of `thread` along `dimension`, without duplicates, in workspace order (tags in tag order).
+/// The keys of `thread` along `dimension`, without duplicates, in folder order (tags in tag order).
 #[must_use]
 pub fn thread_keys(
     thread: &ThreadSummary,
     dimension: Dimension,
     workspaces: &[Workspace],
-    repositories: &[Repository],
 ) -> Vec<GroupKey> {
-    let attached = thread
-        .workspace_ids
+    let workspace = workspaces
         .iter()
-        .filter_map(|id| workspaces.iter().find(|workspace| workspace.id == *id));
+        .find(|workspace| workspace.id == thread.workspace_id);
     let keys: Vec<GroupKey> = match dimension {
         Dimension::Tag => thread
             .tags
@@ -251,31 +252,19 @@ pub fn thread_keys(
                 label: tag.clone(),
             })
             .collect(),
-        Dimension::Workspace => attached
+        Dimension::Workspace => workspace
             .map(|workspace| GroupKey {
                 key: workspace.id.clone(),
-                label: workspace_label(workspace, repositories),
+                label: workspace.name.clone(),
             })
+            .into_iter()
             .collect(),
-        Dimension::Repository => attached
-            .filter_map(|workspace| repository_of(workspace, repositories))
-            .map(|repository| GroupKey {
-                key: repository.id.clone(),
-                label: repository.name.clone(),
-            })
-            .collect(),
-        Dimension::Pr => attached
-            .filter_map(|workspace| {
-                let number = workspace.pr_number?;
-                let prefix = repository_of(workspace, repositories).map_or_else(
-                    || basename(&workspace.path).to_owned(),
-                    |repository| repository.name.clone(),
-                );
-                let label = format!("{prefix}#{number}");
-                Some(GroupKey {
-                    key: label.clone(),
-                    label,
-                })
+        Dimension::Repository => workspace
+            .into_iter()
+            .flat_map(|workspace| &workspace.repos)
+            .map(|repo| GroupKey {
+                key: repo_identity(repo).to_owned(),
+                label: repo.name.clone(),
             })
             .collect(),
     };
@@ -293,14 +282,13 @@ pub fn thread_keys(
 pub fn filter_options(
     threads: &[ThreadSummary],
     workspaces: &[Workspace],
-    repositories: &[Repository],
 ) -> Vec<(Dimension, GroupKey)> {
     let mut options = Vec::new();
     for dimension in Dimension::ALL {
         let mut keys: Vec<GroupKey> = threads
             .iter()
             .filter(|thread| thread.archived_at.is_none())
-            .flat_map(|thread| thread_keys(thread, dimension, workspaces, repositories))
+            .flat_map(|thread| thread_keys(thread, dimension, workspaces))
             .collect();
         keys.sort_by(|a, b| a.label.cmp(&b.label).then_with(|| a.key.cmp(&b.key)));
         keys.dedup_by(|a, b| a.key == b.key);
@@ -325,14 +313,13 @@ pub struct Group {
 pub fn group_threads(
     threads: &[ThreadSummary],
     workspaces: &[Workspace],
-    repositories: &[Repository],
     grouping: Grouping,
     filter: &Filter,
 ) -> Vec<Group> {
     let visible = threads
         .iter()
         .filter(|thread| thread.archived_at.is_some() == filter.archived)
-        .filter(|thread| matches(thread, filter, workspaces, repositories));
+        .filter(|thread| matches(thread, filter, workspaces));
     let Grouping::By(dimension) = grouping else {
         return vec![Group {
             key: String::new(),
@@ -343,7 +330,7 @@ pub fn group_threads(
     let mut groups: Vec<Group> = Vec::new();
     let mut without = Vec::new();
     for thread in visible {
-        let keys = thread_keys(thread, dimension, workspaces, repositories);
+        let keys = thread_keys(thread, dimension, workspaces);
         if keys.is_empty() {
             without.push(thread.id.clone());
         }
@@ -369,14 +356,9 @@ pub fn group_threads(
     groups
 }
 
-fn matches(
-    thread: &ThreadSummary,
-    filter: &Filter,
-    workspaces: &[Workspace],
-    repositories: &[Repository],
-) -> bool {
+fn matches(thread: &ThreadSummary, filter: &Filter, workspaces: &[Workspace]) -> bool {
     if let Some((dimension, key)) = &filter.key
-        && !thread_keys(thread, *dimension, workspaces, repositories)
+        && !thread_keys(thread, *dimension, workspaces)
             .iter()
             .any(|candidate| candidate.key == *key)
     {
@@ -386,7 +368,7 @@ fn matches(
     if needle.is_empty() {
         return true;
     }
-    let chips = workspace_chips(&thread.workspace_ids, workspaces, repositories);
+    let chips = workspace_chips(&thread.workspace_id, workspaces);
     std::iter::once(thread.title.as_str())
         .chain(thread.tags.iter().map(String::as_str))
         .chain(chips.iter().map(|chip| chip.label.as_str()))
@@ -427,30 +409,35 @@ pub fn is_unread(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::{repository, thread, workspace};
+    use crate::test_support::{repo, thread, workspace};
 
-    fn index() -> (Vec<Repository>, Vec<Workspace>, Vec<ThreadSummary>) {
-        let repositories = vec![repository("r-fe", "fe"), repository("r-be", "be")];
-        let mut pr = workspace("w-fe412", Some("r-fe"), Some("feat/checkout"));
-        pr.pr_number = Some(412);
-        pr.pr_url = Some("https://example.test/fe/pull/412".to_owned());
-        let workspaces = vec![
-            pr,
-            workspace("w-be", Some("r-be"), Some("main")),
-            workspace("w-be2", Some("r-be"), Some("flaky")),
-            workspace("w-scratch", None, None),
-        ];
-        let mut checkout = thread("t-checkout", "checkout-v2", &["w-fe412", "w-be"]);
+    fn index() -> (Vec<Workspace>, Vec<ThreadSummary>) {
+        let mut linked = repo("w-checkout", "be", "main");
+        linked.kind = RepoKind::Link {
+            target: "/src/be".to_owned(),
+        };
+        linked.canonical_path = "/src/be".to_owned();
+        let mut checkout_workspace = workspace(
+            "w-checkout",
+            vec![repo("w-checkout", "fe", "feat/checkout"), linked],
+        );
+        checkout_workspace.name = "checkout".to_owned();
+        let mut flaky_workspace = workspace("w-flaky", vec![repo("w-flaky", "be", "flaky")]);
+        flaky_workspace.name = "flaky".to_owned();
+        let mut scratch_workspace = workspace("w-scratch", Vec::new());
+        scratch_workspace.name = "scratch".to_owned();
+        let workspaces = vec![checkout_workspace, flaky_workspace, scratch_workspace];
+        let mut checkout = thread("t-checkout", "checkout-v2", "w-checkout");
         checkout.tags = vec!["release".to_owned()];
-        let mut flaky = thread("t-flaky", "flaky-tests", &["w-be", "w-be2"]);
+        let mut flaky = thread("t-flaky", "flaky-tests", "w-flaky");
         flaky.tags = vec!["ci".to_owned(), "release".to_owned()];
-        let scratch = thread("t-scratch", "scratch", &[]);
-        (repositories, workspaces, vec![checkout, flaky, scratch])
+        let scratch = thread("t-scratch", "scratch", "w-scratch");
+        (workspaces, vec![checkout, flaky, scratch])
     }
 
     fn groups(grouping: Grouping, filter: &Filter) -> Vec<(String, Vec<String>)> {
-        let (repositories, workspaces, threads) = index();
-        group_threads(&threads, &workspaces, &repositories, grouping, filter)
+        let (workspaces, threads) = index();
+        group_threads(&threads, &workspaces, grouping, filter)
             .into_iter()
             .map(|group| (group.label, group.thread_ids))
             .collect()
@@ -463,7 +450,7 @@ mod tests {
     // spec: UI-020, UI-011
     #[test]
     fn status_puts_attention_before_the_process_and_the_settled_flag() {
-        let mut summary = thread("t", "t", &[]);
+        let mut summary = thread("t", "t", "w");
         assert_eq!(ThreadStatus::of(&summary), ThreadStatus::Idle);
         summary.settled = false;
         assert_eq!(ThreadStatus::of(&summary), ThreadStatus::Working);
@@ -482,41 +469,40 @@ mod tests {
 
     // spec: UI-020, UI-011
     #[test]
-    fn chips_show_repository_branch_and_pr_and_mark_the_first_as_cwd() {
-        let (repositories, workspaces, threads) = index();
-        let chips = workspace_chips(&threads[0].workspace_ids, &workspaces, &repositories);
-        let summary: Vec<(&str, Option<u64>, bool)> = chips
+    fn chips_show_the_workspace_then_each_repository_with_kind_and_branch() {
+        let (workspaces, threads) = index();
+        let chips = workspace_chips(&threads[0].workspace_id, &workspaces);
+        let summary: Vec<(&str, &str, bool)> = chips
             .iter()
-            .map(|chip| (chip.label.as_str(), chip.pr_number, chip.cwd))
+            .map(|chip| (chip.label.as_str(), chip.kind, chip.is_workspace()))
             .collect();
         assert_eq!(
             summary,
             vec![
-                ("fe:feat/checkout", Some(412), true),
-                ("be:main", None, false)
+                ("checkout", "workspace", true),
+                ("fe:feat/checkout", "worktree", false),
+                ("be:main", "link", false)
             ]
         );
-        let scratch = workspace_chips(&["w-scratch".to_owned()], &workspaces, &repositories);
-        assert_eq!(scratch[0].label, "w-scratch");
+        assert_eq!(workspace_chips("w-unknown", &workspaces), Vec::new());
     }
 
     // spec: UI-022, UI-011
     #[test]
-    fn grouping_by_workspace_lists_a_thread_under_each_of_its_workspaces() {
+    fn grouping_by_workspace_lists_each_thread_under_its_workspace() {
         assert_eq!(
             groups(Grouping::By(Dimension::Workspace), &Filter::default()),
             vec![
-                ("be:flaky".to_owned(), ids(&["t-flaky"])),
-                ("be:main".to_owned(), ids(&["t-checkout", "t-flaky"])),
-                ("fe:feat/checkout".to_owned(), ids(&["t-checkout"])),
-                ("No workspace".to_owned(), ids(&["t-scratch"])),
+                ("checkout".to_owned(), ids(&["t-checkout"])),
+                ("flaky".to_owned(), ids(&["t-flaky"])),
+                ("scratch".to_owned(), ids(&["t-scratch"])),
             ]
         );
     }
 
     // spec: UI-022, UI-011
     #[test]
-    fn grouping_by_repository_lists_a_thread_once_per_repository() {
+    fn grouping_by_repository_lists_a_thread_under_each_repository_of_its_workspace() {
         assert_eq!(
             groups(Grouping::By(Dimension::Repository), &Filter::default()),
             vec![
@@ -529,20 +515,13 @@ mod tests {
 
     // spec: UI-022, UI-011
     #[test]
-    fn grouping_by_tag_and_pr_and_none() {
+    fn grouping_by_tag_and_none() {
         assert_eq!(
             groups(Grouping::By(Dimension::Tag), &Filter::default()),
             vec![
                 ("ci".to_owned(), ids(&["t-flaky"])),
                 ("release".to_owned(), ids(&["t-checkout", "t-flaky"])),
                 ("Untagged".to_owned(), ids(&["t-scratch"])),
-            ]
-        );
-        assert_eq!(
-            groups(Grouping::By(Dimension::Pr), &Filter::default()),
-            vec![
-                ("fe#412".to_owned(), ids(&["t-checkout"])),
-                ("No PR".to_owned(), ids(&["t-flaky", "t-scratch"])),
             ]
         );
         assert_eq!(
@@ -558,7 +537,7 @@ mod tests {
     #[test]
     fn filtering_by_key_and_free_text_combines() {
         let by_repository = Filter {
-            key: Some((Dimension::Repository, "r-be".to_owned())),
+            key: Some((Dimension::Repository, "/src/be".to_owned())),
             ..Filter::default()
         };
         assert_eq!(
@@ -576,27 +555,16 @@ mod tests {
             ..Filter::default()
         };
         assert_eq!(groups(Grouping::None, &both)[0].1, ids(&["t-flaky"]));
-        let by_pr = Filter {
-            key: Some((Dimension::Pr, "fe#412".to_owned())),
-            ..Filter::default()
-        };
-        assert_eq!(groups(Grouping::By(Dimension::Workspace), &by_pr).len(), 2);
     }
 
     // spec: UI-022
     #[test]
     fn archived_threads_are_neither_listed_nor_offered_as_filter_keys() {
-        let (repositories, workspaces, mut threads) = index();
+        let (workspaces, mut threads) = index();
         threads[1].archived_at = Some(5);
-        let listed = group_threads(
-            &threads,
-            &workspaces,
-            &repositories,
-            Grouping::None,
-            &Filter::default(),
-        );
+        let listed = group_threads(&threads, &workspaces, Grouping::None, &Filter::default());
         assert_eq!(listed[0].thread_ids, ids(&["t-checkout", "t-scratch"]));
-        let tags: Vec<String> = filter_options(&threads, &workspaces, &repositories)
+        let tags: Vec<String> = filter_options(&threads, &workspaces)
             .into_iter()
             .filter(|(dimension, _)| *dimension == Dimension::Tag)
             .map(|(_, key)| key.key)
@@ -607,13 +575,12 @@ mod tests {
     // spec: UI-026
     #[test]
     fn the_archived_filter_lists_only_archived_threads() {
-        let (repositories, workspaces, mut threads) = index();
+        let (workspaces, mut threads) = index();
         threads[1].archived_at = Some(5);
         let archived = |text: &str| {
             group_threads(
                 &threads,
                 &workspaces,
-                &repositories,
                 Grouping::None,
                 &Filter {
                     text: text.to_owned(),
@@ -631,7 +598,7 @@ mod tests {
     // spec: UI-021
     #[test]
     fn next_needing_attention_wraps_around_after_the_current_thread() {
-        let (_, _, mut threads) = index();
+        let (_, mut threads) = index();
         assert_eq!(next_needing_attention(&threads, None), None);
         threads[0].needs_attention = true;
         threads[2].needs_attention = true;
@@ -657,7 +624,7 @@ mod tests {
     // spec: UI-020
     #[test]
     fn a_thread_is_unread_when_it_changed_since_it_was_last_seen_and_is_not_selected() {
-        let mut summary = thread("t", "t", &[]);
+        let mut summary = thread("t", "t", "w");
         summary.updated_at = 10;
         let mut seen = BTreeMap::new();
         assert!(!is_unread(&summary, &seen, None));

@@ -326,27 +326,31 @@ fn unsubscribing_drops_the_topic_and_its_data() {
 }
 
 #[test]
-fn workspace_topics_keep_the_git_status() {
+fn workspace_topics_keep_the_git_status_of_each_repository() {
     let mut model = Model::default();
     let topic = Topic::Workspace("01W".into());
     model.track(topic.clone());
 
     model
-        .apply_subscribed(&topic, snapshot("w1", 0, &json!(null)))
+        .apply_subscribed(&topic, snapshot("w1", 0, &json!([])))
         .unwrap();
-    assert_eq!(model.workspaces()["01W"], None);
+    assert_eq!(model.workspaces()["01W"], Vec::new());
 
     let frame: omfp_protocol::EventFrame = serde_json::from_value(json!({
         "topic": "workspace/01W", "epoch": "w1", "seq": 1,
-        "event": { "kind": "status", "status": { "ahead": 1, "behind": 0, "files": [] } }
+        "event": { "kind": "status", "repos": [
+            { "name": "app", "status": { "ahead": 1, "behind": 0, "dirty": false, "files": [] } }
+        ] }
     }))
     .unwrap();
     assert_eq!(model.apply_event(&frame), Applied::Applied);
+    let repos = &model.workspaces()["01W"];
     assert_eq!(
-        model.workspaces()["01W"]
-            .as_ref()
-            .map(|status| status.ahead),
-        Some(1)
+        repos
+            .iter()
+            .map(|repo| (repo.name.as_str(), repo.status.ahead))
+            .collect::<Vec<_>>(),
+        [("app", 1)]
     );
 }
 

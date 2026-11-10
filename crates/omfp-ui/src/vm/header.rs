@@ -1,9 +1,9 @@
-//! The thread header (UI-030): title, tags, workspace chips, model and thinking selectors, context usage, session cost,
-//! and process state.
+//! The thread header (UI-030): title, tags, workspace and repository chips, model and thinking selectors, context
+//! usage, session cost, and process state.
 
 use omfp_core::wire::{AgentMessage, ThinkingLevel};
 use omfp_core::{ProcessState, ThreadState};
-use omfp_protocol::{Repository, ThreadSummary, Workspace};
+use omfp_protocol::{ThreadSummary, Workspace};
 
 use super::threads::{ThreadStatus, WorkspaceChip, workspace_chips};
 use crate::input::ThreadDetails;
@@ -20,9 +20,8 @@ pub struct ModelOption {
 pub struct HeaderView {
     pub title: String,
     pub tags: Vec<String>,
+    /// The thread's workspace, then its repositories.
     pub chips: Vec<WorkspaceChip>,
-    /// Workspaces that can still be attached: `(id, label)`.
-    pub attachable: Vec<(String, String)>,
     /// `provider/id` of the current model.
     pub model: Option<String>,
     /// The available models; the current one is included even when the list has not arrived.
@@ -48,7 +47,6 @@ pub fn header_view(
     state: Option<&ThreadState>,
     details: Option<&ThreadDetails>,
     workspaces: &[Workspace],
-    repositories: &[Repository],
 ) -> HeaderView {
     let session = details.and_then(|details| details.session.as_ref());
     let current = session.and_then(|session| session.model.as_ref());
@@ -85,16 +83,6 @@ pub fn header_view(
     {
         thinking_levels.insert(0, level);
     }
-    let attachable = workspaces
-        .iter()
-        .filter(|workspace| !summary.workspace_ids.contains(&workspace.id))
-        .map(|workspace| {
-            (
-                workspace.id.clone(),
-                super::threads::workspace_label(workspace, repositories),
-            )
-        })
-        .collect();
     let cost = state
         .map(session_cost)
         .filter(|cost| *cost > 0.0)
@@ -102,8 +90,7 @@ pub fn header_view(
     HeaderView {
         title: summary.title.clone(),
         tags: summary.tags.clone(),
-        chips: workspace_chips(&summary.workspace_ids, workspaces, repositories),
-        attachable,
+        chips: workspace_chips(&summary.workspace_id, workspaces),
         model,
         models,
         thinking,
@@ -189,7 +176,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::test_support::{fixture, repository, thread, workspace};
+    use crate::test_support::{fixture, repo, thread, workspace};
 
     fn details() -> ThreadDetails {
         serde_json::from_value::<omfp_core::wire::SessionState>(json!({
@@ -212,15 +199,11 @@ mod tests {
 
     // spec: UI-030, UI-011
     #[test]
-    fn header_shows_model_thinking_context_and_attachable_workspaces() {
-        let repositories = vec![repository("r", "fe")];
-        let workspaces = vec![
-            workspace("w1", Some("r"), Some("main")),
-            workspace("w2", Some("r"), Some("dev")),
-        ];
-        let summary = thread("t", "checkout", &["w1"]);
+    fn header_shows_model_thinking_context_and_the_workspace_chips() {
+        let workspaces = vec![workspace("w1", vec![repo("w1", "fe", "main")])];
+        let summary = thread("t", "checkout", "w1");
         let details = details();
-        let view = header_view(&summary, None, Some(&details), &workspaces, &repositories);
+        let view = header_view(&summary, None, Some(&details), &workspaces);
         assert_eq!(view.model.as_deref(), Some("anthropic/opus"));
         assert_eq!(
             view.models,
@@ -235,11 +218,8 @@ mod tests {
             vec![ThinkingLevel::High, ThinkingLevel::Off, ThinkingLevel::Low]
         );
         assert_eq!(view.context.as_deref(), Some("42% of 200k"));
-        assert_eq!(
-            view.attachable,
-            vec![("w2".to_owned(), "fe:dev".to_owned())]
-        );
-        assert!(view.chips[0].cwd);
+        let chips: Vec<&str> = view.chips.iter().map(|chip| chip.label.as_str()).collect();
+        assert_eq!(chips, vec!["w1", "fe:main"]);
         assert!(view.can_stop);
     }
 

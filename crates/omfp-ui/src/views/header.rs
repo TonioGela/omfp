@@ -1,4 +1,4 @@
-//! The thread header (UI-030): title and tags (editable), workspace chips with attach/detach, model and thinking
+//! The thread header (UI-030): title and tags (editable), workspace and repository chips, model and thinking
 //! selectors, context usage, session cost, process state with stop/restart, and archive/unarchive/delete (UI-026).
 
 use dioxus::prelude::*;
@@ -9,7 +9,7 @@ use crate::components::{StatusBadge, WorkspaceChipView};
 use crate::intent::Intent;
 use crate::local::HeaderEdit;
 use crate::vm::header::{HeaderView, header_view, parse_tags, split_model};
-use crate::vm::threads::ThreadStatus;
+use crate::vm::threads::{ThreadStatus, WorkspaceChip};
 
 #[component]
 pub(crate) fn Header(thread_id: String) -> Element {
@@ -24,13 +24,12 @@ pub(crate) fn Header(thread_id: String) -> Element {
         open.map(|open| &open.state),
         open.map(|open| &open.details),
         &input.workspaces,
-        &input.repositories,
     );
     drop(input);
     rsx! {
         header { class: "thread-header", "data-testid": "thread-header",
             HeaderTitle { thread_id: thread_id.clone(), view: view.clone() }
-            HeaderWorkspaces { thread_id: thread_id.clone(), view: view.clone() }
+            HeaderWorkspaces { chips: view.chips.clone() }
             HeaderSession { thread_id: thread_id.clone(), view: view.clone() }
             HeaderProcess { thread_id: thread_id.clone(), view: view.clone() }
             HeaderLifecycle { thread_id, archived: view.archived }
@@ -108,48 +107,13 @@ fn HeaderTitle(thread_id: String, view: HeaderView) -> Element {
     }
 }
 
-/// Workspace chips (the first is the cwd) with detach buttons, and the attach selector.
+/// The workspace chip (the cwd), then one chip per repository of the workspace.
 #[component]
-fn HeaderWorkspaces(thread_id: String, view: HeaderView) -> Element {
-    let ctx = Ctx::get();
-    let id = thread_id.clone();
-    let on_attach = move |event: FormEvent| {
-        let workspace_id = event.value();
-        if !workspace_id.is_empty() {
-            ctx.send(Intent::AttachWorkspace {
-                thread_id: id.clone(),
-                workspace_id,
-            });
-        }
-    };
+fn HeaderWorkspaces(chips: Vec<WorkspaceChip>) -> Element {
     rsx! {
         div { class: "header-workspaces",
-            for chip in view.chips.iter().cloned() {
-                span { key: "{chip.workspace_id}", class: "chip-with-action",
-                    WorkspaceChipView { chip: chip.clone(), link: true }
-                    button {
-                        r#type: "button",
-                        class: "icon",
-                        "data-testid": "detach-workspace",
-                        "aria-label": "Detach {chip.label}",
-                        onclick: {
-                            let thread_id = thread_id.clone();
-                            move |_| ctx.send(Intent::DetachWorkspace {
-                                thread_id: thread_id.clone(),
-                                workspace_id: chip.workspace_id.clone(),
-                            })
-                        },
-                        "×"
-                    }
-                }
-            }
-            if !view.attachable.is_empty() {
-                select { "data-testid": "attach-workspace", "aria-label": "Attach a workspace", value: "", onchange: on_attach,
-                    option { value: "", "Attach workspace…" }
-                    for (id, label) in view.attachable.iter() {
-                        option { key: "{id}", value: "{id}", "{label}" }
-                    }
-                }
+            for chip in chips {
+                WorkspaceChipView { key: "{chip.key}", chip }
             }
         }
     }

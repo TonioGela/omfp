@@ -5,10 +5,12 @@
 
 pub mod agent;
 pub mod config;
+pub mod conventions;
 mod daemon;
 pub mod event_log;
 pub mod git;
 pub mod host_tools;
+pub mod names;
 pub mod omp;
 pub mod omp_binary;
 pub mod paths;

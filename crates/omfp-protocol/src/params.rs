@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::dto::{GitStatus, Repository, TerminalInfo, TerminalKind};
+use crate::dto::{RepoStatus, Repository, TerminalInfo, TerminalKind};
 use crate::topic::Topic;
 
 /// No params, or the `{}` result.
@@ -68,7 +68,7 @@ pub enum SubscribeResult {
         from_seq: u64,
     },
     /// The topic's state at `seq`; live events after `seq` follow. `state` is a `omfp_core::ThreadState` for
-    /// `thread/<id>`, an `IndexSnapshot` for `index`, and a `GitStatus` for `workspace/<id>`.
+    /// `thread/<id>`, an `IndexSnapshot` for `index`, and a list of `RepoStatus` for `workspace/<id>`.
     Snapshot {
         epoch: String,
         seq: u64,
@@ -104,48 +104,38 @@ pub struct RepositoryList {
     pub repositories: Vec<Repository>,
 }
 
-/// `workspaces.create` params (DMN-021).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// `workspaces.create` params (DMN-020).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkspaceParams {
-    /// Repository id or path.
-    pub repo: String,
-    /// New or existing branch; a `omfp/<slug>-<suffix>` branch is created when absent.
+    /// Unique name; default: the folder's name for an existing folder, else `workspace` (made unique).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub branch: Option<String>,
+    pub name: Option<String>,
+    /// An existing folder to record (not owned by the daemon); absent: a new folder under the workspaces root.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub base_ref: Option<String>,
+    pub path: Option<String>,
 }
 
-/// `workspaces.from_pr` params (DMN-022).
+/// `workspaces.update` params.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct WorkspaceFromPrParams {
-    /// PR URL or `owner/repo#N`.
-    pub pr: String,
-    /// Repository id or path, when it cannot be found from the PR.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub repo: Option<String>,
+pub struct UpdateWorkspaceParams {
+    pub workspace_id: String,
+    /// New unique name; the folder is not moved.
+    pub name: String,
 }
 
-/// `workspaces.adopt` params (DMN-023).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AdoptWorkspaceParams {
-    pub path: String,
-}
-
-/// `workspaces.remove` params (DMN-024).
+/// `workspaces.remove` params (DMN-028).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveWorkspaceParams {
     pub workspace_id: String,
-    /// Remove even with uncommitted changes.
+    /// Also delete an owned folder, after removing its repositories as `workspaces.remove_repo` does.
+    #[serde(default)]
+    pub delete_folder: bool,
+    /// Remove worktrees and clones even with uncommitted changes.
     #[serde(default)]
     pub force: bool,
-    /// Also delete the worktree's branch.
-    #[serde(default)]
-    pub delete_branch: bool,
 }
 
 /// Params naming one workspace.
@@ -155,11 +145,75 @@ pub struct WorkspaceRef {
     pub workspace_id: String,
 }
 
+/// `workspaces.add_repo` params (DMN-024).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AddRepoParams {
+    pub workspace_id: String,
+    /// Entry name in the folder; default: derived from the source (made unique).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub source: RepoSource,
+}
+
+/// Where a repository added to a workspace comes from (DMN-024).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RepoSource {
+    /// A symlink `<name> → <path>`.
+    Link { path: String },
+    /// `git worktree add` of a repository.
+    #[serde(rename_all = "camelCase")]
+    Worktree {
+        /// Known repository id, or a path inside a git repository.
+        repo: String,
+        /// Existing branch to check out, or new branch name; default: a new `omfp/<slug>-<n>` branch.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        branch: Option<String>,
+        /// Base of a new branch; default: the known repository's base ref, else its checked-out branch.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_ref: Option<String>,
+    },
+    /// `git clone <url> <name>`.
+    Clone { url: String },
+    /// A pull request's head as a worktree (after S-08).
+    Pr {
+        /// PR URL or `owner/repo#N`.
+        pr: String,
+    },
+}
+
+/// `workspaces.remove_repo` params (DMN-025).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoveRepoParams {
+    pub workspace_id: String,
+    /// The repository's name in the workspace.
+    pub name: String,
+    /// Remove a worktree or clone even with uncommitted changes.
+    #[serde(default)]
+    pub force: bool,
+    /// Also delete a worktree's branch.
+    #[serde(default)]
+    pub delete_branch: bool,
+}
+
+/// `workspaces.status` params.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoRef {
+    pub workspace_id: String,
+    /// The repository's name in the workspace.
+    pub repo: String,
+}
+
 /// `workspaces.diff` params.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkspaceDiffParams {
     pub workspace_id: String,
+    /// The repository's name in the workspace.
+    pub repo: String,
     /// Only this file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -168,14 +222,30 @@ pub struct WorkspaceDiffParams {
     pub cursor: Option<String>,
 }
 
+/// The workspace of a new thread.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum ThreadWorkspace {
+    /// An existing workspace.
+    Id(String),
+    /// A new workspace, as `workspaces.create` makes it; its name defaults to the thread's title.
+    New(CreateWorkspaceParams),
+}
+
+impl Default for ThreadWorkspace {
+    fn default() -> Self {
+        Self::New(CreateWorkspaceParams::default())
+    }
+}
+
 /// `threads.create` params.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateThreadParams {
     pub title: String,
-    /// Workspaces to attach, in order; may be empty.
+    /// `{ "id": … }` or `{ "new": { "name"?, "path"? } }`; default: a new folder named after the title.
     #[serde(default)]
-    pub workspace_ids: Vec<String>,
+    pub workspace: ThreadWorkspace,
     #[serde(default)]
     pub tags: Vec<String>,
     /// `provider/id`.
@@ -201,25 +271,6 @@ pub struct UpdateThreadParams {
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
-}
-
-/// `threads.attach` params (DMN-029).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct AttachWorkspaceParams {
-    pub thread_id: String,
-    pub workspace_id: String,
-    /// Index in the thread's workspace list; appended when absent.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub position: Option<u32>,
-}
-
-/// `threads.detach` params (DMN-029).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct DetachWorkspaceParams {
-    pub thread_id: String,
-    pub workspace_id: String,
 }
 
 /// Params naming one thread.
@@ -408,22 +459,13 @@ pub struct BashParams {
     pub exclude_from_context: Option<bool>,
 }
 
-/// `thread.git` result.
+/// `thread.git` result: the git status of every repository of the thread's workspace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadGit {
-    /// The thread's workspaces, in order.
-    pub workspaces: Vec<WorkspaceGit>,
-}
-
-/// Git status of one workspace of a thread.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct WorkspaceGit {
     pub workspace_id: String,
-    /// `None` when the workspace is not a git repository.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub status: Option<GitStatus>,
+    /// In the order of the workspace's `repos`.
+    pub repos: Vec<RepoStatus>,
 }
 
 /// `interaction.respond` params (DMN-051).

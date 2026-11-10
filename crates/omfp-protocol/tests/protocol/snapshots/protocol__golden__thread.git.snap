@@ -15,13 +15,25 @@ expression: golden
     "id": "c42",
     "ok": true,
     "result": {
-      "workspaces": [
+      "repos": [
         {
+          "name": "backend",
+          "status": {
+            "ahead": 0,
+            "behind": 0,
+            "branch": "main",
+            "dirty": false,
+            "files": []
+          }
+        },
+        {
+          "name": "shop-frontend",
           "status": {
             "ahead": 2,
             "baseRef": "origin/main",
             "behind": 1,
-            "branch": "omfp/checkout-v2-k3p9",
+            "branch": "omfp/checkout-v2-1",
+            "dirty": true,
             "files": [
               {
                 "additions": 40,
@@ -43,13 +55,10 @@ expression: golden
                 "status": "untracked"
               }
             ]
-          },
-          "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
-        },
-        {
-          "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C7G"
+          }
         }
-      ]
+      ],
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
     },
     "type": "response"
   }

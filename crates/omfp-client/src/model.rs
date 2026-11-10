@@ -11,7 +11,7 @@ use std::time::Duration;
 use omfp_core::wire::ExtensionUiRequest;
 use omfp_core::{Resolution, ThreadEvent, ThreadState};
 use omfp_protocol::{
-    ErrorBody, ErrorCode, EventFrame, GitStatus, HelloResult, IndexEvent, IndexSnapshot, Position,
+    ErrorBody, ErrorCode, EventFrame, HelloResult, IndexEvent, IndexSnapshot, Position, RepoStatus,
     Repository, SubscribeParams, SubscribeResult, ThreadSummary, Topic, TopicEvent, Workspace,
     WorkspaceEvent,
 };
@@ -239,7 +239,7 @@ pub struct Model {
     connection: ConnectionStatus,
     index: Index,
     threads: BTreeMap<String, ThreadView>,
-    workspaces: BTreeMap<String, Option<GitStatus>>,
+    workspaces: BTreeMap<String, Vec<RepoStatus>>,
     topics: Vec<TopicState>,
     dirty: Dirty,
     revision: u64,
@@ -268,9 +268,9 @@ impl Model {
         self.threads.get(id)
     }
 
-    /// Git status of subscribed workspaces (`None` outside git).
+    /// Git status of each repository of subscribed workspaces.
     #[must_use]
-    pub fn workspaces(&self) -> &BTreeMap<String, Option<GitStatus>> {
+    pub fn workspaces(&self) -> &BTreeMap<String, Vec<RepoStatus>> {
         &self.workspaces
     }
 
@@ -463,8 +463,8 @@ impl Model {
                 self.dirty.threads.insert(id.clone());
             }
             Topic::Workspace(id) => {
-                let status: Option<GitStatus> = serde_json::from_value(state).map_err(invalid)?;
-                self.workspaces.insert(id.clone(), status);
+                let repos: Vec<RepoStatus> = serde_json::from_value(state).map_err(invalid)?;
+                self.workspaces.insert(id.clone(), repos);
                 self.dirty.workspaces.insert(id.clone());
             }
             Topic::Terminal(_) => return Err("terminal topics have no snapshot state".into()),
@@ -509,8 +509,8 @@ impl Model {
                 self.threads.entry(id.clone()).or_default().apply(event);
                 self.dirty.threads.insert(id.clone());
             }
-            (Topic::Workspace(id), TopicEvent::Workspace(WorkspaceEvent::Status { status })) => {
-                self.workspaces.insert(id.clone(), Some(status.clone()));
+            (Topic::Workspace(id), TopicEvent::Workspace(WorkspaceEvent::Status { repos })) => {
+                self.workspaces.insert(id.clone(), repos.clone());
                 self.dirty.workspaces.insert(id.clone());
             }
             // Decoding ties the event kind to the topic.

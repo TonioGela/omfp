@@ -1,42 +1,36 @@
-//! The new-thread dialog (UI-023): any combination of workspaces — none, existing ones, new worktrees from a
-//! repository (registered or by path), from a PR, adopted directories — all optional, in one form.
+//! The new-thread dialog (UI-023): the thread gets a new workspace folder named after its title, with any number of
+//! repositories — new worktrees of a repository (registered or by path), linked directories — all optional, in one
+//! form.
 
-use crate::intent::{Intent, NewThread, WorkspaceSource};
+use omfp_protocol::RepoSource;
+
+use crate::intent::{Intent, NewThread};
 
 use super::header::parse_tags;
 
 /// Title used when the form leaves it blank.
 pub const DEFAULT_TITLE: &str = "New thread";
 
-/// One workspace line of the form.
+/// One repository line of the form.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WorkspaceChoice {
-    Existing {
-        workspace_id: String,
-    },
+pub enum RepoChoice {
     /// `repo` is a registered repository id or a path.
     NewWorktree {
         repo: String,
         branch: String,
         base_ref: String,
     },
-    FromPr {
-        pr: String,
-        repo: String,
-    },
-    Adopt {
+    Link {
         path: String,
     },
 }
 
-impl WorkspaceChoice {
+impl RepoChoice {
     #[must_use]
     pub fn token(&self) -> &'static str {
         match self {
-            Self::Existing { .. } => "existing",
             Self::NewWorktree { .. } => "worktree",
-            Self::FromPr { .. } => "pr",
-            Self::Adopt { .. } => "adopt",
+            Self::Link { .. } => "link",
         }
     }
 }
@@ -48,43 +42,33 @@ pub struct NewThreadForm {
     /// Comma-separated.
     pub tags: String,
     pub prompt: String,
-    pub workspaces: Vec<WorkspaceChoice>,
+    pub repos: Vec<RepoChoice>,
 }
 
 impl NewThreadForm {
     /// The `CreateThread` intent, or the first problem with the form.
     pub fn to_intent(&self) -> Result<Intent, String> {
-        let mut workspaces = Vec::with_capacity(self.workspaces.len());
-        for (index, choice) in self.workspaces.iter().enumerate() {
+        let mut repos = Vec::with_capacity(self.repos.len());
+        for (index, choice) in self.repos.iter().enumerate() {
             let line = index + 1;
             let source = match choice {
-                WorkspaceChoice::Existing { workspace_id } if workspace_id.is_empty() => {
-                    return Err(format!("Workspace {line}: pick a workspace"));
-                }
-                WorkspaceChoice::Existing { workspace_id } => WorkspaceSource::Existing {
-                    workspace_id: workspace_id.clone(),
-                },
-                WorkspaceChoice::NewWorktree {
+                RepoChoice::NewWorktree {
                     repo,
                     branch,
                     base_ref,
-                } => WorkspaceSource::NewWorktree {
+                } => RepoSource::Worktree {
                     repo: required(repo, line, "a repository or path")?,
                     branch: optional(branch),
                     base_ref: optional(base_ref),
                 },
-                WorkspaceChoice::FromPr { pr, repo } => WorkspaceSource::FromPr {
-                    pr: required(pr, line, "a PR")?,
-                    repo: optional(repo),
-                },
-                WorkspaceChoice::Adopt { path } => WorkspaceSource::Adopt {
+                RepoChoice::Link { path } => RepoSource::Link {
                     path: required(path, line, "a directory")?,
                 },
             };
-            if workspaces.contains(&source) {
-                return Err(format!("Workspace {line} is listed twice"));
+            if repos.contains(&source) {
+                return Err(format!("Repository {line} is listed twice"));
             }
-            workspaces.push(source);
+            repos.push(source);
         }
         let title = self.title.trim();
         Ok(Intent::CreateThread(NewThread {
@@ -94,14 +78,14 @@ impl NewThreadForm {
                 title.to_owned()
             },
             tags: parse_tags(&self.tags),
-            workspaces,
+            repos,
             prompt: optional(&self.prompt),
         }))
     }
 }
 
 fn required(value: &str, line: usize, what: &str) -> Result<String, String> {
-    optional(value).ok_or_else(|| format!("Workspace {line}: enter {what}"))
+    optional(value).ok_or_else(|| format!("Repository {line}: enter {what}"))
 }
 
 fn optional(value: &str) -> Option<String> {
@@ -115,14 +99,14 @@ mod tests {
 
     // spec: UI-023
     #[test]
-    fn a_thread_without_workspaces_is_valid() {
+    fn a_thread_without_repositories_is_valid() {
         let intent = NewThreadForm::default().to_intent();
         assert_eq!(
             intent,
             Ok(Intent::CreateThread(NewThread {
                 title: DEFAULT_TITLE.to_owned(),
                 tags: Vec::new(),
-                workspaces: Vec::new(),
+                repos: Vec::new(),
                 prompt: None,
             }))
         );
@@ -130,25 +114,18 @@ mod tests {
 
     // spec: UI-023
     #[test]
-    fn every_kind_of_workspace_combines_in_order() {
+    fn worktrees_and_links_combine_in_order() {
         let form = NewThreadForm {
             title: " checkout ".to_owned(),
             tags: "release, fe".to_owned(),
             prompt: "Fix it".to_owned(),
-            workspaces: vec![
-                WorkspaceChoice::Existing {
-                    workspace_id: "w1".to_owned(),
-                },
-                WorkspaceChoice::NewWorktree {
+            repos: vec![
+                RepoChoice::NewWorktree {
                     repo: "/src/be".to_owned(),
                     branch: String::new(),
                     base_ref: " main ".to_owned(),
                 },
-                WorkspaceChoice::FromPr {
-                    pr: "acme/fe#412".to_owned(),
-                    repo: String::new(),
-                },
-                WorkspaceChoice::Adopt {
+                RepoChoice::Link {
                     path: "/tmp/scratch".to_owned(),
                 },
             ],
@@ -162,21 +139,14 @@ mod tests {
         );
         assert_eq!(thread.tags, vec!["release".to_owned(), "fe".to_owned()]);
         assert_eq!(
-            thread.workspaces,
+            thread.repos,
             vec![
-                WorkspaceSource::Existing {
-                    workspace_id: "w1".to_owned()
-                },
-                WorkspaceSource::NewWorktree {
+                RepoSource::Worktree {
                     repo: "/src/be".to_owned(),
                     branch: None,
                     base_ref: Some("main".to_owned())
                 },
-                WorkspaceSource::FromPr {
-                    pr: "acme/fe#412".to_owned(),
-                    repo: None
-                },
-                WorkspaceSource::Adopt {
+                RepoSource::Link {
                     path: "/tmp/scratch".to_owned()
                 },
             ]
@@ -187,7 +157,7 @@ mod tests {
     #[test]
     fn incomplete_or_duplicate_lines_are_refused() {
         let mut form = NewThreadForm {
-            workspaces: vec![WorkspaceChoice::NewWorktree {
+            repos: vec![RepoChoice::NewWorktree {
                 repo: " ".to_owned(),
                 branch: String::new(),
                 base_ref: String::new(),
@@ -196,19 +166,19 @@ mod tests {
         };
         assert_eq!(
             form.to_intent(),
-            Err("Workspace 1: enter a repository or path".to_owned())
+            Err("Repository 1: enter a repository or path".to_owned())
         );
-        form.workspaces = vec![
-            WorkspaceChoice::Existing {
-                workspace_id: "w1".to_owned(),
+        form.repos = vec![
+            RepoChoice::Link {
+                path: "/tmp/x".to_owned(),
             },
-            WorkspaceChoice::Existing {
-                workspace_id: "w1".to_owned(),
+            RepoChoice::Link {
+                path: "/tmp/x".to_owned(),
             },
         ];
         assert_eq!(
             form.to_intent(),
-            Err("Workspace 2 is listed twice".to_owned())
+            Err("Repository 2 is listed twice".to_owned())
         );
     }
 }

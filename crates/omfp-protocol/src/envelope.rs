@@ -8,7 +8,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 
-use crate::dto::{GitStatus, Repository, ThreadSummary, Workspace};
+use crate::dto::{RepoStatus, Repository, ThreadSummary, Workspace};
 use crate::method::Call;
 use crate::topic::Topic;
 
@@ -377,10 +377,10 @@ pub enum IndexEvent {
     },
 }
 
-/// Change on a `workspace/<id>` topic.
+/// Change on a `workspace/<id>` topic, whose state is the git status of each repository of the workspace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceEvent {
-    /// The workspace's git status changed.
-    Status { status: GitStatus },
+    /// The git status of the workspace's repositories changed; replaces the previous list.
+    Status { repos: Vec<RepoStatus> },
 }

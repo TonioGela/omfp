@@ -66,8 +66,8 @@ flowchart LR
   WS --> TS
   TS --> SUP & WK & DB
   TS --> PTY
-  SUP -- "stdio JSONL (omp-rpc)" --> O1["omp --mode rpc-ui (thread A: cwd=home, --add-dir ws1 ws2)"]
-  SUP --> O2["omp --mode rpc-ui (thread B: cwd=home, --add-dir ws3)"]
+  SUP -- "stdio JSONL (omp-rpc)" --> O1["omp --mode rpc-ui (thread A: cwd=workspace X, --add-dir X/front X/back)"]
+  SUP --> O2["omp --mode rpc-ui (thread B: cwd=workspace Y, --add-dir Y/app)"]
   PTY -- "pty" --> OTERM["interactive omp (thread C, terminal mode)"]
 ```
 

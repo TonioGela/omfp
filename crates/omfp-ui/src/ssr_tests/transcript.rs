@@ -72,19 +72,13 @@ fn the_header_shows_title_tags_chips_session_and_process_controls() {
     assert_eq!(
         chips
             .iter()
-            .map(|chip| attr(*chip, "data-cwd"))
+            .map(|chip| (text(*chip), attr(*chip, "data-kind")))
             .collect::<Vec<_>>(),
-        vec![Some("true"), Some("false")]
-    );
-    assert_eq!(page.testid("detach-workspace").len(), 2);
-    let attachable: Vec<String> = page
-        .all("[data-testid=\"attach-workspace\"] option")
-        .into_iter()
-        .map(text)
-        .collect();
-    assert_eq!(
-        attachable,
-        vec!["Attach workspace…", "be:flaky", "w-adopted"]
+        vec![
+            ("⌂checkout".to_owned(), Some("workspace")),
+            ("fe:feat/checkout".to_owned(), Some("worktree")),
+            ("be:main".to_owned(), Some("link"))
+        ]
     );
     assert_eq!(
         attr(page.one("model-select"), "value"),

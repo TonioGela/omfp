@@ -15,20 +15,18 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 <option value="tag">tag</option>
 <option value="workspace">workspace</option>
 <option value="repository">repository</option>
-<option value="pr">pr</option>
 </select>
 </label>
 <label>Filter <select data-testid="filter-key" value="">
 <option value="">all</option>
 <option value="archived">Archived</option>
 <option value="tag:release">tag: release</option>
-<option value="workspace:w-be2">workspace: be:flaky</option>
-<option value="workspace:w-be">workspace: be:main</option>
-<option value="workspace:w-fe">workspace: fe:feat/checkout</option>
-<option value="workspace:w-adopted">workspace: w-adopted</option>
-<option value="repository:r-be">repository: be</option>
-<option value="repository:r-fe">repository: fe</option>
-<option value="pr:fe#412">pr: fe#412</option>
+<option value="workspace:w-checkout">workspace: checkout</option>
+<option value="workspace:w-flaky">workspace: flaky</option>
+<option value="workspace:w-notes">workspace: notes</option>
+<option value="workspace:w-scratch">workspace: scratch</option>
+<option value="repository:/src/be">repository: be</option>
+<option value="repository:/src/fe">repository: fe</option>
 </select>
 </label>
 <input type="search" data-testid="filter-text" aria-label="Search threads" placeholder="Search threads" value=""/>
@@ -43,10 +41,10 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 </span>
 <span class="thread-title">checkout-v2</span>
 <span class="chips">
-<span class="chip" data-testid="workspace-chip" data-workspace-id="w-fe" data-cwd=true title="Working directory">
-<span class="chip-cwd" aria-label="cwd">⌂</span>fe:feat/checkout<span class="chip-pr">#412</span>
-</span>
-<span class="chip" data-testid="workspace-chip" data-workspace-id="w-be" data-cwd=false title="Workspace">be:main</span>
+<span class="chip" data-testid="workspace-chip" data-kind="workspace" title="Working directory">
+<span class="chip-cwd" aria-label="cwd">⌂</span>checkout</span>
+<span class="chip" data-testid="workspace-chip" data-kind="worktree" title="worktree">fe:feat/checkout</span>
+<span class="chip" data-testid="workspace-chip" data-kind="link" title="link">be:main</span>
 </span>
 </button>
 </li>
@@ -58,9 +56,9 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 </span>
 <span class="thread-title">flaky-tests</span>
 <span class="chips">
-<span class="chip" data-testid="workspace-chip" data-workspace-id="w-be" data-cwd=true title="Working directory">
-<span class="chip-cwd" aria-label="cwd">⌂</span>be:main</span>
-<span class="chip" data-testid="workspace-chip" data-workspace-id="w-be2" data-cwd=false title="Workspace">be:flaky</span>
+<span class="chip" data-testid="workspace-chip" data-kind="workspace" title="Working directory">
+<span class="chip-cwd" aria-label="cwd">⌂</span>flaky</span>
+<span class="chip" data-testid="workspace-chip" data-kind="worktree" title="worktree">be:flaky</span>
 </span>
 </button>
 </li>
@@ -71,6 +69,10 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 <span class="sr-only">failed</span>
 </span>
 <span class="thread-title">scratch</span>
+<span class="chips">
+<span class="chip" data-testid="workspace-chip" data-kind="workspace" title="Working directory">
+<span class="chip-cwd" aria-label="cwd">⌂</span>scratch</span>
+</span>
 </button>
 </li>
 <li>
@@ -81,8 +83,8 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 </span>
 <span class="thread-title">idle-notes</span>
 <span class="chips">
-<span class="chip" data-testid="workspace-chip" data-workspace-id="w-adopted" data-cwd=true title="Working directory">
-<span class="chip-cwd" aria-label="cwd">⌂</span>w-adopted</span>
+<span class="chip" data-testid="workspace-chip" data-kind="workspace" title="Working directory">
+<span class="chip-cwd" aria-label="cwd">⌂</span>notes</span>
 </span>
 </button>
 </li>
@@ -108,21 +110,10 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 <button type="button" data-testid="edit-header">Edit</button>
 </div>
 <div class="header-workspaces">
-<span class="chip-with-action">
-<span class="chip" data-testid="workspace-chip" data-workspace-id="w-fe" data-cwd=true title="Working directory">
-<span class="chip-cwd" aria-label="cwd">⌂</span>fe:feat/checkout<a class="chip-pr" href="https://example.test/fe/pull/412" target="_blank" rel="noopener noreferrer">#412</a>
-</span>
-<button type="button" class="icon" data-testid="detach-workspace" aria-label="Detach fe:feat/checkout">×</button>
-</span>
-<span class="chip-with-action">
-<span class="chip" data-testid="workspace-chip" data-workspace-id="w-be" data-cwd=false title="Workspace">be:main</span>
-<button type="button" class="icon" data-testid="detach-workspace" aria-label="Detach be:main">×</button>
-</span>
-<select data-testid="attach-workspace" aria-label="Attach a workspace" value="">
-<option value="">Attach workspace…</option>
-<option value="w-be2">be:flaky</option>
-<option value="w-adopted">w-adopted</option>
-</select>
+<span class="chip" data-testid="workspace-chip" data-kind="workspace" title="Working directory">
+<span class="chip-cwd" aria-label="cwd">⌂</span>checkout</span>
+<span class="chip" data-testid="workspace-chip" data-kind="worktree" title="worktree">fe:feat/checkout</span>
+<span class="chip" data-testid="workspace-chip" data-kind="link" title="link">be:main</span>
 </div>
 <div class="header-session">
 <select data-testid="model-select" aria-label="Model" value="">
@@ -216,70 +207,82 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 </div>
 <div class="workspaces" data-testid="workspaces-panel">
 <ul class="workspace-list">
-<li class="workspace-row" data-testid="workspace-row" data-workspace-id="w-fe" data-shared=false>
+<li class="workspace-row" data-testid="workspace-row" data-workspace-id="w-checkout" data-shared=false>
 <div class="workspace-title">
+<strong>checkout</strong>
+<span class="workspace-kind"> owned</span>
+</div>
+<code class="workspace-path">/work/w-checkout</code>
+<div class="workspace-git">
+<button type="button" data-testid="refresh-workspace">Refresh</button>
+</div>
+<ul class="workspace-threads" aria-label="Repositories">
+<li data-testid="workspace-repo" data-kind="worktree">
 <strong>fe:feat/checkout</strong>
-<span class="workspace-kind"> worktree</span>
-</div>
-<code class="workspace-path">/work/w-fe</code>
-<a data-testid="workspace-pr" href="https://example.test/fe/pull/412" target="_blank" rel="noopener noreferrer">PR #412</a>
-<div class="workspace-git">
+<span class="workspace-kind"> worktree </span>
 <span class="muted">git status unknown</span>
-<button type="button" data-testid="refresh-workspace">Refresh</button>
-</div>
-<ul class="workspace-threads" aria-label="Threads">
-<li>
-<button type="button" class="link">checkout-v2</button>
+<button type="button" data-testid="remove-repo">Remove…</button>
 </li>
-</ul>
-<button type="button" data-testid="remove-workspace">Remove…</button>
-</li>
-<li class="workspace-row" data-testid="workspace-row" data-workspace-id="w-be" data-shared=true>
-<div class="workspace-title">
+<li data-testid="workspace-repo" data-kind="link">
 <strong>be:main</strong>
-<span class="workspace-kind"> worktree</span>
-<span class="warning" data-testid="shared-warning" title="Several threads work in this directory: their changes mix.">⚠ shared by 2 threads</span>
-</div>
-<code class="workspace-path">/work/w-be</code>
-<div class="workspace-git">
+<span class="workspace-kind"> link </span>
 <span class="muted">git status unknown</span>
-<button type="button" data-testid="refresh-workspace">Refresh</button>
-</div>
+<button type="button" data-testid="remove-repo">Remove…</button>
+</li>
+</ul>
 <ul class="workspace-threads" aria-label="Threads">
 <li>
 <button type="button" class="link">checkout-v2</button>
 </li>
-<li>
-<button type="button" class="link">flaky-tests</button>
-</li>
 </ul>
-<button type="button" data-testid="remove-workspace">Remove…</button>
 </li>
-<li class="workspace-row" data-testid="workspace-row" data-workspace-id="w-be2" data-shared=false>
+<li class="workspace-row" data-testid="workspace-row" data-workspace-id="w-flaky" data-shared=false>
 <div class="workspace-title">
-<strong>be:flaky</strong>
-<span class="workspace-kind"> worktree</span>
+<strong>flaky</strong>
+<span class="workspace-kind"> owned</span>
 </div>
-<code class="workspace-path">/work/w-be2</code>
+<code class="workspace-path">/work/w-flaky</code>
 <div class="workspace-git">
-<span class="muted">git status unknown</span>
 <button type="button" data-testid="refresh-workspace">Refresh</button>
 </div>
+<ul class="workspace-threads" aria-label="Repositories">
+<li data-testid="workspace-repo" data-kind="worktree">
+<strong>be:flaky</strong>
+<span class="workspace-kind"> worktree </span>
+<span class="muted">git status unknown</span>
+<button type="button" data-testid="remove-repo">Remove…</button>
+</li>
+</ul>
 <ul class="workspace-threads" aria-label="Threads">
 <li>
 <button type="button" class="link">flaky-tests</button>
 </li>
 </ul>
-<button type="button" data-testid="remove-workspace">Remove…</button>
 </li>
-<li class="workspace-row" data-testid="workspace-row" data-workspace-id="w-adopted" data-shared=false>
+<li class="workspace-row" data-testid="workspace-row" data-workspace-id="w-scratch" data-shared=false>
 <div class="workspace-title">
-<strong>w-adopted</strong>
-<span class="workspace-kind"> adopted</span>
+<strong>scratch</strong>
+<span class="workspace-kind"> owned</span>
 </div>
-<code class="workspace-path">/work/w-adopted</code>
+<code class="workspace-path">/work/w-scratch</code>
 <div class="workspace-git">
-<span class="muted">git status unknown</span>
+<span class="muted">no repository</span>
+<button type="button" data-testid="refresh-workspace">Refresh</button>
+</div>
+<ul class="workspace-threads" aria-label="Threads">
+<li>
+<button type="button" class="link">scratch</button>
+</li>
+</ul>
+</li>
+<li class="workspace-row" data-testid="workspace-row" data-workspace-id="w-notes" data-shared=false>
+<div class="workspace-title">
+<strong>notes</strong>
+<span class="workspace-kind"> folder</span>
+</div>
+<code class="workspace-path">/work/w-notes</code>
+<div class="workspace-git">
+<span class="muted">no repository</span>
 <button type="button" data-testid="refresh-workspace">Refresh</button>
 </div>
 <ul class="workspace-threads" aria-label="Threads">
@@ -298,9 +301,9 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 <input aria-label="Branch (optional)" placeholder="branch (optional)" value=""/>
 <button type="submit">New worktree</button>
 </form>
-<form class="inline-form" data-testid="adopt-workspace">
-<input aria-label="Directory to adopt" placeholder="/path/to/directory" value=""/>
-<button type="submit">Adopt</button>
+<form class="inline-form" data-testid="link-repo">
+<input aria-label="Directory to link" placeholder="/path/to/directory" value=""/>
+<button type="submit">Link</button>
 </form>
 <section class="repositories" data-testid="repositories" aria-labelledby="repositories-heading">
 <h3 id="repositories-heading">Repositories</h3>
@@ -320,7 +323,7 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 <li class="repository-row" data-testid="repository-row" data-repository-id="r-be">
 <div class="workspace-title">
 <strong>be</strong>
-<span class="muted" data-testid="repository-worktrees"> 2 worktrees</span>
+<span class="muted" data-testid="repository-worktrees"> 1 worktree</span>
 </div>
 <code class="workspace-path">/src/be</code>
 <span class="muted" data-testid="repository-base">base main</span>

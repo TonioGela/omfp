@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 
 use omfp_core::{OMP_VERSION, ProcessState, ThreadEvent, ThreadState};
-use omfp_protocol::{CreatedBy, Provenance, Repository, ThreadSummary, Workspace, WorkspaceKind};
+use omfp_protocol::{
+    CreatedBy, Provenance, RepoKind, Repository, ThreadSummary, Workspace, WorkspaceRepo,
+};
 
 /// Events of `fixtures/threads/<omp version>/<name>.jsonl`.
 pub fn fixture_events(name: &str) -> Vec<ThreadEvent> {
@@ -60,33 +62,43 @@ pub fn repository(id: &str, name: &str) -> Repository {
     }
 }
 
-/// A managed worktree of `repository` on `branch`.
-pub fn workspace(id: &str, repository: Option<&str>, branch: Option<&str>) -> Workspace {
+/// A repository entry `name` of a workspace folder `/work/<workspace>`: a worktree of `/src/<name>` on `branch`.
+pub fn repo(workspace: &str, name: &str, branch: &str) -> WorkspaceRepo {
+    WorkspaceRepo {
+        name: name.to_owned(),
+        path: format!("/work/{workspace}/{name}"),
+        kind: RepoKind::Worktree {
+            main: format!("/src/{name}"),
+        },
+        branch: Some(branch.to_owned()),
+        head: None,
+        is_root: false,
+        canonical_path: format!("/work/{workspace}/{name}"),
+        shared_with: Vec::new(),
+    }
+}
+
+/// A workspace folder `/work/<id>` named `id` holding `repos`, with no thread yet.
+pub fn workspace(id: &str, repos: Vec<WorkspaceRepo>) -> Workspace {
     Workspace {
         id: id.to_owned(),
+        name: id.to_owned(),
         path: format!("/work/{id}"),
-        kind: if repository.is_some() {
-            WorkspaceKind::ManagedWorktree
-        } else {
-            WorkspaceKind::Adopted
-        },
-        repository_id: repository.map(str::to_owned),
-        branch: branch.map(str::to_owned),
-        base_ref: None,
-        pr_url: None,
-        pr_number: None,
+        owned: true,
+        repos,
+        thread_ids: Vec::new(),
         provenance: provenance(),
         created_at: 1,
     }
 }
 
-/// An idle running thread on `workspace_ids`.
-pub fn thread(id: &str, title: &str, workspace_ids: &[&str]) -> ThreadSummary {
+/// An idle running thread in `workspace_id`.
+pub fn thread(id: &str, title: &str, workspace_id: &str) -> ThreadSummary {
     ThreadSummary {
         id: id.to_owned(),
         title: title.to_owned(),
         tags: Vec::new(),
-        workspace_ids: workspace_ids.iter().map(|id| (*id).to_owned()).collect(),
+        workspace_id: workspace_id.to_owned(),
         process: ProcessState::Running,
         settled: true,
         needs_attention: false,

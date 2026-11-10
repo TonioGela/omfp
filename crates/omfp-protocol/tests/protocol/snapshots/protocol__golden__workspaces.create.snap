@@ -7,8 +7,7 @@ expression: golden
     "id": "c42",
     "method": "workspaces.create",
     "params": {
-      "baseRef": "origin/main",
-      "repo": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F"
+      "name": "checkout-v2"
     },
     "type": "request"
   },
@@ -16,19 +15,46 @@ expression: golden
     "id": "c42",
     "ok": true,
     "result": {
-      "baseRef": "origin/main",
-      "branch": "omfp/checkout-v2-k3p9",
       "createdAt": 1794268800000,
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
-      "kind": "managed_worktree",
-      "path": "/home/dev/.local/share/omfp/worktrees/shop-frontend/checkout-v2",
+      "name": "checkout-v2",
+      "owned": true,
+      "path": "/home/dev/omfp/workspaces/checkout-v2",
       "provenance": {
         "client": "omfp-ui/web",
         "createdBy": {
           "kind": "user"
         }
       },
-      "repositoryId": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F"
+      "repos": [
+        {
+          "branch": "main",
+          "canonicalPath": "/home/dev/src/shop-backend",
+          "head": "f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a",
+          "isRoot": false,
+          "kind": "link",
+          "name": "backend",
+          "path": "/home/dev/omfp/workspaces/checkout-v2/backend",
+          "sharedWith": [
+            "01JD8X3Q4T9V2W6Y5Z7A1B3C7G"
+          ],
+          "target": "/home/dev/src/shop-backend"
+        },
+        {
+          "branch": "omfp/checkout-v2-1",
+          "canonicalPath": "/home/dev/omfp/workspaces/checkout-v2/shop-frontend",
+          "head": "0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d",
+          "isRoot": false,
+          "kind": "worktree",
+          "main": "/home/dev/src/shop-frontend",
+          "name": "shop-frontend",
+          "path": "/home/dev/omfp/workspaces/checkout-v2/shop-frontend",
+          "sharedWith": []
+        }
+      ],
+      "threadIds": [
+        "01JD8X3Q4T9V2W6Y5Z7A1B3C4D"
+      ]
     },
     "type": "response"
   }

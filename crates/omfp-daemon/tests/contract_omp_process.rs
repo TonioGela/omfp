@@ -1,5 +1,5 @@
 //! Contract tests (L3) of the daemon's omp adapter against the pinned omp and the fake LLM: session setup
-//! (DMN-030..032) and multi-workspace threads (spike S-07).
+//! (DMN-030..032) and multi-root sessions (spikes S-07, S-10).
 
 mod common;
 
@@ -46,6 +46,34 @@ async fn setup_opens_the_thread_session_and_a_restart_resumes_it_with_history() 
         "user prompt and assistant answer: {:#?}",
         second.history
     );
+    harness.assert_no_stray_network();
+}
+
+/// Migration 3 moves existing threads into new workspace folders: their sessions must resume from another cwd.
+// spec: DMN-032, DMN-010
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_resumes_with_its_history_when_the_cwd_changes() {
+    let harness = Harness::new(vec![Step::reply(Reply::text("first answer"))]).await;
+    let before = harness.spec(&[]);
+    let mut after = harness.spec(&[]);
+    after.cwd = harness.thread.path().join("migrated-workspace");
+
+    let (first, moved) = tokio::task::spawn_blocking(move || {
+        let (process, startup) = start(&before);
+        process
+            .client()
+            .prompt_and_wait(&prompt("remember this"), TIMEOUT)
+            .unwrap();
+        drop(process);
+        let (_process, moved) = start(&after);
+        (startup, moved)
+    })
+    .await
+    .unwrap();
+
+    assert!(moved.session.resumed, "{}", harness.stderr());
+    assert_eq!(moved.session.session_id, first.session.session_id);
+    assert_eq!(moved.history.len(), 2, "{:#?}", moved.history);
     harness.assert_no_stray_network();
 }
 
@@ -100,7 +128,7 @@ async fn context_files_of_every_add_dir_root_reach_the_model() {
 
 // spec: DMN-029
 #[tokio::test(flavor = "multi_thread")]
-async fn add_dir_attaches_a_workspace_to_a_live_session() {
+async fn add_dir_adds_a_root_to_a_live_session() {
     let later = TempRepo::new().unwrap();
     later
         .commit_file("AGENTS.md", "Late marker: persimmon-9\n", "add agents file")
@@ -164,7 +192,7 @@ fn record_one_request() -> (u16, mpsc::Receiver<String>) {
 
 // spec: AGT-005
 #[tokio::test(flavor = "multi_thread")]
-async fn an_mcp_server_in_the_thread_home_is_contacted_with_its_header() {
+async fn an_mcp_server_configured_in_the_cwd_is_contacted_with_its_header() {
     let harness = Harness::new(Vec::new()).await;
     let spec = harness.spec(&[]);
     let (port, requests) = record_one_request();

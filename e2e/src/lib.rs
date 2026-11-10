@@ -384,6 +384,8 @@ async fn start_daemon(env: &OmpEnv, data: &Path, bundle: &Path) -> anyhow::Resul
         "127.0.0.1:0".to_owned(),
         "--data-dir".to_owned(),
         path(data),
+        "--workspaces-root".to_owned(),
+        path(&data.join("workspaces")),
         "--omp-bin".to_owned(),
         omp,
         "--static-dir".to_owned(),

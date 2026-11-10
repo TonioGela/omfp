@@ -69,7 +69,7 @@ pub fn summary(id: &str, title: &str) -> ThreadSummary {
         id: id.to_owned(),
         title: title.to_owned(),
         tags: Vec::new(),
-        workspace_ids: Vec::new(),
+        workspace_id: "01W".into(),
         process: ProcessState::Stopped,
         settled: true,
         needs_attention: false,

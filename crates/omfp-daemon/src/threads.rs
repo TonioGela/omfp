@@ -1,5 +1,6 @@
-//! Thread records (02-daemon, "Threads and workspaces"): creation with a home and a session directory, workspace
-//! attachment, metadata. Process supervision lives elsewhere; this module never touches omp.
+//! Thread records (02-daemon, "Threads in a workspace"): creation in a workspace with a private session directory,
+//! metadata, and the roots last given to the thread's omp session. Process supervision lives elsewhere; this module
+//! never touches omp.
 //!
 //! Calls are blocking; the server layer runs them on blocking tasks.
 
@@ -11,8 +12,6 @@ use crate::store::{Provenance, Store, StoreError, Thread, new_id, now_ms};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ThreadError {
-    #[error("workspace {0} is listed twice")]
-    DuplicateWorkspace(String),
     #[error(transparent)]
     Store(#[from] StoreError),
     #[error(transparent)]
@@ -25,8 +24,8 @@ pub type Result<T, E = ThreadError> = std::result::Result<T, E>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewThread {
     pub title: String,
-    /// Ordered, possibly empty (ARC-008).
-    pub workspace_ids: Vec<String>,
+    /// The workspace the thread lives in (ARC-008).
+    pub workspace_id: String,
     pub tags: Vec<String>,
     /// `provider/id`.
     pub model: Option<String>,
@@ -36,12 +35,12 @@ pub struct NewThread {
 }
 
 impl NewThread {
-    /// A thread created by the user, with no workspace, tag or setting.
+    /// A thread created by the user in `workspace_id`, with no tag or setting.
     #[must_use]
-    pub fn new(title: impl Into<String>) -> Self {
+    pub fn new(title: impl Into<String>, workspace_id: impl Into<String>) -> Self {
         Self {
             title: title.into(),
-            workspace_ids: Vec::new(),
+            workspace_id: workspace_id.into(),
             tags: Vec::new(),
             model: None,
             thinking_level: None,
@@ -49,21 +48,6 @@ impl NewThread {
             created_by: Provenance::User,
         }
     }
-}
-
-/// A root to add to or remove from a live omp process (`/add-dir`, `/remove-dir`, DMN-029).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DirChange {
-    Added(PathBuf),
-    Removed(PathBuf),
-}
-
-/// Result of [`Threads::attach`] / [`Threads::detach`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Attachment {
-    pub thread: Thread,
-    /// `None` when the set of attached directories did not change (only the order, or nothing).
-    pub change: Option<DirChange>,
 }
 
 #[derive(Debug)]
@@ -78,22 +62,17 @@ impl Threads {
         Self { store, data }
     }
 
-    /// Creates a thread with its home (omp cwd, DMN-028) and session directory (ARC-020).
+    /// Creates a thread in a workspace, with its private session directory (ARC-020).
     pub fn create(&self, new: NewThread) -> Result<Thread> {
         self.store.check_provenance(&new.created_by)?;
-        for (index, id) in new.workspace_ids.iter().enumerate() {
-            self.live_workspace_path(id)?;
-            if new.workspace_ids[..index].contains(id) {
-                return Err(ThreadError::DuplicateWorkspace(id.clone()));
-            }
-        }
+        self.store.workspace(&new.workspace_id)?;
         let id = new_id();
         let session_dir = std::path::absolute(self.data.thread_sessions(&id))?;
-        std::fs::create_dir_all(self.data.thread_home(&id))?;
         std::fs::create_dir_all(&session_dir)?;
         let thread = Thread {
             id,
             title: new.title,
+            workspace_id: new.workspace_id,
             session_dir,
             omp_session_id: None,
             approval_mode: new.approval_mode,
@@ -102,11 +81,10 @@ impl Threads {
             created_by: new.created_by,
             created_at: now_ms(),
             archived_at: None,
-            workspace_ids: new.workspace_ids,
             tags: new.tags,
         };
         if let Err(error) = self.store.insert_thread(&thread) {
-            // Best effort: no orphan directories for a thread that does not exist.
+            // Best effort: no orphan directory for a thread that does not exist.
             let _ = std::fs::remove_dir_all(self.data.thread(&thread.id));
             return Err(error.into());
         }
@@ -120,58 +98,6 @@ impl Threads {
     /// Every thread, archived ones included, oldest first.
     pub fn list(&self) -> Result<Vec<Thread>> {
         Ok(self.store.threads()?)
-    }
-
-    /// Paths of the attached workspaces in order, for `--add-dir` (DMN-030).
-    pub fn workspace_paths(&self, id: &str) -> Result<Vec<PathBuf>> {
-        self.get(id)?
-            .workspace_ids
-            .iter()
-            .map(|workspace_id| self.live_workspace_path(workspace_id))
-            .collect()
-    }
-
-    /// Attaches a workspace at `position` (default: last); an attached one is moved there. Sharing a workspace
-    /// between threads is allowed (DMN-027).
-    pub fn attach(
-        &self,
-        id: &str,
-        workspace_id: &str,
-        position: Option<usize>,
-    ) -> Result<Attachment> {
-        let thread = self.get(id)?;
-        let path = self.live_workspace_path(workspace_id)?;
-        let mut ids = thread.workspace_ids;
-        let current = ids.iter().position(|attached| attached == workspace_id);
-        if let Some(index) = current {
-            ids.remove(index);
-        }
-        let index = position.or(current).unwrap_or(ids.len()).min(ids.len());
-        ids.insert(index, workspace_id.to_owned());
-        self.store.set_thread_workspaces(id, &ids)?;
-        Ok(Attachment {
-            thread: self.get(id)?,
-            change: current.is_none().then_some(DirChange::Added(path)),
-        })
-    }
-
-    /// Detaches a workspace; detaching one that is not attached changes nothing.
-    pub fn detach(&self, id: &str, workspace_id: &str) -> Result<Attachment> {
-        let thread = self.get(id)?;
-        let mut ids = thread.workspace_ids.clone();
-        let Some(index) = ids.iter().position(|attached| attached == workspace_id) else {
-            return Ok(Attachment {
-                thread,
-                change: None,
-            });
-        };
-        ids.remove(index);
-        let path = self.store.workspace(workspace_id)?.path;
-        self.store.set_thread_workspaces(id, &ids)?;
-        Ok(Attachment {
-            thread: self.get(id)?,
-            change: Some(DirChange::Removed(path)),
-        })
     }
 
     pub fn rename(&self, id: &str, title: &str) -> Result<Thread> {
@@ -210,25 +136,22 @@ impl Threads {
         self.get(id)
     }
 
-    /// Deletes the thread and its directory (home, sessions, log). Workspaces are never removed implicitly. The
-    /// caller makes sure no omp process runs for it.
+    /// The roots last given to the thread's omp session (DMN-029).
+    pub fn roots(&self, id: &str) -> Result<Vec<PathBuf>> {
+        Ok(self.store.thread_roots(id)?)
+    }
+
+    pub fn set_roots(&self, id: &str, roots: &[PathBuf]) -> Result<()> {
+        Ok(self.store.set_thread_roots(id, roots)?)
+    }
+
+    /// Deletes the thread and its directory (sessions, log). Its workspace is never removed implicitly. The caller
+    /// makes sure no omp process runs for it.
     pub fn delete(&self, id: &str) -> Result<()> {
         self.store.delete_thread(id)?;
         match std::fs::remove_dir_all(self.data.thread(id)) {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
             _ => Ok(()),
         }
-    }
-
-    fn live_workspace_path(&self, workspace_id: &str) -> Result<PathBuf> {
-        let ws = self.store.workspace(workspace_id)?;
-        if ws.removed_at.is_some() {
-            return Err(StoreError::NotFound {
-                entity: "workspace",
-                id: workspace_id.to_owned(),
-            }
-            .into());
-        }
-        Ok(ws.path)
     }
 }

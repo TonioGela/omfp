@@ -1,6 +1,6 @@
 //! Agent supervision (02-daemon, "Agent supervision"): one actor per thread owns the thread's event log and, while
-//! omp runs, its process. Lifecycle operations (start, stop, restart, attach, detach) are serialized per thread;
-//! omp commands are forwarded concurrently (DMN-037); threads proceed in parallel.
+//! omp runs, its process. Lifecycle operations (start, stop, restart, root sync) are serialized per thread; omp
+//! commands are forwarded concurrently (DMN-037); threads proceed in parallel.
 //!
 //! omp sits behind the [`AgentLauncher`] port (ARC-012). Time is tokio's clock, so component tests drive the idle
 //! reaper with paused time.
@@ -18,7 +18,7 @@ use omfp_core::{ProcessState, Resolution, ThreadEvent, ThreadState, validate_ask
 use omfp_protocol::InteractionResponse;
 use omp_rpc::{
     AnswersUiResponse, CancelUiResponse, ConfirmUiResponse, ExtensionUiRequest,
-    ExtensionUiResponse, PromptCommand, ValueUiResponse,
+    ExtensionUiResponse, PromptCommand, RpcAgentEvent, RpcNotification, ValueUiResponse,
 };
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, watch};
@@ -27,12 +27,14 @@ use tokio::time::Instant;
 use tracing::{info, warn};
 
 use crate::agent::{AgentLauncher, AgentProcess, Lease, OmpCall, PromptAdmission};
+use crate::conventions;
 use crate::event_log::EventLog;
 use crate::host_tools;
 use crate::omp::{LaunchSpec, startup_events, thread_event};
 use crate::paths::DataDir;
 use crate::store::{Thread, new_id};
-use crate::threads::{DirChange, ThreadError, Threads};
+use crate::threads::{ThreadError, Threads};
+use crate::workspaces::{WorkspaceError, Workspaces};
 
 /// The event log of one thread: omp frames and daemon events folded by the shared reducer (ARC-006).
 pub type ThreadLog = EventLog<ThreadEvent, ThreadState>;
@@ -58,6 +60,8 @@ pub struct SupervisorConfig {
     pub event_capacity: usize,
     /// How far a subscriber may fall behind before it must resynchronize (PRT-023).
     pub live_buffer: usize,
+    /// omp's user agent directory, where the user's `APPEND_SYSTEM.md` lives (DMN-030).
+    pub agent_dir: Option<PathBuf>,
 }
 
 impl SupervisorConfig {
@@ -71,6 +75,7 @@ impl SupervisorConfig {
             idle_timeout: Duration::from_mins(15),
             event_capacity: 2000,
             live_buffer: 4096,
+            agent_dir: None,
         }
     }
 }
@@ -103,6 +108,8 @@ pub enum SupervisorError {
     ShuttingDown,
     #[error(transparent)]
     Thread(#[from] ThreadError),
+    #[error(transparent)]
+    Workspace(#[from] WorkspaceError),
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -190,6 +197,9 @@ struct Actor {
     answers: Mutex<()>,
     watchers: AtomicUsize,
     last_activity: Mutex<Instant>,
+    /// A root sync was asked while the agent was busy (omp refuses `/add-dir` while streaming); it runs once the
+    /// session settles (DMN-029).
+    roots_pending: AtomicBool,
 }
 
 impl Actor {
@@ -208,6 +218,7 @@ impl Actor {
             answers: Mutex::new(()),
             watchers: AtomicUsize::new(0),
             last_activity: Mutex::new(Instant::now()),
+            roots_pending: AtomicBool::new(false),
         }
     }
 
@@ -245,6 +256,7 @@ impl Actor {
 struct Inner {
     launcher: Arc<dyn AgentLauncher>,
     threads: Arc<Threads>,
+    workspaces: Arc<Workspaces>,
     data: DataDir,
     config: SupervisorConfig,
     actors: Mutex<HashMap<String, Arc<Actor>>>,
@@ -253,6 +265,8 @@ struct Inner {
     generations: AtomicU64,
     /// Ids of threads whose [`ThreadStatus`] changed.
     changes: broadcast::Sender<String>,
+    /// Ids of threads that finished a tool execution (a rescan trigger, DMN-023).
+    tool_ends: broadcast::Sender<String>,
     shutting_down: AtomicBool,
 }
 
@@ -294,6 +308,7 @@ impl Supervisor {
     pub fn new(
         launcher: Arc<dyn AgentLauncher>,
         threads: Arc<Threads>,
+        workspaces: Arc<Workspaces>,
         data: DataDir,
         config: SupervisorConfig,
     ) -> Self {
@@ -301,15 +316,23 @@ impl Supervisor {
             inner: Arc::new(Inner {
                 launcher,
                 threads,
+                workspaces,
                 data,
                 config,
                 actors: Mutex::new(HashMap::new()),
                 running: AtomicUsize::new(0),
                 generations: AtomicU64::new(0),
                 changes: broadcast::channel(256).0,
+                tool_ends: broadcast::channel(256).0,
                 shutting_down: AtomicBool::new(false),
             }),
         }
+    }
+
+    /// Ids of threads whose agent finished a tool execution (`tool_execution_end`).
+    #[must_use]
+    pub fn subscribe_tool_ends(&self) -> broadcast::Receiver<String> {
+        self.inner.tool_ends.subscribe()
     }
 
     /// Ids of threads whose process state, settledness or pending requests changed.
@@ -462,49 +485,69 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Attaches a workspace; a running process gets `/add-dir` (DMN-029). The store is updated first.
-    pub async fn attach(
-        &self,
-        id: &str,
-        workspace_id: &str,
-        position: Option<usize>,
-    ) -> Result<Thread> {
+    /// Brings the live process's roots in line with the repositories discovered in its workspace (DMN-029):
+    /// `/add-dir` for new ones, `/remove-dir` for roots that disappeared, through `prompt` (local commands). omp
+    /// refuses them while the agent streams, so a busy thread syncs once its session settles. A stopped thread needs
+    /// nothing: its next launch passes the roots.
+    pub async fn sync_roots(&self, id: &str) -> Result<()> {
         let actor = self.actor(id).await?;
         let _lifecycle = actor.lifecycle.lock().await;
-        let threads = Arc::clone(&self.inner.threads);
-        let (thread_id, workspace_id) = (id.to_owned(), workspace_id.to_owned());
-        let attachment =
-            blocking(move || threads.attach(&thread_id, &workspace_id, position)).await??;
-        self.apply_dir_change(&actor, attachment.change).await?;
-        Ok(attachment.thread)
-    }
-
-    /// Detaches a workspace; a running process gets `/remove-dir` (DMN-029). The store is updated first.
-    pub async fn detach(&self, id: &str, workspace_id: &str) -> Result<Thread> {
-        let actor = self.actor(id).await?;
-        let _lifecycle = actor.lifecycle.lock().await;
-        let threads = Arc::clone(&self.inner.threads);
-        let (thread_id, workspace_id) = (id.to_owned(), workspace_id.to_owned());
-        let attachment = blocking(move || threads.detach(&thread_id, &workspace_id)).await??;
-        self.apply_dir_change(&actor, attachment.change).await?;
-        Ok(attachment.thread)
-    }
-
-    async fn apply_dir_change(&self, actor: &Actor, change: Option<DirChange>) -> Result<()> {
-        let (Some(change), Some(process)) = (change, actor.process()) else {
+        let Some(process) = actor.process() else {
+            actor.roots_pending.store(false, Ordering::SeqCst);
             return Ok(());
         };
-        let message = match change {
-            DirChange::Added(path) => format!("/add-dir {}", path.display()),
-            DirChange::Removed(path) => format!("/remove-dir {}", path.display()),
-        };
-        let command = PromptCommand {
-            message,
-            images: None,
-            streaming_behavior: None,
-        };
-        blocking(move || process.prompt(command)).await??;
-        actor.touch();
+        if !actor.status().settled {
+            actor.roots_pending.store(true, Ordering::SeqCst);
+            return Ok(());
+        }
+        actor.roots_pending.store(false, Ordering::SeqCst);
+        let threads = Arc::clone(&self.inner.threads);
+        let workspaces = Arc::clone(&self.inner.workspaces);
+        let thread_id = actor.id.clone();
+        let (desired, recorded) = blocking(move || {
+            let thread = threads.get(&thread_id)?;
+            let desired = root_paths(&workspaces.discovered(&thread.workspace_id)?);
+            Ok::<_, SupervisorError>((desired, threads.roots(&thread_id)?))
+        })
+        .await??;
+        self.apply_roots(&actor, process, desired, &recorded).await
+    }
+
+    /// Sends `/add-dir` for `desired` roots not `recorded` and `/remove-dir` for recorded ones no longer desired,
+    /// then records `desired`.
+    async fn apply_roots(
+        &self,
+        actor: &Actor,
+        process: Arc<dyn AgentProcess>,
+        desired: Vec<PathBuf>,
+        recorded: &[PathBuf],
+    ) -> Result<()> {
+        let added = desired
+            .iter()
+            .filter(|root| !recorded.contains(root))
+            .map(|root| format!("/add-dir {}", root.display()));
+        let removed = recorded
+            .iter()
+            .filter(|root| !desired.contains(root))
+            .map(|root| format!("/remove-dir {}", root.display()));
+        let commands: Vec<String> = added.chain(removed).collect();
+        if !commands.is_empty() {
+            blocking(move || {
+                for message in commands {
+                    process.prompt(PromptCommand {
+                        message,
+                        images: None,
+                        streaming_behavior: None,
+                    })?;
+                }
+                Ok::<_, omp_rpc::Error>(())
+            })
+            .await??;
+            actor.touch();
+        }
+        let threads = Arc::clone(&self.inner.threads);
+        let thread_id = actor.id.clone();
+        blocking(move || threads.set_roots(&thread_id, &desired)).await??;
         Ok(())
     }
 
@@ -587,11 +630,30 @@ impl Supervisor {
     }
 
     fn push(&self, actor: &Actor, event: ThreadEvent) {
+        let tool_end = matches!(
+            &event,
+            ThreadEvent::Omp {
+                frame: RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(_))
+            }
+        );
         let before = actor.status();
         actor.log.push(event);
         actor.touch();
-        if actor.status() != before {
+        let after = actor.status();
+        if after != before {
             let _ = self.inner.changes.send(actor.id.clone());
+        }
+        if tool_end {
+            let _ = self.inner.tool_ends.send(actor.id.clone());
+        }
+        if after.settled && !before.settled && actor.roots_pending.load(Ordering::SeqCst) {
+            let supervisor = self.clone();
+            let id = actor.id.clone();
+            tokio::spawn(async move {
+                if let Err(error) = supervisor.sync_roots(&id).await {
+                    warn!(thread = %id, %error, "root sync failed");
+                }
+            });
         }
     }
 
@@ -625,28 +687,44 @@ impl Supervisor {
         started
     }
 
-    async fn launch(&self, actor: &Arc<Actor>) -> Result<Arc<dyn AgentProcess>> {
+    /// How to start the thread's omp (DMN-030), from a fresh scan of its workspace (DMN-023); with the roots its
+    /// session had and the ones it gets now.
+    async fn launch_spec(
+        &self,
+        actor: &Actor,
+    ) -> Result<(Thread, LaunchSpec, Vec<PathBuf>, Vec<PathBuf>)> {
         let id = actor.id.clone();
         let threads = Arc::clone(&self.inner.threads);
-        let (thread, add_dirs) = blocking(move || {
+        let workspaces = Arc::clone(&self.inner.workspaces);
+        let (thread, ws, repos, recorded) = blocking(move || {
             let thread = threads.get(&id)?;
-            let add_dirs = threads.workspace_paths(&id)?;
-            Ok::<_, ThreadError>((thread, add_dirs))
+            let (view, _) = workspaces.rescan(&thread.workspace_id)?;
+            let recorded = threads.roots(&id)?;
+            Ok::<_, SupervisorError>((thread, view.workspace, view.repos, recorded))
         })
         .await??;
+        let add_dirs = root_paths(&repos);
         let data = &self.inner.data;
         let spec = LaunchSpec {
             program: self.inner.config.omp_program.clone(),
-            cwd: std::path::absolute(data.thread_home(&actor.id))
-                .unwrap_or_else(|_| data.thread_home(&actor.id)),
-            add_dirs,
+            cwd: ws.path.clone(),
+            add_dirs: add_dirs.clone(),
             session_dir: thread.session_dir.clone(),
             model: thread.model.clone(),
             approval_mode: thread.approval_mode.clone(),
-            append_system_prompt: None,
+            append_system_prompt: Some(conventions::append_system_prompt(
+                &ws.name,
+                &ws.path,
+                self.inner.config.agent_dir.as_deref(),
+            )),
             stderr_log: data.thread_log(&actor.id),
             env: self.inner.config.omp_env.clone(),
         };
+        Ok((thread, spec, recorded, add_dirs))
+    }
+
+    async fn launch(&self, actor: &Arc<Actor>) -> Result<Arc<dyn AgentProcess>> {
+        let (thread, spec, mut recorded, add_dirs) = self.launch_spec(actor).await?;
         self.push(
             actor,
             ThreadEvent::Process {
@@ -722,6 +800,14 @@ impl Supervisor {
         });
         self.spawn_pump(Arc::clone(actor), launched.events, generation, ended_tx);
         info!(thread = %actor.id, "omp started");
+        // The flags added today's roots; the session still has the ones it saved before (S-10).
+        recorded.extend(add_dirs.iter().cloned());
+        if let Err(error) = self
+            .apply_roots(actor, Arc::clone(&process), add_dirs, &recorded)
+            .await
+        {
+            warn!(thread = %actor.id, %error, "cannot remove stale roots");
+        }
         Ok(process)
     }
 
@@ -813,6 +899,16 @@ impl Supervisor {
         info!(thread = %actor.id, "omp stopped");
         Ok(())
     }
+}
+
+/// The `--add-dir` roots for a workspace's repositories: every one but the folder itself, by its path inside the
+/// workspace (DMN-029).
+fn root_paths(repos: &[crate::workspaces::Discovered]) -> Vec<PathBuf> {
+    repos
+        .iter()
+        .filter(|repo| !repo.is_root)
+        .map(|repo| repo.path.clone())
+        .collect()
 }
 
 /// The id of a dialog request; `None` for presentation-only methods.

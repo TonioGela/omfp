@@ -1,42 +1,50 @@
-//! L1: the workspace service against the in-memory `FakeGit` (real SQLite file in a temp dir).
+//! L1: the workspace service against the in-memory `FakeGit`, with real folders, files and symlinks in a temp dir
+//! and a real SQLite file.
 
+use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use omfp_daemon::git::FakeGit;
+use omfp_daemon::git::{FakeGit, Git, WorktreeBranch};
 use omfp_daemon::paths::DataDir;
-use omfp_daemon::store::{Provenance, Store, StoreError, WorkspaceKind};
+use omfp_daemon::store::{Provenance, Store, StoreError};
 use omfp_daemon::threads::{NewThread, Threads};
 use omfp_daemon::workspaces::{
-    NewWorkspace, RemoveOptions, RepoRef, WorkspaceError, Workspaces, slugify,
+    Discovered, NewWorkspace, RepoKind, RepoRef, RepoSource, WorkspaceError, WorkspaceView,
+    Workspaces, scan,
 };
 use tempfile::TempDir;
 
 struct Env {
     _dir: TempDir,
+    /// Canonical path of the temp dir.
     root: PathBuf,
+    /// `--workspaces-root`: `<root>/workspaces`.
+    workspaces_root: PathBuf,
     data: DataDir,
     store: Arc<Store>,
     git: Arc<FakeGit>,
     workspaces: Workspaces,
-    /// A fake repository on `main`.
+    /// A fake repository on `main` at `<root>/repos/app`.
     repo: PathBuf,
 }
 
 fn env() -> Env {
     let dir = TempDir::new().unwrap();
     let root = dir.path().canonicalize().unwrap();
+    let workspaces_root = root.join("workspaces");
     let data = DataDir::new(root.join("data"));
     std::fs::create_dir_all(data.root()).unwrap();
-    let store = Arc::new(Store::open(&data.db()).unwrap());
+    let store = Arc::new(Store::open(&data.db(), &workspaces_root).unwrap());
     let git = Arc::new(FakeGit::new());
-    let repo = fake_repo(&git, &root, "app");
-    let workspaces = Workspaces::new(store.clone(), git.clone(), data.clone());
+    let repo = fake_repo(&git, &root.join("repos").join("app"), "main");
+    let workspaces = Workspaces::new(store.clone(), git.clone(), workspaces_root.clone());
     Env {
         _dir: dir,
         root,
+        workspaces_root,
         data,
         store,
         git,
@@ -45,33 +53,302 @@ fn env() -> Env {
     }
 }
 
-fn fake_repo(git: &FakeGit, root: &Path, name: &str) -> PathBuf {
-    let path = root.join(name);
-    std::fs::create_dir_all(&path).unwrap();
-    git.add_repo(&path, "main");
-    path
+/// Makes `path` a fake repository with `head` checked out.
+fn fake_repo(git: &FakeGit, path: &Path, head: &str) -> PathBuf {
+    std::fs::create_dir_all(path).unwrap();
+    git.add_repo(path, head);
+    path.to_owned()
 }
 
-fn by_path(path: &Path) -> NewWorkspace {
-    NewWorkspace::new(RepoRef::Path(path.to_owned()))
-}
-
-fn named(path: &Path, name: &str) -> NewWorkspace {
+fn named(name: &str) -> NewWorkspace {
     NewWorkspace {
         name: Some(name.into()),
-        ..by_path(path)
+        ..NewWorkspace::new()
     }
 }
 
-fn worktree_branches(env: &Env) -> Vec<String> {
-    env.git
-        .worktrees(&env.repo)
-        .into_iter()
-        .map(|(_, branch)| branch)
-        .collect()
+fn fallback(name: &str) -> NewWorkspace {
+    NewWorkspace {
+        fallback_name: Some(name.into()),
+        ..NewWorkspace::new()
+    }
+}
+
+fn at(path: &Path) -> NewWorkspace {
+    NewWorkspace {
+        path: Some(path.to_owned()),
+        ..NewWorkspace::new()
+    }
+}
+
+fn link(path: &Path) -> RepoSource {
+    RepoSource::Link(path.to_owned())
+}
+
+fn worktree(repo: RepoRef, branch: Option<&str>) -> RepoSource {
+    RepoSource::Worktree {
+        repo,
+        branch: branch.map(str::to_owned),
+        base_ref: None,
+    }
+}
+
+fn worktree_of(repo: &Path) -> RepoSource {
+    worktree(RepoRef::Path(repo.to_owned()), None)
+}
+
+fn names(view: &WorkspaceView) -> Vec<&str> {
+    view.repos.iter().map(|repo| repo.name.as_str()).collect()
+}
+
+/// Entries of a directory, sorted.
+fn entries(dir: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+fn exists(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+impl Env {
+    fn create(&self, name: &str) -> WorkspaceView {
+        self.workspaces.create(named(name)).unwrap()
+    }
+
+    /// What a scan reports for the git root at `path`, found as entry `name`.
+    fn discovered(&self, name: &str, path: &Path, kind: RepoKind, branch: &str) -> Discovered {
+        Discovered {
+            name: name.into(),
+            path: path.to_owned(),
+            kind,
+            branch: Some(branch.into()),
+            head: self.git.head(path).unwrap(),
+            is_root: false,
+            canonical: path.canonicalize().unwrap(),
+        }
+    }
+
+    fn threads(&self) -> Threads {
+        Threads::new(self.store.clone(), self.data.clone())
+    }
 }
 
 // spec: DMN-020
+#[test]
+fn a_new_workspace_is_an_owned_folder_under_the_workspaces_root() {
+    let env = env();
+
+    let view = env.create("Fix login!");
+
+    assert_eq!(view.workspace.name, "Fix login!");
+    assert_eq!(view.workspace.path, env.workspaces_root.join("fix-login"));
+    assert!(view.workspace.owned);
+    assert_eq!(view.workspace.created_by, Provenance::User);
+    assert!(view.workspace.path.is_dir());
+    assert_eq!(view.repos, Vec::new());
+    assert_eq!(
+        env.workspaces.get(&view.workspace.id).unwrap(),
+        view.workspace
+    );
+    assert_eq!(env.workspaces.list().unwrap(), vec![view.workspace]);
+}
+
+// spec: DMN-020
+#[test]
+fn names_and_folders_are_unique() {
+    let env = env();
+    let first = env.create("Fix login");
+    std::fs::create_dir_all(env.workspaces_root.join("notes")).unwrap();
+
+    let taken = env.workspaces.create(named("Fix login")).unwrap_err();
+    assert!(
+        matches!(taken, WorkspaceError::Store(StoreError::Conflict(_))),
+        "{taken:?}"
+    );
+    let same_slug = env.create("fix login");
+    let unrecorded_folder = env.create("Notes");
+    let blank = env.workspaces.create(named("  ")).unwrap_err();
+    assert!(matches!(blank, WorkspaceError::InvalidName(_)), "{blank:?}");
+    let renamed = env
+        .workspaces
+        .rename(&same_slug.workspace.id, "Fix login")
+        .unwrap_err();
+    assert!(
+        matches!(renamed, WorkspaceError::Store(StoreError::Conflict(_))),
+        "{renamed:?}"
+    );
+
+    assert_eq!(first.workspace.path, env.workspaces_root.join("fix-login"));
+    assert_eq!(
+        same_slug.workspace.path,
+        env.workspaces_root.join("fix-login-2")
+    );
+    assert_eq!(
+        unrecorded_folder.workspace.path,
+        env.workspaces_root.join("notes-2")
+    );
+    assert_eq!(
+        entries(&env.workspaces_root),
+        vec!["fix-login", "fix-login-2", "notes", "notes-2"]
+    );
+    // Renaming keeps the folder.
+    let view = env
+        .workspaces
+        .rename(&same_slug.workspace.id, "Other")
+        .unwrap();
+    assert_eq!(view.workspace.name, "Other");
+    assert_eq!(view.workspace.path, same_slug.workspace.path);
+}
+
+// spec: DMN-020
+#[test]
+fn default_and_fallback_names_are_made_unique() {
+    let env = env();
+
+    let created: Vec<(String, PathBuf)> = [
+        NewWorkspace::new(),
+        NewWorkspace::new(),
+        fallback("Fix login"),
+        fallback("Fix login"),
+        fallback("  "),
+    ]
+    .into_iter()
+    .map(|new| {
+        let ws = env.workspaces.create(new).unwrap().workspace;
+        (ws.name, ws.path)
+    })
+    .collect();
+
+    let root = &env.workspaces_root;
+    assert_eq!(
+        created,
+        vec![
+            ("workspace".into(), root.join("workspace")),
+            ("workspace 2".into(), root.join("workspace-2")),
+            ("Fix login".into(), root.join("fix-login")),
+            ("Fix login 2".into(), root.join("fix-login-2")),
+            ("workspace 3".into(), root.join("workspace-3")),
+        ]
+    );
+}
+
+// spec: DMN-020
+#[test]
+fn an_existing_folder_is_recorded_without_being_owned() {
+    let env = env();
+    let notes = env.root.join("projects").join("notes");
+    std::fs::create_dir_all(&notes).unwrap();
+    std::fs::write(notes.join("todo.txt"), "x").unwrap();
+    let alias = env.root.join("alias");
+    symlink(&notes, &alias).unwrap();
+
+    let view = env.workspaces.create(at(&alias)).unwrap();
+
+    assert_eq!(view.workspace.name, "notes");
+    assert_eq!(view.workspace.path, notes);
+    assert!(!view.workspace.owned);
+    assert_eq!(view.repos, Vec::new());
+    let again = env.workspaces.create(at(&notes)).unwrap_err();
+    assert!(
+        matches!(again, WorkspaceError::Store(StoreError::Conflict(_))),
+        "{again:?}"
+    );
+    for missing in [env.root.join("missing"), notes.join("todo.txt")] {
+        let error = env.workspaces.create(at(&missing)).unwrap_err();
+        assert!(
+            matches!(error, WorkspaceError::NotADirectory(_)),
+            "{error:?}"
+        );
+    }
+    let docs = env.root.join("docs");
+    std::fs::create_dir_all(&docs).unwrap();
+    let named_docs = env
+        .workspaces
+        .create(NewWorkspace {
+            name: Some("Docs".into()),
+            ..at(&docs)
+        })
+        .unwrap();
+    assert_eq!(named_docs.workspace.name, "Docs");
+    assert_eq!(named_docs.workspace.path, docs);
+    assert_eq!(env.workspaces.list().unwrap().len(), 2);
+    assert_eq!(
+        entries(&env.root),
+        vec!["alias", "data", "docs", "projects", "repos"]
+    );
+}
+
+// spec: DMN-020, DMN-022
+#[test]
+fn an_existing_git_folder_is_discovered_first_as_its_own_root() {
+    let env = env();
+    let mono = fake_repo(&env.git, &env.root.join("repos").join("mono"), "main");
+    symlink(&env.repo, mono.join("app")).unwrap();
+
+    let view = env.workspaces.create(at(&mono)).unwrap();
+
+    assert!(!view.workspace.owned);
+    assert_eq!(
+        view.repos,
+        vec![
+            Discovered {
+                is_root: true,
+                ..env.discovered("mono", &mono, RepoKind::Clone, "main")
+            },
+            env.discovered(
+                "app",
+                &mono.join("app"),
+                RepoKind::Link {
+                    target: env.repo.clone()
+                },
+                "main"
+            ),
+        ]
+    );
+}
+
+// spec: ARC-009
+#[test]
+fn workspace_provenance_is_recorded() {
+    let env = env();
+    let home = env.create("home");
+    let creator = env
+        .threads()
+        .create(NewThread::new("agent", &home.workspace.id))
+        .unwrap();
+
+    let view = env
+        .workspaces
+        .create(NewWorkspace {
+            created_by: Provenance::Thread(creator.id.clone()),
+            ..named("made by agent")
+        })
+        .unwrap();
+    assert_eq!(
+        env.workspaces.get(&view.workspace.id).unwrap().created_by,
+        Provenance::Thread(creator.id)
+    );
+
+    let unknown = env
+        .workspaces
+        .create(NewWorkspace {
+            created_by: Provenance::Thread("01JUNKNOWNTHREAD0000000000".into()),
+            ..named("orphan")
+        })
+        .unwrap_err();
+    assert!(
+        matches!(unknown, WorkspaceError::Store(StoreError::NotFound { .. })),
+        "{unknown:?}"
+    );
+    assert!(!env.workspaces_root.join("orphan").exists());
+}
+
+// spec: DMN-021
 #[test]
 fn registering_requires_the_root_of_a_git_repository() {
     let env = env();
@@ -80,321 +357,515 @@ fn registering_requires_the_root_of_a_git_repository() {
     let nested = env.repo.join("src");
     std::fs::create_dir_all(&nested).unwrap();
 
-    assert!(matches!(
-        env.workspaces.add_repository(&plain, None),
-        Err(WorkspaceError::NotARepository(_))
-    ));
-    assert!(matches!(
-        env.workspaces.add_repository(&nested, None),
-        Err(WorkspaceError::NotARepositoryRoot(_))
-    ));
-    assert!(matches!(
-        env.workspaces
-            .add_repository(&env.root.join("missing"), None),
-        Err(WorkspaceError::NotADirectory(_))
-    ));
+    let register = |path: &Path| env.workspaces.add_repository(path, None).unwrap_err();
+    let error = register(&plain);
+    assert!(
+        matches!(error, WorkspaceError::NotARepository(_)),
+        "{error:?}"
+    );
+    let error = register(&nested);
+    assert!(
+        matches!(error, WorkspaceError::NotARepositoryRoot(_)),
+        "{error:?}"
+    );
+    let error = register(&env.root.join("missing"));
+    assert!(
+        matches!(error, WorkspaceError::NotADirectory(_)),
+        "{error:?}"
+    );
     assert_eq!(env.workspaces.repositories().unwrap(), Vec::new());
 }
 
-// spec: DMN-020
+// spec: DMN-021
 #[test]
-fn a_registered_repository_records_name_base_ref_and_remote() {
+fn a_known_repository_is_registered_once_with_name_base_ref_and_remote() {
     let env = env();
     env.git
-        .set_remote_url(&env.repo, "git@example.com:org/app.git");
+        .set_remote_url(&env.repo, "git@example.invalid:org/app.git");
 
     let repo = env.workspaces.add_repository(&env.repo, None).unwrap();
+    let duplicate = env.workspaces.add_repository(&env.repo, None).unwrap_err();
+    let api = fake_repo(&env.git, &env.root.join("repos").join("api"), "main");
+    let explicit = env
+        .workspaces
+        .add_repository(&api, Some("develop"))
+        .unwrap();
 
     assert_eq!(repo.name, "app");
     assert_eq!(repo.path, env.repo);
     assert_eq!(repo.default_base_ref, "main");
     assert_eq!(
         repo.remote_url.as_deref(),
-        Some("git@example.com:org/app.git")
+        Some("git@example.invalid:org/app.git")
     );
-    assert_eq!(env.workspaces.repositories().unwrap(), vec![repo]);
-
-    let explicit = fake_repo(&env.git, &env.root, "api");
-    let api = env
-        .workspaces
-        .add_repository(&explicit, Some("develop"))
-        .unwrap();
-    assert_eq!(api.default_base_ref, "develop");
-}
-
-// spec: DMN-020
-#[test]
-fn a_repository_is_registered_once() {
-    let env = env();
-    env.workspaces.add_repository(&env.repo, None).unwrap();
-
-    let error = env.workspaces.add_repository(&env.repo, None).unwrap_err();
     assert!(
-        matches!(error, WorkspaceError::Store(StoreError::Conflict(_))),
-        "{error:?}"
+        matches!(duplicate, WorkspaceError::Store(StoreError::Conflict(_))),
+        "{duplicate:?}"
+    );
+    assert_eq!(explicit.default_base_ref, "develop");
+    assert_eq!(explicit.remote_url, None);
+    assert_eq!(
+        env.workspaces.repositories().unwrap(),
+        vec![repo.clone(), explicit.clone()]
+    );
+    env.workspaces.remove_repository(&repo.id).unwrap();
+    assert_eq!(env.workspaces.repositories().unwrap(), vec![explicit]);
+    assert!(env.repo.is_dir());
+}
+
+/// Fills `folder` with a link, a worktree and a clone among entries that are no repository.
+fn populate_for_scan(env: &Env, folder: &Path) {
+    symlink(&env.repo, folder.join("app")).unwrap();
+    let branch = WorktreeBranch::New {
+        name: "topic".into(),
+        base_ref: "main".into(),
+    };
+    env.git
+        .worktree_add(&env.repo, &folder.join("wt"), &branch)
+        .unwrap();
+    fake_repo(&env.git, &folder.join("lib"), "dev");
+
+    fake_repo(&env.git, &folder.join(".omp"), "main");
+    fake_repo(&env.git, &folder.join("group").join("inner"), "main");
+    std::fs::create_dir_all(folder.join("notes")).unwrap();
+    std::fs::write(folder.join("README.md"), "x").unwrap();
+    std::fs::create_dir_all(env.repo.join("src")).unwrap();
+    symlink(env.repo.join("src"), folder.join("sub")).unwrap();
+    symlink(env.root.join("missing"), folder.join("dangling")).unwrap();
+    std::fs::write(env.root.join("file.txt"), "x").unwrap();
+    symlink(env.root.join("file.txt"), folder.join("file-link")).unwrap();
+}
+
+// spec: DMN-022
+#[test]
+fn a_scan_finds_links_worktrees_and_clones_at_the_top_level_only() {
+    let env = env();
+    let ws = env.create("scan").workspace;
+    populate_for_scan(&env, &ws.path);
+
+    let (view, changed) = env.workspaces.rescan(&ws.id).unwrap();
+
+    assert!(changed);
+    let expected = vec![
+        env.discovered(
+            "app",
+            &ws.path.join("app"),
+            RepoKind::Link {
+                target: env.repo.clone(),
+            },
+            "main",
+        ),
+        env.discovered("lib", &ws.path.join("lib"), RepoKind::Clone, "dev"),
+        env.discovered(
+            "wt",
+            &ws.path.join("wt"),
+            RepoKind::Worktree {
+                main: env.repo.clone(),
+            },
+            "topic",
+        ),
+    ];
+    assert_eq!(view.repos, expected);
+    assert_eq!(view.repos[0].canonical, env.repo);
+    assert_ne!(view.repos[0].head, view.repos[2].head);
+    assert_eq!(scan(&*env.git, &ws.path).unwrap(), expected);
+    assert_eq!(env.workspaces.discovered(&ws.id).unwrap(), expected);
+    assert_eq!(env.workspaces.repo(&ws.id, "lib").unwrap(), expected[1]);
+    let missing = env.workspaces.repo(&ws.id, "notes").unwrap_err();
+    assert!(
+        matches!(missing, WorkspaceError::NoSuchRepo { .. }),
+        "{missing:?}"
     );
 }
 
-// spec: DMN-021
+// spec: DMN-023
 #[test]
-fn a_managed_workspace_gets_a_new_unique_omfp_branch() {
+fn a_rescan_reports_a_change_only_when_the_repositories_differ() {
     let env = env();
-    let repo = env.workspaces.add_repository(&env.repo, None).unwrap();
+    let ws = env.create("x").workspace;
+    let rescan = || env.workspaces.rescan(&ws.id).unwrap();
+
+    assert_eq!(
+        rescan(),
+        (
+            WorkspaceView {
+                workspace: ws.clone(),
+                repos: Vec::new()
+            },
+            false
+        )
+    );
+    symlink(&env.repo, ws.path.join("app")).unwrap();
+    // Until rescanned, the last scan is reported.
+    assert_eq!(env.workspaces.discovered(&ws.id).unwrap(), Vec::new());
+    let (view, changed) = rescan();
+    assert!(changed);
+    assert_eq!(names(&view), vec!["app"]);
+    assert_eq!(env.workspaces.discovered(&ws.id).unwrap(), view.repos);
+    assert!(!rescan().1);
+    std::fs::write(ws.path.join("notes.txt"), "x").unwrap();
+    env.git.set_dirty(&env.repo, true);
+    assert!(!rescan().1);
+    std::fs::remove_file(ws.path.join("app")).unwrap();
+    let (view, changed) = rescan();
+    assert!(changed);
+    assert_eq!(view.repos, Vec::new());
+}
+
+// spec: DMN-024
+#[test]
+fn a_link_is_named_after_its_target_unless_named() {
+    let env = env();
+    let id = env.create("x").workspace.id;
+    let add = |name: Option<&str>, target: &Path| env.workspaces.add_repo(&id, name, link(target));
+
+    assert_eq!(names(&add(None, &env.repo).unwrap()), vec!["app"]);
+    assert_eq!(names(&add(None, &env.repo).unwrap()), vec!["app", "app-2"]);
+    let view = add(Some("frontend"), &env.repo).unwrap();
+
+    assert_eq!(names(&view), vec!["app", "app-2", "frontend"]);
+    for repo in &view.repos {
+        assert_eq!(
+            repo.kind,
+            RepoKind::Link {
+                target: env.repo.clone()
+            }
+        );
+        assert_eq!(std::fs::read_link(&repo.path).unwrap(), env.repo);
+    }
+    let duplicate = add(Some("frontend"), &env.repo).unwrap_err();
+    assert!(
+        matches!(duplicate, WorkspaceError::EntryExists(_)),
+        "{duplicate:?}"
+    );
+    for invalid in ["", ".hidden", "a/b"] {
+        let error = add(Some(invalid), &env.repo).unwrap_err();
+        assert!(matches!(error, WorkspaceError::InvalidName(_)), "{error:?}");
+    }
+    let plain = env.root.join("plain");
+    std::fs::create_dir_all(env.repo.join("src")).unwrap();
+    std::fs::create_dir_all(&plain).unwrap();
+    let nested = add(None, &env.repo.join("src")).unwrap_err();
+    assert!(
+        matches!(nested, WorkspaceError::NotARepositoryRoot(_)),
+        "{nested:?}"
+    );
+    let not_git = add(None, &plain).unwrap_err();
+    assert!(
+        matches!(not_git, WorkspaceError::NotARepository(_)),
+        "{not_git:?}"
+    );
+    let ws = env.workspaces.get(&id).unwrap();
+    assert_eq!(entries(&ws.path), vec!["app", "app-2", "frontend"]);
+}
+
+// spec: DMN-024
+#[test]
+fn a_worktree_gets_a_new_default_branch_unique_in_the_repository() {
+    let env = env();
+    let id = env.create("Fix login!").workspace.id;
     env.git.add_branch(&env.repo, "omfp/fix-login-1");
 
-    let first = env
-        .workspaces
-        .create(NewWorkspace {
-            name: Some("Fix login!".into()),
-            ..NewWorkspace::new(RepoRef::Id(repo.id.clone()))
-        })
+    env.workspaces
+        .add_repo(&id, None, worktree_of(&env.repo))
         .unwrap();
-    let second = env
+    let view = env
         .workspaces
-        .create(named(&env.repo, "Fix login!"))
+        .add_repo(&id, None, worktree_of(&env.repo))
         .unwrap();
 
-    assert_eq!(first.branch.as_deref(), Some("omfp/fix-login-2"));
-    assert_eq!(second.branch.as_deref(), Some("omfp/fix-login-3"));
-    assert_eq!(first.kind, WorkspaceKind::ManagedWorktree);
-    assert_eq!(first.repository_id, Some(repo.id));
-    assert_eq!(first.base_ref.as_deref(), Some("main"));
-    assert_eq!(first.created_by, Provenance::User);
-    assert_eq!(first.path, env.data.worktree("app", "fix-login-2"));
-    assert!(first.path.is_dir());
+    let folder = env.workspaces_root.join("fix-login");
+    assert_eq!(
+        view.repos,
+        vec![
+            env.discovered(
+                "app",
+                &folder.join("app"),
+                RepoKind::Worktree {
+                    main: env.repo.clone()
+                },
+                "omfp/fix-login-2"
+            ),
+            env.discovered(
+                "app-2",
+                &folder.join("app-2"),
+                RepoKind::Worktree {
+                    main: env.repo.clone()
+                },
+                "omfp/fix-login-3"
+            ),
+        ]
+    );
     assert_eq!(
         env.git.worktrees(&env.repo),
         vec![
-            (first.path.clone(), "omfp/fix-login-2".to_owned()),
-            (second.path.clone(), "omfp/fix-login-3".to_owned()),
+            (folder.join("app"), "omfp/fix-login-2".to_owned()),
+            (folder.join("app-2"), "omfp/fix-login-3".to_owned()),
         ]
     );
-    assert_eq!(env.workspaces.list().unwrap(), vec![first, second]);
 }
 
-// spec: DMN-021
+// spec: DMN-024
 #[test]
-fn the_default_name_skips_existing_directories() {
+fn a_worktree_checks_out_an_existing_branch_or_creates_the_named_one() {
     let env = env();
-    std::fs::create_dir_all(env.data.worktree("app", "workspace-1")).unwrap();
-
-    let ws = env.workspaces.create(by_path(&env.repo)).unwrap();
-
-    assert_eq!(ws.branch.as_deref(), Some("omfp/workspace-2"));
-    assert_eq!(ws.path, env.data.worktree("app", "workspace-2"));
-}
-
-// spec: DMN-020, DMN-021
-#[test]
-fn an_unregistered_repository_is_given_by_path() {
-    let env = env();
-    let nested = env.repo.join("src");
-    std::fs::create_dir_all(&nested).unwrap();
-
-    let ws = env
-        .workspaces
-        .create(NewWorkspace {
-            base_ref: Some("main".into()),
-            ..by_path(&nested)
-        })
-        .unwrap();
-
-    assert_eq!(ws.repository_id, None);
-    assert_eq!(ws.base_ref.as_deref(), Some("main"));
-    assert_eq!(worktree_branches(&env), vec!["omfp/workspace-1"]);
-}
-
-// spec: DMN-021
-#[test]
-fn a_named_branch_is_checked_out_when_it_exists_and_created_otherwise() {
-    let env = env();
+    let id = env.create("x").workspace.id;
     env.git.add_branch(&env.repo, "feature/login");
+    let repo = || RepoRef::Path(env.repo.clone());
 
     let existing = env
         .workspaces
-        .create(NewWorkspace {
-            branch: Some("feature/login".into()),
-            ..by_path(&env.repo)
-        })
+        .add_repo(&id, Some("login"), worktree(repo(), Some("feature/login")))
         .unwrap();
     let created = env
         .workspaces
-        .create(NewWorkspace {
-            branch: Some("topic".into()),
-            ..by_path(&env.repo)
-        })
+        .add_repo(&id, Some("topic"), worktree(repo(), Some("topic")))
         .unwrap();
+    let bad_base = env
+        .workspaces
+        .add_repo(
+            &id,
+            Some("broken"),
+            RepoSource::Worktree {
+                repo: repo(),
+                branch: Some("other".into()),
+                base_ref: Some("nope".into()),
+            },
+        )
+        .unwrap_err();
 
-    assert_eq!(existing.branch.as_deref(), Some("feature/login"));
-    assert_eq!(existing.path, env.data.worktree("app", "feature-login"));
-    assert_eq!(created.branch.as_deref(), Some("topic"));
+    assert_eq!(existing.repos[0].branch.as_deref(), Some("feature/login"));
+    assert_eq!(names(&created), vec!["login", "topic"]);
+    assert_eq!(created.repos[1].branch.as_deref(), Some("topic"));
+    assert!(matches!(bad_base, WorkspaceError::Git(_)), "{bad_base:?}");
     assert_eq!(
         env.git.branches(&env.repo),
         vec!["feature/login", "main", "topic"]
     );
-    assert_eq!(worktree_branches(&env), vec!["feature/login", "topic"]);
+    let ws = env.workspaces.get(&id).unwrap();
+    assert_eq!(entries(&ws.path), vec!["login", "topic"]);
 }
 
+// spec: DMN-024
 #[test]
-fn creating_in_a_directory_outside_git_fails() {
+fn a_worktree_repository_is_given_by_id_or_by_any_path_inside_it() {
     let env = env();
+    let id = env.create("x").workspace.id;
+    let known = env.workspaces.add_repository(&env.repo, None).unwrap();
+    let api = fake_repo(&env.git, &env.root.join("repos").join("api"), "main");
+    std::fs::create_dir_all(api.join("src")).unwrap();
     let plain = env.root.join("plain");
     std::fs::create_dir_all(&plain).unwrap();
 
-    assert!(matches!(
-        env.workspaces.create(by_path(&plain)),
-        Err(WorkspaceError::NotARepository(_))
-    ));
-}
-
-// spec: DMN-023
-#[test]
-fn any_directory_can_be_adopted_and_is_never_deleted() {
-    let env = env();
-    let plain = env.root.join("notes");
-    std::fs::create_dir_all(&plain).unwrap();
-    std::fs::write(plain.join("todo.txt"), "x").unwrap();
-
-    let ws = env.workspaces.adopt(&plain, Provenance::User).unwrap();
-    assert_eq!(ws.kind, WorkspaceKind::Adopted);
-    assert_eq!(ws.path, plain);
-    assert_eq!(ws.branch, None);
-
-    let refused = env
-        .workspaces
-        .remove(
-            &ws.id,
-            RemoveOptions {
-                force: true,
-                ..RemoveOptions::default()
-            },
-        )
-        .unwrap_err();
-    assert!(matches!(refused, WorkspaceError::Adopted(_)), "{refused:?}");
-
-    env.workspaces.forget(&ws.id, false).unwrap();
-    assert_eq!(env.workspaces.list().unwrap(), Vec::new());
-    assert!(plain.join("todo.txt").is_file());
-}
-
-// spec: DMN-023
-#[test]
-fn an_adopted_git_directory_records_its_branch_and_repository() {
-    let env = env();
-    let repo = env.workspaces.add_repository(&env.repo, None).unwrap();
-
-    let ws = env.workspaces.adopt(&env.repo, Provenance::User).unwrap();
-
-    assert_eq!(ws.kind, WorkspaceKind::Adopted);
-    assert_eq!(ws.branch.as_deref(), Some("main"));
-    assert_eq!(ws.repository_id, Some(repo.id));
-    assert_eq!(ws.base_ref.as_deref(), Some("main"));
-}
-
-#[test]
-fn a_directory_is_adopted_once() {
-    let env = env();
-    env.workspaces.adopt(&env.repo, Provenance::User).unwrap();
-
-    assert!(matches!(
-        env.workspaces.adopt(&env.repo, Provenance::User),
-        Err(WorkspaceError::Store(StoreError::Conflict(_)))
-    ));
-}
-
-// spec: DMN-024
-#[test]
-fn removing_a_dirty_workspace_needs_force() {
-    let env = env();
-    let ws = env.workspaces.create(by_path(&env.repo)).unwrap();
-    env.git.set_dirty(&ws.path, true);
-
-    let refused = env
-        .workspaces
-        .remove(&ws.id, RemoveOptions::default())
-        .unwrap_err();
-    assert!(matches!(refused, WorkspaceError::Dirty(_)), "{refused:?}");
-    assert!(ws.path.is_dir());
-
     env.workspaces
-        .remove(
-            &ws.id,
-            RemoveOptions {
-                force: true,
-                ..RemoveOptions::default()
-            },
-        )
+        .add_repo(&id, None, worktree(RepoRef::Id(known.id), None))
         .unwrap();
-    assert!(!ws.path.exists());
-    assert_eq!(env.workspaces.list().unwrap(), Vec::new());
+    let view = env
+        .workspaces
+        .add_repo(&id, None, worktree_of(&api.join("src")))
+        .unwrap();
+
+    assert_eq!(names(&view), vec!["api", "app"]);
+    assert_eq!(view.repos[0].kind, RepoKind::Worktree { main: api.clone() });
+    assert_eq!(env.git.branches(&api), vec!["main", "omfp/x-1"]);
+    assert_eq!(env.git.branches(&env.repo), vec!["main", "omfp/x-1"]);
+    let unknown = env
+        .workspaces
+        .add_repo(&id, None, worktree(RepoRef::Id("01JUNKNOWN".into()), None))
+        .unwrap_err();
+    assert!(
+        matches!(unknown, WorkspaceError::Store(StoreError::NotFound { .. })),
+        "{unknown:?}"
+    );
+    let not_git = env
+        .workspaces
+        .add_repo(&id, None, worktree_of(&plain))
+        .unwrap_err();
+    assert!(
+        matches!(not_git, WorkspaceError::NotARepository(_)),
+        "{not_git:?}"
+    );
 }
 
 // spec: DMN-024
 #[test]
-fn a_workspace_used_by_a_live_thread_is_not_removed() {
+fn a_clone_is_named_after_its_url_unless_named() {
     let env = env();
-    let ws = env.workspaces.create(by_path(&env.repo)).unwrap();
-    let in_use = RemoveOptions {
-        force: true,
-        in_use_by_live_thread: true,
-        ..RemoveOptions::default()
+    let id = env.create("x").workspace.id;
+    let clone = |name: Option<&str>, url: &str| {
+        env.workspaces
+            .add_repo(&id, name, RepoSource::Clone(url.into()))
+            .unwrap()
     };
 
-    let refused = env.workspaces.remove(&ws.id, in_use).unwrap_err();
-    assert!(matches!(refused, WorkspaceError::InUse(_)), "{refused:?}");
-    let refused = env.workspaces.forget(&ws.id, true).unwrap_err();
-    assert!(matches!(refused, WorkspaceError::InUse(_)), "{refused:?}");
-    assert!(ws.path.is_dir());
-    assert_eq!(env.workspaces.list().unwrap(), vec![ws]);
-}
+    clone(None, "https://example.invalid/org/lib.git");
+    clone(None, "https://example.invalid/org/lib.git/");
+    clone(None, "git@example.invalid:org/tool");
+    let view = clone(Some("docs"), "https://example.invalid/org/site.git");
 
-// spec: DMN-024
-#[test]
-fn the_branch_is_kept_unless_deletion_is_requested() {
-    let env = env();
-    let kept = env.workspaces.create(named(&env.repo, "kept")).unwrap();
-    let dropped = env.workspaces.create(named(&env.repo, "dropped")).unwrap();
-
-    env.workspaces
-        .remove(&kept.id, RemoveOptions::default())
-        .unwrap();
-    env.workspaces
-        .remove(
-            &dropped.id,
-            RemoveOptions {
-                delete_branch: true,
-                ..RemoveOptions::default()
-            },
+    assert_eq!(names(&view), vec!["docs", "lib", "lib-2", "tool"]);
+    for repo in &view.repos {
+        assert_eq!(repo.kind, RepoKind::Clone);
+        assert_eq!(repo.branch.as_deref(), Some("main"));
+    }
+    assert_eq!(
+        env.git
+            .remote_url(&view.repos[1].path, "origin")
+            .unwrap()
+            .as_deref(),
+        Some("https://example.invalid/org/lib.git")
+    );
+    let duplicate = env
+        .workspaces
+        .add_repo(
+            &id,
+            Some("docs"),
+            RepoSource::Clone("https://example.invalid/x".into()),
         )
-        .unwrap();
-
-    assert_eq!(env.git.branches(&env.repo), vec!["main", "omfp/kept-1"]);
-    assert_eq!(env.git.worktrees(&env.repo), Vec::new());
+        .unwrap_err();
+    assert!(
+        matches!(duplicate, WorkspaceError::EntryExists(_)),
+        "{duplicate:?}"
+    );
 }
 
+// spec: DMN-025
 #[test]
-fn a_removed_workspace_is_gone_for_later_operations() {
+fn removing_a_link_deletes_only_the_symlink() {
     let env = env();
-    let ws = env.workspaces.create(by_path(&env.repo)).unwrap();
-    env.workspaces
-        .remove(&ws.id, RemoveOptions::default())
+    let id = env.create("x").workspace.id;
+    std::fs::write(env.repo.join("README.md"), "keep").unwrap();
+    let path = env
+        .workspaces
+        .add_repo(&id, None, link(&env.repo))
+        .unwrap()
+        .repos[0]
+        .path
+        .clone();
+
+    let view = env
+        .workspaces
+        .remove_repo(&id, "app", false, false)
         .unwrap();
 
-    assert!(matches!(
-        env.workspaces.remove(&ws.id, RemoveOptions::default()),
-        Err(WorkspaceError::Store(StoreError::NotFound { .. }))
-    ));
-    assert!(matches!(
-        env.workspaces.status(&ws.id),
-        Err(WorkspaceError::Store(StoreError::NotFound { .. }))
-    ));
+    assert_eq!(view.repos, Vec::new());
+    assert!(!exists(&path));
+    assert_eq!(
+        std::fs::read_to_string(env.repo.join("README.md")).unwrap(),
+        "keep"
+    );
+    assert_eq!(env.git.toplevel(&env.repo).unwrap(), Some(env.repo.clone()));
+}
+
+// spec: DMN-025
+#[test]
+fn a_dirty_worktree_is_removed_only_when_forced_and_its_branch_is_kept() {
+    let env = env();
+    let id = env.create("x").workspace.id;
+    let view = env
+        .workspaces
+        .add_repo(&id, None, worktree_of(&env.repo))
+        .unwrap();
+    let path = view.repos[0].path.clone();
+    env.git.set_dirty(&path, true);
+
+    let refused = env
+        .workspaces
+        .remove_repo(&id, "app", false, false)
+        .unwrap_err();
+    assert!(matches!(refused, WorkspaceError::Dirty(_)), "{refused:?}");
+    assert!(path.is_dir());
+    assert_eq!(env.git.worktrees(&env.repo).len(), 1);
+
+    let view = env.workspaces.remove_repo(&id, "app", true, false).unwrap();
+    assert_eq!(view.repos, Vec::new());
+    assert!(!exists(&path));
+    assert_eq!(env.git.worktrees(&env.repo), Vec::new());
+    assert_eq!(env.git.branches(&env.repo), vec!["main", "omfp/x-1"]);
+}
+
+// spec: DMN-025
+#[test]
+fn the_worktree_branch_is_deleted_on_request() {
+    let env = env();
+    let id = env.create("x").workspace.id;
+    env.workspaces
+        .add_repo(&id, None, worktree_of(&env.repo))
+        .unwrap();
+
+    env.workspaces.remove_repo(&id, "app", false, true).unwrap();
+
+    assert_eq!(env.git.worktrees(&env.repo), Vec::new());
+    assert_eq!(env.git.branches(&env.repo), vec!["main"]);
+}
+
+// spec: DMN-025
+#[test]
+fn a_clone_is_deleted_only_when_clean_or_forced() {
+    let env = env();
+    let id = env.create("x").workspace.id;
+    for url in [
+        "https://example.invalid/lib",
+        "https://example.invalid/tool",
+    ] {
+        env.workspaces
+            .add_repo(&id, None, RepoSource::Clone(url.into()))
+            .unwrap();
+    }
+    let folder = env.workspaces.get(&id).unwrap().path;
+    env.git.set_dirty(&folder.join("lib"), true);
+
+    assert_eq!(
+        names(
+            &env.workspaces
+                .remove_repo(&id, "tool", false, false)
+                .unwrap()
+        ),
+        vec!["lib"]
+    );
+    let refused = env
+        .workspaces
+        .remove_repo(&id, "lib", false, false)
+        .unwrap_err();
+    assert!(matches!(refused, WorkspaceError::Dirty(_)), "{refused:?}");
+    assert!(folder.join("lib").is_dir());
+    let view = env.workspaces.remove_repo(&id, "lib", true, false).unwrap();
+
+    assert_eq!(view.repos, Vec::new());
+    assert_eq!(entries(&folder), Vec::<String>::new());
+}
+
+// spec: DMN-025
+#[test]
+fn the_workspace_root_and_unknown_entries_are_not_removed() {
+    let env = env();
+    let mono = fake_repo(&env.git, &env.root.join("repos").join("mono"), "main");
+    let id = env.workspaces.create(at(&mono)).unwrap().workspace.id;
+
+    let root = env
+        .workspaces
+        .remove_repo(&id, "mono", true, false)
+        .unwrap_err();
+    let unknown = env
+        .workspaces
+        .remove_repo(&id, "nope", true, false)
+        .unwrap_err();
+
+    assert!(matches!(root, WorkspaceError::IsRoot(_)), "{root:?}");
+    assert!(
+        matches!(unknown, WorkspaceError::NoSuchRepo { .. }),
+        "{unknown:?}"
+    );
+    assert!(mono.is_dir());
+    assert_eq!(names(&env.workspaces.rescan(&id).unwrap().0), vec!["mono"]);
 }
 
 // spec: DMN-025
 #[test]
 fn git_operations_are_serialized_per_repository() {
     let env = env();
-    let other = fake_repo(&env.git, &env.root, "api");
+    let other = fake_repo(&env.git, &env.root.join("repos").join("api"), "main");
+    let [a, b, c] = ["a", "b", "c"].map(|name| env.create(name).workspace.id);
     let (entered_tx, entered) = mpsc::channel::<PathBuf>();
     let (release, release_rx) = mpsc::channel::<()>();
     let release_rx = Mutex::new(release_rx);
@@ -406,12 +877,13 @@ fn git_operations_are_serialized_per_repository() {
         }
     });
     let wait = Duration::from_secs(10);
+    let add = |id: &str, repo: &Path| env.workspaces.add_repo(id, None, worktree_of(repo));
 
     std::thread::scope(|scope| {
-        let first = scope.spawn(|| env.workspaces.create(named(&env.repo, "a")));
+        let first = scope.spawn(|| add(&a, &env.repo));
         assert_eq!(entered.recv_timeout(wait), Ok(env.repo.clone()));
-        let second = scope.spawn(|| env.workspaces.create(named(&env.repo, "b")));
-        let parallel = scope.spawn(|| env.workspaces.create(named(&other, "c")));
+        let second = scope.spawn(|| add(&b, &env.repo));
+        let parallel = scope.spawn(|| add(&c, &other));
 
         // Another repository proceeds while `app` is busy; the second `app` operation waits for the first.
         assert_eq!(entered.recv_timeout(wait), Ok(other.clone()));
@@ -427,84 +899,179 @@ fn git_operations_are_serialized_per_repository() {
             handle.join().unwrap().unwrap();
         }
     });
-    assert_eq!(worktree_branches(&env), vec!["omfp/a-1", "omfp/b-1"]);
+    let mut branches: Vec<String> = env
+        .git
+        .worktrees(&env.repo)
+        .into_iter()
+        .map(|(_, branch)| branch)
+        .collect();
+    branches.sort();
+    assert_eq!(branches, vec!["omfp/a-1", "omfp/b-1"]);
 }
 
 // spec: DMN-026
 #[test]
-fn status_and_diff_are_reported_for_git_workspaces_only() {
+fn status_and_diff_are_reported_per_repository() {
     let env = env();
-    let ws = env.workspaces.create(named(&env.repo, "x")).unwrap();
-    env.git.set_dirty(&ws.path, true);
-    let plain = env.root.join("plain");
-    std::fs::create_dir_all(&plain).unwrap();
-    let adopted = env.workspaces.adopt(&plain, Provenance::User).unwrap();
+    let id = env.create("x").workspace.id;
+    let view = env
+        .workspaces
+        .add_repo(&id, None, worktree_of(&env.repo))
+        .unwrap();
+    env.git.set_dirty(&view.repos[0].path, true);
+    let repo = env.workspaces.repo(&id, "app").unwrap();
 
-    let status = env.workspaces.status(&ws.id).unwrap().unwrap();
+    let (status, upstream) = env.workspaces.status(&repo).unwrap();
+
+    assert_eq!(upstream, None);
     assert_eq!(status.branch.as_deref(), Some("omfp/x-1"));
-    assert_eq!((status.ahead, status.behind), (Some(0), Some(0)));
+    assert_eq!((status.ahead, status.behind), (None, None));
     assert!(status.dirty);
-    assert_eq!(env.workspaces.diff(&ws.id).unwrap(), Some(String::new()));
-
-    assert_eq!(env.workspaces.status(&adopted.id).unwrap(), None);
-    assert_eq!(env.workspaces.diff(&adopted.id).unwrap(), None);
+    assert_eq!(env.workspaces.diff(&repo).unwrap(), "");
 }
 
 // spec: DMN-027
 #[test]
-fn threads_sharing_a_workspace_are_reported() {
+fn the_same_checkout_is_seen_in_two_workspaces_and_threads_per_workspace() {
     let env = env();
-    let threads = Threads::new(env.store.clone(), env.data.clone());
-    let ws = env.workspaces.create(by_path(&env.repo)).unwrap();
-    let a = threads
-        .create(NewThread {
-            workspace_ids: vec![ws.id.clone()],
-            ..NewThread::new("a")
-        })
-        .unwrap();
-    let b = threads.create(NewThread::new("b")).unwrap();
-    threads.attach(&b.id, &ws.id, None).unwrap();
+    let a = env.create("a").workspace.id;
+    let b = env.create("b").workspace.id;
+    let threads = env.threads();
+    let first = threads.create(NewThread::new("first", &a)).unwrap();
+    let second = threads.create(NewThread::new("second", &a)).unwrap();
 
-    assert_eq!(
-        env.workspaces.threads_using(&ws.id).unwrap(),
-        vec![a.id, b.id]
-    );
-}
-
-// spec: ARC-009
-#[test]
-fn workspace_provenance_is_recorded() {
-    let env = env();
-    let threads = Threads::new(env.store.clone(), env.data.clone());
-    let creator = threads.create(NewThread::new("agent")).unwrap();
-
-    let ws = env
+    let in_a = env.workspaces.add_repo(&a, None, link(&env.repo)).unwrap();
+    let in_b = env
         .workspaces
-        .create(NewWorkspace {
-            created_by: Provenance::Thread(creator.id.clone()),
-            ..by_path(&env.repo)
-        })
+        .add_repo(&b, Some("mine"), link(&env.repo))
         .unwrap();
-    assert_eq!(
-        env.workspaces.get(&ws.id).unwrap().created_by,
-        Provenance::Thread(creator.id)
-    );
 
-    let unknown = env.workspaces.adopt(
-        &env.repo,
-        Provenance::Thread("01JUNKNOWNTHREAD0000000000".into()),
+    assert_ne!(in_a.repos[0].path, in_b.repos[0].path);
+    assert_eq!(in_a.repos[0].canonical, env.repo);
+    assert_eq!(in_b.repos[0].canonical, env.repo);
+    assert_eq!(
+        env.store.workspace_thread_ids(&a).unwrap(),
+        vec![first.id, second.id]
     );
-    assert!(matches!(
-        unknown,
-        Err(WorkspaceError::Store(StoreError::NotFound { .. }))
-    ));
+    assert_eq!(
+        env.store.workspace_thread_ids(&b).unwrap(),
+        Vec::<String>::new()
+    );
 }
 
+// spec: DMN-028
 #[test]
-fn slugs_are_lowercase_ascii_words() {
-    assert_eq!(slugify("Fix login!"), "fix-login");
-    assert_eq!(slugify("  feature/Login--Page "), "feature-login-page");
-    assert_eq!(slugify("été"), "t");
-    assert_eq!(slugify("!!!"), "workspace");
-    assert_eq!(slugify(&"a".repeat(100)).len(), 40);
+fn a_workspace_is_not_removed_while_a_thread_lives_in_it() {
+    let env = env();
+    let ws = env.create("x").workspace;
+    let threads = env.threads();
+    let thread = threads.create(NewThread::new("t", &ws.id)).unwrap();
+    threads.archive(&thread.id).unwrap();
+
+    let refused = env.workspaces.remove(&ws.id, true, true).unwrap_err();
+    assert!(
+        matches!(refused, WorkspaceError::HasThreads(_)),
+        "{refused:?}"
+    );
+    assert!(ws.path.is_dir());
+    assert_eq!(env.workspaces.list().unwrap(), vec![ws.clone()]);
+
+    threads.delete(&thread.id).unwrap();
+    env.workspaces.remove(&ws.id, true, false).unwrap();
+    assert!(!ws.path.exists());
+    let gone = env.workspaces.remove(&ws.id, true, false).unwrap_err();
+    assert!(
+        matches!(gone, WorkspaceError::Store(StoreError::NotFound { .. })),
+        "{gone:?}"
+    );
+}
+
+/// An owned workspace holding a link to `app`, a worktree of `api` and a clone `lib`, plus a plain file.
+fn populated(env: &Env) -> (String, PathBuf, PathBuf) {
+    let id = env.create("x").workspace.id;
+    let api = fake_repo(&env.git, &env.root.join("repos").join("api"), "main");
+    std::fs::write(env.repo.join("README.md"), "keep").unwrap();
+    env.workspaces.add_repo(&id, None, link(&env.repo)).unwrap();
+    env.workspaces
+        .add_repo(&id, None, worktree_of(&api))
+        .unwrap();
+    let view = env
+        .workspaces
+        .add_repo(
+            &id,
+            None,
+            RepoSource::Clone("https://example.invalid/lib".into()),
+        )
+        .unwrap();
+    std::fs::write(view.workspace.path.join("notes.txt"), "x").unwrap();
+    assert_eq!(names(&view), vec!["api", "app", "lib"]);
+    (id, view.workspace.path, api)
+}
+
+// spec: DMN-028
+#[test]
+fn deleting_an_owned_folder_removes_its_repositories_first() {
+    let env = env();
+    let (id, folder, api) = populated(&env);
+
+    env.workspaces.remove(&id, true, false).unwrap();
+
+    assert!(!folder.exists());
+    assert_eq!(
+        std::fs::read_to_string(env.repo.join("README.md")).unwrap(),
+        "keep"
+    );
+    assert_eq!(env.git.worktrees(&api), Vec::new());
+    assert_eq!(env.git.branches(&api), vec!["main", "omfp/x-1"]);
+    assert_eq!(env.workspaces.list().unwrap(), Vec::new());
+    let gone = env.workspaces.get(&id).unwrap_err();
+    assert!(
+        matches!(gone, WorkspaceError::Store(StoreError::NotFound { .. })),
+        "{gone:?}"
+    );
+}
+
+// spec: DMN-028
+#[test]
+fn a_dirty_worktree_or_clone_keeps_an_owned_folder_unless_forced() {
+    let env = env();
+    let (id, folder, api) = populated(&env);
+    let before = entries(&folder);
+
+    for dirty in ["api", "lib"] {
+        env.git.set_dirty(&folder.join("api"), dirty == "api");
+        env.git.set_dirty(&folder.join("lib"), dirty == "lib");
+        let refused = env.workspaces.remove(&id, true, false).unwrap_err();
+        assert!(
+            matches!(refused, WorkspaceError::Dirty(_)),
+            "{dirty}: {refused:?}"
+        );
+        assert_eq!(entries(&folder), before);
+        assert_eq!(env.git.worktrees(&api).len(), 1);
+    }
+    env.workspaces.remove(&id, true, true).unwrap();
+
+    assert!(!folder.exists());
+    assert!(env.repo.join("README.md").is_file());
+    assert_eq!(env.git.worktrees(&api), Vec::new());
+    assert_eq!(env.workspaces.list().unwrap(), Vec::new());
+}
+
+// spec: DMN-028
+#[test]
+fn a_folder_is_only_forgotten_when_not_owned_or_not_asked_to_delete() {
+    let env = env();
+    let notes = env.root.join("notes");
+    fake_repo(&env.git, &notes.join("lib"), "main");
+    std::fs::write(notes.join("todo.txt"), "x").unwrap();
+    let existing = env.workspaces.create(at(&notes)).unwrap().workspace;
+    let owned = env.create("kept").workspace;
+    symlink(&env.repo, owned.path.join("app")).unwrap();
+
+    env.workspaces.remove(&existing.id, true, true).unwrap();
+    env.workspaces.remove(&owned.id, false, true).unwrap();
+
+    assert_eq!(env.workspaces.list().unwrap(), Vec::new());
+    assert_eq!(entries(&notes), vec!["lib", "todo.txt"]);
+    assert_eq!(entries(&owned.path), vec!["app"]);
 }

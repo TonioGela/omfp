@@ -27,8 +27,9 @@ struct State {
 }
 
 impl State {
-    /// The repository root and, for a linked worktree, its path.
+    /// The repository root and, for a linked worktree, its path. Symlinks in `dir` are resolved, like git does.
     fn locate(&self, dir: &Path) -> Option<(&PathBuf, Option<&PathBuf>)> {
+        let dir = canonical(dir);
         self.repos.iter().find_map(|(root, repo)| {
             if let Some(worktree) = repo.worktrees.keys().find(|wt| dir.starts_with(wt)) {
                 Some((root, Some(worktree)))
@@ -175,12 +176,43 @@ impl Git for FakeGit {
         })
     }
 
+    fn head(&self, dir: &Path) -> Result<Option<String>> {
+        // One fake commit per checkout, stable for a branch name.
+        Ok(self.current_branch(dir)?.map(|branch| {
+            let sum = branch.bytes().fold(0_u64, |sum, byte| {
+                sum.wrapping_mul(31).wrapping_add(u64::from(byte))
+            });
+            format!("{sum:040x}")
+        }))
+    }
+
+    fn upstream(&self, dir: &Path) -> Result<Option<String>> {
+        self.main_root(dir).map(|_| None)
+    }
+
+    fn clone_repo(&self, url: &str, dest: &Path) -> Result<()> {
+        if dest.exists() {
+            return Err(failed(
+                "clone",
+                format!("destination path '{}' already exists", dest.display()),
+            ));
+        }
+        std::fs::create_dir_all(dest)?;
+        self.add_repo(dest, "main");
+        self.set_remote_url(dest, url);
+        Ok(())
+    }
+
     fn remote_url(&self, repo: &Path, _remote: &str) -> Result<Option<String>> {
-        Ok(self.state().repo(repo)?.remote_url.clone())
+        Ok(self.state().repo(&canonical(repo))?.remote_url.clone())
     }
 
     fn branch_exists(&self, repo: &Path, branch: &str) -> Result<bool> {
-        Ok(self.state().repo(repo)?.branches.contains(branch))
+        Ok(self
+            .state()
+            .repo(&canonical(repo))?
+            .branches
+            .contains(branch))
     }
 
     fn worktree_add(&self, repo: &Path, path: &Path, branch: &WorktreeBranch) -> Result<()> {
@@ -193,7 +225,7 @@ impl Git for FakeGit {
             hook(repo);
         }
         let mut state = self.state();
-        let fake = state.repo(repo)?;
+        let fake = state.repo(&canonical(repo))?;
         if path.exists() {
             return Err(failed(
                 "worktree add",
@@ -240,7 +272,12 @@ impl Git for FakeGit {
                 "contains modified or untracked files, use --force",
             ));
         }
-        if state.repo(repo)?.worktrees.remove(&path).is_none() {
+        if state
+            .repo(&canonical(repo))?
+            .worktrees
+            .remove(&path)
+            .is_none()
+        {
             return Err(failed(
                 "worktree remove",
                 format!("'{}' is not a working tree", path.display()),
@@ -253,7 +290,7 @@ impl Git for FakeGit {
 
     fn delete_branch(&self, repo: &Path, branch: &str) -> Result<()> {
         let mut state = self.state();
-        let fake = state.repo(repo)?;
+        let fake = state.repo(&canonical(repo))?;
         let checked_out = fake.head.as_deref() == Some(branch)
             || fake.worktrees.values().any(|name| name == branch);
         if checked_out || !fake.branches.remove(branch) {
@@ -266,7 +303,7 @@ impl Git for FakeGit {
     }
 
     fn is_dirty(&self, dir: &Path) -> Result<bool> {
-        Ok(self.state().dirty.contains(dir))
+        Ok(self.state().dirty.contains(&canonical(dir)))
     }
 
     fn status(&self, dir: &Path, base_ref: Option<&str>) -> Result<GitStatus> {

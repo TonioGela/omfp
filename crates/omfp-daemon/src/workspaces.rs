@@ -1,17 +1,20 @@
-//! Repositories and workspaces (02-daemon, "Repositories and workspaces"): the optional repository registry,
-//! daemon-managed worktrees, adopted directories, and their git status.
+//! Known repositories and workspace folders (02-daemon, "Workspaces and their repositories"): creating and removing
+//! workspaces, discovering their repositories (DMN-022), adding and removing repositories (DMN-024, DMN-025), and
+//! their git status (DMN-026).
 //!
 //! Calls are blocking; the server layer runs them on blocking tasks.
+
+mod scan;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
+pub use scan::{Discovered, RepoKind, scan};
+
 use crate::git::{Git, GitError, GitStatus, WorktreeBranch};
-use crate::paths::DataDir;
-use crate::store::{
-    Provenance, Repository, Store, StoreError, Workspace, WorkspaceKind, new_id, now_ms,
-};
+use crate::names::{is_entry_name, slugify, unique};
+use crate::store::{Provenance, Repository, Store, StoreError, Workspace, new_id, now_ms};
 
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceError {
@@ -23,12 +26,20 @@ pub enum WorkspaceError {
     NotARepositoryRoot(PathBuf),
     #[error("{} has a detached HEAD: give a base ref", .0.display())]
     DetachedHead(PathBuf),
-    #[error("workspace {0} has uncommitted changes")]
+    #[error("{0:?} is not a valid entry name (one visible path component)")]
+    InvalidName(String),
+    #[error("the workspace already has an entry named {0:?}")]
+    EntryExists(String),
+    #[error("workspace {workspace} has no repository named {name:?}")]
+    NoSuchRepo { workspace: String, name: String },
+    #[error("{0:?} is the workspace folder itself; remove the workspace instead")]
+    IsRoot(String),
+    #[error("{0} has uncommitted changes")]
     Dirty(String),
-    #[error("workspace {0} is used by a running thread")]
-    InUse(String),
-    #[error("workspace {0} is adopted: it can only be forgotten, never deleted")]
-    Adopted(String),
+    #[error("workspace {0} still has threads; delete them first")]
+    HasThreads(String),
+    #[error("{0} is not supported yet")]
+    Unsupported(&'static str),
     #[error(transparent)]
     Store(#[from] StoreError),
     #[error(transparent)]
@@ -39,126 +50,117 @@ pub enum WorkspaceError {
 
 pub type Result<T, E = WorkspaceError> = std::result::Result<T, E>;
 
-/// The repository a managed workspace is created in.
+/// A repository named by a client: a known one, or any directory inside a git repository (DMN-021).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RepoRef {
-    /// A registered repository.
     Id(String),
-    /// Any directory inside a git repository; registration is optional (DMN-020).
     Path(PathBuf),
 }
 
-/// Parameters of [`Workspaces::create`].
+/// Parameters of [`Workspaces::create`] (DMN-020).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewWorkspace {
-    pub repo: RepoRef,
-    /// An existing local branch is checked out; another name creates that branch. Default: a new
-    /// `omfp/<slug>-<n>` branch, unique in the repository.
-    pub branch: Option<String>,
-    /// Base of a new branch and reference for ahead/behind. Default: the repository's default base ref, or the
-    /// branch checked out in the repository.
-    pub base_ref: Option<String>,
-    /// Human name the default branch and directory derive from (default: `workspace`).
+    /// Exact name; taken names are refused.
     pub name: Option<String>,
+    /// Name used when `name` is absent, made unique (default: the folder's name, else `workspace`).
+    pub fallback_name: Option<String>,
+    /// An existing folder to record; `None` makes a new owned folder under the workspaces root.
+    pub path: Option<PathBuf>,
     pub created_by: Provenance,
 }
 
 impl NewWorkspace {
-    /// A workspace in `repo` with every default.
+    /// A new owned folder with every default.
     #[must_use]
-    pub fn new(repo: RepoRef) -> Self {
+    pub fn new() -> Self {
         Self {
-            repo,
-            branch: None,
-            base_ref: None,
             name: None,
+            fallback_name: None,
+            path: None,
             created_by: Provenance::User,
         }
     }
 }
 
-/// Options of [`Workspaces::remove`] (DMN-024).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RemoveOptions {
-    /// Remove even with uncommitted changes.
-    pub force: bool,
-    /// Also delete the workspace's branch.
-    pub delete_branch: bool,
-    /// A thread with a live omp process uses the workspace (known by the caller); removal is then refused.
-    pub in_use_by_live_thread: bool,
-}
-
-/// Turns free text into a directory/branch-friendly slug: lowercase ASCII letters and digits separated by single
-/// dashes, at most 40 characters; `workspace` when nothing is left.
-#[must_use]
-pub fn slugify(text: &str) -> String {
-    const MAX_LEN: usize = 40;
-    let mut slug = String::new();
-    for c in text.chars() {
-        if slug.len() == MAX_LEN {
-            break;
-        }
-        if c.is_ascii_alphanumeric() {
-            slug.push(c.to_ascii_lowercase());
-        } else if !slug.is_empty() && !slug.ends_with('-') {
-            slug.push('-');
-        }
-    }
-    let slug = slug.trim_end_matches('-');
-    if slug.is_empty() {
-        "workspace".to_owned()
-    } else {
-        slug.to_owned()
+impl Default for NewWorkspace {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-/// Repository registry and workspace lifecycle.
+/// Where a repository added to a workspace comes from (DMN-024).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RepoSource {
+    /// A symlink to the repository at this path.
+    Link(PathBuf),
+    /// A new worktree of `repo`: on `branch` (existing, or created from `base_ref`), default a new
+    /// `omfp/<slug>-<n>` branch.
+    Worktree {
+        repo: RepoRef,
+        branch: Option<String>,
+        base_ref: Option<String>,
+    },
+    /// `git clone <url>`.
+    Clone(String),
+}
+
+/// A workspace with its discovered repositories.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkspaceView {
+    pub workspace: Workspace,
+    pub repos: Vec<Discovered>,
+}
+
+/// Repository registry and workspace folders.
 #[derive(Debug)]
 pub struct Workspaces {
     store: Arc<Store>,
     git: Arc<dyn Git>,
-    data: DataDir,
+    /// Where owned folders are made (`--workspaces-root`).
+    root: PathBuf,
     /// One lock per repository (keyed by its main working tree), held during git operations that mutate the shared
     /// `.git` (DMN-025).
     repo_locks: Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>,
+    /// The last scan of each workspace (DMN-023).
+    scans: Mutex<HashMap<String, Vec<Discovered>>>,
 }
 
 impl Workspaces {
     #[must_use]
-    pub fn new(store: Arc<Store>, git: Arc<dyn Git>, data: DataDir) -> Self {
+    pub fn new(store: Arc<Store>, git: Arc<dyn Git>, root: PathBuf) -> Self {
         Self {
             store,
             git,
-            data,
+            root,
             repo_locks: Mutex::new(HashMap::new()),
+            scans: Mutex::new(HashMap::new()),
         }
     }
 
-    fn repo_lock(&self, repo_root: &Path) -> Arc<Mutex<()>> {
+    fn repo_lock(&self, main_root: &Path) -> Arc<Mutex<()>> {
         self.repo_locks
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .entry(repo_root.to_owned())
+            .entry(main_root.to_owned())
             .or_default()
             .clone()
     }
 
-    // Repositories
+    /// The git port, for status and diff of discovered repositories.
+    #[must_use]
+    pub fn git(&self) -> &dyn Git {
+        &*self.git
+    }
 
-    /// Registers the git repository rooted at `path` (DMN-020).
+    // Known repositories
+
+    /// Registers the git repository rooted at `path` (DMN-021).
     pub fn add_repository(
         &self,
         path: &Path,
         default_base_ref: Option<&str>,
     ) -> Result<Repository> {
-        let path = existing_dir(path)?;
-        let toplevel = self
-            .git
-            .toplevel(&path)?
-            .ok_or_else(|| WorkspaceError::NotARepository(path.clone()))?;
-        if std::fs::canonicalize(toplevel)? != path {
-            return Err(WorkspaceError::NotARepositoryRoot(path));
-        }
+        let path = git_root(&*self.git, path)?;
         let default_base_ref = match default_base_ref {
             Some(base) => base.to_owned(),
             None => self
@@ -178,7 +180,7 @@ impl Workspaces {
         Ok(repo)
     }
 
-    /// Unregisters a repository; its workspaces stay.
+    /// Forgets a known repository; workspaces holding it are not touched.
     pub fn remove_repository(&self, id: &str) -> Result<()> {
         Ok(self.store.delete_repository(id)?)
     }
@@ -189,28 +191,194 @@ impl Workspaces {
 
     // Workspaces
 
-    /// A live workspace.
     pub fn get(&self, id: &str) -> Result<Workspace> {
-        let ws = self.store.workspace(id)?;
-        if ws.removed_at.is_some() {
-            return Err(StoreError::NotFound {
-                entity: "workspace",
-                id: id.to_owned(),
-            }
-            .into());
-        }
-        Ok(ws)
+        Ok(self.store.workspace(id)?)
     }
 
-    /// Live workspaces.
     pub fn list(&self) -> Result<Vec<Workspace>> {
         Ok(self.store.workspaces()?)
     }
 
-    /// Creates a daemon-managed git worktree under `worktrees/<repo-slug>/<workspace-slug>` (DMN-021).
-    pub fn create(&self, new: NewWorkspace) -> Result<Workspace> {
+    /// Creates a workspace: a new owned folder `<root>/<slug>`, or an existing folder recorded as is (DMN-020).
+    pub fn create(&self, new: NewWorkspace) -> Result<WorkspaceView> {
         self.store.check_provenance(&new.created_by)?;
-        let (toplevel, registered) = match &new.repo {
+        let existing = new.path.as_deref().map(existing_dir).transpose()?;
+        let name = if let Some(name) = new.name {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(WorkspaceError::InvalidName(name.to_owned()));
+            }
+            if self.store.workspace_name_taken(name)? {
+                return Err(
+                    StoreError::Conflict(format!("a workspace is already named {name:?}")).into(),
+                );
+            }
+            name.to_owned()
+        } else {
+            let base = new
+                .fallback_name
+                .or_else(|| existing.as_deref().map(dir_name))
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| "workspace".to_owned());
+            unique(base.trim(), " ", |name| {
+                self.store.workspace_name_taken(name)
+            })?
+        };
+        let (path, owned) = match existing {
+            Some(path) => (path, false),
+            None => (self.new_folder(&name)?, true),
+        };
+        let ws = Workspace {
+            id: new_id(),
+            name,
+            path,
+            owned,
+            created_by: new.created_by,
+            created_at: now_ms(),
+        };
+        if let Err(error) = self.store.insert_workspace(&ws) {
+            if owned {
+                let _ = std::fs::remove_dir(&ws.path);
+            }
+            return Err(error.into());
+        }
+        self.view(ws)
+    }
+
+    /// Makes `<root>/<slug of name>` (or `-2`, `-3`, … when taken) and returns its canonical path.
+    fn new_folder(&self, name: &str) -> Result<PathBuf> {
+        std::fs::create_dir_all(&self.root)?;
+        let root = std::fs::canonicalize(&self.root)?;
+        let slug = unique(&slugify(name), "-", |slug| {
+            Ok::<_, WorkspaceError>(std::fs::symlink_metadata(root.join(slug)).is_ok())
+        })?;
+        let path = root.join(slug);
+        std::fs::create_dir(&path)?;
+        Ok(path)
+    }
+
+    /// Renames a workspace; the folder stays where it is.
+    pub fn rename(&self, id: &str, name: &str) -> Result<WorkspaceView> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(WorkspaceError::InvalidName(name.to_owned()));
+        }
+        self.store.rename_workspace(id, name)?;
+        let ws = self.get(id)?;
+        self.view(ws)
+    }
+
+    /// Removes a workspace without threads (DMN-028). With `delete_folder`, an owned folder is deleted after its
+    /// repositories are removed as [`Self::remove_repo`] does; a folder the daemon does not own is only forgotten.
+    pub fn remove(&self, id: &str, delete_folder: bool, force: bool) -> Result<()> {
+        let ws = self.get(id)?;
+        if !self.store.workspace_thread_ids(id)?.is_empty() {
+            return Err(WorkspaceError::HasThreads(ws.id));
+        }
+        if delete_folder && ws.owned && ws.path.exists() {
+            let repos = scan(&*self.git, &ws.path)?;
+            if !force {
+                for repo in &repos {
+                    if !matches!(repo.kind, RepoKind::Link { .. })
+                        && self.git.is_dirty(&repo.path)?
+                    {
+                        return Err(WorkspaceError::Dirty(repo.path.display().to_string()));
+                    }
+                }
+            }
+            for repo in repos.iter().filter(|repo| !repo.is_root) {
+                self.remove_entry(repo, true, false)?;
+            }
+            std::fs::remove_dir_all(&ws.path)?;
+        }
+        self.store.delete_workspace(&ws.id)?;
+        self.scans
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&ws.id);
+        Ok(())
+    }
+
+    /// Scans the folder again (DMN-023); `changed` tells whether the repositories differ from the last scan.
+    pub fn rescan(&self, id: &str) -> Result<(WorkspaceView, bool)> {
+        let ws = self.get(id)?;
+        let repos = if ws.path.is_dir() {
+            scan(&*self.git, &ws.path)?
+        } else {
+            Vec::new()
+        };
+        let previous = self
+            .scans
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(ws.id.clone(), repos.clone());
+        let changed = previous.as_ref() != Some(&repos);
+        Ok((
+            WorkspaceView {
+                workspace: ws,
+                repos,
+            },
+            changed,
+        ))
+    }
+
+    /// The repositories found by the last scan; scans when there was none.
+    pub fn discovered(&self, id: &str) -> Result<Vec<Discovered>> {
+        let cached = self
+            .scans
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(id)
+            .cloned();
+        match cached {
+            Some(repos) => Ok(repos),
+            None => Ok(self.rescan(id)?.0.repos),
+        }
+    }
+
+    fn view(&self, ws: Workspace) -> Result<WorkspaceView> {
+        let id = ws.id.clone();
+        let (mut view, _) = self.rescan(&id)?;
+        view.workspace = ws;
+        Ok(view)
+    }
+
+    /// Adds a repository to the workspace folder (DMN-024) and rescans it.
+    pub fn add_repo(
+        &self,
+        id: &str,
+        name: Option<&str>,
+        source: RepoSource,
+    ) -> Result<WorkspaceView> {
+        let ws = self.get(id)?;
+        match source {
+            RepoSource::Link(target) => {
+                let target = git_root(&*self.git, &target)?;
+                let entry = entry_name(&ws.path, name, &dir_name(&target))?;
+                std::os::unix::fs::symlink(&target, ws.path.join(entry))?;
+            }
+            RepoSource::Worktree {
+                repo,
+                branch,
+                base_ref,
+            } => self.add_worktree(&ws, name, &repo, branch, base_ref)?,
+            RepoSource::Clone(url) => {
+                let entry = entry_name(&ws.path, name, &clone_name(&url))?;
+                self.git.clone_repo(&url, &ws.path.join(entry))?;
+            }
+        }
+        Ok(self.rescan(id)?.0)
+    }
+
+    fn add_worktree(
+        &self,
+        ws: &Workspace,
+        name: Option<&str>,
+        repo: &RepoRef,
+        branch: Option<String>,
+        base_ref: Option<String>,
+    ) -> Result<()> {
+        let (toplevel, known) = match repo {
             RepoRef::Id(id) => {
                 let repo = self.store.repository(id)?;
                 (repo.path.clone(), Some(repo))
@@ -222,11 +390,11 @@ impl Workspaces {
                     .toplevel(&dir)?
                     .ok_or(WorkspaceError::NotARepository(dir))?;
                 let toplevel = std::fs::canonicalize(toplevel)?;
-                let registered = self.store.repository_by_path(&toplevel)?;
-                (toplevel, registered)
+                let known = self.store.repository_by_path(&toplevel)?;
+                (toplevel, known)
             }
         };
-        let base_ref = match (new.base_ref, &registered) {
+        let base_ref = match (base_ref, &known) {
             (Some(base), _) => base,
             (None, Some(repo)) => repo.default_base_ref.clone(),
             (None, None) => self
@@ -234,193 +402,130 @@ impl Workspaces {
                 .current_branch(&toplevel)?
                 .ok_or_else(|| WorkspaceError::DetachedHead(toplevel.clone()))?,
         };
-        let repo_slug = slugify(
-            &registered
-                .as_ref()
-                .map_or_else(|| dir_name(&toplevel), |repo| repo.name.clone()),
-        );
-
-        let lock = self.repo_lock(&self.git.main_root(&toplevel)?);
+        let repo_name = known.map_or_else(|| dir_name(&toplevel), |repo| repo.name);
+        let main = std::fs::canonicalize(self.git.main_root(&toplevel)?)?;
+        let lock = self.repo_lock(&main);
         let _guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        let (path, spec) = if let Some(branch) = new.branch {
-            let slug = slugify(new.name.as_deref().unwrap_or(&branch));
-            let path = self.free_worktree_dir(&repo_slug, &slug)?;
-            let spec = if self.git.branch_exists(&toplevel, &branch)? {
+        let entry = entry_name(&ws.path, name, &repo_name)?;
+        let spec = match branch {
+            Some(branch) if self.git.branch_exists(&toplevel, &branch)? => {
                 WorktreeBranch::Existing(branch)
-            } else {
-                WorktreeBranch::New {
-                    name: branch,
-                    base_ref: base_ref.clone(),
-                }
-            };
-            (path, spec)
-        } else {
-            let slug = slugify(new.name.as_deref().unwrap_or("workspace"));
-            self.default_branch(&toplevel, &repo_slug, &slug, &base_ref)?
-        };
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        self.git.worktree_add(&toplevel, &path, &spec)?;
-        let branch = match &spec {
-            WorktreeBranch::New { name, .. } | WorktreeBranch::Existing(name) => name.clone(),
-        };
-        let ws = Workspace {
-            id: new_id(),
-            path: std::fs::canonicalize(&path)?,
-            kind: WorkspaceKind::ManagedWorktree,
-            repository_id: registered.map(|repo| repo.id),
-            branch: Some(branch),
-            base_ref: Some(base_ref),
-            pr_url: None,
-            pr_number: None,
-            created_by: new.created_by,
-            created_at: now_ms(),
-            removed_at: None,
-        };
-        if let Err(error) = self.store.insert_workspace(&ws) {
-            // Best effort: do not leave an untracked worktree (or a branch we created) behind.
-            let _ = self.git.worktree_remove(&toplevel, &ws.path, true);
-            if let WorktreeBranch::New { name, .. } = &spec {
-                let _ = self.git.delete_branch(&toplevel, name);
             }
-            return Err(error.into());
-        }
-        Ok(ws)
+            Some(branch) => WorktreeBranch::New {
+                name: branch,
+                base_ref,
+            },
+            None => WorktreeBranch::New {
+                name: self.default_branch(&toplevel, &ws.name)?,
+                base_ref,
+            },
+        };
+        self.git
+            .worktree_add(&toplevel, &ws.path.join(entry), &spec)?;
+        Ok(())
     }
 
-    /// The first `<dir>/<slug>`, `<dir>/<slug>-2`, … that does not exist.
-    fn free_worktree_dir(&self, repo_slug: &str, slug: &str) -> Result<PathBuf> {
+    /// The first `omfp/<slug>-<n>` (n ≥ 1) that is not a branch of `repo` (DMN-024).
+    fn default_branch(&self, repo: &Path, workspace_name: &str) -> Result<String> {
+        let slug = slugify(workspace_name);
         for n in 1_u32.. {
-            let name = if n == 1 {
-                slug.to_owned()
-            } else {
-                format!("{slug}-{n}")
-            };
-            let path = std::path::absolute(self.data.worktree(repo_slug, &name))?;
-            if !path.exists() {
-                return Ok(path);
-            }
-        }
-        Err(std::io::Error::other("no free worktree directory name").into())
-    }
-
-    /// The first `omfp/<slug>-<n>` (n ≥ 1) whose branch and directory are both free.
-    fn default_branch(
-        &self,
-        repo: &Path,
-        repo_slug: &str,
-        slug: &str,
-        base_ref: &str,
-    ) -> Result<(PathBuf, WorktreeBranch)> {
-        for n in 1_u32.. {
-            let name = format!("{slug}-{n}");
-            let branch = format!("omfp/{name}");
-            let path = std::path::absolute(self.data.worktree(repo_slug, &name))?;
-            if !path.exists() && !self.git.branch_exists(repo, &branch)? {
-                return Ok((
-                    path,
-                    WorktreeBranch::New {
-                        name: branch,
-                        base_ref: base_ref.to_owned(),
-                    },
-                ));
+            let branch = format!("omfp/{slug}-{n}");
+            if !self.git.branch_exists(repo, &branch)? {
+                return Ok(branch);
             }
         }
         Err(std::io::Error::other("no free branch name").into())
     }
 
-    /// Records an existing directory, git or not, as an adopted workspace (DMN-023).
-    pub fn adopt(&self, path: &Path, created_by: Provenance) -> Result<Workspace> {
-        self.store.check_provenance(&created_by)?;
-        let path = existing_dir(path)?;
-        let (repository, branch) = if self.git.toplevel(&path)?.is_some() {
-            let root = std::fs::canonicalize(self.git.main_root(&path)?)?;
-            (
-                self.store.repository_by_path(&root)?,
-                self.git.current_branch(&path)?,
-            )
-        } else {
-            (None, None)
-        };
-        let ws = Workspace {
-            id: new_id(),
-            path,
-            kind: WorkspaceKind::Adopted,
-            base_ref: repository
-                .as_ref()
-                .map(|repo| repo.default_base_ref.clone()),
-            repository_id: repository.map(|repo| repo.id),
-            branch,
-            pr_url: None,
-            pr_number: None,
-            created_by,
-            created_at: now_ms(),
-            removed_at: None,
-        };
-        self.store.insert_workspace(&ws)?;
-        Ok(ws)
+    /// Removes the repository `name` from the workspace (DMN-025) and rescans it: a link is unlinked (its target
+    /// is never touched); a worktree is removed with `git worktree remove`, refused with uncommitted changes unless
+    /// `force`, its branch kept unless `delete_branch`; a clone is deleted only when clean or forced.
+    pub fn remove_repo(
+        &self,
+        id: &str,
+        name: &str,
+        force: bool,
+        delete_branch: bool,
+    ) -> Result<WorkspaceView> {
+        let ws = self.get(id)?;
+        let repo = scan(&*self.git, &ws.path)?
+            .into_iter()
+            .find(|repo| repo.name == name)
+            .ok_or_else(|| WorkspaceError::NoSuchRepo {
+                workspace: ws.id.clone(),
+                name: name.to_owned(),
+            })?;
+        if repo.is_root {
+            return Err(WorkspaceError::IsRoot(repo.name));
+        }
+        self.remove_entry(&repo, force, delete_branch)?;
+        Ok(self.rescan(id)?.0)
     }
 
-    /// Deletes a managed worktree (DMN-024). Refused for adopted workspaces, while a live thread uses it, and with
-    /// uncommitted changes unless forced. The branch is kept unless `delete_branch`. A worktree directory that no
-    /// longer exists is only forgotten.
-    pub fn remove(&self, id: &str, options: RemoveOptions) -> Result<()> {
-        let ws = self.get(id)?;
-        if ws.kind == WorkspaceKind::Adopted {
-            return Err(WorkspaceError::Adopted(ws.id));
-        }
-        if options.in_use_by_live_thread {
-            return Err(WorkspaceError::InUse(ws.id));
-        }
-        if ws.path.exists() {
-            let root = self.git.main_root(&ws.path)?;
-            let lock = self.repo_lock(&root);
-            let _guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
-            if !options.force && self.git.is_dirty(&ws.path)? {
-                return Err(WorkspaceError::Dirty(ws.id));
+    fn remove_entry(&self, repo: &Discovered, force: bool, delete_branch: bool) -> Result<()> {
+        match &repo.kind {
+            RepoKind::Link { .. } => std::fs::remove_file(&repo.path)?,
+            RepoKind::Worktree { main } => {
+                let lock = self.repo_lock(main);
+                let _guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
+                if !force && self.git.is_dirty(&repo.path)? {
+                    return Err(WorkspaceError::Dirty(repo.path.display().to_string()));
+                }
+                self.git.worktree_remove(main, &repo.path, force)?;
+                if let (true, Some(branch)) = (delete_branch, &repo.branch) {
+                    self.git.delete_branch(main, branch)?;
+                }
             }
-            self.git.worktree_remove(&root, &ws.path, options.force)?;
-            if let (true, Some(branch)) = (options.delete_branch, &ws.branch) {
-                self.git.delete_branch(&root, branch)?;
+            RepoKind::Clone => {
+                if !force && self.git.is_dirty(&repo.path)? {
+                    return Err(WorkspaceError::Dirty(repo.path.display().to_string()));
+                }
+                std::fs::remove_dir_all(&repo.path)?;
             }
         }
-        self.store.mark_workspace_removed(&ws.id, now_ms())?;
         Ok(())
     }
 
-    /// Drops the record of a workspace and detaches it from its threads; the directory is left untouched.
-    pub fn forget(&self, id: &str, in_use_by_live_thread: bool) -> Result<()> {
-        let ws = self.get(id)?;
-        if in_use_by_live_thread {
-            return Err(WorkspaceError::InUse(ws.id));
-        }
-        self.store.mark_workspace_removed(&ws.id, now_ms())?;
-        Ok(())
+    /// The discovered repository `name` of the workspace.
+    pub fn repo(&self, id: &str, name: &str) -> Result<Discovered> {
+        self.discovered(id)?
+            .into_iter()
+            .find(|repo| repo.name == name)
+            .ok_or_else(|| WorkspaceError::NoSuchRepo {
+                workspace: id.to_owned(),
+                name: name.to_owned(),
+            })
     }
 
-    /// Git status of a workspace; `None` for a directory outside git (DMN-026).
-    pub fn status(&self, id: &str) -> Result<Option<GitStatus>> {
-        let ws = self.get(id)?;
-        if self.git.toplevel(&ws.path)?.is_none() {
-            return Ok(None);
-        }
-        Ok(Some(self.git.status(&ws.path, ws.base_ref.as_deref())?))
+    /// Git status of a repository against its upstream, with the upstream's name (DMN-026).
+    pub fn status(&self, repo: &Discovered) -> Result<(GitStatus, Option<String>)> {
+        let upstream = self.git.upstream(&repo.path)?;
+        let status = self.git.status(&repo.path, upstream.as_deref())?;
+        Ok((status, upstream))
     }
 
-    /// Changes against the base ref, uncommitted ones included; `None` for a directory outside git (DMN-026).
-    pub fn diff(&self, id: &str) -> Result<Option<String>> {
-        let ws = self.get(id)?;
-        if self.git.toplevel(&ws.path)?.is_none() {
-            return Ok(None);
-        }
-        Ok(Some(self.git.diff(&ws.path, ws.base_ref.as_deref())?))
+    /// Changes of a repository against its upstream, uncommitted ones included (DMN-026).
+    pub fn diff(&self, repo: &Discovered) -> Result<String> {
+        let upstream = self.git.upstream(&repo.path)?;
+        Ok(self.git.diff(&repo.path, upstream.as_deref())?)
     }
+}
 
-    /// Ids of the threads the workspace is attached to (DMN-027). Sharing is allowed; this lets clients warn.
-    pub fn threads_using(&self, id: &str) -> Result<Vec<String>> {
-        let ws = self.get(id)?;
-        Ok(self.store.workspace_thread_ids(&ws.id)?)
+/// The entry name to use in `folder`: `name` if valid and free, else the first free variant of `default`.
+fn entry_name(folder: &Path, name: Option<&str>, default: &str) -> Result<String> {
+    let free = |entry: &str| std::fs::symlink_metadata(folder.join(entry)).is_err();
+    match name {
+        Some(name) if !is_entry_name(name) => Err(WorkspaceError::InvalidName(name.to_owned())),
+        Some(name) if !free(name) => Err(WorkspaceError::EntryExists(name.to_owned())),
+        Some(name) => Ok(name.to_owned()),
+        None => {
+            let base = if is_entry_name(default) {
+                default
+            } else {
+                "repository"
+            };
+            unique(base, "-", |entry| Ok::<_, WorkspaceError>(!free(entry)))
+        }
     }
 }
 
@@ -431,9 +536,31 @@ fn existing_dir(path: &Path) -> Result<PathBuf> {
     }
 }
 
+/// The canonical root of the git repository at `path`, which must be that root (DMN-021).
+fn git_root(git: &dyn Git, path: &Path) -> Result<PathBuf> {
+    let path = existing_dir(path)?;
+    let toplevel = git
+        .toplevel(&path)?
+        .ok_or_else(|| WorkspaceError::NotARepository(path.clone()))?;
+    if std::fs::canonicalize(toplevel)? != path {
+        return Err(WorkspaceError::NotARepositoryRoot(path));
+    }
+    Ok(path)
+}
+
 fn dir_name(path: &Path) -> String {
     path.file_name().map_or_else(
         || "repository".to_owned(),
         |name| name.to_string_lossy().into_owned(),
     )
+}
+
+/// The directory `git clone` would make for `url`: its last path segment without `.git`.
+fn clone_name(url: &str) -> String {
+    let last = url
+        .trim_end_matches('/')
+        .rsplit(['/', ':'])
+        .next()
+        .unwrap_or_default();
+    last.strip_suffix(".git").unwrap_or(last).to_owned()
 }

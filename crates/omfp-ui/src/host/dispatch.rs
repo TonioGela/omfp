@@ -10,20 +10,20 @@ use omfp_core::wire::RestoredQueuedMessage;
 use omfp_protocol::method::{
     InteractionRespond, ReposAdd, ReposRemove, ThreadAbort, ThreadGit, ThreadModels, ThreadPrompt,
     ThreadQueuePromote, ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking,
-    ThreadState, ThreadStop, ThreadThinkingLevels, ThreadsArchive, ThreadsAttach, ThreadsCreate,
-    ThreadsDelete, ThreadsDetach, ThreadsUnarchive, ThreadsUpdate, WorkspacesAdopt,
-    WorkspacesCreate, WorkspacesFromPr, WorkspacesRemove, WorkspacesStatus,
+    ThreadState, ThreadStop, ThreadThinkingLevels, ThreadsArchive, ThreadsCreate, ThreadsDelete,
+    ThreadsUnarchive, ThreadsUpdate, WorkspacesAddRepo, WorkspacesCreate, WorkspacesRemoveRepo,
+    WorkspacesRescan, WorkspacesStatus,
 };
 use omfp_protocol::{
-    AddRepositoryParams, AdoptWorkspaceParams, AttachWorkspaceParams, Call, CreateThreadParams,
-    CreateWorkspaceParams, DetachWorkspaceParams, Method, PromptParams, QueueMessageParams,
-    RemoveWorkspaceParams, RepositoryRef, RespondParams, SetModelParams, SetThinkingParams,
-    ThreadRef, Topic, UpdateThreadParams, WorkspaceFromPrParams, WorkspaceRef,
+    AddRepoParams, AddRepositoryParams, Call, CreateThreadParams, CreateWorkspaceParams, Method,
+    PromptParams, QueueMessageParams, RemoveRepoParams, RepoRef, RepoSource, RepoStatus,
+    RepositoryRef, RespondParams, SetModelParams, SetThinkingParams, ThreadRef, ThreadWorkspace,
+    Topic, UpdateThreadParams, WorkspaceRef,
 };
 use serde_json::Value;
 
 use super::view::Effect;
-use crate::intent::{Intent, IntentOutcome, NewThread, QueueOp, WorkspaceSource};
+use crate::intent::{Intent, IntentOutcome, NewThread, QueueOp};
 
 /// The protocol as the dispatcher uses it; implemented by [`Client`].
 pub trait Rpc: Clone + 'static {
@@ -145,7 +145,10 @@ async fn run(rpc: &impl Rpc, intent: &Intent) -> Effects {
     let call = match intent.clone() {
         Intent::SelectThread { thread_id } => return open_thread(rpc, &thread_id).await,
         Intent::CreateThread(new) => return create_thread(rpc, new).await,
-        Intent::CreateWorkspace(source) => return workspace_only(rpc, source).await,
+        Intent::AddRepo {
+            workspace_id,
+            source,
+        } => return add_repo(rpc, workspace_id, source).await,
         Intent::Abort { thread_id } => return abort(rpc, thread_id).await,
         Intent::Queue {
             thread_id,
@@ -193,31 +196,18 @@ async fn run(rpc: &impl Rpc, intent: &Intent) -> Effects {
         Intent::ArchiveThread { thread_id } => ThreadsArchive::call(thread_ref(&thread_id)),
         Intent::UnarchiveThread { thread_id } => ThreadsUnarchive::call(thread_ref(&thread_id)),
         Intent::DeleteThread { thread_id } => ThreadsDelete::call(thread_ref(&thread_id)),
-        Intent::AttachWorkspace {
-            thread_id,
-            workspace_id,
-        } => ThreadsAttach::call(AttachWorkspaceParams {
-            thread_id,
-            workspace_id,
-            position: None,
-        }),
-        Intent::DetachWorkspace {
-            thread_id,
-            workspace_id,
-        } => ThreadsDetach::call(DetachWorkspaceParams {
-            thread_id,
-            workspace_id,
-        }),
         Intent::AddRepository { path } => ReposAdd::call(AddRepositoryParams { path }),
         Intent::RemoveRepository { repository_id } => {
             ReposRemove::call(RepositoryRef { repository_id })
         }
-        Intent::RemoveWorkspace {
+        Intent::RemoveRepo {
             workspace_id,
+            name,
             force,
             delete_branch,
-        } => WorkspacesRemove::call(RemoveWorkspaceParams {
+        } => WorkspacesRemoveRepo::call(RemoveRepoParams {
             workspace_id,
+            name,
             force,
             delete_branch,
         }),
@@ -248,15 +238,27 @@ async fn run(rpc: &impl Rpc, intent: &Intent) -> Effects {
     Ok(Vec::new())
 }
 
-/// `workspaces.status`.
+/// `workspaces.rescan`, then `workspaces.status` of each of its repositories.
 async fn refresh_git(rpc: &impl Rpc, workspace_id: String) -> Effects {
     let params = WorkspaceRef {
         workspace_id: workspace_id.clone(),
     };
-    let status = request::<WorkspacesStatus>(rpc, params).await?;
+    let workspace = request::<WorkspacesRescan>(rpc, params).await?;
+    let mut repos = Vec::with_capacity(workspace.repos.len());
+    for repo in workspace.repos {
+        let params = RepoRef {
+            workspace_id: workspace_id.clone(),
+            repo: repo.name.clone(),
+        };
+        let status = request::<WorkspacesStatus>(rpc, params).await?;
+        repos.push(RepoStatus {
+            name: repo.name,
+            status,
+        });
+    }
     Ok(vec![Effect::Git {
         workspace_id,
-        status: Some(status),
+        repos,
     }])
 }
 
@@ -315,14 +317,10 @@ async fn open_thread(rpc: &impl Rpc, thread_id: &str) -> Effects {
         models,
         thinking_levels,
     }];
-    effects.extend(
-        git.into_iter()
-            .flat_map(|git| git.workspaces)
-            .map(|workspace| Effect::Git {
-                workspace_id: workspace.workspace_id,
-                status: workspace.status,
-            }),
-    );
+    effects.extend(git.map(|git| Effect::Git {
+        workspace_id: git.workspace_id,
+        repos: git.repos,
+    }));
     match errors.into_iter().next() {
         None => Ok(effects),
         Some(message) => Err(Failure { message, effects }),
@@ -345,73 +343,68 @@ async fn refresh_session(rpc: &impl Rpc, thread_id: String) -> Effects {
     }])
 }
 
-/// A workspace without a thread; it shows up through the index.
-async fn workspace_only(rpc: &impl Rpc, source: WorkspaceSource) -> Effects {
-    create_workspace(rpc, source).await?;
+/// `workspaces.add_repo`, into a new workspace (`workspaces.create`) when `workspace_id` is `None`; the result shows up
+/// through the index.
+async fn add_repo(rpc: &impl Rpc, workspace_id: Option<String>, source: RepoSource) -> Effects {
+    let workspace_id = match workspace_id {
+        Some(id) => id,
+        None => {
+            request::<WorkspacesCreate>(rpc, CreateWorkspaceParams::default())
+                .await?
+                .id
+        }
+    };
+    let params = AddRepoParams {
+        workspace_id,
+        name: None,
+        source,
+    };
+    request::<WorkspacesAddRepo>(rpc, params).await?;
     Ok(Vec::new())
 }
 
-/// The id of the workspace `source` names, created first unless it exists.
-async fn create_workspace(rpc: &impl Rpc, source: WorkspaceSource) -> Result<String, CallError> {
-    let workspace = match source {
-        WorkspaceSource::Existing { workspace_id } => return Ok(workspace_id),
-        WorkspaceSource::NewWorktree {
-            repo,
-            branch,
-            base_ref,
-        } => {
-            let params = CreateWorkspaceParams {
-                repo,
-                branch,
-                base_ref,
-            };
-            request::<WorkspacesCreate>(rpc, params).await?
-        }
-        WorkspaceSource::FromPr { pr, repo } => {
-            request::<WorkspacesFromPr>(rpc, WorkspaceFromPrParams { pr, repo }).await?
-        }
-        WorkspaceSource::Adopt { path } => {
-            request::<WorkspacesAdopt>(rpc, AdoptWorkspaceParams { path }).await?
-        }
-    };
-    Ok(workspace.id)
-}
-
-/// Creates the workspaces in order, then the thread with them and its first message (UI-023). When only the first
-/// message fails, the thread exists: it is opened and the error shown.
+/// Creates the thread in a new workspace, adds the repositories in order, then sends its first message (UI-023). When
+/// a later step fails, the thread exists: it is opened and the error shown.
 async fn create_thread(rpc: &impl Rpc, new: NewThread) -> Effects {
-    let mut workspace_ids = Vec::with_capacity(new.workspaces.len());
-    for source in new.workspaces {
-        workspace_ids.push(create_workspace(rpc, source).await?);
-    }
     let params = CreateThreadParams {
         title: new.title,
-        workspace_ids,
+        workspace: ThreadWorkspace::New(CreateWorkspaceParams::default()),
         tags: new.tags,
         model: None,
         thinking_level: None,
         approval_mode: None,
-        prompt: new.prompt,
+        prompt: None,
     };
-    match request::<ThreadsCreate>(rpc, params).await {
-        Ok(thread) => Ok(vec![Effect::Outcome(IntentOutcome::ThreadCreated {
-            thread_id: thread.id,
-        })]),
-        Err(CallError::Daemon(error)) => {
-            let created = error
-                .details
-                .as_ref()
-                .and_then(|details| details["threadId"].as_str())
-                .map(str::to_owned);
-            Err(Failure {
-                message: CallError::Daemon(error).to_string(),
-                effects: created
-                    .map(|thread_id| Effect::Outcome(IntentOutcome::ThreadCreated { thread_id }))
-                    .into_iter()
-                    .collect(),
-            })
+    let thread = request::<ThreadsCreate>(rpc, params).await?;
+    let created = Effect::Outcome(IntentOutcome::ThreadCreated {
+        thread_id: thread.id.clone(),
+    });
+    let rest = async {
+        for source in new.repos {
+            let params = AddRepoParams {
+                workspace_id: thread.workspace_id.clone(),
+                name: None,
+                source,
+            };
+            request::<WorkspacesAddRepo>(rpc, params).await?;
         }
-        Err(error) => Err(error.into()),
+        if let Some(text) = new.prompt {
+            let params = PromptParams {
+                thread_id: thread.id.clone(),
+                text,
+                images: Vec::new(),
+                behavior: None,
+            };
+            request::<ThreadPrompt>(rpc, params).await?;
+        }
+        Ok::<(), CallError>(())
+    };
+    match rest.await {
+        Ok(()) => Ok(vec![created]),
+        Err(error) => Err(Failure {
+            message: error.to_string(),
+            effects: vec![created],
+        }),
     }
 }
 

@@ -1,20 +1,18 @@
-//! SQLite persistence (02-daemon, "Persistence"): repositories, workspaces, threads, tags and settings.
+//! SQLite persistence (02-daemon, "Persistence"): known repositories, workspace folders, threads, their roots and
+//! tags, settings.
 //!
 //! Transcripts are not stored here (DMN-012): omp's session files in each thread's `session_dir` are the source of
-//! truth. All calls are blocking; the server layer runs them on blocking tasks.
+//! truth, and the repositories inside a workspace are discovered from its folder (DMN-022). All calls are blocking;
+//! the server layer runs them on blocking tasks.
 
+mod migrate;
+
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, Row, params};
-
-/// Embedded migrations; migration `i` brings the schema to `user_version = i + 1` (DMN-010).
-const MIGRATIONS: &[&str] = &[
-    include_str!("store/0001_initial.sql"),
-    include_str!("store/0002_created_client.sql"),
-];
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -30,6 +28,8 @@ pub enum StoreError {
     InvalidPath(PathBuf),
     #[error("stored value is not valid JSON: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("migration failed: {0}")]
+    Migration(String),
     #[error(transparent)]
     Sqlite(#[from] rusqlite::Error),
 }
@@ -75,55 +75,27 @@ pub struct Repository {
     pub created_at: i64,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum WorkspaceKind {
-    /// A git worktree created (and removable) by the daemon.
-    ManagedWorktree,
-    /// An existing directory the daemon never deletes (DMN-023).
-    Adopted,
-}
-
-impl WorkspaceKind {
-    #[must_use]
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::ManagedWorktree => "managed_worktree",
-            Self::Adopted => "adopted",
-        }
-    }
-
-    #[must_use]
-    pub fn parse(value: &str) -> Option<Self> {
-        match value {
-            "managed_worktree" => Some(Self::ManagedWorktree),
-            "adopted" => Some(Self::Adopted),
-            _ => None,
-        }
-    }
-}
-
+/// A workspace folder (DMN-020).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Workspace {
     pub id: String,
-    /// Absolute path of the directory.
+    /// Unique.
+    pub name: String,
+    /// Absolute, canonical path of the folder; unique.
     pub path: PathBuf,
-    pub kind: WorkspaceKind,
-    pub repository_id: Option<String>,
-    pub branch: Option<String>,
-    pub base_ref: Option<String>,
-    pub pr_url: Option<String>,
-    pub pr_number: Option<i64>,
+    /// The daemon created the folder (and may delete it, DMN-028).
+    pub owned: bool,
     pub created_by: Provenance,
     /// Unix milliseconds.
     pub created_at: i64,
-    /// Set when the workspace was removed or forgotten; removed workspaces are no longer listed.
-    pub removed_at: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Thread {
     pub id: String,
     pub title: String,
+    /// The workspace the thread lives in: its omp cwd (DMN-029).
+    pub workspace_id: String,
     pub session_dir: PathBuf,
     pub omp_session_id: Option<String>,
     pub approval_mode: Option<String>,
@@ -134,8 +106,6 @@ pub struct Thread {
     /// Unix milliseconds.
     pub created_at: i64,
     pub archived_at: Option<i64>,
-    /// Attached workspaces in order (the first one comes first in `--add-dir`).
-    pub workspace_ids: Vec<String>,
     /// Sorted and deduplicated.
     pub tags: Vec<String>,
 }
@@ -167,20 +137,19 @@ pub struct Store {
 }
 
 const REPOSITORY_COLUMNS: &str = "id, name, path, default_base_ref, remote_url, created_at";
-const WORKSPACE_COLUMNS: &str = "id, path, kind, repository_id, branch, base_ref, pr_url, pr_number, created_by, \
-     created_at, removed_at";
-const THREAD_COLUMNS: &str = "id, title, session_dir, omp_session_id, approval_mode, model, thinking_level, \
-     created_by, created_at, archived_at";
+const WORKSPACE_COLUMNS: &str = "id, name, path, owned, created_by, created_at";
+const THREAD_COLUMNS: &str = "id, title, workspace_id, session_dir, omp_session_id, approval_mode, model, \
+     thinking_level, created_by, created_at, archived_at";
 
 impl Store {
     /// Opens (creating if needed) the database at `path`, enables WAL and foreign keys (DMN-011) and applies pending
-    /// migrations (DMN-010).
-    pub fn open(path: &Path) -> Result<Self> {
+    /// migrations (DMN-010). Migration 3 creates a workspace folder under `workspaces_root` for every thread.
+    pub fn open(path: &Path, workspaces_root: &Path) -> Result<Self> {
         let mut conn = Connection::open(path)?;
         conn.busy_timeout(Duration::from_secs(5))?;
         conn.pragma_update_and_check(None, "journal_mode", "WAL", |row| row.get::<_, String>(0))?;
+        migrate::run(&mut conn, workspaces_root)?;
         conn.pragma_update(None, "foreign_keys", true)?;
-        migrate(&mut conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -247,7 +216,7 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    /// Unregisters a repository; its workspaces stay, without a repository.
+    /// Forgets a known repository; workspaces holding it are not affected.
     pub fn delete_repository(&self, id: &str) -> Result<()> {
         let deleted = self
             .conn()
@@ -261,35 +230,9 @@ impl Store {
     // Workspaces
 
     pub fn insert_workspace(&self, ws: &Workspace) -> Result<()> {
-        self.conn()
-            .execute(
-                "INSERT INTO workspaces (id, path, kind, repository_id, branch, base_ref, pr_url, pr_number,
-                     created_by, created_at, removed_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
-                params![
-                    ws.id,
-                    path_str(&ws.path)?,
-                    ws.kind.as_str(),
-                    ws.repository_id,
-                    ws.branch,
-                    ws.base_ref,
-                    ws.pr_url,
-                    ws.pr_number,
-                    ws.created_by.as_str(),
-                    ws.created_at,
-                    ws.removed_at
-                ],
-            )
-            .map_err(|error| {
-                unique_conflict(
-                    error,
-                    &format!("{} is already a workspace", ws.path.display()),
-                )
-            })?;
-        Ok(())
+        insert_workspace(&self.conn(), ws, None)
     }
 
-    /// A workspace by id, removed or not.
     pub fn workspace(&self, id: &str) -> Result<Workspace> {
         self.conn()
             .query_row(
@@ -301,94 +244,91 @@ impl Store {
             .ok_or_else(|| not_found("workspace", id))
     }
 
-    pub fn live_workspace_by_path(&self, path: &Path) -> Result<Option<Workspace>> {
+    pub fn workspace_by_path(&self, path: &Path) -> Result<Option<Workspace>> {
         Ok(self
             .conn()
             .query_row(
-                &format!(
-                    "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE path = ?1 AND removed_at IS NULL"
-                ),
+                &format!("SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE path = ?1"),
                 [path_str(path)?],
                 workspace_from_row,
             )
             .optional()?)
     }
 
-    /// Live (not removed) workspaces.
+    /// Whether a workspace already has this name.
+    pub fn workspace_name_taken(&self, name: &str) -> Result<bool> {
+        Ok(self
+            .conn()
+            .query_row("SELECT 1 FROM workspaces WHERE name = ?1", [name], |_| {
+                Ok(())
+            })
+            .optional()?
+            .is_some())
+    }
+
+    /// Every workspace, oldest first.
     pub fn workspaces(&self) -> Result<Vec<Workspace>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(&format!(
-            "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE removed_at IS NULL ORDER BY id"
+            "SELECT {WORKSPACE_COLUMNS} FROM workspaces ORDER BY id"
         ))?;
         let rows = stmt.query_map([], workspace_from_row)?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
-    /// Marks a workspace removed and detaches it from every thread, in one transaction.
-    pub fn mark_workspace_removed(&self, id: &str, removed_at: i64) -> Result<()> {
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        let updated = tx.execute(
-            "UPDATE workspaces SET removed_at = ?2 WHERE id = ?1",
-            params![id, removed_at],
-        )?;
+    pub fn rename_workspace(&self, id: &str, name: &str) -> Result<()> {
+        let updated = self
+            .conn()
+            .execute(
+                "UPDATE workspaces SET name = ?2 WHERE id = ?1",
+                params![id, name],
+            )
+            .map_err(|error| {
+                unique_conflict(error, &format!("a workspace is already named {name:?}"))
+            })?;
         if updated == 0 {
             return Err(not_found("workspace", id));
         }
-        let affected: Vec<String> = {
-            let mut stmt =
-                tx.prepare("SELECT thread_id FROM thread_workspaces WHERE workspace_id = ?1")?;
-            stmt.query_map([id], |row| row.get(0))?
-                .collect::<Result<_, _>>()?
-        };
-        tx.execute(
-            "DELETE FROM thread_workspaces WHERE workspace_id = ?1",
+        Ok(())
+    }
+
+    /// Deletes a workspace record; refused while threads live in it (DMN-028).
+    pub fn delete_workspace(&self, id: &str) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let threads: i64 = tx.query_row(
+            "SELECT count(*) FROM threads WHERE workspace_id = ?1",
             [id],
+            |row| row.get(0),
         )?;
-        for thread_id in &affected {
-            let remaining = load_workspace_ids(&tx, thread_id)?;
-            write_workspace_ids(&tx, thread_id, &remaining)?;
+        if threads > 0 {
+            return Err(StoreError::Conflict(format!(
+                "workspace {id} still has {threads} thread(s)"
+            )));
+        }
+        if tx.execute("DELETE FROM workspaces WHERE id = ?1", [id])? == 0 {
+            return Err(not_found("workspace", id));
         }
         tx.commit()?;
         Ok(())
     }
 
-    /// Ids of the threads a workspace is attached to (DMN-027), oldest thread first.
+    /// Ids of the threads living in a workspace (DMN-027), oldest first, archived ones included.
     pub fn workspace_thread_ids(&self, workspace_id: &str) -> Result<Vec<String>> {
         let conn = self.conn();
-        let mut stmt = conn.prepare(
-            "SELECT t.id FROM thread_workspaces tw JOIN threads t ON t.id = tw.thread_id
-             WHERE tw.workspace_id = ?1 ORDER BY t.id",
-        )?;
+        let mut stmt =
+            conn.prepare("SELECT id FROM threads WHERE workspace_id = ?1 ORDER BY id")?;
         let rows = stmt.query_map([workspace_id], |row| row.get(0))?;
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
     // Threads
 
-    /// Inserts a thread with its workspaces and tags, in one transaction.
+    /// Inserts a thread with its tags, in one transaction.
     pub fn insert_thread(&self, thread: &Thread) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
-        tx.execute(
-            "INSERT INTO threads (id, title, session_dir, omp_session_id, approval_mode, model, thinking_level,
-                 created_by, created_at, archived_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            params![
-                thread.id,
-                thread.title,
-                path_str(&thread.session_dir)?,
-                thread.omp_session_id,
-                thread.approval_mode,
-                thread.model,
-                thread.thinking_level,
-                thread.created_by.as_str(),
-                thread.created_at,
-                thread.archived_at
-            ],
-        )
-        .map_err(|error| unique_conflict(error, &format!("thread {} exists", thread.id)))?;
-        write_workspace_ids(&tx, &thread.id, &thread.workspace_ids)?;
+        insert_thread(&tx, thread)?;
         write_tags(&tx, &thread.id, &thread.tags)?;
         tx.commit()?;
         Ok(())
@@ -404,7 +344,7 @@ impl Store {
             )
             .optional()?
             .ok_or_else(|| not_found("thread", id))?;
-        with_links(&conn, thread)
+        with_tags(&conn, thread)
     }
 
     /// Every thread, archived ones included, oldest first.
@@ -418,7 +358,7 @@ impl Store {
         };
         threads
             .into_iter()
-            .map(|thread| with_links(&conn, thread))
+            .map(|thread| with_tags(&conn, thread))
             .collect()
     }
 
@@ -472,17 +412,27 @@ impl Store {
         Ok(())
     }
 
-    /// Replaces the thread's ordered workspace list.
-    pub fn set_thread_workspaces(&self, id: &str, workspace_ids: &[String]) -> Result<()> {
+    /// The `--add-dir` roots last given to the thread's omp session (DMN-029), sorted.
+    pub fn thread_roots(&self, id: &str) -> Result<Vec<PathBuf>> {
+        let conn = self.conn();
+        let mut stmt =
+            conn.prepare("SELECT path FROM thread_roots WHERE thread_id = ?1 ORDER BY path")?;
+        let rows = stmt.query_map([id], |row| Ok(PathBuf::from(row.get::<_, String>(0)?)))?;
+        Ok(rows.collect::<Result<_, _>>()?)
+    }
+
+    /// Replaces the thread's recorded roots.
+    pub fn set_thread_roots(&self, id: &str, roots: &[PathBuf]) -> Result<()> {
         let mut conn = self.conn();
         let tx = conn.transaction()?;
         ensure_thread(&tx, id)?;
-        write_workspace_ids(&tx, id, workspace_ids)?;
+        tx.execute("DELETE FROM thread_roots WHERE thread_id = ?1", [id])?;
+        write_roots(&tx, id, roots)?;
         tx.commit()?;
         Ok(())
     }
 
-    /// Deletes a thread with its workspace links and tags; the workspaces themselves stay.
+    /// Deletes a thread with its roots and tags; its workspace stays.
     pub fn delete_thread(&self, id: &str) -> Result<()> {
         if self
             .conn()
@@ -519,7 +469,7 @@ impl Store {
     }
 
     /// The recorded creating clients of threads and workspaces, by id.
-    pub fn created_clients(&self) -> Result<std::collections::HashMap<String, String>> {
+    pub fn created_clients(&self) -> Result<HashMap<String, String>> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
             "SELECT id, created_client FROM threads WHERE created_client IS NOT NULL
@@ -556,22 +506,6 @@ impl Store {
     }
 }
 
-fn migrate(conn: &mut Connection) -> Result<()> {
-    let found: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    let supported = i64::try_from(MIGRATIONS.len()).unwrap_or(i64::MAX);
-    let applied = usize::try_from(found)
-        .ok()
-        .filter(|&applied| applied <= MIGRATIONS.len())
-        .ok_or(StoreError::UnknownSchemaVersion { found, supported })?;
-    for (version, sql) in (1_i64..).zip(MIGRATIONS).skip(applied) {
-        let tx = conn.transaction()?;
-        tx.execute_batch(sql)?;
-        tx.pragma_update(None, "user_version", version)?;
-        tx.commit()?;
-    }
-    Ok(())
-}
-
 fn not_found(entity: &'static str, id: &str) -> StoreError {
     StoreError::NotFound {
         entity,
@@ -603,20 +537,53 @@ fn ensure_thread(conn: &Connection, id: &str) -> Result<()> {
         .ok_or_else(|| not_found("thread", id))
 }
 
-fn write_workspace_ids(conn: &Connection, thread_id: &str, workspace_ids: &[String]) -> Result<()> {
+fn insert_workspace(conn: &Connection, ws: &Workspace, client: Option<&str>) -> Result<()> {
     conn.execute(
-        "DELETE FROM thread_workspaces WHERE thread_id = ?1",
-        [thread_id],
-    )?;
-    let mut stmt = conn.prepare(
-        "INSERT INTO thread_workspaces (thread_id, workspace_id, position) VALUES (?1, ?2, ?3)",
-    )?;
-    for (position, workspace_id) in (0_i64..).zip(workspace_ids) {
-        stmt.execute(params![thread_id, workspace_id, position])
-            .map_err(|error| {
-                unique_conflict(error, &format!("workspace {workspace_id} is listed twice"))
-            })?;
-    }
+        "INSERT INTO workspaces (id, name, path, owned, created_by, created_client, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            ws.id,
+            ws.name,
+            path_str(&ws.path)?,
+            ws.owned,
+            ws.created_by.as_str(),
+            client,
+            ws.created_at
+        ],
+    )
+    .map_err(|error| {
+        unique_conflict(
+            error,
+            &format!(
+                "a workspace is already named {:?} or at {}",
+                ws.name,
+                ws.path.display()
+            ),
+        )
+    })?;
+    Ok(())
+}
+
+fn insert_thread(conn: &Connection, thread: &Thread) -> Result<()> {
+    conn.execute(
+        "INSERT INTO threads (id, title, workspace_id, session_dir, omp_session_id, approval_mode, model,
+             thinking_level, created_by, created_at, archived_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        params![
+            thread.id,
+            thread.title,
+            thread.workspace_id,
+            path_str(&thread.session_dir)?,
+            thread.omp_session_id,
+            thread.approval_mode,
+            thread.model,
+            thread.thinking_level,
+            thread.created_by.as_str(),
+            thread.created_at,
+            thread.archived_at
+        ],
+    )
+    .map_err(|error| unique_conflict(error, &format!("thread {} exists", thread.id)))?;
     Ok(())
 }
 
@@ -629,16 +596,16 @@ fn write_tags(conn: &Connection, thread_id: &str, tags: &[String]) -> Result<()>
     Ok(())
 }
 
-fn load_workspace_ids(conn: &Connection, thread_id: &str) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare(
-        "SELECT workspace_id FROM thread_workspaces WHERE thread_id = ?1 ORDER BY position",
-    )?;
-    let rows = stmt.query_map([thread_id], |row| row.get(0))?;
-    Ok(rows.collect::<Result<_, _>>()?)
+fn write_roots(conn: &Connection, thread_id: &str, roots: &[PathBuf]) -> Result<()> {
+    let mut stmt =
+        conn.prepare("INSERT OR IGNORE INTO thread_roots (thread_id, path) VALUES (?1, ?2)")?;
+    for root in roots {
+        stmt.execute(params![thread_id, path_str(root)?])?;
+    }
+    Ok(())
 }
 
-fn with_links(conn: &Connection, mut thread: Thread) -> Result<Thread> {
-    thread.workspace_ids = load_workspace_ids(conn, &thread.id)?;
+fn with_tags(conn: &Connection, mut thread: Thread) -> Result<Thread> {
     let mut stmt = conn.prepare("SELECT tag FROM thread_tags WHERE thread_id = ?1 ORDER BY tag")?;
     thread.tags = stmt
         .query_map([&thread.id], |row| row.get(0))?
@@ -658,25 +625,13 @@ fn repository_from_row(row: &Row<'_>) -> rusqlite::Result<Repository> {
 }
 
 fn workspace_from_row(row: &Row<'_>) -> rusqlite::Result<Workspace> {
-    let kind: String = row.get(2)?;
     Ok(Workspace {
         id: row.get(0)?,
-        path: PathBuf::from(row.get::<_, String>(1)?),
-        kind: WorkspaceKind::parse(&kind).ok_or_else(|| {
-            rusqlite::Error::FromSqlConversionFailure(
-                2,
-                Type::Text,
-                format!("unknown workspace kind {kind:?}").into(),
-            )
-        })?,
-        repository_id: row.get(3)?,
-        branch: row.get(4)?,
-        base_ref: row.get(5)?,
-        pr_url: row.get(6)?,
-        pr_number: row.get(7)?,
-        created_by: Provenance::parse(&row.get::<_, String>(8)?),
-        created_at: row.get(9)?,
-        removed_at: row.get(10)?,
+        name: row.get(1)?,
+        path: PathBuf::from(row.get::<_, String>(2)?),
+        owned: row.get(3)?,
+        created_by: Provenance::parse(&row.get::<_, String>(4)?),
+        created_at: row.get(5)?,
     })
 }
 
@@ -684,15 +639,15 @@ fn thread_from_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
     Ok(Thread {
         id: row.get(0)?,
         title: row.get(1)?,
-        session_dir: PathBuf::from(row.get::<_, String>(2)?),
-        omp_session_id: row.get(3)?,
-        approval_mode: row.get(4)?,
-        model: row.get(5)?,
-        thinking_level: row.get(6)?,
-        created_by: Provenance::parse(&row.get::<_, String>(7)?),
-        created_at: row.get(8)?,
-        archived_at: row.get(9)?,
-        workspace_ids: Vec::new(),
+        workspace_id: row.get(2)?,
+        session_dir: PathBuf::from(row.get::<_, String>(3)?),
+        omp_session_id: row.get(4)?,
+        approval_mode: row.get(5)?,
+        model: row.get(6)?,
+        thinking_level: row.get(7)?,
+        created_by: Provenance::parse(&row.get::<_, String>(8)?),
+        created_at: row.get(9)?,
+        archived_at: row.get(10)?,
         tags: Vec::new(),
     })
 }
@@ -708,13 +663,5 @@ mod tests {
         assert_eq!(Provenance::Thread("01J".into()).as_str(), "01J");
         assert_eq!(Provenance::parse("user"), Provenance::User);
         assert_eq!(Provenance::parse("01J"), Provenance::Thread("01J".into()));
-    }
-
-    #[test]
-    fn workspace_kinds_round_trip() {
-        for kind in [WorkspaceKind::ManagedWorktree, WorkspaceKind::Adopted] {
-            assert_eq!(WorkspaceKind::parse(kind.as_str()), Some(kind));
-        }
-        assert_eq!(WorkspaceKind::parse("other"), None);
     }
 }

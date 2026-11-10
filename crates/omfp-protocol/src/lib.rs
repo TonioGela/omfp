@@ -13,7 +13,8 @@ mod topic;
 
 pub use dto::{
     CreatedBy, DiffPage, FileChange, FileDiff, FileStatus, GitStatus, IndexSnapshot, Provenance,
-    Repository, TerminalInfo, TerminalKind, ThreadSummary, Workspace, WorkspaceKind,
+    RepoKind, RepoStatus, Repository, TerminalInfo, TerminalKind, ThreadSummary, Workspace,
+    WorkspaceRepo,
 };
 pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, ProtocolError, Request, Response, ServerFrame,
@@ -21,15 +22,15 @@ pub use envelope::{
 };
 pub use method::{Call, METHODS, Method, method_schemas};
 pub use params::{
-    AddRepositoryParams, AdoptWorkspaceParams, AttachWorkspaceParams, BashParams, BtwParams,
-    CompactParams, CreateThreadParams, CreateWorkspaceParams, DetachWorkspaceParams, Empty,
-    ForkParams, GoalParams, HelloParams, HelloResult, InteractionResponse, LabelParams,
-    ListTerminalsParams, MessageParams, NavigateParams, OpenTerminalParams, OpenTerminalResult,
-    Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams,
-    RemoveWorkspaceParams, RepositoryList, RepositoryRef, ResizeTerminalParams, RespondParams,
-    SetModelParams, SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
-    SubscribeParams, SubscribeResult, TerminalList, TerminalRef, ThreadGit, ThreadRef, TopicParams,
-    UpdateThreadParams, WorkspaceDiffParams, WorkspaceFromPrParams, WorkspaceGit, WorkspaceRef,
+    AddRepoParams, AddRepositoryParams, BashParams, BtwParams, CompactParams, CreateThreadParams,
+    CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams, HelloResult,
+    InteractionResponse, LabelParams, ListTerminalsParams, MessageParams, NavigateParams,
+    OpenTerminalParams, OpenTerminalResult, Position, PromptBehavior, PromptParams, PromptResult,
+    QueueMessageParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource,
+    RepositoryList, RepositoryRef, ResizeTerminalParams, RespondParams, SetModelParams,
+    SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
+    SubscribeResult, TerminalList, TerminalRef, ThreadGit, ThreadRef, ThreadWorkspace, TopicParams,
+    UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
 };
 pub use topic::{Topic, TopicParseError};
 

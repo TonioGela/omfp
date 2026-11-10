@@ -1,4 +1,5 @@
-//! Component tests (L1) of the supervisor: a fixture-driven fake launcher (TST-014), fake git, paused time.
+//! Component tests (L1) of the supervisor: a fixture-driven fake launcher (TST-014), fake git, temp workspace
+//! folders, paused time.
 
 use std::path::Path;
 
@@ -10,30 +11,34 @@ use tempfile::TempDir;
 use super::*;
 use crate::agent::{FakeCall, FakeLauncher, FakeReply, FakeRun};
 use crate::event_log::Start;
-use crate::git::FakeGit;
+use crate::git::{FakeGit, Git};
 use crate::host_tools::OPEN_IN_EDITOR;
-use crate::store::{Provenance, Store};
+use crate::store::Store;
 use crate::threads::NewThread;
-use crate::workspaces::Workspaces;
+use crate::workspaces::{NewWorkspace, Workspaces};
 
 struct Harness {
-    _dir: TempDir,
+    dir: TempDir,
     launcher: FakeLauncher,
     supervisor: Supervisor,
     threads: Arc<Threads>,
     workspaces: Arc<Workspaces>,
+    git: Arc<FakeGit>,
     data: DataDir,
 }
 
 fn harness(configure: impl FnOnce(&mut SupervisorConfig)) -> Harness {
     let dir = tempfile::tempdir().unwrap();
-    let data = DataDir::new(dir.path());
-    let store = Arc::new(Store::open(&data.db()).unwrap());
+    let data = DataDir::new(dir.path().join("data"));
+    std::fs::create_dir_all(data.root()).unwrap();
+    let root = dir.path().join("workspaces");
+    let store = Arc::new(Store::open(&data.db(), &root).unwrap());
     let threads = Arc::new(Threads::new(Arc::clone(&store), data.clone()));
+    let git = Arc::new(FakeGit::new());
     let workspaces = Arc::new(Workspaces::new(
         store,
-        Arc::new(FakeGit::new()),
-        data.clone(),
+        Arc::clone(&git) as Arc<dyn Git>,
+        root,
     ));
     let launcher = FakeLauncher::new();
     let mut config = SupervisorConfig::new("omp");
@@ -41,29 +46,53 @@ fn harness(configure: impl FnOnce(&mut SupervisorConfig)) -> Harness {
     let supervisor = Supervisor::new(
         Arc::new(launcher.clone()),
         Arc::clone(&threads),
+        Arc::clone(&workspaces),
         data.clone(),
         config,
     );
     Harness {
-        _dir: dir,
+        dir,
         launcher,
         supervisor,
         threads,
         workspaces,
+        git,
         data,
     }
 }
 
 impl Harness {
+    /// A thread in a new, empty workspace.
     fn thread(&self) -> String {
-        self.threads.create(NewThread::new("t")).unwrap().id
+        let (ws, _) = self.workspace();
+        self.threads.create(NewThread::new("t", ws)).unwrap().id
     }
 
-    fn workspace(&self, name: &str) -> (String, PathBuf) {
-        let path = self.data.root().join(name);
+    /// A new owned workspace folder: its id and path.
+    fn workspace(&self) -> (String, PathBuf) {
+        let view = self.workspaces.create(NewWorkspace::new()).unwrap();
+        (view.workspace.id, view.workspace.path)
+    }
+
+    /// A fake repository outside every workspace.
+    fn external_repo(&self, name: &str) -> PathBuf {
+        let path = self.dir.path().join("src").join(name);
         std::fs::create_dir_all(&path).unwrap();
-        let ws = self.workspaces.adopt(&path, Provenance::User).unwrap();
-        (ws.id, ws.path)
+        self.git.add_repo(&path, "main");
+        path
+    }
+
+    /// The local commands (`/add-dir`, `/remove-dir`) the thread's first process got.
+    fn local_commands(&self) -> Vec<String> {
+        self.launcher
+            .process(0)
+            .calls()
+            .into_iter()
+            .filter_map(|call| match call {
+                FakeCall::Prompt(prompt) if prompt.message.starts_with('/') => Some(prompt.message),
+                _ => None,
+            })
+            .collect()
     }
 
     async fn log(&self, id: &str) -> Arc<ThreadLog> {
@@ -131,14 +160,26 @@ async fn a_prompt_on_a_stopped_thread_starts_omp_and_reduces_the_recorded_turn()
     assert_eq!(seq, u64::try_from(recorded.len()).unwrap());
 }
 
-// spec: DMN-030, DMN-028, DMN-060
+// spec: DMN-030, DMN-029, DMN-060, ARC-008
 #[tokio::test]
-async fn omp_starts_in_the_thread_home_with_its_workspaces_and_host_tools() {
-    let h = harness(|config| config.omp_env = vec![("OMFP_TEST".into(), Some("1".into()))]);
-    let (first, first_path) = h.workspace("frontend");
-    let (second, second_path) = h.workspace("backend");
-    let mut new = NewThread::new("multi");
-    new.workspace_ids = vec![first, second];
+async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
+    let agent_dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        agent_dir.path().join("APPEND_SYSTEM.md"),
+        "Answer in haiku.\n",
+    )
+    .unwrap();
+    let h = harness(|config| {
+        config.omp_env = vec![("OMFP_TEST".into(), Some("1".into()))];
+        config.agent_dir = Some(agent_dir.path().to_owned());
+    });
+    let (ws, folder) = h.workspace();
+    let external = h.external_repo("shop-frontend");
+    std::os::unix::fs::symlink(&external, folder.join("frontend")).unwrap();
+    std::fs::create_dir(folder.join("backend")).unwrap();
+    h.git.add_repo(&folder.join("backend"), "main");
+    std::fs::create_dir(folder.join("notes")).unwrap();
+    let mut new = NewThread::new("multi", ws);
     new.model = Some("fake/scripted".into());
     new.approval_mode = Some("always-ask".into());
     let id = h.threads.create(new).unwrap().id;
@@ -146,11 +187,22 @@ async fn omp_starts_in_the_thread_home_with_its_workspaces_and_host_tools() {
     h.supervisor.start(&id).await.unwrap();
 
     let launch = &h.launcher.launches()[0];
+    assert_eq!(launch.spec.cwd, folder);
     assert_eq!(
-        launch.spec.cwd,
-        std::path::absolute(h.data.thread_home(&id)).unwrap()
+        launch.spec.add_dirs,
+        [folder.join("backend"), folder.join("frontend")],
+        "repositories by name, the symlink path and not its target; `notes` is no repository"
     );
-    assert_eq!(launch.spec.add_dirs, [first_path, second_path]);
+    assert_eq!(
+        launch.spec.append_system_prompt.as_deref(),
+        Some(
+            format!(
+                "{}\n\nAnswer in haiku.",
+                conventions::workspace_conventions("workspace", &folder)
+            )
+            .as_str()
+        )
+    );
     assert_eq!(
         launch.spec.session_dir,
         h.threads.get(&id).unwrap().session_dir
@@ -160,8 +212,10 @@ async fn omp_starts_in_the_thread_home_with_its_workspaces_and_host_tools() {
     assert_eq!(launch.spec.stderr_log, h.data.thread_log(&id));
     assert_eq!(launch.spec.env, [("OMFP_TEST".into(), Some("1".into()))]);
     assert_eq!(launch.tools, [OPEN_IN_EDITOR]);
-    // The session is stored once omp opened it (DMN-032).
+    // The session is stored once omp opened it (DMN-032), and its roots are the flags (DMN-029).
     assert!(h.threads.get(&id).unwrap().omp_session_id.is_some());
+    assert_eq!(h.threads.roots(&id).unwrap(), launch.spec.add_dirs);
+    assert_eq!(h.local_commands(), Vec::<String>::new());
 }
 
 // spec: DMN-060
@@ -171,7 +225,7 @@ async fn host_tool_events_reach_the_thread() {
     let id = h.thread();
     h.supervisor.start(&id).await.unwrap();
     let log = h.log(&id).await;
-    let home = h.data.thread_home(&id);
+    let cwd = h.launcher.launches()[0].spec.cwd.clone();
     let emit: host_tools::Emit = {
         let log = Arc::clone(&log);
         Arc::new(move |event| {
@@ -182,13 +236,13 @@ async fn host_tool_events_reach_the_thread() {
     host_tools::run_open_in_editor(
         json!({ "path": "notes.md" }).as_object().unwrap(),
         || false,
-        &home,
+        &cwd,
         &*emit,
     )
     .unwrap();
 
     let url = log.with_state(|state| state.presentation.open_url.clone().unwrap().url);
-    assert!(url.ends_with("/home/notes.md"), "{url}");
+    assert!(url.ends_with("/workspace/notes.md"), "{url}");
 }
 
 // spec: DMN-033
@@ -458,37 +512,111 @@ async fn the_first_valid_answer_wins_and_later_ones_are_already_resolved() {
     assert_eq!(responses.len(), 1);
 }
 
-// spec: DMN-029
+/// Workspace of `thread`.
+fn workspace_of(h: &Harness, thread: &str) -> (String, PathBuf) {
+    let ws = h.threads.get(thread).unwrap().workspace_id;
+    let path = h.workspaces.get(&ws).unwrap().path;
+    (ws, path)
+}
+
+// spec: DMN-029, ARC-008
 #[tokio::test]
-async fn attaching_to_a_running_thread_sends_add_dir_and_detaching_remove_dir() {
+async fn root_sync_adds_new_repositories_and_removes_gone_ones() {
     let h = harness(|_| {});
     let id = h.thread();
-    let (stopped_ws, _) = h.workspace("early");
-    h.supervisor.attach(&id, &stopped_ws, None).await.unwrap();
+    let (ws, folder) = workspace_of(&h, &id);
     h.supervisor.start(&id).await.unwrap();
-    let (ws, path) = h.workspace("late");
+    let link = folder.join("app");
+    std::os::unix::fs::symlink(h.external_repo("app"), &link).unwrap();
 
-    let thread = h.supervisor.attach(&id, &ws, None).await.unwrap();
-    h.supervisor.detach(&id, &ws).await.unwrap();
+    h.workspaces.rescan(&ws).unwrap();
+    h.supervisor.sync_roots(&id).await.unwrap();
+    assert_eq!(h.threads.roots(&id).unwrap(), std::slice::from_ref(&link));
+    std::fs::remove_file(&link).unwrap();
+    h.workspaces.rescan(&ws).unwrap();
+    h.supervisor.sync_roots(&id).await.unwrap();
+    h.supervisor.sync_roots(&id).await.unwrap();
 
-    assert_eq!(thread.workspace_ids, [stopped_ws, ws]);
-    let prompts: Vec<String> = h
-        .launcher
-        .process(0)
-        .calls()
-        .into_iter()
-        .filter_map(|call| match call {
-            FakeCall::Prompt(prompt) => Some(prompt.message),
+    assert_eq!(
+        h.local_commands(),
+        [
+            format!("/add-dir {}", link.display()),
+            format!("/remove-dir {}", link.display())
+        ],
+        "nothing more once in sync"
+    );
+    assert_eq!(h.threads.roots(&id).unwrap(), Vec::<PathBuf>::new());
+}
+
+// spec: DMN-029
+#[tokio::test]
+async fn a_busy_thread_syncs_its_roots_once_its_session_settles() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let (ws, folder) = workspace_of(&h, &id);
+    h.supervisor.start(&id).await.unwrap();
+    h.launcher.process(0).emit(vec![agent_start()]);
+    h.wait(&id, "the busy agent", |state| !state.settled).await;
+    let link = folder.join("app");
+    std::os::unix::fs::symlink(h.external_repo("app"), &link).unwrap();
+    h.workspaces.rescan(&ws).unwrap();
+
+    h.supervisor.sync_roots(&id).await.unwrap();
+    assert_eq!(
+        h.local_commands(),
+        Vec::<String>::new(),
+        "omp refuses /add-dir while streaming"
+    );
+    let settled: RpcNotification =
+        serde_json::from_value(json!({ "type": "session_settled" })).unwrap();
+    h.launcher.process(0).emit(vec![settled]);
+    while h.threads.roots(&id).unwrap().is_empty() {
+        tokio::task::yield_now().await;
+    }
+
+    assert_eq!(h.local_commands(), [format!("/add-dir {}", link.display())]);
+}
+
+// spec: DMN-029
+#[tokio::test]
+async fn roots_the_session_kept_from_before_are_removed_at_launch() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let old = h.external_repo("old-worktree");
+    h.threads
+        .set_roots(&id, std::slice::from_ref(&old))
+        .unwrap();
+
+    h.supervisor.start(&id).await.unwrap();
+
+    assert_eq!(
+        h.local_commands(),
+        [format!("/remove-dir {}", old.display())]
+    );
+    assert_eq!(h.threads.roots(&id).unwrap(), Vec::<PathBuf>::new());
+}
+
+// spec: DMN-023
+#[tokio::test]
+async fn a_finished_tool_run_is_announced_for_a_rescan() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let mut tool_ends = h.supervisor.subscribe_tool_ends();
+    h.supervisor.start(&id).await.unwrap();
+    let end = fixture_text("bash_tool_call")
+        .lines()
+        .map(|line| serde_json::from_str::<ThreadEvent>(line).unwrap())
+        .find_map(|event| match event {
+            ThreadEvent::Omp {
+                frame: frame @ RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(_)),
+            } => Some(frame),
             _ => None,
         })
-        .collect();
-    assert_eq!(
-        prompts,
-        [
-            format!("/add-dir {}", path.display()),
-            format!("/remove-dir {}", path.display())
-        ]
-    );
+        .unwrap();
+
+    h.launcher.process(0).emit(vec![end]);
+
+    assert_eq!(tool_ends.recv().await.unwrap(), id);
 }
 
 fn agent_start() -> RpcNotification {

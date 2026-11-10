@@ -18,7 +18,7 @@ use omfp_protocol::method::{
 };
 use omfp_protocol::{
     CreateThreadParams, MessageParams, PromptParams, QueueMessageParams, SetModelParams,
-    SetThinkingParams, ThreadRef,
+    SetThinkingParams, ThreadRef, ThreadWorkspace,
 };
 use omfp_testkit::{FAKE_MODEL, FAKE_PROVIDER, omp_bin};
 use tempfile::TempDir;
@@ -26,12 +26,15 @@ use tempfile::TempDir;
 async fn start(harness: &Harness) -> (DaemonHandle, TempDir) {
     let data = tempfile::tempdir().unwrap();
     let omp = omp_bin();
+    let workspaces = data.path().join("workspaces");
     let cli = Cli::try_parse_from([
         "daemon",
         "--bind",
         "127.0.0.1:0",
         "--data-dir",
         data.path().to_str().unwrap(),
+        "--workspaces-root",
+        workspaces.to_str().unwrap(),
         "--omp-bin",
         &omp,
     ])
@@ -73,7 +76,7 @@ async fn omp_forwarded_methods_return_their_declared_results() {
     let thread = client
         .typed::<ThreadsCreate>(CreateThreadParams {
             title: "typed results".into(),
-            workspace_ids: Vec::new(),
+            workspace: ThreadWorkspace::default(),
             tags: Vec::new(),
             model: Some(format!("{FAKE_PROVIDER}/{FAKE_MODEL}")),
             thinking_level: None,

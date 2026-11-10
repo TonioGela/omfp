@@ -20,7 +20,7 @@ use tempfile::TempDir;
 
 pub const TIMEOUT: Duration = Duration::from_secs(60);
 
-/// An isolated omp environment plus a thread-like layout: home (cwd), sessions and log.
+/// An isolated omp environment plus a thread-like layout: a workspace folder (cwd), sessions and log.
 pub struct Harness {
     pub fake: FakeLlm,
     pub proxy: DenyProxy,
@@ -44,10 +44,15 @@ impl Harness {
         }
     }
 
+    /// The omp cwd of [`Harness::spec`]: a plain folder, like a workspace.
+    pub fn workspace(&self) -> PathBuf {
+        self.thread.path().join("workspace")
+    }
+
     pub fn spec(&self, add_dirs: &[&Path]) -> LaunchSpec {
         LaunchSpec {
             program: omp_bin().into(),
-            cwd: self.thread.path().join("home"),
+            cwd: self.workspace(),
             add_dirs: add_dirs.iter().map(|dir| dir.to_path_buf()).collect(),
             session_dir: self.thread.path().join("sessions"),
             model: Some(format!("{FAKE_PROVIDER}/{FAKE_MODEL}")),
@@ -87,6 +92,33 @@ pub fn prompt(text: &str) -> PromptCommand {
         images: None,
         streaming_behavior: None,
     }
+}
+
+/// The system prompt of a recorded chat-completions request.
+pub fn system_prompt(request: &serde_json::Value) -> String {
+    request["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|message| message["role"] == "system" || message["role"] == "developer")
+        .map(|message| match &message["content"] {
+            serde_json::Value::String(text) => text.clone(),
+            other => other.to_string(),
+        })
+        .collect()
+}
+
+/// The `<workspace-roots>` list of a system prompt, one path per entry.
+pub fn workspace_roots(prompt: &str) -> Vec<String> {
+    let Some(start) = prompt.find("<workspace-roots>") else {
+        return Vec::new();
+    };
+    let end = prompt[start..].find("</workspace-roots>").unwrap() + start;
+    prompt[start..end]
+        .lines()
+        .filter_map(|line| line.strip_prefix("- "))
+        .map(str::to_owned)
+        .collect()
 }
 
 pub fn start(spec: &LaunchSpec) -> (OmpProcess, Startup) {

@@ -118,9 +118,9 @@ mod tests {
     // spec: UI-092
     #[test]
     fn the_announcement_names_the_selected_thread_state_and_waiting_threads() {
-        let mut first = thread("t1", "checkout", &[]);
+        let mut first = thread("t1", "checkout", "w");
         first.needs_attention = true;
-        let mut second = thread("t2", "flaky", &[]);
+        let mut second = thread("t2", "flaky", "w");
         second.needs_attention = true;
         let threads = vec![first, second];
         assert_eq!(

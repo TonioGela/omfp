@@ -23,12 +23,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Released at once: the test runner binds it next.
     let runner = TcpListener::bind("127.0.0.1:0")?.local_addr()?;
     let origin = format!("http://{runner}");
+    let workspaces = format!("{data_dir}/workspaces");
     let cli = Cli::try_parse_from([
         "daemon",
         "--bind",
         "127.0.0.1:0",
         "--data-dir",
         &data_dir,
+        "--workspaces-root",
+        &workspaces,
         "--allow-origin",
         &origin,
     ])?;

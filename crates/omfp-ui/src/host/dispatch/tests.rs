@@ -116,7 +116,7 @@ fn selecting_a_thread_moves_the_subscription_and_fetches_its_details() {
     );
     rpc.answer(
         "thread.git",
-        Ok(json!({ "workspaces": [{ "workspaceId": "w1" }] })),
+        Ok(json!({ "workspaceId": "w1", "repos": [] })),
     );
 
     let future = dispatcher.dispatch(select("t1"));
@@ -136,7 +136,7 @@ fn selecting_a_thread_moves_the_subscription_and_fetches_its_details() {
             },
             Effect::Git {
                 workspace_id: "w1".into(),
-                status: None,
+                repos: Vec::new(),
             },
         ]
     );
@@ -182,7 +182,10 @@ fn details_that_arrived_are_applied_when_another_fetch_fails() {
     rpc.answer("thread.state", Err(daemon_error("omp failed to start")));
     rpc.answer("thread.thinking_levels", Ok(json!({ "levels": ["off"] })));
     rpc.answer("thread.models", Ok(json!({ "models": [] })));
-    rpc.answer("thread.git", Ok(json!({ "workspaces": [] })));
+    rpc.answer(
+        "thread.git",
+        Ok(json!({ "workspaceId": "w1", "repos": [] })),
+    );
     let effects = block_on(dispatcher.dispatch(select("t1")));
     assert_eq!(
         effects,
@@ -193,6 +196,10 @@ fn details_that_arrived_are_applied_when_another_fetch_fails() {
                 models: Some(Vec::new()),
                 thinking_levels: Some(vec![ThinkingLevel::Off]),
             },
+            Effect::Git {
+                workspace_id: "w1".into(),
+                repos: Vec::new(),
+            },
             Effect::Outcome(IntentOutcome::Failed {
                 intent: select("t1"),
                 message: "omp failed to start (BadRequest)".into(),
@@ -202,40 +209,38 @@ fn details_that_arrived_are_applied_when_another_fetch_fails() {
 }
 
 fn workspace_json(id: &str) -> Value {
-    serde_json::to_value(crate::test_support::workspace(id, Some("r1"), None)).unwrap()
+    let repos = vec![crate::test_support::repo(id, "front", "main")];
+    serde_json::to_value(crate::test_support::workspace(id, repos)).unwrap()
 }
 
 fn summary_json(id: &str) -> Value {
-    serde_json::to_value(crate::test_support::thread(id, "t", &[])).unwrap()
+    serde_json::to_value(crate::test_support::thread(id, "t", "w-new")).unwrap()
 }
 
 // spec: UI-023
 #[test]
-fn a_new_thread_creates_its_workspaces_in_order_then_the_thread_with_its_first_message() {
+fn a_new_thread_gets_a_new_workspace_then_its_repositories_in_order_then_its_first_message() {
     let rpc = FakeRpc::default();
     let mut dispatcher = Dispatcher::new(rpc.clone());
-    rpc.answer("workspaces.create", Ok(workspace_json("w1")));
-    rpc.answer("workspaces.adopt", Ok(workspace_json("w3")));
-    rpc.answer("workspaces.from_pr", Ok(workspace_json("w4")));
     rpc.answer("threads.create", Ok(summary_json("t1")));
+    for _ in 0..2 {
+        rpc.answer("workspaces.add_repo", Ok(workspace_json("w-new")));
+    }
+    rpc.answer(
+        "thread.prompt",
+        Ok(json!({ "promptId": "p1", "agentInvoked": true })),
+    );
     let new = NewThread {
         title: "full stack".into(),
         tags: vec!["web".into()],
-        workspaces: vec![
-            WorkspaceSource::NewWorktree {
+        repos: vec![
+            RepoSource::Worktree {
                 repo: "/src/front".into(),
                 branch: Some("feat".into()),
                 base_ref: None,
             },
-            WorkspaceSource::Existing {
-                workspace_id: "w2".into(),
-            },
-            WorkspaceSource::Adopt {
+            RepoSource::Link {
                 path: "/src/back".into(),
-            },
-            WorkspaceSource::FromPr {
-                pr: "42".into(),
-                repo: Some("r1".into()),
             },
         ],
         prompt: Some("hello".into()),
@@ -251,17 +256,23 @@ fn a_new_thread_creates_its_workspaces_in_order_then_the_thread_with_its_first_m
         rpc.take(),
         vec![
             Sent::Call(
-                "workspaces.create",
-                json!({ "repo": "/src/front", "branch": "feat" })
-            ),
-            Sent::Call("workspaces.adopt", json!({ "path": "/src/back" })),
-            Sent::Call("workspaces.from_pr", json!({ "pr": "42", "repo": "r1" })),
-            Sent::Call(
                 "threads.create",
+                json!({ "title": "full stack", "workspace": { "new": {} }, "tags": ["web"] })
+            ),
+            Sent::Call(
+                "workspaces.add_repo",
                 json!({
-                    "title": "full stack", "workspaceIds": ["w1", "w2", "w3", "w4"], "tags": ["web"],
-                    "prompt": "hello"
+                    "workspaceId": "w-new",
+                    "source": { "kind": "worktree", "repo": "/src/front", "branch": "feat" }
                 })
+            ),
+            Sent::Call(
+                "workspaces.add_repo",
+                json!({ "workspaceId": "w-new", "source": { "kind": "link", "path": "/src/back" } })
+            ),
+            Sent::Call(
+                "thread.prompt",
+                json!({ "threadId": "t1", "text": "hello" })
             ),
         ]
     );
@@ -269,16 +280,22 @@ fn a_new_thread_creates_its_workspaces_in_order_then_the_thread_with_its_first_m
 
 // spec: UI-023
 #[test]
-fn a_thread_whose_first_message_failed_is_still_opened() {
+fn a_thread_whose_repository_or_first_message_failed_is_still_opened() {
     let rpc = FakeRpc::default();
     let mut dispatcher = Dispatcher::new(rpc.clone());
-    let mut error = ErrorBody::new(ErrorCode::Internal, "omp failed to start");
-    error.details = Some(json!({ "threadId": "t1" }));
-    rpc.answer("threads.create", Err(CallError::Daemon(error)));
+    rpc.answer("threads.create", Ok(summary_json("t1")));
+    rpc.answer(
+        "workspaces.add_repo",
+        Err(daemon_error("not a git repository")),
+    );
     let new = NewThread {
         title: "t".into(),
         tags: Vec::new(),
-        workspaces: Vec::new(),
+        repos: vec![RepoSource::Worktree {
+            repo: "/tmp".into(),
+            branch: None,
+            base_ref: None,
+        }],
         prompt: Some("hello".into()),
     };
     let effects = block_on(dispatcher.dispatch(Intent::CreateThread(new.clone())));
@@ -290,39 +307,51 @@ fn a_thread_whose_first_message_failed_is_still_opened() {
             },
             IntentOutcome::Failed {
                 intent: Intent::CreateThread(new),
-                message: "omp failed to start (Internal)".into(),
+                message: "not a git repository (BadRequest)".into(),
             },
         ]
     );
+    assert_eq!(
+        rpc.methods(),
+        vec!["threads.create", "workspaces.add_repo"],
+        "no first message without the repository"
+    );
 }
 
+// spec: UI-025
 #[test]
-fn a_failed_workspace_stops_the_new_thread() {
+fn a_repository_goes_into_the_given_workspace_or_a_new_one() {
     let rpc = FakeRpc::default();
     let mut dispatcher = Dispatcher::new(rpc.clone());
-    rpc.answer(
-        "workspaces.create",
-        Err(daemon_error("not a git repository")),
-    );
-    let new = NewThread {
-        title: "t".into(),
-        tags: Vec::new(),
-        workspaces: vec![WorkspaceSource::NewWorktree {
-            repo: "/tmp".into(),
-            branch: None,
-            base_ref: None,
-        }],
-        prompt: None,
+    rpc.answer("workspaces.create", Ok(workspace_json("w-new")));
+    for _ in 0..2 {
+        rpc.answer("workspaces.add_repo", Ok(workspace_json("w-new")));
+    }
+    let link = RepoSource::Link {
+        path: "/src/back".into(),
     };
-    let effects = block_on(dispatcher.dispatch(Intent::CreateThread(new.clone())));
+    let source = json!({ "kind": "link", "path": "/src/back" });
+    for workspace_id in [Some("w1".to_owned()), None] {
+        let effects = block_on(dispatcher.dispatch(Intent::AddRepo {
+            workspace_id,
+            source: link.clone(),
+        }));
+        assert_eq!(effects, Vec::new());
+    }
     assert_eq!(
-        outcomes(effects),
-        vec![IntentOutcome::Failed {
-            intent: Intent::CreateThread(new),
-            message: "not a git repository (BadRequest)".into(),
-        }]
+        rpc.take(),
+        vec![
+            Sent::Call(
+                "workspaces.add_repo",
+                json!({ "workspaceId": "w1", "source": source })
+            ),
+            Sent::Call("workspaces.create", json!({})),
+            Sent::Call(
+                "workspaces.add_repo",
+                json!({ "workspaceId": "w-new", "source": source })
+            ),
+        ]
     );
-    assert_eq!(rpc.methods(), vec!["workspaces.create"]);
 }
 
 // spec: UI-063
@@ -394,22 +423,6 @@ fn call_cases() -> Vec<(Intent, &'static str, Value)> {
             json!({ "threadId": "t1", "title": "renamed" }),
         ),
         (
-            Intent::AttachWorkspace {
-                thread_id: "t1".into(),
-                workspace_id: "w1".into(),
-            },
-            "threads.attach",
-            json!({ "threadId": "t1", "workspaceId": "w1" }),
-        ),
-        (
-            Intent::DetachWorkspace {
-                thread_id: "t1".into(),
-                workspace_id: "w1".into(),
-            },
-            "threads.detach",
-            json!({ "threadId": "t1", "workspaceId": "w1" }),
-        ),
-        (
             Intent::AddRepository {
                 path: "/src/a".into(),
             },
@@ -424,13 +437,14 @@ fn call_cases() -> Vec<(Intent, &'static str, Value)> {
             json!({ "repositoryId": "r1" }),
         ),
         (
-            Intent::RemoveWorkspace {
+            Intent::RemoveRepo {
                 workspace_id: "w1".into(),
+                name: "front".into(),
                 force: true,
                 delete_branch: false,
             },
-            "workspaces.remove",
-            json!({ "workspaceId": "w1", "force": true, "deleteBranch": false }),
+            "workspaces.remove_repo",
+            json!({ "workspaceId": "w1", "name": "front", "force": true, "deleteBranch": false }),
         ),
         (
             Intent::Prompt {
@@ -595,22 +609,37 @@ fn model_and_thinking_changes_refresh_the_session_state() {
 }
 
 #[test]
-fn refreshing_a_workspace_stores_its_git_status() {
+fn refreshing_a_workspace_rescans_it_and_stores_the_git_status_of_its_repositories() {
     let rpc = FakeRpc::default();
     let mut dispatcher = Dispatcher::new(rpc.clone());
+    rpc.answer("workspaces.rescan", Ok(workspace_json("w1")));
     rpc.answer(
         "workspaces.status",
-        Ok(json!({ "branch": "feat", "ahead": 2, "behind": 0, "files": [] })),
+        Ok(json!({ "branch": "feat", "ahead": 2, "behind": 0, "dirty": false, "files": [] })),
     );
     let effects = block_on(dispatcher.dispatch(Intent::RefreshWorkspace {
         workspace_id: "w1".into(),
     }));
     let Some(Effect::Git {
         workspace_id,
-        status: Some(status),
+        repos,
     }) = effects.first()
     else {
         panic!("{effects:?}");
     };
-    assert_eq!((workspace_id.as_str(), status.ahead), ("w1", 2));
+    assert_eq!(
+        (
+            workspace_id.as_str(),
+            repos[0].name.as_str(),
+            repos[0].status.ahead
+        ),
+        ("w1", "front", 2)
+    );
+    assert_eq!(
+        rpc.take()[1],
+        Sent::Call(
+            "workspaces.status",
+            json!({ "workspaceId": "w1", "repo": "front" })
+        )
+    );
 }

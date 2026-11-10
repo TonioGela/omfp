@@ -122,33 +122,31 @@ methods! {
     ReposRemove = "repos.remove" (params::RepositoryRef) -> params::Empty;
     /// Lists registered repositories.
     ReposList = "repos.list" (params::Empty) -> params::RepositoryList;
-    /// Creates a managed worktree.
+    /// Creates a workspace: a new folder, or an existing one recorded as is.
     WorkspacesCreate = "workspaces.create" (params::CreateWorkspaceParams) -> Workspace;
-    /// Creates a managed worktree on a pull request's head.
-    WorkspacesFromPr = "workspaces.from_pr" (params::WorkspaceFromPrParams) -> Workspace;
-    /// Records an existing directory as a workspace.
-    WorkspacesAdopt = "workspaces.adopt" (params::AdoptWorkspaceParams) -> Workspace;
-    /// Removes a managed worktree.
+    /// Renames a workspace.
+    WorkspacesUpdate = "workspaces.update" (params::UpdateWorkspaceParams) -> Workspace;
+    /// Removes a workspace without threads, deleting an owned folder on request.
     WorkspacesRemove = "workspaces.remove" (params::RemoveWorkspaceParams) -> params::Empty;
-    /// Forgets a workspace without touching its directory.
-    WorkspacesForget = "workspaces.forget" (params::WorkspaceRef) -> params::Empty;
-    /// Git status of a workspace.
-    WorkspacesStatus = "workspaces.status" (params::WorkspaceRef) -> GitStatus;
-    /// One page of a workspace's diff.
+    /// Scans the workspace folder for repositories again.
+    WorkspacesRescan = "workspaces.rescan" (params::WorkspaceRef) -> Workspace;
+    /// Adds a repository to a workspace: link, worktree or clone.
+    WorkspacesAddRepo = "workspaces.add_repo" (params::AddRepoParams) -> Workspace;
+    /// Removes a repository from a workspace.
+    WorkspacesRemoveRepo = "workspaces.remove_repo" (params::RemoveRepoParams) -> Workspace;
+    /// Git status of one repository of a workspace.
+    WorkspacesStatus = "workspaces.status" (params::RepoRef) -> GitStatus;
+    /// One page of the diff of one repository of a workspace.
     WorkspacesDiff = "workspaces.diff" (params::WorkspaceDiffParams) -> DiffPage;
-    /// Creates a thread.
+    /// Creates a thread in an existing or a new workspace.
     ThreadsCreate = "threads.create" (params::CreateThreadParams) -> ThreadSummary;
     /// Renames or retags a thread.
     ThreadsUpdate = "threads.update" (params::UpdateThreadParams) -> ThreadSummary;
-    /// Attaches a workspace to a thread.
-    ThreadsAttach = "threads.attach" (params::AttachWorkspaceParams) -> ThreadSummary;
-    /// Detaches a workspace from a thread.
-    ThreadsDetach = "threads.detach" (params::DetachWorkspaceParams) -> ThreadSummary;
     /// Archives a thread.
     ThreadsArchive = "threads.archive" (params::ThreadRef) -> params::Empty;
     /// Brings an archived thread back.
     ThreadsUnarchive = "threads.unarchive" (params::ThreadRef) -> params::Empty;
-    /// Deletes a thread; its workspaces are kept.
+    /// Deletes a thread; its workspace is kept.
     ThreadsDelete = "threads.delete" (params::ThreadRef) -> params::Empty;
     /// Sends a prompt (omp `prompt`).
     ThreadPrompt = "thread.prompt" (params::PromptParams) -> params::PromptResult;
@@ -196,7 +194,7 @@ methods! {
     ThreadBtw = "thread.btw" (params::BtwParams) -> wire::BtwResult as Value;
     /// Runs a shell command in the session (omp `bash`).
     ThreadBash = "thread.bash" (params::BashParams) -> wire::BashResult as Value;
-    /// Git status of every workspace of the thread.
+    /// Git status of every repository of the thread's workspace.
     ThreadGit = "thread.git" (params::ThreadRef) -> params::ThreadGit;
     /// Session state (omp `get_state`).
     ThreadState = "thread.state" (params::ThreadRef) -> wire::SessionState as Value;
