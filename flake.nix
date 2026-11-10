@@ -3,7 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-parts.url = "github:hercules-ci/flake-parts";
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
 
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -12,8 +15,18 @@
 
     # omp pinned to an upstream release tag (never main).
     # Must match the `tag` of the `omp-rpc` git dependency in Cargo.toml.
-    # No `follows`: omp builds with the nixpkgs/toolchain tested upstream.
-    oh-my-pi.url = "github:can1357/oh-my-pi/v18.18.6";
+    # Shares our nixpkgs and rust-overlay; the Intel-macOS inputs are collapsed
+    # because x86_64-darwin is not a supported system here.
+    oh-my-pi = {
+      url = "github:can1357/oh-my-pi/v18.18.6";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        nixpkgs-darwin-x64.follows = "nixpkgs";
+        rust-overlay.follows = "rust-overlay";
+        bun2nix-darwin-x64.follows = "oh-my-pi/bun2nix";
+        bun2nix.inputs.flake-parts.follows = "flake-parts";
+      };
+    };
 
     git-hooks = {
       url = "github:cachix/git-hooks.nix";
