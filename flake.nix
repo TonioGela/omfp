@@ -108,7 +108,11 @@
                   MD024.siblings_only = true; # repeated headings across sections
                 };
               };
-              typos.enable = true;
+              typos = {
+                enable = true;
+                # Recorded omp output: streamed deltas split words at arbitrary points.
+                excludes = [ "^fixtures/" ];
+              };
               # Generic hygiene
               check-merge-conflicts.enable = true;
               check-toml.enable = true;
