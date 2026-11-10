@@ -1,8 +1,18 @@
-//! The pmo daemon (`pmod`), see docs/specs/02-daemon.md.
+//! The pmo daemon (`pmo daemon`), see docs/specs/02-daemon.md.
 
+pub mod agent;
+pub mod config;
+pub mod event_log;
+pub mod git;
 pub mod omp;
+pub mod omp_binary;
+pub mod paths;
+pub mod store;
+pub mod threads;
+pub mod token;
+pub mod workspaces;
 
-/// Version string reported by `pmod --version`: daemon version plus the omp release it speaks to.
+/// Version string reported by `pmo --version`: daemon version plus the omp release it speaks to.
 #[must_use]
 pub fn version_string() -> String {
     format!(

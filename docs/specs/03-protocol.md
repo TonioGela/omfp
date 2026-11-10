@@ -8,7 +8,7 @@ terminal data ([05](05-terminal.md)). All types live in `pmo-protocol` (serde), 
 ```mermaid
 sequenceDiagram
   participant C as Client
-  participant D as pmod
+  participant D as daemon
   C->>D: WS upgrade /api/ws (Origin checked)
   C->>D: {"type":"request","id":"1","method":"system.hello","params":{"token":"…","protocol":1,"client":"pmo-ui/web"}}
   D-->>C: {"type":"response","id":"1","ok":true,"result":{"protocol":1,"daemon":"0.1.0","omp":"18.18.6","warnings":[]}}

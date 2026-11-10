@@ -1,4 +1,4 @@
-# 02 — Daemon (`pmod`)
+# 02 — Daemon (`pmo daemon`)
 
 The daemon owns repositories, workspaces, threads and omp processes. It serves the protocol in [03](03-protocol.md) and, in web
 mode, the UI's static files.
@@ -6,7 +6,7 @@ mode, the UI's static files.
 ## Startup and configuration
 
 ```text
-pmod [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-dir DIR] [--allow-omp-mismatch]
+pmo daemon [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-dir DIR] [--allow-omp-mismatch]
 ```
 
 | ID | Requirement |
@@ -17,6 +17,7 @@ pmod [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-dir DIR
 | DMN-004 | The daemon MUST also work as a library (`pmo_daemon::start(config) -> DaemonHandle` exposing the bound address and token) for in-process use by the desktop app (ARC-003). |
 | DMN-005 | On SIGTERM/SIGINT or `DaemonHandle::shutdown` the daemon MUST close every omp process's stdin (omp drains accepted work and exits), wait at most 10 s, then close the `omp-rpc` client (SIGTERM, then SIGKILL to the process group). |
 | DMN-006 | The omp binary MUST be resolved in this order: `--omp-bin`; the omp bundled next to the daemon executable (packaging, D-14); `omp` on `PATH` (dev shell). The resolved path is logged at startup. |
+| DMN-007 | At most one daemon MUST run per data directory (exclusive lock file). A running daemon MUST publish its address in `<data-dir>/daemon.json` (removed on shutdown), so local clients such as `pmo desktop` can find it and authenticate with the `token` file (D-16). |
 
 ## Persistence (SQLite)
 
@@ -97,7 +98,7 @@ dialogs).
 | DMN-034 | A process that is `Idle`, settled, and not watched by any client MUST be stopped after `idle_timeout` (default 15 minutes, configurable). A `Busy` process or one with pending interactive requests is never stopped. |
 | DMN-035 | If the process exits unexpectedly, the thread MUST move to `Failed` with the exit code and the last stderr lines; pending interactive requests MUST be cancelled towards the UI. Restart happens only on the user's next command. |
 | DMN-036 | omp's stderr MUST be written to a per-thread log file (`<data-dir>/threads/<id>/omp.log`, rotated) and never mixed with protocol stdout. |
-| DMN-037 | Commands to the same thread MUST be serialized by its actor; different threads proceed in parallel. |
+| DMN-037 | Lifecycle operations on a thread (start, stop, restart, attach/detach, handoff to terminal) MUST be serialized by its actor. omp commands are forwarded without waiting for each other, because omp orders them itself and some must overtake a running one (`abort` during `compact`, `steer` during a turn). Different threads proceed in parallel. |
 | DMN-038 | The maximum number of concurrent omp processes MUST be configurable (default 8); beyond the limit, starting a stopped thread MUST fail with an explicit error (no silent queueing). |
 
 ### Events

@@ -1,0 +1,27 @@
+---
+source: crates/pmo-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "repos.add",
+    "params": {
+      "path": "/home/dev/src/shop-frontend"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "createdAt": 1794268800000,
+      "defaultBaseRef": "origin/main",
+      "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F",
+      "name": "shop-frontend",
+      "path": "/home/dev/src/shop-frontend",
+      "remoteUrl": "git@github.com:acme/shop-frontend.git"
+    },
+    "type": "response"
+  }
+}

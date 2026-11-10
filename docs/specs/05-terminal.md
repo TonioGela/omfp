@@ -22,7 +22,7 @@ exactly the workspaces the thread has.
 ```mermaid
 sequenceDiagram
   participant UI
-  participant D as pmod
+  participant D as daemon
   participant R as omp rpc-ui
   participant T as omp (pty)
   UI->>D: terminal.open {threadId, kind: "omp"}

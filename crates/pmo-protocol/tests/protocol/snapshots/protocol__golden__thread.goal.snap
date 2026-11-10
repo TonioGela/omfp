@@ -1,0 +1,35 @@
+---
+source: crates/pmo-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "thread.goal",
+    "params": {
+      "objective": "Ship checkout v2",
+      "op": "create",
+      "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
+      "tokenBudget": 200000
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "goal": {
+        "createdAt": 1794268800000,
+        "id": "g1",
+        "objective": "Ship checkout v2",
+        "status": "active",
+        "timeUsedSeconds": 0.0,
+        "tokenBudget": 200000,
+        "tokensUsed": 0,
+        "updatedAt": 1794268800000
+      },
+      "state": null
+    },
+    "type": "response"
+  }
+}

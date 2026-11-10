@@ -44,7 +44,8 @@ Requirements traced for this milestone are listed in `milestones.toml`.
 
 Scope: DMN-001..072 except host tools beyond `open_in_editor` and PR workspaces (DMN-022, after S-08); PRT-001..034;
 JSON Schemas for protocol methods (AGT-007); ThreadState reducer for messages, tools, queue, process state, interactions;
-spike S-07.
+spike S-07; the single `pmo` binary with the `daemon` subcommand (D-15). At the end of M1 the project is renamed to
+**omfp** (crates, binary, docs).
 
 Acceptance:
 
@@ -73,10 +74,12 @@ Acceptance: E2E-06; every specialized card has fixture-driven L4 tests for succe
 
 ## M4 — Desktop
 
-Scope: ARC-003, DMN-004, UI-004, native transport, TST-033; spike S-04 first.
+Scope: ARC-003, DMN-004, UI-004, UI-005, native transport, TST-033, `pmo desktop` (finds or starts the local daemon in the
+background and opens one more window on it, D-15/D-16); spike S-04 first.
 
-Acceptance: desktop smoke test passes under `xvfb-run`; a browser attaches to the desktop's daemon and sees the same
-threads; transport suite (TST-030) passes for both implementations.
+Acceptance: desktop smoke test passes under `xvfb-run`; a second `pmo desktop` opens another window on the same daemon,
+each window selecting a different thread; a browser attaches to the same daemon and sees the same threads; transport
+suite (TST-030) passes for both implementations.
 
 ## M5 — Subagents, tree, goal
 

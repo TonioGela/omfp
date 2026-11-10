@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 336545b75b6a0ef933a8f76bbfcaba73ad23657a804f5ba419647642eb37fb50 # shrinks to blocks = [], snapshot_ahead = false
+cc c6a5fcaa263735c1cdcee7be7045aa897a51576497d459cbcf376cb4974f421f # shrinks to steps = [Queue(QueueState { steering: [], follow_up: [], live_steered: 1 })]

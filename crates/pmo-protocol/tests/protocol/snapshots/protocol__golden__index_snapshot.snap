@@ -1,0 +1,71 @@
+---
+source: crates/pmo-protocol/tests/protocol/golden.rs
+expression: snapshot
+---
+{
+  "repositories": [
+    {
+      "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F",
+      "name": "shop-frontend",
+      "path": "/home/dev/src/shop-frontend",
+      "defaultBaseRef": "origin/main",
+      "remoteUrl": "git@github.com:acme/shop-frontend.git",
+      "createdAt": 1794268800000
+    }
+  ],
+  "workspaces": [
+    {
+      "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
+      "path": "/home/dev/.local/share/pmo/worktrees/shop-frontend/checkout-v2",
+      "kind": "managed_worktree",
+      "repositoryId": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F",
+      "branch": "pmo/checkout-v2-k3p9",
+      "baseRef": "origin/main",
+      "provenance": {
+        "createdBy": {
+          "kind": "user"
+        },
+        "client": "pmo-ui/web"
+      },
+      "createdAt": 1794268800000
+    },
+    {
+      "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C7G",
+      "path": "/home/dev/notes",
+      "kind": "adopted",
+      "provenance": {
+        "createdBy": {
+          "kind": "user"
+        },
+        "client": "pmo-ui/web"
+      },
+      "createdAt": 1794268800000
+    }
+  ],
+  "threads": [
+    {
+      "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
+      "title": "Checkout v2",
+      "tags": [
+        "checkout-v2"
+      ],
+      "workspaceIds": [
+        "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
+        "01JD8X3Q4T9V2W6Y5Z7A1B3C7G"
+      ],
+      "process": {
+        "state": "stopped"
+      },
+      "settled": true,
+      "needsAttention": false,
+      "provenance": {
+        "createdBy": {
+          "kind": "user"
+        },
+        "client": "pmo-ui/web"
+      },
+      "createdAt": 1794268800000,
+      "updatedAt": 1794268860000
+    }
+  ]
+}

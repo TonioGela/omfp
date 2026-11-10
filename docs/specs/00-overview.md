@@ -50,7 +50,7 @@ flowchart LR
     W["pmo-ui (web, wasm)"]
     D["pmo-ui (desktop, webview)"]
   end
-  subgraph pmod["pmod (daemon)"]
+  subgraph daemon["pmo daemon"]
     WS[WebSocket server + static files]
     TS[ThreadService]
     SUP[AgentSupervisor]
@@ -70,9 +70,9 @@ flowchart LR
 
 | ID | Requirement |
 | --- | --- |
-| ARC-001 | The daemon (`pmod`) MUST be the only process that launches omp and speaks the RPC protocol. |
+| ARC-001 | The daemon (`pmo daemon`) MUST be the only process that launches omp and speaks the RPC protocol. |
 | ARC-002 | The UI MUST communicate only with the daemon, through the protocol in [03](03-protocol.md), on both web and desktop. |
-| ARC-003 | The desktop app MUST start the daemon in-process (as a library) on `127.0.0.1`, random port, random token; the UI connects to it like a web client. |
+| ARC-003 | `pmo desktop` MUST connect to the local daemon for its data directory when one is running (DMN-007), otherwise start one in the background (`127.0.0.1`, random port) and connect to it; the UI connects like a web client (D-15, D-16). |
 | ARC-004 | Several clients MUST be able to connect to the same daemon at once and see the same state. |
 | ARC-005 | Each thread MUST have at most one live omp process at a time (RPC or terminal, never both). |
 | ARC-006 | A thread's visible state MUST derive from the `pmo-core` reducer applied to its event sequence; daemon and UI run the same code. |
@@ -86,8 +86,8 @@ flowchart LR
 crates/
   pmo-protocol/   UI↔daemon protocol types (serde). Compiles to wasm.
   pmo-core/       Domain model and pure reducer over omp events. Compiles to wasm. No I/O.
-  pmo-daemon/     Daemon library + `pmod` binary (tokio, axum, rusqlite, omp-rpc, portable-pty).
-  pmo-ui/         Dioxus app; `web` and `desktop` features. Desktop depends on pmo-daemon.
+  pmo-daemon/     Daemon library (tokio, axum, rusqlite, omp-rpc, portable-pty): `pmo_daemon::start`, `pmo_daemon::run`.
+  pmo-ui/         The app: Dioxus UI (`web` and `desktop` features) and the single `pmo` binary (D-15).
   fake-llm/       Scripted OpenAI-compatible server for tests (lib + bin).
   pmo-testkit/    Test helpers: temporary git repos, isolated omp agent dir, test daemon.
 e2e/              End-to-end tests (WebDriver) against the web build.
@@ -104,7 +104,7 @@ e2e/              End-to-end tests (WebDriver) against the web build.
 ```mermaid
 sequenceDiagram
   participant UI
-  participant D as pmod
+  participant D as daemon
   participant O as omp (rpc-ui)
   UI->>D: thread.prompt {threadId, text}
   D->>D: start omp if stopped (cwd = thread home, --add-dir per workspace, open_session)

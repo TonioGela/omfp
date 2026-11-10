@@ -1,0 +1,46 @@
+---
+source: crates/pmo-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "workspaces.status",
+    "params": {
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "ahead": 2,
+      "baseRef": "origin/main",
+      "behind": 1,
+      "branch": "pmo/checkout-v2-k3p9",
+      "files": [
+        {
+          "additions": 40,
+          "deletions": 3,
+          "path": "src/checkout.rs",
+          "status": "modified"
+        },
+        {
+          "additions": 1,
+          "deletions": 1,
+          "oldPath": "src/total.rs",
+          "path": "src/cart/total.rs",
+          "status": "renamed"
+        },
+        {
+          "additions": 5,
+          "deletions": 0,
+          "path": "notes.txt",
+          "status": "untracked"
+        }
+      ]
+    },
+    "type": "response"
+  }
+}

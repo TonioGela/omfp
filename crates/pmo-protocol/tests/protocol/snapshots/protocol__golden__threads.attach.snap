@@ -1,0 +1,45 @@
+---
+source: crates/pmo-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "threads.attach",
+    "params": {
+      "position": 1,
+      "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C7G"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "createdAt": 1794268800000,
+      "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
+      "needsAttention": false,
+      "process": {
+        "state": "stopped"
+      },
+      "provenance": {
+        "client": "pmo-ui/web",
+        "createdBy": {
+          "kind": "user"
+        }
+      },
+      "settled": true,
+      "tags": [
+        "checkout-v2"
+      ],
+      "title": "Checkout v2",
+      "updatedAt": 1794268860000,
+      "workspaceIds": [
+        "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
+        "01JD8X3Q4T9V2W6Y5Z7A1B3C7G"
+      ]
+    },
+    "type": "response"
+  }
+}

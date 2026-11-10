@@ -220,6 +220,12 @@ impl OmpProcess {
     pub fn take_events(&mut self) -> Option<Receiver<Event>> {
         self.events.take()
     }
+
+    /// The shared client and, unless already taken, the event receiver.
+    #[must_use]
+    pub fn into_parts(self) -> (Arc<Client>, Option<Receiver<Event>>) {
+        (self.client, self.events)
+    }
 }
 
 /// The reducer input for a frame from the event receiver (DMN-040, DMN-042).
