@@ -2,8 +2,10 @@
 
 Guidance for coding agents working on **pmo** (to be renamed **omfp** at the end of M1): a GUI client (Dioxus, web +
 desktop) for the omp coding agent (oh-my-pi). One binary, `pmo`: `pmo daemon` runs the daemon (one
-`omp --mode rpc-ui` process per thread, WebSocket API, web UI); `pmo desktop` (M4) runs the daemon in-process and
-opens the window.
+`omp --mode rpc-ui` process per thread, WebSocket API, web UI); `pmo desktop` (M4) opens one more window on the local
+daemon, starting it in the background if needed (D-15, D-16: many windows, one daemon, each window picks its thread).
+Long-term direction (M8, D-17): agents get full access to the protocol and build arbitrary JavaScript UI pieces with an
+`omfp` SDK; never design something that would only be reachable from the human UI.
 
 ## Read first
 

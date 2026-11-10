@@ -6,11 +6,11 @@ use std::time::Duration;
 
 use clap::Parser;
 
-/// Command line of `pmod`.
+/// Command line of `pmo daemon`.
 #[derive(Debug, Clone, PartialEq, Eq, Parser)]
 #[command(
-    name = "pmod",
-    about = "pmo daemon: owns threads, workspaces and omp processes"
+    name = "daemon",
+    about = "Runs the pmo daemon: owns threads, workspaces and omp processes, serves the UI"
 )]
 pub struct Cli {
     /// Address and port to listen on (DMN-002). Exposure beyond the machine is the deployer's job (D-13).
@@ -34,6 +34,9 @@ pub struct Cli {
     /// Maximum number of omp processes running at once (DMN-038).
     #[arg(long, default_value_t = 8)]
     pub max_processes: usize,
+    /// Events kept in memory per thread so reconnecting clients can catch up (DMN-041).
+    #[arg(long, default_value_t = 2000)]
+    pub event_buffer: usize,
     /// Extra allowed `Origin` values for WebSocket upgrades (PRT-003), e.g. behind a reverse proxy.
     #[arg(long = "allow-origin")]
     pub allowed_origins: Vec<String>,
@@ -49,6 +52,7 @@ pub struct Config {
     pub allow_omp_mismatch: bool,
     pub idle_timeout: Duration,
     pub max_processes: usize,
+    pub event_buffer: usize,
     pub allowed_origins: Vec<String>,
 }
 
@@ -80,6 +84,7 @@ impl Config {
             allow_omp_mismatch: cli.allow_omp_mismatch,
             idle_timeout: Duration::from_secs(cli.idle_timeout_minutes.saturating_mul(60)),
             max_processes: cli.max_processes,
+            event_buffer: cli.event_buffer,
             allowed_origins: cli.allowed_origins,
         })
     }
@@ -90,7 +95,7 @@ mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Cli {
-        Cli::try_parse_from(std::iter::once("pmod").chain(args.iter().copied())).unwrap()
+        Cli::try_parse_from(std::iter::once("daemon").chain(args.iter().copied())).unwrap()
     }
 
     // spec: DMN-002
@@ -121,12 +126,13 @@ mod tests {
         assert_eq!(explicit.data_dir, PathBuf::from("/d"));
     }
 
-    // spec: DMN-034, DMN-038
+    // spec: DMN-034, DMN-038, DMN-041
     #[test]
-    fn idle_timeout_and_process_limit_have_spec_defaults() {
+    fn idle_timeout_process_limit_and_event_buffer_have_spec_defaults() {
         let config = Config::from_cli(parse(&[]), Some("/x".into()), None).unwrap();
         assert_eq!(config.idle_timeout, Duration::from_mins(15));
         assert_eq!(config.max_processes, 8);
+        assert_eq!(config.event_buffer, 2000);
         assert!(
             Config::from_cli(parse(&["--max-processes", "0"]), Some("/x".into()), None).is_err()
         );

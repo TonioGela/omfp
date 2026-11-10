@@ -11,7 +11,10 @@ use rusqlite::types::Type;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 /// Embedded migrations; migration `i` brings the schema to `user_version = i + 1` (DMN-010).
-const MIGRATIONS: &[&str] = &[include_str!("store/0001_initial.sql")];
+const MIGRATIONS: &[&str] = &[
+    include_str!("store/0001_initial.sql"),
+    include_str!("store/0002_created_client.sql"),
+];
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -497,6 +500,36 @@ impl Store {
             Provenance::User => Ok(()),
             Provenance::Thread(id) => ensure_thread(&self.conn(), id),
         }
+    }
+
+    /// Records the `client` of the connection that created thread or workspace `id` (PRT-033).
+    pub fn set_created_client(&self, id: &str, client: &str) -> Result<()> {
+        let conn = self.conn();
+        let updated = conn.execute(
+            "UPDATE threads SET created_client = ?2 WHERE id = ?1",
+            params![id, client],
+        )? + conn.execute(
+            "UPDATE workspaces SET created_client = ?2 WHERE id = ?1",
+            params![id, client],
+        )?;
+        if updated == 0 {
+            return Err(not_found("thread or workspace", id));
+        }
+        Ok(())
+    }
+
+    /// The recorded creating clients of threads and workspaces, by id.
+    pub fn created_clients(&self) -> Result<std::collections::HashMap<String, String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, created_client FROM threads WHERE created_client IS NOT NULL
+             UNION ALL
+             SELECT id, created_client FROM workspaces WHERE created_client IS NOT NULL",
+        )?;
+        let clients = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(clients)
     }
 
     // Settings

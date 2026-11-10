@@ -6,37 +6,36 @@ to be turned into requirements when M8 starts. No earlier choice may make this d
 
 ## Vision
 
-The interface is a surface shared by the user and the agents. Besides chatting, an agent can:
+The interface is a surface shared by the user and the agents, and agents get **the same power as the user** (D-17):
+everything the UI can do, an agent can do — directly through tools, or through UI it builds itself.
 
-1. **Manage threads**: spawn new threads (workspaces, model, tags, first prompt), list them, read their state and last
-   answer, send them messages (prompt, steer, follow-up), wait for them to finish, archive them.
-2. **Manage workspaces**: create a worktree for a branch or PR in any repository, adopt a directory, attach or detach
-   workspaces to itself or to other threads.
-3. **Publish views**: render content in the UI (a panel in its thread, a global dashboard, a floating window) —
-   Markdown, tables, lists, diffs, code, images, simple charts, progress — including controls (buttons, forms, selects)
-   whose events go back to the publishing agent.
-4. **Ask for attention**: mark a thread as needing the user, send a desktop notification. (Questions to the user already
-   exist: omp's `ask` tool, DMN-050.)
+1. **Everything in the protocol**: list threads and see what each one is doing (state, transcript, tool runs, pending
+   questions), spawn threads, send them messages, wait for them, rename, tag, archive; create, adopt and attach
+   workspaces; read git status and diffs. Every protocol method is an agent tool (AGT-001).
+2. **Arbitrary UI**: an agent writes its own pieces of interface in JavaScript (HTML, CSS, JS — anything a web page can
+   do), mounted in a thread panel, a dashboard or a window, live and interactive, wired to what it is doing (e.g. a real
+   progress bar driven by a long command).
+3. **Reusable UI**: those pieces can be saved and shared, so later threads and sessions reuse them.
+4. **Attention**: mark a thread as needing the user, send a desktop notification (questions already exist: omp's
+   `ask` tool, DMN-050).
 
 Example, the PR workflow: an orchestrating thread receives "implement checkout v2", creates `fe#412` and `be#88`
-worktrees in the frontend and backend repositories, spawns one thread per PR (or one thread on both), and publishes a
-dashboard listing each PR with CI status and buttons "rerun tests" and "open PR". The user can step into any thread at
-any time.
+worktrees in the frontend and backend repositories, spawns one thread per PR, and builds a dashboard that lists every
+thread with its live status, CI results, and buttons "rerun tests" and "open PR". The dashboard is saved, and the next
+feature reuses it.
 
 ## Tool surface (draft)
 
-Generated from the protocol method table (AGT-001, AGT-007); names are provisional.
+Generated from the protocol method table (AGT-001, AGT-007), so every method is available; names are provisional.
+Convenience tools on top:
 
-| Tool | Protocol method(s) |
+| Tool | What it does |
 | --- | --- |
-| `pmo_thread_create` | `threads.create` (with `prompt`) |
-| `pmo_thread_list` / `pmo_thread_get` | `index` snapshot / thread summary |
-| `pmo_thread_send` | `thread.prompt` / `thread.steer` / `thread.follow_up` |
-| `pmo_thread_wait` | waits for `prompt_result` or settled; returns the last assistant text |
-| `pmo_workspace_create` / `_from_pr` / `_adopt` | `workspaces.create` / `.from_pr` / `.adopt` |
-| `pmo_thread_attach` / `_detach` | `threads.attach` / `threads.detach` |
-| `pmo_view_publish` / `_update` / `_remove` | `views.*` (new, M8) |
-| `pmo_notify` | attention flag + notification (new, M8) |
+| `pmo_call` | Calls any protocol method by name with JSON params (the escape hatch: nothing is out of reach) |
+| `pmo_thread_wait` | Waits for a thread's `prompt_result` or settled state; returns its last assistant text |
+| `pmo_ui_mount` / `_update` / `_remove` | Mounts a UI piece (inline code or a saved component) with parameters |
+| `pmo_component_save` / `_list` | Saves a UI piece to the library / lists the library |
+| `pmo_notify` | Attention flag + desktop notification |
 
 ## Delivery to agents
 
@@ -45,34 +44,74 @@ One tool registry in the daemon, several adapters:
 | Adapter | Reaches | Notes |
 | --- | --- | --- |
 | **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for `open_in_editor` (DMN-060). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
-| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside pmo, other MCP-capable agents | Injected per thread through `<thread home>/.omp/mcp.json` (project-scoped config follows the cwd, D-11), with the thread's token in the `Authorization` header; to be confirmed in S-07. |
-| **Host URI scheme** `pmo://` (`set_host_uri_schemes`) | RPC threads | Read-only state for the agent's `read` tool: `pmo://threads`, `pmo://threads/<id>`, `pmo://views/<id>`. |
+| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside pmo, other MCP-capable agents | Injected per thread through `<thread home>/.omp/mcp.json` (project config follows the cwd, D-11), with the thread's token in the `Authorization` header — verified in S-07. |
+| **Host URI scheme** `pmo://` (`set_host_uri_schemes`) | RPC threads | State for the agent's `read` tool: `pmo://threads`, `pmo://threads/<id>`, `pmo://ui/…`. |
+| **JS SDK** | UI pieces | The same API from inside a UI piece (below). |
 
-## Agent-drawn UI
+## Agent-made UI (JavaScript)
 
-- A **view** is a declarative document: a tree of nodes from a fixed, versioned vocabulary defined in `pmo-protocol`:
-  layout (`row`, `col`, `card`, `tabs`), content (`md`, `table`, `kv`, `list`, `code`, `diff`, `image`, `chart`,
-  `progress`, `badge`, `link`, `thread_ref`, `workspace_ref`), controls (`button`, `form` with text/select/checkbox).
-  Same idea as Tern's Surface Protocol or omp's `ask`, but ours and transport-independent.
-- Views have an id, an owner thread, a placement (thread panel, dashboard, floating), and a lifetime (until removed or
-  until the owner is archived). They are stored by the daemon and survive restarts.
-- Updates replace the document or apply node operations (add / set / remove / append text), so streaming content does
-  not resend everything.
-- Control events (`view_event { viewId, nodeId, action, values }`) go to the owner agent. Delivery is open: as a
-  follow-up message, or kept for `pmo_thread_wait` / a `pmo_view_events` tool **[decide in M8]**.
-- Rendering uses the panel registry (UI-024); each node kind is a component, unknown kinds fall back to formatted JSON.
-- Optional, off by default: a **sandboxed HTML** node (`iframe` with `sandbox="allow-scripts"`, no same-origin, CSP
-  without network) for free-form visualizations, talking only through a `postMessage` bridge to the same event channel.
+**A UI piece is arbitrary web code.** HTML, CSS and JavaScript, rendered inside the client's webview (the browser on
+web; the webview on desktop — Dioxus desktop renders through one), isolated in its own frame so a broken piece cannot
+break the app or another piece. No fixed vocabulary limits what it can draw.
 
-## Safety
+**A common layer, never a cage.** Every piece gets an `omfp` SDK and a widget kit so most pieces look native and take a
+few lines, while anything else stays possible:
 
-- Each thread process gets its own scoped principal (PRT-034). Default permissions: thread, workspace and view
-  operations; destructive operations (forced workspace removal, thread deletion) raise an interaction for the user.
-- Limits: spawned threads per thread, depth of agent-spawned chains, the global process limit (DMN-038), optional cost
-  caps for spawned threads (omp `session.maxCost`).
-- Provenance (ARC-009) is visible in the UI; filters such as "spawned by X"; a cascade stop for everything a thread
-  spawned.
-- An audit log records every action taken by an agent principal.
+- **API**: `omfp.call(method, params)` and `omfp.subscribe(topic, since?)` — the full daemon protocol with the snapshot
+  and replay semantics of 03 (so state survives reconnects and is the same in every window), plus helpers such as
+  `omfp.threads()`, `omfp.thread(id).prompt(text)`, `omfp.thread(id).rename(title)`.
+- **Sources**: `omfp.tool(toolCallId)` streams an omp tool run's output (e.g. the `bash` call the agent just started),
+  `omfp.job(command)` starts a daemon-run job (output lines, exit code, cancel), plus thread state, workspace git
+  status, timers.
+- **Talking to agents**: `omfp.agent.send(text)` / `omfp.agent.event(payload)` to the owning thread (or any thread).
+- **Storage**: `omfp.storage` — key-value state per component and per instance, kept by the daemon, shared by every
+  window and session.
+- **Widgets and theme**: web components (`<omfp-progress>`, `<omfp-log>`, `<omfp-table>`, `<omfp-card>`,
+  `<omfp-button>`, `<omfp-diff>`, `<omfp-markdown>`, …) and the app's CSS custom properties, so pieces match light and
+  dark themes. Optional to use.
+
+```html
+<!-- A piece the agent could mount, and save for later. -->
+<omfp-card head="Tests">
+  <omfp-progress id="bar"></omfp-progress>
+  <omfp-log id="log" lines="20"></omfp-log>
+  <omfp-button id="cancel">Cancel</omfp-button>
+</omfp-card>
+<script type="module">
+  const { params, tool } = omfp;
+  let done = 0;
+  for await (const line of tool(params.toolCallId).lines()) {
+    if (line.startsWith("ok ")) bar.value = ++done / params.total;
+    log.append(line);
+  }
+  cancel.onclick = () => omfp.call("thread.abort", { threadId: params.threadId });
+</script>
+```
+
+**Persistence and sharing.** A component is a folder (`manifest.json` with name, version, parameters; `index.html` and
+any assets), so it can be reviewed and versioned like a skill:
+
+| Library | Where | Shared with |
+| --- | --- | --- |
+| User | data directory | every thread and session of the user |
+| Project | `.omfp/ui/` in a repository | everyone working on the repository (git) |
+| Thread draft | the thread's home | that thread, until saved |
+
+An agent saves a piece with `pmo_component_save`; the user can do the same with "save as component" on any mounted
+piece. Agents discover the library through `pmo_component_list` and `pmo://ui/`. Mounted instances record the
+component version (content hash).
+
+**Open points (spike before M8)**: the exact SDK surface and widget kit; how pieces load on desktop (custom protocol vs
+`srcdoc`); whether pieces may also run without a window (e.g. QuickJS in the daemon for background jobs) or leave that
+to agents; how agents learn the SDK (tool description, instructions injected like skills).
+
+## Permissions and limits
+
+Agents run in **full-access mode by default** (D-17): an agent principal may call every method, and so may the UI pieces
+it mounts; pieces run with the same access as the window they are in. Limits are opt-in settings, not defaults:
+scoped principals (PRT-034), caps on spawned threads and chain depth, the global process limit (DMN-038), cost caps
+(omp `session.maxCost`). What stays on regardless: provenance (ARC-009) shown in the UI with filters such as "spawned
+by X", a cascade stop for everything a thread spawned, and an activity log of agent-originated actions.
 
 ## Constraints that apply from day one
 

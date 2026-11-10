@@ -97,8 +97,8 @@ pub fn accept(
     }
 }
 
-/// Runs `program --version` and applies [`accept`] against `pmo_core::OMP_VERSION`.
-pub fn check(program: &Path, allow_mismatch: bool) -> Result<Option<String>, VersionError> {
+/// Runs `program --version` and returns the version it prints.
+pub fn version(program: &Path) -> Result<String, VersionError> {
     let name = program.display().to_string();
     let output = Command::new(program)
         .arg("--version")
@@ -108,11 +108,21 @@ pub fn check(program: &Path, allow_mismatch: bool) -> Result<Option<String>, Ver
             message: error.to_string(),
         })?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let found = parse_version(&stdout).ok_or_else(|| VersionError::Unparsable {
-        program: name.clone(),
-        output: stdout.clone(),
-    })?;
-    accept(&name, &found, pmo_core::OMP_VERSION, allow_mismatch)
+    parse_version(&stdout).ok_or(VersionError::Unparsable {
+        program: name,
+        output: stdout,
+    })
+}
+
+/// Runs `program --version` and applies [`accept`] against `pmo_core::OMP_VERSION`.
+pub fn check(program: &Path, allow_mismatch: bool) -> Result<Option<String>, VersionError> {
+    let found = version(program)?;
+    accept(
+        &program.display().to_string(),
+        &found,
+        pmo_core::OMP_VERSION,
+        allow_mismatch,
+    )
 }
 
 #[cfg(test)]

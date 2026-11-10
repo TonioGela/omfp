@@ -52,9 +52,12 @@ agents themselves** (spawning threads, publishing views) — see [08](08-agent-c
 | D-14 | **omp is bundled** with the app at the pinned version; a different binary is only used when given explicitly (`--omp-bin`) and still passes the version check (DMN-001) | The client is generated for one omp version; bundling removes "wrong omp on PATH" failures | Relying on the system omp |
 | D-15 | **One binary with subcommands**: `pmo daemon` runs the headless daemon (serving the web UI); `pmo desktop` opens a desktop window connected to the local daemon, starting one if none is running (one command for users who do everything on one machine). The web UI is the same crate built for wasm. A build without the `desktop` feature gives a daemon-only binary for headless hosts | Simple installation and UX; one artifact to ship next to the bundled omp | Separate `pmod` and desktop binaries |
 | D-16 | **Many windows, one daemon** (like Zen browser windows): every `pmo desktop` opens a new window on the same local daemon, so all windows share threads and state, while each window chooses its own thread and layout. The daemon started by `pmo desktop` runs as a background process, so closing a window never stops the others | Several views of the same work without duplicating threads or omp processes | A daemon per window (duplicate threads); the first window owning the daemon (closing it would break the others) |
+| D-17 | **Agents have full access and build UI in JavaScript**: every protocol method is an agent tool; agents mount arbitrary HTML/CSS/JS pieces of UI with an `omfp` SDK (full protocol, live sources, storage) and an optional widget kit; full-access ("yolo") is the default, limits are opt-in | Maximum freedom for agents; JavaScript is what models write best and runs in every client webview | A fixed declarative vocabulary (too limiting); a sandboxed script engine in the daemon with restricted access |
 
 ## Open questions
 
 1. **Product name**: the project is renamed to **omfp** at the end of M1 (crates, binary, docs).
 2. **Desktop platforms**: Linux only at first, macOS later? (Windows: not planned.)
 3. **Project license.**
+4. **Reusable agent-made UI**: the SDK surface, the widget kit, how pieces load on desktop, and whether pieces may run
+   without a window — direction in [08](08-agent-control.md#agent-made-ui-javascript).

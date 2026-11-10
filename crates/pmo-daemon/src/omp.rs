@@ -9,9 +9,9 @@ use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 
 use omp_rpc::{
-    AgentMessage, Client, ClientOptions, Event, HostTool, OpenSessionCommand, OpenSessionResult,
-    ReadyEvent, SetAskDialogCommand, SetEventFilterResult, SetSubagentSubscriptionCommand,
-    SubagentSubscriptionLevel,
+    AgentMessage, Client, ClientOptions, Event, GetMessagesCommand, GetMessagesPageCommand,
+    HostTool, OpenSessionCommand, OpenSessionResult, ReadyEvent, SetAskDialogCommand,
+    SetEventFilterResult, SetSubagentSubscriptionCommand, SubagentSubscriptionLevel,
 };
 use pmo_core::{ProcessState, SessionInfo, ThreadEvent};
 use serde::Serialize;
@@ -108,6 +108,8 @@ pub enum StartError {
     },
     #[error("omp refused to open the session directory")]
     OpenCancelled,
+    #[error("cannot check the omp session lease: {0}")]
+    LeaseCheck(String),
 }
 
 /// What session setup found.
@@ -142,6 +144,7 @@ impl omp_rpc::Command for SetEventFilterDelta {
 pub struct OmpProcess {
     client: Arc<Client>,
     events: Option<Receiver<Event>>,
+    next_request: u64,
 }
 
 impl std::fmt::Debug for OmpProcess {
@@ -152,9 +155,16 @@ impl std::fmt::Debug for OmpProcess {
     }
 }
 
+/// Messages per `get_messages_page` call while loading history.
+const HISTORY_PAGE: i64 = 200;
+
 impl OmpProcess {
     /// Spawns omp, waits for `ready`, and runs the session setup sequence (DMN-031, DMN-032).
     pub fn start(spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<(Self, Startup), StartError> {
+        // `omp-rpc` numbers requests `req_1`, `req_2`, … and does not expose the numbers; the daemon needs the id of
+        // each prompt (the `id` of its `prompt_result`, PRT-030), so it counts every request made on the client:
+        // the protocol negotiation and the host tool registration happen at connect.
+        let mut requests: u64 = 1 + u64::from(!tools.is_empty());
         let options = ClientOptions {
             tools,
             ..ClientOptions::default()
@@ -195,12 +205,14 @@ impl OmpProcess {
         client
             .call(&SetAskDialogCommand { enabled: true })
             .map_err(setup("set_ask_dialog"))?;
-        let history = client.get_messages().map_err(setup("get_messages"))?;
+        requests += 4;
+        let history = load_history(&client, &mut requests).map_err(setup("get_messages"))?;
 
         Ok((
             Self {
                 client: Arc::new(client),
                 events: Some(events),
+                next_request: requests + 1,
             },
             Startup {
                 ready,
@@ -221,11 +233,47 @@ impl OmpProcess {
         self.events.take()
     }
 
+    /// The number `omp-rpc` gives the next request on this client (`req_<n>`), as long as every request so far went
+    /// through [`OmpProcess::start`].
+    #[must_use]
+    pub fn next_request(&self) -> u64 {
+        self.next_request
+    }
+
     /// The shared client and, unless already taken, the event receiver.
     #[must_use]
     pub fn into_parts(self) -> (Arc<Client>, Option<Receiver<Event>>) {
         (self.client, self.events)
     }
+}
+
+/// The session transcript, paged like `Client::get_messages` (protocol v2), counting the requests made: a page
+/// request that finds the session busy or the cursor stale falls back to one `get_messages`.
+fn load_history(client: &Client, requests: &mut u64) -> Result<Vec<AgentMessage>, omp_rpc::Error> {
+    let mut messages = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        *requests += 1;
+        let page = match client.call(&GetMessagesPageCommand {
+            cursor: cursor.clone(),
+            limit: Some(HISTORY_PAGE),
+        }) {
+            Ok(page) => page,
+            Err(omp_rpc::Error::Command { code, .. })
+                if matches!(code.as_deref(), Some("session_busy" | "stale_cursor")) =>
+            {
+                *requests += 1;
+                return client.call(&GetMessagesCommand {});
+            }
+            Err(error) => return Err(error),
+        };
+        messages.extend(page.messages);
+        match page.next_cursor {
+            Some(next) if Some(&next) != cursor.as_ref() => cursor = Some(next),
+            _ => break,
+        }
+    }
+    Ok(messages)
 }
 
 /// The reducer input for a frame from the event receiver (DMN-040, DMN-042).

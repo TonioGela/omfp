@@ -116,7 +116,7 @@ Topics: `index` (repositories, workspaces, threads with their summaries and tags
 
 | ID | Requirement |
 | --- | --- |
-| PRT-030 | `thread.prompt` MUST return as soon as omp admits the prompt (omp's `prompt` response), not when the turn ends. The UI tracks completion through `prompt_result` with the same `promptId`. |
+| PRT-030 | `thread.prompt` MUST return as soon as omp admits the prompt (omp's `prompt` response), not when the turn ends. The UI tracks completion through `prompt_result` with the same `promptId`. omp numbers requests per process, so a `promptId` is unique only within the thread's current epoch; the reducer drops prompt results when a new process starts (History). |
 | PRT-031 | Every method MUST be covered by a golden-JSON test (insta snapshot of request and response) in `pmo-protocol`, so changes to the wire format are always explicit in review. |
 | PRT-032 | `pmo-protocol` MUST version breaking changes by bumping `protocol`; the daemon supports the current and the previous version during a transition. |
 | PRT-033 | No method may assume a human UI is on the other end: every method is usable by scripts and, later, agents (D-12). The `client` field of `system.hello` and the resulting principal are recorded as provenance on created entities (ARC-009). |

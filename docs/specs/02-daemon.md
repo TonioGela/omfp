@@ -15,19 +15,19 @@ pmo daemon [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-d
 | DMN-002 | The default `--bind` MUST be `127.0.0.1:7420`; any address and port MAY be configured. Exposure beyond the machine (tunnels, reverse proxies, TLS) is the deployer's job (D-13). |
 | DMN-003 | On first run the daemon MUST generate a random token (≥ 256 bits) in `<data-dir>/token` with mode `0600`; every WebSocket connection MUST present it (see PRT-002). |
 | DMN-004 | The daemon MUST also work as a library (`pmo_daemon::start(config) -> DaemonHandle` exposing the bound address and token) for in-process use by the desktop app (ARC-003). |
-| DMN-005 | On SIGTERM/SIGINT or `DaemonHandle::shutdown` the daemon MUST close every omp process's stdin (omp drains accepted work and exits), wait at most 10 s, then close the `omp-rpc` client (SIGTERM, then SIGKILL to the process group). |
+| DMN-005 | On SIGTERM/SIGINT or `DaemonHandle::shutdown` the daemon MUST stop every omp process and finish within 10 s. Stopping closes the `omp-rpc` client, which closes omp's stdin and then terminates its process group (SIGTERM, SIGKILL after 1 s); omp-rpc 18.18.6 gives omp no longer drain window. |
 | DMN-006 | The omp binary MUST be resolved in this order: `--omp-bin`; the omp bundled next to the daemon executable (packaging, D-14); `omp` on `PATH` (dev shell). The resolved path is logged at startup. |
 | DMN-007 | At most one daemon MUST run per data directory (exclusive lock file). A running daemon MUST publish its address in `<data-dir>/daemon.json` (removed on shutdown), so local clients such as `pmo desktop` can find it and authenticate with the `token` file (D-16). |
 
 ## Persistence (SQLite)
 
-Initial schema (`PRAGMA user_version = 1`):
+Schema (`PRAGMA user_version = 2`; migration 2 adds `created_client`):
 
 | Table | Main columns |
 | --- | --- |
 | `repositories` | `id` (ULID), `name`, `path` (absolute, unique), `default_base_ref`, `remote_url` (nullable), `created_at` |
-| `workspaces` | `id` (ULID), `path` (absolute, unique), `kind` (`managed_worktree` \| `adopted`), `repository_id` (nullable), `branch` (nullable), `base_ref` (nullable), `pr_url` (nullable), `pr_number` (nullable), `created_by` (`user` \| thread id), `created_at`, `removed_at` (nullable) |
-| `threads` | `id` (ULID), `title`, `session_dir`, `omp_session_id` (nullable), `approval_mode` (nullable), `model` (nullable, `provider/id`), `thinking_level` (nullable), `created_by` (`user` \| thread id), `created_at`, `archived_at` (nullable) |
+| `workspaces` | `id` (ULID), `path` (absolute, unique among live workspaces), `kind` (`managed_worktree` \| `adopted`), `repository_id` (nullable), `branch` (nullable), `base_ref` (nullable), `pr_url` (nullable), `pr_number` (nullable), `created_by` (`user` \| thread id), `created_client` (nullable, the creating connection's `client`, PRT-033), `created_at`, `removed_at` (nullable) |
+| `threads` | `id` (ULID), `title`, `session_dir`, `omp_session_id` (nullable), `approval_mode` (nullable), `model` (nullable, `provider/id`), `thinking_level` (nullable), `created_by` (`user` \| thread id), `created_client` (nullable), `created_at`, `archived_at` (nullable) |
 | `thread_workspaces` | `thread_id`, `workspace_id`, `position` (0 = cwd) — primary key (`thread_id`, `workspace_id`) |
 | `thread_tags` | `thread_id`, `tag` |
 | `settings` | `key`, `value` (JSON) |
@@ -96,7 +96,7 @@ dialogs).
 | DMN-032 | After `open_session` the daemon MUST store `sessionId` in `threads.omp_session_id` and load history with `get_messages` (paged by `omp-rpc`) as the reducer's initial event. |
 | DMN-033 | Before starting omp on a thread that already has `omp_session_id`, the daemon MUST check the session lease (`omp session lease --json -- <id>`): if another omp process owns the session, startup MUST fail with an error saying so (e.g. the session is open in an external terminal). |
 | DMN-034 | A process that is `Idle`, settled, and not watched by any client MUST be stopped after `idle_timeout` (default 15 minutes, configurable). A `Busy` process or one with pending interactive requests is never stopped. |
-| DMN-035 | If the process exits unexpectedly, the thread MUST move to `Failed` with the exit code and the last stderr lines; pending interactive requests MUST be cancelled towards the UI. Restart happens only on the user's next command. |
+| DMN-035 | If the process exits unexpectedly, the thread MUST move to `Failed` with the last stderr lines (and the exit code when available — omp-rpc 18.18.6 does not expose it); pending interactive requests MUST be cancelled towards the UI. Restart happens only on the user's next command. |
 | DMN-036 | omp's stderr MUST be written to a per-thread log file (`<data-dir>/threads/<id>/omp.log`, rotated) and never mixed with protocol stdout. |
 | DMN-037 | Lifecycle operations on a thread (start, stop, restart, attach/detach, handoff to terminal) MUST be serialized by its actor. omp commands are forwarded without waiting for each other, because omp orders them itself and some must overtake a running one (`abort` during `compact`, `steer` during a turn). Different threads proceed in parallel. |
 | DMN-038 | The maximum number of concurrent omp processes MUST be configurable (default 8); beyond the limit, starting a stopped thread MUST fail with an explicit error (no silent queueing). |
@@ -124,7 +124,7 @@ dialogs).
 
 | ID | Requirement |
 | --- | --- |
-| DMN-060 | The daemon MUST register its host tools through `omp-rpc`'s `ClientOptions::tools`. Initial set: `open_in_editor { path, line? }` (opens the file with the configured editor command, or asks the UI to). |
+| DMN-060 | The daemon MUST register its host tools when it launches a thread's omp (they are per thread). Initial set: `open_in_editor { path, line? }`, which asks the clients to open the file (an `open_url` presentation request with a `file://…#L<line>` URL). A configurable editor command run by the daemon is left for later. |
 | DMN-061 | Every host tool MUST honour cancellation (`HostToolContext::is_cancelled`) and return an error (`isError: true`) instead of panicking. |
 
 ## Commands towards omp

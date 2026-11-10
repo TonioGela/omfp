@@ -29,6 +29,8 @@ impl ThreadState {
                 self.streaming = None;
                 // Their positions referred to the replaced transcript.
                 self.notices.clear();
+                // A new process numbers its requests from scratch, so old prompt ids would collide.
+                self.prompts.clear();
             }
             ThreadEvent::Process { state } => {
                 self.process = state.clone();

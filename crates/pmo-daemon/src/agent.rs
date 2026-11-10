@@ -1,8 +1,13 @@
 //! The port between the agent supervisor and omp (ARC-012): launching a thread's process and forwarding commands.
-//! [`OmpLauncher`] is the real implementation over [`crate::omp`]; tests use a scripted fake.
+//! [`OmpLauncher`] is the real implementation over [`crate::omp`]; [`FakeLauncher`] replays recorded fixtures for
+//! component tests (TST-014).
 
-use std::sync::Arc;
+mod fake;
+
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use omp_rpc::{
     AbortAndRestoreQueueCommand, BashCommand, BtwCommand, CancelSubagentCommand, Client,
@@ -13,15 +18,17 @@ use omp_rpc::{
     RemoveQueuedMessageCommand, RpcInbound, SetLabelCommand, SetModelCommand,
     SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+pub use fake::{FakeCall, FakeLaunch, FakeLauncher, FakeProcess, FakeReply, FakeRun, Gate};
 
 use crate::omp::{LaunchSpec, OmpProcess, StartError, Startup};
 
-/// One omp command the daemon forwards (02-daemon, "Commands towards omp").
+/// One omp command the daemon forwards (02-daemon, "Commands towards omp"); prompts go through
+/// [`AgentProcess::prompt`] because their id matters (PRT-030).
 #[derive(Debug, Clone)]
 pub enum OmpCall {
-    Prompt(PromptCommand),
     Steer(SteerCommand),
     FollowUp(FollowUpCommand),
     AbortAndRestoreQueue,
@@ -52,7 +59,6 @@ impl OmpCall {
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
-            Self::Prompt(_) => "prompt",
             Self::Steer(_) => "steer",
             Self::FollowUp(_) => "follow_up",
             Self::AbortAndRestoreQueue => "abort_and_restore_queue",
@@ -80,8 +86,19 @@ impl OmpCall {
     }
 }
 
+/// omp admitted a prompt (PRT-030).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptAdmission {
+    /// The request id; the `prompt_result` ending this prompt carries it.
+    pub prompt_id: String,
+    /// `false` when omp handled the prompt locally (e.g. `/add-dir`): no `prompt_result` follows.
+    pub agent_invoked: bool,
+}
+
 /// A running omp process, as seen by the supervisor.
 pub trait AgentProcess: Send + Sync {
+    /// Sends a prompt and returns once omp admitted it.
+    fn prompt(&self, command: PromptCommand) -> Result<PromptAdmission, omp_rpc::Error>;
     /// Sends `call` and returns omp's response data as JSON.
     fn call(&self, call: OmpCall) -> Result<Value, omp_rpc::Error>;
     /// Answers an interactive request (DMN-051).
@@ -103,32 +120,102 @@ impl std::fmt::Debug for Launched {
     }
 }
 
+/// Whether another omp process owns a session (DMN-033).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lease {
+    Free,
+    Held,
+    /// omp could not probe it.
+    Unknown,
+}
+
 /// Starts omp processes for threads.
 pub trait AgentLauncher: Send + Sync {
-    fn launch(&self, spec: &LaunchSpec) -> Result<Launched, StartError>;
+    /// Starts omp for `spec` with the daemon's host tools for this thread (DMN-060).
+    fn launch(&self, spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<Launched, StartError>;
+    /// Probes the ownership lease of `session_id` without taking it (`omp session lease`, DMN-033).
+    fn session_lease(&self, spec: &LaunchSpec, session_id: &str) -> Result<Lease, StartError>;
 }
 
-/// The real launcher: `omp --mode rpc-ui` through `omp-rpc`, with the daemon's host tools.
-#[derive(Debug, Clone, Default)]
-pub struct OmpLauncher {
-    pub tools: Vec<HostTool>,
-}
+/// The real launcher: `omp --mode rpc-ui` through `omp-rpc`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct OmpLauncher;
 
 impl AgentLauncher for OmpLauncher {
-    fn launch(&self, spec: &LaunchSpec) -> Result<Launched, StartError> {
-        let (process, startup) = OmpProcess::start(spec, self.tools.clone())?;
+    fn launch(&self, spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<Launched, StartError> {
+        let (process, startup) = OmpProcess::start(spec, tools)?;
+        let next_request = process.next_request();
         let (client, events) = process.into_parts();
-        let events = events.expect("a fresh process still owns its event receiver");
+        let events = events.ok_or(StartError::Connect(omp_rpc::Error::Closed))?;
         Ok(Launched {
-            process: Arc::new(OmpAgent(client)),
+            process: Arc::new(OmpAgent {
+                client,
+                next_request: AtomicU64::new(next_request),
+                order: RwLock::new(()),
+            }),
             startup,
             events,
         })
     }
+
+    fn session_lease(&self, spec: &LaunchSpec, session_id: &str) -> Result<Lease, StartError> {
+        std::fs::create_dir_all(&spec.cwd)?;
+        let mut command = Command::new(&spec.program);
+        command
+            .args(["session", "lease", "--json", "--", session_id])
+            .current_dir(&spec.cwd);
+        for (key, value) in &spec.env {
+            match value {
+                Some(value) => command.env(key, value),
+                None => command.env_remove(key),
+            };
+        }
+        let output = command.output()?;
+        if !output.status.success() {
+            return Err(StartError::LeaseCheck(
+                String::from_utf8_lossy(&output.stderr).trim().to_owned(),
+            ));
+        }
+        parse_lease(&output.stdout, session_id)
+    }
+}
+
+/// `omp session lease --json` output.
+#[derive(Debug, Deserialize)]
+struct LeaseReport {
+    #[serde(default)]
+    held: Vec<String>,
+    #[serde(default)]
+    unknown: Vec<String>,
+}
+
+fn parse_lease(stdout: &[u8], session_id: &str) -> Result<Lease, StartError> {
+    let report: LeaseReport = serde_json::from_slice(stdout).map_err(|error| {
+        StartError::LeaseCheck(format!(
+            "unexpected `omp session lease` output ({error}): {}",
+            String::from_utf8_lossy(stdout).trim()
+        ))
+    })?;
+    Ok(if report.held.iter().any(|id| id == session_id) {
+        Lease::Held
+    } else if report.unknown.iter().any(|id| id == session_id) {
+        Lease::Unknown
+    } else {
+        Lease::Free
+    })
 }
 
 /// [`AgentProcess`] over a connected `omp-rpc` client; dropping the last handle closes omp.
-struct OmpAgent(Arc<Client>);
+///
+/// `omp-rpc` numbers requests itself and does not expose the numbers, yet a prompt's id is the id of its
+/// `prompt_result` (PRT-030). Every request goes through this type, which mirrors the client's counter: commands run
+/// concurrently (DMN-037) and only bump the mirror, while a prompt waits until no command is in flight, so the
+/// mirror equals the client's counter when the prompt takes its number.
+struct OmpAgent {
+    client: Arc<Client>,
+    next_request: AtomicU64,
+    order: RwLock<()>,
+}
 
 impl OmpAgent {
     fn run<C>(&self, command: &C) -> Result<Value, omp_rpc::Error>
@@ -136,15 +223,26 @@ impl OmpAgent {
         C: omp_rpc::Command,
         C::Output: Serialize,
     {
-        let output = self.0.call(command)?;
+        let _shared = self.order.read().unwrap_or_else(PoisonError::into_inner);
+        self.next_request.fetch_add(1, Ordering::SeqCst);
+        let output = self.client.call(command)?;
         serde_json::to_value(output).map_err(omp_rpc::Error::Json)
     }
 }
 
 impl AgentProcess for OmpAgent {
+    fn prompt(&self, command: PromptCommand) -> Result<PromptAdmission, omp_rpc::Error> {
+        let _exclusive = self.order.write().unwrap_or_else(PoisonError::into_inner);
+        let number = self.next_request.fetch_add(1, Ordering::SeqCst);
+        let ack = self.client.call(&command)?;
+        Ok(PromptAdmission {
+            prompt_id: format!("req_{number}"),
+            agent_invoked: ack.agent_invoked.unwrap_or(true),
+        })
+    }
+
     fn call(&self, call: OmpCall) -> Result<Value, omp_rpc::Error> {
         match &call {
-            OmpCall::Prompt(command) => self.run(command),
             OmpCall::Steer(command) => self.run(command),
             OmpCall::FollowUp(command) => self.run(command),
             OmpCall::AbortAndRestoreQueue => self.run(&AbortAndRestoreQueueCommand {}),
@@ -172,6 +270,24 @@ impl AgentProcess for OmpAgent {
     }
 
     fn respond(&self, response: ExtensionUiResponse) -> Result<(), omp_rpc::Error> {
-        self.0.send(&RpcInbound::ExtensionUiResponse(response))
+        self.client.send(&RpcInbound::ExtensionUiResponse(response))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // spec: DMN-033
+    #[test]
+    fn lease_report_names_held_unknown_and_free_sessions() {
+        let report = br#"{"held":["s1"],"unknown":["s2"]}"#;
+        assert_eq!(parse_lease(report, "s1").unwrap(), Lease::Held);
+        assert_eq!(parse_lease(report, "s2").unwrap(), Lease::Unknown);
+        assert_eq!(parse_lease(report, "s3").unwrap(), Lease::Free);
+        assert!(matches!(
+            parse_lease(b"not json", "s1"),
+            Err(StartError::LeaseCheck(_))
+        ));
     }
 }

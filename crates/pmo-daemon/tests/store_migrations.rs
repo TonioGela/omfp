@@ -69,7 +69,7 @@ fn opening_an_empty_file_applies_every_migration() {
     let db = dir.path().join("pmo.db");
     drop(Store::open(&db).unwrap());
 
-    assert_eq!(user_version(&db), 1);
+    assert_eq!(user_version(&db), 2);
     // Only metadata lives in the database: no transcript tables.
     assert_eq!(
         tables(&db),
@@ -95,7 +95,7 @@ fn reopening_is_idempotent_and_keeps_data() {
         store.insert_workspace(&ws).unwrap();
     }
     let store = Store::open(&db).unwrap();
-    assert_eq!(user_version(&db), 1);
+    assert_eq!(user_version(&db), 2);
     assert_eq!(store.workspace(&ws.id).unwrap(), ws);
 }
 
@@ -112,7 +112,7 @@ fn a_database_from_a_newer_daemon_is_refused() {
             error,
             StoreError::UnknownSchemaVersion {
                 found: 99,
-                supported: 1
+                supported: 2
             }
         ),
         "{error:?}"

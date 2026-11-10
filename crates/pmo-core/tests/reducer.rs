@@ -849,6 +849,19 @@ fn history_drops_notices_placed_in_the_previous_transcript() {
     assert_eq!(state.notices, Vec::new());
 }
 
+// spec: TST-010, PRT-030
+#[test]
+fn history_drops_prompt_results_of_the_previous_process() {
+    // omp numbers requests `req_N` per process, so ids restart after a restart (a new History).
+    let state = replay(&[
+        omp(
+            json!({ "type": "prompt_result", "id": "req_5", "agentInvoked": true, "status": "completed", "sessionSettled": true }),
+        ),
+        history(json!([])),
+    ]);
+    assert_eq!(state.prompts.len(), 0);
+}
+
 // spec: TST-010
 #[test]
 fn frames_the_reducer_does_not_need_leave_the_state_unchanged() {
