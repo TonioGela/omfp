@@ -3,11 +3,10 @@
 use omfp_core::ProcessState;
 use omfp_protocol::{
     CreatedBy, Density, FileChange, FileStatus, FontSettings, GitStatus, KeymapEntry, KeymapMode,
-    NotificationMode, Provenance, RepoKind, RepoStatus, Repository, Settings, Theme, ThreadSummary,
+    NotificationMode, Provenance, RepoKind, RepoStatus, Settings, Theme, ThreadSummary,
     TitleSource, UiSettings, Workspace, WorkspaceRepo,
 };
 
-pub const REPO_ID: &str = "01JD8X3Q4T9V2W6Y5Z7A1B3C6F";
 pub const WORKSPACE_ID: &str = "01JD8X3Q4T9V2W6Y5Z7A1B3C5E";
 pub const OTHER_WORKSPACE_ID: &str = "01JD8X3Q4T9V2W6Y5Z7A1B3C7G";
 pub const THREAD_ID: &str = "01JD8X3Q4T9V2W6Y5Z7A1B3C4D";
@@ -19,17 +18,6 @@ pub fn user_provenance() -> Provenance {
     Provenance {
         created_by: CreatedBy::User,
         client: Some("omfp/web".to_owned()),
-    }
-}
-
-pub fn repository() -> Repository {
-    Repository {
-        id: REPO_ID.to_owned(),
-        name: "shop-frontend".to_owned(),
-        path: "/home/dev/src/shop-frontend".to_owned(),
-        default_base_ref: "origin/main".to_owned(),
-        remote_url: Some("git@github.com:acme/shop-frontend.git".to_owned()),
-        created_at: CREATED_AT,
     }
 }
 

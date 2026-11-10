@@ -9,7 +9,7 @@ use serde::ser::SerializeMap;
 use serde_json::{Map, Value, json};
 use std::fmt::Debug;
 
-use crate::dto::{DiffPage, GitStatus, Repository, Settings, Theme, ThreadSummary, Workspace};
+use crate::dto::{DiffPage, GitStatus, Settings, Theme, ThreadSummary, Workspace};
 use crate::params;
 use omfp_core::wire;
 
@@ -116,12 +116,10 @@ methods! {
     Subscribe = "subscribe" (params::SubscribeParams) -> params::SubscribeResult;
     /// Stops delivery of a topic.
     Unsubscribe = "unsubscribe" (params::TopicParams) -> params::Empty;
-    /// Registers a git repository.
-    ReposAdd = "repos.add" (params::AddRepositoryParams) -> Repository;
-    /// Unregisters a repository.
-    ReposRemove = "repos.remove" (params::RepositoryRef) -> params::Empty;
-    /// Lists registered repositories.
-    ReposList = "repos.list" (params::Empty) -> params::RepositoryList;
+    /// Repositories seen in any workspace, most recent first (DMN-021).
+    ReposSuggest = "repos.suggest" (params::SuggestReposParams) -> params::RepoSuggestions;
+    /// Child directories of a path on the daemon host (DMN-021).
+    FsComplete = "fs.complete" (params::CompletePathParams) -> params::PathCompletions;
     /// Creates a workspace: a new folder, or an existing one recorded as is.
     WorkspacesCreate = "workspaces.create" (params::CreateWorkspaceParams) -> Workspace;
     /// Renames a workspace.
@@ -148,6 +146,8 @@ methods! {
     ThreadsUnarchive = "threads.unarchive" (params::ThreadRef) -> params::Empty;
     /// Deletes a thread; its workspace is kept.
     ThreadsDelete = "threads.delete" (params::ThreadRef) -> params::Empty;
+    /// Threads whose conversation text contains a query (DMN-076).
+    ThreadsSearch = "threads.search" (params::SearchThreadsParams) -> params::ThreadSearchResults;
     /// Sends a prompt (omp `prompt`).
     ThreadPrompt = "thread.prompt" (params::PromptParams) -> params::PromptResult;
     /// Steers the running turn (omp `steer`).

@@ -14,9 +14,9 @@ mod topic;
 
 pub use dto::{
     CreatedBy, Density, DiffPage, FileChange, FileDiff, FileStatus, FontSettings, GitStatus,
-    IndexSnapshot, KeymapEntry, KeymapMode, NotificationMode, Provenance, RepoKind, RepoStatus,
-    Repository, Settings, TerminalInfo, TerminalKind, Theme, ThreadSummary, TitleSource,
-    UiSettings, Workspace, WorkspaceRepo,
+    IndexSnapshot, KeymapEntry, KeymapMode, NotificationMode, PathEntry, Provenance, RepoKind,
+    RepoStatus, SeenRepository, Settings, TerminalInfo, TerminalKind, Theme, ThreadSummary,
+    TitleSource, UiSettings, Workspace, WorkspaceRepo,
 };
 pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, ProtocolError, Request, Response, ServerFrame,
@@ -24,16 +24,16 @@ pub use envelope::{
 };
 pub use method::{Call, METHODS, Method, method_schemas};
 pub use params::{
-    AddRepoParams, AddRepositoryParams, BashParams, BtwParams, CompactParams, CreateThreadParams,
+    AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CreateThreadParams,
     CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams, HelloResult,
     InteractionResponse, LabelParams, ListTerminalsParams, MessageParams, NavigateParams,
-    OpenTerminalParams, OpenTerminalResult, Position, PromptBehavior, PromptParams, PromptResult,
-    QueueMessageParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource,
-    RepositoryList, RepositoryRef, ResizeTerminalParams, RespondParams, SetModelParams,
-    SetSettingsParams, SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
-    SubscribeParams, SubscribeResult, TerminalList, TerminalRef, ThreadGit, ThreadRef,
-    ThreadWorkspace, TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams,
-    WorkspaceRef,
+    OpenTerminalParams, OpenTerminalResult, PathCompletions, Position, PromptBehavior,
+    PromptParams, PromptResult, QueueMessageParams, RemoveRepoParams, RemoveWorkspaceParams,
+    RepoRef, RepoSource, RepoSuggestions, ResizeTerminalParams, RespondParams, SearchThreadsParams,
+    SetModelParams, SetSettingsParams, SetThinkingParams, SubagentMessagesParams, SubagentRef,
+    SubagentSteerParams, SubscribeParams, SubscribeResult, SuggestReposParams, TerminalList,
+    TerminalRef, ThreadGit, ThreadRef, ThreadSearchResult, ThreadSearchResults, ThreadWorkspace,
+    TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
 };
 pub use schema::type_schemas;
 pub use topic::{Topic, TopicParseError};

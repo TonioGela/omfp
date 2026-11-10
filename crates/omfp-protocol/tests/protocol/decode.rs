@@ -31,7 +31,7 @@ fn a_request_keeps_its_client_chosen_id() {
 #[test]
 fn a_request_without_id_is_rejected_without_id() {
     for id in [None, Some(json!(42)), Some(json!(null))] {
-        let mut frame = json!({ "type": "request", "method": "repos.list", "params": {} });
+        let mut frame = json!({ "type": "request", "method": "theme.get", "params": {} });
         if let Some(id) = id {
             frame["id"] = id;
         }
@@ -77,21 +77,21 @@ fn unknown_params_fields_are_ignored() {
 #[test]
 fn unknown_envelope_fields_are_ignored() {
     let request = decode(&json!({
-        "type": "request", "id": "c4", "method": "repos.list", "params": {}, "trace": "abc"
+        "type": "request", "id": "c4", "method": "theme.get", "params": {}, "trace": "abc"
     }))
     .unwrap();
-    assert_eq!(request, Request::new("c4", Call::ReposList(Empty {})));
+    assert_eq!(request, Request::new("c4", Call::ThemeGet(Empty {})));
 }
 
 #[test]
 fn absent_or_null_params_mean_no_params() {
     for frame in [
-        json!({ "type": "request", "id": "c5", "method": "repos.list" }),
-        json!({ "type": "request", "id": "c5", "method": "repos.list", "params": null }),
+        json!({ "type": "request", "id": "c5", "method": "theme.get" }),
+        json!({ "type": "request", "id": "c5", "method": "theme.get", "params": null }),
     ] {
         assert_eq!(
             decode(&frame).unwrap(),
-            Request::new("c5", Call::ReposList(Empty {}))
+            Request::new("c5", Call::ThemeGet(Empty {}))
         );
     }
 }
@@ -115,8 +115,8 @@ fn malformed_frames_are_bad_requests() {
     let cases = [
         "not json".to_owned(),
         json!(["request"]).to_string(),
-        json!({ "id": "c1", "method": "repos.list" }).to_string(),
-        json!({ "type": "response", "id": "c1", "method": "repos.list" }).to_string(),
+        json!({ "id": "c1", "method": "theme.get" }).to_string(),
+        json!({ "type": "response", "id": "c1", "method": "theme.get" }).to_string(),
         json!({ "type": "request", "id": "c1" }).to_string(),
         json!({ "type": "request", "id": "c1", "method": 3 }).to_string(),
     ];

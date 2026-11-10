@@ -1,0 +1,27 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "threads.search",
+    "params": {
+      "query": "flaky"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "results": [
+        {
+          "snippet": "…why is the checkout test flaky on CI?…",
+          "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D"
+        }
+      ]
+    },
+    "type": "response"
+  }
+}

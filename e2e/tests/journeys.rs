@@ -30,9 +30,28 @@ async fn header_chips(journey: &Journey) -> anyhow::Result<Vec<(String, String)>
         .collect())
 }
 
+/// Adds a new worktree of the repository at `path` (typed; focusing the branch field closes the completion list) on
+/// `branch` from the Workspace widget.
+async fn add_worktree(journey: &Journey, path: &str, branch: &str) -> anyhow::Result<()> {
+    journey
+        .click("[data-testid=add-repo-kind] [data-value=worktree]")
+        .await?;
+    journey
+        .type_into("[data-testid=add-repo-path]", path)
+        .await?;
+    journey
+        .type_into("[data-testid=add-repo-branch]", branch)
+        .await?;
+    journey.click("[data-testid=add-repo-submit]").await?;
+    journey
+        .element("[data-testid=workspace-repo][data-kind=worktree]")
+        .await?;
+    Ok(())
+}
+
 // spec: E2E-01, UI-001, UI-002, UI-012, UI-023, TST-031
 #[tokio::test(flavor = "multi_thread")]
-async fn a_thread_on_a_new_worktree_streams_its_reply_and_goes_idle() -> anyhow::Result<()> {
+async fn a_draft_thread_on_a_new_worktree_is_created_by_its_first_message() -> anyhow::Result<()> {
     let repo = repository("kumquat-17");
     let journey = Journey::start(vec![
         Step::reply(Reply::tool_calls(vec![ToolCall::new(
@@ -48,30 +67,16 @@ async fn a_thread_on_a_new_worktree_streams_its_reply_and_goes_idle() -> anyhow:
     let url = journey.driver.current_url().await?;
     assert_eq!(url.fragment(), None, "{url}");
 
-    // A new workspace, a new worktree of a repository given by its path and the first message (UI-023).
-    let before = journey.thread_ids().await?;
-    journey.open_new_thread().await?;
-    journey
-        .type_into("[data-testid=new-workspace-name]", "worktree journey")
-        .await?;
-    journey.click("[data-testid=add-worktree]").await?;
-    journey
-        .element("[data-testid=repo-choice][data-kind=worktree]")
-        .await?;
-    journey
-        .type_into(
-            "[data-testid=worktree-repo]",
-            &repo.path().to_string_lossy(),
-        )
-        .await?;
-    journey
-        .type_into("[data-testid=worktree-branch]", "feat-e2e")
-        .await?;
-    journey
-        .type_into("[data-testid=new-thread-prompt]", "hello")
-        .await?;
-    journey.click("[data-testid=create-thread]").await?;
-    let thread = journey.created(&before).await?;
+    // "+ workspace" opens a draft thread in the new workspace; a new worktree of a repository given by its path goes
+    // into it from the Workspace widget; the first message creates the thread (UI-023).
+    journey.new_workspace("worktree journey").await?;
+    assert_eq!(
+        journey.thread_ids().await?,
+        Vec::<String>::new(),
+        "a draft is no thread yet"
+    );
+    add_worktree(&journey, &repo.path().to_string_lossy(), "feat-e2e").await?;
+    let thread = journey.first_message("hello").await?;
 
     // The workspace chip, then the new worktree on its branch.
     let chips = journey
@@ -435,35 +440,28 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
     journey.finish("E2E-05").await
 }
 
-/// Registers the repository at `path` from the Workspace panel; returns its id.
-async fn register(journey: &Journey, path: &str) -> anyhow::Result<String> {
-    let before = journey
-        .attrs("[data-testid=repository-row]", "data-repository-id")
-        .await?;
-    journey
-        .type_into("[data-testid=add-repository-path]", path)
-        .await?;
-    journey.click("[data-testid=add-repository-submit]").await?;
-    journey
-        .until("the registered repository", async |page| {
-            let ids = page
-                .attrs("[data-testid=repository-row]", "data-repository-id")
-                .await?;
-            Ok(ids.into_iter().find(|id| !before.contains(id)).flatten())
-        })
-        .await
-}
-
-/// Links the folder at `path` into the selected thread's workspace from the Workspace panel; returns the entry name.
+/// Links the folder at `path` into the shown workspace from the Workspace widget; returns the entry name.
 async fn link(journey: &Journey, path: &str) -> anyhow::Result<String> {
     let css = "[data-testid=workspace-repo][data-kind=link]";
     let before = journey.attrs(css, "data-name").await?;
     journey
-        .type_into("[data-testid=link-repo-path]", path)
+        .click("[data-testid=add-repo-kind] [data-value=link]")
         .await?;
-    journey.click("[data-testid=link-repo-submit]").await?;
     journey
-        .until("the linked repository", async |page| {
+        .type_into("[data-testid=add-repo-path]", path)
+        .await?;
+    journey.click("[data-testid=add-repo-submit]").await?;
+    new_entry(journey, css, &before).await
+}
+
+/// Waits until an entry matching `css` not named in `before` shows in the Workspace widget; returns its name.
+async fn new_entry(
+    journey: &Journey,
+    css: &str,
+    before: &[Option<String>],
+) -> anyhow::Result<String> {
+    journey
+        .until("the new repository", async |page| {
             let names = page.attrs(css, "data-name").await?;
             Ok(names
                 .into_iter()
@@ -473,25 +471,54 @@ async fn link(journey: &Journey, path: &str) -> anyhow::Result<String> {
         .await
 }
 
-/// Adds a new worktree of `front` (registered first) and a link to `back` to the selected thread's workspace from the
-/// Workspace panel.
-async fn worktree_and_link(
+/// `path` without its last three characters: typed into a path field, its completions include `path`.
+fn partial(path: &std::path::Path) -> String {
+    let path = path.to_string_lossy();
+    path[..path.len() - 3].to_owned()
+}
+
+/// The entry name of the repository at `path`.
+fn dir_name(repo: &TempRepo) -> String {
+    repo.path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Links `back` and adds a new worktree of `front`, both picked from the path field's completions (DMN-021), into
+/// the shown workspace.
+async fn link_and_worktree_by_completion(
     journey: &Journey,
     front: &TempRepo,
     back: &TempRepo,
 ) -> anyhow::Result<()> {
-    let id = register(journey, &front.path().to_string_lossy()).await?;
-    journey.select("worktree-repository", &id).await?;
+    let path = "[data-testid=add-repo-path]";
+    let links = "[data-testid=workspace-repo][data-kind=link]";
+    let before = journey.attrs(links, "data-name").await?;
     journey
-        .type_into("[data-testid=worktree-branch-name]", "front-branch")
+        .pick_path(path, &partial(back.path()), &back.path().to_string_lossy())
+        .await?;
+    journey.click("[data-testid=add-repo-submit]").await?;
+    new_entry(journey, links, &before).await?;
+
+    journey
+        .click("[data-testid=add-repo-kind] [data-value=worktree]")
         .await?;
     journey
-        .click("[data-testid=create-worktree-submit]")
+        .pick_path(
+            path,
+            &partial(front.path()),
+            &front.path().to_string_lossy(),
+        )
         .await?;
+    journey
+        .type_into("[data-testid=add-repo-branch]", "front-branch")
+        .await?;
+    journey.click("[data-testid=add-repo-submit]").await?;
     journey
         .element("[data-testid=workspace-repo][data-kind=worktree]")
         .await?;
-    link(journey, &back.path().to_string_lossy()).await?;
     journey
         .until("the workspace and both repository chips", async |page| {
             Ok((header_chips(page).await?.len() == 3).then_some(()))
@@ -499,66 +526,51 @@ async fn worktree_and_link(
         .await
 }
 
-/// Whether the focus is inside the element matching `css`.
-async fn focus_inside(journey: &Journey, css: &str) -> anyhow::Result<bool> {
-    let value = journey
-        .eval(
-            "const root = document.querySelector(arguments[0]);
-             return !!root && root.contains(document.activeElement) && root !== document.activeElement;",
-            vec![json!(css)],
-        )
-        .await?;
-    Ok(value == json!(true))
+/// Replaces the left column's filter text with `query` and waits until thread `id` shows `rows` times.
+async fn filter(journey: &Journey, query: &str, id: &str, rows: usize) -> anyhow::Result<()> {
+    let field = journey.element("[data-testid=thread-filter]").await?;
+    field.send_keys(Key::Control + "a").await?;
+    field.send_keys(Key::Backspace).await?;
+    if !query.is_empty() {
+        field.send_keys(query).await?;
+    }
+    until_rows(journey, id, rows).await
 }
 
-// spec: E2E-08, UI-021, UI-022, UI-025, UI-092
+// spec: E2E-08, UI-022, UI-023, UI-025, UI-092, DMN-021
 #[tokio::test(flavor = "multi_thread")]
-async fn a_thread_on_two_repositories_shows_under_both_when_grouped_by_repository()
+async fn repositories_picked_by_completion_make_the_thread_findable_by_their_names()
 -> anyhow::Result<()> {
     let front = repository("front-1");
     let back = repository("back-2");
-    let journey = Journey::start(Vec::new()).await?;
+    let journey = Journey::start(vec![Step::reply(Reply::text("Ready."))]).await?;
     journey.connected().await?;
 
-    // Space n (normal mode) opens the new-thread dialog with the focus in it (UI-092); no repository.
-    let before = journey.thread_ids().await?;
-    journey.keys(" n").await?;
-    journey.element("[data-testid=new-thread-dialog]").await?;
-    journey
-        .until("the focus in the dialog", async |page| {
-            Ok(focus_inside(page, "[data-testid=new-thread-dialog]")
-                .await?
-                .then_some(()))
-        })
-        .await?;
-    journey
-        .type_into("[data-testid=new-workspace-name]", "two repositories")
-        .await?;
-    journey.click("[data-testid=create-thread]").await?;
-    let thread = journey.created(&before).await?;
+    // Space w (normal mode) focuses the "+ workspace" field; Enter opens a draft, the first message makes the thread.
+    normal_mode(&journey).await?;
+    journey.keys(" w").await?;
+    journey.until_focused("new-workspace-name").await?;
+    journey.keys("two repositories").await?;
+    journey.keys(Key::Enter).await?;
+    journey.element("[data-testid=draft-thread]").await?;
+    journey.until_focused("composer-input").await?;
+    let thread = journey.first_message("hello").await?;
+    journey.reply("Ready.").await?;
 
-    // A worktree and a link from two places, into the thread's workspace.
-    worktree_and_link(&journey, &front, &back).await?;
-    // The Workspace widget and its forms fit its column at a 1400 px window.
+    // A link and a worktree from two places, both picked from the completions.
+    link_and_worktree_by_completion(&journey, &front, &back).await?;
+    // The Workspace widget and its add control fit its column at a 1400 px window.
     journey.fits("[data-widget=\"omfp:workspace\"]").await?;
 
-    journey.select("grouping", "repository").await?;
-    let thread_row = row(&thread);
-    let groups = journey
-        .until("the thread under both repositories", async |page| {
-            let groups = page
-                .eval(
-                    "return [...document.querySelectorAll('[data-testid=thread-group]')]
-                       .filter(g => g.querySelector(arguments[0]))
-                       .map(g => g.dataset.group);",
-                    vec![json!(thread_row)],
-                )
-                .await?;
-            let groups: Vec<String> = serde_json::from_value(groups)?;
-            Ok((groups.len() == 2).then_some(groups))
-        })
-        .await?;
-    assert_ne!(groups[0], groups[1]);
+    // `/` focuses the filter; either repository's name finds the thread, anything else hides its workspace.
+    normal_mode(&journey).await?;
+    journey.keys("/").await?;
+    journey.until_focused("thread-filter").await?;
+    filter(&journey, &dir_name(&back), &thread, 1).await?;
+    filter(&journey, &dir_name(&front).to_uppercase(), &thread, 1).await?;
+    filter(&journey, "no such repository", &thread, 0).await?;
+    journey.gone("[data-testid=workspace-section]").await?;
+    filter(&journey, "", &thread, 1).await?;
     journey.finish("E2E-08").await
 }
 
@@ -960,10 +972,22 @@ async fn until_rows(journey: &Journey, thread_id: &str, count: usize) -> anyhow:
         .await
 }
 
-// spec: UI-026, UI-092
+/// Moves the mouse over the first element matching `css` (the left column shows delete buttons on hover).
+async fn hover(journey: &Journey, css: &str) -> anyhow::Result<()> {
+    let element = journey.element(css).await?;
+    journey
+        .driver
+        .action_chain()
+        .move_to_element_center(&element)
+        .perform()
+        .await?;
+    Ok(())
+}
+
+// spec: UI-020, UI-026, UI-092, DMN-028
 #[tokio::test(flavor = "multi_thread")]
-async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted() -> anyhow::Result<()>
-{
+async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted_with_workspaces()
+-> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
     journey.connected().await?;
     let survivor = journey.create_thread("survivor").await?;
@@ -974,21 +998,23 @@ async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted() ->
     until_rows(&journey, &doomed, 0).await?;
     journey.element("[data-testid=no-thread]").await?;
 
-    // The Archived filter lists only it; it opens from there and comes back with Unarchive.
-    journey.select("filter-key", "archived").await?;
+    // "Archived (1)" at the end of its workspace lists it; it opens from there and comes back with Unarchive.
+    journey.click("[data-testid=archived-toggle]").await?;
     until_rows(&journey, &doomed, 1).await?;
-    assert_eq!(journey.count(&row(&survivor)).await?, 0);
     journey.click(&row(&doomed)).await?;
     journey.opened(&doomed).await?;
     journey.click("[data-testid=archive-thread]").await?;
-    until_rows(&journey, &doomed, 0).await?;
-    journey.select("filter-key", "all").await?;
+    journey.gone("[data-testid=archived-toggle]").await?;
     until_rows(&journey, &doomed, 1).await?;
 
-    // Delete asks first, in a dialog that takes the focus; workspaces are kept.
-    journey.click(&row(&doomed)).await?;
-    journey.opened(&doomed).await?;
-    journey.click("[data-testid=delete-thread]").await?;
+    // The row's delete button (shown on hover) asks first, in a dialog that takes the focus; the workspace stays.
+    let doomed_row = row(&doomed);
+    hover(&journey, &doomed_row).await?;
+    journey
+        .click(&format!(
+            "[data-testid=row-delete-thread][data-thread-id=\"{doomed}\"]"
+        ))
+        .await?;
     journey
         .element("[data-testid=delete-thread-dialog]")
         .await?;
@@ -1001,65 +1027,76 @@ async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted() ->
             Ok((!page.data_dir().join("threads").join(&doomed).exists()).then_some(()))
         })
         .await?;
+    assert_eq!(journey.count("[data-testid=workspace-section]").await?, 2);
 
-    // Gone after a reload too, under every filter.
+    // Deleting a workspace that still has a thread lists it and deletes it too once asked to (DMN-028).
+    let section = "[data-testid=workspace-section]:has([data-testid=thread-row])";
+    hover(
+        &journey,
+        &format!("{section} [data-testid=workspace-section-name]"),
+    )
+    .await?;
+    journey
+        .click(&format!("{section} [data-testid=delete-workspace]"))
+        .await?;
+    journey
+        .element(&format!(
+            "[data-testid=delete-workspace-thread-list] [data-thread-id=\"{survivor}\"]"
+        ))
+        .await?;
+    journey
+        .click("[data-testid=delete-workspace-threads]")
+        .await?;
+    journey
+        .click("[data-testid=confirm-delete-workspace]")
+        .await?;
+    until_rows(&journey, &survivor, 0).await?;
+    journey
+        .until("one workspace left", async |page| {
+            Ok((page.count("[data-testid=workspace-section]").await? == 1).then_some(()))
+        })
+        .await?;
+
+    // Gone after a reload too.
     journey.driver.refresh().await?;
     journey.connected().await?;
-    until_rows(&journey, &survivor, 1).await?;
-    assert_eq!(journey.count(&row(&doomed)).await?, 0);
-    journey.select("filter-key", "archived").await?;
-    until_rows(&journey, &survivor, 0).await?;
-    assert_eq!(journey.count(&row(&doomed)).await?, 0);
+    journey.element("[data-testid=workspace-section]").await?;
+    assert_eq!(journey.count("[data-testid=workspace-section]").await?, 1);
+    assert_eq!(journey.count("[data-testid=thread-row]").await?, 0);
     journey.finish("archive and delete").await
 }
 
-// spec: UI-025
+// spec: UI-025, DMN-021
 #[tokio::test(flavor = "multi_thread")]
-async fn a_registered_repository_is_listed_starts_a_worktree_and_is_removed() -> anyhow::Result<()>
-{
-    let repo = repository("listed-3");
+async fn a_repository_seen_in_one_workspace_is_suggested_in_another() -> anyhow::Result<()> {
+    let repo = repository("seen-3");
     let journey = Journey::start(Vec::new()).await?;
     journey.connected().await?;
-    journey.create_thread("repositories").await?;
-    journey.element("[data-testid=no-repositories]").await?;
+    journey.create_thread("first sighting").await?;
+    link(&journey, &repo.path().to_string_lossy()).await?;
 
-    let id = register(&journey, &repo.path().to_string_lossy()).await?;
-    let listed = format!("[data-testid=repository-row][data-repository-id=\"{id}\"]");
-    let text = journey.text(&listed).await?;
-    assert!(text.contains(&*repo.path().to_string_lossy()), "{text}");
-    journey.gone("[data-testid=no-repositories]").await?;
-
-    // Its "add to workspace" preselects it in the worktree form, which then makes a worktree in the workspace.
+    // In another workspace the empty path field suggests it first; picking it fills the field, Add links it.
+    journey.create_thread("second sighting").await?;
     journey
-        .click(&format!("{listed} [data-testid=repository-new-worktree]"))
+        .until("the second workspace in the widget", async |page| {
+            let name = page.text("[data-testid=workspace-name]").await?;
+            let empty = page.count("[data-testid=workspace-repo]").await? == 0;
+            Ok((name.contains("second sighting") && empty).then_some(()))
+        })
         .await?;
-    journey
-        .type_into("[data-testid=worktree-branch-name]", "listed-branch")
-        .await?;
-    journey
-        .click("[data-testid=create-worktree-submit]")
-        .await?;
-    journey
-        .element("[data-testid=workspace-repo][data-kind=worktree]")
-        .await?;
-
-    // Removing asks first and keeps the worktree.
-    journey
-        .click(&format!("{listed} [data-testid=remove-repository]"))
-        .await?;
-    journey
-        .element("[data-testid=remove-repository-note]")
-        .await?;
-    journey
-        .click("[data-testid=confirm-remove-repository]")
-        .await?;
-    journey.gone(&listed).await?;
-    journey.element("[data-testid=no-repositories]").await?;
-    assert_eq!(
-        journey
-            .count("[data-testid=workspace-repo][data-kind=worktree]")
-            .await?,
-        1
+    journey.click("[data-testid=add-repo-path]").await?;
+    let suggestion = format!(
+        "[data-testid=path-option][data-kind=suggestion][data-path={}]",
+        json!(repo.path().canonicalize()?.to_string_lossy())
     );
-    journey.finish("repositories").await
+    journey.click(&suggestion).await?;
+    journey.click("[data-testid=add-repo-submit]").await?;
+    let name = new_entry(
+        &journey,
+        "[data-testid=workspace-repo][data-kind=link]",
+        &[],
+    )
+    .await?;
+    assert_eq!(name, dir_name(&repo));
+    journey.finish("suggestions").await
 }

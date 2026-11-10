@@ -1,8 +1,19 @@
-/** The frame's dialogs: the delete confirmation (UI-026) and the token screen (UI-002). */
+/** The frame's dialogs: the thread and workspace delete confirmations (UI-026, UI-020) and the token screen (UI-002). */
 
-import { Button, ConfirmDialog, TextField } from "@omfp/kit";
-import { type FormEvent, type ReactNode, useState } from "react";
-import { DELETE_THREAD, useThreadActions, useThreadSummary, useWindowState } from "../sdk/index.ts";
+import { Button, Checkbox, ConfirmDialog, Dialog, TextField } from "@omfp/kit";
+import type { ThreadSummary, Workspace } from "@omfp/protocol";
+import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import {
+  DELETE_THREAD,
+  DELETE_WORKSPACE,
+  removeWorkspace,
+  useHost,
+  useThreadActions,
+  useThreadSummary,
+  useThreads,
+  useWindowState,
+  useWorkspaces,
+} from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { displayTitle } from "../vm/threads.ts";
 
@@ -34,6 +45,103 @@ export function DeleteThreadDialog(): ReactNode {
       confirmTestId="confirm-delete-thread"
       cancelTestId="cancel-delete-thread"
     />
+  );
+}
+
+/**
+ * Deleting a workspace (UI-020, DMN-028): the daemon refuses while it has threads, so the dialog lists them and
+ * deletes them first once "delete the threads too" is ticked; an owned folder may be deleted with it. Cancel has the
+ * focus when it opens.
+ */
+export function DeleteWorkspaceDialog(): ReactNode {
+  const [workspaceId, setWorkspaceId] = useWindowState(DELETE_WORKSPACE);
+  const workspace = useWorkspaces().get(workspaceId ?? "");
+  const threadMap = useThreads();
+  const threads = useMemo(
+    () => [...threadMap.values()].filter((thread) => thread.workspaceId === workspaceId),
+    [threadMap, workspaceId],
+  );
+  return (
+    <Dialog
+      isOpen={workspace !== undefined}
+      onOpenChange={(open) => {
+        if (!open) {
+          setWorkspaceId(undefined);
+        }
+      }}
+      title={strings.shell.deleteWorkspace.title(workspace?.name ?? "")}
+      role="alertdialog"
+      data-testid="delete-workspace-dialog"
+    >
+      {({ close }) =>
+        workspace === undefined ? null : (
+          <DeleteWorkspaceForm key={workspace.id} workspace={workspace} threads={threads} close={close} />
+        )
+      }
+    </Dialog>
+  );
+}
+
+function DeleteWorkspaceForm({
+  workspace,
+  threads,
+  close,
+}: {
+  workspace: Workspace;
+  threads: readonly ThreadSummary[];
+  close: () => void;
+}): ReactNode {
+  const host = useHost();
+  const [deleteThreads, setDeleteThreads] = useState(false);
+  const [deleteFolder, setDeleteFolder] = useState(false);
+  const text = strings.shell.deleteWorkspace;
+  const blocked = threads.length > 0 && !deleteThreads;
+  return (
+    <>
+      <div className="omfp-dialog__message" data-testid="delete-workspace-message">
+        <p>{text.message}</p>
+        {!workspace.owned && <p>{text.keptFolder(workspace.path)}</p>}
+        {threads.length > 0 && (
+          <>
+            <p>{text.threads(threads.length)}</p>
+            <ul data-testid="delete-workspace-thread-list">
+              {threads.map((thread) => (
+                <li key={thread.id} data-thread-id={thread.id}>
+                  {displayTitle(thread)}
+                </li>
+              ))}
+            </ul>
+            <Checkbox isSelected={deleteThreads} onChange={setDeleteThreads} data-testid="delete-workspace-threads">
+              {text.deleteThreads}
+            </Checkbox>
+          </>
+        )}
+        {workspace.owned && (
+          <Checkbox isSelected={deleteFolder} onChange={setDeleteFolder} data-testid="delete-workspace-folder">
+            {text.deleteFolder(workspace.path)}
+          </Checkbox>
+        )}
+      </div>
+      <div className="omfp-dialog__actions">
+        <Button variant="quiet" onPress={close} autoFocus data-testid="cancel-delete-workspace">
+          {text.cancel}
+        </Button>
+        <Button
+          variant="danger"
+          isDisabled={blocked}
+          data-testid="confirm-delete-workspace"
+          onPress={() => {
+            close();
+            void removeWorkspace(host, workspace.id, {
+              threadIds: deleteThreads ? threads.map((thread) => thread.id) : [],
+              deleteFolder,
+            });
+          }}
+        >
+          {text.confirm}
+        </Button>
+      </div>
+    </>
   );
 }
 

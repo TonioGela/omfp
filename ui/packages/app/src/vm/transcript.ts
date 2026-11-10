@@ -161,15 +161,15 @@ function contentBlocks(content: string | readonly UserContent[] | undefined): Bl
 /** Fields whose value summarizes a record, by preference. */
 const SUMMARY_KEYS = ["content", "summary", "command", "code", "output", "text"] as const;
 
-/** A generic row for message kinds without their own renderer: kind label, one-line summary, JSON. */
+/** A generic row for message kinds without their own renderer: kind label, one-line summary, JSON (if summarized). */
 function recordView(message: AgentMessage): MessageView {
   const fields: Readonly<Record<string, unknown>> = message;
   const key = SUMMARY_KEYS.find((name) => fields[name] !== undefined);
-  const summary = key === undefined ? "" : textOf(fields[key]);
+  const summary = oneLine(key === undefined ? "" : textOf(fields[key]), 200);
   return {
     role: "record",
     label: strings.chat.records[message.role] ?? message.role,
-    blocks: [{ type: "record", summary: oneLine(summary, 200), json: prettyJson(message) }],
+    blocks: summary === "" ? [] : [{ type: "record", summary, json: prettyJson(message) }],
     error: undefined,
     steering: false,
   };

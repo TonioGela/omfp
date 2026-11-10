@@ -8,7 +8,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::dto::{KeymapEntry, RepoStatus, Repository, TerminalInfo, TerminalKind, UiSettings};
+use crate::dto::{
+    KeymapEntry, PathEntry, RepoStatus, SeenRepository, TerminalInfo, TerminalKind, UiSettings,
+};
 use crate::topic::Topic;
 
 /// No params, or the `{}` result.
@@ -83,25 +85,36 @@ pub struct TopicParams {
     pub topic: Topic,
 }
 
-/// `repos.add` params.
+/// `repos.suggest` params (DMN-021).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SuggestReposParams {
+    /// Keeps repositories whose path or name contains it (case-insensitive); absent or empty: all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+}
+
+/// `repos.suggest` result: most recently seen first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct AddRepositoryParams {
+pub struct RepoSuggestions {
+    pub repos: Vec<SeenRepository>,
+}
+
+/// `fs.complete` params (DMN-021).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletePathParams {
+    /// An absolute path or one starting with `~`: ending with `/`, its children are listed; otherwise the children
+    /// of its parent starting with its last segment.
     pub path: String,
 }
 
-/// Params naming one repository.
+/// `fs.complete` result: directories sorted by name, at most 200.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct RepositoryRef {
-    pub repository_id: String,
-}
-
-/// `repos.list` result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct RepositoryList {
-    pub repositories: Vec<Repository>,
+pub struct PathCompletions {
+    pub entries: Vec<PathEntry>,
 }
 
 /// `workspaces.create` params (DMN-020).
@@ -165,12 +178,12 @@ pub enum RepoSource {
     /// `git worktree add` of a repository.
     #[serde(rename_all = "camelCase")]
     Worktree {
-        /// Known repository id, or a path inside a git repository.
+        /// A path inside a git repository (e.g. a `repos.suggest` path).
         repo: String,
         /// Existing branch to check out, or new branch name; default: a new `omfp/<slug>-<n>` branch.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         branch: Option<String>,
-        /// Base of a new branch; default: the known repository's base ref, else its checked-out branch.
+        /// Base of a new branch; default: the repository's checked-out branch.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         base_ref: Option<String>,
     },
@@ -284,6 +297,30 @@ pub struct UpdateThreadParams {
 #[serde(rename_all = "camelCase")]
 pub struct ThreadRef {
     pub thread_id: String,
+}
+
+/// `threads.search` params (DMN-076).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchThreadsParams {
+    /// Case-insensitive substring of the conversation text; shorter than 2 characters finds nothing.
+    pub query: String,
+}
+
+/// `threads.search` result: most recently updated threads first, at most 200.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadSearchResults {
+    pub results: Vec<ThreadSearchResult>,
+}
+
+/// A thread whose conversation contains the query.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadSearchResult {
+    pub thread_id: String,
+    /// A short excerpt around the first match.
+    pub snippet: String,
 }
 
 /// How a prompt sent while the agent is busy is queued.

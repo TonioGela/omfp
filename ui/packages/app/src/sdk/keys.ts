@@ -39,8 +39,19 @@ export const COLOR_SCHEME = windowKey<ColorScheme>("colorScheme", "system", (sto
 /** Id of the view the window shows (one default view in M3). */
 export const ACTIVE_VIEW = windowKey<string>("activeView", "default");
 
-/** The new-thread dialog is open (UI-023); any widget or command may open it. */
-export const NEW_THREAD_DIALOG = windowKey<boolean>("newThreadDialog", false);
+/** A thread being started in a workspace (UI-023): shown while no thread is selected; the daemon thread is created
+ * when its first message is sent. One per window. */
+export interface DraftThread {
+  readonly workspaceId: string;
+}
+
+export const DRAFT_THREAD = windowKey<DraftThread | undefined>("draftThread", undefined);
+
+/** The composer text of the {@link DRAFT_THREAD}; dropped with it. */
+export const DRAFT_MESSAGE = windowKey<Draft>("draft/draftThread", EMPTY_DRAFT);
+
+/** The workspace whose delete confirmation is open (UI-020, DMN-028). */
+export const DELETE_WORKSPACE = windowKey<string | undefined>("deleteWorkspace", undefined);
 
 /** The thread whose delete confirmation is open (UI-026). */
 export const DELETE_THREAD = windowKey<string | undefined>("deleteThread", undefined);

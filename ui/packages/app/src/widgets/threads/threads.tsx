@@ -1,24 +1,47 @@
 /**
- * `omfp:threads`, the thread list (UI-020..022, UI-026): state badges, unread marks and workspace chips; grouping, a
- * key filter (or the Archived threads only) and free-text search; `+ thread` and "next waiting"; the colour scheme
- * and density pickers (UI-091, UI-094). Its `threads` scope answers `nav.*` (j/k, gg/G, Ctrl-d/u, UI-095), which are
- * also the global fallback, and it registers `nav.search` (`/`).
+ * `omfp:threads`, the left column (UI-020..023, UI-026): the full-text filter (`/`), the "+ workspace" field, then one
+ * section per workspace — name (the current one highlighted), a menu with rename and remove, a delete button, its
+ * threads (state badge, title, unread mark), its draft thread, a collapsed "Archived (N)" row and "+ thread". Sections
+ * collapse (chevron, `za`); the collapsed set is window-local and survives reloads. Its `threads` scope answers
+ * `nav.*` (j/k, gg/G, Ctrl-d/u, UI-095), which are also the global fallback, `dd` and `za` on the focused row or
+ * section; it registers `nav.search` (`/`) and `workspace.new` (`Space w`).
  */
 
-import { Button, type Key, SearchField, Select } from "@omfp/kit";
-import type { Density, ThreadSummary, Workspace } from "@omfp/protocol";
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react";
 import {
-  COLOR_SCHEME,
-  type ColorScheme,
-  DEFAULT_DENSITY,
-  NEW_THREAD_DIALOG,
+  Button,
+  Checkbox,
+  IconButton,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  PathField,
+  Popover,
+  SearchField,
+  TextField,
+} from "@omfp/kit";
+import { INDEX_TOPIC, type ThreadSummary, type Workspace } from "@omfp/protocol";
+import {
+  type FormEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  DELETE_WORKSPACE,
+  DRAFT_THREAD,
+  errorMessage,
   SELECTED_THREAD,
   threadActions,
+  useCall,
   useCommand,
   useHost,
-  useSetSettings,
-  useSettings,
+  useReportError,
+  useSnapshot,
   useThreadActions,
   useThreads,
   useWindowState,
@@ -26,97 +49,110 @@ import {
   type WidgetProps,
   windowKey,
 } from "../../sdk/index.ts";
+import { usePathSources } from "../../sdk/paths.ts";
 import { strings } from "../../strings/index.ts";
 import {
-  DEFAULT_GROUPING,
-  DIMENSIONS,
-  type Dimension,
+  ConversationSearch,
+  decodeIds,
   displayTitle,
-  type Filter,
-  filterOptions,
-  type Grouping,
-  groupThreads,
-  isGrouping,
+  isCollapsed,
+  isFiltering,
   isUnread,
-  listOrder,
   type Move,
   moveSelection,
-  NO_FILTER,
-  nextNeedingAttention,
+  type Section,
   type Seen,
+  sidebarSections,
+  type ThreadFilter,
   threadStatus,
+  toggled,
   updateSeen,
-  waitingCount,
-  workspaceChips,
+  visibleOrder,
 } from "../../vm/threads.ts";
-import { StatusBadge, WorkspaceChipView } from "./badges.tsx";
+import { StatusBadge } from "./badges.tsx";
 
 const text = strings.shell.threads;
 
-/** The list's grouping, kept across reloads. */
-export const THREAD_GROUPING = windowKey<Grouping>("threads/grouping", DEFAULT_GROUPING, (stored) =>
-  isGrouping(stored) ? stored : undefined,
-);
-export const THREAD_FILTER = windowKey<Filter>("threads/filter", NO_FILTER);
+/** The filter query of this window. */
+export const THREAD_QUERY = windowKey<string>("threads/query", "");
+/** Workspace ids whose section is collapsed, kept across reloads (UI-022). */
+export const COLLAPSED_WORKSPACES = windowKey<readonly string[]>("threads/collapsed", [], decodeIds);
+/** Workspace ids whose archived threads are listed (UI-026); collapsed by default. */
+export const ARCHIVED_OPEN = windowKey<readonly string[]>("threads/archivedOpen", []);
 /** `updatedAt` of each thread when this window last showed it (UI-020). */
 export const SEEN = windowKey<Seen>("threads/seen", new Map());
 
 /** Rows moved by Ctrl-d / Ctrl-u. */
 const HALF_PAGE = 10;
-const ALL = "all";
-const ARCHIVED = "archived";
+const NO_SNIPPETS: ReadonlyMap<string, string> = new Map();
 
 export function ThreadsWidget(_props: WidgetProps): ReactNode {
   const threads = useThreadList();
   const workspaces = useWorkspaceList();
   const [selected] = useWindowState(SELECTED_THREAD);
-  const [grouping] = useWindowState(THREAD_GROUPING);
-  const [filter] = useWindowState(THREAD_FILTER);
+  const [query] = useWindowState(THREAD_QUERY);
+  const [collapsed] = useWindowState(COLLAPSED_WORKSPACES);
+  const [archivedOpen] = useWindowState(ARCHIVED_OPEN);
+  const conversation = useConversationMatches(query);
+  const filter = useMemo<ThreadFilter>(() => ({ query, conversation }), [query, conversation]);
   const seen = useSeen(threads, selected);
-  const groups = useMemo(
-    () => groupThreads(threads, workspaces, grouping, filter),
-    [threads, workspaces, grouping, filter],
+  const sections = useMemo(() => sidebarSections(threads, workspaces, filter), [threads, workspaces, filter]);
+  const order = useMemo(
+    () => visibleOrder(sections, collapsed, archivedOpen, filter),
+    [sections, collapsed, archivedOpen, filter],
   );
-  const order = useMemo(() => listOrder(groups), [groups]);
   const root = useRef<HTMLElement>(null);
   const search = useRef<HTMLInputElement>(null);
+  const newWorkspace = useRef<HTMLInputElement>(null);
   useNavCommands(order, root);
+  useSectionCommands();
   useCommand({
     id: "nav.search",
     title: strings.shell.commands.search,
-    aliases: ["search"],
+    aliases: ["search", "filter"],
     run: () => search.current?.focus(),
   });
+  useCommand({
+    id: "workspace.new",
+    title: strings.shell.commands.newWorkspace,
+    aliases: ["workspace"],
+    run: () => newWorkspace.current?.focus(),
+  });
+  const loaded = useSnapshot((snapshot) =>
+    snapshot.topics.some((topic) => topic.topic === INDEX_TOPIC && topic.sync.kind === "live"),
+  );
   const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+  if (workspaces.length === 0) {
+    return (
+      <nav ref={root} className="omfp-threads" aria-label={text.label} data-testid="sidebar" data-omfp-scope="threads">
+        <NewWorkspace inputRef={newWorkspace} focus={loaded} />
+        {loaded && (
+          <p className="omfp-muted" data-testid="no-workspaces-hint">
+            {strings.shell.newWorkspace.hint}
+          </p>
+        )}
+      </nav>
+    );
+  }
   return (
     <nav ref={root} className="omfp-threads" aria-label={text.label} data-testid="sidebar" data-omfp-scope="threads">
-      <Actions threads={threads} />
-      <Controls threads={threads} workspaces={workspaces} search={search} />
-      {groups.map((group) => (
-        <section key={group.key} className="omfp-threads__group" data-testid="thread-group" data-group={group.key}>
-          {grouping !== "none" && <h3 className="omfp-threads__label">{group.label}</h3>}
-          <ul className="omfp-threads__list">
-            {group.threadIds.map((id) => {
-              const thread = byId.get(id);
-              return thread === undefined ? null : (
-                <ThreadRow
-                  key={id}
-                  thread={thread}
-                  workspaces={workspaces}
-                  selected={selected === id}
-                  unread={isUnread(thread, seen, selected)}
-                />
-              );
-            })}
-          </ul>
-        </section>
+      <ThreadFilterField search={search} />
+      <NewWorkspace inputRef={newWorkspace} focus={false} />
+      {sections.map((section) => (
+        <WorkspaceSection
+          key={section.workspace.id}
+          section={section}
+          filter={filter}
+          byId={byId}
+          seen={seen}
+          selected={selected}
+        />
       ))}
-      {order.length === 0 && (
+      {sections.length === 0 && (
         <p className="omfp-muted" data-testid="no-threads">
-          {text.empty}
+          {text.noMatch}
         </p>
       )}
-      <Appearance />
     </nav>
   );
 }
@@ -138,6 +174,30 @@ function useSeen(threads: readonly ThreadSummary[], selected: string | undefined
     setSeen((previous) => updateSeen(previous, threads, selected));
   }, [threads, selected, setSeen]);
   return seen;
+}
+
+/** Conversation matches of `query` by `threads.search` (UI-022, DMN-076): debounced, only for the current query. */
+function useConversationMatches(query: string): ReadonlyMap<string, string> {
+  const call = useCall();
+  const [found, setFound] = useState<{ query: string; snippets: ReadonlyMap<string, string> }>({
+    query: "",
+    snippets: NO_SNIPPETS,
+  });
+  const search = useMemo(
+    () =>
+      new ConversationSearch(
+        async (wanted) => (await call("threads.search", { query: wanted })).results,
+        (run, ms) => {
+          const timer = setTimeout(run, ms);
+          return () => clearTimeout(timer);
+        },
+        (answered, snippets) => setFound({ query: answered, snippets }),
+      ),
+    [call],
+  );
+  useEffect(() => () => search.dispose(), [search]);
+  useEffect(() => search.update(query), [search, query]);
+  return found.query === query ? found.snippets : NO_SNIPPETS;
 }
 
 /** `nav.*` in the `threads` scope and as the global fallback. */
@@ -182,136 +242,383 @@ const NAV_MOVES: ReadonlyArray<readonly [string, string, Move]> = [
   ["nav.halfUp", strings.shell.commands.halfUp, -HALF_PAGE],
 ];
 
-/** New thread and the "next thread needing attention" shortcut (UI-021). */
-function Actions({ threads }: { threads: readonly ThreadSummary[] }): ReactNode {
-  const [, openNewThread] = useWindowState(NEW_THREAD_DIALOG);
-  const [selected] = useWindowState(SELECTED_THREAD);
+/** `dd` (delete the focused thread, draft or workspace) and `za` (collapse the focused section), UI-020, UI-022. */
+function useSectionCommands(): void {
+  const host = useHost();
   const actions = useThreadActions();
-  const waiting = waitingCount(threads);
-  return (
-    <div className="omfp-threads__actions">
-      <Button variant="primary" size="sm" data-testid="new-thread" onPress={() => openNewThread(true)}>
-        {text.newThread}
-      </Button>
-      <Button
-        size="sm"
-        data-testid="next-attention"
-        isDisabled={waiting === 0}
-        onPress={() => {
-          const next = nextNeedingAttention(threads, selected);
-          if (next !== undefined) {
-            actions.select(next);
-          }
-        }}
-      >
-        {text.nextWaiting(waiting)}
-      </Button>
-    </div>
-  );
+  const sectionOf = (element: Element | null) =>
+    element?.closest<HTMLElement>('[data-testid="workspace-section"]')?.dataset.workspaceId;
+  useCommand({
+    id: "nav.delete",
+    title: strings.shell.commands.deleteFocused,
+    scope: "threads",
+    run: () => {
+      const element = document.activeElement;
+      const threadId = element?.closest<HTMLElement>("[data-thread-id]")?.dataset.threadId;
+      const workspaceId = sectionOf(element);
+      if (threadId !== undefined) {
+        actions.requestDelete(threadId);
+      } else if (element?.closest('[data-testid="draft-thread"]')) {
+        actions.discardDraft();
+      } else if (workspaceId !== undefined) {
+        host.window.set(DELETE_WORKSPACE, workspaceId);
+      }
+    },
+  });
+  useCommand({
+    id: "nav.toggleSection",
+    title: strings.shell.commands.toggleSection,
+    scope: "threads",
+    run: () => {
+      const workspaceId = sectionOf(document.activeElement);
+      if (workspaceId !== undefined) {
+        host.window.set(COLLAPSED_WORKSPACES, (previous) => toggled(previous, workspaceId));
+      }
+    },
+  });
 }
 
-/** Grouping, key filter (or Archived), free-text search (UI-022, UI-026). */
-function Controls({
-  threads,
-  workspaces,
-  search,
-}: {
-  threads: readonly ThreadSummary[];
-  workspaces: readonly Workspace[];
-  search: RefObject<HTMLInputElement | null>;
-}): ReactNode {
-  const [grouping, setGrouping] = useWindowState(THREAD_GROUPING);
-  const [filter, setFilter] = useWindowState(THREAD_FILTER);
-  const options = useMemo(() => filterOptions(threads, workspaces), [threads, workspaces]);
-  const dimension = strings.shell.dimension;
-  const groupings = [
-    { id: "none", label: text.groupingNone },
-    ...DIMENSIONS.map((id) => ({ id, label: dimension[id] })),
-    { id: "pr", label: dimension.pr },
-  ];
-  const filters = [
-    { id: ALL, label: text.filterAll },
-    { id: ARCHIVED, label: text.filterArchived },
-    ...options.map((option) => ({
-      id: filterId(option.dimension, option.key.key),
-      label: text.filterOption(dimension[option.dimension], option.key.label),
-    })),
-  ];
+/** The one filter of the column (UI-022); `/` focuses it. */
+function ThreadFilterField({ search }: { search: RefObject<HTMLInputElement | null> }): ReactNode {
+  const [query, setQuery] = useWindowState(THREAD_QUERY);
   return (
-    <div className="omfp-threads__controls">
-      <Select
-        label={text.grouping}
-        data-testid="grouping"
-        items={groupings}
-        disabledKeys={["pr"]}
-        selectedKey={grouping}
-        onSelectionChange={(key) => {
-          if (isGrouping(key)) {
-            setGrouping(key);
-          }
-        }}
-      />
-      <Select
-        label={text.filter}
-        data-testid="filter-key"
-        items={filters}
-        selectedKey={selectedFilter(filter)}
-        onSelectionChange={(key) => setFilter((previous) => applyFilterKey(previous, key))}
-      />
+    <div className="omfp-threads__filter">
       <SearchField
-        label={text.search}
+        label={text.filter}
         hideLabel
-        placeholder={text.search}
-        value={filter.text}
-        onChange={(value) => setFilter((previous) => ({ ...previous, text: value }))}
+        placeholder={text.filterPlaceholder}
+        value={query}
+        onChange={setQuery}
         inputRef={search}
-        inputProps={{ "data-testid": "filter-text" }}
-        clearTestId="clear-filter-text"
+        inputProps={{ "data-testid": "thread-filter" }}
+        clearTestId="clear-thread-filter"
       />
     </div>
   );
 }
 
-function filterId(dimension: Dimension, key: string): string {
-  return `${dimension}:${key}`;
+/** "+ workspace" (UI-023): an optional name, or an existing folder; Enter creates it and opens a draft thread in it. */
+function NewWorkspace({
+  inputRef,
+  focus,
+}: {
+  inputRef: RefObject<HTMLInputElement | null>;
+  focus: boolean;
+}): ReactNode {
+  const call = useCall();
+  const actions = useThreadActions();
+  const sources = usePathSources();
+  const labels = strings.shell.newWorkspace;
+  const [existing, setExisting] = useState(false);
+  const [name, setName] = useState("");
+  const [path, setPath] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (focus) {
+      inputRef.current?.focus();
+    }
+  }, [focus, inputRef]);
+  const create = (params: { name?: string; path?: string }) => {
+    if (busy) {
+      return;
+    }
+    setBusy(true);
+    setError(undefined);
+    call("workspaces.create", params).then(
+      (workspace) => {
+        setBusy(false);
+        setName("");
+        setPath("");
+        setExisting(false);
+        actions.openDraft(workspace.id);
+      },
+      (failure: unknown) => {
+        setBusy(false);
+        setError(errorMessage(failure));
+      },
+    );
+  };
+  const submitName = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = name.trim();
+    create(trimmed === "" ? {} : { name: trimmed });
+  };
+  const submitPath = (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed !== "") {
+      create({ path: trimmed.length > 1 ? trimmed.replace(/\/+$/, "") : trimmed });
+    }
+  };
+  return (
+    <div className="omfp-threads__new-workspace" data-testid="new-workspace">
+      {existing ? (
+        <PathField
+          label={labels.pathLabel}
+          hideLabel
+          placeholder={labels.pathPlaceholder}
+          value={path}
+          onChange={setPath}
+          onSubmit={submitPath}
+          complete={sources.complete}
+          autoFocus
+          inputRef={inputRef}
+          data-testid="new-workspace-path"
+        />
+      ) : (
+        <form onSubmit={submitName}>
+          <TextField
+            label={labels.label}
+            hideLabel
+            placeholder={labels.namePlaceholder}
+            value={name}
+            onChange={setName}
+            inputRef={inputRef}
+            inputProps={{ "data-testid": "new-workspace-name" }}
+          />
+        </form>
+      )}
+      <Checkbox
+        isSelected={existing}
+        onChange={(selected) => {
+          setExisting(selected);
+          setError(undefined);
+        }}
+        data-testid="new-workspace-existing"
+      >
+        {labels.existing}
+      </Checkbox>
+      {error !== undefined && (
+        <p className="omfp-form-error" role="alert" data-testid="new-workspace-error">
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }
 
-function selectedFilter(filter: Filter): string {
-  if (filter.archived) {
-    return ARCHIVED;
-  }
-  return filter.key === undefined ? ALL : filterId(filter.key.dimension, filter.key.key);
+function WorkspaceSection({
+  section,
+  filter,
+  byId,
+  seen,
+  selected,
+}: {
+  section: Section;
+  filter: ThreadFilter;
+  byId: ReadonlyMap<string, ThreadSummary>;
+  seen: Seen;
+  selected: string | undefined;
+}): ReactNode {
+  const host = useHost();
+  const actions = useThreadActions();
+  const { workspace } = section;
+  const [collapsedIds, setCollapsed] = useWindowState(COLLAPSED_WORKSPACES);
+  const [archivedOpen, setArchivedOpen] = useWindowState(ARCHIVED_OPEN);
+  const [draft] = useWindowState(DRAFT_THREAD);
+  const [renaming, setRenaming] = useState(false);
+  const headingId = useId();
+  const collapsed = isCollapsed(workspace.id, collapsedIds, filter);
+  const current = useCurrentWorkspace() === workspace.id;
+  const showArchived = archivedOpen.includes(workspace.id);
+  const draftHere = draft?.workspaceId === workspace.id && !isFiltering(filter);
+  const snippets = isFiltering(filter) ? filter.conversation : NO_SNIPPETS;
+  return (
+    <section
+      className="omfp-ws"
+      data-testid="workspace-section"
+      data-workspace-id={workspace.id}
+      data-current={current ? "true" : undefined}
+      aria-labelledby={headingId}
+    >
+      <div className="omfp-ws__header">
+        <button
+          type="button"
+          className="omfp-ws__chevron"
+          data-testid="workspace-collapse"
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? text.expand(workspace.name) : text.collapse(workspace.name)}
+          onClick={() => setCollapsed((previous) => toggled(previous, workspace.id))}
+        >
+          <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+        </button>
+        {renaming ? (
+          <RenameWorkspace workspace={workspace} close={() => setRenaming(false)} />
+        ) : (
+          <h3 id={headingId} className="omfp-ws__name" data-testid="workspace-section-name">
+            {workspace.name}
+            {current && <span className="omfp-visually-hidden"> ({text.current})</span>}
+          </h3>
+        )}
+        <MenuTrigger>
+          <IconButton label={text.menu(workspace.name)} icon="⋯" data-testid="workspace-menu" />
+          <Popover placement="bottom end">
+            <Menu
+              aria-label={text.menu(workspace.name)}
+              onAction={(key) => {
+                if (key === "rename") {
+                  setRenaming(true);
+                } else if (key === "remove") {
+                  host.window.set(DELETE_WORKSPACE, workspace.id);
+                }
+              }}
+            >
+              <MenuItem id="rename" data-testid="workspace-rename">
+                {text.rename}
+              </MenuItem>
+              <MenuItem id="remove" data-testid="workspace-remove">
+                {text.remove}
+              </MenuItem>
+            </Menu>
+          </Popover>
+        </MenuTrigger>
+        <IconButton
+          className="omfp-reveal"
+          label={text.deleteWorkspace(workspace.name)}
+          icon="✕"
+          data-testid="delete-workspace"
+          onPress={() => host.window.set(DELETE_WORKSPACE, workspace.id)}
+        />
+      </div>
+      {!collapsed && (
+        <>
+          <ul className="omfp-threads__list">
+            {section.threadIds.map((id) => {
+              const thread = byId.get(id);
+              return thread === undefined ? null : (
+                <ThreadRow
+                  key={id}
+                  thread={thread}
+                  selected={selected === id}
+                  unread={isUnread(thread, seen, selected)}
+                  snippet={snippets.get(id)}
+                />
+              );
+            })}
+            {draftHere && (
+              <li className="omfp-thread-item">
+                <button
+                  type="button"
+                  className="omfp-thread-row"
+                  data-testid="draft-thread"
+                  data-workspace-id={workspace.id}
+                  aria-current={selected === undefined ? "true" : undefined}
+                  onClick={() => actions.openDraft(workspace.id)}
+                >
+                  <span className="omfp-thread-row__title" data-placeholder="true">
+                    {strings.shell.untitled}
+                  </span>
+                  <span className="omfp-muted">{text.draft}</span>
+                </button>
+              </li>
+            )}
+          </ul>
+          {section.archivedIds.length > 0 && (
+            <div className="omfp-ws__archived">
+              <button
+                type="button"
+                className="omfp-ws__archived-toggle"
+                data-testid="archived-toggle"
+                aria-expanded={showArchived}
+                onClick={() => setArchivedOpen((previous) => toggled(previous, workspace.id))}
+              >
+                {text.archived(section.archivedIds.length)}
+              </button>
+              {showArchived && (
+                <ul className="omfp-threads__list" data-testid="archived-list">
+                  {section.archivedIds.map((id) => {
+                    const thread = byId.get(id);
+                    return thread === undefined ? null : (
+                      <ThreadRow
+                        key={id}
+                        thread={thread}
+                        selected={selected === id}
+                        unread={false}
+                        snippet={snippets.get(id)}
+                        archived
+                      />
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+          <Button
+            size="sm"
+            variant="quiet"
+            className="omfp-ws__add"
+            data-testid="add-thread"
+            data-workspace-id={workspace.id}
+            onPress={() => actions.openDraft(workspace.id)}
+          >
+            {text.addThread}
+          </Button>
+        </>
+      )}
+    </section>
+  );
 }
 
-function applyFilterKey(filter: Filter, key: Key | null): Filter {
-  const value = String(key ?? ALL);
-  const { key: _dropped, ...rest } = filter;
-  if (value === ALL || value === ARCHIVED) {
-    return { ...rest, archived: value === ARCHIVED };
-  }
-  const colon = value.indexOf(":");
-  const dimension = DIMENSIONS.find((candidate) => candidate === value.slice(0, colon));
-  return dimension === undefined
-    ? { ...rest, archived: false }
-    : { ...rest, archived: false, key: { dimension, key: value.slice(colon + 1) } };
+/** The workspace this window works in: the selected thread's, else the draft thread's. */
+function useCurrentWorkspace(): string | undefined {
+  const [selected] = useWindowState(SELECTED_THREAD);
+  const [draft] = useWindowState(DRAFT_THREAD);
+  const threads = useThreads();
+  return selected === undefined ? draft?.workspaceId : threads.get(selected)?.workspaceId;
+}
+
+function RenameWorkspace({ workspace, close }: { workspace: Workspace; close: () => void }): ReactNode {
+  const call = useCall();
+  const report = useReportError();
+  const [name, setName] = useState(workspace.name);
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    close();
+    const trimmed = name.trim();
+    if (trimmed !== "" && trimmed !== workspace.name) {
+      call("workspaces.update", { workspaceId: workspace.id, name: trimmed }).catch(report);
+    }
+  };
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+    }
+  };
+  return (
+    <form className="omfp-ws__rename" onSubmit={save}>
+      <TextField
+        label={text.renameLabel}
+        hideLabel
+        value={name}
+        onChange={setName}
+        onKeyDown={onKeyDown}
+        // Opened from the section's menu to type the new name at once
+        autoFocus
+        inputProps={{ "data-testid": "workspace-name-input" }}
+      />
+    </form>
+  );
 }
 
 function ThreadRow({
   thread,
-  workspaces,
   selected,
   unread,
+  snippet,
+  archived = false,
 }: {
   thread: ThreadSummary;
-  workspaces: readonly Workspace[];
   selected: boolean;
   unread: boolean;
+  snippet: string | undefined;
+  archived?: boolean;
 }): ReactNode {
   const actions = useThreadActions();
   const status = threadStatus(thread);
-  const chips = workspaceChips(thread.workspaceId, workspaces);
+  const title = displayTitle(thread);
   return (
-    <li>
+    <li className="omfp-thread-item">
       <button
         type="button"
         className="omfp-thread-row"
@@ -319,59 +626,43 @@ function ThreadRow({
         data-thread-id={thread.id}
         data-status={status}
         data-title-source={thread.titleSource}
+        data-archived={archived ? "true" : undefined}
         aria-current={selected ? "true" : undefined}
         onClick={() => actions.select(thread.id)}
       >
         <StatusBadge status={status} testid="thread-status" />
-        <span className="omfp-thread-row__title">{displayTitle(thread)}</span>
+        <span className="omfp-thread-row__title">{title}</span>
         {unread && (
           <span className="omfp-thread-row__unread" data-testid="unread" role="img" aria-label={text.unread}>
             •
           </span>
         )}
-        {chips.length > 0 && (
-          <span className="omfp-thread-row__chips">
-            {chips.map((chip) => (
-              <WorkspaceChipView key={chip.key} chip={chip} />
-            ))}
+        {snippet !== undefined && (
+          <span className="omfp-thread-row__snippet" data-testid="thread-snippet">
+            {snippet}
           </span>
         )}
       </button>
+      {archived && (
+        <Button
+          size="sm"
+          variant="quiet"
+          aria-label={text.unarchiveThread(title)}
+          data-testid="unarchive-thread"
+          data-thread-id={thread.id}
+          onPress={() => void actions.unarchive(thread.id)}
+        >
+          {text.unarchive}
+        </Button>
+      )}
+      <IconButton
+        className="omfp-reveal"
+        label={text.deleteThread(title)}
+        icon="✕"
+        data-testid="row-delete-thread"
+        data-thread-id={thread.id}
+        onPress={() => actions.requestDelete(thread.id)}
+      />
     </li>
-  );
-}
-
-/** Colour scheme (UI-091, this window, persisted) and density (the daemon's setting, every window, UI-097). */
-function Appearance(): ReactNode {
-  const [scheme, setScheme] = useWindowState(COLOR_SCHEME);
-  const density = useSettings().ui.density ?? DEFAULT_DENSITY;
-  const setSettings = useSetSettings();
-  const schemes = strings.shell.colorScheme;
-  const densities = strings.shell.densities;
-  return (
-    <div className="omfp-threads__footer">
-      <Select
-        label={text.theme}
-        data-testid="theme-mode"
-        items={(["system", "light", "dark"] as const).map((id) => ({ id, label: schemes[id] }))}
-        selectedKey={scheme}
-        onSelectionChange={(key) => {
-          if (key === "system" || key === "light" || key === "dark") {
-            setScheme(key satisfies ColorScheme);
-          }
-        }}
-      />
-      <Select
-        label={text.density}
-        data-testid="density-mode"
-        items={(["compact", "normal"] as const).map((id) => ({ id, label: densities[id] }))}
-        selectedKey={density}
-        onSelectionChange={(key) => {
-          if ((key === "compact" || key === "normal") && key !== density) {
-            void setSettings({ ui: { density: key satisfies Density } });
-          }
-        }}
-      />
-    </div>
   );
 }

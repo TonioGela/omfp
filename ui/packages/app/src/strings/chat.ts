@@ -12,6 +12,8 @@ export const chat = {
   attachedImage: "Attached image",
   details: "Details",
   missingMessage: "missing",
+  /** Label of omp's own bookkeeping records (device inventories, mount notices). */
+  system: "system",
   records: {
     toolResult: "tool result",
     bashExecution: "bash",

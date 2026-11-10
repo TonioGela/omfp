@@ -9,7 +9,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 
-use crate::dto::{RepoStatus, Repository, Settings, Theme, ThreadSummary, Workspace};
+use crate::dto::{RepoStatus, Settings, Theme, ThreadSummary, Workspace};
 use crate::method::Call;
 use crate::topic::Topic;
 
@@ -355,13 +355,6 @@ pub enum TopicEvent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum IndexEvent {
-    RepositoryUpserted {
-        repository: Repository,
-    },
-    RepositoryRemoved {
-        #[serde(rename = "repositoryId")]
-        repository_id: String,
-    },
     WorkspaceUpserted {
         workspace: Workspace,
     },

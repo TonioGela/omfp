@@ -7,7 +7,7 @@
  * | Hook | Gives |
  * | --- | --- |
  * | `useConnection()` | connection status (connecting, connected, reconnecting, …) |
- * | `useIndex()`, `useThreads()`, `useThreadSummary(id)`, `useWorkspaces()`, `useRepositories()` | the `index` topic |
+ * | `useIndex()`, `useThreads()`, `useThreadSummary(id)`, `useWorkspaces()` | the `index` topic |
  * | `useThread(id)` | the thread's `ThreadView` (reducer state + closed interactions), following `thread/<id>` |
  * | `useWorkspace(id)` | the workspace and its repositories' git status, following `workspace/<id>` |
  * | `useTopic(topic)` | any topic's subscription state, followed while mounted |
@@ -16,24 +16,28 @@
  * | `useWindowState(key)` | window-local state by {@link WindowKey} (`SELECTED_THREAD`, `draftKey(id)`, …) |
  * | `useCommand(command)` / `useRunCommand()` | commands for the keymap and the `:` line (UI-095) |
  * | `useAnnounce()` | the ARIA live region (UI-092) |
- * | `useThreadActions()` | select, archive/unarchive, delete (`requestDelete` asks first), rename, tags, stop, restart; archiving or deleting forgets the selection and the draft (UI-026) |
+ * | `useThreadActions()` | select, draft threads (open, discard, send the first message), archive/unarchive, delete (`requestDelete` asks first), rename, tags, stop, restart; archiving or deleting forgets the selection and the draft (UI-023, UI-026) |
  * | `useReportError()` | puts a failure in the frame's error list (`ERRORS`) |
  * | `useHost()` | the host itself (registry, window store), for frame-level code |
  * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
  * | `useSetSettings()` | `settings.set(patch)`: merges `ui`/`keymap` into the config file; failures go to `ERRORS` |
  *
- * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `COLOR_SCHEME` (persisted, applied to `<html>` by the frame),
- * `ACTIVE_VIEW`, `NEW_THREAD_DIALOG`, `DELETE_THREAD`, `RENAMING_THREAD`, `ERRORS`. A widget is a
+ * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
+ * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,
+ * `RENAMING_THREAD`, `ERRORS`. A widget is a
  * {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own scoped commands.
  */
 
 export {
+  currentWorkspaceId,
   errorMessage,
+  removeWorkspace,
   reportError,
   type ThreadActions,
   threadActions,
   useReportError,
   useThreadActions,
+  type WorkspaceRemoval,
 } from "./actions.ts";
 export { type Command, CommandRegistry, SCOPE_ATTRIBUTE, scopesAt } from "./commands.ts";
 export {
@@ -50,7 +54,6 @@ export {
   useCommand,
   useConnection,
   useIndex,
-  useRepositories,
   useRunCommand,
   useSnapshot,
   useThread,
@@ -78,11 +81,14 @@ export {
   COLOR_SCHEME,
   type ColorScheme,
   DELETE_THREAD,
+  DELETE_WORKSPACE,
+  DRAFT_MESSAGE,
+  DRAFT_THREAD,
   type Draft,
+  type DraftThread,
   draftKey,
   EMPTY_DRAFT,
   ERRORS,
-  NEW_THREAD_DIALOG,
   RENAMING_THREAD,
   SELECTED_THREAD,
 } from "./keys.ts";

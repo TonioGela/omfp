@@ -1,7 +1,7 @@
 /**
- * The global commands of the frame (UI-095), shared by the keymap and the `:` line: thread actions on the selected
- * thread (UI-021, UI-023, UI-026, UI-030), colour scheme (UI-091, window-local), density and `:set` (daemon settings,
- * UI-094, UI-097), and the view switch.
+ * The global commands of the frame (UI-095), shared by the keymap and the `:` line: a draft thread in the current
+ * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030), colour scheme (UI-091,
+ * window-local), density and `:set` (daemon settings, UI-094, UI-097), and the view switch.
  */
 
 import type { ReactNode } from "react";
@@ -9,7 +9,7 @@ import {
   ACTIVE_VIEW,
   COLOR_SCHEME,
   type ColorScheme,
-  NEW_THREAD_DIALOG,
+  currentWorkspaceId,
   RENAMING_THREAD,
   reportError,
   SELECTED_THREAD,
@@ -49,7 +49,15 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
     id: "thread.new",
     title: titles.new,
     aliases: ["new"],
-    run: () => host.window.set(NEW_THREAD_DIALOG, true),
+    // Without a current workspace, the "+ workspace" field of the left column takes the focus.
+    run: () => {
+      const workspaceId = currentWorkspaceId(host);
+      if (workspaceId === undefined) {
+        host.commands.run("workspace.new", [], []);
+      } else {
+        actions.openDraft(workspaceId);
+      }
+    },
   });
   useCommand({
     id: "thread.archive",

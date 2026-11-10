@@ -1,6 +1,6 @@
-//! Known repositories and workspace folders (02-daemon, "Workspaces and their repositories"): creating and removing
-//! workspaces, discovering their repositories (DMN-022), adding and removing repositories (DMN-024, DMN-025), and
-//! their git status (DMN-026).
+//! Workspace folders (02-daemon, "Workspaces and their repositories"): creating and removing workspaces, discovering
+//! their repositories (DMN-022) and suggesting the ones seen before (DMN-021), adding and removing repositories
+//! (DMN-024, DMN-025), and their git status (DMN-026).
 //!
 //! Calls are blocking; the server layer runs them on blocking tasks.
 
@@ -14,7 +14,7 @@ pub use scan::{Discovered, RepoKind, scan};
 
 use crate::git::{Git, GitError, GitStatus, WorktreeBranch};
 use crate::names::{is_entry_name, slugify, unique};
-use crate::store::{Provenance, Repository, Store, StoreError, Workspace, new_id, now_ms};
+use crate::store::{Provenance, SeenRepository, Store, StoreError, Workspace, new_id, now_ms};
 
 #[derive(Debug, thiserror::Error)]
 pub enum WorkspaceError {
@@ -50,11 +50,14 @@ pub enum WorkspaceError {
 
 pub type Result<T, E = WorkspaceError> = std::result::Result<T, E>;
 
-/// A repository named by a client: a known one, or any directory inside a git repository (DMN-021).
+/// A repository the daemon has seen in a workspace, offered when adding one (DMN-021).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RepoRef {
-    Id(String),
-    Path(PathBuf),
+pub struct Suggestion {
+    pub path: PathBuf,
+    /// The path's last component.
+    pub name: String,
+    /// Unix milliseconds.
+    pub last_seen_at: i64,
 }
 
 /// Parameters of [`Workspaces::create`] (DMN-020).
@@ -93,10 +96,10 @@ impl Default for NewWorkspace {
 pub enum RepoSource {
     /// A symlink to the repository at this path.
     Link(PathBuf),
-    /// A new worktree of `repo`: on `branch` (existing, or created from `base_ref`), default a new
-    /// `omfp/<slug>-<n>` branch.
+    /// A new worktree of the repository containing `repo`: on `branch` (existing, or created from `base_ref`),
+    /// default a new `omfp/<slug>-<n>` branch.
     Worktree {
-        repo: RepoRef,
+        repo: PathBuf,
         branch: Option<String>,
         base_ref: Option<String>,
     },
@@ -111,7 +114,7 @@ pub struct WorkspaceView {
     pub repos: Vec<Discovered>,
 }
 
-/// Repository registry and workspace folders.
+/// Workspace folders and the repositories in them.
 #[derive(Debug)]
 pub struct Workspaces {
     store: Arc<Store>,
@@ -152,41 +155,27 @@ impl Workspaces {
         &*self.git
     }
 
-    // Known repositories
+    // Suggestions
 
-    /// Registers the git repository rooted at `path` (DMN-021).
-    pub fn add_repository(
-        &self,
-        path: &Path,
-        default_base_ref: Option<&str>,
-    ) -> Result<Repository> {
-        let path = git_root(&*self.git, path)?;
-        let default_base_ref = match default_base_ref {
-            Some(base) => base.to_owned(),
-            None => self
-                .git
-                .current_branch(&path)?
-                .ok_or_else(|| WorkspaceError::DetachedHead(path.clone()))?,
-        };
-        let repo = Repository {
-            id: new_id(),
-            name: dir_name(&path),
-            remote_url: self.git.remote_url(&path, "origin")?,
-            path,
-            default_base_ref,
-            created_at: now_ms(),
-        };
-        self.store.insert_repository(&repo)?;
-        Ok(repo)
-    }
-
-    /// Forgets a known repository; workspaces holding it are not touched.
-    pub fn remove_repository(&self, id: &str) -> Result<()> {
-        Ok(self.store.delete_repository(id)?)
-    }
-
-    pub fn repositories(&self) -> Result<Vec<Repository>> {
-        Ok(self.store.repositories()?)
+    /// The repositories seen in any workspace whose path or name contains `query` (case-insensitive; empty: all),
+    /// most recently seen first (DMN-021).
+    pub fn suggest(&self, query: &str) -> Result<Vec<Suggestion>> {
+        let query = query.trim().to_lowercase();
+        Ok(self
+            .store
+            .seen_repositories()?
+            .into_iter()
+            .map(|SeenRepository { path, last_seen_at }| Suggestion {
+                name: dir_name(&path),
+                path,
+                last_seen_at,
+            })
+            .filter(|repo| {
+                query.is_empty()
+                    || repo.name.to_lowercase().contains(&query)
+                    || repo.path.to_string_lossy().to_lowercase().contains(&query)
+            })
+            .collect())
     }
 
     // Workspaces
@@ -313,6 +302,8 @@ impl Workspaces {
             .unwrap_or_else(PoisonError::into_inner)
             .insert(ws.id.clone(), repos.clone());
         let changed = previous.as_ref() != Some(&repos);
+        let seen: Vec<PathBuf> = repos.iter().map(seen_path).collect();
+        self.store.record_seen_repositories(&seen, now_ms())?;
         Ok((
             WorkspaceView {
                 workspace: ws,
@@ -374,35 +365,24 @@ impl Workspaces {
         &self,
         ws: &Workspace,
         name: Option<&str>,
-        repo: &RepoRef,
+        repo: &Path,
         branch: Option<String>,
         base_ref: Option<String>,
     ) -> Result<()> {
-        let (toplevel, known) = match repo {
-            RepoRef::Id(id) => {
-                let repo = self.store.repository(id)?;
-                (repo.path.clone(), Some(repo))
-            }
-            RepoRef::Path(path) => {
-                let dir = existing_dir(path)?;
-                let toplevel = self
-                    .git
-                    .toplevel(&dir)?
-                    .ok_or(WorkspaceError::NotARepository(dir))?;
-                let toplevel = std::fs::canonicalize(toplevel)?;
-                let known = self.store.repository_by_path(&toplevel)?;
-                (toplevel, known)
-            }
-        };
-        let base_ref = match (base_ref, &known) {
-            (Some(base), _) => base,
-            (None, Some(repo)) => repo.default_base_ref.clone(),
-            (None, None) => self
+        let dir = existing_dir(repo)?;
+        let toplevel = self
+            .git
+            .toplevel(&dir)?
+            .ok_or(WorkspaceError::NotARepository(dir))?;
+        let toplevel = std::fs::canonicalize(toplevel)?;
+        let base_ref = match base_ref {
+            Some(base) => base,
+            None => self
                 .git
                 .current_branch(&toplevel)?
                 .ok_or_else(|| WorkspaceError::DetachedHead(toplevel.clone()))?,
         };
-        let repo_name = known.map_or_else(|| dir_name(&toplevel), |repo| repo.name);
+        let repo_name = dir_name(&toplevel);
         let main = std::fs::canonicalize(self.git.main_root(&toplevel)?)?;
         let lock = self.repo_lock(&main);
         let _guard = lock.lock().unwrap_or_else(PoisonError::into_inner);
@@ -536,7 +516,7 @@ fn existing_dir(path: &Path) -> Result<PathBuf> {
     }
 }
 
-/// The canonical root of the git repository at `path`, which must be that root (DMN-021).
+/// The canonical root of the git repository at `path`, which must be that root (DMN-024).
 fn git_root(git: &dyn Git, path: &Path) -> Result<PathBuf> {
     let path = existing_dir(path)?;
     let toplevel = git
@@ -546,6 +526,14 @@ fn git_root(git: &dyn Git, path: &Path) -> Result<PathBuf> {
         return Err(WorkspaceError::NotARepositoryRoot(path));
     }
     Ok(path)
+}
+
+/// The path a discovered repository is suggested by: a worktree's main repository, else the checkout (DMN-021).
+fn seen_path(repo: &Discovered) -> PathBuf {
+    match &repo.kind {
+        RepoKind::Worktree { main } => main.clone(),
+        RepoKind::Link { .. } | RepoKind::Clone => repo.canonical.clone(),
+    }
 }
 
 fn dir_name(path: &Path) -> String {

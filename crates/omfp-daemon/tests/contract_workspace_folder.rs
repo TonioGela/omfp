@@ -74,18 +74,21 @@ fn path(dir: &Path) -> String {
     dir.display().to_string()
 }
 
-/// Runs one `hello` turn on `spec` and returns the system prompt the model saw.
-async fn first_prompt(harness: &Harness, spec: LaunchSpec) -> String {
-    tokio::task::spawn_blocking(move || {
+/// Runs one `hello` turn on `spec` and returns the system prompt the model saw and omp's stderr after the turn.
+/// stderr is read while omp still runs: stopping it (SIGTERM on drop) may add omp's own "[Stopped by SIGTERM]" and
+/// recovery notice, which is no warning about the turn.
+async fn first_prompt(harness: &Harness, spec: LaunchSpec) -> (String, String) {
+    let stderr = tokio::task::spawn_blocking(move || {
         let (process, _) = start(&spec);
         process
             .client()
             .prompt_and_wait(&prompt("hello"), TIMEOUT)
             .unwrap();
+        std::fs::read_to_string(&spec.stderr_log).unwrap_or_default()
     })
     .await
     .unwrap_or_else(|_| panic!("stderr:\n{}", harness.stderr()));
-    system_prompt(&harness.fake.requests()[0])
+    (system_prompt(&harness.fake.requests()[0]), stderr)
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -93,7 +96,7 @@ async fn without_add_dir_a_non_git_cwd_loads_no_nested_repository_context() {
     let harness = Harness::new(vec![Step::reply(Reply::text("ok"))]).await;
     let _workspace = Workspace::new(&harness);
 
-    let system = first_prompt(&harness, harness.spec(&[])).await;
+    let (system, stderr) = first_prompt(&harness, harness.spec(&[])).await;
 
     assert!(!system.contains(BACKEND_MARKER), "{system}");
     assert!(!system.contains(FRONTEND_MARKER), "{system}");
@@ -113,7 +116,7 @@ async fn without_add_dir_a_non_git_cwd_loads_no_nested_repository_context() {
         system.contains("<project-context>\n<workstation>"),
         "{system}"
     );
-    assert_eq!(harness.stderr(), "", "no warning for a cwd outside git");
+    assert_eq!(stderr, "", "no warning for a cwd outside git");
     harness.assert_no_stray_network();
 }
 
@@ -123,7 +126,7 @@ async fn add_dir_of_each_entry_loads_its_agents_file_under_the_symlink_path() {
     let harness = Harness::new(vec![Step::reply(Reply::text("ok"))]).await;
     let workspace = Workspace::new(&harness);
 
-    let system = first_prompt(
+    let (system, stderr) = first_prompt(
         &harness,
         harness.spec(&[&workspace.backend(), &workspace.frontend()]),
     )
@@ -148,7 +151,7 @@ async fn add_dir_of_each_entry_loads_its_agents_file_under_the_symlink_path() {
         !system.contains(&workspace.external()),
         "omp does not resolve the symlink: {system}"
     );
-    assert_eq!(harness.stderr(), "");
+    assert_eq!(stderr, "");
     harness.assert_no_stray_network();
 }
 
@@ -302,7 +305,7 @@ async fn append_system_prompt_ends_the_prompt_and_replaces_every_append_file() {
     let mut spec = harness.spec(&[&workspace.backend()]);
     spec.append_system_prompt = Some("omfp line A: fig-1\n\nomfp line B: fig-2".into());
 
-    let system = first_prompt(&harness, spec).await;
+    let (system, _) = first_prompt(&harness, spec).await;
 
     assert!(
         system.ends_with("</critical>\n\nomfp line A: fig-1\n\nomfp line B: fig-2"),
@@ -325,7 +328,7 @@ async fn without_the_flag_the_cwd_append_file_wins_over_the_user_one() {
     let workspace = Workspace::new(&harness);
     write_append_files(&harness, &workspace, true);
 
-    let system = first_prompt(&harness, harness.spec(&[&workspace.backend()])).await;
+    let (system, _) = first_prompt(&harness, harness.spec(&[&workspace.backend()])).await;
 
     assert!(
         system.ends_with("</critical>\n\nCwd append marker: medlar-3"),
@@ -346,7 +349,7 @@ async fn without_the_flag_or_a_cwd_file_the_user_append_file_applies() {
     let workspace = Workspace::new(&harness);
     write_append_files(&harness, &workspace, false);
 
-    let system = first_prompt(&harness, harness.spec(&[&workspace.backend()])).await;
+    let (system, _) = first_prompt(&harness, harness.spec(&[&workspace.backend()])).await;
 
     assert!(
         system.ends_with("</critical>\n\nUser append marker: quince-5"),

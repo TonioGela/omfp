@@ -7,8 +7,7 @@ use std::sync::Arc;
 use omfp_daemon::git::{ChangedFile, Git, GitCli, WorktreeBranch};
 use omfp_daemon::store::Store;
 use omfp_daemon::workspaces::{
-    Discovered, NewWorkspace, RepoKind, RepoRef, RepoSource, WorkspaceError, WorkspaceView,
-    Workspaces,
+    Discovered, NewWorkspace, RepoKind, RepoSource, WorkspaceError, WorkspaceView, Workspaces,
 };
 use omfp_testkit::TempRepo;
 use tempfile::TempDir;
@@ -43,7 +42,7 @@ fn env() -> Env {
 
 fn worktree(repo: &Path, branch: Option<&str>) -> RepoSource {
     RepoSource::Worktree {
-        repo: RepoRef::Path(repo.to_owned()),
+        repo: repo.to_owned(),
         branch: branch.map(str::to_owned),
         base_ref: None,
     }
@@ -100,16 +99,17 @@ impl Env {
     }
 }
 
-// spec: DMN-021
+// spec: DMN-024, DMN-021
 #[test]
-fn only_a_real_repository_root_is_registered() {
+fn only_a_real_repository_root_is_linked_and_a_worktree_is_suggested_by_its_main_repository() {
     let env = env();
+    let id = env.create("links").workspace.id;
     let plain = TempDir::new().unwrap();
     std::fs::create_dir_all(env.root.join("src")).unwrap();
 
     let error = env
         .workspaces
-        .add_repository(plain.path(), None)
+        .add_repo(&id, None, RepoSource::Link(plain.path().to_owned()))
         .unwrap_err();
     assert!(
         matches!(error, WorkspaceError::NotARepository(_)),
@@ -117,26 +117,24 @@ fn only_a_real_repository_root_is_registered() {
     );
     let error = env
         .workspaces
-        .add_repository(&env.root.join("src"), None)
+        .add_repo(&id, None, RepoSource::Link(env.root.join("src")))
         .unwrap_err();
     assert!(
         matches!(error, WorkspaceError::NotARepositoryRoot(_)),
         "{error:?}"
     );
 
-    env.repo
-        .git(&["remote", "add", "origin", "https://example.invalid/app.git"])
+    env.workspaces
+        .add_repo(&id, None, worktree(&env.root.join("src"), None))
         .unwrap();
-    let repo = env
+    let suggested: Vec<PathBuf> = env
         .workspaces
-        .add_repository(env.repo.path(), None)
-        .unwrap();
-    assert_eq!(repo.path, env.root);
-    assert_eq!(repo.default_base_ref, "main");
-    assert_eq!(
-        repo.remote_url.as_deref(),
-        Some("https://example.invalid/app.git")
-    );
+        .suggest("")
+        .unwrap()
+        .into_iter()
+        .map(|repo| repo.path)
+        .collect();
+    assert_eq!(suggested, vec![env.root.clone()]);
 }
 
 // spec: DMN-022

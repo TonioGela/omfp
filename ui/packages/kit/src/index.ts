@@ -71,6 +71,7 @@ export {
   TooltipTrigger,
 } from "./layout.tsx";
 export { Code, type CodeProps, Markdown, type MarkdownProps } from "./markdown.tsx";
+export { type PathCompletion, PathField, type PathFieldProps, type PathSuggestion } from "./path-field.tsx";
 export { LiveRegion, type LiveRegionProps, Log, type LogProps, Progress, type ProgressProps } from "./status.tsx";
 export {
   Tab,

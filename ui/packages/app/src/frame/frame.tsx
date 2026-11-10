@@ -16,10 +16,9 @@ import { BUILTIN_WIDGETS, INTERACTION_WIDGETS } from "../view/registry.ts";
 import { ViewRenderer, WidgetBoundary, type WidgetRegistry } from "../view/render.tsx";
 import { type ResolvedView, resolveViews } from "../view/views.ts";
 import { InteractionsWidget } from "../widgets/chat/index.ts";
-import { NewThreadDialog } from "../widgets/new-thread/index.ts";
 import { CommandLine } from "./command-line.tsx";
 import { GlobalCommands } from "./commands.tsx";
-import { DeleteThreadDialog } from "./dialogs.tsx";
+import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
 import { ConnectionBanner, Errors, StatusLiveRegion } from "./status.tsx";
@@ -98,8 +97,8 @@ export function Frame({
       <CommandLine bindings={bindings} />
       <Errors />
       <StatusLiveRegion />
-      <NewThreadDialog />
       <DeleteThreadDialog />
+      <DeleteWorkspaceDialog />
       <GlobalCommands viewIds={viewIds} />
       <Notifier port={notifications} hasFocus={hasFocus} focusWindow={focusWindow} />
     </div>

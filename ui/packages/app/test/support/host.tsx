@@ -100,7 +100,6 @@ export class FakeClient implements SdkClient {
       epoch: "e1",
       seq: 0,
       state: {
-        repositories: [],
         workspaces: [],
         threads: [],
         theme: { css: null },

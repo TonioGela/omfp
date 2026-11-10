@@ -105,7 +105,7 @@ fn hello(token: &str, protocol: u32) -> String {
 async fn any_frame_before_hello_closes_the_connection_with_4401() {
     let daemon = daemon(&[]).await;
     for first in [
-        json!({ "type": "request", "id": "1", "method": "repos.list" }).to_string(),
+        json!({ "type": "request", "id": "1", "method": "repos.suggest" }).to_string(),
         "not json".to_owned(),
     ] {
         let mut client = Client::connect(daemon.handle.addr()).await;
@@ -394,7 +394,7 @@ async fn unsubscribe_stops_delivery_of_the_topic() {
             state.settled && !state.prompts.is_empty()
         })
         .await;
-    client.ok("repos.list", json!({})).await;
+    client.ok("repos.suggest", json!({})).await;
 
     let leaked: Vec<Value> = client
         .take_buffered()
@@ -462,7 +462,7 @@ async fn created_entities_record_the_creating_client() {
 /// Params with every field any method needs; methods ignore the others (PRT-012).
 fn superset_params(thread: &str, workspace: &str) -> Value {
     json!({
-        "threadId": thread, "workspaceId": workspace, "repositoryId": "01NOREPO", "repo": "01NOREPO",
+        "threadId": thread, "workspaceId": workspace, "repo": "01NOREPO", "query": "hi",
         "path": "/nonexistent", "pr": "owner/repo#1", "title": "t", "text": "hello", "message": "hello",
         "name": "n", "provider": "fake", "modelId": "scripted", "level": "low", "entryId": "e1",
         "subagentId": "s1", "op": "get", "question": "why?", "command": "true", "interactionId": "i1",

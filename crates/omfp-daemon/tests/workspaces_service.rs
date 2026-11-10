@@ -12,8 +12,7 @@ use omfp_daemon::paths::DataDir;
 use omfp_daemon::store::{Provenance, Store, StoreError};
 use omfp_daemon::threads::{NewThread, Threads};
 use omfp_daemon::workspaces::{
-    Discovered, NewWorkspace, RepoKind, RepoRef, RepoSource, WorkspaceError, WorkspaceView,
-    Workspaces, scan,
+    Discovered, NewWorkspace, RepoKind, RepoSource, WorkspaceError, WorkspaceView, Workspaces, scan,
 };
 use tempfile::TempDir;
 
@@ -85,16 +84,16 @@ fn link(path: &Path) -> RepoSource {
     RepoSource::Link(path.to_owned())
 }
 
-fn worktree(repo: RepoRef, branch: Option<&str>) -> RepoSource {
+fn worktree(repo: &Path, branch: Option<&str>) -> RepoSource {
     RepoSource::Worktree {
-        repo,
+        repo: repo.to_owned(),
         branch: branch.map(str::to_owned),
         base_ref: None,
     }
 }
 
 fn worktree_of(repo: &Path) -> RepoSource {
-    worktree(RepoRef::Path(repo.to_owned()), None)
+    worktree(repo, None)
 }
 
 fn names(view: &WorkspaceView) -> Vec<&str> {
@@ -348,69 +347,71 @@ fn workspace_provenance_is_recorded() {
     assert!(!env.workspaces_root.join("orphan").exists());
 }
 
-// spec: DMN-021
-#[test]
-fn registering_requires_the_root_of_a_git_repository() {
-    let env = env();
-    let plain = env.root.join("plain");
-    std::fs::create_dir_all(&plain).unwrap();
-    let nested = env.repo.join("src");
-    std::fs::create_dir_all(&nested).unwrap();
-
-    let register = |path: &Path| env.workspaces.add_repository(path, None).unwrap_err();
-    let error = register(&plain);
-    assert!(
-        matches!(error, WorkspaceError::NotARepository(_)),
-        "{error:?}"
-    );
-    let error = register(&nested);
-    assert!(
-        matches!(error, WorkspaceError::NotARepositoryRoot(_)),
-        "{error:?}"
-    );
-    let error = register(&env.root.join("missing"));
-    assert!(
-        matches!(error, WorkspaceError::NotADirectory(_)),
-        "{error:?}"
-    );
-    assert_eq!(env.workspaces.repositories().unwrap(), Vec::new());
+/// The paths `query` suggests.
+fn suggested(env: &Env, query: &str) -> Vec<PathBuf> {
+    env.workspaces
+        .suggest(query)
+        .unwrap()
+        .into_iter()
+        .map(|repo| repo.path)
+        .collect()
 }
 
 // spec: DMN-021
 #[test]
-fn a_known_repository_is_registered_once_with_name_base_ref_and_remote() {
+fn every_scan_records_its_repositories_for_suggestions() {
     let env = env();
-    env.git
-        .set_remote_url(&env.repo, "git@example.invalid:org/app.git");
-
-    let repo = env.workspaces.add_repository(&env.repo, None).unwrap();
-    let duplicate = env.workspaces.add_repository(&env.repo, None).unwrap_err();
+    assert_eq!(suggested(&env, ""), Vec::<PathBuf>::new());
     let api = fake_repo(&env.git, &env.root.join("repos").join("api"), "main");
-    let explicit = env
-        .workspaces
-        .add_repository(&api, Some("develop"))
+    let id = env.create("x").workspace.id;
+    env.workspaces.add_repo(&id, None, link(&env.repo)).unwrap();
+    env.workspaces
+        .add_repo(&id, None, worktree_of(&api))
         .unwrap();
+    let view = env
+        .workspaces
+        .add_repo(
+            &id,
+            None,
+            RepoSource::Clone("https://example.invalid/lib.git".into()),
+        )
+        .unwrap();
+    let clone = view.repos[2].canonical.clone();
 
-    assert_eq!(repo.name, "app");
-    assert_eq!(repo.path, env.repo);
-    assert_eq!(repo.default_base_ref, "main");
-    assert_eq!(
-        repo.remote_url.as_deref(),
-        Some("git@example.invalid:org/app.git")
-    );
-    assert!(
-        matches!(duplicate, WorkspaceError::Store(StoreError::Conflict(_))),
-        "{duplicate:?}"
-    );
-    assert_eq!(explicit.default_base_ref, "develop");
-    assert_eq!(explicit.remote_url, None);
-    assert_eq!(
-        env.workspaces.repositories().unwrap(),
-        vec![repo.clone(), explicit.clone()]
-    );
-    env.workspaces.remove_repository(&repo.id).unwrap();
-    assert_eq!(env.workspaces.repositories().unwrap(), vec![explicit]);
-    assert!(env.repo.is_dir());
+    // A link by its target, a worktree by its main repository, a clone by itself.
+    let mut all = suggested(&env, "");
+    all.sort();
+    let mut expected = vec![env.repo.clone(), api.clone(), clone.clone()];
+    expected.sort();
+    assert_eq!(all, expected);
+    let first = &env.workspaces.suggest("").unwrap()[0];
+    assert_eq!(first.name, dir_name(&first.path));
+
+    // Still suggested once gone from the workspace.
+    env.workspaces
+        .remove_repo(&id, "app", false, false)
+        .unwrap();
+    assert!(suggested(&env, "").contains(&env.repo));
+}
+
+fn dir_name(path: &Path) -> String {
+    path.file_name().unwrap().to_string_lossy().into_owned()
+}
+
+// spec: DMN-021
+#[test]
+fn suggestions_are_filtered_by_path_or_name_ignoring_case() {
+    let env = env();
+    let api = fake_repo(&env.git, &env.root.join("repos").join("Backend"), "main");
+    let id = env.create("x").workspace.id;
+    env.workspaces.add_repo(&id, None, link(&env.repo)).unwrap();
+    env.workspaces.add_repo(&id, None, link(&api)).unwrap();
+
+    // Queries longer than the temp dir's random suffix, so they cannot match it by chance.
+    assert_eq!(suggested(&env, "bACKEND"), vec![api.clone()]);
+    assert_eq!(suggested(&env, " REPOS/APP "), vec![env.repo.clone()]);
+    assert_eq!(suggested(&env, "repos/").len(), 2);
+    assert_eq!(suggested(&env, "nothing"), Vec::<PathBuf>::new());
 }
 
 /// Fills `folder` with a link, a worktree and a clone among entries that are no repository.
@@ -611,7 +612,7 @@ fn a_worktree_checks_out_an_existing_branch_or_creates_the_named_one() {
     let env = env();
     let id = env.create("x").workspace.id;
     env.git.add_branch(&env.repo, "feature/login");
-    let repo = || RepoRef::Path(env.repo.clone());
+    let repo = || env.repo.as_path();
 
     let existing = env
         .workspaces
@@ -627,7 +628,7 @@ fn a_worktree_checks_out_an_existing_branch_or_creates_the_named_one() {
             &id,
             Some("broken"),
             RepoSource::Worktree {
-                repo: repo(),
+                repo: repo().to_owned(),
                 branch: Some("other".into()),
                 base_ref: Some("nope".into()),
             },
@@ -648,17 +649,16 @@ fn a_worktree_checks_out_an_existing_branch_or_creates_the_named_one() {
 
 // spec: DMN-024
 #[test]
-fn a_worktree_repository_is_given_by_id_or_by_any_path_inside_it() {
+fn a_worktree_repository_is_given_by_any_path_inside_it() {
     let env = env();
     let id = env.create("x").workspace.id;
-    let known = env.workspaces.add_repository(&env.repo, None).unwrap();
     let api = fake_repo(&env.git, &env.root.join("repos").join("api"), "main");
     std::fs::create_dir_all(api.join("src")).unwrap();
     let plain = env.root.join("plain");
     std::fs::create_dir_all(&plain).unwrap();
 
     env.workspaces
-        .add_repo(&id, None, worktree(RepoRef::Id(known.id), None))
+        .add_repo(&id, None, worktree_of(&env.repo))
         .unwrap();
     let view = env
         .workspaces
@@ -669,13 +669,13 @@ fn a_worktree_repository_is_given_by_id_or_by_any_path_inside_it() {
     assert_eq!(view.repos[0].kind, RepoKind::Worktree { main: api.clone() });
     assert_eq!(env.git.branches(&api), vec!["main", "omfp/x-1"]);
     assert_eq!(env.git.branches(&env.repo), vec!["main", "omfp/x-1"]);
-    let unknown = env
+    let missing = env
         .workspaces
-        .add_repo(&id, None, worktree(RepoRef::Id("01JUNKNOWN".into()), None))
+        .add_repo(&id, None, worktree_of(&env.root.join("missing")))
         .unwrap_err();
     assert!(
-        matches!(unknown, WorkspaceError::Store(StoreError::NotFound { .. })),
-        "{unknown:?}"
+        matches!(missing, WorkspaceError::NotADirectory(_)),
+        "{missing:?}"
     );
     let not_git = env
         .workspaces
@@ -709,10 +709,7 @@ fn a_clone_is_named_after_its_url_unless_named() {
         assert_eq!(repo.branch.as_deref(), Some("main"));
     }
     assert_eq!(
-        env.git
-            .remote_url(&view.repos[1].path, "origin")
-            .unwrap()
-            .as_deref(),
+        env.git.cloned_from(&view.repos[1].path).as_deref(),
         Some("https://example.invalid/org/lib.git")
     );
     let duplicate = env

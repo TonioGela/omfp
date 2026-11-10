@@ -143,6 +143,44 @@
     color: var(--omfp-error);
   }
 
+  /* omp's own bookkeeping (UI-043): one muted line, expandable to the whole text. */
+  .omfp-system {
+    display: flex;
+    gap: var(--omfp-space-2);
+    align-items: baseline;
+    min-inline-size: 0;
+    font-size: var(--omfp-font-size-sm);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-system__label {
+    flex: none;
+    font-weight: 600;
+  }
+
+  .omfp-system > .omfp-disclosure {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  .omfp-system .omfp-disclosure__trigger {
+    max-inline-size: 100%;
+    min-block-size: 0;
+    padding-inline: 0;
+  }
+
+  .omfp-system__summary {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .omfp-system__text {
+    padding-block: var(--omfp-space-1);
+    white-space: pre-wrap;
+  }
+
   /* Pending interactions, inline at the bottom of the transcript (UI-070). */
   .omfp-interactions {
     display: flex;

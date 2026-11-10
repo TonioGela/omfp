@@ -45,7 +45,7 @@ impl Drop for AbortOnDrop {
     }
 }
 
-/// The `index` topic: repositories, workspaces and thread summaries.
+/// The `index` topic: workspaces and thread summaries.
 pub(crate) type IndexLog = EventLog<IndexEvent, IndexSnapshot>;
 
 /// A `workspace/<id>` topic: the git status of each repository of the workspace.
@@ -64,14 +64,6 @@ fn apply_index(state: &mut IndexSnapshot, event: &IndexEvent) {
         }
     }
     match event {
-        IndexEvent::RepositoryUpserted { repository } => {
-            upsert(&mut state.repositories, repository, |r| {
-                r.id == repository.id
-            });
-        }
-        IndexEvent::RepositoryRemoved { repository_id } => {
-            state.repositories.retain(|r| r.id != *repository_id);
-        }
         IndexEvent::WorkspaceUpserted { workspace } => {
             upsert(&mut state.workspaces, workspace, |w| w.id == workspace.id);
         }
@@ -150,7 +142,6 @@ impl Services {
             index: Arc::new(EventLog::new(
                 new_id(),
                 IndexSnapshot {
-                    repositories: Vec::new(),
                     workspaces: Vec::new(),
                     threads: Vec::new(),
                     theme: Theme::default(),
@@ -255,7 +246,7 @@ impl Services {
         })
     }
 
-    /// Reloads repositories, workspaces and threads and publishes what changed on the `index` topic.
+    /// Reloads workspaces and threads and publishes what changed on the `index` topic.
     pub async fn refresh_index(&self) -> Result<(), ErrorBody> {
         let _serial = self.refresh.lock().await;
         // Only refreshes change the index, and they are serialized: `current` stays current.
@@ -527,11 +518,6 @@ fn load_index(
     settings: Settings,
 ) -> Result<IndexSnapshot, ErrorBody> {
     let clients = store.created_clients()?;
-    let repositories = store
-        .repositories()?
-        .iter()
-        .map(convert::repository)
-        .collect();
     let threads = store.threads()?;
     let mut scanned = Vec::new();
     for ws in workspaces.list().map_err(workspace_error)? {
@@ -580,7 +566,6 @@ fn load_index(
         })
         .collect();
     Ok(IndexSnapshot {
-        repositories,
         workspaces,
         threads,
         theme: Theme {
@@ -593,18 +578,6 @@ fn load_index(
 /// The events turning `current` into `fresh`.
 fn diff_index(current: &IndexSnapshot, fresh: IndexSnapshot) -> Vec<IndexEvent> {
     let mut events = Vec::new();
-    for repository in &current.repositories {
-        if !fresh.repositories.iter().any(|r| r.id == repository.id) {
-            events.push(IndexEvent::RepositoryRemoved {
-                repository_id: repository.id.clone(),
-            });
-        }
-    }
-    for repository in fresh.repositories {
-        if !current.repositories.contains(&repository) {
-            events.push(IndexEvent::RepositoryUpserted { repository });
-        }
-    }
     for workspace in &current.workspaces {
         if !fresh.workspaces.iter().any(|w| w.id == workspace.id) {
             events.push(IndexEvent::WorkspaceRemoved {

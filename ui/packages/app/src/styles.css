@@ -246,7 +246,7 @@
     color: var(--omfp-on-error-container);
   }
 
-  /* omfp:threads (UI-020..022). */
+  /* omfp:threads, the left column (UI-020..023, UI-026). */
   .omfp-threads {
     display: flex;
     flex-direction: column;
@@ -257,23 +257,10 @@
     box-sizing: border-box;
   }
 
-  .omfp-threads__actions,
-  .omfp-threads__controls,
-  .omfp-threads__footer {
+  .omfp-threads__new-workspace {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--omfp-space-2);
-  }
-
-  .omfp-threads__footer {
-    margin-block-start: auto;
-  }
-
-  .omfp-threads__label {
-    margin: var(--omfp-space-2) 0;
-    font-size: var(--omfp-font-size-sm);
-    color: var(--omfp-on-surface-variant);
-    text-transform: uppercase;
+    flex-direction: column;
+    gap: var(--omfp-space-1);
   }
 
   .omfp-threads__list {
@@ -282,12 +269,93 @@
     list-style: none;
   }
 
+  /* One workspace section: header (chevron, name, menu, delete), threads, archived, "+ thread". */
+  .omfp-ws {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-space-1);
+  }
+
+  .omfp-ws__header {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-space-1);
+    border-radius: var(--omfp-radius-sm);
+  }
+
+  .omfp-ws[data-current="true"] > .omfp-ws__header {
+    background: var(--omfp-secondary-container);
+    color: var(--omfp-on-secondary-container);
+  }
+
+  .omfp-ws__chevron,
+  .omfp-ws__archived-toggle {
+    border: none;
+    border-radius: var(--omfp-radius-sm);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
+  .omfp-ws__chevron:focus-visible,
+  .omfp-ws__archived-toggle:focus-visible {
+    outline: 2px solid var(--omfp-primary);
+    outline-offset: -2px;
+  }
+
+  .omfp-ws__name {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    margin: 0;
+    overflow: hidden;
+    font-size: var(--omfp-font-size-sm);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .omfp-ws__rename {
+    flex: 1 1 auto;
+  }
+
+  .omfp-ws__archived-toggle {
+    padding: var(--omfp-space-1) var(--omfp-space-3);
+    color: var(--omfp-on-surface-variant);
+    font-size: var(--omfp-font-size-sm);
+    text-align: start;
+  }
+
+  .omfp-ws__add {
+    align-self: flex-start;
+  }
+
+  /* A row and its buttons; delete buttons show on hover and on keyboard focus, and stay in the Tab order. */
+  .omfp-thread-item {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-space-1);
+  }
+
+  .omfp-reveal {
+    opacity: 0;
+  }
+
+  .omfp-thread-item:hover .omfp-reveal,
+  .omfp-ws__header:hover .omfp-reveal,
+  .omfp-reveal:focus-visible,
+  .omfp-thread-item:focus-within .omfp-reveal,
+  .omfp-ws__header:focus-within .omfp-reveal {
+    opacity: 1;
+  }
+
   .omfp-thread-row {
     display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--omfp-space-2);
-    inline-size: 100%;
+    min-inline-size: 0;
     min-block-size: var(--omfp-row-height);
     padding: var(--omfp-space-1) var(--omfp-space-3);
     border: none;
@@ -321,19 +389,26 @@
     white-space: nowrap;
   }
 
-  .omfp-thread-row[data-title-source="placeholder"] .omfp-thread-row__title {
+  .omfp-thread-row[data-title-source="placeholder"] .omfp-thread-row__title,
+  .omfp-thread-row__title[data-placeholder="true"] {
     font-style: italic;
+  }
+
+  .omfp-thread-row[data-archived="true"] {
+    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-thread-row__unread {
     color: var(--omfp-primary);
   }
 
-  .omfp-thread-row__chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--omfp-space-1);
+  .omfp-thread-row__snippet {
     inline-size: 100%;
+    overflow: hidden;
+    color: var(--omfp-on-surface-variant);
+    font-size: var(--omfp-font-size-sm);
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* omfp:header (UI-030). */
@@ -403,7 +478,7 @@
   .omfp-workspace {
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-space-4);
+    gap: var(--omfp-space-3);
     padding: var(--omfp-space-3);
   }
 
@@ -420,78 +495,123 @@
   .omfp-workspace ul {
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-space-2);
+    gap: var(--omfp-space-1);
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
   .omfp-workspace__current,
+  .omfp-workspace__header,
   .omfp-workspace__repos,
-  .omfp-workspace__threads,
-  .omfp-workspace__add,
-  .omfp-workspace__all,
-  .omfp-workspace__repositories {
+  .omfp-workspace__add {
     display: flex;
     flex-direction: column;
     gap: var(--omfp-space-2);
   }
 
+  .omfp-workspace__current {
+    gap: var(--omfp-space-4);
+  }
+
+  .omfp-workspace__header {
+    gap: var(--omfp-space-1);
+  }
+
   .omfp-workspace__title,
+  .omfp-workspace__folder,
   .omfp-workspace__meta,
+  .omfp-workspace__heading,
   .omfp-workspace__repo,
-  .omfp-workspace__row,
-  .omfp-inline-form {
+  .omfp-workspace__add-fields {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--omfp-space-2);
   }
 
+  .omfp-workspace__heading {
+    justify-content: space-between;
+  }
+
   .omfp-workspace__path {
+    min-inline-size: 0;
     font-size: var(--omfp-font-size-sm);
     color: var(--omfp-on-surface-variant);
     overflow-wrap: anywhere;
   }
 
-  .omfp-workspace__repo[data-dirty="true"] strong::after {
+  /* One repository per row: kind, name, branch, status, badge, remove; the origin wraps below the name. */
+  .omfp-workspace__repo {
+    column-gap: var(--omfp-space-2);
+    row-gap: 0;
+    padding-block: var(--omfp-space-1);
+    border-block-end: 1px solid var(--omfp-outline-variant);
+  }
+
+  .omfp-workspace__kind {
+    inline-size: 1.25em;
+    text-align: center;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-workspace__branch {
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-font-size-sm);
+  }
+
+  .omfp-workspace__remove {
+    margin-inline-start: auto;
+  }
+
+  .omfp-workspace__origin {
+    flex-basis: 100%;
+    padding-inline-start: calc(1.25em + var(--omfp-space-2));
+    font-size: var(--omfp-font-size-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .omfp-workspace__repo[data-dirty="true"] .omfp-workspace__repo-name::after {
     content: " *";
     color: var(--omfp-warning);
   }
 
-  /* New-thread dialog (UI-023). */
-  .omfp-new-thread {
-    display: flex;
-    flex-direction: column;
-    gap: var(--omfp-space-4);
-    /* Fits in the kit's modal (at most 36rem wide, padded by space-6 on each side) on any window. */
-    inline-size: min(32rem, calc(100vw - 4 * var(--omfp-space-6)));
-    max-inline-size: 100%;
-    box-sizing: border-box;
-  }
-
-  .omfp-new-thread fieldset {
-    display: flex;
-    flex-direction: column;
-    gap: var(--omfp-space-3);
-    margin: 0;
-    padding: var(--omfp-space-3);
+  /* The kind switch of "add repository" as a segmented control. */
+  .omfp-workspace__kind-options {
+    display: inline-flex;
+    align-self: flex-start;
     border: 1px solid var(--omfp-outline-variant);
     border-radius: var(--omfp-radius-md);
-    /* A fieldset defaults to `min-inline-size: min-content`, which lets long values push it out of the dialog. */
-    min-inline-size: 0;
+    overflow: hidden;
   }
 
-  .omfp-new-thread__repo > .omfp-field {
-    flex: 1 1 10rem;
+  .omfp-workspace__kind-options .omfp-radio {
+    min-block-size: 0;
+    padding: var(--omfp-space-1) var(--omfp-space-3);
+    font-size: var(--omfp-font-size-sm);
+    cursor: pointer;
   }
 
-  .omfp-new-thread__repo,
-  .omfp-new-thread__add {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: var(--omfp-space-2);
+  .omfp-workspace__kind-options .omfp-radio + .omfp-radio {
+    border-inline-start: 1px solid var(--omfp-outline-variant);
+  }
+
+  .omfp-workspace__kind-options .omfp-radio__dot {
+    display: none;
+  }
+
+  .omfp-workspace__kind-options .omfp-radio[data-selected] {
+    background: var(--omfp-secondary-container);
+    color: var(--omfp-on-secondary-container);
+  }
+
+  .omfp-workspace__kind-options .omfp-radio[data-focus-visible] {
+    outline: 2px solid var(--omfp-primary);
+    outline-offset: -2px;
+  }
+
+  .omfp-workspace__add-fields > .omfp-field {
+    flex: 1 1 12rem;
   }
 
   /* Token screen (UI-002). */

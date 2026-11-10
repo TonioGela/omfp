@@ -1,5 +1,5 @@
-//! SQLite persistence (02-daemon, "Persistence"): known repositories, workspace folders, threads, their roots and
-//! tags, settings.
+//! SQLite persistence (02-daemon, "Persistence"): workspace folders, threads, their roots and tags, the repositories
+//! seen in workspaces (DMN-021), settings.
 //!
 //! Transcripts are not stored here (DMN-012): omp's session files in each thread's `session_dir` are the source of
 //! truth, and the repositories inside a workspace are discovered from its folder (DMN-022). All calls are blocking;
@@ -63,16 +63,13 @@ impl Provenance {
     }
 }
 
+/// A repository seen in a workspace (DMN-021).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Repository {
-    pub id: String,
-    pub name: String,
-    /// Absolute path of the repository root.
+pub struct SeenRepository {
+    /// Canonical path: a link's target or a clone, the main repository of a worktree.
     pub path: PathBuf,
-    pub default_base_ref: String,
-    pub remote_url: Option<String>,
     /// Unix milliseconds.
-    pub created_at: i64,
+    pub last_seen_at: i64,
 }
 
 /// A workspace folder (DMN-020).
@@ -170,7 +167,6 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
-const REPOSITORY_COLUMNS: &str = "id, name, path, default_base_ref, remote_url, created_at";
 const WORKSPACE_COLUMNS: &str = "id, name, path, owned, created_by, created_at";
 const THREAD_COLUMNS: &str = "id, title, workspace_id, session_dir, omp_session_id, approval_mode, model, \
      thinking_level, created_by, created_at, archived_at, title_source";
@@ -196,71 +192,41 @@ impl Store {
         self.conn.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    // Repositories
+    // Seen repositories
 
-    pub fn insert_repository(&self, repo: &Repository) -> Result<()> {
-        self.conn()
-            .execute(
-                "INSERT INTO repositories (id, name, path, default_base_ref, remote_url, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-                params![
-                    repo.id,
-                    repo.name,
-                    path_str(&repo.path)?,
-                    repo.default_base_ref,
-                    repo.remote_url,
-                    repo.created_at
-                ],
-            )
-            .map_err(|error| {
-                unique_conflict(
-                    error,
-                    &format!("repository {} is already registered", repo.path.display()),
-                )
-            })?;
-        Ok(())
-    }
-
-    pub fn repository(&self, id: &str) -> Result<Repository> {
-        self.conn()
-            .query_row(
-                &format!("SELECT {REPOSITORY_COLUMNS} FROM repositories WHERE id = ?1"),
-                [id],
-                repository_from_row,
-            )
-            .optional()?
-            .ok_or_else(|| not_found("repository", id))
-    }
-
-    pub fn repository_by_path(&self, path: &Path) -> Result<Option<Repository>> {
-        Ok(self
-            .conn()
-            .query_row(
-                &format!("SELECT {REPOSITORY_COLUMNS} FROM repositories WHERE path = ?1"),
-                [path_str(path)?],
-                repository_from_row,
-            )
-            .optional()?)
-    }
-
-    pub fn repositories(&self) -> Result<Vec<Repository>> {
-        let conn = self.conn();
-        let mut stmt = conn.prepare(&format!(
-            "SELECT {REPOSITORY_COLUMNS} FROM repositories ORDER BY id"
-        ))?;
-        let rows = stmt.query_map([], repository_from_row)?;
-        Ok(rows.collect::<Result<_, _>>()?)
-    }
-
-    /// Forgets a known repository; workspaces holding it are not affected.
-    pub fn delete_repository(&self, id: &str) -> Result<()> {
-        let deleted = self
-            .conn()
-            .execute("DELETE FROM repositories WHERE id = ?1", [id])?;
-        if deleted == 0 {
-            return Err(not_found("repository", id));
+    /// Records that the repositories at `paths` were seen at `at` (DMN-021); one transaction.
+    pub fn record_seen_repositories(&self, paths: &[PathBuf], at: i64) -> Result<()> {
+        if paths.is_empty() {
+            return Ok(());
         }
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        {
+            let mut stmt = tx.prepare(
+                "INSERT INTO seen_repositories (path, last_seen_at) VALUES (?1, ?2)
+                 ON CONFLICT (path) DO UPDATE SET last_seen_at = max(last_seen_at, excluded.last_seen_at)",
+            )?;
+            for path in paths {
+                stmt.execute(params![path_str(path)?, at])?;
+            }
+        }
+        tx.commit()?;
         Ok(())
+    }
+
+    /// Every seen repository, most recently seen first, then by path.
+    pub fn seen_repositories(&self) -> Result<Vec<SeenRepository>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT path, last_seen_at FROM seen_repositories ORDER BY last_seen_at DESC, path",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SeenRepository {
+                path: PathBuf::from(row.get::<_, String>(0)?),
+                last_seen_at: row.get(1)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     // Workspaces
@@ -694,17 +660,6 @@ fn with_tags(conn: &Connection, mut thread: Thread) -> Result<Thread> {
         .query_map([&thread.id], |row| row.get(0))?
         .collect::<Result<_, _>>()?;
     Ok(thread)
-}
-
-fn repository_from_row(row: &Row<'_>) -> rusqlite::Result<Repository> {
-    Ok(Repository {
-        id: row.get(0)?,
-        name: row.get(1)?,
-        path: PathBuf::from(row.get::<_, String>(2)?),
-        default_base_ref: row.get(3)?,
-        remote_url: row.get(4)?,
-        created_at: row.get(5)?,
-    })
 }
 
 fn workspace_from_row(row: &Row<'_>) -> rusqlite::Result<Workspace> {

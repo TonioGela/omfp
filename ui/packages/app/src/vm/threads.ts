@@ -1,6 +1,7 @@
 /**
- * The thread list (UI-020..022, UI-026): state badges, workspace chips, grouping, filtering, unread marks and the "next
- * thread needing attention" shortcut. Workspaces and repositories are groupings, never parents.
+ * The left column (UI-020..023, UI-026): state badges, workspace chips, one section per workspace with its threads and
+ * its archived ones, the full-text filter (local fields plus `threads.search`), collapsed sections, unread marks and
+ * the "next thread needing attention" shortcut.
  */
 
 import type { ThreadSummary, Workspace, WorkspaceRepo } from "@omfp/protocol";
@@ -85,133 +86,168 @@ export function repoLabel(repo: Pick<WorkspaceRepo, "name" | "branch">): string 
   return repo.branch === undefined || repo.branch === null ? repo.name : `${repo.name}:${repo.branch}`;
 }
 
-/** What makes repositories of different workspaces the same one: a worktree's main working tree, else the checkout. */
-export function repoIdentity(repo: WorkspaceRepo): string {
-  return repo.kind === "worktree" ? repo.main : repo.canonicalPath;
+/** The text filter of the column (UI-022): the query and what `threads.search` found for it. */
+export interface ThreadFilter {
+  readonly query: string;
+  /** Snippet by thread id of the conversation matches of `query` (DMN-076); empty while unknown. */
+  readonly conversation: ReadonlyMap<string, string>;
 }
 
-/** A key threads can be grouped and filtered by (UI-022). Pull requests come with S-08. */
-export type Dimension = "tag" | "workspace" | "repository";
+export const NO_FILTER: ThreadFilter = { query: "", conversation: new Map() };
 
-export const DIMENSIONS: readonly Dimension[] = ["tag", "workspace", "repository"];
-
-/** How the list groups threads; by workspace by default (UI-022). */
-export type Grouping = "none" | Dimension;
-
-export const DEFAULT_GROUPING: Grouping = "workspace";
-
-export function isGrouping(value: unknown): value is Grouping {
-  return value === "none" || DIMENSIONS.includes(value as Dimension);
+/** A query is typed: sections without matching threads are hidden and collapsed ones are shown. */
+export function isFiltering(filter: ThreadFilter): boolean {
+  return filter.query.trim() !== "";
 }
 
-/** Which threads the list shows. */
-export interface Filter {
-  /** Case-insensitive match on title, tags and workspace chip labels. */
-  readonly text: string;
-  /** Only threads with this key. */
-  readonly key?: { readonly dimension: Dimension; readonly key: string };
-  /** Only archived threads; they are hidden otherwise (UI-026). */
-  readonly archived: boolean;
-}
-
-export const NO_FILTER: Filter = { text: "", archived: false };
-
-/** One grouping or filter key of a thread. */
-export interface GroupKey {
-  readonly key: string;
-  readonly label: string;
-}
-
-/** The keys of `thread` along `dimension`, without duplicates, in folder order (tags in tag order). */
-export function threadKeys(thread: ThreadSummary, dimension: Dimension, workspaces: readonly Workspace[]): GroupKey[] {
-  const workspace = workspaces.find((candidate) => candidate.id === thread.workspaceId);
-  const keys = ((): GroupKey[] => {
-    switch (dimension) {
-      case "tag":
-        return thread.tags.map((tag) => ({ key: tag, label: tag }));
-      case "workspace":
-        return workspace === undefined ? [] : [{ key: workspace.id, label: workspace.name }];
-      case "repository":
-        return (workspace?.repos ?? []).map((repo) => ({ key: repoIdentity(repo), label: repo.name }));
-    }
-  })();
-  const unique: GroupKey[] = [];
-  for (const key of keys) {
-    if (!unique.some((seen) => seen.key === key.key)) {
-      unique.push(key);
-    }
+/** `query` (case-insensitive) is in the title, a tag, the workspace's name or one of its repositories' names. */
+export function matchesLocally(thread: ThreadSummary, workspace: Workspace | undefined, query: string): boolean {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") {
+    return true;
   }
-  return unique;
+  const fields = [
+    displayTitle(thread),
+    ...thread.tags,
+    ...(workspace === undefined
+      ? []
+      : [workspace.name, ...workspace.repos.flatMap((repo) => [repo.name, repoLabel(repo)])]),
+  ];
+  return fields.some((field) => field.toLowerCase().includes(needle));
 }
 
-/** One entry of the filter selector. */
-export interface FilterOption {
-  readonly dimension: Dimension;
-  readonly key: GroupKey;
+/** The thread passes `filter`: locally or through its conversation. */
+export function matchesFilter(thread: ThreadSummary, workspace: Workspace | undefined, filter: ThreadFilter): boolean {
+  return matchesLocally(thread, workspace, filter.query) || (isFiltering(filter) && filter.conversation.has(thread.id));
 }
 
-/** Every key of the non-archived threads along every dimension, sorted by label per dimension. */
-export function filterOptions(threads: readonly ThreadSummary[], workspaces: readonly Workspace[]): FilterOption[] {
-  const options: FilterOption[] = [];
-  for (const dimension of DIMENSIONS) {
-    const keys = threads
-      .filter((thread) => !isArchived(thread))
-      .flatMap((thread) => threadKeys(thread, dimension, workspaces))
-      .sort((a, b) => compare(a.label, b.label) || compare(a.key, b.key));
-    const unique = keys.filter((key, index) => index === 0 || keys[index - 1]?.key !== key.key);
-    options.push(...unique.map((key) => ({ dimension, key })));
-  }
-  return options;
-}
-
-/** One section of the thread list. */
-export interface Group {
-  /** Empty for the single group of `none` and for the "without key" group. */
-  readonly key: string;
-  readonly label: string;
+/** One workspace of the column. */
+export interface Section {
+  readonly workspace: Workspace;
+  /** Its non-archived threads that pass the filter, in index order. */
   readonly threadIds: readonly string[];
+  /** Its archived threads that pass the filter, in index order (UI-026). */
+  readonly archivedIds: readonly string[];
 }
 
 /**
- * The list's sections: threads that pass `filter` (archived ones only under `filter.archived`, UI-026), in index order
- * within each group. With a grouping, a thread appears under every group it has a key for; threads without any key
- * come last in their own group.
+ * Every workspace by name with its threads (UI-020); while filtering, only threads that match and only workspaces
+ * with one (UI-022). Threads of an unknown workspace are not listed.
  */
-export function groupThreads(
+export function sidebarSections(
   threads: readonly ThreadSummary[],
   workspaces: readonly Workspace[],
-  grouping: Grouping,
-  filter: Filter,
-): Group[] {
-  const visible = threads.filter(
-    (thread) => isArchived(thread) === filter.archived && matches(thread, filter, workspaces),
-  );
-  if (grouping === "none") {
-    return [{ key: "", label: strings.shell.threads.allThreads, threadIds: visible.map((thread) => thread.id) }];
-  }
-  const groups = new Map<string, { label: string; threadIds: string[] }>();
-  const without: string[] = [];
-  for (const thread of visible) {
-    const keys = threadKeys(thread, grouping, workspaces);
-    if (keys.length === 0) {
-      without.push(thread.id);
+  filter: ThreadFilter,
+): Section[] {
+  const filtering = isFiltering(filter);
+  return [...workspaces]
+    .sort((a, b) => compare(a.name.toLowerCase(), b.name.toLowerCase()) || compare(a.id, b.id))
+    .map((workspace) => {
+      const own = threads.filter(
+        (thread) => thread.workspaceId === workspace.id && matchesFilter(thread, workspace, filter),
+      );
+      return {
+        workspace,
+        threadIds: own.filter((thread) => !isArchived(thread)).map((thread) => thread.id),
+        archivedIds: own.filter(isArchived).map((thread) => thread.id),
+      };
+    })
+    .filter((section) => !filtering || section.threadIds.length + section.archivedIds.length > 0);
+}
+
+/** The section's threads are hidden: collapsed by the user, unless a filter is typed. */
+export function isCollapsed(workspaceId: string, collapsed: readonly string[], filter: ThreadFilter): boolean {
+  return !isFiltering(filter) && collapsed.includes(workspaceId);
+}
+
+/** The thread rows shown, top to bottom: the threads of open sections, then their archived ones when listed. */
+export function visibleOrder(
+  sections: readonly Section[],
+  collapsed: readonly string[],
+  archivedOpen: readonly string[],
+  filter: ThreadFilter,
+): string[] {
+  return sections.flatMap((section) => {
+    const id = section.workspace.id;
+    if (isCollapsed(id, collapsed, filter)) {
+      return [];
     }
-    for (const key of keys) {
-      const group = groups.get(key.key);
-      if (group === undefined) {
-        groups.set(key.key, { label: key.label, threadIds: [thread.id] });
-      } else {
-        group.threadIds.push(thread.id);
+    return archivedOpen.includes(id) ? [...section.threadIds, ...section.archivedIds] : [...section.threadIds];
+  });
+}
+
+/** `ids` with `id` added, or removed when it was there. */
+export function toggled(ids: readonly string[], id: string): readonly string[] {
+  return ids.includes(id) ? ids.filter((candidate) => candidate !== id) : [...ids, id];
+}
+
+/** A stored list of ids (the collapsed sections, kept across reloads); `undefined` when it is not one. */
+export function decodeIds(stored: unknown): readonly string[] | undefined {
+  return Array.isArray(stored) && stored.every((entry) => typeof entry === "string") ? stored : undefined;
+}
+
+/** Queries shorter than this are not sent to `threads.search` (DMN-076). */
+export const MIN_SEARCH_LENGTH = 2;
+/** Pause after the last keystroke before `threads.search` is called. */
+export const SEARCH_DELAY_MS = 200;
+
+/** One `threads.search` hit. */
+export interface SearchHit {
+  readonly threadId: string;
+  readonly snippet: string;
+}
+
+/** Runs `run` after `ms` milliseconds; returns the cancel function. */
+export type Schedule = (run: () => void, ms: number) => () => void;
+
+/**
+ * The conversation part of the filter (UI-022): `threads.search` once typing pauses, reporting only the answer to the
+ * latest query (an older answer arriving late is dropped); short queries report no match at once.
+ */
+export class ConversationSearch {
+  readonly #search: (query: string) => Promise<readonly SearchHit[]>;
+  readonly #schedule: Schedule;
+  readonly #onResults: (query: string, snippets: ReadonlyMap<string, string>) => void;
+  #latest = 0;
+  #cancel: (() => void) | undefined;
+
+  constructor(
+    search: (query: string) => Promise<readonly SearchHit[]>,
+    schedule: Schedule,
+    onResults: (query: string, snippets: ReadonlyMap<string, string>) => void,
+  ) {
+    this.#search = search;
+    this.#schedule = schedule;
+    this.#onResults = onResults;
+  }
+
+  /** The query changed. */
+  update(query: string): void {
+    this.#cancel?.();
+    this.#cancel = undefined;
+    this.#latest += 1;
+    const request = this.#latest;
+    const trimmed = query.trim();
+    if (trimmed.length < MIN_SEARCH_LENGTH) {
+      this.#onResults(query, new Map());
+      return;
+    }
+    const report = (hits: readonly SearchHit[]) => {
+      if (request === this.#latest) {
+        this.#onResults(query, new Map(hits.map((hit) => [hit.threadId, hit.snippet])));
       }
-    }
+    };
+    this.#cancel = this.#schedule(() => {
+      this.#search(trimmed).then(report, () => report([]));
+    }, SEARCH_DELAY_MS);
   }
-  const sorted: Group[] = [...groups.entries()]
-    .map(([key, group]) => ({ key, ...group }))
-    .sort((a, b) => compare(a.label, b.label));
-  if (without.length > 0) {
-    sorted.push({ key: "", label: strings.shell.none[grouping], threadIds: without });
+
+  /** Drops the pending call and any answer still to come. */
+  dispose(): void {
+    this.#cancel?.();
+    this.#cancel = undefined;
+    this.#latest += 1;
   }
-  return sorted;
 }
 
 /** A move through the list: by `delta` rows (clamped at both ends), or to one end. */
@@ -236,27 +272,6 @@ export function moveSelection(order: readonly string[], current: string | undefi
     target = Math.min(last, Math.max(0, position + move));
   }
   return order[target];
-}
-
-/** Thread ids in list order, each once (a thread under several groups counts at its first place). */
-export function listOrder(groups: readonly Group[]): string[] {
-  return [...new Set(groups.flatMap((group) => group.threadIds))];
-}
-
-function matches(thread: ThreadSummary, filter: Filter, workspaces: readonly Workspace[]): boolean {
-  const wanted = filter.key;
-  if (
-    wanted !== undefined &&
-    !threadKeys(thread, wanted.dimension, workspaces).some((candidate) => candidate.key === wanted.key)
-  ) {
-    return false;
-  }
-  const needle = filter.text.trim().toLowerCase();
-  if (needle === "") {
-    return true;
-  }
-  const chips = workspaceChips(thread.workspaceId, workspaces).map((chip) => chip.label);
-  return [displayTitle(thread), ...thread.tags, ...chips].some((text) => text.toLowerCase().includes(needle));
 }
 
 /**

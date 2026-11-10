@@ -1,0 +1,33 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "fs.complete",
+    "params": {
+      "path": "~/src/sh"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "entries": [
+        {
+          "isGitRoot": true,
+          "name": "shop-backend",
+          "path": "/home/dev/src/shop-backend"
+        },
+        {
+          "isGitRoot": false,
+          "name": "shared",
+          "path": "/home/dev/src/shared"
+        }
+      ]
+    },
+    "type": "response"
+  }
+}

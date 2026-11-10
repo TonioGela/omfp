@@ -18,7 +18,6 @@ import {
   type Position,
   parseTopic,
   type RepoStatus,
-  type Repository,
   type Settings,
   type SubscribeParams,
   type SubscribeResult,
@@ -48,11 +47,10 @@ export type ConnectionStatus =
   /** The client was closed by the host. */
   | { kind: "closed" };
 
-/** The `index` topic: repositories, workspaces and thread summaries keyed by id, in id order (ids are ULIDs, so this
+/** The `index` topic: workspaces and thread summaries keyed by id, in id order (ids are ULIDs, so this
  * is creation order), the user's theme (DMN-075; `{ css: null }` until the daemon sends one) and the UI settings of
  * the daemon's config file (DMN-009, UI-097; `{ ui: {}, keymap: [], error: null }` until the daemon sends them). */
 export interface Index {
-  readonly repositories: ReadonlyMap<string, Repository>;
   readonly workspaces: ReadonlyMap<string, Workspace>;
   readonly threads: ReadonlyMap<string, ThreadSummary>;
   readonly theme: Theme;
@@ -152,7 +150,6 @@ export interface ModelView {
 }
 
 const EMPTY_INDEX: Index = {
-  repositories: new Map(),
   workspaces: new Map(),
   threads: new Map(),
   theme: NO_THEME,
@@ -195,7 +192,6 @@ function without<T>(map: ReadonlyMap<string, T>, key: string): ReadonlyMap<strin
 
 function indexFromSnapshot(snapshot: IndexSnapshot): Index {
   return {
-    repositories: byId(snapshot.repositories),
     workspaces: byId(snapshot.workspaces),
     threads: byId(snapshot.threads),
     theme: snapshot.theme,
@@ -205,10 +201,6 @@ function indexFromSnapshot(snapshot: IndexSnapshot): Index {
 
 function applyIndexEvent(index: Index, event: IndexEvent): Index {
   switch (event.kind) {
-    case "repository_upserted":
-      return { ...index, repositories: upsert(index.repositories, event.repository.id, event.repository) };
-    case "repository_removed":
-      return { ...index, repositories: without(index.repositories, event.repositoryId) };
     case "workspace_upserted":
       return { ...index, workspaces: upsert(index.workspaces, event.workspace.id, event.workspace) };
     case "workspace_removed":
@@ -487,8 +479,6 @@ export class Model implements ModelView {
     const { event } = frame;
     // Decoding ties the event kind to the topic kind.
     switch (event.kind) {
-      case "repository_upserted":
-      case "repository_removed":
       case "workspace_upserted":
       case "workspace_removed":
       case "thread_upserted":

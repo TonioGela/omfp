@@ -14,24 +14,24 @@ use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
 use omfp_daemon::{DaemonHandle, Ports, start_with};
 use omfp_protocol::method::{
-    InteractionRespond, ReposAdd, ReposList, ReposRemove, Subscribe, SystemHello, ThemeGet,
-    ThemeSet, ThreadAbort, ThreadBash, ThreadBtw, ThreadCommands, ThreadCompact, ThreadFollowUp,
-    ThreadFork, ThreadGit, ThreadGoal, ThreadLabel, ThreadModels, ThreadNavigate, ThreadPrompt,
+    FsComplete, InteractionRespond, ReposSuggest, Subscribe, SystemHello, ThemeGet, ThemeSet,
+    ThreadAbort, ThreadBash, ThreadBtw, ThreadCommands, ThreadCompact, ThreadFollowUp, ThreadFork,
+    ThreadGit, ThreadGoal, ThreadLabel, ThreadModels, ThreadNavigate, ThreadPrompt,
     ThreadQueuePromote, ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking,
     ThreadState, ThreadSteer, ThreadStop, ThreadSubagentCancel, ThreadSubagentMessages,
     ThreadSubagentSteer, ThreadSubagents, ThreadThinkingLevels, ThreadTree, ThreadsArchive,
-    ThreadsCreate, ThreadsDelete, ThreadsUnarchive, ThreadsUpdate, Unsubscribe, WorkspacesAddRepo,
-    WorkspacesCreate, WorkspacesDiff, WorkspacesRemove, WorkspacesRemoveRepo, WorkspacesRescan,
-    WorkspacesStatus, WorkspacesUpdate,
+    ThreadsCreate, ThreadsDelete, ThreadsSearch, ThreadsUnarchive, ThreadsUpdate, Unsubscribe,
+    WorkspacesAddRepo, WorkspacesCreate, WorkspacesDiff, WorkspacesRemove, WorkspacesRemoveRepo,
+    WorkspacesRescan, WorkspacesStatus, WorkspacesUpdate,
 };
 use omfp_protocol::{
-    AddRepoParams, AddRepositoryParams, BashParams, BtwParams, CompactParams, CreateThreadParams,
+    AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CreateThreadParams,
     CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams, InteractionResponse,
     LabelParams, MessageParams, NavigateParams, PromptParams, QueueMessageParams, RemoveRepoParams,
-    RemoveWorkspaceParams, RepoRef, RepoSource, RepositoryRef, RespondParams, SetModelParams,
+    RemoveWorkspaceParams, RepoRef, RepoSource, RespondParams, SearchThreadsParams, SetModelParams,
     SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
-    SubscribeResult, Theme, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
-    UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
+    SubscribeResult, SuggestReposParams, Theme, ThreadRef, ThreadWorkspace, Topic, TopicParams,
+    UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
 };
 use tempfile::TempDir;
 
@@ -124,6 +124,7 @@ fn message(thread_id: &str, text: &str) -> MessageParams {
 
 // spec: AGT-007
 #[tokio::test(flavor = "multi_thread")]
+#[allow(clippy::too_many_lines)] // One method after the other.
 async fn connection_repository_and_workspace_methods_return_their_declared_results() {
     let daemon = daemon().await;
     let mut client = Client::connect(daemon.handle.addr()).await;
@@ -150,11 +151,19 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
 
     let root = daemon.folder("repo");
     daemon.git.add_repo(Path::new(&root), "main");
-    let repository = client
-        .typed::<ReposAdd>(AddRepositoryParams { path: root })
+    let completed = client
+        .typed::<FsComplete>(CompletePathParams {
+            path: format!("{}/re", daemon.dir.path().display()),
+        })
         .await;
-    let listed = client.typed::<ReposList>(Empty {}).await;
-    assert_eq!(listed.repositories, std::slice::from_ref(&repository));
+    assert_eq!(
+        completed
+            .entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>(),
+        ["repo"]
+    );
     let workspace = client
         .typed::<WorkspacesCreate>(CreateWorkspaceParams {
             name: Some("checkout".into()),
@@ -176,7 +185,7 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
             workspace_id: workspace.id.clone(),
             name: None,
             source: RepoSource::Worktree {
-                repo: repository.id.clone(),
+                repo: root.clone(),
                 branch: Some("feature".into()),
                 base_ref: Some("main".into()),
             },
@@ -185,6 +194,17 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
     assert_eq!(added.repos.len(), 1);
     let rescanned = client.typed::<WorkspacesRescan>(workspace_ref()).await;
     assert_eq!(rescanned.repos, added.repos);
+    let suggested = client
+        .typed::<ReposSuggest>(SuggestReposParams { query: None })
+        .await;
+    assert_eq!(
+        suggested
+            .repos
+            .iter()
+            .map(|repo| repo.name.as_str())
+            .collect::<Vec<_>>(),
+        ["repo"]
+    );
     let repo = RepoRef {
         workspace_id: workspace.id.clone(),
         repo: "repo".into(),
@@ -214,11 +234,6 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
             workspace_id: workspace.id.clone(),
             delete_folder: true,
             force: false,
-        })
-        .await;
-    client
-        .typed::<ReposRemove>(RepositoryRef {
-            repository_id: repository.id,
         })
         .await;
 }
@@ -252,6 +267,12 @@ async fn thread_management_methods_return_their_declared_results() {
         .await;
     let doomed = client.typed::<ThreadsCreate>(new_thread("doomed")).await;
     client.typed::<ThreadsDelete>(thread_ref(&doomed.id)).await;
+    let found = client
+        .typed::<ThreadsSearch>(SearchThreadsParams {
+            query: "nothing was said".into(),
+        })
+        .await;
+    assert_eq!(found.results, Vec::new());
 }
 
 // spec: AGT-007, DMN-075

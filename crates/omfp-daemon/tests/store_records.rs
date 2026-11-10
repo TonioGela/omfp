@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use omfp_daemon::store::{
-    Provenance, Repository, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
+    Provenance, SeenRepository, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -13,17 +13,6 @@ fn open() -> (TempDir, Store) {
     let dir = TempDir::new().unwrap();
     let store = Store::open(&dir.path().join("omfp.db"), &dir.path().join("workspaces")).unwrap();
     (dir, store)
-}
-
-fn repository(path: &str) -> Repository {
-    Repository {
-        id: new_id(),
-        name: "app".into(),
-        path: path.into(),
-        default_base_ref: "main".into(),
-        remote_url: Some("git@example.com:app.git".into()),
-        created_at: now_ms(),
-    }
 }
 
 fn workspace(name: &str, path: &str) -> Workspace {
@@ -69,41 +58,45 @@ fn assert_conflict<T: std::fmt::Debug>(result: Result<T, StoreError>) {
     assert!(matches!(error, StoreError::Conflict(_)), "{error:?}");
 }
 
-#[test]
-fn repositories_round_trip_and_are_listed() {
-    let (_dir, store) = open();
-    let repo = repository("/src/app");
-    store.insert_repository(&repo).unwrap();
-
-    assert_eq!(store.repository(&repo.id).unwrap(), repo);
-    assert_eq!(
-        store.repository_by_path("/src/app".as_ref()).unwrap(),
-        Some(repo.clone())
-    );
-    assert_eq!(
-        store.repository_by_path("/src/other".as_ref()).unwrap(),
-        None
-    );
-    assert_eq!(store.repositories().unwrap(), vec![repo]);
-}
-
 // spec: DMN-021
 #[test]
-fn a_repository_path_is_registered_once() {
+fn seen_repositories_keep_their_latest_sighting_most_recent_first() {
     let (_dir, store) = open();
-    store.insert_repository(&repository("/src/app")).unwrap();
+    let seen = |path: &str, at: i64| SeenRepository {
+        path: path.into(),
+        last_seen_at: at,
+    };
+    store
+        .record_seen_repositories(&["/src/app".into(), "/src/api".into()], 10)
+        .unwrap();
+    store
+        .record_seen_repositories(&["/src/lib".into()], 20)
+        .unwrap();
+    store
+        .record_seen_repositories(&["/src/app".into()], 30)
+        .unwrap();
+    // An older sighting never moves a repository back.
+    store
+        .record_seen_repositories(&["/src/lib".into()], 5)
+        .unwrap();
+    store.record_seen_repositories(&[], 40).unwrap();
 
-    assert_conflict(store.insert_repository(&repository("/src/app")));
+    assert_eq!(
+        store.seen_repositories().unwrap(),
+        vec![
+            seen("/src/app", 30),
+            seen("/src/lib", 20),
+            seen("/src/api", 10)
+        ]
+    );
 }
 
 #[test]
 fn unknown_ids_are_not_found() {
     let (_dir, store) = open();
     for error in [
-        store.repository("nope").unwrap_err(),
         store.workspace("nope").unwrap_err(),
         store.thread("nope").unwrap_err(),
-        store.delete_repository("nope").unwrap_err(),
         store.rename_workspace("nope", "x").unwrap_err(),
         store.delete_workspace("nope").unwrap_err(),
         store.delete_thread("nope").unwrap_err(),
@@ -116,19 +109,6 @@ fn unknown_ids_are_not_found() {
     ] {
         assert!(matches!(error, StoreError::NotFound { .. }), "{error:?}");
     }
-}
-
-// spec: DMN-021
-#[test]
-fn unregistering_a_repository_keeps_the_workspaces() {
-    let (_dir, store, ws) = with_workspace();
-    let repo = repository("/src/app");
-    store.insert_repository(&repo).unwrap();
-
-    store.delete_repository(&repo.id).unwrap();
-
-    assert_eq!(store.repositories().unwrap(), Vec::new());
-    assert_eq!(store.workspaces().unwrap(), vec![ws]);
 }
 
 // spec: DMN-020

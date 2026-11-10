@@ -87,8 +87,6 @@ function decodeErrorBody(value: unknown): Decoded<ErrorBody> {
 }
 
 const INDEX_EVENTS: Record<IndexEvent["kind"], (event: Record<string, unknown>) => boolean> = {
-  repository_upserted: (event) => hasId(event.repository),
-  repository_removed: (event) => typeof event.repositoryId === "string",
   workspace_upserted: (event) => hasId(event.workspace),
   workspace_removed: (event) => typeof event.workspaceId === "string",
   thread_upserted: (event) => hasId(event.thread),
@@ -257,9 +255,9 @@ export function decodeSubscribeResult(value: unknown): Decoded<SubscribeResult> 
 export function decodeIndexSnapshot(value: unknown): Decoded<IndexSnapshot> {
   if (
     !isObject(value) ||
-    ![value.repositories, value.workspaces, value.threads].every((list) => Array.isArray(list) && list.every(hasId))
+    ![value.workspaces, value.threads].every((list) => Array.isArray(list) && list.every(hasId))
   ) {
-    return invalid("expected `repositories`, `workspaces` and `threads`, each a list of objects with an `id`");
+    return invalid("expected `workspaces` and `threads`, each a list of objects with an `id`");
   }
   const theme = value.theme ?? NO_THEME;
   if (!isTheme(theme)) {

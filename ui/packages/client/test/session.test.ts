@@ -18,7 +18,7 @@ function snapshot(epoch: string, seq: number, state: unknown): Frame {
 }
 
 function emptyIndex(): Frame {
-  return { repositories: [], workspaces: [], threads: [], theme: { css: null } };
+  return { workspaces: [], threads: [], theme: { css: null } };
 }
 
 function indexEvent(epoch: string, seq: number, id: string): Frame {
@@ -208,7 +208,7 @@ describe("session", () => {
   test("a refused token stops the client without retrying", async () => {
     for (const answerFirst of [true, false]) {
       const rig = new Rig();
-      const pending = rig.call("repos.list", {});
+      const pending = rig.call("repos.suggest", {});
       const server = rig.accept();
       const [helloRequest] = server.frames();
 
@@ -245,7 +245,7 @@ describe("session", () => {
   test("responses are matched to calls by id in any order", async () => {
     const rig = new Rig();
     const [server] = rig.connect();
-    const first = rig.call("repos.list", {});
+    const first = rig.call("repos.suggest", {});
     const second = rig.call("thread.state", { threadId: THREAD });
 
     const frames = server.frames();
@@ -261,29 +261,29 @@ describe("session", () => {
 
   test("calls made offline are sent once connected and in-flight calls fail on loss", async () => {
     const rig = new Rig();
-    const queued = rig.call("repos.list", {});
+    const queued = rig.call("repos.suggest", {});
     const [server, frames] = rig.connect();
-    expect(methods(frames)).toEqual(["repos.list"]);
-    server.respond(frames[0]?.id, { repositories: [] });
+    expect(methods(frames)).toEqual(["repos.suggest"]);
+    server.respond(frames[0]?.id, { repos: [] });
     const inFlight = rig.call("thread.state", { threadId: THREAD });
     expect(server.frames()).toHaveLength(1);
 
     server.close();
 
-    expect(await settled(queued)).toEqual({ ok: true, value: { repositories: [] } });
+    expect(await settled(queued)).toEqual({ ok: true, value: { repos: [] } });
     expect(inFlight.settled?.ok === false && inFlight.settled.error.failure).toEqual({ kind: "connection_lost" });
   });
 
   test("typed requests resolve to their result", async () => {
     const rig = new Rig();
     const [server] = rig.connect();
-    const request = rig.client.call("repos.list", {});
+    const request = rig.client.call("repos.suggest", {});
     const frames = server.frames();
 
-    server.respond(frames[0]?.id, { repositories: [] });
+    server.respond(frames[0]?.id, { repos: [] });
 
     const list = await request;
-    expect(list.repositories).toEqual([]);
+    expect(list.repos).toEqual([]);
   });
 
   test("session methods cannot be called directly", async () => {
@@ -319,7 +319,7 @@ describe("session", () => {
     expect(rig.done).toBe(true);
     expect(server.closedByClient).toBe(true);
     expect(rig.timer.requested).toEqual([]);
-    const late = await settled(rig.call("repos.list", {}));
+    const late = await settled(rig.call("repos.suggest", {}));
     expect(late?.ok === false && late.error.failure).toEqual({ kind: "closed" });
   });
 
@@ -357,14 +357,14 @@ describe("session", () => {
     const rig = new Rig();
     const first = rig.accept();
     const [helloRequest] = first.frames();
-    const one = rig.call("repos.list", {});
+    const one = rig.call("repos.suggest", {});
     const two = rig.call("thread.state", { threadId: THREAD });
     const three = rig.call("thread.restart", { threadId: THREAD });
     first.failSendsAfter(1);
 
     first.respond(helloRequest?.id, hello());
 
-    expect(methods(first.frames())).toEqual(["repos.list"]);
+    expect(methods(first.frames())).toEqual(["repos.suggest"]);
     expect(reconnecting(rig).attempt).toBe(1);
     const lost = await settled(one);
     expect(lost?.ok === false && lost.error.failure).toEqual({ kind: "connection_lost" });
@@ -385,21 +385,21 @@ describe("session", () => {
     const [first] = rig.connect();
     first.failSendsAfter(0);
 
-    const call = rig.call("repos.list", {});
+    const call = rig.call("repos.suggest", {});
 
     expect(reconnecting(rig).attempt).toBe(1);
     expect(await settled(call)).toBeUndefined();
     rig.timer.fire();
     const [server, frames] = rig.connect();
-    expect(methods(frames)).toEqual(["repos.list"]);
-    server.respond(frames[0]?.id, { repositories: [] });
-    expect(await settled(call)).toEqual({ ok: true, value: { repositories: [] } });
+    expect(methods(frames)).toEqual(["repos.suggest"]);
+    server.respond(frames[0]?.id, { repos: [] });
+    expect(await settled(call)).toEqual({ ok: true, value: { repos: [] } });
   });
 
   test("a malformed response fails its call", async () => {
     const rig = new Rig();
     const [server] = rig.connect();
-    const call = rig.call("repos.list", {});
+    const call = rig.call("repos.suggest", {});
     const id = server.frames()[0]?.id;
 
     server.send({ type: "response", id, ok: true, error: { code: "internal", message: "both" } });
@@ -441,15 +441,15 @@ describe("session", () => {
     rig.client.subscribe(INDEX_TOPIC);
     rig.client.subscribe(THREAD_TOPIC);
     rig.client.unsubscribe(THREAD_TOPIC);
-    const call = rig.call("repos.list", {});
+    const call = rig.call("repos.suggest", {});
     expect(server.frames()).toEqual([]);
     server.respond(helloRequest?.id, hello());
 
     const frames = server.frames();
-    expect(methods(frames)).toEqual(["subscribe", "repos.list"]);
+    expect(methods(frames)).toEqual(["subscribe", "repos.suggest"]);
     expect(frames[0]?.params).toEqual({ topic: "index" });
-    server.respond(frames[1]?.id, { repositories: [] });
-    expect(await settled(call)).toEqual({ ok: true, value: { repositories: [] } });
+    server.respond(frames[1]?.id, { repos: [] });
+    expect(await settled(call)).toEqual({ ok: true, value: { repos: [] } });
     expect(server.frames()).toEqual([]);
   });
 

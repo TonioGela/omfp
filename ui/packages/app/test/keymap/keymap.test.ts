@@ -46,7 +46,7 @@ describe("keymap", () => {
     expect(keyToken(key("Shift", { shiftKey: true }))).toBeUndefined();
   });
 
-  // spec: UI-095
+  // spec: UI-095, UI-020, UI-022, UI-023
   test("the defaults are vim-style, with the command line and the Space leader", () => {
     const table = (command: string, mode: "normal" | "insert" = "normal") => keysFor(DEFAULT_BINDINGS, command, mode);
     expect(table("nav.next")).toEqual(["j"]);
@@ -59,6 +59,9 @@ describe("keymap", () => {
     expect(table("composer.focus")).toEqual(["i"]);
     expect(table("cmdline.open")).toEqual([":", "Space :"]);
     expect(table("thread.new")).toEqual(["Space n", "Alt-n"]);
+    expect(table("workspace.new")).toEqual(["Space w"]);
+    expect(table("nav.delete")).toEqual(["d d"]);
+    expect(table("nav.toggleSection")).toEqual(["z a"]);
     expect(table("focus.leave", "insert")).toEqual(["Esc"]);
     // No single-key binding while typing.
     expect(DEFAULT_BINDINGS.filter((binding) => binding.mode === "insert").map((binding) => binding.keys)).toEqual([

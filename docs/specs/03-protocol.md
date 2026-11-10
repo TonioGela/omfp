@@ -112,6 +112,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `threads.create` | `workspace`: `{ id }` \| `{ new: { name?, path? } }` (default: a new folder named after the title, else the first message), `prompt?` (first message), `tags[]`, `model?`, `thinkingLevel?`, `approvalMode?` (default `yolo`, DMN-074), `title?` (scripts and agents; otherwise generated, DMN-073) | thread |
 | `threads.update` | `threadId`, `title?` (a `set` title, DMN-073), `tags?`, `approvalMode?` (from the next start of the thread's omp) | thread |
 | `threads.archive` / `.unarchive` / `.delete` | `threadId` | `{}`; archive stops the thread's omp process and sets `archivedAt`, unarchive clears it, delete removes the thread's records and directory (workspaces are never removed implicitly) |
+| `threads.search` | `query` | `{ results: [{ threadId, snippet }] }`: threads whose conversation text contains `query`, most recently updated first (DMN-076) |
 | `thread.prompt` | `threadId`, `text`, `images?`, `behavior?: "steer" \| "followUp"` | `{ promptId }`; completion arrives as `prompt_result` |
 | `thread.steer` / `thread.follow_up` | `threadId`, `text`, `images?` | `{}` |
 | `thread.abort` | `threadId` | `{ steering[], followUp[] }` (to restore into the composer) |

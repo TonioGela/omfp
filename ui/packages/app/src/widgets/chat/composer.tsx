@@ -2,6 +2,7 @@
  * `omfp:composer`: queue chips (UI-062) and the composer (UI-060..064) of the selected thread. Multi-line input with
  * image paste/drop, `/` command completion (React Aria `Autocomplete` + `TextArea` + `Menu` in a non-modal `Popover`,
  * S-11), the send mode on the send button, Esc aborting a busy thread or leaving the composer, and drafts per thread.
+ * With no thread selected, the composer of the draft thread (UI-023): its first message creates the thread.
  */
 
 import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/core";
@@ -9,13 +10,17 @@ import { Button, IconButton, Menu, MenuItem, Popover, TextArea } from "@omfp/kit
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Autocomplete } from "react-aria-components";
 import {
+  DRAFT_MESSAGE,
+  DRAFT_THREAD,
   type Draft,
+  type DraftThread,
   draftKey,
   EMPTY_DRAFT,
   SCOPE_ATTRIBUTE,
   useAnnounce,
   useCall,
   useCommand,
+  useThreadActions,
   useWindowState,
 } from "../../sdk/index.ts";
 import { strings } from "../../strings/index.ts";
@@ -47,6 +52,14 @@ const text = strings.chat.composer;
 
 export function ComposerWidget(_props: WidgetProps) {
   const { threadId, view } = useSelectedThread();
+  const [draft] = useWindowState(DRAFT_THREAD);
+  if (threadId === undefined && draft !== undefined) {
+    return (
+      <div className="omfp-composer-area">
+        <DraftComposer draft={draft} />
+      </div>
+    );
+  }
   if (threadId === undefined || view === undefined) {
     return null;
   }
@@ -55,6 +68,88 @@ export function ComposerWidget(_props: WidgetProps) {
       <QueueChips threadId={threadId} state={view.state} />
       <Composer key={threadId} threadId={threadId} state={view.state} />
     </div>
+  );
+}
+
+/**
+ * The draft thread's composer (UI-023): Enter (or the button) creates the thread with the text as first message; the
+ * text stays when that fails. It takes the focus whenever the draft is opened; Esc leaves it, discarding an empty
+ * draft.
+ */
+export function DraftComposer({ draft }: { draft: DraftThread }) {
+  const actions = useThreadActions();
+  const [message, setMessage] = useWindowState(DRAFT_MESSAGE);
+  const [sending, setSending] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const labels = strings.shell.draft;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `draft` is a new object each time the draft is opened
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [draft]);
+  const send = () => {
+    if (sending || isBlank(message)) {
+      return;
+    }
+    setSending(true);
+    void actions.sendDraft().then((sent) => {
+      if (!sent) {
+        setSending(false);
+      }
+    });
+  };
+  const leave = () => {
+    if (isBlank(message)) {
+      actions.discardDraft();
+    }
+    inputRef.current?.blur();
+  };
+  useCommand({ id: "composer.focus", title: text.focus, run: () => inputRef.current?.focus() });
+  useCommand({ id: "focus.leave", title: text.leave, scope: "composer", run: leave });
+  const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== inputRef.current || event.nativeEvent.isComposing) {
+      return;
+    }
+    const action = keyAction(event.key, modifiersOf(event), { busy: false, abortable: false, hasSuggestions: false });
+    if (action.type === "send" || action.type === "leave") {
+      event.preventDefault();
+      event.stopPropagation();
+      if (action.type === "send") {
+        send();
+      } else {
+        leave();
+      }
+    }
+  };
+  return (
+    <form
+      className="omfp-composer"
+      data-testid="composer"
+      data-draft="true"
+      data-workspace-id={draft.workspaceId}
+      {...{ [SCOPE_ATTRIBUTE]: "composer" }}
+      onSubmit={(event) => {
+        event.preventDefault();
+        send();
+      }}
+      onKeyDownCapture={onKeyDownCapture}
+    >
+      <TextArea
+        label={text.label}
+        hideLabel
+        rows={3}
+        placeholder={labels.placeholder}
+        value={message.text}
+        onChange={(value) => setMessage((previous) => ({ ...previous, text: value }))}
+        isReadOnly={sending}
+        inputRef={inputRef}
+        inputProps={{ ...testId("composer-input"), "aria-keyshortcuts": "Enter Shift+Enter Escape" }}
+      />
+      <div className="omfp-composer__actions">
+        <Button type="submit" variant="primary" data-testid="send" data-mode="draft" isDisabled={sending}>
+          {labels.send}
+        </Button>
+      </div>
+    </form>
   );
 }
 

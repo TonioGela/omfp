@@ -15,7 +15,8 @@ type Hook = Arc<dyn Fn(&Path) + Send + Sync>;
 struct FakeRepo {
     head: Option<String>,
     branches: BTreeSet<String>,
-    remote_url: Option<String>,
+    /// The URL a fake clone was made from.
+    cloned_from: Option<String>,
     /// Linked worktree path → checked-out branch.
     worktrees: BTreeMap<PathBuf, String>,
 }
@@ -99,10 +100,13 @@ impl FakeGit {
         }
     }
 
-    pub fn set_remote_url(&self, root: &Path, url: &str) {
-        if let Some(repo) = self.state().repos.get_mut(&canonical(root)) {
-            repo.remote_url = Some(url.to_owned());
-        }
+    /// The URL the repository at `root` was cloned from by [`Git::clone_repo`].
+    #[must_use]
+    pub fn cloned_from(&self, root: &Path) -> Option<String> {
+        self.state()
+            .repos
+            .get(&canonical(root))
+            .and_then(|repo| repo.cloned_from.clone())
     }
 
     pub fn set_dirty(&self, dir: &Path, dirty: bool) {
@@ -199,12 +203,10 @@ impl Git for FakeGit {
         }
         std::fs::create_dir_all(dest)?;
         self.add_repo(dest, "main");
-        self.set_remote_url(dest, url);
+        if let Some(repo) = self.state().repos.get_mut(&canonical(dest)) {
+            repo.cloned_from = Some(url.to_owned());
+        }
         Ok(())
-    }
-
-    fn remote_url(&self, repo: &Path, _remote: &str) -> Result<Option<String>> {
-        Ok(self.state().repo(&canonical(repo))?.remote_url.clone())
     }
 
     fn branch_exists(&self, repo: &Path, branch: &str) -> Result<bool> {

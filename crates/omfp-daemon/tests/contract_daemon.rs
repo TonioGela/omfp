@@ -166,7 +166,7 @@ async fn prompt(client: &mut Client, thread: &str, text: &str) -> String {
 
 const USER_APPEND: &str = "User append marker: quince-5";
 
-// spec: ARC-008, DMN-029, DMN-030, DMN-024, DMN-025, PRT-030, ARC-001
+// spec: ARC-008, DMN-029, DMN-030, DMN-024, DMN-025, PRT-030, ARC-001, DMN-021, DMN-076
 #[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::too_many_lines)] // One acceptance journey, step by step.
 async fn a_thread_in_a_workspace_folder_sees_its_repositories_the_conventions_and_the_users_append_file()
@@ -259,6 +259,33 @@ async fn a_thread_in_a_workspace_folder_sees_its_repositories_the_conventions_an
         "the target stays"
     );
     assert_eq!(assistant_texts(&view.state).len(), 3);
+    // The conversation is searchable in omp's own session files, user and assistant text alike (DMN-076).
+    for (query, snippet) in [
+        ("FROM BOTH", "Hello from both repositories."),
+        ("and now", "and now?"),
+    ] {
+        let found = client.ok("threads.search", json!({ "query": query })).await;
+        assert_eq!(
+            found,
+            json!({ "results": [{ "threadId": thread, "snippet": snippet }] })
+        );
+    }
+    // Both repositories are suggested, the link by its target and the worktree by its repository (DMN-021).
+    let suggested = client.ok("repos.suggest", json!({})).await;
+    let mut paths: Vec<&str> = suggested["repos"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|repo| repo["path"].as_str())
+        .collect();
+    paths.sort_unstable();
+    let mut expected = [
+        frontend.path().canonicalize().unwrap(),
+        backend.path().canonicalize().unwrap(),
+    ]
+    .map(|path| path.display().to_string());
+    expected.sort_unstable();
+    assert_eq!(paths, expected);
     // The daemon's state equals what the client reduced from the stream (PRT-021).
     let latest = Follower::snapshot(&mut client, &thread, None).await;
     assert_eq!(latest.state, view.state);

@@ -17,11 +17,6 @@ export type AddRepoParams = {
   workspaceId: string;
 };
 
-/** `repos.add` params. */
-export type AddRepositoryParams = {
-  path: string;
-};
-
 /** `thread.bash` params. */
 export type BashParams = {
   command: string;
@@ -42,6 +37,15 @@ export type BtwParams = {
 export type CompactParams = {
   instructions?: string | null;
   threadId: string;
+};
+
+/** `fs.complete` params (DMN-021). */
+export type CompletePathParams = {
+  /**
+   * An absolute path or one starting with `~`: ending with `/`, its children are listed; otherwise the children
+   * of its parent starting with its last segment.
+   */
+  path: string;
 };
 
 /** `threads.create` params. */
@@ -188,14 +192,6 @@ export type HelloResult = {
 /** Change on the `index` topic. */
 export type IndexEvent =
   | {
-    kind: "repository_upserted";
-    repository: Repository;
-  }
-  | {
-    kind: "repository_removed";
-    repositoryId: string;
-  }
-  | {
     kind: "workspace_upserted";
     workspace: Workspace;
   }
@@ -224,7 +220,6 @@ export type IndexEvent =
 
 /** State of the `index` topic. */
 export type IndexSnapshot = {
-  repositories: Repository[];
   settings: Settings;
   theme: Theme;
   threads: ThreadSummary[];
@@ -313,6 +308,20 @@ export type OpenTerminalResult = {
   terminalId: string;
 };
 
+/** `fs.complete` result: directories sorted by name, at most 200. */
+export type PathCompletions = {
+  entries: PathEntry[];
+};
+
+/** A child directory on the daemon host, offered while typing a path (DMN-021). */
+export type PathEntry = {
+  /** The directory is the root of a git repository. */
+  isGitRoot: boolean;
+  name: string;
+  /** Absolute path, `~` expanded. */
+  path: string;
+};
+
 /** A position in a topic's event stream. */
 export type Position = {
   epoch: string;
@@ -389,12 +398,12 @@ export type RepoSource =
   }
   /** `git worktree add` of a repository. */
   | {
-    /** Base of a new branch; default: the known repository's base ref, else its checked-out branch. */
+    /** Base of a new branch; default: the repository's checked-out branch. */
     baseRef?: string | null;
     /** Existing branch to check out, or new branch name; default: a new `omfp/<slug>-<n>` branch. */
     branch?: string | null;
     kind: "worktree";
-    /** Known repository id, or a path inside a git repository. */
+    /** A path inside a git repository (e.g. a `repos.suggest` path). */
     repo: string;
   }
   /** `git clone <url> <name>`. */
@@ -416,25 +425,9 @@ export type RepoStatus = {
   status: GitStatus;
 };
 
-/** A known git repository: a shortcut for adding repositories to workspaces (DMN-021). */
-export type Repository = {
-  createdAt: number;
-  defaultBaseRef: string;
-  id: string;
-  name: string;
-  /** Absolute path of the repository root. */
-  path: string;
-  remoteUrl?: string | null;
-};
-
-/** `repos.list` result. */
-export type RepositoryList = {
-  repositories: Repository[];
-};
-
-/** Params naming one repository. */
-export type RepositoryRef = {
-  repositoryId: string;
+/** `repos.suggest` result: most recently seen first. */
+export type RepoSuggestions = {
+  repos: SeenRepository[];
 };
 
 /** `terminal.resize` params. */
@@ -449,6 +442,21 @@ export type RespondParams = {
   interactionId: string;
   response: InteractionResponse;
   threadId: string;
+};
+
+/** `threads.search` params (DMN-076). */
+export type SearchThreadsParams = {
+  /** Case-insensitive substring of the conversation text; shorter than 2 characters finds nothing. */
+  query: string;
+};
+
+/** A repository the daemon has seen in a workspace, suggested when adding repositories (DMN-021). */
+export type SeenRepository = {
+  lastSeenAt: number;
+  /** The path's last component. */
+  name: string;
+  /** Canonical path: a link's target or a clone, the main repository of a worktree. */
+  path: string;
 };
 
 /** `thread.set_model` params. */
@@ -528,6 +536,12 @@ export type SubscribeResult =
     state: unknown;
   };
 
+/** `repos.suggest` params (DMN-021). */
+export type SuggestReposParams = {
+  /** Keeps repositories whose path or name contains it (case-insensitive); absent or empty: all. */
+  query?: string | null;
+};
+
 /** An open terminal. */
 export type TerminalInfo = {
   cols: number;
@@ -571,6 +585,18 @@ export type ThreadGit = {
 /** Params naming one thread. */
 export type ThreadRef = {
   threadId: string;
+};
+
+/** A thread whose conversation contains the query. */
+export type ThreadSearchResult = {
+  /** A short excerpt around the first match. */
+  snippet: string;
+  threadId: string;
+};
+
+/** `threads.search` result: most recently updated threads first, at most 200. */
+export type ThreadSearchResults = {
+  results: ThreadSearchResult[];
 };
 
 /** What the thread list shows about a thread. */
@@ -733,9 +759,8 @@ export interface Methods {
   "system.hello": { params: HelloParams; result: HelloResult };
   "subscribe": { params: SubscribeParams; result: SubscribeResult };
   "unsubscribe": { params: TopicParams; result: Empty };
-  "repos.add": { params: AddRepositoryParams; result: Repository };
-  "repos.remove": { params: RepositoryRef; result: Empty };
-  "repos.list": { params: Empty; result: RepositoryList };
+  "repos.suggest": { params: SuggestReposParams; result: RepoSuggestions };
+  "fs.complete": { params: CompletePathParams; result: PathCompletions };
   "workspaces.create": { params: CreateWorkspaceParams; result: Workspace };
   "workspaces.update": { params: UpdateWorkspaceParams; result: Workspace };
   "workspaces.remove": { params: RemoveWorkspaceParams; result: Empty };
@@ -749,6 +774,7 @@ export interface Methods {
   "threads.archive": { params: ThreadRef; result: Empty };
   "threads.unarchive": { params: ThreadRef; result: Empty };
   "threads.delete": { params: ThreadRef; result: Empty };
+  "threads.search": { params: SearchThreadsParams; result: ThreadSearchResults };
   "thread.prompt": { params: PromptParams; result: PromptResult };
   "thread.steer": { params: MessageParams; result: Empty };
   "thread.follow_up": { params: MessageParams; result: Empty };
@@ -796,9 +822,8 @@ export const METHODS: readonly MethodName[] = [
   "system.hello",
   "subscribe",
   "unsubscribe",
-  "repos.add",
-  "repos.remove",
-  "repos.list",
+  "repos.suggest",
+  "fs.complete",
   "workspaces.create",
   "workspaces.update",
   "workspaces.remove",
@@ -812,6 +837,7 @@ export const METHODS: readonly MethodName[] = [
   "threads.archive",
   "threads.unarchive",
   "threads.delete",
+  "threads.search",
   "thread.prompt",
   "thread.steer",
   "thread.follow_up",

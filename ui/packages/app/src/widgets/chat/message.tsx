@@ -3,6 +3,7 @@
 import { Card, Code, Disclosure, Markdown } from "@omfp/kit";
 import { strings } from "../../strings/index.ts";
 import type { NoticeRow } from "../../vm/notice.ts";
+import type { SystemRow } from "../../vm/system.ts";
 import { expandedByDefault, formatDuration, type ToolCard } from "../../vm/tool.ts";
 import type { Block, MessageView, Role } from "../../vm/transcript.ts";
 import { useExpanded } from "./state.ts";
@@ -144,6 +145,32 @@ export function NoticeRowView({ cardKey, row }: { cardKey: string; row: NoticeRo
       {row.json !== undefined && (
         <Disclosure title={text.details} expanded={expanded} onExpandedChange={setExpanded} level={4}>
           <Code code={row.json} block data-testid="notice-json" />
+        </Disclosure>
+      )}
+    </div>
+  );
+}
+
+/** omp's own bookkeeping (UI-043): one muted `system` row, expandable to the whole text when there is more. */
+export function SystemRowView({ cardKey, row }: { cardKey: string; row: SystemRow }) {
+  const [expanded, setExpanded] = useExpanded(cardKey, false);
+  const summary = (
+    <span className="omfp-system__summary" data-testid="system-summary" title={row.summary}>
+      {row.summary}
+    </span>
+  );
+  return (
+    <div className="omfp-system" data-testid="system-record" data-expanded={expanded}>
+      <span className="omfp-system__label" data-testid="system-label">
+        {text.system}
+      </span>
+      {row.text === undefined ? (
+        summary
+      ) : (
+        <Disclosure title={summary} expanded={expanded} onExpandedChange={setExpanded} level={4}>
+          <div className="omfp-system__text" data-testid="system-text">
+            {row.text}
+          </div>
         </Disclosure>
       )}
     </div>

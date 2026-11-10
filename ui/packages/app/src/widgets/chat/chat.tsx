@@ -1,8 +1,10 @@
 /**
  * `omfp:chat`: the conversation of the selected thread — the transcript with the pending interactions inline at its
- * bottom (UI-070), then the queue chips and the composer.
+ * bottom (UI-070), then the queue chips and the composer; with no thread selected, the draft thread (UI-023).
  */
 
+import { DRAFT_THREAD, useWindowState } from "../../sdk/index.ts";
+import { strings } from "../../strings/index.ts";
 import { ComposerWidget } from "./composer.tsx";
 import { Interactions } from "./interactions.tsx";
 import type { WidgetProps } from "./props.ts";
@@ -11,6 +13,17 @@ import { ThreadPlaceholder, Transcript } from "./transcript.tsx";
 
 export function ChatWidget(_props: WidgetProps) {
   const { threadId, view } = useSelectedThread();
+  const [draft] = useWindowState(DRAFT_THREAD);
+  if (threadId === undefined && draft !== undefined) {
+    return (
+      <section className="omfp-chat" data-testid="draft-thread-view" data-workspace-id={draft.workspaceId}>
+        <div className="omfp-chat__empty" data-testid="draft-empty">
+          {strings.shell.draft.empty}
+        </div>
+        <ComposerWidget />
+      </section>
+    );
+  }
   if (threadId === undefined || view === undefined) {
     return <ThreadPlaceholder threadId={threadId} />;
   }

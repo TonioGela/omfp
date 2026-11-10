@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { Frame, type FrameProps } from "../../src/frame/frame.tsx";
 import type { NotificationPort, ThreadNotification } from "../../src/frame/notifications.ts";
-import { ERRORS, NEW_THREAD_DIALOG, SELECTED_THREAD, type WidgetComponent } from "../../src/sdk/index.ts";
+import { DRAFT_THREAD, ERRORS, SELECTED_THREAD, type WidgetComponent } from "../../src/sdk/index.ts";
 import type { WidgetRegistry } from "../../src/view/render.tsx";
 import { ThreadsWidget } from "../../src/widgets/threads/index.ts";
 import { thread, workspace } from "../support/fixtures.ts";
@@ -155,7 +155,7 @@ describe("frame", () => {
   });
 
   // spec: UI-095, UI-023, UI-021
-  test("vim keys move through threads, `Space n` opens the new-thread dialog, `Space a` reaches the waiting thread", () => {
+  test("vim keys move through threads, `Space a` reaches the waiting thread, `Space n` opens a draft, `Space w` the + workspace field", () => {
     const { client, flush, host, tick } = setup();
     document.body.focus();
     press("j");
@@ -178,8 +178,21 @@ describe("frame", () => {
     expect(host.window.get(SELECTED_THREAD)).toBe("t1");
     press(" ");
     press("n");
-    expect(host.window.get(NEW_THREAD_DIALOG)).toBe(true);
-    expect(screen.getByTestId("new-thread-dialog")).toBeDefined();
+    expect(host.window.get(DRAFT_THREAD)).toEqual({ workspaceId: "w1" });
+    expect(host.window.get(SELECTED_THREAD)).toBeUndefined();
+    expect(screen.getByTestId("draft-thread")).toBeDefined();
+    press(" ");
+    press("w");
+    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-name"));
+  });
+
+  // spec: UI-023
+  test("`:new` without a current workspace focuses the + workspace field", async () => {
+    const { host, user } = setup();
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "new{Enter}");
+    expect(host.window.get(DRAFT_THREAD)).toBeUndefined();
+    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-name"));
   });
 
   // spec: UI-026, UI-092
@@ -333,7 +346,7 @@ describe("daemon settings", () => {
     press("k");
     expect(host.window.get(SELECTED_THREAD)).toBe("t2");
     press("n");
-    expect(host.window.get(NEW_THREAD_DIALOG)).toBe(true);
+    expect(host.window.get(DRAFT_THREAD)).toEqual({ workspaceId: "w1" });
   });
 
   // spec: UI-097

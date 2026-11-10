@@ -230,7 +230,7 @@ describe("transport suite", () => {
       const links = new Switch();
       const refused = client("suite/auth", { switch: links, token: "not-the-token" });
       try {
-        const pending = refused.call("repos.list", {}).then(
+        const pending = refused.call("repos.suggest", {}).then(
           () => "resolved",
           (error: unknown) => error,
         );

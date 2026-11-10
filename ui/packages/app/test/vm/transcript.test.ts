@@ -81,6 +81,13 @@ describe("transcript items", () => {
     expect(block?.type === "record" && block.json.includes('"exitCode": 0')).toBe(true);
   });
 
+  // spec: UI-043
+  test("a record with nothing to summarize has no record block to expand", () => {
+    const view = messageView(withMessage({ role: "custom", customType: "marker", content: "", display: true }), 0);
+    expect([view.role, view.label]).toEqual(["record", "custom"]);
+    expect(view.blocks).toEqual([]);
+  });
+
   test("user messages keep their images and steering mark", () => {
     const view = messageView(
       withMessage({

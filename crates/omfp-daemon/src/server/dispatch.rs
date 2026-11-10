@@ -1,13 +1,14 @@
 //! Request handlers: every protocol method mapped to the daemon's services (ARC-007), except the connection-level
 //! ones (`system.hello`, `subscribe`, `unsubscribe`).
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use omfp_core::wire::{ImageContent, ThinkingLevel};
 use omfp_protocol::{
-    Call, CreateWorkspaceParams, Empty, ErrorBody, PromptBehavior, PromptResult, RepositoryList,
-    ThreadGit, ThreadWorkspace,
+    Call, CreateWorkspaceParams, Empty, ErrorBody, PathCompletions, PathEntry, PromptBehavior,
+    PromptResult, RepoSuggestions, SeenRepository, ThreadGit, ThreadSearchResult,
+    ThreadSearchResults, ThreadWorkspace,
 };
 use omp_rpc::{
     BashCommand, BtwCommand, CancelSubagentCommand, CompactCommand, FollowUpCommand, ForkCommand,
@@ -21,14 +22,14 @@ use serde_json::{Value, json};
 
 use super::auth::Principal;
 use super::convert::{
-    self, bad_request, diff_page, internal, supervisor_error, thread_error, workspace_error,
+    bad_request, diff_page, internal, supervisor_error, thread_error, workspace_error,
 };
 use super::services::Services;
 use crate::agent::OmpCall;
 use crate::store::{Provenance, TitleSource};
 use crate::threads::NewThread;
-use crate::titles;
-use crate::workspaces::{NewWorkspace, RepoRef, RepoSource, WorkspaceError};
+use crate::workspaces::{NewWorkspace, RepoSource, WorkspaceError};
+use crate::{fs_complete, search, titles};
 
 type Reply = Result<Value, ErrorBody>;
 
@@ -58,15 +59,6 @@ fn thinking_name(level: ThinkingLevel) -> Result<String, ErrorBody> {
     }
 }
 
-/// A repository id, or a path when the value is an absolute path (DMN-021).
-fn repo_ref(repo: String) -> RepoRef {
-    if Path::new(&repo).is_absolute() {
-        RepoRef::Path(PathBuf::from(repo))
-    } else {
-        RepoRef::Id(repo)
-    }
-}
-
 /// A `workspaces.add_repo` source in the daemon's terms; PR sources wait for S-08.
 fn repo_source(source: omfp_protocol::RepoSource) -> Result<RepoSource, ErrorBody> {
     Ok(match source {
@@ -76,7 +68,7 @@ fn repo_source(source: omfp_protocol::RepoSource) -> Result<RepoSource, ErrorBod
             branch,
             base_ref,
         } => RepoSource::Worktree {
-            repo: repo_ref(repo),
+            repo: PathBuf::from(repo),
             branch,
             base_ref,
         },
@@ -95,8 +87,60 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         Call::SystemHello(_) | Call::Subscribe(_) | Call::Unsubscribe(_) => {
             Err(bad_request("handled by the connection"))
         }
-        call @ (Call::ReposAdd(_) | Call::ReposRemove(_) | Call::ReposList(_)) => {
-            repositories(services, call).await
+        Call::ReposSuggest(params) => {
+            let workspaces = Arc::clone(&services.workspaces);
+            let query = params.query.unwrap_or_default();
+            let repos =
+                blocking(move || workspaces.suggest(&query).map_err(workspace_error)).await?;
+            ok(&RepoSuggestions {
+                repos: repos
+                    .into_iter()
+                    .map(|repo| SeenRepository {
+                        path: repo.path.to_string_lossy().into_owned(),
+                        name: repo.name,
+                        last_seen_at: repo.last_seen_at,
+                    })
+                    .collect(),
+            })
+        }
+        Call::FsComplete(params) => {
+            let entries = blocking(move || {
+                let home = std::env::var_os("HOME").map(PathBuf::from);
+                Ok(fs_complete::complete(&params.path, home.as_deref()))
+            })
+            .await?;
+            ok(&PathCompletions {
+                entries: entries
+                    .into_iter()
+                    .map(|entry| PathEntry {
+                        name: entry.name,
+                        path: entry.path.to_string_lossy().into_owned(),
+                        is_git_root: entry.is_git_root,
+                    })
+                    .collect(),
+            })
+        }
+        Call::ThreadsSearch(params) => {
+            let store = Arc::clone(&services.store);
+            let hits = blocking(move || {
+                let threads = store.threads()?;
+                Ok(search::search(
+                    threads
+                        .iter()
+                        .map(|thread| (thread.id.as_str(), thread.session_dir.as_path())),
+                    &params.query,
+                ))
+            })
+            .await?;
+            ok(&ThreadSearchResults {
+                results: hits
+                    .into_iter()
+                    .map(|hit| ThreadSearchResult {
+                        thread_id: hit.thread_id,
+                        snippet: hit.snippet,
+                    })
+                    .collect(),
+            })
         }
         call @ (Call::WorkspacesCreate(_)
         | Call::WorkspacesUpdate(_)
@@ -125,40 +169,6 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         Call::SettingsSet(params) => ok(&services.set_settings(params).await?),
         call => thread(services, principal, call).await,
     }
-}
-
-async fn repositories(services: &Services, call: Call) -> Reply {
-    let workspaces = Arc::clone(&services.workspaces);
-    let reply = match call {
-        Call::ReposAdd(params) => {
-            let repo = blocking(move || {
-                workspaces
-                    .add_repository(Path::new(&params.path), None)
-                    .map_err(workspace_error)
-            })
-            .await?;
-            ok(&convert::repository(&repo))
-        }
-        Call::ReposRemove(params) => {
-            blocking(move || {
-                workspaces
-                    .remove_repository(&params.repository_id)
-                    .map_err(workspace_error)
-            })
-            .await?;
-            empty()
-        }
-        Call::ReposList(_) => {
-            let repositories =
-                blocking(move || workspaces.repositories().map_err(workspace_error)).await?;
-            return ok(&RepositoryList {
-                repositories: repositories.iter().map(convert::repository).collect(),
-            });
-        }
-        _ => return Err(internal("not a repository method")),
-    };
-    services.refresh_index_quietly().await;
-    reply
 }
 
 /// Creates a workspace as `workspaces.create` does; `fallback_name` names it when the params do not.

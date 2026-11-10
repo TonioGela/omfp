@@ -5,16 +5,24 @@ expression: golden
 {
   "request": {
     "id": "c42",
-    "method": "repos.remove",
+    "method": "repos.suggest",
     "params": {
-      "repositoryId": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F"
+      "query": "shop"
     },
     "type": "request"
   },
   "response": {
     "id": "c42",
     "ok": true,
-    "result": {},
+    "result": {
+      "repos": [
+        {
+          "lastSeenAt": 1794268800000,
+          "name": "shop-frontend",
+          "path": "/home/dev/src/shop-frontend"
+        }
+      ]
+    },
     "type": "response"
   }
 }

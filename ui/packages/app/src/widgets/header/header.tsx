@@ -1,13 +1,16 @@
 /**
  * `omfp:header`, the selected thread's header (UI-030): title with rename in place, tags, the workspace and
  * repository chips, model and thinking selectors, context usage, session cost, the process state with stop/restart,
- * and archive/unarchive/delete (UI-026; delete asks first, in the frame's confirmation dialog).
+ * and archive/unarchive/delete (UI-026; delete asks first, in the frame's confirmation dialog). For the draft thread
+ * (UI-023): its placeholder title and its workspace's chips.
  */
 
 import { Button, type Key, Select, TextField } from "@omfp/kit";
 import type { ThreadSummary } from "@omfp/protocol";
 import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import {
+  DRAFT_THREAD,
+  type DraftThread,
   RENAMING_THREAD,
   type SdkClient,
   SELECTED_THREAD,
@@ -32,14 +35,18 @@ import {
   splitModel,
   type ThreadDetails,
 } from "../../vm/header.ts";
-import { statusLabel } from "../../vm/threads.ts";
+import { statusLabel, workspaceChips } from "../../vm/threads.ts";
 import { StatusBadge, WorkspaceChipView } from "../threads/index.ts";
 
 const text = strings.shell.header;
 
 export function HeaderWidget(_props: WidgetProps): ReactNode {
   const [selected] = useWindowState(SELECTED_THREAD);
+  const [draft] = useWindowState(DRAFT_THREAD);
   const summary = useThreadSummary(selected);
+  if (selected === undefined && draft !== undefined) {
+    return <DraftHeader draft={draft} />;
+  }
   if (summary === undefined) {
     return (
       <header className="omfp-header" data-testid="thread-header" data-empty="true">
@@ -50,6 +57,25 @@ export function HeaderWidget(_props: WidgetProps): ReactNode {
     );
   }
   return <ThreadHeader key={summary.id} summary={summary} />;
+}
+
+function DraftHeader({ draft }: { draft: DraftThread }): ReactNode {
+  const workspaces = useWorkspaces();
+  const chips = useMemo(() => workspaceChips(draft.workspaceId, [...workspaces.values()]), [draft, workspaces]);
+  return (
+    <header className="omfp-header" data-testid="thread-header" data-draft="true">
+      <div className="omfp-header__title">
+        <h1 data-testid="thread-title" data-placeholder="true">
+          {strings.shell.untitled}
+        </h1>
+      </div>
+      <div className="omfp-header__chips">
+        {chips.map((chip) => (
+          <WorkspaceChipView key={chip.key} chip={chip} />
+        ))}
+      </div>
+    </header>
+  );
 }
 
 function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {

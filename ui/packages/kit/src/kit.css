@@ -314,6 +314,65 @@
     display: none;
   }
 
+  /* PathField: the list drops over what follows the field. */
+  .omfp-path-field {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .omfp-path-field__list {
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline: 0;
+    z-index: 50;
+    box-sizing: border-box;
+    max-block-size: 18rem;
+    margin-block-start: var(--omfp-space-1);
+    overflow: auto;
+    padding: var(--omfp-space-1);
+    border: 1px solid var(--omfp-outline-variant);
+    border-radius: var(--omfp-radius-md);
+    background: var(--omfp-surface-container);
+    color: var(--omfp-on-surface);
+    box-shadow: 0 4px 16px color-mix(in srgb, var(--omfp-shadow) 22%, transparent);
+  }
+
+  .omfp-path-field__header {
+    padding: var(--omfp-space-1) var(--omfp-space-3) 0;
+    font-size: var(--omfp-font-size-sm);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-path-field__option {
+    gap: var(--omfp-space-2);
+    min-inline-size: 0;
+  }
+
+  .omfp-path-field__option:hover {
+    background: color-mix(in srgb, var(--omfp-on-surface) 8%, transparent);
+  }
+
+  .omfp-path-field__name {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .omfp-path-field__git {
+    flex: none;
+  }
+
+  .omfp-path-field__path {
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: end;
+    font-size: var(--omfp-font-size-sm);
+    color: var(--omfp-on-surface-variant);
+  }
+
   /* Select */
   .omfp-select__button {
     display: flex;

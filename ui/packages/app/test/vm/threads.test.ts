@@ -1,20 +1,24 @@
-/** L1: the thread list view-model (port of the Dioxus `vm/threads.rs` tests). */
+/** L1: the left column's view-model (sections, filter, collapse, unread, attention). */
 
 import { describe, expect, test } from "bun:test";
 import type { ThreadSummary, Workspace, WorkspaceRepo } from "@omfp/protocol";
+import { type KeyValueStorage, WindowStore, windowKey } from "../../src/sdk/index.ts";
 import {
+  ConversationSearch,
+  decodeIds,
   displayTitle,
-  type Filter,
-  filterOptions,
-  type Grouping,
-  groupThreads,
   isUnread,
-  listOrder,
   moveSelection,
   NO_FILTER,
   nextNeedingAttention,
+  SEARCH_DELAY_MS,
+  type SearchHit,
+  sidebarSections,
+  type ThreadFilter,
   threadStatus,
+  toggled,
   updateSeen,
+  visibleOrder,
   waitingCount,
   workspaceChips,
 } from "../../src/vm/threads.ts";
@@ -28,21 +32,60 @@ function index(): { workspaces: Workspace[]; threads: ThreadSummary[] } {
     canonicalPath: "/src/be",
   };
   const workspaces = [
-    { ...workspace("w-checkout", [repo("w-checkout", "fe", "feat/checkout"), linked]), name: "checkout" },
-    { ...workspace("w-flaky", [repo("w-flaky", "be", "flaky")]), name: "flaky" },
     { ...workspace("w-scratch"), name: "scratch" },
+    { ...workspace("w-checkout", [repo("w-checkout", "fe", "feat/checkout"), linked]), name: "checkout" },
+    { ...workspace("w-flaky", [repo("w-flaky", "be", "flaky")]), name: "Flaky" },
+    { ...workspace("w-empty"), name: "empty" },
   ];
   const threads = [
     thread("t-checkout", "checkout-v2", "w-checkout", { tags: ["release"] }),
     thread("t-flaky", "flaky-tests", "w-flaky", { tags: ["ci", "release"] }),
+    thread("t-old", "old flake", "w-flaky", { archivedAt: 3 }),
     thread("t-scratch", "scratch", "w-scratch"),
+    thread("t-orphan", "orphan", "w-gone"),
   ];
   return { workspaces, threads };
 }
 
-function groups(grouping: Grouping, filter: Filter = NO_FILTER): Array<[string, readonly string[]]> {
+function sections(filter: ThreadFilter = NO_FILTER): Array<[string, readonly string[], readonly string[]]> {
   const { workspaces, threads } = index();
-  return groupThreads(threads, workspaces, grouping, filter).map((group) => [group.label, group.threadIds]);
+  return sidebarSections(threads, workspaces, filter).map((section) => [
+    section.workspace.name,
+    section.threadIds,
+    section.archivedIds,
+  ]);
+}
+
+function filter(query: string, conversation: Record<string, string> = {}): ThreadFilter {
+  return { query, conversation: new Map(Object.entries(conversation)) };
+}
+
+/** A `localStorage` stand-in. */
+function memoryStorage(): KeyValueStorage & { readonly items: Map<string, string> } {
+  const items = new Map<string, string>();
+  return { items, getItem: (key) => items.get(key) ?? null, setItem: (key, value) => void items.set(key, value) };
+}
+
+/** Timers run by the test. */
+function manualTimers() {
+  const pending: Array<{ run: () => void; ms: number; cancelled: boolean }> = [];
+  return {
+    pending,
+    schedule: (run: () => void, ms: number) => {
+      const timer = { run, ms, cancelled: false };
+      pending.push(timer);
+      return () => {
+        timer.cancelled = true;
+      };
+    },
+    fire: () => {
+      for (const timer of pending.splice(0)) {
+        if (!timer.cancelled) {
+          timer.run();
+        }
+      }
+    },
+  };
 }
 
 describe("thread list", () => {
@@ -75,41 +118,13 @@ describe("thread list", () => {
     expect(workspaceChips("w-unknown", workspaces)).toEqual([]);
   });
 
-  // spec: UI-022, UI-011
-  test("grouping by workspace lists each thread under its workspace", () => {
-    expect(groups("workspace")).toEqual([
-      ["checkout", ["t-checkout"]],
-      ["flaky", ["t-flaky"]],
-      ["scratch", ["t-scratch"]],
-    ]);
-  });
-
-  // spec: UI-022, UI-011
-  test("grouping by repository lists a thread under each repository of its workspace", () => {
-    expect(groups("repository")).toEqual([
-      ["be", ["t-checkout", "t-flaky"]],
-      ["fe", ["t-checkout"]],
-      ["No repository", ["t-scratch"]],
-    ]);
-  });
-
-  // spec: UI-022, UI-011
-  test("grouping by tag and none", () => {
-    expect(groups("tag")).toEqual([
-      ["ci", ["t-flaky"]],
-      ["release", ["t-checkout", "t-flaky"]],
-      ["Untagged", ["t-scratch"]],
-    ]);
-    expect(groups("none")).toEqual([["Threads", ["t-checkout", "t-flaky", "t-scratch"]]]);
-  });
-
-  // spec: UI-022
-  test("list order takes each thread once, at its first group", () => {
-    const { workspaces, threads } = index();
-    expect(listOrder(groupThreads(threads, workspaces, "repository", NO_FILTER))).toEqual([
-      "t-checkout",
-      "t-flaky",
-      "t-scratch",
+  // spec: UI-020, UI-026
+  test("every workspace is a section by name with its threads; archived ones apart; no orphan", () => {
+    expect(sections()).toEqual([
+      ["checkout", ["t-checkout"], []],
+      ["empty", [], []],
+      ["Flaky", ["t-flaky"], ["t-old"]],
+      ["scratch", ["t-scratch"], []],
     ]);
   });
 
@@ -128,38 +143,104 @@ describe("thread list", () => {
   });
 
   // spec: UI-022
-  test("filtering by key and free text combines", () => {
-    const byRepository: Filter = { ...NO_FILTER, key: { dimension: "repository", key: "/src/be" } };
-    expect(groups("none", byRepository)[0]?.[1]).toEqual(["t-checkout", "t-flaky"]);
-    expect(groups("none", { ...NO_FILTER, text: "FEAT/check" })[0]?.[1]).toEqual(["t-checkout"]);
-    const both: Filter = { text: "ci", key: { dimension: "tag", key: "release" }, archived: false };
-    expect(groups("none", both)[0]?.[1]).toEqual(["t-flaky"]);
+  test("the filter matches title, tags, workspace and repository names, case-insensitively, and hides other workspaces", () => {
+    expect(sections(filter("V2"))).toEqual([["checkout", ["t-checkout"], []]]);
+    expect(sections(filter("ci"))).toEqual([["Flaky", ["t-flaky"], []]]);
+    expect(sections(filter("flaky"))).toEqual([["Flaky", ["t-flaky"], ["t-old"]]]);
+    expect(sections(filter("FE"))).toEqual([["checkout", ["t-checkout"], []]]);
+    expect(sections(filter("be"))).toEqual([
+      ["checkout", ["t-checkout"], []],
+      ["Flaky", ["t-flaky"], ["t-old"]],
+    ]);
+    expect(sections(filter("nothing like it"))).toEqual([]);
+  });
+
+  // spec: UI-022
+  test("conversation matches from threads.search join the local ones while a query is typed", () => {
+    expect(sections(filter("retry loop", { "t-scratch": "…the retry loop…", "t-old": "a retry loop" }))).toEqual([
+      ["Flaky", [], ["t-old"]],
+      ["scratch", ["t-scratch"], []],
+    ]);
+    expect(sections(filter("v2", { "t-scratch": "v2" }))).toEqual([
+      ["checkout", ["t-checkout"], []],
+      ["scratch", ["t-scratch"], []],
+    ]);
+    // Without a query, search results do not narrow the list.
+    expect(sections(filter("", { "t-scratch": "x" }))).toHaveLength(4);
   });
 
   // spec: UI-022, UI-026
-  test("archived threads are neither listed nor offered as filter keys", () => {
+  test("rows shown skip collapsed sections (unless filtering) and list archived ones only when opened", () => {
     const { workspaces, threads } = index();
-    const archived = threads.map((summary) => (summary.id === "t-flaky" ? { ...summary, archivedAt: 5 } : summary));
-    expect(groupThreads(archived, workspaces, "none", NO_FILTER)[0]?.threadIds).toEqual(["t-checkout", "t-scratch"]);
-    const tags = filterOptions(archived, workspaces)
-      .filter((option) => option.dimension === "tag")
-      .map((option) => option.key.key);
-    expect(tags).toEqual(["release"]);
+    const all = sidebarSections(threads, workspaces, NO_FILTER);
+    expect(visibleOrder(all, [], [], NO_FILTER)).toEqual(["t-checkout", "t-flaky", "t-scratch"]);
+    expect(visibleOrder(all, ["w-checkout"], ["w-flaky"], NO_FILTER)).toEqual(["t-flaky", "t-old", "t-scratch"]);
+    const typed = filter("t");
+    expect(visibleOrder(sidebarSections(threads, workspaces, typed), ["w-checkout"], [], typed)).toEqual([
+      "t-checkout",
+      "t-flaky",
+      "t-scratch",
+    ]);
   });
 
-  // spec: UI-026
-  test("the archived filter lists only archived threads", () => {
-    const { workspaces, threads } = index();
-    const archived = threads.map((summary) => (summary.id === "t-flaky" ? { ...summary, archivedAt: 5 } : summary));
-    const list = (text: string) =>
-      groupThreads(archived, workspaces, "none", { text, archived: true })[0]?.threadIds ?? [];
-    expect(list("")).toEqual(["t-flaky"]);
-    expect(list("checkout")).toEqual([]);
+  // spec: UI-022
+  test("the collapsed set toggles and survives a reload through storage", () => {
+    expect(toggled([], "w1")).toEqual(["w1"]);
+    expect(toggled(["w1", "w2"], "w1")).toEqual(["w2"]);
+    const storage = memoryStorage();
+    const collapsed = windowKey<readonly string[]>("threads/collapsed", [], decodeIds);
+    new WindowStore(storage).set(collapsed, (previous) => toggled(previous, "w-checkout"));
+    expect(new WindowStore(storage).get(collapsed)).toEqual(["w-checkout"]);
+    storage.setItem("omfp.threads/collapsed", '{"not":"a list"}');
+    expect(new WindowStore(storage).get(collapsed)).toEqual([]);
+    expect(decodeIds(["a", 1])).toBeUndefined();
+  });
+
+  // spec: UI-022
+  test("threads.search is called once typing pauses, not for short queries, and a late older answer is dropped", async () => {
+    const timers = manualTimers();
+    const asked: string[] = [];
+    const answers = new Map<string, (hits: readonly SearchHit[]) => void>();
+    const reported: Array<[string, string[]]> = [];
+    const search = new ConversationSearch(
+      (query) => {
+        asked.push(query);
+        const { promise, resolve } = Promise.withResolvers<readonly SearchHit[]>();
+        answers.set(query, resolve);
+        return promise;
+      },
+      timers.schedule,
+      (query, snippets) => reported.push([query, [...snippets.keys()]]),
+    );
+    search.update("r");
+    expect(reported).toEqual([["r", []]]);
+    search.update("re");
+    search.update("ret");
+    expect(timers.pending.map((timer) => timer.ms)).toEqual([SEARCH_DELAY_MS, SEARCH_DELAY_MS]);
+    timers.fire();
+    expect(asked).toEqual(["ret"]);
+    search.update("retr");
+    timers.fire();
+    expect(asked).toEqual(["ret", "retr"]);
+    answers.get("retr")?.([{ threadId: "t2", snippet: "retry" }]);
+    answers.get("ret")?.([{ threadId: "t1", snippet: "ret" }]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(reported).toEqual([
+      ["r", []],
+      ["retr", ["t2"]],
+    ]);
+    search.update("retry");
+    timers.fire();
+    search.dispose();
+    answers.get("retry")?.([{ threadId: "t3", snippet: "retry" }]);
+    await Promise.resolve();
+    expect(reported).toHaveLength(2);
   });
 
   // spec: UI-021
   test("next needing attention wraps around after the current thread", () => {
-    const { threads } = index();
+    const threads = index().threads.filter((summary) => ["t-checkout", "t-flaky", "t-scratch"].includes(summary.id));
     expect(nextNeedingAttention(threads, undefined)).toBeUndefined();
     const waiting = threads.map((summary) =>
       summary.id === "t-flaky" ? summary : { ...summary, needsAttention: true },

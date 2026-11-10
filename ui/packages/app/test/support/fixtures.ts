@@ -1,13 +1,8 @@
 /** Hand-built protocol DTOs for view-model and widget tests (the TS twin of the Dioxus `test_support`). */
 
-import type { Provenance, Repository, ThreadSummary, Workspace, WorkspaceRepo } from "@omfp/protocol";
+import type { Provenance, ThreadSummary, Workspace, WorkspaceRepo } from "@omfp/protocol";
 
 export const provenance: Provenance = { createdBy: { kind: "user" }, client: "omfp/web" };
-
-/** A known repository `name` at `/src/<name>`. */
-export function repository(id: string, name: string): Repository {
-  return { id, name, path: `/src/${name}`, defaultBaseRef: "main", remoteUrl: null, createdAt: 1 };
-}
 
 /** Entry `name` of the folder `/work/<workspace>`: a worktree of `/src/<name>` on `branch`. */
 export function repo(workspace: string, name: string, branch: string | null): WorkspaceRepo {

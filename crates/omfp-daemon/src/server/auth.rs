@@ -36,9 +36,9 @@ impl Principal {
 pub enum Permission {
     /// Session plumbing: hello, subscriptions.
     Connect,
-    /// Read repositories, workspaces, threads and their state.
+    /// Read workspaces, threads, their state, repository suggestions and directory listings.
     Read,
-    /// Create, change or delete repositories, workspaces and threads.
+    /// Create, change or delete workspaces and threads.
     Manage,
     /// Drive a thread's agent: prompts, answers, process control.
     Drive,
@@ -52,7 +52,9 @@ pub fn permission(method: &str) -> Option<Permission> {
     use Permission::{Connect, Drive, Manage, Read, Terminal};
     Some(match method {
         "system.hello" | "subscribe" | "unsubscribe" => Connect,
-        "repos.list"
+        "repos.suggest"
+        | "fs.complete"
+        | "threads.search"
         | "workspaces.status"
         | "workspaces.diff"
         | "thread.models"
@@ -65,9 +67,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.state"
         | "theme.get"
         | "settings.get" => Read,
-        "repos.add"
-        | "repos.remove"
-        | "workspaces.create"
+        "workspaces.create"
         | "workspaces.update"
         | "workspaces.remove"
         | "workspaces.rescan"

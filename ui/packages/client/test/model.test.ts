@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { replay, type ThreadEvent } from "@omfp/core";
 import { type EventFrame, INDEX_TOPIC, type SubscribeResult, threadTopic } from "@omfp/protocol";
 import { type Dirty, isDirtyEmpty, Model, type ThreadView } from "../src/index.ts";
-import { FIXTURES, fixture, indexFrame, indexState, repository, summary, threadFrame } from "./support.ts";
+import { FIXTURES, fixture, indexFrame, indexState, summary, threadFrame, workspace } from "./support.ts";
 
 const THREAD = "01THREAD";
 const TOPIC = threadTopic(THREAD);
@@ -151,7 +151,7 @@ describe("model", () => {
     const model = new Model();
     model.track(INDEX_TOPIC);
     const state = indexState({
-      repositories: [repository("01R2"), repository("01R1")],
+      workspaces: [workspace("01W2"), workspace("01W1")],
       threads: [summary("01T2", "second"), summary("01T1", "first")],
     });
     expect(model.applySubscribed(INDEX_TOPIC, snapshot("i1", 7, state)).ok).toBe(true);
@@ -161,7 +161,7 @@ describe("model", () => {
       indexFrame("i1", 8, { kind: "thread_upserted", thread: renamed }),
       indexFrame("i1", 9, { kind: "thread_upserted", thread: summary("01T0", "zeroth") }),
       indexFrame("i1", 10, { kind: "thread_removed", threadId: "01T2" }),
-      indexFrame("i1", 11, { kind: "repository_removed", repositoryId: "01R2" }),
+      indexFrame("i1", 11, { kind: "workspace_removed", workspaceId: "01W2" }),
     ];
     for (const frame of frames) {
       expect(model.applyEvent(frame)).toBe("applied");
@@ -170,7 +170,7 @@ describe("model", () => {
     const { index } = model;
     expect([...index.threads.keys()]).toEqual(["01T0", "01T1"]);
     expect(index.threads.get("01T1")).toEqual(renamed);
-    expect([...index.repositories.keys()]).toEqual(["01R1"]);
+    expect([...index.workspaces.keys()]).toEqual(["01W1"]);
   });
 
   // spec: DMN-075
@@ -233,14 +233,14 @@ describe("model", () => {
   test("a snapshot replaces the previous state and position", () => {
     const model = new Model();
     model.track(INDEX_TOPIC);
-    const first = indexState({ repositories: [repository("01R1")], threads: [summary("01T1", "one")] });
+    const first = indexState({ workspaces: [workspace("01W1")], threads: [summary("01T1", "one")] });
     model.applySubscribed(INDEX_TOPIC, snapshot("i1", 3, first));
     const second = indexState({ threads: [summary("01T9", "nine")] });
 
     model.applySubscribed(INDEX_TOPIC, snapshot("i2", 1, second));
 
     expect([...model.index.threads.keys()]).toEqual(["01T9"]);
-    expect(model.index.repositories.size).toBe(0);
+    expect(model.index.workspaces.size).toBe(0);
     expect(model.topic(INDEX_TOPIC)?.position).toEqual({ epoch: "i2", seq: 1 });
   });
 

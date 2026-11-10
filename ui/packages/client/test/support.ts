@@ -8,9 +8,9 @@ import {
   INDEX_TOPIC,
   type IndexEvent,
   type IndexSnapshot,
-  type Repository,
   type ThreadSummary,
   threadTopic,
+  type Workspace,
 } from "@omfp/protocol";
 
 /** The `ThreadEvent`s of a recorded fixture (TST-012). */
@@ -55,14 +55,22 @@ export function summary(id: string, title: string): ThreadSummary {
   };
 }
 
-export function repository(id: string): Repository {
-  return { id, name: id.toLowerCase(), path: `/repos/${id}`, defaultBaseRef: "main", createdAt: 1 };
+export function workspace(id: string): Workspace {
+  return {
+    id,
+    name: id.toLowerCase(),
+    path: `/ws/${id}`,
+    owned: true,
+    repos: [],
+    threadIds: [],
+    provenance: { createdBy: { kind: "user" } },
+    createdAt: 1,
+  };
 }
 
 /** An `index` snapshot without a user theme or settings. */
 export function indexState(parts: Partial<IndexSnapshot> = {}): IndexSnapshot {
   return {
-    repositories: [],
     workspaces: [],
     threads: [],
     theme: { css: null },

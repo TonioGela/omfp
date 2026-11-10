@@ -7,7 +7,7 @@ import type { Topic } from "./generated.ts";
 /** A topic name taken apart. */
 export type ParsedTopic = { kind: "index" } | { kind: "thread" | "workspace" | "terminal"; id: string };
 
-/** The `index` topic: repositories, workspaces and thread summaries. */
+/** The `index` topic: workspaces and thread summaries. */
 export const INDEX_TOPIC: Topic = "index";
 
 /** Ids are ULIDs today; any non-empty `[A-Za-z0-9_-]` string is accepted. */

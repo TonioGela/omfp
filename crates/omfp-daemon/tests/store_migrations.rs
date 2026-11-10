@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use omfp_daemon::store::{
-    Provenance, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
+    Provenance, SeenRepository, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
 };
 use rusqlite::{Connection, params};
 use tempfile::TempDir;
@@ -88,12 +88,12 @@ fn opening_an_empty_file_applies_every_migration() {
     let db = dir.path().join("omfp.db");
     drop(open(&dir));
 
-    assert_eq!(user_version(&db), 4);
+    assert_eq!(user_version(&db), 5);
     // Only metadata lives in the database: no transcript tables, no repositories of workspaces (DMN-022).
     assert_eq!(
         tables(&db),
         [
-            "repositories",
+            "seen_repositories",
             "settings",
             "thread_roots",
             "thread_tags",
@@ -116,7 +116,7 @@ fn reopening_is_idempotent_and_keeps_data() {
         store.insert_thread(&t).unwrap();
     }
     let store = open(&dir);
-    assert_eq!(user_version(&db), 4);
+    assert_eq!(user_version(&db), 5);
     assert_eq!(store.workspaces().unwrap(), vec![ws]);
     assert_eq!(store.threads().unwrap(), vec![t]);
 }
@@ -133,20 +133,62 @@ fn migration_4_counts_existing_titles_as_set() {
         store.insert_workspace(&ws).unwrap();
         store.insert_thread(&t).unwrap();
     }
-    // Back to a version-3 database: no `title_source` column.
+    // Back to a version-3 database: no `title_source` column, the registry of known repositories.
     let conn = raw(&db);
-    conn.execute_batch("ALTER TABLE threads DROP COLUMN title_source; PRAGMA user_version = 3;")
-        .unwrap();
+    conn.execute_batch(&format!(
+        "ALTER TABLE threads DROP COLUMN title_source; DROP TABLE seen_repositories; {OLD_REGISTRY}
+         PRAGMA user_version = 3;"
+    ))
+    .unwrap();
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 4);
+    assert_eq!(user_version(&db), 5);
     assert_eq!(
         store.threads().unwrap(),
         vec![Thread {
             title_source: TitleSource::Set,
             ..t
         }]
+    );
+}
+
+/// The known-repositories table before migration 5.
+const OLD_REGISTRY: &str = "CREATE TABLE repositories (
+    id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, path TEXT NOT NULL UNIQUE,
+    default_base_ref TEXT NOT NULL, remote_url TEXT, created_at INTEGER NOT NULL);";
+
+// spec: DMN-010, DMN-021
+#[test]
+fn migration_5_keeps_known_repositories_as_seen_ones_and_drops_the_registry() {
+    let dir = TempDir::new().unwrap();
+    let db = dir.path().join("omfp.db");
+    drop(open(&dir));
+    let conn = raw(&db);
+    conn.execute_batch(&format!(
+        "DROP TABLE seen_repositories; {OLD_REGISTRY}
+         INSERT INTO repositories VALUES ('01R1', 'app', '/src/app', 'main', NULL, 7);
+         INSERT INTO repositories VALUES ('01R2', 'api', '/src/api', 'main', 'git@x:api.git', 9);
+         PRAGMA user_version = 4;"
+    ))
+    .unwrap();
+    drop(conn);
+
+    let store = open(&dir);
+    assert_eq!(user_version(&db), 5);
+    assert!(!tables(&db).contains(&"repositories".to_owned()));
+    assert_eq!(
+        store.seen_repositories().unwrap(),
+        [
+            SeenRepository {
+                path: "/src/api".into(),
+                last_seen_at: 9
+            },
+            SeenRepository {
+                path: "/src/app".into(),
+                last_seen_at: 7
+            }
+        ]
     );
 }
 
@@ -163,7 +205,7 @@ fn a_database_from_a_newer_daemon_is_refused() {
             error,
             StoreError::UnknownSchemaVersion {
                 found: 99,
-                supported: 4
+                supported: 5
             }
         ),
         "{error:?}"
@@ -459,11 +501,11 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
 
     let store = Store::open(&old.db, &old.root).unwrap();
 
-    assert_eq!(user_version(&old.db), 4);
+    assert_eq!(user_version(&old.db), 5);
     assert_eq!(
         tables(&old.db),
         [
-            "repositories",
+            "seen_repositories",
             "settings",
             "thread_roots",
             "thread_tags",
@@ -471,14 +513,20 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
             "workspaces"
         ]
     );
-    assert_eq!(store.repositories().unwrap().len(), 1);
+    assert_eq!(
+        store.seen_repositories().unwrap(),
+        [SeenRepository {
+            path: old.db.parent().unwrap().join("src/shop"),
+            last_seen_at: 1
+        }]
+    );
     let (one, two) = assert_migrated_records(&store, &old);
     assert_migrated_folders(&old, &one, &two);
 
     // Reopening is a no-op: same records, no new folders.
     drop(store);
     let store = Store::open(&old.db, &old.root).unwrap();
-    assert_eq!(user_version(&old.db), 4);
+    assert_eq!(user_version(&old.db), 5);
     assert_eq!(
         assert_migrated_records(&store, &old),
         (one.clone(), two.clone())

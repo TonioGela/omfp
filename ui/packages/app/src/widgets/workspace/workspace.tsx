@@ -1,45 +1,46 @@
 /**
- * `omfp:workspace` (UI-025): the selected thread's workspace — name (editable), folder, threads, and its repositories
- * with kind, origin, branch, dirty state and ahead/behind, live from `workspace/<id>` —; actions add (link a folder,
- * link a known repository, new worktree, clone) and remove (with a confirmation for anything but a link, DMN-025),
- * rescan; badges when the workspace is shared by several threads or a checkout is in another workspace with live
- * threads (DMN-027). Below: every workspace (threads count, open, remove) and the known repositories (add, remove,
- * new worktree in this workspace).
+ * `omfp:workspace` (UI-025): the current workspace — the selected thread's, else the draft thread's (UI-023). Header:
+ * name (renamed in place), folder path (copyable). Repositories: kind, name, branch, git status live from
+ * `workspace/<id>`, origin (link target, worktree's main repository), a badge when the checkout is in another workspace
+ * with live threads (DMN-027), remove (confirmation for anything but a link, DMN-025), rescan. One "add repository"
+ * control with a Link / Worktree / Clone switch; paths come with suggestions and completion (DMN-021).
  */
 
-import { Badge, Button, ConfirmDialog, type Key, Select, TextField } from "@omfp/kit";
-import type { RepoSource, Repository, Workspace } from "@omfp/protocol";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Badge, Button, ConfirmDialog, IconButton, PathField, Radio, RadioGroup, TextField } from "@omfp/kit";
+import type { Workspace } from "@omfp/protocol";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
 import {
+  DRAFT_THREAD,
   reportError,
   SELECTED_THREAD,
+  useAnnounce,
   useCall,
   useHost,
-  useRepositories,
-  useThreadActions,
   useThreadSummary,
   useThreads,
   useWindowState,
   useWorkspace,
   useWorkspaces,
   type WidgetProps,
-  windowKey,
 } from "../../sdk/index.ts";
+import { usePathSources } from "../../sdk/paths.ts";
 import { strings } from "../../strings/index.ts";
+import type { RepoKind } from "../../vm/threads.ts";
 import {
+  ADD_KINDS,
+  type AddKind,
+  addRepoSource,
+  currentWorkspaceId,
   type RepoRow,
-  type RepositoryRow,
   removalNeedsConfirmation,
-  repositoryRows,
   type WorkspaceRow,
-  workspaceList,
   workspaceRow,
 } from "../../vm/workspaces.ts";
 
 const text = strings.shell.workspace;
 
-/** A workspace opened from the list; the selected thread's workspace otherwise. */
-export const VIEWED_WORKSPACE = windowKey<string | undefined>("workspace/viewed", undefined);
+/** The glyph of each repository kind (its name is the accessible label). */
+const KIND_ICON: Record<RepoKind, string> = { link: "↗", worktree: "⎇", clone: "⤓" };
 
 /** Runs a call, reporting its failure to the frame; resolves to whether it succeeded. */
 function useAttempt(): (call: () => Promise<unknown>) => Promise<boolean> {
@@ -57,17 +58,8 @@ function useAttempt(): (call: () => Promise<unknown>) => Promise<boolean> {
 
 export function WorkspaceWidget(_props: WidgetProps): ReactNode {
   const [selected] = useWindowState(SELECTED_THREAD);
-  const summary = useThreadSummary(selected);
-  const [viewed, setViewed] = useWindowState(VIEWED_WORKSPACE);
-  const previous = useRef(selected);
-  useEffect(() => {
-    if (previous.current !== selected) {
-      previous.current = selected;
-      setViewed(undefined);
-    }
-  }, [selected, setViewed]);
-  const shown = viewed ?? summary?.workspaceId;
-  const [worktreeRepository, setWorktreeRepository] = useState<string | undefined>(undefined);
+  const [draft] = useWindowState(DRAFT_THREAD);
+  const shown = currentWorkspaceId(useThreadSummary(selected), draft);
   return (
     <section
       className="omfp-workspace"
@@ -80,68 +72,57 @@ export function WorkspaceWidget(_props: WidgetProps): ReactNode {
           {text.none}
         </p>
       ) : (
-        <CurrentWorkspace
-          key={shown}
-          workspaceId={shown}
-          worktreeRepository={worktreeRepository}
-          onWorktreeRepository={setWorktreeRepository}
-        />
+        <CurrentWorkspace key={shown} workspaceId={shown} />
       )}
-      <AllWorkspaces onOpen={setViewed} />
-      <KnownRepositories canAdd={shown !== undefined} onNewWorktree={setWorktreeRepository} />
     </section>
   );
 }
 
-function CurrentWorkspace({
-  workspaceId,
-  worktreeRepository,
-  onWorktreeRepository,
-}: {
-  workspaceId: string;
-  worktreeRepository: string | undefined;
-  onWorktreeRepository: (id: string | undefined) => void;
-}): ReactNode {
+function CurrentWorkspace({ workspaceId }: { workspaceId: string }): ReactNode {
   const { workspace, status } = useWorkspace(workspaceId);
   const threads = useList(useThreads());
   const workspaces = useList(useWorkspaces());
-  const call = useCall();
-  const attempt = useAttempt();
   if (workspace === undefined) {
     return null;
   }
   const row = workspaceRow(workspace, threads, workspaces, status);
-  const add = (source: RepoSource) => attempt(() => call("workspaces.add_repo", { workspaceId, source }));
   return (
     <article className="omfp-workspace__current" data-testid="workspace-current" data-workspace-id={workspaceId}>
-      <WorkspaceName workspace={workspace} />
-      <div className="omfp-workspace__meta">
-        <Badge>{row.owned ? text.owned : text.folder}</Badge>
-        {row.shared && (
-          <Badge tone="warning" data-testid="shared-warning" title={text.sharedHint}>
-            {text.shared(row.threads.length)}
-          </Badge>
-        )}
-        <Button
-          size="sm"
-          data-testid="refresh-workspace"
-          onPress={() => void attempt(() => call("workspaces.rescan", { workspaceId }))}
-        >
-          {text.rescan}
-        </Button>
-      </div>
-      <code className="omfp-workspace__path" data-testid="workspace-path" title={text.path}>
-        {row.path}
-      </code>
-      <Threads row={row} />
+      <Header workspace={workspace} row={row} />
       <Repos row={row} />
-      <AddForms add={add} worktreeRepository={worktreeRepository} onWorktreeRepository={onWorktreeRepository} />
+      <AddRepository workspaceId={workspaceId} />
     </article>
   );
 }
 
 function useList<T>(map: ReadonlyMap<string, T>): readonly T[] {
   return useMemo(() => [...map.values()], [map]);
+}
+
+function Header({ workspace, row }: { workspace: Workspace; row: WorkspaceRow }): ReactNode {
+  const attempt = useAttempt();
+  const announce = useAnnounce();
+  const copy = () =>
+    void attempt(() => navigator.clipboard.writeText(row.path)).then((ok) => ok && announce(text.copied));
+  return (
+    <header className="omfp-workspace__header">
+      <WorkspaceName workspace={workspace} />
+      <div className="omfp-workspace__folder">
+        <code className="omfp-workspace__path" data-testid="workspace-path" title={text.path}>
+          {row.path}
+        </code>
+        <IconButton label={text.copyPath} icon="⎘" data-testid="copy-workspace-path" onPress={copy} />
+      </div>
+      <div className="omfp-workspace__meta">
+        <Badge>{row.owned ? text.owned : text.folder}</Badge>
+        {row.shared && (
+          <Badge tone="warning" data-testid="shared-warning" title={text.sharedHint}>
+            {text.shared(row.threadCount)}
+          </Badge>
+        )}
+      </div>
+    </header>
+  );
 }
 
 function WorkspaceName({ workspace }: { workspace: Workspace }): ReactNode {
@@ -201,41 +182,24 @@ function WorkspaceName({ workspace }: { workspace: Workspace }): ReactNode {
   );
 }
 
-function Threads({ row }: { row: WorkspaceRow }): ReactNode {
-  const actions = useThreadActions();
-  if (row.threads.length === 0) {
-    return null;
-  }
-  return (
-    <section className="omfp-workspace__threads" aria-label={text.threads}>
-      <h3>{text.threads}</h3>
-      <ul>
-        {row.threads.map((thread) => (
-          <li key={thread.id}>
-            <Button
-              size="sm"
-              variant="quiet"
-              data-testid="workspace-thread"
-              data-thread-id={thread.id}
-              onPress={() => actions.select(thread.id)}
-            >
-              {thread.title}
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 function Repos({ row }: { row: WorkspaceRow }): ReactNode {
   const call = useCall();
   const attempt = useAttempt();
   const [confirming, setConfirming] = useState<RepoRow | undefined>(undefined);
   const remove = (name: string) => void attempt(() => call("workspaces.remove_repo", { workspaceId: row.id, name }));
   return (
-    <section className="omfp-workspace__repos" aria-label={text.repos}>
-      <h3>{text.repos}</h3>
+    <section className="omfp-workspace__repos" aria-labelledby="omfp-workspace-repos">
+      <div className="omfp-workspace__heading">
+        <h3 id="omfp-workspace-repos">{text.repos}</h3>
+        <Button
+          size="sm"
+          variant="quiet"
+          data-testid="refresh-workspace"
+          onPress={() => void attempt(() => call("workspaces.rescan", { workspaceId: row.id }))}
+        >
+          {text.rescan}
+        </Button>
+      </div>
       {row.repos.length === 0 ? (
         <p className="omfp-muted">{text.noRepo}</p>
       ) : (
@@ -249,28 +213,41 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
               data-name={repo.name}
               data-dirty={repo.dirty === undefined ? undefined : String(repo.dirty)}
             >
-              <strong>{repo.label}</strong>
-              <span className="omfp-muted" data-testid="repo-origin">
-                {repo.origin}
+              <span
+                className="omfp-workspace__kind"
+                role="img"
+                aria-label={text.kinds[repo.kind]}
+                title={text.kinds[repo.kind]}
+                data-testid="repo-kind"
+              >
+                {KIND_ICON[repo.kind]}
               </span>
-              {repo.git === undefined ? (
-                <span className="omfp-muted">{text.unknownStatus}</span>
-              ) : (
-                <span data-testid="git-status">{repo.git}</span>
+              <strong className="omfp-workspace__repo-name">{repo.name}</strong>
+              <span className="omfp-workspace__branch" data-testid="repo-branch">
+                {repo.branch}
+              </span>
+              {repo.git !== undefined && (
+                <span className="omfp-muted" data-testid="git-status">
+                  {repo.git}
+                </span>
               )}
               {repo.alsoIn.length > 0 && (
                 <Badge tone="warning" data-testid="shared-repo" title={text.alsoInHint}>
                   {text.alsoIn(repo.alsoIn.join(", "))}
                 </Badge>
               )}
-              <Button
-                size="sm"
-                variant="quiet"
+              <IconButton
+                className="omfp-workspace__remove"
+                label={text.removeRepo(repo.name)}
+                icon="×"
                 data-testid="remove-repo"
                 onPress={() => (removalNeedsConfirmation(repo.kind) ? setConfirming(repo) : remove(repo.name))}
-              >
-                {text.remove}
-              </Button>
+              />
+              {repo.origin !== undefined && (
+                <span className="omfp-workspace__origin omfp-muted" data-testid="repo-origin">
+                  {repo.origin}
+                </span>
+              )}
             </li>
           ))}
         </ul>
@@ -300,307 +277,101 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
   );
 }
 
-/** Link a folder, link a known repository, new worktree, clone — into the shown workspace. */
-function AddForms({
-  add,
-  worktreeRepository,
-  onWorktreeRepository,
-}: {
-  add: (source: RepoSource) => Promise<boolean>;
-  worktreeRepository: string | undefined;
-  onWorktreeRepository: (id: string | undefined) => void;
-}): ReactNode {
-  const repositories = useList(useRepositories());
-  return (
-    <div className="omfp-workspace__add">
-      <OneFieldForm
-        testid="link-repo"
-        inputTestId="link-repo-path"
-        label={text.linkPath}
-        placeholder={text.linkPlaceholder}
-        submitLabel={text.addLink}
-        onSubmit={(path) => add({ kind: "link", path })}
-      />
-      <KnownRepositoryForm repositories={repositories} add={add} />
-      <WorktreeForm
-        repositories={repositories}
-        repository={worktreeRepository}
-        onRepository={onWorktreeRepository}
-        add={add}
-      />
-      <OneFieldForm
-        testid="clone-repo"
-        inputTestId="clone-repo-url"
-        label={text.cloneUrl}
-        placeholder={text.clonePlaceholder}
-        submitLabel={text.addClone}
-        onSubmit={(url) => add({ kind: "clone", url })}
-      />
-    </div>
-  );
-}
-
-/** A form with one text field (`<testid>-path`/`-url`…) and a submit button; the field clears on success. */
-function OneFieldForm({
-  testid,
-  label,
-  placeholder,
-  submitLabel,
-  onSubmit,
-  inputTestId,
-}: {
-  testid: string;
-  label: string;
-  placeholder: string;
-  submitLabel: string;
-  onSubmit: (value: string) => Promise<boolean>;
-  inputTestId: string;
-}): ReactNode {
-  const [value, setValue] = useState("");
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = value.trim();
-    if (trimmed !== "") {
-      void onSubmit(trimmed).then((ok) => ok && setValue(""));
-    }
-  };
-  return (
-    <form className="omfp-inline-form" data-testid={testid} onSubmit={submit}>
-      <TextField
-        label={label}
-        hideLabel
-        placeholder={placeholder}
-        value={value}
-        onChange={setValue}
-        inputProps={{ "data-testid": inputTestId }}
-      />
-      <Button type="submit" size="sm" data-testid={`${testid}-submit`}>
-        {submitLabel}
-      </Button>
-    </form>
-  );
-}
-
-function KnownRepositoryForm({
-  repositories,
-  add,
-}: {
-  repositories: readonly Repository[];
-  add: (source: RepoSource) => Promise<boolean>;
-}): ReactNode {
-  const [chosen, setChosen] = useState<string | undefined>(undefined);
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const repository = repositories.find((candidate) => candidate.id === chosen);
-    if (repository !== undefined) {
-      void add({ kind: "link", path: repository.path }).then((ok) => ok && setChosen(undefined));
-    }
-  };
-  return (
-    <form className="omfp-inline-form" data-testid="add-known-repo" onSubmit={submit}>
-      <Select
-        label={text.knownRepository}
-        hideLabel
-        placeholder={text.knownPlaceholder}
-        data-testid="known-repo-choice"
-        items={repositories.map((repository) => ({ id: repository.id, label: repository.name }))}
-        selectedKey={chosen ?? null}
-        onSelectionChange={(key: Key | null) => setChosen(key === null ? undefined : String(key))}
-      />
-      <Button type="submit" size="sm" isDisabled={chosen === undefined} data-testid="add-known-repo-submit">
-        {text.addKnown}
-      </Button>
-    </form>
-  );
-}
-
-function WorktreeForm({
-  repositories,
-  repository,
-  onRepository,
-  add,
-}: {
-  repositories: readonly Repository[];
-  repository: string | undefined;
-  onRepository: (id: string | undefined) => void;
-  add: (source: RepoSource) => Promise<boolean>;
-}): ReactNode {
+/** One control adds a link, a worktree or a clone: a kind switch, the kind's fields, one submit. Enter in a field
+ * submits too; the fields clear once the repository is added. */
+function AddRepository({ workspaceId }: { workspaceId: string }): ReactNode {
+  const call = useCall();
+  const attempt = useAttempt();
+  const { suggest, complete } = usePathSources();
+  const [kind, setKind] = useState<AddKind>("link");
+  const [path, setPath] = useState("");
   const [branch, setBranch] = useState("");
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    if (repository === undefined) {
+  const [url, setUrl] = useState("");
+  const source = addRepoSource(kind, { path, branch, url });
+  const submit = (typedPath = path) => {
+    const chosen = addRepoSource(kind, { path: typedPath, branch, url });
+    if (chosen === undefined) {
       return;
     }
-    const name = branch.trim();
-    void add({ kind: "worktree", repo: repository, ...(name === "" ? {} : { branch: name }) }).then((ok) => {
+    void attempt(() => call("workspaces.add_repo", { workspaceId, source: chosen })).then((ok) => {
       if (ok) {
+        setPath("");
         setBranch("");
-        onRepository(undefined);
+        setUrl("");
       }
     });
   };
+  const submitOnEnter = {
+    onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submit();
+      }
+    },
+  };
   return (
-    <form className="omfp-inline-form" data-testid="create-worktree" onSubmit={submit}>
-      <Select
-        label={text.worktreeRepo}
+    <section className="omfp-workspace__add" aria-labelledby="omfp-workspace-add" data-testid="add-repo">
+      <h3 id="omfp-workspace-add">{text.addRepository}</h3>
+      <RadioGroup
+        className="omfp-workspace__kinds"
+        label={text.addKind}
         hideLabel
-        placeholder={text.knownPlaceholder}
-        data-testid="worktree-repository"
-        items={repositories.map((repository) => ({ id: repository.id, label: repository.name }))}
-        selectedKey={repository ?? null}
-        onSelectionChange={(key: Key | null) => onRepository(key === null ? undefined : String(key))}
-      />
-      <TextField
-        label={text.worktreeBranch}
-        hideLabel
-        placeholder={text.worktreeBranch}
-        value={branch}
-        onChange={setBranch}
-        inputProps={{ "data-testid": "worktree-branch-name" }}
-      />
-      <Button type="submit" size="sm" isDisabled={repository === undefined} data-testid="create-worktree-submit">
-        {text.addWorktree}
-      </Button>
-    </form>
-  );
-}
-
-/** Every workspace: threads count, open, remove (with a confirmation). */
-function AllWorkspaces({ onOpen }: { onOpen: (id: string) => void }): ReactNode {
-  const workspaces = useList(useWorkspaces());
-  const threads = useList(useThreads());
-  const call = useCall();
-  const attempt = useAttempt();
-  const [confirming, setConfirming] = useState<{ id: string; name: string } | undefined>(undefined);
-  return (
-    <section className="omfp-workspace__all" aria-labelledby="omfp-all-workspaces">
-      <h3 id="omfp-all-workspaces">{text.allWorkspaces}</h3>
-      <ul>
-        {workspaceList(workspaces, threads).map((row) => (
-          <li key={row.id} className="omfp-workspace__row" data-testid="workspace-row" data-workspace-id={row.id}>
-            <strong>{row.name}</strong>
-            <span className="omfp-muted" data-testid="workspace-thread-count">
-              {text.threadCount(row.threads)}
-            </span>
-            <code className="omfp-workspace__path">{row.path}</code>
-            <Button size="sm" variant="quiet" data-testid="open-workspace" onPress={() => onOpen(row.id)}>
-              {text.open}
-            </Button>
-            <Button size="sm" variant="quiet" data-testid="remove-workspace" onPress={() => setConfirming(row)}>
-              {text.remove}
-            </Button>
-          </li>
-        ))}
-      </ul>
-      <ConfirmDialog
-        isOpen={confirming !== undefined}
-        onOpenChange={(open) => {
-          if (!open) {
-            setConfirming(undefined);
-          }
-        }}
-        title={text.removeWorkspaceTitle(confirming?.name ?? "")}
-        message={text.removeWorkspaceMessage}
-        confirmLabel={text.removeNow}
-        cancelLabel={text.cancel}
-        tone="danger"
-        onConfirm={() => {
-          if (confirming !== undefined) {
-            const workspaceId = confirming.id;
-            void attempt(() => call("workspaces.remove", { workspaceId }));
-          }
-        }}
-        testId="remove-workspace-dialog"
-        confirmTestId="confirm-remove-workspace"
-        cancelTestId="cancel-remove-workspace"
-      />
-    </section>
-  );
-}
-
-/** Known repositories: new worktree of one in this workspace, remove (its workspaces stay), add by path. */
-function KnownRepositories({
-  canAdd,
-  onNewWorktree,
-}: {
-  canAdd: boolean;
-  onNewWorktree: (id: string) => void;
-}): ReactNode {
-  const repositories = useList(useRepositories());
-  const workspaces = useList(useWorkspaces());
-  const call = useCall();
-  const attempt = useAttempt();
-  const [confirming, setConfirming] = useState<RepositoryRow | undefined>(undefined);
-  const rows = repositoryRows(repositories, workspaces);
-  return (
-    <section
-      className="omfp-workspace__repositories"
-      data-testid="repositories"
-      aria-labelledby="omfp-known-repositories"
-    >
-      <h3 id="omfp-known-repositories">{text.knownRepositories}</h3>
-      {rows.length === 0 ? (
-        <p className="omfp-muted" data-testid="no-repositories">
-          {text.noRepositories}
-        </p>
-      ) : (
-        <ul>
-          {rows.map((row) => (
-            <li key={row.id} className="omfp-workspace__row" data-testid="repository-row" data-repository-id={row.id}>
-              <strong>{row.name}</strong>
-              <span className="omfp-muted" data-testid="repository-worktrees">
-                {text.worktrees(row.worktrees)}
-              </span>
-              <code className="omfp-workspace__path">{row.path}</code>
-              <span className="omfp-muted" data-testid="repository-base">
-                {text.base(row.defaultBaseRef)}
-              </span>
-              <Button
-                size="sm"
-                variant="quiet"
-                isDisabled={!canAdd}
-                data-testid="repository-new-worktree"
-                onPress={() => onNewWorktree(row.id)}
-              >
-                {text.addToWorkspace}
-              </Button>
-              <Button size="sm" variant="quiet" data-testid="remove-repository" onPress={() => setConfirming(row)}>
-                {text.remove}
-              </Button>
-            </li>
+        orientation="horizontal"
+        value={kind}
+        onChange={(value) => setKind(ADD_KINDS.find((candidate) => candidate === value) ?? "link")}
+        data-testid="add-repo-kind"
+      >
+        <div className="omfp-workspace__kind-options">
+          {ADD_KINDS.map((candidate) => (
+            <Radio key={candidate} value={candidate} data-value={candidate}>
+              {text.kinds[candidate]}
+            </Radio>
           ))}
-        </ul>
-      )}
-      <OneFieldForm
-        testid="add-repository"
-        inputTestId="add-repository-path"
-        label={text.repositoryPath}
-        placeholder={text.repositoryPlaceholder}
-        submitLabel={text.addRepository}
-        onSubmit={(path) => attempt(() => call("repos.add", { path }))}
-      />
-      <ConfirmDialog
-        isOpen={confirming !== undefined}
-        onOpenChange={(open) => {
-          if (!open) {
-            setConfirming(undefined);
-          }
-        }}
-        title={text.removeRepositoryTitle(confirming?.name ?? "")}
-        message={<span data-testid="remove-repository-note">{text.removeRepositoryNote}</span>}
-        confirmLabel={text.removeNow}
-        cancelLabel={text.cancel}
-        tone="danger"
-        onConfirm={() => {
-          if (confirming !== undefined) {
-            const repositoryId = confirming.id;
-            void attempt(() => call("repos.remove", { repositoryId }));
-          }
-        }}
-        testId="remove-repository-dialog"
-        confirmTestId="confirm-remove-repository"
-        cancelTestId="cancel-remove-repository"
-      />
+        </div>
+      </RadioGroup>
+      <div className="omfp-workspace__add-fields">
+        {kind === "clone" ? (
+          <TextField
+            label={text.cloneUrl}
+            hideLabel
+            placeholder={text.clonePlaceholder}
+            value={url}
+            onChange={setUrl}
+            inputProps={{ "data-testid": "add-repo-url", ...submitOnEnter }}
+          />
+        ) : (
+          <PathField
+            label={kind === "link" ? text.linkPath : text.worktreeRepo}
+            hideLabel
+            placeholder={kind === "link" ? text.linkPlaceholder : text.worktreePlaceholder}
+            value={path}
+            onChange={setPath}
+            onSubmit={submit}
+            suggest={suggest}
+            complete={complete}
+            data-testid="add-repo-path"
+          />
+        )}
+        {kind === "worktree" && (
+          <TextField
+            label={text.worktreeBranch}
+            hideLabel
+            placeholder={text.worktreeBranch}
+            value={branch}
+            onChange={setBranch}
+            inputProps={{ "data-testid": "add-repo-branch", ...submitOnEnter }}
+          />
+        )}
+        <Button
+          size="sm"
+          variant="primary"
+          isDisabled={source === undefined}
+          data-testid="add-repo-submit"
+          onPress={() => submit()}
+        >
+          {text.add}
+        </Button>
+      </div>
     </section>
   );
 }

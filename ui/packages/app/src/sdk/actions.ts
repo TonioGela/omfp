@@ -1,15 +1,31 @@
 /**
- * Thread actions shared by widgets, commands and the frame (UI-026, UI-030): each is one protocol call plus what the
- * window must forget. Failures land in the {@link ERRORS} slot the frame shows.
+ * Thread actions shared by widgets, commands and the frame (UI-023, UI-026, UI-030): each is one protocol call plus
+ * what the window must forget. Failures land in the {@link ERRORS} slot the frame shows.
  */
 
 import { useMemo } from "react";
 import { type OmfpHost, useHost } from "./host.tsx";
-import { DELETE_THREAD, draftKey, ERRORS, RENAMING_THREAD, SELECTED_THREAD } from "./keys.ts";
+import {
+  DELETE_THREAD,
+  DRAFT_MESSAGE,
+  DRAFT_THREAD,
+  draftKey,
+  ERRORS,
+  RENAMING_THREAD,
+  SELECTED_THREAD,
+} from "./keys.ts";
 
 export interface ThreadActions {
-  /** Shows `threadId` in this window (`undefined`: none). */
+  /** Shows `threadId` in this window (`undefined`: none); leaving an empty draft thread discards it (UI-023). */
   select(threadId: string | undefined): void;
+  /** Shows the draft thread of `workspaceId` (UI-023); a draft started in another workspace moves there with its
+   * text. */
+  openDraft(workspaceId: string): void;
+  /** Drops the draft thread and its text. */
+  discardDraft(): void;
+  /** Creates the daemon thread of the draft with its text as first message (`threads.create { workspace, prompt }`),
+   * then selects it and drops the draft; on failure the draft and its text stay. Resolves to whether it worked. */
+  sendDraft(): Promise<boolean>;
   archive(threadId: string): Promise<void>;
   unarchive(threadId: string): Promise<void>;
   /** Opens the delete confirmation; {@link ThreadActions.remove} is what it confirms. */
@@ -37,6 +53,15 @@ export function useReportError(): (error: unknown) => void {
   return useMemo(() => (error: unknown) => reportError(host, error), [host]);
 }
 
+/** The workspace this window works in: the selected thread's, else the draft thread's. */
+export function currentWorkspaceId(host: OmfpHost): string | undefined {
+  const selected = host.window.get(SELECTED_THREAD);
+  if (selected !== undefined) {
+    return host.frames.getSnapshot().index.threads.get(selected)?.workspaceId;
+  }
+  return host.window.get(DRAFT_THREAD)?.workspaceId;
+}
+
 /** Drops what the window keeps for a thread that is archived or deleted: selection, draft, open editors (UI-026). */
 function forget(host: OmfpHost, threadId: string): void {
   const { window } = host;
@@ -46,6 +71,45 @@ function forget(host: OmfpHost, threadId: string): void {
     }
   }
   window.reset(draftKey(threadId));
+}
+
+function discardDraft(host: OmfpHost): void {
+  host.window.set(DRAFT_THREAD, undefined);
+  host.window.reset(DRAFT_MESSAGE);
+}
+
+/** What removing a workspace takes along (UI-020, DMN-028). */
+export interface WorkspaceRemoval {
+  /** Deleted first: the daemon refuses a workspace that still has threads. */
+  readonly threadIds: readonly string[];
+  /** Also delete the folder the daemon created for it. */
+  readonly deleteFolder: boolean;
+}
+
+/** Deletes `removal.threadIds`, then removes the workspace, stopping at the first failure (reported to `ERRORS`);
+ * drops the draft thread started in it. Resolves to whether everything worked. */
+export async function removeWorkspace(
+  host: OmfpHost,
+  workspaceId: string,
+  removal: WorkspaceRemoval,
+): Promise<boolean> {
+  if (host.window.get(DRAFT_THREAD)?.workspaceId === workspaceId) {
+    discardDraft(host);
+  }
+  try {
+    for (const threadId of removal.threadIds) {
+      forget(host, threadId);
+      await host.client.call("threads.delete", { threadId });
+    }
+    await host.client.call("workspaces.remove", {
+      workspaceId,
+      ...(removal.deleteFolder ? { deleteFolder: true } : {}),
+    });
+    return true;
+  } catch (error) {
+    reportError(host, error);
+    return false;
+  }
 }
 
 export function threadActions(host: OmfpHost): ThreadActions {
@@ -58,7 +122,37 @@ export function threadActions(host: OmfpHost): ThreadActions {
     }
   };
   return {
-    select: (threadId) => window.set(SELECTED_THREAD, threadId),
+    select: (threadId) => {
+      const draft = window.get(DRAFT_MESSAGE);
+      if (threadId !== undefined && draft.text.trim() === "" && draft.images.length === 0) {
+        discardDraft(host);
+      }
+      window.set(SELECTED_THREAD, threadId);
+    },
+    openDraft: (workspaceId) => {
+      // A new object each time: the draft's composer takes the focus again.
+      window.set(DRAFT_THREAD, { workspaceId });
+      window.set(SELECTED_THREAD, undefined);
+    },
+    discardDraft: () => discardDraft(host),
+    sendDraft: async () => {
+      const draft = window.get(DRAFT_THREAD);
+      const prompt = window.get(DRAFT_MESSAGE).text.trim();
+      if (draft === undefined || prompt === "") {
+        return false;
+      }
+      try {
+        const thread = await client.call("threads.create", { workspace: { id: draft.workspaceId }, prompt });
+        if (window.get(DRAFT_THREAD)?.workspaceId === draft.workspaceId) {
+          discardDraft(host);
+        }
+        window.set(SELECTED_THREAD, thread.id);
+        return true;
+      } catch (error) {
+        reportError(host, error);
+        return false;
+      }
+    },
     archive: (threadId) => {
       forget(host, threadId);
       return attempt(() => client.call("threads.archive", { threadId }));

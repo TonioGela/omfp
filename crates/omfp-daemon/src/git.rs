@@ -81,9 +81,6 @@ pub trait Git: Send + Sync + std::fmt::Debug {
     /// `git clone <url> <dest>` (DMN-024); `dest` must not exist.
     fn clone_repo(&self, url: &str, dest: &Path) -> Result<()>;
 
-    /// URL of `remote`, if configured.
-    fn remote_url(&self, repo: &Path, remote: &str) -> Result<Option<String>>;
-
     /// Whether the local branch exists.
     fn branch_exists(&self, repo: &Path, branch: &str) -> Result<bool>;
 
@@ -258,17 +255,6 @@ impl Git for GitCli {
             dest.as_os_str(),
         ];
         self.run(parent, &args).map(drop)
-    }
-
-    fn remote_url(&self, repo: &Path, remote: &str) -> Result<Option<String>> {
-        let key = format!("remote.{remote}.url");
-        let args = ["config", "--get", key.as_str()];
-        let output = self.output(repo, &args)?;
-        match output.status.code() {
-            Some(0) => Ok(Some(line(&output.stdout))),
-            Some(1) => Ok(None),
-            _ => Err(failed(&args, &output)),
-        }
     }
 
     fn branch_exists(&self, repo: &Path, branch: &str) -> Result<bool> {

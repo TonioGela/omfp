@@ -219,6 +219,7 @@ requirements = [
   "DMN-073",
   "DMN-074",
   "DMN-075",
+  "DMN-076",
   # Tests
   "TST-030",
   "TST-031",

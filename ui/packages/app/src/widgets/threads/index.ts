@@ -1,4 +1,4 @@
-/** `omfp:threads`: the thread list. */
+/** `omfp:threads`: the left column, workspaces with their threads. */
 
 export { StatusBadge, WorkspaceChipView } from "./badges.tsx";
-export { SEEN, THREAD_FILTER, THREAD_GROUPING, ThreadsWidget } from "./threads.tsx";
+export { ARCHIVED_OPEN, COLLAPSED_WORKSPACES, SEEN, THREAD_QUERY, ThreadsWidget } from "./threads.tsx";

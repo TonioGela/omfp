@@ -3,16 +3,6 @@ source: crates/omfp-protocol/tests/protocol/golden.rs
 expression: snapshot
 ---
 {
-  "repositories": [
-    {
-      "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F",
-      "name": "shop-frontend",
-      "path": "/home/dev/src/shop-frontend",
-      "defaultBaseRef": "origin/main",
-      "remoteUrl": "git@github.com:acme/shop-frontend.git",
-      "createdAt": 1794268800000
-    }
-  ],
   "workspaces": [
     {
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",

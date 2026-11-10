@@ -3,6 +3,64 @@ source: crates/omfp-protocol/tests/protocol/schemas.rs
 expression: method_schemas()
 ---
 {
+  "fs.complete": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`fs.complete` params (DMN-021).",
+      "properties": {
+        "path": {
+          "description": "An absolute path or one starting with `~`: ending with `/`, its children are listed; otherwise the children\nof its parent starting with its last segment.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "CompletePathParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "PathEntry": {
+          "description": "A child directory on the daemon host, offered while typing a path (DMN-021).",
+          "properties": {
+            "isGitRoot": {
+              "description": "The directory is the root of a git repository.",
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "description": "Absolute path, `~` expanded.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "path",
+            "isGitRoot"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`fs.complete` result: directories sorted by name, at most 200.",
+      "properties": {
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/PathEntry"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "entries"
+      ],
+      "title": "PathCompletions",
+      "type": "object"
+    }
+  },
   "interaction.respond": {
     "params": {
       "$defs": {
@@ -89,142 +147,62 @@ expression: method_schemas()
       "type": "object"
     }
   },
-  "repos.add": {
+  "repos.suggest": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "`repos.add` params.",
+      "description": "`repos.suggest` params (DMN-021).",
       "properties": {
-        "path": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "title": "AddRepositoryParams",
-      "type": "object"
-    },
-    "result": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "A known git repository: a shortcut for adding repositories to workspaces (DMN-021).",
-      "properties": {
-        "createdAt": {
-          "format": "int64",
-          "type": "integer"
-        },
-        "defaultBaseRef": {
-          "type": "string"
-        },
-        "id": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "path": {
-          "description": "Absolute path of the repository root.",
-          "type": "string"
-        },
-        "remoteUrl": {
+        "query": {
+          "description": "Keeps repositories whose path or name contains it (case-insensitive); absent or empty: all.",
           "type": [
             "string",
             "null"
           ]
         }
       },
-      "required": [
-        "id",
-        "name",
-        "path",
-        "defaultBaseRef",
-        "createdAt"
-      ],
-      "title": "Repository",
-      "type": "object"
-    }
-  },
-  "repos.list": {
-    "params": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "No params, or the `{}` result.",
-      "title": "Empty",
+      "title": "SuggestReposParams",
       "type": "object"
     },
     "result": {
       "$defs": {
-        "Repository": {
-          "description": "A known git repository: a shortcut for adding repositories to workspaces (DMN-021).",
+        "SeenRepository": {
+          "description": "A repository the daemon has seen in a workspace, suggested when adding repositories (DMN-021).",
           "properties": {
-            "createdAt": {
+            "lastSeenAt": {
               "format": "int64",
               "type": "integer"
             },
-            "defaultBaseRef": {
-              "type": "string"
-            },
-            "id": {
-              "type": "string"
-            },
             "name": {
+              "description": "The path's last component.",
               "type": "string"
             },
             "path": {
-              "description": "Absolute path of the repository root.",
+              "description": "Canonical path: a link's target or a clone, the main repository of a worktree.",
               "type": "string"
-            },
-            "remoteUrl": {
-              "type": [
-                "string",
-                "null"
-              ]
             }
           },
           "required": [
-            "id",
-            "name",
             "path",
-            "defaultBaseRef",
-            "createdAt"
+            "name",
+            "lastSeenAt"
           ],
           "type": "object"
         }
       },
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "`repos.list` result.",
+      "description": "`repos.suggest` result: most recently seen first.",
       "properties": {
-        "repositories": {
+        "repos": {
           "items": {
-            "$ref": "#/$defs/Repository"
+            "$ref": "#/$defs/SeenRepository"
           },
           "type": "array"
         }
       },
       "required": [
-        "repositories"
+        "repos"
       ],
-      "title": "RepositoryList",
-      "type": "object"
-    }
-  },
-  "repos.remove": {
-    "params": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Params naming one repository.",
-      "properties": {
-        "repositoryId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "repositoryId"
-      ],
-      "title": "RepositoryRef",
-      "type": "object"
-    },
-    "result": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "No params, or the `{}` result.",
-      "title": "Empty",
+      "title": "RepoSuggestions",
       "type": "object"
     }
   },
@@ -2339,6 +2317,59 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "threads.search": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`threads.search` params (DMN-076).",
+      "properties": {
+        "query": {
+          "description": "Case-insensitive substring of the conversation text; shorter than 2 characters finds nothing.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "title": "SearchThreadsParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "ThreadSearchResult": {
+          "description": "A thread whose conversation contains the query.",
+          "properties": {
+            "snippet": {
+              "description": "A short excerpt around the first match.",
+              "type": "string"
+            },
+            "threadId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "threadId",
+            "snippet"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`threads.search` result: most recently updated threads first, at most 200.",
+      "properties": {
+        "results": {
+          "items": {
+            "$ref": "#/$defs/ThreadSearchResult"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "title": "ThreadSearchResults",
+      "type": "object"
+    }
+  },
   "threads.unarchive": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2599,7 +2630,7 @@ expression: method_schemas()
               "description": "`git worktree add` of a repository.",
               "properties": {
                 "baseRef": {
-                  "description": "Base of a new branch; default: the known repository's base ref, else its checked-out branch.",
+                  "description": "Base of a new branch; default: the repository's checked-out branch.",
                   "type": [
                     "string",
                     "null"
@@ -2617,7 +2648,7 @@ expression: method_schemas()
                   "type": "string"
                 },
                 "repo": {
-                  "description": "Known repository id, or a path inside a git repository.",
+                  "description": "A path inside a git repository (e.g. a `repos.suggest` path).",
                   "type": "string"
                 }
               },

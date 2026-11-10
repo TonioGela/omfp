@@ -217,42 +217,6 @@ expression: type_schemas()
         ],
         "type": "object"
       },
-      "Repository": {
-        "description": "A known git repository: a shortcut for adding repositories to workspaces (DMN-021).",
-        "properties": {
-          "createdAt": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "defaultBaseRef": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "path": {
-            "description": "Absolute path of the repository root.",
-            "type": "string"
-          },
-          "remoteUrl": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "path",
-          "defaultBaseRef",
-          "createdAt"
-        ],
-        "type": "object"
-      },
       "Settings": {
         "description": "UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097).",
         "properties": {
@@ -591,38 +555,6 @@ expression: type_schemas()
       {
         "properties": {
           "kind": {
-            "const": "repository_upserted",
-            "type": "string"
-          },
-          "repository": {
-            "$ref": "#/$defs/Repository"
-          }
-        },
-        "required": [
-          "kind",
-          "repository"
-        ],
-        "type": "object"
-      },
-      {
-        "properties": {
-          "kind": {
-            "const": "repository_removed",
-            "type": "string"
-          },
-          "repositoryId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "kind",
-          "repositoryId"
-        ],
-        "type": "object"
-      },
-      {
-        "properties": {
-          "kind": {
             "const": "workspace_upserted",
             "type": "string"
           },
@@ -852,42 +784,6 @@ expression: type_schemas()
         },
         "required": [
           "createdBy"
-        ],
-        "type": "object"
-      },
-      "Repository": {
-        "description": "A known git repository: a shortcut for adding repositories to workspaces (DMN-021).",
-        "properties": {
-          "createdAt": {
-            "format": "int64",
-            "type": "integer"
-          },
-          "defaultBaseRef": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "path": {
-            "description": "Absolute path of the repository root.",
-            "type": "string"
-          },
-          "remoteUrl": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "path",
-          "defaultBaseRef",
-          "createdAt"
         ],
         "type": "object"
       },
@@ -1226,12 +1122,6 @@ expression: type_schemas()
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "description": "State of the `index` topic.",
     "properties": {
-      "repositories": {
-        "items": {
-          "$ref": "#/$defs/Repository"
-        },
-        "type": "array"
-      },
       "settings": {
         "$ref": "#/$defs/Settings"
       },
@@ -1252,7 +1142,6 @@ expression: type_schemas()
       }
     },
     "required": [
-      "repositories",
       "workspaces",
       "threads",
       "theme",

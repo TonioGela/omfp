@@ -1,4 +1,4 @@
-//! Entities the daemon exposes: repositories, workspaces, thread summaries, git status and terminals.
+//! Entities the daemon exposes: workspaces, thread summaries, git status, repository suggestions and terminals.
 //!
 //! Timestamps are Unix epoch milliseconds.
 
@@ -27,18 +27,26 @@ pub enum CreatedBy {
     },
 }
 
-/// A known git repository: a shortcut for adding repositories to workspaces (DMN-021).
+/// A repository the daemon has seen in a workspace, suggested when adding repositories (DMN-021).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct Repository {
-    pub id: String,
-    pub name: String,
-    /// Absolute path of the repository root.
+pub struct SeenRepository {
+    /// Canonical path: a link's target or a clone, the main repository of a worktree.
     pub path: String,
-    pub default_base_ref: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub remote_url: Option<String>,
-    pub created_at: i64,
+    /// The path's last component.
+    pub name: String,
+    pub last_seen_at: i64,
+}
+
+/// A child directory on the daemon host, offered while typing a path (DMN-021).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PathEntry {
+    pub name: String,
+    /// Absolute path, `~` expanded.
+    pub path: String,
+    /// The directory is the root of a git repository.
+    pub is_git_root: bool,
 }
 
 /// A folder threads work in; its repositories are its top-level entries (D-11, DMN-020).
@@ -232,7 +240,6 @@ pub enum KeymapMode {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct IndexSnapshot {
-    pub repositories: Vec<Repository>,
     pub workspaces: Vec<Workspace>,
     pub threads: Vec<ThreadSummary>,
     pub theme: Theme,

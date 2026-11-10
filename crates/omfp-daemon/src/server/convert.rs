@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use omfp_protocol::{
     CreatedBy, DiffPage, ErrorBody, ErrorCode, FileChange, FileDiff, FileStatus, GitStatus,
-    Provenance, RepoKind, Repository, ThreadSummary, TitleSource, Workspace, WorkspaceRepo,
+    Provenance, RepoKind, ThreadSummary, TitleSource, Workspace, WorkspaceRepo,
 };
 use serde_json::json;
 
@@ -107,17 +107,6 @@ fn provenance(created_by: &store::Provenance, client: Option<&String>) -> Proven
             },
         },
         client: client.cloned(),
-    }
-}
-
-pub(crate) fn repository(repo: &store::Repository) -> Repository {
-    Repository {
-        id: repo.id.clone(),
-        name: repo.name.clone(),
-        path: repo.path.to_string_lossy().into_owned(),
-        default_base_ref: repo.default_base_ref.clone(),
-        remote_url: repo.remote_url.clone(),
-        created_at: repo.created_at,
     }
 }
 

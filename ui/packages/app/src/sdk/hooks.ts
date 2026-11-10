@@ -14,7 +14,6 @@
 import type { ConnectionStatus, Index, ThreadView, TopicState } from "@omfp/client";
 import {
   type RepoStatus,
-  type Repository,
   type ThreadSummary,
   type Topic,
   threadTopic,
@@ -53,10 +52,6 @@ export function useThreadSummary(threadId: string | undefined): ThreadSummary | 
 
 export function useWorkspaces(): ReadonlyMap<string, Workspace> {
   return useSnapshot((snapshot) => snapshot.index.workspaces);
-}
-
-export function useRepositories(): ReadonlyMap<string, Repository> {
-  return useSnapshot((snapshot) => snapshot.index.repositories);
 }
 
 /** Follows `topic` while mounted; its subscription state. */

@@ -308,16 +308,6 @@ impl Journey {
         Ok(())
     }
 
-    /// Chooses the option with id `key` in the kit `Select` whose root has the test id `testid`: its trigger opens a
-    /// listbox in a popover at the end of the body.
-    pub async fn select(&self, testid: &str, key: &str) -> anyhow::Result<()> {
-        self.click(&format!("[data-testid={testid}] button"))
-            .await?;
-        self.click(&format!("[data-testid=select-option][data-key=\"{key}\"]"))
-            .await?;
-        self.gone("[data-testid=select-option]").await
-    }
-
     /// Waits until the page is connected and shows its view.
     pub async fn connected(&self) -> anyhow::Result<()> {
         self.element("[data-testid=view]").await?;
@@ -343,22 +333,29 @@ impl Journey {
         .await
     }
 
-    /// Opens the new-thread dialog from the sidebar.
-    pub async fn open_new_thread(&self) -> anyhow::Result<()> {
-        self.click("[data-testid=new-thread]").await?;
-        self.element("[data-testid=new-thread-dialog]").await?;
-        Ok(())
+    /// Creates a workspace named `name` from the "+ workspace" field at the top of the left column (UI-023) and waits
+    /// until the draft thread it opens has the composer focused.
+    pub async fn new_workspace(&self, name: &str) -> anyhow::Result<()> {
+        let field = self.element("[data-testid=new-workspace-name]").await?;
+        field.click().await?;
+        field.send_keys(name).await?;
+        field.send_keys(Key::Enter).await?;
+        self.element("[data-testid=draft-thread]").await?;
+        self.until_focused("composer-input").await
     }
 
-    /// Creates a thread in a new workspace named `workspace` through the new-thread dialog (no repository, no first
-    /// message) and waits until it is open; returns its id.
-    pub async fn create_thread(&self, workspace: &str) -> anyhow::Result<String> {
+    /// Sends `text` as the first message of the open draft thread, which creates the thread (UI-023); waits until it
+    /// is selected and open and returns its id.
+    pub async fn first_message(&self, text: &str) -> anyhow::Result<String> {
         let before = self.thread_ids().await?;
-        self.open_new_thread().await?;
-        self.type_into("[data-testid=new-workspace-name]", workspace)
-            .await?;
-        self.click("[data-testid=create-thread]").await?;
+        self.send(text).await?;
         self.created(&before).await
+    }
+
+    /// Creates a thread in a new workspace named `workspace` through the protocol (no repository, no first message),
+    /// then opens it from the left column; returns its id. Journeys about creating threads use [`Self::new_workspace`].
+    pub async fn create_thread(&self, workspace: &str) -> anyhow::Result<String> {
+        self.create_thread_with(workspace, None).await
     }
 
     /// Waits until a thread not in `before` is selected and open; returns its id.
@@ -368,14 +365,21 @@ impl Journey {
                 Ok(page.selected().await?.filter(|id| !before.contains(id)))
             })
             .await?;
-        self.gone("[data-testid=new-thread-dialog]").await?;
         self.opened(&id).await?;
         Ok(id)
     }
 
     /// Creates a thread whose omp asks before every tool (`always-ask`; the UI keeps the `yolo` default, DMN-074)
-    /// through the protocol, then opens it from the sidebar; returns its id.
+    /// through the protocol, then opens it from the left column; returns its id.
     pub async fn create_asking_thread(&self, workspace: &str) -> anyhow::Result<String> {
+        self.create_thread_with(workspace, Some("always-ask")).await
+    }
+
+    async fn create_thread_with(
+        &self,
+        workspace: &str,
+        approval_mode: Option<&str>,
+    ) -> anyhow::Result<String> {
         let mut connection = self.connect().await?;
         let thread = connection
             .call::<ThreadsCreate>(CreateThreadParams {
@@ -387,7 +391,7 @@ impl Journey {
                 tags: Vec::new(),
                 model: None,
                 thinking_level: None,
-                approval_mode: Some("always-ask".to_owned()),
+                approval_mode: approval_mode.map(str::to_owned),
                 prompt: None,
             })
             .await?;
@@ -395,6 +399,17 @@ impl Journey {
         self.click(&row(&thread.id)).await?;
         self.opened(&thread.id).await?;
         Ok(thread.id)
+    }
+
+    /// Types `typed` into the path field `input` (a CSS selector) and picks the offered option for `path`: a
+    /// suggestion or a directory completion (DMN-021).
+    pub async fn pick_path(&self, input: &str, typed: &str, path: &str) -> anyhow::Result<()> {
+        self.type_into(input, typed).await?;
+        self.click(&format!(
+            "[data-testid=path-option][data-path={}]",
+            json!(path)
+        ))
+        .await
     }
 
     /// Waits until thread `id` shows in the chat and its composer is ready.
@@ -452,10 +467,19 @@ impl Journey {
         .await
     }
 
-    /// Switches the colour scheme with the sidebar's picker (`light`, `dark`, `system`) and waits until the page
-    /// applies it.
+    /// Switches the colour scheme with `:theme <scheme>` (`light`, `dark`, `system`) from normal mode and waits until
+    /// the page applies it.
     pub async fn scheme(&self, scheme: &str) -> anyhow::Result<()> {
-        self.select("theme-mode", scheme).await?;
+        self.eval(
+            "if (document.activeElement) { document.activeElement.blur(); }",
+            Vec::new(),
+        )
+        .await?;
+        self.keys(":").await?;
+        self.until_focused("command-line-input").await?;
+        self.keys(format!("theme {scheme}")).await?;
+        self.keys(Key::Enter).await?;
+        self.gone("[data-testid=command-line]").await?;
         self.until_scheme(scheme).await
     }
 

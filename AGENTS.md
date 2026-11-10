@@ -58,8 +58,10 @@ crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wa
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs),
                       supervisor (launch in the workspace folder, root sync), agent conventions (conventions.rs),
                       event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
-                      workspaces/scan.rs, add/remove repo), threads, git port + FakeGit, host tools, WebSocket
-                      server; `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`);
+                      workspaces/scan.rs, add/remove repo, suggestions of seen repositories), path completion
+                      (fs_complete.rs), conversation search over session files (search.rs), threads, git port +
+                      FakeGit, host tools, WebSocket server; `omfp_daemon::{start, run, discover}` back `omfp daemon`
+                      (and later `omfp desktop`);
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
 crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI)
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)

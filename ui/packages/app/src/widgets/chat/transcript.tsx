@@ -20,6 +20,7 @@ import {
 import { SCOPE_ATTRIBUTE, useAnnounce, useCommand, useWindowState } from "../../sdk/index.ts";
 import { strings } from "../../strings/index.ts";
 import { noticeRow } from "../../vm/notice.ts";
+import { systemMessage, systemNotice } from "../../vm/system.ts";
 import { type Item, items, messageView, streamingView } from "../../vm/transcript.ts";
 import {
   isScrollUpKey,
@@ -30,7 +31,7 @@ import {
   type PinEvent,
   pinReducer,
 } from "../../vm/virtual.ts";
-import { MessageRow, NoticeRowView } from "./message.tsx";
+import { MessageRow, NoticeRowView, SystemRowView } from "./message.tsx";
 import type { WidgetProps } from "./props.ts";
 import { measurementsKey, pinKey, useSelectedThread } from "./state.ts";
 
@@ -272,11 +273,26 @@ function NavRegistration({ id, title, run }: { id: NavCommand; title: string; ru
 function Row({ threadId, state, row }: { threadId: string; state: ThreadState; row: Item }) {
   const cardKey = `${threadId}/${row.key}`;
   switch (row.kind.type) {
-    case "message":
-      return <MessageRow cardKey={cardKey} view={messageView(state, row.kind.index)} streaming={false} />;
+    case "message": {
+      const message = state.transcript[row.kind.index]?.message;
+      const system = message === undefined ? undefined : systemMessage(message);
+      return system === undefined ? (
+        <MessageRow cardKey={cardKey} view={messageView(state, row.kind.index)} streaming={false} />
+      ) : (
+        <SystemRowView cardKey={cardKey} row={system} />
+      );
+    }
     case "notice": {
       const notice = state.notices[row.kind.index];
-      return notice === undefined ? null : <NoticeRowView cardKey={cardKey} row={noticeRow(notice.frame)} />;
+      if (notice === undefined) {
+        return null;
+      }
+      const system = systemNotice(notice.frame);
+      return system === undefined ? (
+        <NoticeRowView cardKey={cardKey} row={noticeRow(notice.frame)} />
+      ) : (
+        <SystemRowView cardKey={cardKey} row={system} />
+      );
     }
     case "streaming": {
       const view = streamingView(state);

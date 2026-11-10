@@ -1,7 +1,8 @@
 //! Screenshots of the main screens for a visual check (06-testing.md, L5): a busy thread with a Markdown reply, a tool
 //! card and a queued follow-up in the light and dark schemes and in a custom matugen theme, the `:` command line, the
-//! new-thread dialog, the Workspace panel with a linked repository, a pending approval and an `ask` question. The
-//! screenshots land in `/tmp` (or `OMFP_SCREENSHOT_DIR`); nothing compares pixels. Run with `just test-e2e`.
+//! left column's "+ workspace" path field completing a folder, the Workspace widget with a linked repository and its
+//! path field completing a folder, a pending approval and an `ask` question. The screenshots land in `/tmp` (or
+//! `OMFP_SCREENSHOT_DIR`); nothing compares pixels. Run with `just test-e2e`.
 
 use std::path::Path;
 
@@ -147,8 +148,18 @@ async fn command_line(journey: &Journey) -> anyhow::Result<()> {
     journey.gone("[data-testid=command-line]").await
 }
 
+/// A folder with a few directories to complete in, `apps` a git repository: `(guard, typed partial path)`.
+fn completion_folder() -> anyhow::Result<(tempfile::TempDir, String)> {
+    let dir = tempfile::Builder::new().prefix("omfp-shot-").tempdir()?;
+    for name in ["api-gateway", "apps/.git", "apps-legacy", "archive"] {
+        std::fs::create_dir_all(dir.path().join(name))?;
+    }
+    let typed = format!("{}/ap", dir.path().display());
+    Ok((dir, typed))
+}
+
 #[tokio::test(flavor = "multi_thread")]
-async fn a_busy_thread_in_every_theme_the_command_line_and_the_new_thread_dialog()
+async fn a_busy_thread_in_every_theme_the_command_line_and_the_new_workspace_path_completion()
 -> anyhow::Result<()> {
     let journey = Journey::start(vec![
         Step::reply(Reply::tool_calls(vec![ToolCall::new(
@@ -186,30 +197,26 @@ async fn a_busy_thread_in_every_theme_the_command_line_and_the_new_thread_dialog
     journey.reply("The follow-up is done.").await?;
     journey.status(&thread, "idle").await?;
 
-    journey.open_new_thread().await?;
+    // "+ workspace" on an existing folder: the path field completes on the daemon host (UI-023, DMN-021).
+    let (_folder, typed) = completion_folder()?;
     journey
-        .type_into("[data-testid=new-workspace-name]", "a thread on a worktree")
-        .await?;
-    journey.click("[data-testid=add-worktree]").await?;
-    journey
-        .type_into(
-            "[data-testid=worktree-repo]",
-            "/home/someone/projects/a-repository-with-a-long-name",
-        )
+        .click("[data-testid=new-workspace-existing]")
         .await?;
     journey
-        .type_into("[data-testid=worktree-branch]", "feat-screenshots")
+        .type_into("[data-testid=new-workspace-path]", &typed)
         .await?;
     journey
-        .type_into(
-            "[data-testid=new-thread-prompt]",
-            "Plan the release and write the notes.",
-        )
+        .until("three completions", async |page| {
+            Ok((page
+                .count("[data-testid=path-option][data-kind=directory]")
+                .await?
+                == 3)
+                .then_some(()))
+        })
         .await?;
-    journey.fits("[data-testid=new-thread-dialog]").await?;
-    journey.screenshot("d-new-thread-dialog").await?;
+    journey.screenshot("paths-new-workspace").await?;
     journey
-        .finish("screenshots: themes, command line and dialog")
+        .finish("screenshots: themes, command line and path completion")
         .await
 }
 
@@ -242,7 +249,8 @@ async fn answer(journey: &Journey, needle: &str) -> anyhow::Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn the_workspace_panel_a_pending_approval_and_an_ask_question() -> anyhow::Result<()> {
+async fn the_workspace_panel_path_completion_a_pending_approval_and_an_ask_question()
+-> anyhow::Result<()> {
     let form = r#"<form>
   <fieldset><legend>Which database should the service use?</legend>
     <label><input type="radio" name="db" value="postgres"> Postgres</label>
@@ -271,16 +279,37 @@ async fn the_workspace_panel_a_pending_approval_and_an_ask_question() -> anyhow:
 
     journey
         .type_into(
-            "[data-testid=link-repo-path]",
+            "[data-testid=add-repo-path]",
             &linked.path().to_string_lossy(),
         )
         .await?;
-    journey.click("[data-testid=link-repo-submit]").await?;
+    journey.click("[data-testid=add-repo-submit]").await?;
     journey
         .element("[data-testid=workspace-repo][data-kind=link]")
         .await?;
     journey.fits("[data-widget=\"omfp:workspace\"]").await?;
     journey.screenshot("g-workspace-linked").await?;
+    journey.screenshot("paths-workspace").await?;
+    // The add control's path field, completing a worktree's repository.
+    let (_folder, typed) = completion_folder()?;
+    journey
+        .click("[data-testid=add-repo-kind] [data-value=worktree]")
+        .await?;
+    journey
+        .type_into("[data-testid=add-repo-path]", &typed)
+        .await?;
+    journey
+        .until("three completions", async |page| {
+            Ok((page
+                .count("[data-testid=path-option][data-kind=directory]")
+                .await?
+                == 3)
+                .then_some(()))
+        })
+        .await?;
+    journey.screenshot("paths-workspace-completion").await?;
+    journey.click("[data-testid=composer-input]").await?;
+    journey.gone("[data-testid=path-option]").await?;
 
     journey.send("build it").await?;
     // Approvals (bash, and the ask tool if it needs one) until the question shows; the first one is captured.

@@ -3,13 +3,13 @@
 import { describe, expect, test } from "bun:test";
 import type { GitStatus, WorkspaceRepo } from "@omfp/protocol";
 import {
+  addRepoSource,
+  currentWorkspaceId,
   gitSummary,
   removalNeedsConfirmation,
-  repositoryRows,
-  workspaceList,
   workspaceRow,
 } from "../../src/vm/workspaces.ts";
-import { repo, repository, thread, workspace } from "../support/fixtures.ts";
+import { repo, thread, workspace } from "../support/fixtures.ts";
 
 const status: GitStatus = {
   branch: "feat",
@@ -25,35 +25,47 @@ const status: GitStatus = {
 
 describe("workspaces", () => {
   // spec: UI-025, UI-011
-  test("a row lists living threads, repositories with kind, origin and git status, and flags shared workspaces", () => {
+  test("a row lists repositories with kind, origin, branch and git status, and flags shared workspaces", () => {
     const linked: WorkspaceRepo = { ...repo("w1", "be", "main"), kind: "link", target: "/src/be" };
-    const workspaces = [workspace("w1", [repo("w1", "fe", "feat"), linked]), workspace("w2")];
+    const cloned: WorkspaceRepo = { ...repo("w1", "api", null), kind: "clone" };
+    const workspaces = [workspace("w1", [repo("w1", "fe", "old"), linked, cloned]), workspace("w2")];
     const threads = [thread("t1", "one", "w1"), thread("t2", "", "w1"), thread("t3", "old", "w2", { archivedAt: 3 })];
     const [first, second] = workspaces;
     if (first === undefined || second === undefined) {
       throw new Error("fixture");
     }
     const row = workspaceRow(first, threads, workspaces, [{ name: "fe", status }]);
-    expect(row.threads).toEqual([
-      { id: "t1", title: "one" },
-      { id: "t2", title: "New thread" },
+    expect([row.id, row.name, row.path, row.owned, row.threadCount, row.shared]).toEqual([
+      "w1",
+      "w1",
+      "/work/w1",
+      true,
+      2,
+      true,
     ]);
-    expect(row.shared).toBe(true);
-    expect(row.owned).toBe(true);
     expect(row.repos).toEqual([
       {
         name: "fe",
         kind: "worktree",
-        label: "fe:feat",
-        origin: "worktree of /src/fe",
-        git: "feat · ↑2 ↓0 · dirty · 2 files +10 −1",
+        branch: "feat",
+        origin: "of /src/fe",
+        git: "↑2 ↓0 · dirty · 2 files +10 −1",
         dirty: true,
         alsoIn: [],
       },
-      { name: "be", kind: "link", label: "be:main", origin: "→ /src/be", git: undefined, dirty: undefined, alsoIn: [] },
+      { name: "be", kind: "link", branch: "main", origin: "→ /src/be", git: undefined, dirty: undefined, alsoIn: [] },
+      {
+        name: "api",
+        kind: "clone",
+        branch: "detached",
+        origin: undefined,
+        git: undefined,
+        dirty: undefined,
+        alsoIn: [],
+      },
     ]);
     const empty = workspaceRow(second, threads, workspaces, undefined);
-    expect([empty.threads, empty.shared, empty.repos]).toEqual([[], false, []]);
+    expect([empty.threadCount, empty.shared, empty.repos]).toEqual([0, false, []]);
   });
 
   // spec: UI-025
@@ -69,29 +81,38 @@ describe("workspaces", () => {
   });
 
   // spec: UI-025
-  test("the git summary says detached, clean and ahead/behind", () => {
-    expect(gitSummary({ ahead: 0, behind: 3, dirty: false, files: [] })).toBe("detached · ↑0 ↓3 · clean");
-    expect(gitSummary({ branch: "main", ahead: 0, behind: 0, dirty: true, files: [] })).toBe("main · dirty");
+  test("the git summary says clean and ahead/behind", () => {
+    expect(gitSummary({ ahead: 0, behind: 3, dirty: false, files: [] })).toBe("↑0 ↓3 · clean");
+    expect(gitSummary({ branch: "main", ahead: 0, behind: 0, dirty: true, files: [] })).toBe("dirty");
   });
 
   // spec: UI-025
-  test("repository rows count the worktrees of each repository", () => {
-    const linked: WorkspaceRepo = { ...repo("w2", "be", "main"), kind: "link", target: "/src/be" };
-    const workspaces = [workspace("w1", [repo("w1", "fe", "a")]), workspace("w2", [repo("w2", "fe", "b"), linked])];
-    expect(repositoryRows([repository("r-fe", "fe"), repository("r-be", "be")], workspaces)).toEqual([
-      { id: "r-fe", name: "fe", path: "/src/fe", defaultBaseRef: "main", worktrees: 2 },
-      { id: "r-be", name: "be", path: "/src/be", defaultBaseRef: "main", worktrees: 0 },
-    ]);
+  test("the widget shows the selected thread's workspace, else the draft's", () => {
+    expect(currentWorkspaceId(thread("t1", "one", "w1"), { workspaceId: "w2" })).toBe("w1");
+    expect(currentWorkspaceId(undefined, { workspaceId: "w2" })).toBe("w2");
+    expect(currentWorkspaceId(undefined, undefined)).toBeUndefined();
   });
 
   // spec: UI-025
-  test("the list of all workspaces counts their living threads; only links are removed without confirmation", () => {
-    const workspaces = [workspace("w1"), workspace("w2")];
-    const threads = [thread("t1", "a", "w1"), thread("t2", "b", "w1", { archivedAt: 2 })];
-    expect(workspaceList(workspaces, threads).map((row) => [row.id, row.threads])).toEqual([
-      ["w1", 1],
-      ["w2", 0],
-    ]);
+  test("the add control builds a link, worktree or clone source from its trimmed fields", () => {
+    const fields = { path: " /src/fe ", branch: " ", url: "" };
+    expect(addRepoSource("link", fields)).toEqual({ kind: "link", path: "/src/fe" });
+    expect(addRepoSource("worktree", fields)).toEqual({ kind: "worktree", repo: "/src/fe" });
+    expect(addRepoSource("worktree", { ...fields, branch: "feat/x " })).toEqual({
+      kind: "worktree",
+      repo: "/src/fe",
+      branch: "feat/x",
+    });
+    expect(addRepoSource("clone", fields)).toBeUndefined();
+    expect(addRepoSource("clone", { ...fields, url: " https://example.invalid/x.git" })).toEqual({
+      kind: "clone",
+      url: "https://example.invalid/x.git",
+    });
+    expect(addRepoSource("link", { path: "  ", branch: "", url: "" })).toBeUndefined();
+  });
+
+  // spec: UI-025
+  test("only links are removed without confirmation", () => {
     expect([
       removalNeedsConfirmation("link"),
       removalNeedsConfirmation("worktree"),

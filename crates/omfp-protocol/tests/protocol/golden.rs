@@ -3,24 +3,26 @@
 
 use omfp_core::wire::{AskAnswer, GoalOp, ImageContent, QueuedMessageQueue, ThinkingLevel};
 use omfp_protocol::{
-    AddRepoParams, AddRepositoryParams, BashParams, BtwParams, Call, CompactParams,
+    AddRepoParams, BashParams, BtwParams, Call, CompactParams, CompletePathParams,
     CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileDiff, ForkParams, GoalParams,
     HelloParams, HelloResult, IndexSnapshot, InteractionResponse, LabelParams, ListTerminalsParams,
     METHODS, MessageParams, Method, NavigateParams, OpenTerminalParams, OpenTerminalResult,
-    PROTOCOL_VERSION, Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams,
-    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepositoryList, RepositoryRef,
-    Request, ResizeTerminalParams, RespondParams, Response, ServerFrame, SetModelParams,
-    SetSettingsParams, SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
-    SubscribeParams, SubscribeResult, TerminalInfo, TerminalKind, TerminalList, TerminalRef, Theme,
-    ThreadGit, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
-    UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef, decode_request, method,
+    PROTOCOL_VERSION, PathCompletions, PathEntry, Position, PromptBehavior, PromptParams,
+    PromptResult, QueueMessageParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource,
+    RepoSuggestions, Request, ResizeTerminalParams, RespondParams, Response, SearchThreadsParams,
+    SeenRepository, ServerFrame, SetModelParams, SetSettingsParams, SetThinkingParams,
+    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
+    SuggestReposParams, TerminalInfo, TerminalKind, TerminalList, TerminalRef, Theme, ThreadGit,
+    ThreadRef, ThreadSearchResult, ThreadSearchResults, ThreadWorkspace, Topic, TopicParams,
+    UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef, decode_request,
+    method,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::samples::{
-    REPO_ID, TERMINAL_ID, THREAD_ID, WORKSPACE_ID, git_status, repo_statuses, repository,
-    root_workspace, settings, theme, thread, workspace,
+    TERMINAL_ID, THREAD_ID, WORKSPACE_ID, git_status, repo_statuses, root_workspace, settings,
+    theme, thread, workspace,
 };
 
 const REQUEST_ID: &str = "c42";
@@ -123,22 +125,35 @@ fn system_examples() -> Vec<(&'static str, Value)> {
 
 fn repository_examples() -> Vec<(&'static str, Value)> {
     vec![
-        example::<method::ReposAdd>(
-            AddRepositoryParams {
-                path: "/home/dev/src/shop-frontend".to_owned(),
+        example::<method::ReposSuggest>(
+            SuggestReposParams {
+                query: Some("shop".to_owned()),
             },
-            &repository(),
-        ),
-        example::<method::ReposRemove>(
-            RepositoryRef {
-                repository_id: REPO_ID.to_owned(),
+            &RepoSuggestions {
+                repos: vec![SeenRepository {
+                    path: "/home/dev/src/shop-frontend".to_owned(),
+                    name: "shop-frontend".to_owned(),
+                    last_seen_at: 1_794_268_800_000,
+                }],
             },
-            &Empty {},
         ),
-        example::<method::ReposList>(
-            Empty {},
-            &RepositoryList {
-                repositories: vec![repository()],
+        example::<method::FsComplete>(
+            CompletePathParams {
+                path: "~/src/sh".to_owned(),
+            },
+            &PathCompletions {
+                entries: vec![
+                    PathEntry {
+                        name: "shop-backend".to_owned(),
+                        path: "/home/dev/src/shop-backend".to_owned(),
+                        is_git_root: true,
+                    },
+                    PathEntry {
+                        name: "shared".to_owned(),
+                        path: "/home/dev/src/shared".to_owned(),
+                        is_git_root: false,
+                    },
+                ],
             },
         ),
     ]
@@ -180,7 +195,7 @@ fn workspace_examples() -> Vec<(&'static str, Value)> {
                 workspace_id: WORKSPACE_ID.to_owned(),
                 name: None,
                 source: RepoSource::Worktree {
-                    repo: REPO_ID.to_owned(),
+                    repo: "/home/dev/src/shop-frontend".to_owned(),
                     branch: None,
                     base_ref: Some("origin/main".to_owned()),
                 },
@@ -251,6 +266,17 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
         example::<method::ThreadsArchive>(thread_ref(), &Empty {}),
         example::<method::ThreadsUnarchive>(thread_ref(), &Empty {}),
         example::<method::ThreadsDelete>(thread_ref(), &Empty {}),
+        example::<method::ThreadsSearch>(
+            SearchThreadsParams {
+                query: "flaky".to_owned(),
+            },
+            &ThreadSearchResults {
+                results: vec![ThreadSearchResult {
+                    thread_id: THREAD_ID.to_owned(),
+                    snippet: "…why is the checkout test flaky on CI?…".to_owned(),
+                }],
+            },
+        ),
     ]
 }
 
@@ -693,9 +719,8 @@ fn interaction_responses_carry_exactly_one_answer_key() {
 }
 
 #[test]
-fn index_snapshot_lists_repositories_workspaces_threads_the_theme_and_settings() {
+fn index_snapshot_lists_workspaces_threads_the_theme_and_settings() {
     let snapshot = IndexSnapshot {
-        repositories: vec![repository()],
         workspaces: vec![workspace(), root_workspace()],
         threads: vec![thread()],
         theme: theme(),

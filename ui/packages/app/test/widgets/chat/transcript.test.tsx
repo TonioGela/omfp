@@ -135,6 +135,49 @@ describe("transcript", () => {
     }
   });
 
+  // spec: UI-043
+  test("omp's startup records are collapsed system rows; a record with nothing to summarize has no disclosure", async () => {
+    const startup: ThreadEvent[] = [
+      {
+        kind: "history",
+        session: { session_id: "s", resumed: true },
+        messages: [
+          {
+            role: "custom",
+            customType: "xdev-mount-notice",
+            content:
+              "<system-notice>\nxd:// device inventory changed.\n- xd://ast_edit — Structural edits\n</system-notice>",
+            display: false,
+            timestamp: 1,
+          },
+          { role: "custom", customType: "marker", content: "", display: true, timestamp: 2 },
+        ],
+      },
+      { kind: "omp", frame: { type: "notice", level: "info", message: "xd://: mounted ast_edit", source: "xdev" } },
+    ];
+    renderThread(<TranscriptWidget />, startup);
+    const rows = screen.getAllByTestId("system-record");
+    expect(rows.map((row) => within(row).getByTestId("system-label").textContent)).toEqual(["system", "system"]);
+    expect(rows.map((row) => within(row).getByTestId("system-summary").textContent)).toEqual([
+      "xd:// device inventory changed.",
+      "xd://: mounted ast_edit",
+    ]);
+    const [inventory, mounted] = rows;
+    if (inventory === undefined || mounted === undefined) {
+      throw new Error("two system rows expected");
+    }
+    expect(screen.queryAllByTestId("notice")).toEqual([]);
+    const full = within(inventory).getByTestId("system-text");
+    expect(full.closest("[hidden]")).not.toBeNull();
+    await userEvent.click(within(inventory).getByTestId("toggle"));
+    expect(full.closest("[hidden]")).toBeNull();
+    expect(full.textContent).toBe("xd:// device inventory changed.\n- xd://ast_edit — Structural edits");
+    expect(within(mounted).queryByTestId("toggle")).toBeNull();
+    const [record, ...others] = screen.getAllByTestId("message");
+    expect([record?.dataset.role, others.length]).toEqual(["record", 0]);
+    expect(record && within(record).queryByTestId("toggle")).toBeNull();
+  });
+
   // spec: UI-042
   test("a long transcript keeps only the items around the viewport in the DOM", () => {
     renderThread(<TranscriptWidget />, longHistory(500));

@@ -10,7 +10,7 @@ expression: golden
       "source": {
         "baseRef": "origin/main",
         "kind": "worktree",
-        "repo": "01JD8X3Q4T9V2W6Y5Z7A1B3C6F"
+        "repo": "/home/dev/src/shop-frontend"
       },
       "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
     },
