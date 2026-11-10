@@ -18,6 +18,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
 pub use script::{Matcher, Reply, Script, Step, ToolCall};
@@ -29,6 +30,14 @@ struct Inner {
     answered: Mutex<usize>,
     requests: Mutex<Vec<Value>>,
     failures: Mutex<Vec<String>>,
+    /// One entry per step, `Some` for gated steps.
+    gates: Vec<Option<Gate>>,
+}
+
+#[derive(Debug)]
+struct Gate {
+    arrived: watch::Sender<bool>,
+    released: watch::Sender<bool>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -52,12 +61,22 @@ impl FakeLlm {
     /// Serves `script` on `addr` (port 0 picks a free port).
     pub async fn start_on(script: Script, addr: SocketAddr) -> anyhow::Result<Self> {
         let (model, steps) = script.into_parts();
+        let gates = steps
+            .iter()
+            .map(|step| {
+                step.gated.then(|| Gate {
+                    arrived: watch::channel(false).0,
+                    released: watch::channel(false).0,
+                })
+            })
+            .collect();
         let inner = Arc::new(Inner {
             model,
             steps: Mutex::new(steps.into()),
             answered: Mutex::new(0),
             requests: Mutex::new(Vec::new()),
             failures: Mutex::new(Vec::new()),
+            gates,
         });
         let router = Router::new()
             .route("/v1/models", get(models))
@@ -106,6 +125,31 @@ impl FakeLlm {
     pub fn is_exhausted_cleanly(&self) -> bool {
         lock(&self.inner.steps).is_empty() && lock(&self.inner.failures).is_empty()
     }
+
+    /// Waits until the request for gated step `step` (0-based) has arrived and is being held.
+    ///
+    /// # Panics
+    /// If `step` is not a gated step of the script.
+    pub async fn wait_for_gate(&self, step: usize) {
+        let mut arrived = self.gate(step).arrived.subscribe();
+        let _ = arrived.wait_for(|arrived| *arrived).await;
+    }
+
+    /// Lets gated step `step` (0-based) send its reply.
+    ///
+    /// # Panics
+    /// If `step` is not a gated step of the script.
+    pub fn release_gate(&self, step: usize) {
+        self.gate(step).released.send_replace(true);
+    }
+
+    fn gate(&self, step: usize) -> &Gate {
+        self.inner
+            .gates
+            .get(step)
+            .and_then(Option::as_ref)
+            .unwrap_or_else(|| panic!("step {step} is not gated"))
+    }
 }
 
 impl Drop for FakeLlm {
@@ -132,7 +176,7 @@ async fn chat_completions(
 ) -> Response {
     lock(&inner.requests).push(request.clone());
 
-    let step = {
+    let popped = {
         let mut steps = lock(&inner.steps);
         match steps.front() {
             None => Err(format!(
@@ -143,12 +187,17 @@ async fn chat_completions(
                     "request did not match {matcher:?}; last user message: {:?}; request: {request}",
                     script::last_user_text(&request)
                 )),
-                _ => Ok(steps.pop_front().expect("front exists")),
+                _ => {
+                    let mut answered = lock(&inner.answered);
+                    let index = *answered;
+                    *answered += 1;
+                    Ok((index, steps.pop_front().expect("front exists")))
+                }
             },
         }
     };
-    let step = match step {
-        Ok(step) => step,
+    let (index, step) = match popped {
+        Ok(popped) => popped,
         Err(failure) => {
             lock(&inner.failures).push(failure.clone());
             return (
@@ -159,11 +208,14 @@ async fn chat_completions(
         }
     };
 
-    let id = {
-        let mut answered = lock(&inner.answered);
-        *answered += 1;
-        format!("chatcmpl-fake-{answered}")
-    };
+    if let Some(gate) = inner.gates.get(index).and_then(Option::as_ref) {
+        gate.arrived.send_replace(true);
+        let mut released = gate.released.subscribe();
+        // An error means the server is shutting down; reply anyway.
+        let _ = released.wait_for(|released| *released).await;
+    }
+
+    let id = format!("chatcmpl-fake-{}", index + 1);
     if request["stream"] == Value::Bool(true) {
         let body = chunks::sse_body(&chunks::stream_chunks(
             &id,

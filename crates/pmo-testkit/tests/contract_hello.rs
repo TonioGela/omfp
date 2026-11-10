@@ -38,6 +38,9 @@ async fn a_prompt_is_answered_by_the_fake_llm_without_other_network_access() {
         let turn = turn.unwrap_or_else(|error| {
             panic!("prompt failed: {error}\nstderr:\n{}", session.stderr())
         });
+        session
+            .wait_for_frame("session_settled", Duration::from_secs(60))
+            .unwrap();
         session.record_fixture(&env, "hello").unwrap();
         (turn, (session, env))
     })

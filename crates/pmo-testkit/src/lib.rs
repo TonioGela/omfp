@@ -11,7 +11,8 @@ mod repo;
 
 pub use deny_proxy::DenyProxy;
 pub use omp::{
-    FAKE_MODEL, FAKE_PROVIDER, OmpEnv, OmpSession, normalize_frame, omp_version, require_pinned_omp,
+    FAKE_MODEL, FAKE_PROVIDER, OmpEnv, OmpSession, normalize_frame, omp_bin, omp_version,
+    require_pinned_omp,
 };
 pub use repo::TempRepo;
 

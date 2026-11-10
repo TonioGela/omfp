@@ -1,5 +1,7 @@
 //! The pmo daemon (`pmod`), see docs/specs/02-daemon.md.
 
+pub mod omp;
+
 /// Version string reported by `pmod --version`: daemon version plus the omp release it speaks to.
 #[must_use]
 pub fn version_string() -> String {

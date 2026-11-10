@@ -1,12 +1,14 @@
+use std::ffi::OsString;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::Receiver;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
 use omp_rpc::{Client, ClientOptions, Event};
+use regex::Regex;
 use serde_json::Value;
 use tempfile::TempDir;
 
@@ -17,7 +19,9 @@ pub const FAKE_PROVIDER: &str = "fake";
 /// Model id served by the fake LLM.
 pub const FAKE_MODEL: &str = "scripted";
 
-fn omp_bin() -> String {
+/// omp executable under test: `PMO_OMP_BIN`, else `omp` from `PATH`.
+#[must_use]
+pub fn omp_bin() -> String {
     std::env::var("PMO_OMP_BIN").unwrap_or_else(|_| "omp".to_owned())
 }
 
@@ -98,31 +102,44 @@ impl OmpEnv {
         self.root().join("work")
     }
 
-    /// `omp <args>` with the isolated environment, cwd = [`OmpEnv::work_dir`], and provider credentials removed.
+    /// `omp <args>` with the isolated environment ([`OmpEnv::env_overrides`]) and cwd = [`OmpEnv::work_dir`].
     #[must_use]
     pub fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::new(omp_bin());
         command.args(args).current_dir(self.work_dir());
-        for (name, _) in std::env::vars_os() {
-            let name = name.to_string_lossy();
-            if name.ends_with("_API_KEY")
-                || name.ends_with("_TOKEN")
-                || name.starts_with("OMP_")
-                || name.starts_with("PI_")
-            {
-                command.env_remove(name.as_ref());
-            }
+        for (key, value) in self.env_overrides() {
+            match value {
+                Some(value) => command.env(key, value),
+                None => command.env_remove(key),
+            };
         }
-        let xdg = self.root().join("xdg");
         command
-            .env("HOME", self.home())
-            .env("PI_CODING_AGENT_DIR", self.agent_dir())
-            .env("XDG_CONFIG_HOME", xdg.join("config"))
-            .env("XDG_DATA_HOME", xdg.join("data"))
-            .env("XDG_STATE_HOME", xdg.join("state"))
-            .env("XDG_CACHE_HOME", xdg.join("cache"))
-            .env("NO_PROXY", "127.0.0.1,localhost")
-            .env("no_proxy", "127.0.0.1,localhost");
+    }
+
+    /// Environment changes that isolate omp: own `HOME`, agent and XDG directories, no provider credentials
+    /// (`*_API_KEY`, `*_TOKEN`, `OMP_*`, `PI_*` removed: `None`), and the deny proxy when requested.
+    #[must_use]
+    pub fn env_overrides(&self) -> Vec<(OsString, Option<OsString>)> {
+        let mut overrides: Vec<(OsString, Option<OsString>)> = std::env::vars_os()
+            .filter(|(name, _)| {
+                let name = name.to_string_lossy();
+                name.ends_with("_API_KEY")
+                    || name.ends_with("_TOKEN")
+                    || name.starts_with("OMP_")
+                    || name.starts_with("PI_")
+            })
+            .map(|(name, _)| (name, None))
+            .collect();
+        let xdg = self.root().join("xdg");
+        let mut set = |key: &str, value: OsString| overrides.push((key.into(), Some(value)));
+        set("HOME", self.home().into());
+        set("PI_CODING_AGENT_DIR", self.agent_dir().into());
+        set("XDG_CONFIG_HOME", xdg.join("config").into());
+        set("XDG_DATA_HOME", xdg.join("data").into());
+        set("XDG_STATE_HOME", xdg.join("state").into());
+        set("XDG_CACHE_HOME", xdg.join("cache").into());
+        set("NO_PROXY", "127.0.0.1,localhost".into());
+        set("no_proxy", "127.0.0.1,localhost".into());
         if let Some(proxy) = &self.proxy_url {
             for name in [
                 "HTTP_PROXY",
@@ -132,10 +149,10 @@ impl OmpEnv {
                 "ALL_PROXY",
                 "all_proxy",
             ] {
-                command.env(name, proxy);
+                set(name, proxy.into());
             }
         }
-        command
+        overrides
     }
 }
 
@@ -230,6 +247,21 @@ impl OmpSession {
         &self.events
     }
 
+    /// Waits until a frame of `kind` (its `type`) has been received, failing after `timeout`.
+    pub fn wait_for_frame(&self, kind: &str, timeout: Duration) -> anyhow::Result<()> {
+        let deadline = Instant::now() + timeout;
+        while !self.frames().iter().any(|frame| frame["type"] == kind) {
+            if Instant::now() >= deadline {
+                bail!(
+                    "no `{kind}` frame within {timeout:?}\nstderr:\n{}",
+                    self.stderr()
+                );
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Ok(())
+    }
+
     /// Every complete stdout line received so far, parsed as JSON.
     #[must_use]
     pub fn frames(&self) -> Vec<Value> {
@@ -279,17 +311,33 @@ impl OmpSession {
 }
 
 /// Numeric fields that differ on every run (wall-clock times and latencies).
-const VOLATILE_NUMBERS: &[&str] = &["timestamp", "completedAt", "startedAt", "ttft", "duration"];
+const VOLATILE_NUMBERS: &[&str] = &[
+    "timestamp",
+    "completedAt",
+    "startedAt",
+    "ttft",
+    "duration",
+    "t_ns",
+    "dur_ns",
+    "start_ns",
+    "end_ns",
+    "ns",
+    "at",
+    "wallTimeMs",
+];
 
-/// Makes a recorded frame stable across runs: volatile numbers become `0`, random 16-hex-digit ids become `<id>`,
-/// and the environment's temporary root becomes `<root>`.
+/// Makes a recorded frame stable across runs: volatile numbers become `0`, random 16-hex-digit request ids become
+/// `<id>`, and inside strings the temporary `root` becomes `<root>`, UUIDs become `<uuid>` and session-file
+/// timestamps become `<time>`.
 pub fn normalize_frame(value: &mut Value, root: &str) {
     match value {
         Value::Object(map) => {
             for (key, field) in map.iter_mut() {
                 if VOLATILE_NUMBERS.contains(&key.as_str()) && field.is_number() {
                     *field = Value::from(0);
-                } else if key == "id" && field.as_str().is_some_and(is_random_id) {
+                } else if (key == "id" || key == "targetId")
+                    && field.as_str().is_some_and(is_random_id)
+                {
                     *field = Value::from("<id>");
                 } else {
                     normalize_frame(field, root);
@@ -299,12 +347,28 @@ pub fn normalize_frame(value: &mut Value, root: &str) {
         Value::Array(items) => items
             .iter_mut()
             .for_each(|item| normalize_frame(item, root)),
-        Value::String(text) if !root.is_empty() && text.contains(root) => {
-            *text = text.replace(root, "<root>");
+        Value::String(text) => {
+            let mut normalized = if root.is_empty() {
+                text.clone()
+            } else {
+                text.replace(root, "<root>")
+            };
+            normalized = UUID.replace_all(&normalized, "<uuid>").into_owned();
+            normalized = SESSION_TIME.replace_all(&normalized, "<time>").into_owned();
+            *text = normalized;
         }
         _ => {}
     }
 }
+
+static UUID: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+        .expect("valid regex")
+});
+/// `2026-11-10T11-02-28-652Z`, as used in omp session file names.
+static SESSION_TIME: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z").expect("valid regex")
+});
 
 fn is_random_id(text: &str) -> bool {
     text.len() == 16 && text.bytes().all(|byte| byte.is_ascii_hexdigit())

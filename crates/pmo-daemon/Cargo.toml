@@ -11,9 +11,32 @@ name = "pmod"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
+axum.workspace = true
+clap.workspace = true
+futures.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+omp-rpc.workspace = true
 pmo-core.workspace = true
 pmo-protocol.workspace = true
-clap.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+subtle.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+ulid.workspace = true
+
+[dev-dependencies]
+fake-llm.workspace = true
+insta.workspace = true
+pmo-testkit.workspace = true
+tempfile.workspace = true
+tokio-tungstenite.workspace = true
 
 [lints]
 workspace = true

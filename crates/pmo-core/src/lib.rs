@@ -2,6 +2,10 @@
 //!
 //! This crate performs no I/O and compiles to `wasm32-unknown-unknown` (ARC-010), so the daemon and the UI share it.
 
+mod event;
+
+pub use event::{ProcessState, Resolution, SessionInfo, ThreadEvent};
+
 /// omp RPC wire types, reused as-is instead of being redefined (ARC-011).
 pub use omp_rpc::wire;
 

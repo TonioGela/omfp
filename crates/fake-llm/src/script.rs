@@ -38,13 +38,20 @@ pub struct Step {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub when: Option<Matcher>,
     pub reply: Reply,
+    /// Hold the reply until the test calls `FakeLlm::release_gate` for this step, keeping omp busy deterministically.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub gated: bool,
 }
 
 impl Step {
     /// Replies to the next request, whatever it contains.
     #[must_use]
     pub fn reply(reply: Reply) -> Self {
-        Self { when: None, reply }
+        Self {
+            when: None,
+            reply,
+            gated: false,
+        }
     }
 
     /// Replies only if the request satisfies `matcher`; otherwise the request fails the run.
@@ -53,7 +60,15 @@ impl Step {
         Self {
             when: Some(matcher),
             reply,
+            gated: false,
         }
+    }
+
+    /// Holds this step's reply until released (see `FakeLlm::wait_for_gate` / `FakeLlm::release_gate`).
+    #[must_use]
+    pub fn gated(mut self) -> Self {
+        self.gated = true;
+        self
     }
 }
 

@@ -90,8 +90,8 @@ dialogs).
 
 | ID | Requirement |
 | --- | --- |
-| DMN-030 | The process MUST be started as `omp --mode rpc-ui` with cwd = the thread's home directory (DMN-028), one `--add-dir <path>` per attached workspace in order, plus `--approval-mode` and `--model` when set on the thread. |
-| DMN-031 | After the `ready` frame the daemon MUST check that `supportedProtocolVersions` contains `2` (`omp-rpc` performs the negotiation), then send in order: `open_session { sessionDir }`, `set_event_filter { events: null, messageUpdates: "delta" }`, `set_subagent_subscription { level: "progress" }`, `set_ask_dialog { enabled: true }`, `set_host_tools`. A failure in any step moves the thread to `Failed` with the error message. |
+| DMN-030 | The process MUST be started as `omp --mode rpc-ui --session-dir <thread sessions> --continue` with cwd = the thread's home directory (DMN-028), one `--add-dir <path>` per attached workspace in order, plus `--approval-mode` and `--model` when set on the thread. Binding the session at launch is required: S-07 found that `--add-dir` roots do not survive a later `open_session` to another session. |
+| DMN-031 | After the `ready` frame the daemon MUST check that protocol v2 was negotiated (`omp-rpc` does it), register its host tools (at connect, through `omp-rpc`), then send in order: `open_session { sessionDir }` (a no-op on the session bound at launch that reports whether it was resumed), `set_event_filter { events: null, messageUpdates: "delta" }` (sent as the daemon's own frame: the generated command of omp-rpc 18.18.6 lacks `messageUpdates`), `set_subagent_subscription { level: "progress" }`, `set_ask_dialog { enabled: true }`. A failure in any step moves the thread to `Failed` with the error message. |
 | DMN-032 | After `open_session` the daemon MUST store `sessionId` in `threads.omp_session_id` and load history with `get_messages` (paged by `omp-rpc`) as the reducer's initial event. |
 | DMN-033 | Before starting omp on a thread that already has `omp_session_id`, the daemon MUST check the session lease (`omp session lease --json -- <id>`): if another omp process owns the session, startup MUST fail with an error saying so (e.g. the session is open in an external terminal). |
 | DMN-034 | A process that is `Idle`, settled, and not watched by any client MUST be stopped after `idle_timeout` (default 15 minutes, configurable). A `Busy` process or one with pending interactive requests is never stopped. |
@@ -117,7 +117,7 @@ dialogs).
 | DMN-051 | The first valid answer from any client MUST be forwarded to omp as `extension_ui_response`; later answers to the same request MUST get an `already_resolved` error. |
 | DMN-052 | A `cancel` from omp (with `targetId`) MUST close the matching request in every client. |
 | DMN-053 | Presentation-only methods (`notify`, `setStatus`, `setWidget`, `set_editor_text`, `open_url`, `setTitle`) MUST become UI events with no reply to omp. |
-| DMN-054 | `ask` answers MUST match omp's required shape (one entry per question, in order, exact labels); the daemon MUST validate them before forwarding and reject malformed ones with an error. |
+| DMN-054 | `ask` answers MUST match omp's required shape (one entry per question, in order, exact labels); the daemon MUST validate them before forwarding and reject malformed ones with an error. Note: omp 18.18.6's `ask` tool takes one HTML form and walks it with `select`/`input`/`editor` dialogs instead of the RPC `ask` dialog (contract scenario `ask_answered`); the `ask` method stays supported for extensions that use it. |
 
 ### Daemon-provided tools (host tools)
 

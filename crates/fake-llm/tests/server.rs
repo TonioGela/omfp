@@ -299,3 +299,49 @@ fn scripts_load_from_json() {
     assert_eq!(script.model(), "scripted");
     assert_eq!(script.steps().len(), 2);
 }
+
+// spec: TST-020
+#[tokio::test]
+async fn a_gated_step_holds_its_reply_until_released() {
+    let server = FakeLlm::start(Script::new(
+        MODEL,
+        vec![Step::reply(Reply::text("late answer")).gated()],
+    ))
+    .await
+    .unwrap();
+    let url = format!("{}/chat/completions", server.base_url());
+    let pending = tokio::spawn(async move {
+        reqwest::Client::new()
+            .post(url)
+            .json(&chat_request("wait for it", true))
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap()
+    });
+
+    server.wait_for_gate(0).await;
+    assert!(
+        !pending.is_finished(),
+        "the reply is held while the gate is closed"
+    );
+    assert_eq!(server.requests().len(), 1);
+
+    server.release_gate(0);
+    let body = pending.await.unwrap();
+    assert!(body.contains("late"), "{body}");
+    assert!(server.is_exhausted_cleanly());
+}
+
+// spec: TST-020
+#[test]
+fn gated_steps_load_from_json() {
+    let script: Script = serde_json::from_value(json!({
+        "model": "scripted",
+        "steps": [ { "gated": true, "reply": { "text": "x" } } ]
+    }))
+    .unwrap();
+    assert!(script.steps()[0].gated);
+}
