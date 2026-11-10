@@ -1,0 +1,22 @@
+[package]
+name = "pmo-ui"
+description = "Dioxus UI for pmo (web and desktop)."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+dioxus.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Pinned to the dev shell's wasm-bindgen-cli (ENV-012); unused directly.
+wasm-bindgen.workspace = true
+
+[features]
+default = []
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+
+[lints]
+workspace = true

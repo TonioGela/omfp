@@ -1,0 +1,19 @@
+[package]
+name = "pmo-daemon"
+description = "pmod: owns threads, workspaces and omp processes; serves the UI protocol."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "pmod"
+path = "src/main.rs"
+
+[dependencies]
+pmo-core.workspace = true
+pmo-protocol.workspace = true
+clap.workspace = true
+
+[lints]
+workspace = true

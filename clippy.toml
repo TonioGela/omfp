@@ -1,0 +1,9 @@
+doc-valid-idents = [
+  "OpenAI",
+  "WebDriver",
+  "WebSocket",
+  "JavaScript",
+  "..",
+  "OAuth",
+  "SQLite",
+]
