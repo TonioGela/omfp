@@ -4,15 +4,16 @@
 
 An application for working with many omp agents in parallel:
 
-- **threads** are conversations with an omp agent; each thread works on zero or more **workspaces**;
-- a **workspace** is a directory the agent works in — typically a git worktree for one PR — and may belong to any
-  repository; one thread can span several repositories (e.g. a frontend PR and a backend PR), and a workspace can be
-  shared by several threads;
-- **repositories** are an optional registry that makes creating worktrees quick; they are not a container for threads;
+- **threads** are conversations with an omp agent; each thread lives in one **workspace**, and several threads may
+  share it;
+- a **workspace** is a folder the agent works in (its cwd); its **repositories** are its top-level entries — clones,
+  git worktrees, or links to projects elsewhere — so one thread can span several repositories (e.g. a frontend PR and a
+  backend PR); the agent adds or removes repos itself and the UI always shows them (D-11);
+- **known repositories** are an optional list that makes adding repos to a workspace quick;
 - conversations stream live, with readable tool cards, approvals, agent questions, the message queue, subagents and the
   session tree;
 - the same interface runs **in the browser** (wasm) and **as a desktop app** (webview), connected to the same daemon;
-- anything the UI does not cover is reachable from a **terminal panel** that opens interactive omp on the same session;
+- anything the UI does not cover could later be reached from a **terminal panel** on the same session (deferred, D-06);
 - long term, **agents drive the interface**: they spawn threads, create workspaces and publish views. This is the last
   milestone, but every earlier choice must keep it possible ([08](08-agent-control.md)).
 
@@ -28,18 +29,20 @@ An application for working with many omp agents in parallel:
 
 ```mermaid
 erDiagram
-  REPOSITORY |o--o{ WORKSPACE : "optional origin"
-  THREAD }o--o{ WORKSPACE : "works in (ordered; first = cwd)"
+  WORKSPACE ||--o{ THREAD : "cwd of"
+  WORKSPACE ||--o{ WORKSPACE_REPO : "contains (discovered from the folder)"
+  WORKSPACE_REPO }o--o| REPOSITORY : "known repository (optional)"
   THREAD ||--|| OMP_SESSION_DIR : "owns"
   THREAD }o--o{ TAG : "labelled"
-  WORKSPACE |o--o| PULL_REQUEST : "optional link"
+  WORKSPACE_REPO |o--o| PULL_REQUEST : "optional link"
 ```
 
 | Entity | Meaning |
 | --- | --- |
-| Repository | A registered git repo (path, default base ref, remote). Only a shortcut for creating worktrees. |
-| Workspace | A directory: a daemon-managed git worktree, or an adopted existing directory (any worktree, any folder). Optional branch, base ref and PR link. |
-| Thread | One omp session (its own session directory), an ordered list of workspaces, title, tags, model settings, provenance. |
+| Workspace | A folder: created by the daemon under the workspaces root, or an existing folder. The cwd of its threads. |
+| Workspace repo | A git repository among the workspace's top-level entries: a `link` (symlink to a project elsewhere), a `worktree` (linked worktree of another repository) or a `clone`; or the folder itself when it is a repository. Not stored: discovered by scanning the folder. |
+| Repository | A known git repo (path, default base ref, remote): a shortcut for linking it or creating worktrees of it. |
+| Thread | One omp session (its own session directory) in one workspace, title, tags, model settings, provenance. |
 | Tag | Free-form label for grouping threads in the UI (e.g. a feature name spanning several PRs). |
 
 ## Components
@@ -77,7 +80,7 @@ flowchart LR
 | ARC-005 | Each thread MUST have at most one live omp process at a time (RPC or terminal, never both). |
 | ARC-006 | A thread's visible state MUST derive from the `omfp-core` reducer applied to its event sequence; daemon and UI run the same code. |
 | ARC-007 | **API-first** (D-12): every action available in the UI MUST be a protocol method; the UI holds no business logic that another client could not reproduce through the protocol. |
-| ARC-008 | Threads MUST NOT be bound to a single repository: a thread has an ordered list of zero or more workspaces, and workspaces can be attached and detached during the thread's life (D-11). |
+| ARC-008 | Threads MUST NOT be bound to a single repository: a thread lives in a workspace folder that holds zero or more repositories, and repositories can be added to and removed from the workspace during the thread's life, by the user or by the agent (D-11). |
 | ARC-009 | Every created entity (thread, workspace, view) MUST record its provenance: `user` or the id of the thread whose agent created it (needed by 08). |
 
 ## Cargo workspace
@@ -107,7 +110,7 @@ sequenceDiagram
   participant D as daemon
   participant O as omp (rpc-ui)
   UI->>D: thread.prompt {threadId, text}
-  D->>D: start omp if stopped (cwd = thread home, --add-dir per workspace, open_session)
+  D->>D: start omp if stopped (cwd = workspace folder, --add-dir per repo, --append-system-prompt, open_session)
   D->>O: prompt {id, message}
   O-->>D: response (admitted)
   D-->>UI: ack
@@ -132,7 +135,8 @@ $XDG_DATA_HOME/omfp/            (default ~/.local/share/omfp)
   token                         access token (mode 0600)
   threads/<thread-id>/sessions/ sessionDir passed to omp (open_session)
   threads/<thread-id>/omp.log   omp stderr
-  worktrees/<repo-slug>/<workspace-slug>/   daemon-managed git worktrees
+
+~/omfp/workspaces/<slug>/        workspaces created by the daemon (--workspaces-root); repos are top-level entries
 ```
 
 | ID | Requirement |

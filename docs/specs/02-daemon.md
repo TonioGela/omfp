@@ -22,16 +22,18 @@ omfp daemon [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-
 
 ## Persistence (SQLite)
 
-Schema (`PRAGMA user_version = 2`; migration 2 adds `created_client`):
+Schema (`PRAGMA user_version = 3`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11):
 
 | Table | Main columns |
 | --- | --- |
-| `repositories` | `id` (ULID), `name`, `path` (absolute, unique), `default_base_ref`, `remote_url` (nullable), `created_at` |
-| `workspaces` | `id` (ULID), `path` (absolute, unique among live workspaces), `kind` (`managed_worktree` \| `adopted`), `repository_id` (nullable), `branch` (nullable), `base_ref` (nullable), `pr_url` (nullable), `pr_number` (nullable), `created_by` (`user` \| thread id), `created_client` (nullable, the creating connection's `client`, PRT-033), `created_at`, `removed_at` (nullable) |
-| `threads` | `id` (ULID), `title`, `session_dir`, `omp_session_id` (nullable), `approval_mode` (nullable), `model` (nullable, `provider/id`), `thinking_level` (nullable), `created_by` (`user` \| thread id), `created_client` (nullable), `created_at`, `archived_at` (nullable) |
-| `thread_workspaces` | `thread_id`, `workspace_id`, `position` (0 = cwd) — primary key (`thread_id`, `workspace_id`) |
+| `repositories` | `id` (ULID), `name`, `path` (absolute, unique), `default_base_ref`, `remote_url` (nullable), `created_at` — known repositories, a shortcut for adding repos to workspaces |
+| `workspaces` | `id` (ULID), `name`, `path` (absolute, unique), `owned` (the daemon created the folder), `created_by` (`user` \| thread id), `created_client` (nullable, PRT-033), `created_at` |
+| `threads` | `id` (ULID), `title`, `workspace_id`, `session_dir`, `omp_session_id` (nullable), `approval_mode` (nullable), `model` (nullable, `provider/id`), `thinking_level` (nullable), `created_by` (`user` \| thread id), `created_client` (nullable), `created_at`, `archived_at` (nullable) |
+| `thread_roots` | `thread_id`, `path` — the `--add-dir` roots last given to the thread's omp session (DMN-029) |
 | `thread_tags` | `thread_id`, `tag` |
 | `settings` | `key`, `value` (JSON) |
+
+Repositories inside a workspace are not stored: they are discovered from the folder (DMN-022).
 
 | ID | Requirement |
 | --- | --- |
@@ -39,28 +41,32 @@ Schema (`PRAGMA user_version = 2`; migration 2 adds `created_client`):
 | DMN-011 | The database MUST use `journal_mode=WAL` and `foreign_keys=ON`. |
 | DMN-012 | Transcripts are NOT stored in the database: the source of truth is omp's `.jsonl` session in the thread's `session_dir`. |
 
-## Repositories and workspaces
+## Workspaces and their repositories
 
-A `Git` port (trait) with a real implementation over the `git` CLI (`tokio::process`) and a fake one for tests. A
-`Forge` port (trait) resolves PRs; first implementation over the `gh` CLI **[VERIFY in S-08]**.
-
-| ID | Requirement |
-| --- | --- |
-| DMN-020 | Registering a repository MUST verify the path is the root of a git repository (`git rev-parse --show-toplevel`) and reject duplicates. Registration is optional: no other feature may require it. |
-| DMN-021 | Creating a managed workspace MUST run `git worktree add` in the target repository: new branch (`-b <branch> <path> <base_ref>`, default branch name `omfp/<slug>-<suffix>`, unique in the repo) or existing branch. The repository may be registered or given by path. |
-| DMN-022 | Creating a workspace **from a PR** (URL or `owner/repo#N`) MUST fetch the PR head into a local branch, create the worktree on it, and store `pr_url`/`pr_number`. |
-| DMN-023 | **Adopting** an existing directory MUST record it as `adopted` (git or not); the daemon MUST never delete an adopted directory, only forget it. |
-| DMN-024 | Removing a managed workspace MUST refuse when it has uncommitted changes unless forced, and MUST refuse while a thread with a live process uses it. The branch is kept unless explicitly requested. |
-| DMN-025 | Git operations on the same repository MUST be serialized (per-repository lock), because `git worktree` mutates the shared `.git`. |
-| DMN-026 | For each git workspace the daemon MUST report: branch, commits ahead/behind `base_ref`, changed files, the diff (`git diff <base_ref>...HEAD` plus uncommitted changes) and the linked PR, for the "Changes" panel. |
-| DMN-027 | A workspace MAY be attached to several threads; the daemon MUST expose which threads use it, so the UI can warn about concurrent edits. It MUST NOT forbid it. |
-
-### Threads and workspaces
+A workspace is a folder; its repositories are the folder's top-level entries (D-11, verified in S-10). A `Git` port
+(trait) with a real implementation over the `git` CLI (`tokio::process`) and a fake one for tests. A `Forge` port
+resolves PRs; first implementation over the `gh` CLI **[VERIFY in S-08]**.
 
 | ID | Requirement |
 | --- | --- |
-| DMN-028 | Every thread MUST have its own home directory `threads/<id>/home`, used as the omp cwd (D-11). It holds per-thread omp configuration (e.g. `.omp/mcp.json`, 08) and scratch files; it is never a git workspace. |
-| DMN-029 | Attaching a workspace to a thread with a live RPC process MUST send `/add-dir <path>` through `prompt` (omp built-in available over RPC, verified on 18.18.1); detaching MUST send `/remove-dir <path>`. Behavior while the thread is `Busy` **[VERIFY in S-07]**. |
+| DMN-020 | Creating a workspace MUST either make a new folder `<workspaces-root>/<slug>` (`--workspaces-root`, default `~/omfp/workspaces`; `owned = true`), or record an existing folder given by path (`owned = false`), which may itself be a git repository. Names and paths are unique. |
+| DMN-021 | Registering a known repository MUST verify the path is the root of a git repository (`git rev-parse --show-toplevel`) and reject duplicates. Registration is optional: no other feature may require it. |
+| DMN-022 | The daemon MUST discover a workspace's repositories by scanning its folder: the folder itself when it is a git root, and every top-level entry that is a git root, following symlinks. Each repo has a `name` (entry name), its `path` inside the workspace (the symlink path, never the target), and a `kind`: `link` (symlink; with its target), `worktree` (linked worktree; with the main repository from `git rev-parse --git-common-dir`), or `clone`; plus branch and HEAD. Non-git entries are ignored. |
+| DMN-023 | The daemon MUST rescan a workspace on startup, on every workspace method, after every `tool_execution_end` of a thread in it, and on `workspaces.rescan`; a change updates the `index` topic. No filesystem watcher is required. |
+| DMN-024 | Adding a repository to a workspace MUST support: `link` (create a symlink `<name> → <path>`), `worktree` (`git worktree add <workspace>/<name>` on a new branch from `baseRef`, default branch `omfp/<slug>-<suffix>` unique in the repo, or on an existing branch; the repository given by id or path), `clone` (`git clone <url> <name>`), and, after S-08, `pr` (fetch the PR head into a branch, then as `worktree`, keeping the PR URL). |
+| DMN-025 | Removing a repository from a workspace MUST: for `link`, delete the symlink only (never the target); for `worktree`, run `git worktree remove`, refusing with uncommitted changes unless forced, keeping the branch unless asked; for `clone`, delete the folder only when forced or clean. Git operations on the same repository MUST be serialized (per-repository lock). |
+| DMN-026 | For each repository in a workspace the daemon MUST report: branch, commits ahead/behind its upstream or base, changed files, the diff (`git diff <base>...HEAD` plus uncommitted changes) and the linked PR, for the "Changes" panel. |
+| DMN-027 | The daemon MUST expose which threads use each workspace and which workspaces contain the same repository (same canonical path), so the UI can warn about concurrent edits. It MUST NOT forbid either. |
+| DMN-028 | Removing a workspace MUST refuse while it has threads that are not deleted. With `deleteFolder` it removes an owned folder after removing its repositories as in DMN-025 (links unlinked, worktrees removed); a folder the daemon does not own is only forgotten. |
+
+### Threads in a workspace
+
+| ID | Requirement |
+| --- | --- |
+| DMN-029 | A thread's omp MUST run with cwd = its workspace folder and one `--add-dir <repo path>` per discovered repository except the folder itself (S-10: without them omp sees no repo context). Because omp merges roots saved in the session with the flags, the daemon MUST keep `thread_roots` in sync: after start and after every rescan of a live thread it sends `/add-dir` for new repos and `/remove-dir` for roots that disappeared, through `prompt` (local commands, no model turn). |
+
+Each thread keeps a private directory `threads/<id>/` (omp sessions, `omp.log`); it is not the cwd and never a
+workspace.
 
 ## Agent supervision
 
@@ -92,14 +98,14 @@ dialogs).
 
 | ID | Requirement |
 | --- | --- |
-| DMN-030 | The process MUST be started as `omp --mode rpc-ui --session-dir <thread sessions> --continue` with cwd = the thread's home directory (DMN-028), one `--add-dir <path>` per attached workspace in order, plus `--approval-mode` and `--model` when set on the thread. Binding the session at launch is required: S-07 found that `--add-dir` roots do not survive a later `open_session` to another session. |
+| DMN-030 | The process MUST be started as `omp --mode rpc-ui --session-dir <thread sessions> --continue` with cwd = the thread's workspace folder, one `--add-dir <repo path>` per discovered repository (DMN-029), `--approval-mode` and `--model` when set on the thread, and `--append-system-prompt` carrying the daemon's workspace conventions (workspace name and path; repositories are its top-level entries; bring a project in with a symlink, isolate a branch with `git worktree add` into the workspace, clone into it; never nest repos deeper) followed by the user's own append prompt, which the flag would otherwise disable: `<workspace>/.omp/APPEND_SYSTEM.md` if present, else `<agent dir>/APPEND_SYSTEM.md` (S-10). The daemon MUST NOT write files into a workspace for this. Binding the session at launch is required: S-07 found that `--add-dir` roots do not survive a later `open_session` to another session. |
 | DMN-031 | After the `ready` frame the daemon MUST check that protocol v2 was negotiated (`omp-rpc` does it), register its host tools (at connect, through `omp-rpc`), then send in order: `open_session { sessionDir }` (a no-op on the session bound at launch that reports whether it was resumed), `set_event_filter { events: null, messageUpdates: "delta" }` (sent as the daemon's own frame: the generated command of omp-rpc 18.18.6 lacks `messageUpdates`), `set_subagent_subscription { level: "progress" }`, `set_ask_dialog { enabled: true }`. A failure in any step moves the thread to `Failed` with the error message. |
 | DMN-032 | After `open_session` the daemon MUST store `sessionId` in `threads.omp_session_id` and load history with `get_messages` (paged by `omp-rpc`) as the reducer's initial event. |
 | DMN-033 | Before starting omp on a thread that already has `omp_session_id`, the daemon MUST check the session lease (`omp session lease --json -- <id>`): if another omp process owns the session, startup MUST fail with an error saying so (e.g. the session is open in an external terminal). |
 | DMN-034 | A process that is `Idle`, settled, and not watched by any client MUST be stopped after `idle_timeout` (default 15 minutes, configurable). A `Busy` process or one with pending interactive requests is never stopped. |
 | DMN-035 | If the process exits unexpectedly, the thread MUST move to `Failed` with the last stderr lines (and the exit code when available — omp-rpc 18.18.6 does not expose it); pending interactive requests MUST be cancelled towards the UI. Restart happens only on the user's next command. |
 | DMN-036 | omp's stderr MUST be written to a per-thread log file (`<data-dir>/threads/<id>/omp.log`, rotated) and never mixed with protocol stdout. |
-| DMN-037 | Lifecycle operations on a thread (start, stop, restart, attach/detach, handoff to terminal) MUST be serialized by its actor. omp commands are forwarded without waiting for each other, because omp orders them itself and some must overtake a running one (`abort` during `compact`, `steer` during a turn). Different threads proceed in parallel. |
+| DMN-037 | Lifecycle operations on a thread (start, stop, restart, root sync after a rescan (DMN-029), handoff to terminal) MUST be serialized by its actor. omp commands are forwarded without waiting for each other, because omp orders them itself and some must overtake a running one (`abort` during `compact`, `steer` during a turn). Different threads proceed in parallel. |
 | DMN-038 | The maximum number of concurrent omp processes MUST be configurable (default 8); beyond the limit, starting a stopped thread MUST fail with an explicit error (no silent queueing). |
 
 ### Events

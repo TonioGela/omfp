@@ -10,8 +10,8 @@ The interface is a surface shared by the user and the agents, and agents get **t
 everything the UI can do, an agent can do — directly through tools, or through UI it builds itself.
 
 1. **Everything in the protocol**: list threads and see what each one is doing (state, transcript, tool runs, pending
-   questions), spawn threads, send them messages, wait for them, rename, tag, archive; create, adopt and attach
-   workspaces; read git status and diffs. Every protocol method is an agent tool (AGT-001).
+   questions), spawn threads, send them messages, wait for them, rename, tag, archive; create workspaces and
+   add or remove their repositories; read git status and diffs. Every protocol method is an agent tool (AGT-001).
 2. **Arbitrary UI**: an agent writes its own pieces of interface in JavaScript (HTML, CSS, JS — anything a web page can
    do), mounted in a thread panel, a dashboard or a window, live and interactive, wired to what it is doing (e.g. a real
    progress bar driven by a long command).
@@ -44,7 +44,7 @@ One tool registry in the daemon, several adapters:
 | Adapter | Reaches | Notes |
 | --- | --- | --- |
 | **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for `open_in_editor` (DMN-060). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
-| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside omfp, other MCP-capable agents | Injected per thread through `<thread home>/.omp/mcp.json` (project config follows the cwd, D-11), with the thread's token in the `Authorization` header — verified in S-07. |
+| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside omfp, other MCP-capable agents | Only needed for omp sessions not run by the daemon (RPC threads get host tools); configured in the user's own `mcp.json`, since the daemon writes nothing into workspaces (D-11). S-07 verified that a project `.omp/mcp.json` is honored and its headers are sent. |
 | **Host URI scheme** `omfp://` (`set_host_uri_schemes`) | RPC threads | State for the agent's `read` tool: `omfp://threads`, `omfp://threads/<id>`, `omfp://ui/…`. |
 | **JS SDK** | UI pieces | The same API from inside a UI piece (below). |
 
@@ -95,7 +95,7 @@ any assets), so it can be reviewed and versioned like a skill:
 | --- | --- | --- |
 | User | data directory | every thread and session of the user |
 | Project | `.omfp/ui/` in a repository | everyone working on the repository (git) |
-| Thread draft | the thread's home | that thread, until saved |
+| Thread draft | the thread's private directory (`threads/<id>/`) | that thread, until saved |
 
 An agent saves a piece with `omfp_component_save`; the user can do the same with "save as component" on any mounted
 piece. Agents discover the library through `omfp_component_list` and `omfp://ui/`. Mounted instances record the

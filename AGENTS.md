@@ -81,8 +81,10 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 - The `ask` tool takes one HTML `<form>` and walks it with `select`/`input`/`editor` dialogs, not the RPC `ask` dialog.
 - At startup omp always fetches its model catalog (`catalog.stencil.so` + keyless providers) and no setting disables
   it: contract tests run omp behind `DenyProxy` and fail on hosts outside `KNOWN_DISCOVERY_HOSTS`.
-- omp reads project config from its cwd: the thread home (`threads/<id>/home`) holds per-thread `.omp/` files such as
-  `mcp.json` (headers are sent).
+- omp reads project config from its cwd (the workspace folder) and loads a repo's `AGENTS.md` only when the repo is an
+  `--add-dir` root; it does not resolve symlinked roots, and tools write through symlinks. Roots saved in a session
+  survive a restart without their flag: detach with `/remove-dir` (S-10).
+- `--append-system-prompt` disables every `APPEND_SYSTEM.md` (user and project); the daemon must concatenate them.
 - omp-rpc's client is blocking and closes the omp process group on drop; command default timeout is 30 s.
 - Our harness docs (`omp://…`) may describe a different omp version than the pinned one: verify against the source at
   `~/.cargo/git/checkouts/oh-my-pi-*/<rev>/` (docs in `docs/`, Rust client in `sdk/rust/omp-rpc/`).

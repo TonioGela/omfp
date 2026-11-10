@@ -154,3 +154,27 @@ requirements = [
   "E2E-05",
   "E2E-08",
 ]
+
+[M2b]
+status = "in-progress"
+requirements = [
+  "ARC-008",
+  "DMN-020",
+  "DMN-021",
+  "DMN-022",
+  "DMN-023",
+  "DMN-024",
+  "DMN-025",
+  "DMN-027",
+  "DMN-028",
+  "DMN-029",
+  "DMN-030",
+  "UI-020",
+  "UI-022",
+  "UI-023",
+  "UI-025",
+  "UI-030",
+  "E2E-01",
+  "E2E-08",
+  "E2E-09",
+]
