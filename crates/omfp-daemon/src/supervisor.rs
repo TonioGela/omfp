@@ -643,6 +643,7 @@ impl Supervisor {
             session_dir: thread.session_dir.clone(),
             model: thread.model.clone(),
             approval_mode: thread.approval_mode.clone(),
+            append_system_prompt: None,
             stderr_log: data.thread_log(&actor.id),
             env: self.inner.config.omp_env.clone(),
         };

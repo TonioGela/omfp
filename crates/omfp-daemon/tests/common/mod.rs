@@ -52,6 +52,7 @@ impl Harness {
             session_dir: self.thread.path().join("sessions"),
             model: Some(format!("{FAKE_PROVIDER}/{FAKE_MODEL}")),
             approval_mode: None,
+            append_system_prompt: None,
             stderr_log: self.thread.path().join("omp.log"),
             env: self.env.env_overrides(),
         }

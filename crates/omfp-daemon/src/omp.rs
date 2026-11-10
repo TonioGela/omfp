@@ -32,6 +32,8 @@ pub struct LaunchSpec {
     pub model: Option<String>,
     /// omp `--approval-mode` value.
     pub approval_mode: Option<String>,
+    /// Text passed as `--append-system-prompt` (replaces any discovered `APPEND_SYSTEM.md`).
+    pub append_system_prompt: Option<String>,
     /// File receiving omp's stderr (DMN-036).
     pub stderr_log: PathBuf,
     /// Environment overrides applied last: `Some` sets, `None` removes.
@@ -62,6 +64,10 @@ impl LaunchSpec {
         if let Some(mode) = &self.approval_mode {
             args.push("--approval-mode".into());
             args.push(mode.into());
+        }
+        if let Some(text) = &self.append_system_prompt {
+            args.push("--append-system-prompt".into());
+            args.push(text.into());
         }
         args
     }
@@ -318,6 +324,7 @@ mod tests {
             session_dir: "/data/threads/t1/sessions".into(),
             model: Some("anthropic/claude".into()),
             approval_mode: Some("always-ask".into()),
+            append_system_prompt: Some("line one\nline two".into()),
             stderr_log: "/data/threads/t1/omp.log".into(),
             env: vec![],
         }
@@ -346,18 +353,21 @@ mod tests {
                 "--model",
                 "anthropic/claude",
                 "--approval-mode",
-                "always-ask"
+                "always-ask",
+                "--append-system-prompt",
+                "line one\nline two"
             ]
         );
     }
 
     // spec: DMN-030
     #[test]
-    fn args_omit_unset_model_and_approval_mode() {
+    fn args_omit_unset_model_approval_mode_and_append_prompt() {
         let mut spec = spec();
         spec.add_dirs.clear();
         spec.model = None;
         spec.approval_mode = None;
+        spec.append_system_prompt = None;
         let args: Vec<String> = spec
             .args()
             .into_iter()

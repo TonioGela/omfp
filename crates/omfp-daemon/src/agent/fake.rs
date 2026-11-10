@@ -541,6 +541,7 @@ mod tests {
             session_dir: "/sessions".into(),
             model: None,
             approval_mode: None,
+            append_system_prompt: None,
             stderr_log: "/omp.log".into(),
             env: Vec::new(),
         };
