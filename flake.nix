@@ -66,10 +66,17 @@
             buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.zstd ];
           });
 
-          # bun2nix (the oh-my-pi input's, shared via `follows`) with one fix: 2.1.2 refuses Bun 1.4's
-          # `lockfileVersion: 2` although it parses it unchanged (nix/patches/, to upstream).
+          # bun2nix (the oh-my-pi input's, shared via `follows`) with nix-community/bun2nix#110 (open, commit
+          # 0456acb): 2.1.2 refuses the `lockfileVersion: 2` of Bun 1.4 although the `packages` layout is
+          # unchanged. Drop it once the PR is released and the oh-my-pi input moves to that bun2nix.
           bun2nix = inputs.oh-my-pi.inputs.bun2nix.packages.${system}.bun2nix.overrideAttrs (old: {
-            patches = (old.patches or [ ]) ++ [ ./nix/patches/bun2nix-lockfile-v2.patch ];
+            patches = (old.patches or [ ]) ++ [
+              (pkgs.fetchpatch {
+                name = "bun2nix-pr-110-lockfile-v2-v3.patch";
+                url = "https://github.com/nix-community/bun2nix/commit/0456acb1b7394fc14c414b056aa889df5124943a.patch";
+                hash = "sha256-mGmIuMrizTJPKwcB9Jqiewjza9HJ4n9Evxynb00YVsg=";
+              })
+            ];
             # The patch is relative to the bun2nix repository; the package builds programs/bun2nix.
             patchFlags = [ "-p3" ];
           });
@@ -133,22 +140,15 @@
               };
               typos = {
                 enable = true;
-                # Recorded omp output: streamed deltas split words at arbitrary points; patches hold hashes.
-                excludes = [
-                  "^fixtures/"
-                  "^nix/patches/"
-                ];
+                # Recorded omp output: streamed deltas split words at arbitrary points.
+                excludes = [ "^fixtures/" ];
               };
               # Generic hygiene
               check-merge-conflicts.enable = true;
               check-toml.enable = true;
               check-yaml.enable = true;
               end-of-file-fixer.enable = true;
-              trim-trailing-whitespace = {
-                enable = true;
-                # Blank context lines of a patch are a single space.
-                excludes = [ "^nix/patches/" ];
-              };
+              trim-trailing-whitespace.enable = true;
               # Conventional Commits on the commit message
               # (commitizen instead of convco: nixpkgs' convco 0.7.2 fails to build against libgit2.)
               commitizen.enable = true;

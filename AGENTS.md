@@ -123,5 +123,5 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   `@biomejs/biome` binary is dynamically linked against glibc and does not run on NixOS); its formatter skips the
   generated `generated.ts`. JS dependencies come from Nix (ENV-001): after changing `ui/package.json`/`bun.lock`
   (`bun add`, `bun update`), run `just gen-bun-nix` and re-enter the dev shell; `just ui-install` then installs
-  offline from the shell's Bun cache (`OMFP_BUN_CACHE`). bun2nix is patched to read Bun 1.4's lockfile version 2
-  (`nix/patches/`).
+  offline from the shell's Bun cache (`OMFP_BUN_CACHE`). bun2nix carries nix-community/bun2nix#110 (`fetchpatch`) to
+  read Bun 1.4's lockfile version 2.

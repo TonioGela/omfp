@@ -28,10 +28,9 @@ Known workarounds:
 - nixpkgs' `dioxus-cli` 0.7.10 fails to build at the locked nixpkgs revision (`zstd-sys` cannot find `libzstd` through
   pkg-config). The flake overrides it with `zstd` in `buildInputs`. Remove the override when nixpkgs fixes it.
 - bun2nix 2.1.2 (the `oh-my-pi/bun2nix` input) rejects Bun 1.4's `bun.lock` only because it checks
-  `lockfileVersion == 1`; version 2 parses unchanged. The flake builds it with
-  `nix/patches/bun2nix-lockfile-v2.patch` (accept versions 1 and 2). Drop the patch once upstream bun2nix accepts
-  version 2; if an omp upgrade (ENV-020) moves the input and the patch no longer applies, check whether it is still
-  needed.
+  `lockfileVersion == 1`; versions 2 and 3 parse unchanged. The flake applies the open upstream PR
+  nix-community/bun2nix#110 (commit `0456acb`) with `fetchpatch`. Drop it once the PR is released and the input moves
+  to that bun2nix (or an omp upgrade, ENV-020, brings it).
 
 | ID | Requirement |
 | --- | --- |
