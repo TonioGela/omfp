@@ -2,19 +2,19 @@
 
 A GUI client for [oh-my-pi](https://github.com/can1357/oh-my-pi) (omp), in the spirit of Orca and T3 Code: it runs many
 agent threads in parallel. A thread is not tied to a repository: it works on any set of **workspaces** (typically one git
-worktree per PR, possibly across several repositories, e.g. frontend + backend). It ships as a native desktop app and as
-a web app in the browser, from a single Rust codebase (Dioxus). Long term, the interface is meant to be **driven by the
-agents themselves** (spawning threads, publishing views) — see [08](08-agent-control.md).
+worktree per PR, possibly across several repositories, e.g. frontend + backend). It ships as a web app in the browser
+and as a desktop app (M7), both the same TypeScript UI served by a Rust daemon (D-18). Long term, the interface is
+meant to be **driven by the agents themselves** (spawning threads, publishing views) — see [08](08-agent-control.md).
 
 ## Documents
 
 | # | Document | Contents |
 | --- | --- | --- |
 | 00 | [Overview and architecture](00-overview.md) | Goals, non-goals, components, crates, flows |
-| 01 | [Development environment and versions](01-dev-environment.md) | Flake, toolchain, pinning of omp / omp-rpc / wasm-bindgen |
+| 01 | [Development environment and versions](01-dev-environment.md) | Flake, toolchain, pinning of omp / omp-rpc |
 | 02 | [Daemon](02-daemon.md) | Threads, workspaces, omp process supervision, persistence |
 | 03 | [UI ↔ daemon protocol](03-protocol.md) | WebSocket, snapshot/delta, commands, interactive requests |
-| 04 | [Dioxus UI](04-ui.md) | Views, state, tool renderers, web vs desktop |
+| 04 | [UI (TypeScript)](04-ui.md) | Views, state, tool renderers, web vs desktop |
 | 05 | [Terminal (escape hatch to the TUI)](05-terminal.md) | PTY, xterm.js, session ownership handoff |
 | 06 | [Testing strategy (TDD)](06-testing.md) | Process, layers, fake LLM, E2E, mutation testing |
 | 07 | [Roadmap](07-roadmap.md) | Milestones with acceptance criteria |

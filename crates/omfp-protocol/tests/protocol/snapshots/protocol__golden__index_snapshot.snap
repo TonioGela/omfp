@@ -52,7 +52,7 @@ expression: snapshot
         "createdBy": {
           "kind": "user"
         },
-        "client": "omfp-ui/web"
+        "client": "omfp/web"
       },
       "createdAt": 1794268800000
     },
@@ -90,6 +90,7 @@ expression: snapshot
     {
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
       "title": "Checkout v2",
+      "titleSource": "generated",
       "tags": [
         "checkout-v2"
       ],
@@ -103,10 +104,36 @@ expression: snapshot
         "createdBy": {
           "kind": "user"
         },
-        "client": "omfp-ui/web"
+        "client": "omfp/web"
       },
       "createdAt": 1794268800000,
       "updatedAt": 1794268860000
     }
-  ]
+  ],
+  "theme": {
+    "css": ":root { --omfp-primary: #6750a4; }"
+  },
+  "settings": {
+    "ui": {
+      "density": "normal",
+      "notifications": "always",
+      "fonts": {
+        "prose": "Literata, serif",
+        "code": "\"JetBrains Mono\", monospace"
+      }
+    },
+    "keymap": [
+      {
+        "mode": "normal",
+        "keys": "Space t",
+        "command": "theme.set"
+      },
+      {
+        "mode": "insert",
+        "keys": "Ctrl-j",
+        "command": ""
+      }
+    ],
+    "error": null
+  }
 }

@@ -10,17 +10,17 @@ use omfp_protocol::{
     PROTOCOL_VERSION, Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams,
     RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepositoryList, RepositoryRef,
     Request, ResizeTerminalParams, RespondParams, Response, ServerFrame, SetModelParams,
-    SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
-    SubscribeResult, TerminalInfo, TerminalKind, TerminalList, TerminalRef, ThreadGit, ThreadRef,
-    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
-    WorkspaceDiffParams, WorkspaceRef, decode_request, method,
+    SetSettingsParams, SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
+    SubscribeParams, SubscribeResult, TerminalInfo, TerminalKind, TerminalList, TerminalRef, Theme,
+    ThreadGit, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
+    UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef, decode_request, method,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::samples::{
     REPO_ID, TERMINAL_ID, THREAD_ID, WORKSPACE_ID, git_status, repo_statuses, repository,
-    root_workspace, thread, workspace,
+    root_workspace, settings, theme, thread, workspace,
 };
 
 const REQUEST_ID: &str = "c42";
@@ -89,7 +89,7 @@ fn system_examples() -> Vec<(&'static str, Value)> {
             HelloParams {
                 token: "3f9c1e…".to_owned(),
                 protocol: PROTOCOL_VERSION,
-                client: "omfp-ui/web".to_owned(),
+                client: "omfp/web".to_owned(),
             },
             &HelloResult {
                 protocol: PROTOCOL_VERSION,
@@ -226,7 +226,7 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
     vec![
         example::<method::ThreadsCreate>(
             CreateThreadParams {
-                title: "Checkout v2".to_owned(),
+                title: None,
                 workspace: ThreadWorkspace::New(CreateWorkspaceParams {
                     name: Some("checkout-v2".to_owned()),
                     path: None,
@@ -244,6 +244,7 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
                 thread_id: THREAD_ID.to_owned(),
                 title: Some("Checkout v2".to_owned()),
                 tags: Some(vec!["checkout-v2".to_owned()]),
+                approval_mode: Some("always-ask".to_owned()),
             },
             &thread(),
         ),
@@ -573,6 +574,27 @@ fn terminal_examples() -> Vec<(&'static str, Value)> {
     ]
 }
 
+fn theme_examples() -> Vec<(&'static str, Value)> {
+    vec![
+        example::<method::ThemeGet>(Empty {}, &theme()),
+        example::<method::ThemeSet>(theme(), &Empty {}),
+    ]
+}
+
+fn ui_settings_examples() -> Vec<(&'static str, Value)> {
+    let set = settings();
+    vec![
+        example::<method::SettingsGet>(Empty {}, &set),
+        example::<method::SettingsSet>(
+            SetSettingsParams {
+                ui: Some(set.ui.clone()),
+                keymap: Some(set.keymap.clone()),
+            },
+            &set,
+        ),
+    ]
+}
+
 // spec: PRT-031, PRT-010
 #[test]
 fn every_method_has_a_golden_request_and_response() {
@@ -587,6 +609,8 @@ fn every_method_has_a_golden_request_and_response() {
         subagent_examples(),
         tool_examples(),
         terminal_examples(),
+        theme_examples(),
+        ui_settings_examples(),
     ]
     .concat();
 
@@ -669,11 +693,13 @@ fn interaction_responses_carry_exactly_one_answer_key() {
 }
 
 #[test]
-fn index_snapshot_lists_repositories_workspaces_and_threads() {
+fn index_snapshot_lists_repositories_workspaces_threads_the_theme_and_settings() {
     let snapshot = IndexSnapshot {
         repositories: vec![repository()],
         workspaces: vec![workspace(), root_workspace()],
         threads: vec![thread()],
+        theme: theme(),
+        settings: settings(),
     };
     let text = serde_json::to_string(&snapshot).unwrap();
     assert_eq!(
@@ -696,6 +722,26 @@ fn a_discovered_repository_carries_its_kind_inline() {
     assert_eq!(
         (root["kind"].clone(), root["isRoot"].clone()),
         (json!("clone"), json!(true))
+    );
+}
+
+// spec: DMN-009, UI-097
+#[test]
+fn settings_omit_defaults_and_null_the_error() {
+    assert_eq!(
+        serde_json::to_value(omfp_protocol::Settings::default()).unwrap(),
+        json!({ "ui": {}, "keymap": [], "error": null })
+    );
+    let wire = serde_json::to_value(settings()).unwrap();
+    assert_eq!(wire["ui"]["density"], "normal");
+    assert_eq!(wire["ui"]["notifications"], "always");
+    assert_eq!(
+        wire["ui"]["fonts"],
+        json!({ "prose": "Literata, serif", "code": "\"JetBrains Mono\", monospace" })
+    );
+    assert_eq!(
+        wire["keymap"][1],
+        json!({ "mode": "insert", "keys": "Ctrl-j", "command": "" })
     );
 }
 
@@ -738,18 +784,44 @@ fn repository_sources_are_tagged_by_kind() {
 fn a_new_thread_gets_a_new_workspace_unless_one_is_named() {
     let decode = |params: Value| serde_json::from_value::<CreateThreadParams>(params).unwrap();
     assert_eq!(
-        decode(json!({ "title": "Fix" })).workspace,
+        decode(json!({})).workspace,
         ThreadWorkspace::New(CreateWorkspaceParams::default())
     );
     assert_eq!(
-        decode(json!({ "title": "Fix", "workspace": { "id": WORKSPACE_ID } })).workspace,
+        decode(json!({ "workspace": { "id": WORKSPACE_ID } })).workspace,
         ThreadWorkspace::Id(WORKSPACE_ID.to_owned())
     );
     assert_eq!(
-        decode(json!({ "title": "Fix", "workspace": { "new": { "path": "/src/app" } } })).workspace,
+        decode(json!({ "workspace": { "new": { "path": "/src/app" } } })).workspace,
         ThreadWorkspace::New(CreateWorkspaceParams {
             name: None,
             path: Some("/src/app".to_owned()),
         })
+    );
+}
+
+// spec: DMN-073
+#[test]
+fn a_new_thread_takes_its_title_only_from_scripts_and_agents() {
+    let decode = |params: Value| serde_json::from_value::<CreateThreadParams>(params).unwrap();
+    assert_eq!(decode(json!({ "prompt": "Fix the login" })).title, None);
+    assert_eq!(
+        decode(json!({ "title": "Fix" })).title.as_deref(),
+        Some("Fix")
+    );
+    let summary = serde_json::to_value(thread()).unwrap();
+    assert_eq!(summary["titleSource"], json!("generated"));
+}
+
+// spec: DMN-075
+#[test]
+fn a_theme_without_css_is_null_on_the_wire() {
+    assert_eq!(
+        serde_json::to_value(Theme::default()).unwrap(),
+        json!({ "css": null })
+    );
+    assert_eq!(
+        serde_json::from_value::<Theme>(json!({ "css": null })).unwrap(),
+        Theme::default()
     );
 }

@@ -9,7 +9,7 @@ use serde::ser::SerializeMap;
 use serde_json::{Map, Value, json};
 use std::fmt::Debug;
 
-use crate::dto::{DiffPage, GitStatus, Repository, ThreadSummary, Workspace};
+use crate::dto::{DiffPage, GitStatus, Repository, Settings, Theme, ThreadSummary, Workspace};
 use crate::params;
 use omfp_core::wire;
 
@@ -212,4 +212,12 @@ methods! {
     TerminalClose = "terminal.close" (params::TerminalRef) -> params::Empty;
     /// Lists open terminals.
     TerminalList = "terminal.list" (params::ListTerminalsParams) -> params::TerminalList;
+    /// The user's theme CSS (DMN-075).
+    ThemeGet = "theme.get" (params::Empty) -> Theme;
+    /// Replaces the user's theme CSS; `null` restores the built-in themes (DMN-075).
+    ThemeSet = "theme.set" (Theme) -> params::Empty;
+    /// The UI settings of the config file (DMN-009, UI-097).
+    SettingsGet = "settings.get" (params::Empty) -> Settings;
+    /// Merges UI settings into the config file, written back with its comments (DMN-009).
+    SettingsSet = "settings.set" (params::SetSettingsParams) -> Settings;
 }

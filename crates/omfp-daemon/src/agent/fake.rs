@@ -18,6 +18,7 @@ use tokio::sync::watch;
 use super::{AgentLauncher, AgentProcess, Launched, Lease, OmpCall, PromptAdmission};
 use crate::omp::{LaunchSpec, StartError, Startup};
 use crate::store::new_id;
+use crate::titles::{TitleError, TitleRequest};
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -190,6 +191,9 @@ struct Script {
     held: HashSet<String>,
     fail_next: Option<String>,
     launches: Vec<FakeLaunch>,
+    /// Answers of the next title generations (DMN-073); without one a generation fails.
+    titles: VecDeque<Result<String, String>>,
+    title_requests: Vec<TitleRequest>,
 }
 
 /// The fake launcher. Without queued runs, every launch plays [`FakeRun::fresh`].
@@ -255,10 +259,45 @@ impl FakeLauncher {
     pub fn process(&self, index: usize) -> FakeProcess {
         lock(&self.script).launches[index].process.clone()
     }
+
+    /// Queues the answer of the next title generation: the title, or the error omp reported.
+    pub fn push_title(&self, title: Result<&str, &str>) {
+        lock(&self.script)
+            .titles
+            .push_back(title.map(str::to_owned).map_err(str::to_owned));
+    }
+
+    /// Holds every later title generation until the returned gate opens.
+    #[must_use]
+    pub fn gate_titles(&self) -> Gate {
+        self.gate(TITLE_GATE)
+    }
+
+    /// Holds every later launch, before the process exists, until the returned gate opens.
+    #[must_use]
+    pub fn gate_launches(&self) -> Gate {
+        self.gate(LAUNCH_GATE)
+    }
+
+    /// Every title generation so far, oldest first.
+    #[must_use]
+    pub fn title_requests(&self) -> Vec<TitleRequest> {
+        lock(&self.script).title_requests.clone()
+    }
 }
+
+/// Gate key of title generations (not an omp command).
+const TITLE_GATE: &str = "<title>";
+
+/// Gate key of launches (not an omp command).
+const LAUNCH_GATE: &str = "<launch>";
 
 impl AgentLauncher for FakeLauncher {
     fn launch(&self, spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<Launched, StartError> {
+        let gate = lock(&self.script).gates.get(LAUNCH_GATE).cloned();
+        if let Some(gate) = gate {
+            gate.pass();
+        }
         let mut script = lock(&self.script);
         if let Some(message) = script.fail_next.take() {
             return Err(StartError::Spawn(std::io::Error::other(message)));
@@ -297,6 +336,22 @@ impl AgentLauncher for FakeLauncher {
         } else {
             Lease::Free
         })
+    }
+
+    fn generate_title(&self, request: &TitleRequest) -> Result<String, TitleError> {
+        let gate = {
+            let mut script = lock(&self.script);
+            script.title_requests.push(request.clone());
+            script.gates.get(TITLE_GATE).cloned()
+        };
+        if let Some(gate) = gate {
+            gate.pass();
+        }
+        match lock(&self.script).titles.pop_front() {
+            Some(Ok(title)) => Ok(title),
+            Some(Err(message)) => Err(TitleError::Failed(message)),
+            None => Err(TitleError::Failed("no title scripted".into())),
+        }
     }
 }
 

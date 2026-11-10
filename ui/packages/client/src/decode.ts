@@ -16,7 +16,9 @@ import {
   parseTopic,
   type RepoStatus,
   type ServerFrame,
+  type Settings,
   type SubscribeResult,
+  type Theme,
   type TopicEvent,
   type WorkspaceEvent,
 } from "@omfp/protocol";
@@ -91,7 +93,38 @@ const INDEX_EVENTS: Record<IndexEvent["kind"], (event: Record<string, unknown>) 
   workspace_removed: (event) => typeof event.workspaceId === "string",
   thread_upserted: (event) => hasId(event.thread),
   thread_removed: (event) => typeof event.threadId === "string",
+  theme_changed: (event) => isTheme(event.theme),
+  settings_changed: (event) => isSettings(event.settings),
 };
+
+/** The theme when the daemon sends none (DMN-075): the built-in themes only. */
+export const NO_THEME: Theme = { css: null };
+
+/** The settings when the daemon sends none (DMN-009): every default, no binding over the default keymap. */
+export const NO_SETTINGS: Settings = { ui: {}, keymap: [], error: null };
+
+function isTheme(value: unknown): value is Theme {
+  return isObject(value) && (value.css === null || typeof value.css === "string");
+}
+
+function isKeymapEntry(value: unknown): boolean {
+  return (
+    isObject(value) &&
+    typeof value.mode === "string" &&
+    typeof value.keys === "string" &&
+    typeof value.command === "string"
+  );
+}
+
+function isSettings(value: unknown): value is Settings {
+  return (
+    isObject(value) &&
+    isObject(value.ui) &&
+    Array.isArray(value.keymap) &&
+    value.keymap.every(isKeymapEntry) &&
+    (value.error === null || typeof value.error === "string")
+  );
+}
 
 const THREAD_EVENTS: Record<ThreadEvent["kind"], (event: Record<string, unknown>) => boolean> = {
   omp: (event) => isObject(event.frame),
@@ -219,16 +252,25 @@ export function decodeSubscribeResult(value: unknown): Decoded<SubscribeResult> 
   return invalid("expected a `replay` ({epoch, fromSeq}) or a `snapshot` ({epoch, seq, state})");
 }
 
-/** Decodes the state of an `index` snapshot. */
+/** Decodes the state of an `index` snapshot; a missing `theme` is {@link NO_THEME}, missing `settings`
+ * {@link NO_SETTINGS}. */
 export function decodeIndexSnapshot(value: unknown): Decoded<IndexSnapshot> {
   if (
-    isObject(value) &&
-    [value.repositories, value.workspaces, value.threads].every((list) => Array.isArray(list) && list.every(hasId))
+    !isObject(value) ||
+    ![value.repositories, value.workspaces, value.threads].every((list) => Array.isArray(list) && list.every(hasId))
   ) {
-    // Every list holds objects with a string `id`, the key the model files them under.
-    return { ok: true, value: value as IndexSnapshot };
+    return invalid("expected `repositories`, `workspaces` and `threads`, each a list of objects with an `id`");
   }
-  return invalid("expected `repositories`, `workspaces` and `threads`, each a list of objects with an `id`");
+  const theme = value.theme ?? NO_THEME;
+  if (!isTheme(theme)) {
+    return invalid("expected `theme` to be `{ css: string | null }`");
+  }
+  const settings = value.settings ?? NO_SETTINGS;
+  if (!isSettings(settings)) {
+    return invalid("expected `settings` to be `{ ui, keymap: { mode, keys, command }[], error }`");
+  }
+  // Every list holds objects with a string `id`, the key the model files them under.
+  return { ok: true, value: { ...(value as IndexSnapshot), theme, settings } };
 }
 
 const THREAD_STATE_FIELDS: Record<keyof ThreadState, (field: unknown) => boolean> = {

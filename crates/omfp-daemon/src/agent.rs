@@ -17,7 +17,7 @@ use omp_rpc::{
     GetStateCommand, GetSubagentMessagesCommand, GetSubagentsCommand, GetSubagentsResult,
     GetTreeCommand, GoalCommand, HostTool, NavigateTreeCommand, PromoteQueuedMessageCommand,
     PromptCommand, RemoveQueuedMessageCommand, RpcInbound, SetLabelCommand, SetModelCommand,
-    SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
+    SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -25,6 +25,7 @@ use serde_json::Value;
 pub use fake::{FakeCall, FakeLaunch, FakeLauncher, FakeProcess, FakeReply, FakeRun, Gate};
 
 use crate::omp::{LaunchSpec, OmpProcess, StartError, Startup};
+use crate::titles::{TitleError, TitleRequest, clean_title};
 
 /// One omp command the daemon forwards (02-daemon, "Commands towards omp"); prompts go through
 /// [`AgentProcess::prompt`] because their id matters (PRT-030).
@@ -53,6 +54,8 @@ pub enum OmpCall {
     Btw(BtwCommand),
     Bash(BashCommand),
     State,
+    /// Names the session (omp `set_session_name`, DMN-073).
+    SetSessionName(SetSessionNameCommand),
 }
 
 impl OmpCall {
@@ -83,6 +86,7 @@ impl OmpCall {
             Self::Btw(_) => "btw",
             Self::Bash(_) => "bash",
             Self::State => "get_state",
+            Self::SetSessionName(_) => "set_session_name",
         }
     }
 }
@@ -136,6 +140,8 @@ pub trait AgentLauncher: Send + Sync {
     fn launch(&self, spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<Launched, StartError>;
     /// Probes the ownership lease of `session_id` without taking it (`omp session lease`, DMN-033).
     fn session_lease(&self, spec: &LaunchSpec, session_id: &str) -> Result<Lease, StartError>;
+    /// Generates a thread title from its first message with one omp print-mode run (DMN-073).
+    fn generate_title(&self, request: &TitleRequest) -> Result<String, TitleError>;
 }
 
 /// The real launcher: `omp --mode rpc-ui` through `omp-rpc`.
@@ -178,6 +184,20 @@ impl AgentLauncher for OmpLauncher {
             ));
         }
         parse_lease(&output.stdout, session_id)
+    }
+
+    fn generate_title(&self, request: &TitleRequest) -> Result<String, TitleError> {
+        let output = request.command().output()?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let tail: Vec<&str> = stderr.trim().lines().rev().take(5).collect();
+            return Err(TitleError::Failed(format!(
+                "{}: {}",
+                output.status,
+                tail.into_iter().rev().collect::<Vec<_>>().join("\n")
+            )));
+        }
+        clean_title(&String::from_utf8_lossy(&output.stdout)).ok_or(TitleError::Empty)
     }
 }
 
@@ -291,6 +311,7 @@ impl AgentProcess for OmpAgent {
             OmpCall::Btw(command) => self.run_as(command, |record| BtwResult { record }),
             OmpCall::Bash(command) => self.run(command),
             OmpCall::State => self.run(&GetStateCommand {}),
+            OmpCall::SetSessionName(command) => self.run(command),
         }
     }
 

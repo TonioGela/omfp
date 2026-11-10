@@ -1,0 +1,61 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "settings.set",
+    "params": {
+      "keymap": [
+        {
+          "command": "theme.set",
+          "keys": "Space t",
+          "mode": "normal"
+        },
+        {
+          "command": "",
+          "keys": "Ctrl-j",
+          "mode": "insert"
+        }
+      ],
+      "ui": {
+        "density": "normal",
+        "fonts": {
+          "code": "\"JetBrains Mono\", monospace",
+          "prose": "Literata, serif"
+        },
+        "notifications": "always"
+      }
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "error": null,
+      "keymap": [
+        {
+          "command": "theme.set",
+          "keys": "Space t",
+          "mode": "normal"
+        },
+        {
+          "command": "",
+          "keys": "Ctrl-j",
+          "mode": "insert"
+        }
+      ],
+      "ui": {
+        "density": "normal",
+        "fonts": {
+          "code": "\"JetBrains Mono\", monospace",
+          "prose": "Literata, serif"
+        },
+        "notifications": "always"
+      }
+    },
+    "type": "response"
+  }
+}

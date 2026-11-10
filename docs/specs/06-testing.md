@@ -28,18 +28,18 @@ flowchart BT
   L1["L1 component — daemon modules with fake ports"]
   L2["L2 integration — real git, SQLite, WebSocket"]
   L3["L3 contract — real pinned omp + fake LLM"]
-  L4["L4 UI — components (SSR) + browser-only code (wasm)"]
+  L4["L4 UI — TypeScript view models + components (happy-dom)"]
   L5["L5 end-to-end — browser + daemon + omp + fake LLM"]
   L0 --> L1 --> L2 --> L3 --> L4 --> L5
 ```
 
 | Layer | What | Tools | Runs in |
 | --- | --- | --- | --- |
-| L0 | Reducer, view-models, protocol (de)serialization, naming/slug rules, `ask` validation, ring buffer, state machines | `cargo nextest`, `proptest`, `insta` | `just test` |
+| L0 | Reducer (Rust and its TypeScript port), view-models, protocol (de)serialization, naming/slug rules, `ask` validation, ring buffer, state machines | `cargo nextest`, `proptest`, `insta`; `bun test` for TypeScript | `just test`, `just test-ts` |
 | L1 | ThreadService, AgentSupervisor, WorktreeManager, interactions, idle reaper — against `FakeGit`, `FakeAgent` (scripted omp frames), `FakeClock`, `FakePty` | `tokio::test(start_paused = true)` | `just test` |
 | L2 | Real `git` on temp repos, real SQLite file, real WebSocket server with a native protocol client | `omfp-testkit` | `just test` |
 | L3 | Our assumptions about omp: real pinned `omp --mode rpc-ui` talking to `fake-llm` (`crates/*/tests/contract_*.rs`) | `omfp-testkit`, `fake-llm` | `just test-contract` |
-| L4 | Components rendered via `VirtualDom` + `dioxus-ssr`, asserted with selectors and HTML snapshots; browser-only code (web transport, xterm bridge) | `scraper`, `insta`, `wasm-bindgen-test` in headless Chromium | `just test`, `just test-wasm` |
+| L4 | The TypeScript UI: view-model unit tests (`ui/packages/app/src/vm/`, no DOM) and component tests of the kit and the app rendered in happy-dom, queried by `data-testid` and role with Testing Library, plus normalized HTML snapshots; the client's transport suite against the test daemon | `bun test`, happy-dom (preloaded from `ui/test/dom.ts`), `@testing-library/react` + `user-event` | `just test-ts` |
 | L5 | Critical user journeys on the web build | `thirtyfour` (WebDriver) + `chromedriver` + Chromium | `just test-e2e` |
 
 | ID | Requirement |
@@ -98,9 +98,9 @@ refuses and records every connection. The discovery requests fail at once, so ru
 
 | ID | Requirement |
 | --- | --- |
-| TST-030 | Transport suite: the same tests run against every client transport against a real daemon — hello, auth failure, subscribe/snapshot, replay, reconnect (UI-001): the Rust native one in L2 and web one in `wasm-bindgen-test` against a daemon started by the test harness, and the TypeScript client's WebSocket transport under `bun test` against the same test daemon (`crates/omfp-daemon/examples/test_daemon.rs`, started by `just test-ts`). |
+| TST-030 | Transport suite: the client's transport (the TypeScript client's WebSocket transport, the only one, UI-001) MUST pass hello, auth failure, subscribe/snapshot, replay and reconnect tests under `bun test` against a real daemon (`crates/omfp-daemon/examples/test_daemon.rs`, fake launcher and fake git, started by `just test-ts`). |
 | TST-031 | Components get `data-testid` attributes for L4/L5 selectors; tests never select by CSS class or text that is likely to change. |
-| TST-032 | HTML snapshots MUST be normalized (generated ids and timestamps stripped) so they only change when markup really changes. |
+| TST-032 | HTML snapshots of the TypeScript component tests MUST be normalized (generated ids and timestamps stripped) so they only change when markup really changes. |
 | TST-033 | The desktop build has a smoke test: start with `OMFP_SMOKE=1` under a virtual X server, connect to the in-process daemon, render the shell, exit 0. |
 
 ## End-to-end scenarios (L5)
@@ -129,16 +129,15 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 
 | Command | Runs |
 | --- | --- |
-| `just test` | L0, L1, L2, L4 (SSR) — fast, every change |
+| `just test` | L0, L1, L2 (Rust) — fast, every change |
 | `just test-contract` | L3 against the pinned omp (needs the dev shell) |
-| `just test-wasm` | `wasm-bindgen-test` in headless Chromium |
-| `just test-ts` | `bun test` in `ui/`: the TypeScript reducer against the golden states, client session/model tests, the client transport suite against the test daemon |
+| `just test-ts` | `bun run test` in `ui/`: L0 TypeScript (the reducer against the golden states, client session/model tests), L4 (view models, kit and app component tests with the happy-dom preload), the client transport suite against the test daemon |
 | `just gen-ts` / `just gen-states` | regenerate the TypeScript protocol types (`ui/packages/protocol/src/generated.ts`) / the golden reducer states (`fixtures/states/<version>/`); `just test` fails while either is stale |
-| `just test-e2e` | L5 (builds the release web bundle first: a debug bundle runs Dioxus dev-tools) |
-| `just mutants` | `cargo mutants` on `omfp-core`, `omfp-protocol`, `omfp-ui/vm` (`--in-diff` for changed code) |
+| `just test-e2e` | L5 (builds the release web bundle first, `just build-web`) |
+| `just mutants` | `cargo mutants` on `omfp-core`, `omfp-protocol`, `fake-llm`, `xtask` (`--in-diff` for changed code) |
 | `just cov` | `cargo llvm-cov` report |
 | `just ci` | everything above + `spec-trace`, `clippy -D warnings`, `fmt --check`, `cargo deny check` |
 
 | ID | Requirement |
 | --- | --- |
-| TST-050 | Gates for `just ci`: no surviving mutants in `omfp-core` and `omfp-protocol` (exceptions listed with a reason in `mutants.toml`); line coverage ≥ 90% for `omfp-core`, `omfp-protocol`, `omfp-ui/vm`, ≥ 75% for `omfp-daemon`. |
+| TST-050 | Gates for `just ci`: no surviving mutants in `omfp-core` and `omfp-protocol` (exceptions listed with a reason in `mutants.toml`); line coverage ≥ 90% for `omfp-core`, `omfp-protocol` and the TypeScript view models (`ui/packages/app/src/vm/`, `bun test --coverage`), ≥ 75% for `omfp-daemon`. |

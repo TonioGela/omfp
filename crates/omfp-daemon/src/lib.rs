@@ -5,6 +5,7 @@
 
 pub mod agent;
 pub mod config;
+pub mod config_file;
 pub mod conventions;
 mod daemon;
 pub mod event_log;
@@ -17,8 +18,11 @@ pub mod paths;
 pub mod server;
 pub mod store;
 pub mod supervisor;
+pub mod theme;
 pub mod threads;
+pub mod titles;
 pub mod token;
+pub mod watch;
 pub mod workspaces;
 
 pub use daemon::{DaemonHandle, DaemonInfo, Ports, discover, run, start, start_with};

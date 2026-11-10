@@ -46,7 +46,7 @@ export type CompactParams = {
 
 /** `threads.create` params. */
 export type CreateThreadParams = {
-  /** omp's `--approval-mode`. */
+  /** omp's `--approval-mode`; default `yolo` (DMN-074). */
   approvalMode?: string | null;
   /** `provider/id`. */
   model?: string | null;
@@ -54,8 +54,9 @@ export type CreateThreadParams = {
   prompt?: string | null;
   tags?: string[];
   thinkingLevel?: unknown;
-  title: string;
-  /** `{ "id": … }` or `{ "new": { "name"?, "path"? } }`; default: a new folder named after the title. */
+  /** For scripts and agents; without it the title is generated from the conversation (DMN-073). */
+  title?: string | null;
+  /** `{ "id": … }` or `{ "new": { "name"?, "path"? } }`; default: a new folder named after the first message. */
   workspace?: ThreadWorkspace;
 };
 
@@ -76,6 +77,9 @@ export type CreatedBy =
     kind: "thread";
     threadId: string;
   };
+
+/** Row height and spacing of the UI. */
+export type Density = "compact" | "normal";
 
 /** One page of a workspace diff (PRT-013). */
 export type DiffPage = {
@@ -123,6 +127,13 @@ export type FileDiff = {
 /** Kind of change to a file. */
 export type FileStatus = "added" | "modified" | "deleted" | "renamed" | "untracked";
 
+/** CSS `font-family` values overriding the font tokens; absent ones keep the theme's. */
+export type FontSettings = {
+  code?: string | null;
+  prose?: string | null;
+  ui?: string | null;
+};
+
 /** `thread.fork` params. */
 export type ForkParams = {
   /** Fork history through this entry; the whole session when absent. */
@@ -156,7 +167,7 @@ export type GoalParams = {
 
 /** `system.hello`: first frame of every connection (PRT-001). */
 export type HelloParams = {
-  /** Client name, recorded as provenance (PRT-033), e.g. `omfp-ui/web`. */
+  /** Client name, recorded as provenance (PRT-033), e.g. `omfp/web`. */
   client: string;
   /** Protocol version the client speaks (PRT-004). */
   protocol: number;
@@ -199,11 +210,23 @@ export type IndexEvent =
   | {
     kind: "thread_removed";
     threadId: string;
+  }
+  /** The user's theme changed (DMN-075). */
+  | {
+    kind: "theme_changed";
+    theme: Theme;
+  }
+  /** The UI settings of the config file changed (DMN-009, UI-097). */
+  | {
+    kind: "settings_changed";
+    settings: Settings;
   };
 
 /** State of the `index` topic. */
 export type IndexSnapshot = {
   repositories: Repository[];
+  settings: Settings;
+  theme: Theme;
   threads: ThreadSummary[];
   workspaces: Workspace[];
 };
@@ -222,6 +245,18 @@ export type InteractionResponse =
   | {
     answers: unknown[];
   };
+
+/** One key binding of the config file's `[keymap]` (UI-097). */
+export type KeymapEntry = {
+  /** Command id; `""` removes the default binding of `keys`. */
+  command: string;
+  /** Key sequence, e.g. `g g`, `Ctrl-d`, `Space n`. */
+  keys: string;
+  mode: KeymapMode;
+};
+
+/** The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`. */
+export type KeymapMode = "normal" | "insert" | "cmdline";
 
 /** `thread.label` params. */
 export type LabelParams = {
@@ -253,6 +288,12 @@ export type NavigateParams = {
   summarize?: boolean | null;
   threadId: string;
 };
+
+/** When the UI shows system notifications (UI-096). */
+export type NotificationMode =
+  | "always" | "never"
+  /** Only while the window has no focus (default). */
+  | "background";
 
 /** `terminal.open` params (05-terminal). */
 export type OpenTerminalParams = {
@@ -417,10 +458,27 @@ export type SetModelParams = {
   threadId: string;
 };
 
+/** `settings.set` params: values merged into the config file (DMN-009); absent ones are unchanged. */
+export type SetSettingsParams = {
+  /** Bindings replacing the ones with the same mode and keys (`command: ""` unbinds the default). */
+  keymap?: KeymapEntry[] | null;
+  /** `[ui]` values to set; absent fields are unchanged. */
+  ui?: UiSettings | null;
+};
+
 /** `thread.set_thinking` params. */
 export type SetThinkingParams = {
   level: unknown;
   threadId: string;
+};
+
+/** UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097). */
+export type Settings = {
+  /** Why the last reload of the config file failed (the previous settings stay); `null` when it is valid. */
+  error: string | null;
+  /** Bindings over the defaults, in file order; `command: ""` removes a default binding. */
+  keymap: KeymapEntry[];
+  ui: UiSettings;
 };
 
 /** `thread.subagent_messages` params. */
@@ -497,6 +555,12 @@ export type TerminalRef = {
   terminalId: string;
 };
 
+/** The user's theme: CSS applied after the built-in tokens (DMN-075). */
+export type Theme = {
+  /** `null`: the built-in themes only. */
+  css: string | null;
+};
+
 /** `thread.git` result: the git status of every repository of the thread's workspace. */
 export type ThreadGit = {
   /** In the order of the workspace's `repos`. */
@@ -522,7 +586,9 @@ export type ThreadSummary = {
   /** Idle with nothing queued or pending (omp's `session_settled`). */
   settled: boolean;
   tags: string[];
+  /** `""` until the first message (DMN-073). */
   title: string;
+  titleSource: TitleSource;
   updatedAt: number;
   /** The workspace the thread lives in: its omp cwd (ARC-008, DMN-029). */
   workspaceId: string;
@@ -534,10 +600,22 @@ export type ThreadWorkspace =
   | {
     id: string;
   }
-  /** A new workspace, as `workspaces.create` makes it; its name defaults to the thread's title. */
+  /**
+   * A new workspace, as `workspaces.create` makes it; its name defaults to the thread's title, else to the first
+   * words of its first message.
+   */
   | {
     new: CreateWorkspaceParams;
   };
+
+/** Where a thread's title comes from (DMN-073). */
+export type TitleSource =
+  /** The first words of the first message (or `""` before it), until a title is generated or set. */
+  | "placeholder"
+  /** Generated from the conversation by the daemon. */
+  | "generated"
+  /** Set by the user or an agent (`threads.create`, `threads.update`, host tool `set_thread_title`); never replaced. */
+  | "set";
 
 /** `index`, `thread/<id>`, `workspace/<id>` or `terminal/<id>`. */
 export type Topic = string;
@@ -547,8 +625,17 @@ export type TopicParams = {
   topic: Topic;
 };
 
+/** The `[ui]` table of the config file; an absent value is the default (UI-097). */
+export type UiSettings = {
+  density?: Density | null;
+  fonts?: FontSettings | null;
+  notifications?: NotificationMode | null;
+};
+
 /** `threads.update` params; absent fields are unchanged. */
 export type UpdateThreadParams = {
+  /** omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074). */
+  approvalMode?: string | null;
   tags?: string[] | null;
   threadId: string;
   title?: string | null;
@@ -692,6 +779,10 @@ export interface Methods {
   "terminal.resize": { params: ResizeTerminalParams; result: Empty };
   "terminal.close": { params: TerminalRef; result: Empty };
   "terminal.list": { params: ListTerminalsParams; result: TerminalList };
+  "theme.get": { params: Empty; result: Theme };
+  "theme.set": { params: Theme; result: Empty };
+  "settings.get": { params: Empty; result: Settings };
+  "settings.set": { params: SetSettingsParams; result: Settings };
 }
 
 export type MethodName = keyof Methods;
@@ -751,4 +842,8 @@ export const METHODS: readonly MethodName[] = [
   "terminal.resize",
   "terminal.close",
   "terminal.list",
+  "theme.get",
+  "theme.set",
+  "settings.get",
+  "settings.set",
 ];

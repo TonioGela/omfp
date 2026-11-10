@@ -14,7 +14,7 @@ expression: golden
         "state": "stopped"
       },
       "provenance": {
-        "client": "omfp-ui/web",
+        "client": "omfp/web",
         "createdBy": {
           "kind": "user"
         }
@@ -24,6 +24,7 @@ expression: golden
         "checkout-v2"
       ],
       "title": "Checkout v2",
+      "titleSource": "generated",
       "updatedAt": 1794268860000,
       "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
     }

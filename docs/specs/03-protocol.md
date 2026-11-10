@@ -1,7 +1,8 @@
 # 03 — UI ↔ daemon protocol
 
 One WebSocket per client at `/api/ws`. JSON text frames for requests, responses and events; binary frames only for
-terminal data ([05](05-terminal.md)). All types live in `omfp-protocol` (serde), shared by daemon and UI.
+terminal data ([05](05-terminal.md)). All types live in `omfp-protocol` (serde), shared by daemon and UI. Plain HTTP
+besides: the web bundle at `/` (DMN-008) and the user's theme at `/theme.css` (DMN-075), both without the token.
 
 ## Connection and authentication
 
@@ -10,7 +11,7 @@ sequenceDiagram
   participant C as Client
   participant D as daemon
   C->>D: WS upgrade /api/ws (Origin checked)
-  C->>D: {"type":"request","id":"1","method":"system.hello","params":{"token":"…","protocol":1,"client":"omfp-ui/web"}}
+  C->>D: {"type":"request","id":"1","method":"system.hello","params":{"token":"…","protocol":1,"client":"omfp/web"}}
   D-->>C: {"type":"response","id":"1","ok":true,"result":{"protocol":1,"daemon":"0.1.0","omp":"18.18.6","warnings":[]}}
   C->>D: subscribe index, thread/<id>, …
 ```
@@ -47,8 +48,17 @@ sequenceDiagram
 ## Topics, snapshots and catch-up
 
 Topics: `index` (known repositories, workspaces with their discovered repositories, threads with their summaries and
-tags), `thread/<id>` (one thread), `workspace/<id>` (git status of each repository of one workspace), `terminal/<id>`
-(terminal output, [05](05-terminal.md)).
+tags, and the user's theme), `thread/<id>` (one thread), `workspace/<id>` (git status of each repository of one
+workspace), `terminal/<id>` (terminal output, [05](05-terminal.md)).
+
+The `index` state is `{ repositories, workspaces, threads, theme, settings }`; its events are `repository_upserted` /
+`repository_removed`, `workspace_upserted` / `workspace_removed`, `thread_upserted` / `thread_removed`,
+`theme_changed { theme }` (`theme` is `{ css: string | null }`, DMN-075) and `settings_changed { settings }` (DMN-009,
+UI-097). `settings` is `{ ui: { density?, notifications?, fonts?: { prose?, ui?, code? } }, keymap: { mode: "normal" |
+"insert" | "cmdline", keys, command }[], error: string | null }`: the `[ui]` and `[keymap]` tables of the daemon's
+config file (absent values are defaults; `command: ""` removes a default binding), and the last reload error (the
+previous settings stay). A thread summary carries `title` (`""` until the first message) and `titleSource`:
+`placeholder` (the first words of the first message), `generated` or `set` (DMN-073).
 
 ```jsonc
 // subscribe, optionally from a known position
@@ -98,8 +108,8 @@ tags), `thread/<id>` (one thread), `workspace/<id>` (git status of each reposito
 | `workspaces.add_repo` | `workspaceId`, `name?`, `source`: `link { path }` \| `worktree { repo (id or path), branch?, baseRef? }` \| `clone { url }` \| `pr { pr }` (after S-08) | workspace (DMN-024) |
 | `workspaces.remove_repo` | `workspaceId`, `name`, `force?`, `deleteBranch?` | workspace (DMN-025) |
 | `workspaces.status` / `.diff` | `workspaceId`, `repo` (name), `path?`, `cursor?` | status / paged diff of one repository |
-| `threads.create` | `workspace`: `{ id }` \| `{ new: { name?, path? } }` (default: a new folder named from the first message), `prompt?` (first message), `tags[]`, `model?`, `thinkingLevel?`, `approvalMode?` (default `yolo`, DMN-074), `title?` (scripts and agents; otherwise generated, DMN-073) | thread |
-| `threads.update` | `threadId`, `title?`, `tags?`, `approvalMode?` | thread |
+| `threads.create` | `workspace`: `{ id }` \| `{ new: { name?, path? } }` (default: a new folder named after the title, else the first message), `prompt?` (first message), `tags[]`, `model?`, `thinkingLevel?`, `approvalMode?` (default `yolo`, DMN-074), `title?` (scripts and agents; otherwise generated, DMN-073) | thread |
+| `threads.update` | `threadId`, `title?` (a `set` title, DMN-073), `tags?`, `approvalMode?` (from the next start of the thread's omp) | thread |
 | `threads.archive` / `.unarchive` / `.delete` | `threadId` | `{}`; archive stops the thread's omp process and sets `archivedAt`, unarchive clears it, delete removes the thread's records and directory (workspaces are never removed implicitly) |
 | `thread.prompt` | `threadId`, `text`, `images?`, `behavior?: "steer" \| "followUp"` | `{ promptId }`; completion arrives as `prompt_result` |
 | `thread.steer` / `thread.follow_up` | `threadId`, `text`, `images?` | `{}` |
@@ -115,6 +125,10 @@ tags), `thread/<id>` (one thread), `workspace/<id>` (git status of each reposito
 | `thread.restart` / `thread.stop` | `threadId` | `{}` |
 | `interaction.respond` | `threadId`, `interactionId`, `response` (`value` \| `confirmed` \| `cancelled` \| `answers`) | `{}` or `already_resolved` |
 | `terminal.*` | see [05](05-terminal.md) | |
+| `theme.get` | — | `{ css }`: the user's theme CSS, `null` when none (DMN-075) |
+| `theme.set` | `css` (string, at most 1 MiB, else `bad_request`; `null` restores the built-in themes) | `{}`; every client gets `theme_changed` on `index` |
+| `settings.get` | — | `settings` (DMN-009, UI-097) |
+| `settings.set` | `ui?` (values to set; absent ones unchanged), `keymap?` (entries replacing the ones with the same `mode` and `keys`) | the new `settings`; merged into the config file, written back with its comments and other keys (`bad_request` for an invalid value or a config file that is not valid TOML); every client gets `settings_changed` |
 
 Results of omp-forwarded methods are omp's response data (`data` of its `response` frame), the `omp-rpc` wire
 `*Result` type named in the method table, even where `omp-rpc` decodes the command's output to the bare list or

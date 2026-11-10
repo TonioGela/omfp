@@ -25,11 +25,22 @@ struct Daemon {
 }
 
 impl Daemon {
+    /// A daemon without title generation: the fake LLM scripts every model call, and a title run would take a step
+    /// (DMN-073).
     async fn start(harness: &Harness) -> Self {
+        Self::launch(harness, &["--no-title-generation"]).await
+    }
+
+    /// A daemon that generates titles as `omfp daemon` does.
+    async fn start_titling(harness: &Harness) -> Self {
+        Self::launch(harness, &[]).await
+    }
+
+    async fn launch(harness: &Harness, extra: &[&str]) -> Self {
         let data = tempfile::tempdir().unwrap();
         let omp = omp_bin();
         let workspaces = data.path().join("workspaces");
-        let cli = Cli::try_parse_from([
+        let mut args = vec![
             "daemon",
             "--bind",
             "127.0.0.1:0",
@@ -39,8 +50,9 @@ impl Daemon {
             workspaces.to_str().unwrap(),
             "--omp-bin",
             &omp,
-        ])
-        .unwrap();
+        ];
+        args.extend_from_slice(extra);
+        let cli = Cli::try_parse_from(args).unwrap();
         let config = Config::from_cli(cli, None, None).unwrap();
         let mut ports = Ports::resolve(&config).unwrap();
         ports.omp_env = harness.env.env_overrides();
@@ -285,8 +297,8 @@ async fn approval_reconnects_crash_and_restart_with_history() {
     ])
     .await;
     let daemon = Daemon::start(&harness).await;
-    let mut web = daemon.client("omfp-ui/web").await;
-    let mut desktop = daemon.client("omfp-ui/desktop").await;
+    let mut web = daemon.client("omfp/web").await;
+    let mut desktop = daemon.client("omfp/desktop").await;
     let thread = web
         .ok(
             "threads.create",
@@ -330,7 +342,7 @@ async fn approval_reconnects_crash_and_restart_with_history() {
     );
 
     // Reconnect with `since`: the missed events replay without gaps and rebuild the daemon's state.
-    let mut web = daemon.client("omfp-ui/web").await;
+    let mut web = daemon.client("omfp/web").await;
     let replay = web
         .ok(
             "subscribe",
@@ -396,7 +408,7 @@ async fn approval_reconnects_crash_and_restart_with_history() {
     );
 
     // A position of the previous process is gone from the buffer: a snapshot equal to the daemon's state.
-    let mut late_client = daemon.client("omfp-ui/web").await;
+    let mut late_client = daemon.client("omfp/web").await;
     let snapshot = Follower::snapshot(
         &mut late_client,
         &thread,
@@ -451,7 +463,7 @@ async fn ask_dialogs_round_trip_through_the_protocol() {
     ])
     .await;
     let daemon = Daemon::start(&harness).await;
-    let mut client = daemon.client("omfp-ui/web").await;
+    let mut client = daemon.client("omfp/web").await;
     let thread = client
         .ok(
             "threads.create",
@@ -492,6 +504,64 @@ async fn ask_dialogs_round_trip_through_the_protocol() {
         second.contains("sqlite") && second.contains("search") && second.contains("auth"),
         "answers reach the model: {second}"
     );
+    daemon.handle.shutdown().await.unwrap();
+    harness.assert_no_stray_network();
+}
+
+// spec: DMN-073
+#[tokio::test(flavor = "multi_thread")]
+async fn the_first_message_names_the_thread_through_an_omp_print_mode_run() {
+    // The thread's turn and the title run both ask the fake LLM, in either order: both get the same answer.
+    let title = "Checkout flow fix";
+    let harness = Harness::new(vec![
+        Step::reply(Reply::text(title)),
+        Step::reply(Reply::text(title)),
+    ])
+    .await;
+    let daemon = Daemon::start_titling(&harness).await;
+    let mut client = daemon.client("omfp/web").await;
+    client.ok("subscribe", json!({ "topic": "index" })).await;
+
+    let thread = client
+        .ok(
+            "threads.create",
+            json!({ "model": model(), "prompt": "Please fix the checkout flow" }),
+        )
+        .await;
+    assert_eq!(thread["titleSource"], "placeholder");
+    let id = thread["id"].as_str().unwrap().to_owned();
+    loop {
+        let event = client.event("index").await;
+        let summary = &event["event"]["thread"];
+        if event["event"]["kind"] == "thread_upserted"
+            && summary["id"] == id.as_str()
+            && summary["titleSource"] == "generated"
+        {
+            assert_eq!(summary["title"], title);
+            break;
+        }
+    }
+
+    // The daemon named the omp session after the title.
+    let state = client.ok("thread.state", json!({ "threadId": id })).await;
+    assert_eq!(state["sessionName"], title);
+    let requests = harness.fake.requests();
+    let title_run = requests
+        .iter()
+        .find(|request| system_prompt(request).contains(omfp_daemon::titles::TITLE_INSTRUCTIONS))
+        .expect("the print-mode run's request");
+    assert!(
+        title_run["tools"].as_array().is_none_or(Vec::is_empty),
+        "no tools in print mode: {}",
+        title_run["tools"]
+    );
+    assert!(
+        title_run
+            .to_string()
+            .contains("Please fix the checkout flow"),
+        "{title_run}"
+    );
+    assert!(harness.fake.is_exhausted_cleanly());
     daemon.handle.shutdown().await.unwrap();
     harness.assert_no_stray_network();
 }

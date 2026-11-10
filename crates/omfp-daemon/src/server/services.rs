@@ -3,21 +3,47 @@
 //! roots of the live threads in the workspace (DMN-029).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 use omfp_protocol::{
-    ErrorBody, IndexEvent, IndexSnapshot, RepoStatus, ThreadSummary, Workspace, WorkspaceEvent,
+    ErrorBody, IndexEvent, IndexSnapshot, RepoStatus, SetSettingsParams, Settings, Theme,
+    ThreadSummary, Workspace, WorkspaceEvent,
 };
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
-use tracing::warn;
+use tracing::{info, warn};
 
-use super::convert::{self, internal, workspace_error};
+use super::convert::{self, bad_request, internal, workspace_error};
+use crate::config_file::{ConfigFile, DaemonOptions, write_back};
 use crate::event_log::EventLog;
 use crate::store::{Store, StoreError, new_id, now_ms};
 use crate::supervisor::Supervisor;
+use crate::theme;
 use crate::threads::Threads;
+use crate::watch::{self, WatchedFile};
 use crate::workspaces::{WorkspaceView, Workspaces};
+
+/// Replaces `path` with `text` in one step (a temporary file renamed over it), so a reader never sees half a file;
+/// the parent directory is created when missing.
+fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut temporary = path.as_os_str().to_owned();
+    temporary.push(format!(".{}.tmp", std::process::id()));
+    std::fs::write(&temporary, text)?;
+    std::fs::rename(&temporary, path)
+}
+
+/// Aborts a task when dropped: a background task's helper ends with it.
+struct AbortOnDrop(JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
 
 /// The `index` topic: repositories, workspaces and thread summaries.
 pub(crate) type IndexLog = EventLog<IndexEvent, IndexSnapshot>;
@@ -58,6 +84,8 @@ fn apply_index(state: &mut IndexSnapshot, event: &IndexEvent) {
         IndexEvent::ThreadRemoved { thread_id } => {
             state.threads.retain(|t| t.id != *thread_id);
         }
+        IndexEvent::ThemeChanged { theme } => state.theme.clone_from(theme),
+        IndexEvent::SettingsChanged { settings } => state.settings.clone_from(settings),
     }
 }
 
@@ -66,6 +94,18 @@ fn apply_workspace(state: &mut Vec<RepoStatus>, event: &WorkspaceEvent) {
     match event {
         WorkspaceEvent::Status { repos } => state.clone_from(repos),
     }
+}
+
+/// The UI settings of the config file and where they come from (DMN-009).
+#[derive(Debug, Default)]
+struct SettingsState {
+    /// The followed config file; `None` keeps the settings in [`SettingsState::memory`] only.
+    file: Option<PathBuf>,
+    /// Without a file: the TOML `settings.set` wrote so far.
+    memory: String,
+    /// `[daemon]` as last seen; a change needs a restart.
+    daemon: DaemonOptions,
+    settings: Settings,
 }
 
 /// Shared by every connection. Cheap to clone.
@@ -79,6 +119,13 @@ pub(crate) struct Services {
     /// Serializes index refreshes so their events never interleave.
     refresh: Arc<tokio::sync::Mutex<()>>,
     workspace_logs: Arc<Mutex<HashMap<String, Arc<WorkspaceLog>>>>,
+    settings: Arc<Mutex<SettingsState>>,
+    /// Serializes `settings.set` writes to the config file.
+    settings_writes: Arc<tokio::sync::Mutex<()>>,
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 async fn blocking<T: Send + 'static>(
@@ -106,6 +153,8 @@ impl Services {
                     repositories: Vec::new(),
                     workspaces: Vec::new(),
                     threads: Vec::new(),
+                    theme: Theme::default(),
+                    settings: Settings::default(),
                 },
                 apply_index,
                 INDEX_CAPACITY,
@@ -113,6 +162,8 @@ impl Services {
             )),
             refresh: Arc::new(tokio::sync::Mutex::new(())),
             workspace_logs: Arc::new(Mutex::new(HashMap::new())),
+            settings: Arc::new(Mutex::new(SettingsState::default())),
+            settings_writes: Arc::new(tokio::sync::Mutex::new(())),
         };
         let workspaces = Arc::clone(&services.workspaces);
         blocking(move || {
@@ -172,7 +223,8 @@ impl Services {
         Ok(view)
     }
 
-    /// Syncs the roots of the live threads living in workspace `id` with its last scan (DMN-029).
+    /// Syncs the roots of the threads living in workspace `id` with its last scan (DMN-029); a thread whose omp is
+    /// still starting is synced once it runs, before this returns.
     pub async fn sync_roots(&self, id: &str) -> Result<(), ErrorBody> {
         let store = Arc::clone(&self.store);
         let workspace_id = id.to_owned();
@@ -183,9 +235,7 @@ impl Services {
         })
         .await?;
         for thread_id in thread_ids {
-            if self.supervisor.is_running(&thread_id)
-                && let Err(error) = self.supervisor.sync_roots(&thread_id).await
-            {
+            if let Err(error) = self.supervisor.sync_roots(&thread_id).await {
                 warn!(thread = %thread_id, %error, "root sync failed");
             }
         }
@@ -214,8 +264,10 @@ impl Services {
         let store = Arc::clone(&self.store);
         let workspaces = Arc::clone(&self.workspaces);
         let supervisor = self.supervisor.clone();
+        let settings = self.settings();
         let fresh =
-            blocking(move || load_index(&store, &workspaces, &supervisor, &previous)).await?;
+            blocking(move || load_index(&store, &workspaces, &supervisor, &previous, settings))
+                .await?;
         for event in diff_index(&current, fresh) {
             self.index.push(event);
         }
@@ -227,6 +279,164 @@ impl Services {
         if let Err(error) = self.refresh_index().await {
             warn!(error = %error.message, "index refresh failed");
         }
+    }
+
+    /// The user's theme as published on the `index` topic (DMN-075).
+    pub fn theme(&self) -> Theme {
+        self.index.with_state(|index| index.theme.clone())
+    }
+
+    /// Replaces the user's theme and pushes it to every client (DMN-075); over [`theme::MAX_THEME_BYTES`] it is a
+    /// `bad_request`.
+    pub async fn set_theme(&self, css: Option<String>) -> Result<(), ErrorBody> {
+        if let Some(reason) = css.as_deref().and_then(theme::too_large) {
+            return Err(bad_request(reason));
+        }
+        let store = Arc::clone(&self.store);
+        blocking(move || store.set_theme(css.as_deref()).map_err(ErrorBody::from)).await?;
+        self.refresh_index().await
+    }
+
+    /// Reads the theme file now (startup) and then follows its changes (DMN-075).
+    pub async fn watch_theme_file(&self, path: PathBuf) -> Result<JoinHandle<()>, ErrorBody> {
+        let (file, change) = Self::first_read(path.clone()).await?;
+        if let Some(css) = change {
+            self.apply_theme_file(&path, css).await;
+        }
+        let services = self.clone();
+        Ok(Self::follow(file, move |css| {
+            let (services, path) = (services.clone(), path.clone());
+            async move { services.apply_theme_file(&path, css).await }
+        }))
+    }
+
+    async fn apply_theme_file(&self, path: &Path, css: Option<String>) {
+        info!(path = %path.display(), "theme file changed");
+        if let Err(error) = self.set_theme(css).await {
+            warn!(error = %error.message, "cannot apply the theme file");
+        }
+    }
+
+    /// The file's first read (startup).
+    async fn first_read(path: PathBuf) -> Result<(WatchedFile, Option<Option<String>>), ErrorBody> {
+        let mut file = WatchedFile::new(path);
+        blocking(move || {
+            let change = file.poll();
+            Ok((file, change))
+        })
+        .await
+    }
+
+    /// Polls `file` and hands every change to `apply`, until the returned task is aborted.
+    fn follow<F: Future<Output = ()> + Send>(
+        file: WatchedFile,
+        apply: impl Fn(Option<String>) -> F + Send + 'static,
+    ) -> JoinHandle<()> {
+        let (sender, mut changes) = mpsc::unbounded_channel();
+        let watcher = AbortOnDrop(watch::watch(file, watch::POLL, sender));
+        tokio::spawn(async move {
+            let _watcher = watcher;
+            while let Some(change) = changes.recv().await {
+                apply(change).await;
+            }
+        })
+    }
+
+    /// The UI settings as published on the `index` topic (DMN-009, UI-097).
+    pub fn settings(&self) -> Settings {
+        lock(&self.settings).settings.clone()
+    }
+
+    /// Reads the config file now and then follows its `[ui]` and `[keymap]` (DMN-009); `startup` is its `[daemon]` as
+    /// the daemon applied it. An invalid file is an error here, at startup.
+    pub async fn follow_config_file(
+        &self,
+        path: PathBuf,
+        startup: DaemonOptions,
+    ) -> Result<JoinHandle<()>, ErrorBody> {
+        let (file, change) = Self::first_read(path.clone()).await?;
+        let parsed = match change.flatten() {
+            Some(text) => ConfigFile::parse(&text)
+                .map_err(|error| bad_request(format!("{}: {error}", path.display())))?,
+            None => ConfigFile::default(),
+        };
+        {
+            let mut state = lock(&self.settings);
+            state.file = Some(path.clone());
+            state.daemon = startup;
+            state.settings = parsed.settings();
+        }
+        self.refresh_index().await?;
+        let services = self.clone();
+        Ok(Self::follow(file, move |text| {
+            let (services, path) = (services.clone(), path.clone());
+            async move { services.reload_config_file(&path, text).await }
+        }))
+    }
+
+    /// A change of the config file: `[ui]` / `[keymap]` apply now, `[daemon]` at the next start; an invalid file keeps
+    /// the previous settings and reports why in `Settings.error` (DMN-009).
+    async fn reload_config_file(&self, path: &Path, text: Option<String>) {
+        let parsed = text.map_or_else(
+            || Ok(ConfigFile::default()),
+            |text| ConfigFile::parse(&text).map_err(|error| format!("{}: {error}", path.display())),
+        );
+        {
+            let mut state = lock(&self.settings);
+            match parsed {
+                Ok(file) => {
+                    if file.daemon != state.daemon {
+                        warn!(path = %path.display(), "[daemon] of the config file changed: restart the daemon to apply it");
+                        state.daemon = file.daemon.clone();
+                    }
+                    info!(path = %path.display(), "config file reloaded");
+                    state.settings = file.settings();
+                }
+                Err(error) => {
+                    warn!(%error, "config file invalid; the previous settings stay");
+                    state.settings.error = Some(error);
+                }
+            }
+        }
+        self.refresh_index_quietly().await;
+    }
+
+    /// Merges `update` into the config file, written back with its comments, and pushes the new settings (DMN-009).
+    /// Without a config file the settings live in memory.
+    pub async fn set_settings(&self, update: SetSettingsParams) -> Result<Settings, ErrorBody> {
+        let _write = self.settings_writes.lock().await;
+        let (file, memory) = {
+            let state = lock(&self.settings);
+            (state.file.clone(), state.memory.clone())
+        };
+        let (text, parsed) = blocking(move || {
+            let current = match &file {
+                Some(path) => match std::fs::read_to_string(path) {
+                    Ok(text) => text,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+                    Err(error) => return Err(internal(format!("{}: {error}", path.display()))),
+                },
+                None => memory,
+            };
+            let text = write_back(&current, &update).map_err(bad_request)?;
+            let parsed = ConfigFile::parse(&text).map_err(bad_request)?;
+            if let Some(path) = &file {
+                write_atomically(path, &text)
+                    .map_err(|error| internal(format!("{}: {error}", path.display())))?;
+            }
+            Ok((text, parsed))
+        })
+        .await?;
+        let settings = parsed.settings();
+        {
+            let mut state = lock(&self.settings);
+            if state.file.is_none() {
+                state.memory = text;
+            }
+            state.settings = settings.clone();
+        }
+        self.refresh_index().await?;
+        Ok(settings)
     }
 
     /// The thread's summary as published on the `index` topic.
@@ -314,6 +524,7 @@ fn load_index(
     workspaces: &Workspaces,
     supervisor: &Supervisor,
     previous: &IndexSnapshot,
+    settings: Settings,
 ) -> Result<IndexSnapshot, ErrorBody> {
     let clients = store.created_clients()?;
     let repositories = store
@@ -372,6 +583,10 @@ fn load_index(
         repositories,
         workspaces,
         threads,
+        theme: Theme {
+            css: store.theme()?,
+        },
+        settings,
     })
 }
 
@@ -413,6 +628,14 @@ fn diff_index(current: &IndexSnapshot, fresh: IndexSnapshot) -> Vec<IndexEvent> 
         if !current.threads.contains(&thread) {
             events.push(IndexEvent::ThreadUpserted { thread });
         }
+    }
+    if current.theme != fresh.theme {
+        events.push(IndexEvent::ThemeChanged { theme: fresh.theme });
+    }
+    if current.settings != fresh.settings {
+        events.push(IndexEvent::SettingsChanged {
+            settings: fresh.settings,
+        });
     }
     events
 }

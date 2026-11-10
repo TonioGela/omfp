@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use omfp_daemon::paths::DataDir;
-use omfp_daemon::store::{Provenance, Store, StoreError, Workspace, new_id, now_ms};
-use omfp_daemon::threads::{NewThread, ThreadError, Threads};
+use omfp_daemon::store::{Provenance, Store, StoreError, TitleSource, Workspace, new_id, now_ms};
+use omfp_daemon::threads::{DEFAULT_APPROVAL_MODE, NewThread, ThreadError, Threads};
 use tempfile::TempDir;
 
 struct Env {
@@ -121,6 +121,23 @@ fn a_thread_records_tags_settings_and_provenance() {
     assert_eq!(env.threads.get(&thread.id).unwrap(), thread);
 }
 
+// spec: DMN-074
+#[test]
+fn a_new_thread_runs_in_yolo_mode_unless_another_mode_is_given() {
+    let env = env();
+    let ws = env.workspace("shop");
+
+    let thread = env.threads.create(NewThread::new("t", &ws.id)).unwrap();
+
+    assert_eq!(DEFAULT_APPROVAL_MODE, "yolo");
+    assert_eq!(thread.approval_mode.as_deref(), Some("yolo"));
+    let changed = env
+        .threads
+        .set_approval_mode(&thread.id, "always-ask")
+        .unwrap();
+    assert_eq!(changed.approval_mode.as_deref(), Some("always-ask"));
+}
+
 // spec: ARC-009
 #[test]
 fn creation_is_refused_for_unknown_creators_or_workspaces() {
@@ -163,7 +180,9 @@ fn title_tags_settings_session_and_archive_are_updated() {
     let ws = env.workspace("shop");
     let thread = env.threads.create(NewThread::new("t", &ws.id)).unwrap();
 
-    env.threads.rename(&thread.id, "Renamed").unwrap();
+    env.threads
+        .rename(&thread.id, "Renamed", TitleSource::Set)
+        .unwrap();
     env.threads
         .set_tags(&thread.id, &["b".into(), "a".into()])
         .unwrap();

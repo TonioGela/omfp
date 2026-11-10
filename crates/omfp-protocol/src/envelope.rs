@@ -9,7 +9,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 
-use crate::dto::{RepoStatus, Repository, ThreadSummary, Workspace};
+use crate::dto::{RepoStatus, Repository, Settings, Theme, ThreadSummary, Workspace};
 use crate::method::Call;
 use crate::topic::Topic;
 
@@ -375,6 +375,14 @@ pub enum IndexEvent {
     ThreadRemoved {
         #[serde(rename = "threadId")]
         thread_id: String,
+    },
+    /// The user's theme changed (DMN-075).
+    ThemeChanged {
+        theme: Theme,
+    },
+    /// The UI settings of the config file changed (DMN-009, UI-097).
+    SettingsChanged {
+        settings: Settings,
     },
 }
 

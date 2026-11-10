@@ -4,8 +4,9 @@
 default:
     @just --list
 
-# Fast tests: unit, component and integration; no omp process (L0, L1, L2, L4). `e2e` builds on its own: thirtyfour
-# turns on `serde_json/preserve_order`, which would change every crate's `Value` if built together.
+# Fast Rust tests: unit and integration; no omp process (L0, L1, L2; the TypeScript tests, L4, are `test-ts`). `e2e`
+# builds on its own: thirtyfour turns on `serde_json/preserve_order`, which would change every crate's `Value` if
+# built together.
 test:
     cargo nextest run --workspace --exclude e2e -E 'not binary(/^contract_/)'
 
@@ -23,19 +24,7 @@ record-fixtures:
 
 # spec: ARC-010 — the shared crates compile for the browser
 check-wasm:
-    cargo check -p omfp-core -p omfp-protocol -p omfp-client --target wasm32-unknown-unknown
-
-# spec: TST-030 — the web transport runs the transport suite in headless Chromium against a daemon started here
-test-wasm:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    data=$(mktemp -d)
-    coproc daemon { exec cargo run -q -p omfp-daemon --example test_daemon -- "$data"; }
-    trap 'kill "$daemon_PID" 2>/dev/null; wait "$daemon_PID" 2>/dev/null || true; rm -rf "$data"' EXIT
-    read -r url token runner <&"${daemon[0]}"
-    OMFP_TEST_DAEMON_URL="$url" OMFP_TEST_DAEMON_TOKEN="$token" WASM_BINDGEN_TEST_ADDRESS="$runner" \
-    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
-        cargo test -p omfp-client --target wasm32-unknown-unknown --test transport_web
+    cargo check -p omfp-core -p omfp-protocol --target wasm32-unknown-unknown
 
 # JavaScript dependencies of ui/ exactly as locked in ui/bun.lock, offline from the dev shell's Bun cache, which Nix
 # builds from ui/bun.nix (ENV-001); the cache is read-only, bun copies the packages into ui/node_modules
@@ -51,16 +40,17 @@ gen-bun-nix:
 check-bun-nix:
     cd ui && bun2nix | nixfmt - | diff -u bun.nix - || { echo 'ui/bun.nix is stale: run `just gen-bun-nix`' >&2; exit 1; }
 
-# spec: TST-030 — TypeScript tests (`bun test` in ui/), the client's transport suite against a daemon started here
+# spec: TST-030 — TypeScript tests (`bun run test` in ui/: unit, view-model and component tests, L4), with the client's
+# transport suite against a daemon started here
 test-ts: ui-install
     #!/usr/bin/env bash
     set -euo pipefail
     data=$(mktemp -d)
     coproc daemon { exec cargo run -q -p omfp-daemon --example test_daemon -- "$data"; }
     trap 'kill "$daemon_PID" 2>/dev/null; wait "$daemon_PID" 2>/dev/null || true; rm -rf "$data"' EXIT
-    read -r url token _runner <&"${daemon[0]}"
+    read -r url token <&"${daemon[0]}"
     cd ui
-    OMFP_TEST_DAEMON_URL="$url" OMFP_TEST_DAEMON_TOKEN="$token" bun test
+    OMFP_TEST_DAEMON_URL="$url" OMFP_TEST_DAEMON_TOKEN="$token" bun run test
 
 # Regenerate ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas (`just test` fails when it is stale)
 gen-ts:
@@ -70,26 +60,25 @@ gen-ts:
 gen-states:
     OMFP_UPDATE_STATES=1 cargo nextest run -p omfp-core --test golden_states
 
-# Web bundle in target/dx/omfp/release/web/public (dx uses the dev shell's wasm-bindgen). Release: a debug bundle
-# runs Dioxus dev-tools, which poll a dev server that is not there and can cover the page with a rebuild overlay.
-build-web:
-    dx build -p omfp-ui --platform web --release
+# Release web bundle of the TypeScript UI (`bun run build` in ui/packages/app, see its build.ts) into
+# ui/packages/app/dist, which the daemon serves (DMN-008)
+build-web: ui-install
+    cd ui && bun run build
 
 # Try the app: the release web bundle on a daemon with your own HOME, omp config (~/.omp) and default data dir;
 # arguments go to the daemon, e.g. `just serve --bind 127.0.0.1:7421`
 serve *args: build-web
-    cargo run --release -p omfp-ui --bin omfp -- daemon --static-dir target/dx/omfp/release/web/public {{ args }}
+    cargo run --release -p omfp -- daemon --static-dir ui/packages/app/dist {{ args }}
 
 # Formatting and lints (Rust; TypeScript: Biome format + lint, then `tsc` in strict mode)
 lint: ui-install
     cargo fmt --all --check
     cargo clippy --workspace --exclude e2e --all-targets -- -D warnings
     cargo clippy -p e2e --all-targets --no-deps -- -D warnings
-    cargo clippy -p omfp-ui --target wasm32-unknown-unknown --features web -- -D warnings
     cd ui && biome ci .
     cd ui && bun run check
 
-# spec: ENV-010, ENV-011, ENV-012 — omp, omp-rpc, wasm-bindgen and dioxus versions agree
+# spec: ENV-010, ENV-011 — omp and omp-rpc versions agree
 check-versions:
     cargo xtask check-versions
 
@@ -110,4 +99,4 @@ cov:
     cargo llvm-cov nextest --workspace --exclude e2e --html -E 'not binary(/^contract_/)'
 
 # Everything a change must pass
-ci: lint check-versions spec-trace check-wasm test test-ts test-contract test-wasm test-e2e deny
+ci: lint check-versions spec-trace check-wasm test test-ts test-contract test-e2e deny

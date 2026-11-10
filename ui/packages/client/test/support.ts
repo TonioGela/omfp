@@ -7,6 +7,7 @@ import {
   type EventFrame,
   INDEX_TOPIC,
   type IndexEvent,
+  type IndexSnapshot,
   type Repository,
   type ThreadSummary,
   threadTopic,
@@ -42,6 +43,7 @@ export function summary(id: string, title: string): ThreadSummary {
   return {
     id,
     title,
+    titleSource: "set",
     tags: [],
     workspaceId: "01W",
     process: { state: "stopped" },
@@ -55,4 +57,16 @@ export function summary(id: string, title: string): ThreadSummary {
 
 export function repository(id: string): Repository {
   return { id, name: id.toLowerCase(), path: `/repos/${id}`, defaultBaseRef: "main", createdAt: 1 };
+}
+
+/** An `index` snapshot without a user theme or settings. */
+export function indexState(parts: Partial<IndexSnapshot> = {}): IndexSnapshot {
+  return {
+    repositories: [],
+    workspaces: [],
+    threads: [],
+    theme: { css: null },
+    settings: { ui: {}, keymap: [], error: null },
+    ...parts,
+  };
 }

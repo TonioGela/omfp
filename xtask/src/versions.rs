@@ -1,5 +1,4 @@
-//! Version pinning checks (ENV-010, ENV-011, ENV-012): everything that names the omp release, wasm-bindgen or dioxus
-//! must agree.
+//! Version pinning checks (ENV-010, ENV-011): everything that names the omp release must agree.
 
 use std::path::Path;
 use std::process::Command;
@@ -23,14 +22,6 @@ pub struct Observed {
     pub code_version: String,
     /// Version printed by `omp --version`.
     pub omp_version: String,
-    /// `wasm-bindgen` crate version in `Cargo.lock`.
-    pub wasm_bindgen_crate: String,
-    /// Version printed by `wasm-bindgen --version`.
-    pub wasm_bindgen_cli: String,
-    /// `dioxus` crate version in `Cargo.lock`.
-    pub dioxus_crate: String,
-    /// Version printed by `dx --version`.
-    pub dx_cli: String,
 }
 
 /// Every disagreement between the observed versions; empty when consistent.
@@ -69,28 +60,7 @@ pub fn mismatches(observed: &Observed) -> Vec<String> {
             observed.omp_version, observed.code_version
         ));
     }
-    if observed.wasm_bindgen_crate != observed.wasm_bindgen_cli {
-        problems.push(format!(
-            "ENV-012: wasm-bindgen crate `{}` != wasm-bindgen-cli `{}`",
-            observed.wasm_bindgen_crate, observed.wasm_bindgen_cli
-        ));
-    }
-    if minor(&observed.dioxus_crate) != minor(&observed.dx_cli) {
-        problems.push(format!(
-            "ENV-012: dioxus crate `{}` and dx `{}` differ in minor version",
-            observed.dioxus_crate, observed.dx_cli
-        ));
-    }
     problems
-}
-
-/// `0.7.10` → `0.7`.
-fn minor(version: &str) -> &str {
-    let mut dots = version.match_indices('.');
-    match (dots.next(), dots.next()) {
-        (Some(_), Some((second, _))) => &version[..second],
-        _ => version,
-    }
 }
 
 /// `(ref, rev)` of the `oh-my-pi` input in a `flake.lock`.
@@ -117,16 +87,6 @@ pub fn cargo_omp_rpc_pin(cargo_lock: &str) -> anyhow::Result<(String, String)> {
     Ok((captures[1].to_owned(), captures[2].to_owned()))
 }
 
-/// Version of package `name` in a `Cargo.lock` (the first one listed).
-pub fn cargo_package_version(cargo_lock: &str, name: &str) -> anyhow::Result<String> {
-    let version = Regex::new(r#"(?m)^version = "([^"]+)""#).expect("valid regex");
-    let package = cargo_package(cargo_lock, name)?;
-    Ok(version
-        .captures(package)
-        .ok_or_else(|| anyhow!("Cargo.lock: {name} has no version"))?[1]
-        .to_owned())
-}
-
 fn cargo_package<'a>(cargo_lock: &'a str, name: &str) -> anyhow::Result<&'a str> {
     let header = format!("[[package]]\nname = \"{name}\"\n");
     let start = cargo_lock
@@ -136,7 +96,7 @@ fn cargo_package<'a>(cargo_lock: &'a str, name: &str) -> anyhow::Result<&'a str>
     Ok(&rest[..rest.find("\n\n").unwrap_or(rest.len())])
 }
 
-/// First `x.y.z` in a tool's `--version` output (`omp/18.18.6`, `dioxus 0.7.10 (57d6794)`, `wasm-bindgen 0.2.130`).
+/// First `x.y.z` in a tool's `--version` output (`omp/18.18.6`).
 #[must_use]
 pub fn version_in(output: &str) -> Option<String> {
     Regex::new(r"\d+\.\d+\.\d+")
@@ -170,10 +130,6 @@ pub fn observe(root: &Path) -> anyhow::Result<Observed> {
         cargo_rev,
         code_version: omfp_core::OMP_VERSION.to_owned(),
         omp_version: tool_version("omp")?,
-        wasm_bindgen_crate: cargo_package_version(&cargo_lock, "wasm-bindgen")?,
-        wasm_bindgen_cli: tool_version("wasm-bindgen")?,
-        dioxus_crate: cargo_package_version(&cargo_lock, "dioxus")?,
-        dx_cli: tool_version("dx")?,
     })
 }
 
@@ -189,14 +145,10 @@ mod tests {
             cargo_rev: "9058ab9".into(),
             code_version: "18.18.6".into(),
             omp_version: "18.18.6".into(),
-            wasm_bindgen_crate: "0.2.130".into(),
-            wasm_bindgen_cli: "0.2.130".into(),
-            dioxus_crate: "0.7.10".into(),
-            dx_cli: "0.7.11".into(),
         }
     }
 
-    // spec: ENV-010, ENV-012
+    // spec: ENV-010, ENV-011
     #[test]
     fn consistent_versions_have_no_mismatches() {
         assert_eq!(mismatches(&consistent()), Vec::<String>::new());
@@ -236,23 +188,6 @@ mod tests {
         );
     }
 
-    // spec: ENV-012
-    #[test]
-    fn wasm_bindgen_must_match_exactly_and_dioxus_by_minor() {
-        let mut observed = consistent();
-        observed.wasm_bindgen_crate = "0.2.131".into();
-        observed.dx_cli = "0.8.0".into();
-
-        let problems = mismatches(&observed);
-
-        assert_eq!(problems.len(), 2, "{problems:#?}");
-        assert!(
-            problems
-                .iter()
-                .all(|problem| problem.starts_with("ENV-012"))
-        );
-    }
-
     #[test]
     fn parses_the_flake_lock_omp_pin() {
         let lock =
@@ -265,32 +200,30 @@ mod tests {
     }
 
     #[test]
-    fn parses_cargo_lock_packages_and_git_sources() {
+    fn parses_the_cargo_lock_git_source() {
         let lock = "\
 [[package]]
-name = \"dioxus\"
-version = \"0.7.10\"
-source = \"registry+https://github.com/rust-lang/crates.io-index\"
+name = \"omfp-core\"
+version = \"0.1.0\"
 
 [[package]]
 name = \"omp-rpc\"
 version = \"0.1.0\"
 source = \"git+https://github.com/can1357/oh-my-pi?tag=v18.18.6#9058ab9d2296\"
 ";
-        assert_eq!(cargo_package_version(lock, "dioxus").unwrap(), "0.7.10");
         assert_eq!(
             cargo_omp_rpc_pin(lock).unwrap(),
             ("v18.18.6".to_owned(), "9058ab9d2296".to_owned())
         );
-        assert!(cargo_package_version(lock, "missing").is_err());
+        assert!(cargo_omp_rpc_pin("[[package]]\nname = \"omfp-core\"\n").is_err());
     }
 
     #[test]
     fn finds_the_version_in_tool_output() {
         assert_eq!(version_in("omp/18.18.6\n").as_deref(), Some("18.18.6"));
         assert_eq!(
-            version_in("dioxus 0.7.10 (57d6794)").as_deref(),
-            Some("0.7.10")
+            version_in("omp 18.18.6 (9058ab9)").as_deref(),
+            Some("18.18.6")
         );
         assert_eq!(version_in("no version here"), None);
     }

@@ -11,22 +11,17 @@ nix develop          # or: direnv allow (.envrc contains `use flake`)
 | Group | Tools |
 | --- | --- |
 | Agent | `omp` built from the pinned upstream release (`inputs.oh-my-pi`, `packages.<system>.omp`), with its `nixpkgs`, `rust-overlay` and `bun2nix` inputs following ours |
-| Rust | toolchain from `rust-toolchain.toml` via rust-overlay (1.99.1, `wasm32-unknown-unknown`, clippy, rustfmt, rust-analyzer, rust-src, llvm-tools) |
-| Dioxus | `dx` (dioxus-cli 0.7.10, with a local override adding `zstd`, see below), `wasm-bindgen-cli` 0.2.130, `binaryen` |
+| Rust | toolchain from `rust-toolchain.toml` via rust-overlay (1.99.1, `wasm32-unknown-unknown` for `just check-wasm` (ARC-010), clippy, rustfmt, rust-analyzer, rust-src, llvm-tools) |
 | Testing | `cargo-nextest`, `cargo-insta`, `cargo-llvm-cov`, `cargo-mutants`, `cargo-deny`, `bacon` |
 | TypeScript (`ui/`) | `bun` 1.4.4 (runtime, package manager, test runner), `bun2nix` 2.1.2 (patched, see below), `biome` 2.6.5 (format and lint; from nixpkgs because the npm build is a glibc binary NixOS cannot run); `typescript` 7.0.2 (native `tsc`) and `@types/bun` come from `ui/bun.lock` through `ui/bun.nix` |
 | E2E / smoke (Linux) | `chromium`, `chromedriver`, `xvfb-run` |
-| Desktop libs (Linux) | gtk3, webkitgtk 4.1, libsoup 3, glib(-networking), cairo, pango, gdk-pixbuf, atk, xdotool, openssl |
 | Utilities | `just`, `git`, `jq`, `websocat`, `nixfmt` |
 
 Environment set by the shell: `RUST_SRC_PATH`, `OMFP_BUN_CACHE` (the Bun install cache of `ui/`'s dependencies, built by
-Nix from `ui/bun.nix`); on Linux also `WEBKIT_DISABLE_DMABUF_RENDERER=1` (blank webkitgtk windows on some GPUs),
-`GIO_MODULE_DIR` (TLS in webkitgtk), `CHROME_BIN`.
+Nix from `ui/bun.nix`); on Linux also `CHROME_BIN`.
 
 Known workarounds:
 
-- nixpkgs' `dioxus-cli` 0.7.10 fails to build at the locked nixpkgs revision (`zstd-sys` cannot find `libzstd` through
-  pkg-config). The flake overrides it with `zstd` in `buildInputs`. Remove the override when nixpkgs fixes it.
 - bun2nix 2.1.2 (the `oh-my-pi/bun2nix` input) rejects Bun 1.4's `bun.lock` only because it checks
   `lockfileVersion == 1`; versions 2 and 3 parse unchanged. The flake applies the open upstream PR
   nix-community/bun2nix#110 (commit `0456acb`) with `fetchpatch`. Drop it once the PR is released and the input moves
@@ -34,9 +29,9 @@ Known workarounds:
 
 | ID | Requirement |
 | --- | --- |
-| ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time (S-05 confirmed `dx` uses the shell's wasm-bindgen). The JavaScript dependencies of `ui/` come from Nix too: `bun2nix` turns `ui/bun.lock` into `ui/bun.nix` (`just gen-bun-nix`, committed; `just check-bun-nix`, run by `just ui-install`, fails when it is stale), Nix builds Bun's install cache from it (`OMFP_BUN_CACHE`), and `just ui-install` runs `bun install --frozen-lockfile --offline` against that cache. |
+| ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time. The JavaScript dependencies of `ui/` come from Nix too: `bun2nix` turns `ui/bun.lock` into `ui/bun.nix` (`just gen-bun-nix`, committed; `just check-bun-nix`, run by `just ui-install`, fails when it is stale), Nix builds Bun's install cache from it (`OMFP_BUN_CACHE`), and `just ui-install` runs `bun install --frozen-lockfile --offline` against that cache. |
 | ENV-002 | `flake.lock` pins every input. `nixpkgs` and `rust-overlay` are updated deliberately, in their own commits, with `just ci` green. |
-| ENV-003 | Supported dev systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. Linux-only tools (desktop libs, Chromium, xvfb) are excluded on macOS. |
+| ENV-003 | Supported dev systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. Linux-only tools (Chromium, chromedriver, xvfb) are excluded on macOS. |
 
 ## Version pinning
 
@@ -49,14 +44,14 @@ exact omp version its client was built for.
 | `omp-rpc` crate | workspace `Cargo.toml` → `omp-rpc = { git = "https://github.com/can1357/oh-my-pi", tag = "v18.18.6" }` | 18.18.6 |
 | Expected version in code | `omfp_core::OMP_VERSION` (DMN-001, contract tests) | `18.18.6` |
 | Rust | `rust-toolchain.toml` | 1.99.1 |
-| `dioxus` crates | workspace `Cargo.toml`, same minor as `dx` | 0.7.x (dx 0.7.10) |
-| `wasm-bindgen` crate | workspace `Cargo.toml`, exact pin `=0.2.130`, equal to `wasm-bindgen-cli` in the shell | 0.2.130 |
 
 | ID | Requirement |
 | --- | --- |
 | ENV-010 | `cargo xtask check-versions` (part of `just ci`) MUST check that the oh-my-pi tag and commit in `flake.lock`, the `omp-rpc` tag and commit in `Cargo.lock`, `omfp_core::OMP_VERSION`, and `omp --version` all agree. |
 | ENV-011 | omp MUST be pinned to a release tag, never to `main` or an untagged commit. |
-| ENV-012 | The same check MUST verify that the `wasm-bindgen` version in `Cargo.lock` equals `wasm-bindgen --version` from the shell, and that the `dioxus` minor version equals `dx --version`'s. |
+
+ENV-012 (the `wasm-bindgen` and `dioxus` pins agree with the shell's `wasm-bindgen-cli` and `dx`) was retired in M3
+with the Dioxus UI (D-18); the ID is not reused.
 
 ## omp upgrade playbook
 

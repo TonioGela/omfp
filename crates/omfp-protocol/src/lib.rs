@@ -13,9 +13,10 @@ mod schema;
 mod topic;
 
 pub use dto::{
-    CreatedBy, DiffPage, FileChange, FileDiff, FileStatus, GitStatus, IndexSnapshot, Provenance,
-    RepoKind, RepoStatus, Repository, TerminalInfo, TerminalKind, ThreadSummary, Workspace,
-    WorkspaceRepo,
+    CreatedBy, Density, DiffPage, FileChange, FileDiff, FileStatus, FontSettings, GitStatus,
+    IndexSnapshot, KeymapEntry, KeymapMode, NotificationMode, Provenance, RepoKind, RepoStatus,
+    Repository, Settings, TerminalInfo, TerminalKind, Theme, ThreadSummary, TitleSource,
+    UiSettings, Workspace, WorkspaceRepo,
 };
 pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, ProtocolError, Request, Response, ServerFrame,
@@ -29,9 +30,10 @@ pub use params::{
     OpenTerminalParams, OpenTerminalResult, Position, PromptBehavior, PromptParams, PromptResult,
     QueueMessageParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource,
     RepositoryList, RepositoryRef, ResizeTerminalParams, RespondParams, SetModelParams,
-    SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
-    SubscribeResult, TerminalList, TerminalRef, ThreadGit, ThreadRef, ThreadWorkspace, TopicParams,
-    UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
+    SetSettingsParams, SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
+    SubscribeParams, SubscribeResult, TerminalList, TerminalRef, ThreadGit, ThreadRef,
+    ThreadWorkspace, TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams,
+    WorkspaceRef,
 };
 pub use schema::type_schemas;
 pub use topic::{Topic, TopicParseError};

@@ -104,7 +104,7 @@ export interface ClientOptions {
   readonly connector: Connector;
   /** The daemon's token; sent in `system.hello`, never in the URL (PRT-002). */
   readonly token: string;
-  /** Client name recorded as provenance (PRT-033), e.g. `omfp-ui/web`. */
+  /** Client name recorded as provenance (PRT-033), e.g. `omfp/web`. */
   readonly client: string;
   /** Default: {@link DEFAULT_BACKOFF}. */
   readonly backoff?: Backoff;

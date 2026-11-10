@@ -10,7 +10,7 @@ requirements = [
   "ARC-010", # shared crates compile for wasm (justfile check-wasm)
   "ENV-010", # omp pin agrees everywhere (xtask check-versions)
   "ENV-011", # omp pinned to a release tag
-  "ENV-012", # wasm-bindgen and dioxus agree with the shell tools
+  # ENV-012 (wasm-bindgen and dioxus agree with the shell tools) was retired in M3 with the Dioxus UI (D-18).
   "TST-013", # contract tests fail fast on the wrong omp
   "TST-020", # fake-llm developed test-first
   "TST-021", # contract tests catch stray network access
@@ -172,7 +172,7 @@ requirements = [
 ]
 
 [M3]
-status = "in-progress"
+status = "done"
 requirements = [
   # Transport, state, rendering pipeline
   "UI-001",
@@ -212,10 +212,13 @@ requirements = [
   "UI-094",
   "UI-095",
   "UI-096",
+  "UI-097",
   # Daemon additions
   "DMN-008",
+  "DMN-009",
   "DMN-073",
   "DMN-074",
+  "DMN-075",
   # Tests
   "TST-030",
   "TST-031",

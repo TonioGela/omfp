@@ -106,7 +106,7 @@ pub fn trace(
     report
 }
 
-/// Files scanned for citations: Rust and TypeScript sources and the justfile, outside `target/`, `node_modules/` and
+/// Files scanned for citations: Rust and TypeScript (`.ts`, `.tsx`) sources and the justfile, outside `target/`, `node_modules/` and
 /// hidden directories.
 fn citing_files(root: &Path) -> Vec<PathBuf> {
     walkdir::WalkDir::new(root)
@@ -125,7 +125,7 @@ fn citing_files(root: &Path) -> Vec<PathBuf> {
         .map(walkdir::DirEntry::into_path)
         .filter(|path| {
             path.extension()
-                .is_some_and(|ext| ext == "rs" || ext == "ts")
+                .is_some_and(|ext| ext == "rs" || ext == "ts" || ext == "tsx")
                 || path.file_name().is_some_and(|n| n == "justfile")
         })
         .collect()
@@ -206,11 +206,11 @@ Text mentioning ARC-001 is not a definition.
     #[test]
     fn cited_ids_accept_single_and_comma_separated_citations() {
         // `@` stands for the citation marker, so this file does not itself cite these IDs.
-        let source = "// @ TST-020\n#[test]\n// @ ENV-010, ENV-012\n# @ ARC-010\nlet s = \"spec\";"
+        let source = "// @ TST-020\n#[test]\n// @ ENV-010, ENV-011\n# @ ARC-010\nlet s = \"spec\";"
             .replace('@', "spec:");
         assert_eq!(
             cited_ids(&source),
-            ["TST-020", "ENV-010", "ENV-012", "ARC-010"]
+            ["TST-020", "ENV-010", "ENV-011", "ARC-010"]
         );
     }
 
@@ -275,6 +275,7 @@ Text mentioning ARC-001 is not a definition.
             "crates/a/src/lib.rs",
             "ui/packages/core/src/reducer.ts",
             "ui/packages/core/test/reducer.test.ts",
+            "ui/packages/app/test/widgets/threads.test.tsx",
             "ui/node_modules/typescript/lib/lib.d.ts",
             "ui/packages/core/node_modules/dep/index.ts",
             "target/debug/build.rs",
@@ -304,6 +305,7 @@ Text mentioning ARC-001 is not a definition.
             [
                 "crates/a/src/lib.rs",
                 "justfile",
+                "ui/packages/app/test/widgets/threads.test.tsx",
                 "ui/packages/core/src/reducer.ts",
                 "ui/packages/core/test/reducer.test.ts",
             ]

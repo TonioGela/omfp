@@ -6,11 +6,13 @@ into tests.
 
 ```mermaid
 flowchart LR
-  M0[M0 Foundations] --> M1[M1 Headless daemon] --> M2[M2 Web UI MVP] --> M3[M3 Tools & changes]
-  M2 --> M4[M4 Desktop]
-  M3 --> M5[M5 Subagents, tree, goal]
-  M3 --> M6[M6 Terminal]
-  M4 & M5 & M6 --> M7[M7 Hardening] --> M8[M8 Agent control]
+  M0[M0 Foundations] --> M1[M1 Headless daemon] --> M2[M2 Web UI MVP] --> M2b[M2b Workspace folders]
+  M2b --> M3[M3 TypeScript UI] --> M4[M4 Widgets]
+  M4 --> M5[M5 Tools and changes]
+  M4 --> M6[M6 Live voice]
+  M4 --> M7[M7 Desktop]
+  M5 --> M8[M8 Subagents, tree, goal]
+  M5 & M6 & M7 & M8 --> M9[M9 Hardening] --> M10[M10 Agent control]
 ```
 
 ## Spikes
@@ -19,8 +21,8 @@ flowchart LR
 | --- | --- | --- | --- |
 | S-01 | Does `omp-rpc` (tag of the pinned omp) compile for `wasm32-unknown-unknown`? If not: fork with an optional `client` feature, or vendor the generated `wire.rs` with a script that copies it from the tag. | ARC-011 | **Done (M0):** compiles as-is; `omfp-core` depends on it directly. |
 | S-02 | omp against `fake-llm`: custom `openai-completions` provider streams text and tool calls; which `config.yml` keys make a run offline and deterministic (catalog refresh, update check, title, memory, advisor); how to detect stray network access. | TST-020/021, 06 fake LLM section | **Done (M0):** text round trip works; background catalog discovery cannot be disabled, so tests run behind a deny proxy with a list of known discovery hosts (06). |
-| S-03 | Code highlighting on wasm and desktop: candidate libraries, wasm size and speed on a 5k-line file. | UI-090 | |
-| S-04 | Dioxus 0.7 desktop on NixOS in the dev shell: window opens (webkitgtk), native WebSocket client, `document::eval` bridge with xterm.js on both platforms. | UI-001, TRM-021 | |
+| S-03 | Code highlighting in the web bundle and the desktop webview: candidate libraries, bundle size and speed on a 5k-line file. | UI-090 | |
+| S-04 | Tauri 2 desktop on NixOS in the dev shell: window opens (webkitgtk), the web bundle connects to the local daemon, xterm.js works in the webview. | UI-001, TRM-021 | |
 | S-05 | `dx` 0.7.10 + nixpkgs `wasm-bindgen-cli` 0.2.130: pin `wasm-bindgen = "=0.2.130"` in the workspace and check `dx build --platform web` uses the shell's binary without downloading another. | 01 | **Done (M0):** `dx build -p omfp-ui --platform web` uses the shell's wasm-bindgen; nothing downloaded. dx 0.7.10 panics on glob `default-members`, so the workspace sets none. |
 | S-06 | Transcript virtualization in Dioxus with variable-height items, streaming at the bottom. | UI-042 | **Done (M2):** in headless Chromium 157 a 10,000-message transcript keeps 7–13 items (≈150–400 nodes) in the DOM: unmeasured items count as 120 px, measured heights come from `onresize` per item, two spacers stand for the rest. Bottom pinning holds through streaming; only user scrolling (wheel up, ArrowUp/PageUp/Home, pointer or touch drag) unpins — layout-driven scroll events must not, or the bottom is lost while streaming — and reaching the bottom pins again. The container exposes `data-pinned`. |
 | S-07 | Multi-workspace threads: `/add-dir` and `/remove-dir` over RPC (idle and busy); repo-level context files (`AGENTS.md`) and rules picked up from `--add-dir` roots when cwd is the thread home; injecting a per-thread MCP server through `<home>/.omp/mcp.json` (08). | DMN-029, DMN-030, 08 | **Done (M1):** `/add-dir` over RPC is a local command (no model turn) that adds the root live; `AGENTS.md` of every `--add-dir` root reaches the model, but only when the session is bound at launch (`--session-dir … --continue`, DMN-030); `<home>/.omp/mcp.json` is honored and its headers are sent. `/add-dir` while the thread is busy is still unverified against real omp (DMN-029). |
@@ -105,7 +107,7 @@ omp starts in the workspace with one `--add-dir` per repo and the conventions te
 `/add-dir` and `/remove-dir` while streaming, so a busy thread's root sync waits until it settles (DMN-029). Hidden
 entries are not repositories (DMN-022). The Dioxus UI got only the minimal changes; E2E-09 moves to M3.
 
-## M3 — TypeScript UI
+## M3 — TypeScript UI (done)
 
 Scope (D-18): replace the Dioxus UI and `omfp-client` with a TypeScript web app — React 19 with React Aria Components (S-11), Bun for bundling and tests, no
 Node toolchain; TypeScript protocol types generated from the JSON Schemas (AGT-007) and checked in CI; a TypeScript
@@ -123,6 +125,23 @@ Schemas by `just gen-ts`, plus the envelope and topics), `@omfp/core` (the reduc
 reducer's state after every event of every thread fixture, `fixtures/states/<version>/`, `just gen-states`) and
 `@omfp/client` (WebSocket transport, session, model; the transport suite runs against the test daemon in
 `just test-ts`). `just test` fails while the generated types or the golden states are stale.
+
+Result: `ui/packages/kit` (`@omfp/kit`: React Aria wrappers styled only by token CSS, built-in light/dark tokens in a
+cascade layer so a user theme always wins, Markdown through react-markdown without raw HTML) and `ui/packages/app`
+(`@omfp/app`): a frame (connection banner, view switcher, keymap with vim defaults and the `:` command line, safety
+net for pending interactions, notifications, live region) around one default **view** — a layout tree of
+`row`/`col`/`tabs`/`stack` in the `views.json` shape of M4 — rendered from a widget registry under error boundaries:
+`omfp:threads`, `omfp:header`, `omfp:workspace`, `omfp:chat` (`omfp:transcript`, `omfp:interactions`,
+`omfp:composer`). Widgets read state only through the SDK hooks of `ui/packages/app/src/sdk` (the seed of M4's
+`omfp/sdk`); model changes reach React as one snapshot per animation frame (UI-012). The daemon keeps the global theme
+(`theme.get`/`theme.set`, `/theme.css`, the watched `$XDG_CONFIG_HOME/omfp/theme.css`, `omfp theme set`,
+`contrib/matugen/`), the config file with the UI settings (DMN-009, UI-097), generates thread titles with one omp
+print-mode run (`omp -p --no-session --no-tools --no-title … --model @smol`, DMN-073) and defaults new threads to
+`yolo` (DMN-074); the agent renames its thread with the `set_thread_title` host tool. The `omfp` binary moved to
+`crates/omfp`; `omfp-ui` (Dioxus) and `omfp-client` are deleted with their pins (ENV-012 retired). `just build-web`
+bundles with `bun build` into `ui/packages/app/dist`; E2E-01..05, 08, 09 and journeys for the keymap and a live theme
+change pass in headless Chromium. Known gaps: the dialog focus trap's backward wrap is checked only in browsers
+(happy-dom does not wrap Shift+Tab); pull-request grouping and repositories wait for S-08.
 
 ## M4 — Widgets (agent-made UI, from 08)
 

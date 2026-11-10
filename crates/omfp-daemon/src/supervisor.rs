@@ -18,7 +18,8 @@ use omfp_core::{ProcessState, Resolution, ThreadEvent, ThreadState, validate_ask
 use omfp_protocol::InteractionResponse;
 use omp_rpc::{
     AnswersUiResponse, CancelUiResponse, ConfirmUiResponse, ExtensionUiRequest,
-    ExtensionUiResponse, PromptCommand, RpcAgentEvent, RpcNotification, ValueUiResponse,
+    ExtensionUiResponse, PromptCommand, RpcAgentEvent, RpcNotification, SetSessionNameCommand,
+    ValueUiResponse,
 };
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, watch};
@@ -32,8 +33,9 @@ use crate::event_log::EventLog;
 use crate::host_tools;
 use crate::omp::{LaunchSpec, startup_events, thread_event};
 use crate::paths::DataDir;
-use crate::store::{Thread, new_id};
+use crate::store::{Thread, TitleSource, new_id};
 use crate::threads::{ThreadError, Threads};
+use crate::titles::{self, TitleRequest};
 use crate::workspaces::{WorkspaceError, Workspaces};
 
 /// The event log of one thread: omp frames and daemon events folded by the shared reducer (ARC-006).
@@ -62,6 +64,9 @@ pub struct SupervisorConfig {
     pub live_buffer: usize,
     /// omp's user agent directory, where the user's `APPEND_SYSTEM.md` lives (DMN-030).
     pub agent_dir: Option<PathBuf>,
+    /// Generate thread titles with an omp print-mode run after the first message (DMN-073). Tests against the fake
+    /// LLM turn it off so the extra model call does not take a scripted step.
+    pub title_generation: bool,
 }
 
 impl SupervisorConfig {
@@ -76,6 +81,7 @@ impl SupervisorConfig {
             event_capacity: 2000,
             live_buffer: 4096,
             agent_dir: None,
+            title_generation: true,
         }
     }
 }
@@ -200,6 +206,10 @@ struct Actor {
     /// A root sync was asked while the agent was busy (omp refuses `/add-dir` while streaming); it runs once the
     /// session settles (DMN-029).
     roots_pending: AtomicBool,
+    /// The first message named the thread already (DMN-073).
+    titled: AtomicBool,
+    /// The running title generation, aborted when the thread is forgotten.
+    title_task: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl Actor {
@@ -219,6 +229,8 @@ impl Actor {
             watchers: AtomicUsize::new(0),
             last_activity: Mutex::new(Instant::now()),
             roots_pending: AtomicBool::new(false),
+            titled: AtomicBool::new(false),
+            title_task: Mutex::new(None),
         }
     }
 
@@ -404,18 +416,158 @@ impl Supervisor {
             let _lifecycle = actor.lifecycle.lock().await;
             self.stop_locked(&actor).await?;
         }
+        if let Some(task) = lock(&actor.title_task).take() {
+            task.abort();
+        }
         lock(&self.inner.actors).remove(id);
         Ok(())
     }
 
-    /// Sends a prompt, starting omp first when needed (DMN-070); returns at admission (PRT-030).
+    /// Sends a prompt, starting omp first when needed (DMN-070); returns at admission (PRT-030). The thread's first
+    /// message names it (DMN-073): a placeholder at once, a generated title later.
     pub async fn prompt(&self, id: &str, command: PromptCommand) -> Result<PromptAdmission> {
         let actor = self.actor(id).await?;
         let process = self.ensure_running(&actor).await?;
+        self.roots_before_prompt(&actor).await;
         actor.touch();
+        let message = command.message.clone();
         let admission = blocking(move || process.prompt(command)).await??;
         actor.touch();
+        if admission.agent_invoked {
+            self.name_from_first_message(&actor, message).await;
+        }
         Ok(admission)
+    }
+
+    /// A root change made before the prompt reaches omp first (DMN-029): a sync still pending runs now if the session
+    /// settled, and one in flight (it holds the lifecycle lock) finishes before the prompt is sent.
+    async fn roots_before_prompt(&self, actor: &Actor) {
+        if actor.roots_pending.load(Ordering::SeqCst) && actor.status().settled {
+            if let Err(error) = self.sync_roots(&actor.id).await {
+                warn!(thread = %actor.id, %error, "root sync before the prompt failed");
+            }
+        } else {
+            drop(actor.lifecycle.lock().await);
+        }
+    }
+
+    /// Gives an unnamed thread the placeholder of its first message and starts generating its title (DMN-073).
+    async fn name_from_first_message(&self, actor: &Actor, message: String) {
+        let placeholder = titles::placeholder(&message);
+        if placeholder.is_empty() || actor.titled.load(Ordering::SeqCst) {
+            return;
+        }
+        let threads = Arc::clone(&self.inner.threads);
+        let workspaces = Arc::clone(&self.inner.workspaces);
+        let id = actor.id.clone();
+        let named = blocking(move || {
+            let thread = threads.get(&id)?;
+            if thread.title_source != TitleSource::Placeholder || !thread.title.is_empty() {
+                return Ok::<_, SupervisorError>(None);
+            }
+            let cwd = workspaces.get(&thread.workspace_id)?.path;
+            threads.replace_placeholder(&id, &placeholder, TitleSource::Placeholder)?;
+            Ok(Some(cwd))
+        })
+        .await;
+        let cwd = match named {
+            Ok(Ok(Some(cwd))) => cwd,
+            Ok(Ok(None)) => return,
+            Ok(Err(error)) | Err(error) => {
+                warn!(thread = %actor.id, %error, "cannot store the placeholder title");
+                return;
+            }
+        };
+        if actor.titled.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let _ = self.inner.changes.send(actor.id.clone());
+        if self.inner.config.title_generation {
+            self.spawn_title_generation(actor, cwd, message);
+        }
+    }
+
+    /// Runs omp in print mode for the thread's title; the title replaces the placeholder unless a title was set
+    /// meanwhile, and names the omp session (DMN-073).
+    fn spawn_title_generation(&self, actor: &Actor, cwd: PathBuf, message: String) {
+        let request = TitleRequest {
+            program: self.inner.config.omp_program.clone(),
+            cwd,
+            env: self.inner.config.omp_env.clone(),
+            message,
+        };
+        let supervisor = self.clone();
+        let id = actor.id.clone();
+        let task = tokio::spawn(async move {
+            let launcher = Arc::clone(&supervisor.inner.launcher);
+            let title = match blocking(move || launcher.generate_title(&request)).await {
+                Ok(Ok(title)) => title,
+                Ok(Err(error)) => {
+                    warn!(thread = %id, %error, "title generation failed; the placeholder stays");
+                    return;
+                }
+                Err(error) => {
+                    warn!(thread = %id, %error, "title generation failed; the placeholder stays");
+                    return;
+                }
+            };
+            let threads = Arc::clone(&supervisor.inner.threads);
+            let (thread_id, generated) = (id.clone(), title.clone());
+            let stored = blocking(move || {
+                threads.replace_placeholder(&thread_id, &generated, TitleSource::Generated)
+            })
+            .await;
+            match stored {
+                Ok(Ok(true)) => {
+                    // Named first, so a client seeing the title on the index finds the session named too.
+                    supervisor.name_session(&id, title).await;
+                    let _ = supervisor.inner.changes.send(id.clone());
+                }
+                Ok(Ok(false)) => {}
+                Ok(Err(error)) => warn!(thread = %id, %error, "cannot store the generated title"),
+                Err(error) => warn!(thread = %id, %error, "cannot store the generated title"),
+            }
+        });
+        *lock(&actor.title_task) = Some(task);
+    }
+
+    /// Waits until the thread's title generation, if any, is over.
+    #[cfg(test)]
+    async fn title_generated(&self, id: &str) {
+        let task = self
+            .lookup(id)
+            .and_then(|actor| lock(&actor.title_task).take());
+        if let Some(task) = task {
+            let _ = task.await;
+        }
+    }
+
+    /// Sets the thread's title and names its omp session after it (DMN-073). A [`TitleSource::Set`] title is never
+    /// replaced by a generated one.
+    pub async fn set_title(&self, id: &str, title: String, source: TitleSource) -> Result<Thread> {
+        let threads = Arc::clone(&self.inner.threads);
+        let (thread_id, stored) = (id.to_owned(), title.clone());
+        let thread = blocking(move || threads.rename(&thread_id, &stored, source)).await??;
+        self.name_session(id, title).await;
+        let _ = self.inner.changes.send(id.to_owned());
+        Ok(thread)
+    }
+
+    /// Sends `set_session_name` to the thread's omp when it runs (omp rejects an empty name); a stopped thread's
+    /// session keeps its name until the next title change.
+    async fn name_session(&self, id: &str, name: String) {
+        let Some(process) = self.lookup(id).and_then(|actor| actor.process()) else {
+            return;
+        };
+        if name.trim().is_empty() {
+            return;
+        }
+        let call = OmpCall::SetSessionName(SetSessionNameCommand { name });
+        match blocking(move || process.call(call)).await {
+            Ok(Ok(_)) => {}
+            Ok(Err(error)) => warn!(thread = %id, %error, "cannot name the omp session"),
+            Err(error) => warn!(thread = %id, %error, "cannot name the omp session"),
+        }
     }
 
     /// Forwards an omp command, starting omp first when needed (DMN-070). Commands do not wait for each other
@@ -487,10 +639,13 @@ impl Supervisor {
 
     /// Brings the live process's roots in line with the repositories discovered in its workspace (DMN-029):
     /// `/add-dir` for new ones, `/remove-dir` for roots that disappeared, through `prompt` (local commands). omp
-    /// refuses them while the agent streams, so a busy thread syncs once its session settles. A stopped thread needs
-    /// nothing: its next launch passes the roots.
+    /// refuses them while the agent streams, so a busy thread syncs once its session settles. A process still starting
+    /// is waited for (it holds the lifecycle lock), since its flags come from a scan made before. A stopped thread
+    /// needs nothing: its next launch passes the roots.
     pub async fn sync_roots(&self, id: &str) -> Result<()> {
-        let actor = self.actor(id).await?;
+        let Some(actor) = self.lookup(id) else {
+            return Ok(());
+        };
         let _lifecycle = actor.lifecycle.lock().await;
         let Some(process) = actor.process() else {
             actor.roots_pending.store(false, Ordering::SeqCst);
@@ -761,6 +916,7 @@ impl Supervisor {
             Arc::new(move |event| {
                 log.push(event);
             }),
+            self.title_setter(&actor.id),
         );
         let launcher = Arc::clone(&self.inner.launcher);
         let launch_spec = spec.clone();
@@ -809,6 +965,27 @@ impl Supervisor {
             warn!(thread = %actor.id, %error, "cannot remove stale roots");
         }
         Ok(process)
+    }
+
+    /// What the thread's `set_thread_title` host tool calls (DMN-060): stores a set title, refreshes the index and
+    /// names the omp session. It runs on an `omp-rpc` handler thread, so the store call blocks there and the session
+    /// rename goes to the runtime; it holds the supervisor weakly (the tools live as long as the process it owns).
+    fn title_setter(&self, id: &str) -> host_tools::SetTitle {
+        let inner = Arc::downgrade(&self.inner);
+        let runtime = tokio::runtime::Handle::current();
+        let id = id.to_owned();
+        Arc::new(move |title: &str| {
+            let inner = Weak::upgrade(&inner).ok_or("the daemon is shutting down")?;
+            inner
+                .threads
+                .rename(&id, title, TitleSource::Set)
+                .map_err(|error| error.to_string())?;
+            let _ = inner.changes.send(id.clone());
+            let supervisor = Self { inner };
+            let (id, title) = (id.clone(), title.to_owned());
+            runtime.spawn(async move { supervisor.name_session(&id, title).await });
+            Ok(())
+        })
     }
 
     fn fail(&self, actor: &Actor, message: String, stderr_tail: String) {

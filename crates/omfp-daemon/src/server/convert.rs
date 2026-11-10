@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use omfp_protocol::{
     CreatedBy, DiffPage, ErrorBody, ErrorCode, FileChange, FileDiff, FileStatus, GitStatus,
-    Provenance, RepoKind, Repository, ThreadSummary, Workspace, WorkspaceRepo,
+    Provenance, RepoKind, Repository, ThreadSummary, TitleSource, Workspace, WorkspaceRepo,
 };
 use serde_json::json;
 
@@ -178,6 +178,11 @@ pub(crate) fn thread_summary(
     ThreadSummary {
         id: thread.id.clone(),
         title: thread.title.clone(),
+        title_source: match thread.title_source {
+            store::TitleSource::Placeholder => TitleSource::Placeholder,
+            store::TitleSource::Generated => TitleSource::Generated,
+            store::TitleSource::Set => TitleSource::Set,
+        },
         tags: thread.tags.clone(),
         workspace_id: thread.workspace_id.clone(),
         process: status.process,

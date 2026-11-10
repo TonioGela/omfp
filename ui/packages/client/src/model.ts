@@ -19,13 +19,15 @@ import {
   parseTopic,
   type RepoStatus,
   type Repository,
+  type Settings,
   type SubscribeParams,
   type SubscribeResult,
+  type Theme,
   type ThreadSummary,
   type Topic,
   type Workspace,
 } from "@omfp/protocol";
-import { decodeIndexSnapshot, decodeRepoStatusList, decodeThreadState } from "./decode.ts";
+import { decodeIndexSnapshot, decodeRepoStatusList, decodeThreadState, NO_SETTINGS, NO_THEME } from "./decode.ts";
 import { jsonEqual } from "./json.ts";
 
 /** Closed interactions kept per thread (newest last). */
@@ -47,11 +49,14 @@ export type ConnectionStatus =
   | { kind: "closed" };
 
 /** The `index` topic: repositories, workspaces and thread summaries keyed by id, in id order (ids are ULIDs, so this
- * is creation order). */
+ * is creation order), the user's theme (DMN-075; `{ css: null }` until the daemon sends one) and the UI settings of
+ * the daemon's config file (DMN-009, UI-097; `{ ui: {}, keymap: [], error: null }` until the daemon sends them). */
 export interface Index {
   readonly repositories: ReadonlyMap<string, Repository>;
   readonly workspaces: ReadonlyMap<string, Workspace>;
   readonly threads: ReadonlyMap<string, ThreadSummary>;
+  readonly theme: Theme;
+  readonly settings: Settings;
 }
 
 /** A pending dialog request of a thread. */
@@ -146,7 +151,13 @@ export interface ModelView {
   readonly revision: number;
 }
 
-const EMPTY_INDEX: Index = { repositories: new Map(), workspaces: new Map(), threads: new Map() };
+const EMPTY_INDEX: Index = {
+  repositories: new Map(),
+  workspaces: new Map(),
+  threads: new Map(),
+  theme: NO_THEME,
+  settings: NO_SETTINGS,
+};
 
 function byId<T extends { id: string }>(items: readonly T[]): Map<string, T> {
   return new Map([...items].sort((a, b) => compareIds(a.id, b.id)).map((item) => [item.id, item]));
@@ -187,6 +198,8 @@ function indexFromSnapshot(snapshot: IndexSnapshot): Index {
     repositories: byId(snapshot.repositories),
     workspaces: byId(snapshot.workspaces),
     threads: byId(snapshot.threads),
+    theme: snapshot.theme,
+    settings: snapshot.settings,
   };
 }
 
@@ -204,6 +217,10 @@ function applyIndexEvent(index: Index, event: IndexEvent): Index {
       return { ...index, threads: upsert(index.threads, event.thread.id, event.thread) };
     case "thread_removed":
       return { ...index, threads: without(index.threads, event.threadId) };
+    case "theme_changed":
+      return { ...index, theme: event.theme };
+    case "settings_changed":
+      return { ...index, settings: event.settings };
   }
 }
 
@@ -476,6 +493,8 @@ export class Model implements ModelView {
       case "workspace_removed":
       case "thread_upserted":
       case "thread_removed":
+      case "theme_changed":
+      case "settings_changed":
         if (parsed?.kind === "index") {
           this.#index = applyIndexEvent(this.#index, event);
           this.#dirty.index = true;

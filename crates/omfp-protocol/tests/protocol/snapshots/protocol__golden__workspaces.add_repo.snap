@@ -26,7 +26,7 @@ expression: golden
       "owned": true,
       "path": "/home/dev/omfp/workspaces/checkout-v2",
       "provenance": {
-        "client": "omfp-ui/web",
+        "client": "omfp/web",
         "createdBy": {
           "kind": "user"
         }

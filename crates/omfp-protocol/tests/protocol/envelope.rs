@@ -9,7 +9,7 @@ use omfp_protocol::{
 };
 use serde_json::{Value, json};
 
-use crate::samples::{THREAD_ID, WORKSPACE_ID, repo_statuses, thread};
+use crate::samples::{THREAD_ID, WORKSPACE_ID, repo_statuses, settings, theme, thread};
 
 fn round_trip(frame: &ServerFrame) -> Value {
     let text = serde_json::to_string(frame).expect("frame serializes");
@@ -133,6 +133,37 @@ fn index_event_frame() {
     assert_eq!(
         round_trip(&removed)["event"],
         json!({ "kind": "workspace_removed", "workspaceId": WORKSPACE_ID })
+    );
+}
+
+// spec: DMN-009, UI-097
+#[test]
+fn the_index_topic_carries_settings_changes() {
+    let changed = ServerFrame::Event(EventFrame {
+        topic: Topic::Index,
+        epoch: "e1".to_owned(),
+        seq: 6,
+        event: TopicEvent::Index(IndexEvent::SettingsChanged {
+            settings: settings(),
+        }),
+    });
+    let event = &round_trip(&changed)["event"];
+    assert_eq!(event["kind"], "settings_changed");
+    assert_eq!(event["settings"]["keymap"][0]["keys"], "Space t");
+}
+
+// spec: DMN-075
+#[test]
+fn the_index_topic_carries_theme_changes() {
+    let changed = ServerFrame::Event(EventFrame {
+        topic: Topic::Index,
+        epoch: "e1".to_owned(),
+        seq: 5,
+        event: TopicEvent::Index(IndexEvent::ThemeChanged { theme: theme() }),
+    });
+    assert_eq!(
+        round_trip(&changed)["event"],
+        json!({ "kind": "theme_changed", "theme": { "css": ":root { --omfp-primary: #6750a4; }" } })
     );
 }
 

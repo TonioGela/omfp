@@ -90,10 +90,44 @@ pub struct Workspace {
     pub created_at: i64,
 }
 
+/// Where a thread's title comes from (DMN-073).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TitleSource {
+    /// The first words of the first message, or empty before it; replaced by a generated title.
+    Placeholder,
+    /// Generated from the conversation by the daemon.
+    Generated,
+    /// Set by the user or an agent; never replaced by a generated title.
+    Set,
+}
+
+impl TitleSource {
+    /// Stored form: `placeholder`, `generated` or `set`.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Placeholder => "placeholder",
+            Self::Generated => "generated",
+            Self::Set => "set",
+        }
+    }
+
+    /// The stored form back; anything unknown counts as `set`, the source that is never overwritten.
+    #[must_use]
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "placeholder" => Self::Placeholder,
+            "generated" => Self::Generated,
+            _ => Self::Set,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Thread {
     pub id: String,
     pub title: String,
+    pub title_source: TitleSource,
     /// The workspace the thread lives in: its omp cwd (DMN-029).
     pub workspace_id: String,
     pub session_dir: PathBuf,
@@ -139,7 +173,9 @@ pub struct Store {
 const REPOSITORY_COLUMNS: &str = "id, name, path, default_base_ref, remote_url, created_at";
 const WORKSPACE_COLUMNS: &str = "id, name, path, owned, created_by, created_at";
 const THREAD_COLUMNS: &str = "id, title, workspace_id, session_dir, omp_session_id, approval_mode, model, \
-     thinking_level, created_by, created_at, archived_at";
+     thinking_level, created_by, created_at, archived_at, title_source";
+/// The `settings` key of the user's theme CSS (DMN-075): a JSON string, or `null`.
+const THEME_SETTING: &str = "theme";
 
 impl Store {
     /// Opens (creating if needed) the database at `path`, enables WAL and foreign keys (DMN-011) and applies pending
@@ -362,8 +398,46 @@ impl Store {
             .collect()
     }
 
-    pub fn set_thread_title(&self, id: &str, title: &str) -> Result<()> {
-        self.update_thread(id, "UPDATE threads SET title = ?2 WHERE id = ?1", title)
+    pub fn set_thread_title(&self, id: &str, title: &str, source: TitleSource) -> Result<()> {
+        if self.conn().execute(
+            "UPDATE threads SET title = ?2, title_source = ?3 WHERE id = ?1",
+            params![id, title, source.as_str()],
+        )? == 0
+        {
+            return Err(not_found("thread", id));
+        }
+        Ok(())
+    }
+
+    /// Sets the title only while the thread's title is a placeholder; returns whether it did. A title set meanwhile
+    /// is never replaced (DMN-073).
+    pub fn replace_placeholder_title(
+        &self,
+        id: &str,
+        title: &str,
+        source: TitleSource,
+    ) -> Result<bool> {
+        let changed = self.conn().execute(
+            "UPDATE threads SET title = ?2, title_source = ?3 WHERE id = ?1 AND title_source = 'placeholder'",
+            params![id, title, source.as_str()],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// The setting `key` as a string; `None` when unset or `null`.
+    fn string_setting(&self, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .setting(key)?
+            .and_then(|value| value.as_str().map(str::to_owned)))
+    }
+
+    /// The user's theme CSS (DMN-075).
+    pub fn theme(&self) -> Result<Option<String>> {
+        self.string_setting(THEME_SETTING)
+    }
+
+    pub fn set_theme(&self, css: Option<&str>) -> Result<()> {
+        self.set_setting(THEME_SETTING, &serde_json::json!(css))
     }
 
     pub fn set_thread_archived_at(&self, id: &str, archived_at: Option<i64>) -> Result<()> {
@@ -391,6 +465,14 @@ impl Store {
             id,
             "UPDATE threads SET thinking_level = ?2 WHERE id = ?1",
             level,
+        )
+    }
+
+    pub fn set_thread_approval_mode(&self, id: &str, mode: &str) -> Result<()> {
+        self.update_thread(
+            id,
+            "UPDATE threads SET approval_mode = ?2 WHERE id = ?1",
+            mode,
         )
     }
 
@@ -567,8 +649,8 @@ fn insert_workspace(conn: &Connection, ws: &Workspace, client: Option<&str>) -> 
 fn insert_thread(conn: &Connection, thread: &Thread) -> Result<()> {
     conn.execute(
         "INSERT INTO threads (id, title, workspace_id, session_dir, omp_session_id, approval_mode, model,
-             thinking_level, created_by, created_at, archived_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             thinking_level, created_by, created_at, archived_at, title_source)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             thread.id,
             thread.title,
@@ -580,7 +662,8 @@ fn insert_thread(conn: &Connection, thread: &Thread) -> Result<()> {
             thread.thinking_level,
             thread.created_by.as_str(),
             thread.created_at,
-            thread.archived_at
+            thread.archived_at,
+            thread.title_source.as_str()
         ],
     )
     .map_err(|error| unique_conflict(error, &format!("thread {} exists", thread.id)))?;
@@ -648,6 +731,7 @@ fn thread_from_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
         created_by: Provenance::parse(&row.get::<_, String>(8)?),
         created_at: row.get(9)?,
         archived_at: row.get(10)?,
+        title_source: TitleSource::parse(&row.get::<_, String>(11)?),
         tags: Vec::new(),
     })
 }

@@ -58,7 +58,7 @@ describe("method table", () => {
     expect(METHODS).toContain("system.hello");
     expect(METHODS).toContain("thread.prompt");
 
-    const hello: ParamsOf<"system.hello"> = { token: "t", client: "omfp-ui/test", protocol: PROTOCOL_VERSION };
+    const hello: ParamsOf<"system.hello"> = { token: "t", client: "omfp/test", protocol: PROTOCOL_VERSION };
     const frame = request("1", "system.hello", hello);
     expect(frame).toEqual({ type: "request", id: "1", method: "system.hello", params: hello });
 

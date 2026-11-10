@@ -256,8 +256,8 @@ fn a_stale_daemon_json_is_not_discovered() {
 async fn two_clients_drive_one_omp_process_and_see_the_same_thread() {
     let daemon = daemon(&[]).await;
     daemon.launcher.push_run(fixture("text_reply"));
-    let mut web = daemon.client("omfp-ui/web").await;
-    let mut desktop = daemon.client("omfp-ui/desktop").await;
+    let mut web = daemon.client("omfp/web").await;
+    let mut desktop = daemon.client("omfp/desktop").await;
     let thread = create_thread(&mut web).await;
     let mut web_view = Follower::snapshot(&mut web, &thread, None).await;
     let mut desktop_view = Follower::snapshot(&mut desktop, &thread, None).await;
@@ -453,7 +453,7 @@ async fn created_entities_record_the_creating_client() {
     let expected = json!({ "createdBy": { "kind": "user" }, "client": "script/nightly" });
     assert_eq!(workspace["provenance"], expected);
     assert_eq!(thread["provenance"], expected);
-    let mut ui = daemon.client("omfp-ui/web").await;
+    let mut ui = daemon.client("omfp/web").await;
     let index = ui.ok("subscribe", json!({ "topic": "index" })).await;
     assert_eq!(index["state"]["threads"][0]["provenance"], expected);
     assert_eq!(index["state"]["workspaces"][0]["provenance"], expected);
@@ -744,4 +744,393 @@ async fn the_web_ui_is_served_from_the_static_directory() {
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains("text/html"));
     assert!(response.ends_with("<main>omfp</main>"));
+}
+
+/// The raw HTTP/1.1 response to `GET path`, without credentials.
+async fn http_get(daemon: &TestDaemon, path: &str) -> String {
+    let mut stream = tokio::net::TcpStream::connect(daemon.handle.addr())
+        .await
+        .unwrap();
+    let request = format!("GET {path} HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n");
+    tokio::io::AsyncWriteExt::write_all(&mut stream, request.as_bytes())
+        .await
+        .unwrap();
+    let mut response = String::new();
+    tokio::io::AsyncReadExt::read_to_string(&mut stream, &mut response)
+        .await
+        .unwrap();
+    response
+}
+
+/// The body of `GET /theme.css`, after checking its headers.
+async fn theme_css(daemon: &TestDaemon) -> String {
+    let response = http_get(daemon, "/theme.css").await;
+    let (head, body) = response.split_once("\r\n\r\n").unwrap();
+    let head = head.to_lowercase();
+    assert!(head.starts_with("http/1.1 200"), "{response}");
+    assert!(head.contains("content-type: text/css"), "{head}");
+    assert!(head.contains("cache-control: no-store"), "{head}");
+    body.to_owned()
+}
+
+/// The theme of the next `theme_changed` on the index.
+async fn next_theme(client: &mut Client) -> Value {
+    loop {
+        let event = client.event("index").await;
+        if event["event"]["kind"] == "theme_changed" {
+            return event["event"]["theme"].clone();
+        }
+    }
+}
+
+// spec: DMN-075
+#[tokio::test(flavor = "multi_thread")]
+async fn a_theme_set_by_one_client_reaches_every_client_and_theme_css() {
+    let daemon = daemon(&[]).await;
+    let mut web = daemon.client("omfp/web").await;
+    let mut desktop = daemon.client("omfp/desktop").await;
+    let index = desktop.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(index["state"]["theme"], json!({ "css": null }));
+    assert_eq!(theme_css(&daemon).await, "");
+    let css = ":root { --omfp-primary: #6750a4; }";
+
+    assert_eq!(web.ok("theme.set", json!({ "css": css })).await, json!({}));
+
+    assert_eq!(next_theme(&mut desktop).await, json!({ "css": css }));
+    assert_eq!(web.ok("theme.get", json!({})).await, json!({ "css": css }));
+    assert_eq!(theme_css(&daemon).await, css);
+    let error = web
+        .call(
+            "theme.set",
+            json!({ "css": "a".repeat(omfp_daemon::theme::MAX_THEME_BYTES + 1) }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "bad_request");
+    assert_eq!(
+        theme_css(&daemon).await,
+        css,
+        "a refused theme changes nothing"
+    );
+
+    web.ok("theme.set", json!({ "css": null })).await;
+    assert_eq!(next_theme(&mut desktop).await, json!({ "css": null }));
+    assert_eq!(theme_css(&daemon).await, "");
+}
+
+// spec: DMN-075
+#[tokio::test(flavor = "multi_thread")]
+async fn the_theme_file_is_read_at_startup_and_its_changes_are_pushed() {
+    let config = tempfile::tempdir().unwrap();
+    let file = config.path().join("theme.css");
+    std::fs::write(&file, "body { color: red; }").unwrap();
+    let daemon = daemon(&["--theme-file", file.to_str().unwrap()]).await;
+    let mut client = daemon.client("test").await;
+    let index = client.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(
+        index["state"]["theme"],
+        json!({ "css": "body { color: red; }" })
+    );
+
+    std::fs::write(&file, "body { color: blue; }").unwrap();
+    assert_eq!(
+        next_theme(&mut client).await,
+        json!({ "css": "body { color: blue; }" })
+    );
+    // The last change wins, from the method or from the file.
+    client.ok("theme.set", json!({ "css": "body {}" })).await;
+    assert_eq!(next_theme(&mut client).await, json!({ "css": "body {}" }));
+    std::fs::write(&file, "body { color: green; }").unwrap();
+    assert_eq!(
+        next_theme(&mut client).await,
+        json!({ "css": "body { color: green; }" })
+    );
+    assert_eq!(theme_css(&daemon).await, "body { color: green; }");
+}
+
+// spec: DMN-073
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_created_without_a_title_is_named_from_its_first_message() {
+    let daemon = daemon(&[]).await;
+    daemon.launcher.push_run(fixture("text_reply"));
+    daemon.launcher.push_title(Ok("Greeting the room"));
+    let titles = daemon.launcher.gate_titles();
+    let mut client = daemon.client("omfp/web").await;
+    client.ok("subscribe", json!({ "topic": "index" })).await;
+
+    let thread = client
+        .ok(
+            "threads.create",
+            json!({ "prompt": "say hi to everyone in the room please" }),
+        )
+        .await;
+
+    assert_eq!(
+        (&thread["title"], &thread["titleSource"]),
+        (&json!("say hi to everyone in the…"), &json!("placeholder"))
+    );
+    let id = thread["id"].as_str().unwrap().to_owned();
+    let workspace = client
+        .ok(
+            "workspaces.rescan",
+            json!({ "workspaceId": thread["workspaceId"] }),
+        )
+        .await;
+    assert_eq!(workspace["name"], "say hi to everyone in the");
+    titles.open();
+    loop {
+        let summary = next_upsert(&mut client, &id).await;
+        if summary["titleSource"] == "generated" {
+            assert_eq!(summary["title"], "Greeting the room");
+            break;
+        }
+    }
+    let renamed = client
+        .ok("threads.update", json!({ "threadId": id, "title": "Mine" }))
+        .await;
+    assert_eq!(
+        (&renamed["title"], &renamed["titleSource"]),
+        (&json!("Mine"), &json!("set"))
+    );
+    let created = client
+        .ok(
+            "threads.create",
+            json!({ "title": "Given", "prompt": "hello" }),
+        )
+        .await;
+    assert_eq!(created["titleSource"], "set");
+    assert_eq!(daemon.launcher.title_requests().len(), 1);
+}
+
+// spec: DMN-074
+#[tokio::test(flavor = "multi_thread")]
+async fn new_threads_run_in_yolo_mode_until_another_mode_is_set() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let thread = create_thread(&mut client).await;
+
+    client
+        .ok("thread.state", json!({ "threadId": thread }))
+        .await;
+    client
+        .ok(
+            "threads.update",
+            json!({ "threadId": thread, "approvalMode": "always-ask" }),
+        )
+        .await;
+    client
+        .ok("thread.restart", json!({ "threadId": thread }))
+        .await;
+
+    let modes: Vec<Option<String>> = daemon
+        .launcher
+        .launches()
+        .into_iter()
+        .map(|launch| launch.spec.approval_mode)
+        .collect();
+    assert_eq!(
+        modes,
+        [Some("yolo".to_owned()), Some("always-ask".to_owned())]
+    );
+}
+
+// spec: DMN-029
+#[tokio::test(flavor = "multi_thread")]
+async fn a_repository_linked_while_omp_starts_is_a_root_before_the_next_prompt() {
+    let daemon = daemon(&[]).await;
+    let launches = daemon.launcher.gate_launches();
+    let mut client = daemon.client("test").await;
+    let thread = client
+        .ok("threads.create", json!({ "title": "racing" }))
+        .await;
+    let (id, workspace_id) = (thread["id"].clone(), thread["workspaceId"].clone());
+    let index = client.ok("subscribe", json!({ "topic": "index" })).await;
+    let folder = index["state"]["workspaces"][0]["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut starter = daemon.client("starter").await;
+    let starting = tokio::spawn({
+        let id = id.clone();
+        async move { starter.ok("thread.state", json!({ "threadId": id })).await }
+    });
+    // omp's flags come from a scan made before the link exists.
+    launches.arrived(1).await;
+    let link = Path::new(&folder).join("shop");
+    std::os::unix::fs::symlink(daemon.external_repo("shop"), &link).unwrap();
+    let mut linker = daemon.client("linker").await;
+    let rescanning = tokio::spawn({
+        let workspace_id = workspace_id.clone();
+        async move {
+            linker
+                .ok("workspaces.rescan", json!({ "workspaceId": workspace_id }))
+                .await
+        }
+    });
+    // The rescan publishes the link, then syncs the roots of the thread whose omp still starts; then omp comes up.
+    loop {
+        let workspace = next_workspace(&mut client, &workspace_id).await;
+        if workspace["repos"][0]["path"] == json!(link) {
+            break;
+        }
+    }
+    launches.open();
+    starting.await.unwrap();
+    rescanning.await.unwrap();
+    let link = link.display().to_string();
+
+    client
+        .ok("thread.prompt", json!({ "threadId": id, "text": "hello" }))
+        .await;
+
+    let prompts: Vec<String> = daemon
+        .launcher
+        .process(0)
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            omfp_daemon::agent::FakeCall::Prompt(prompt) => Some(prompt.message),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(prompts, [format!("/add-dir {link}"), "hello".to_owned()]);
+}
+
+/// The settings of the next `settings_changed` on the index.
+async fn next_settings(client: &mut Client) -> Value {
+    loop {
+        let event = client.event("index").await;
+        if event["event"]["kind"] == "settings_changed" {
+            return event["event"]["settings"].clone();
+        }
+    }
+}
+
+// spec: DMN-009, UI-097
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_come_from_the_config_file_and_settings_set_writes_it_back() {
+    let config = tempfile::tempdir().unwrap();
+    let file = config.path().join("config.toml");
+    std::fs::write(
+        &file,
+        "# Mine.\n[ui]\ndensity = \"normal\" # roomy\n\n[keymap]\n\"Space t\" = \"theme.set\"\n",
+    )
+    .unwrap();
+    let daemon = daemon(&["--config", file.to_str().unwrap()]).await;
+    let mut web = daemon.client("omfp/web").await;
+    let mut desktop = daemon.client("omfp/desktop").await;
+    let index = desktop.ok("subscribe", json!({ "topic": "index" })).await;
+    let expected = json!({
+        "ui": { "density": "normal" },
+        "keymap": [{ "mode": "normal", "keys": "Space t", "command": "theme.set" }],
+        "error": null
+    });
+    assert_eq!(index["state"]["settings"], expected);
+    assert_eq!(web.ok("settings.get", json!({})).await, expected);
+
+    let set = web
+        .ok(
+            "settings.set",
+            json!({
+                "ui": { "density": "compact", "fonts": { "code": "Iosevka, monospace" } },
+                "keymap": [{ "mode": "insert", "keys": "Ctrl-j", "command": "nav.next" }]
+            }),
+        )
+        .await;
+
+    let expected = json!({
+        "ui": { "density": "compact", "fonts": { "code": "Iosevka, monospace" } },
+        "keymap": [
+            { "mode": "normal", "keys": "Space t", "command": "theme.set" },
+            { "mode": "insert", "keys": "Ctrl-j", "command": "nav.next" }
+        ],
+        "error": null
+    });
+    assert_eq!(set, expected);
+    assert_eq!(next_settings(&mut desktop).await, expected);
+    let text = std::fs::read_to_string(&file).unwrap();
+    assert!(
+        text.starts_with("# Mine.\n[ui]\ndensity = \"compact\" # roomy\n"),
+        "{text}"
+    );
+    assert!(
+        text.contains("[keymap.insert]\nCtrl-j = \"nav.next\""),
+        "{text}"
+    );
+    let error = web
+        .call(
+            "settings.set",
+            json!({ "keymap": [{ "mode": "normal", "keys": "", "command": "x" }] }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "bad_request");
+}
+
+// spec: DMN-009, UI-097
+#[tokio::test(flavor = "multi_thread")]
+async fn config_file_changes_reach_every_window_and_an_invalid_file_keeps_the_settings() {
+    let config = tempfile::tempdir().unwrap();
+    let file = config.path().join("config.toml");
+    let daemon = daemon(&["--config", file.to_str().unwrap()]).await;
+    let mut client = daemon.client("test").await;
+    let index = client.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(
+        index["state"]["settings"],
+        json!({ "ui": {}, "keymap": [], "error": null }),
+        "no file yet: the defaults"
+    );
+
+    std::fs::write(&file, "[ui]\nnotifications = \"never\"\n").unwrap();
+    assert_eq!(
+        next_settings(&mut client).await,
+        json!({ "ui": { "notifications": "never" }, "keymap": [], "error": null })
+    );
+    std::fs::write(&file, "[ui]\nnotifications = \"sometimes\"\n").unwrap();
+    let broken = next_settings(&mut client).await;
+    assert_eq!(
+        broken["ui"],
+        json!({ "notifications": "never" }),
+        "the previous settings stay"
+    );
+    let error = broken["error"].as_str().unwrap();
+    assert!(
+        error.contains("sometimes") && error.contains("config.toml"),
+        "{error}"
+    );
+    // `[daemon]` changes are not applied live (the log asks for a restart); `[ui]` ones are.
+    std::fs::write(
+        &file,
+        "[daemon]\nmax_processes = 2\n\n[ui]\ndensity = \"normal\"\n",
+    )
+    .unwrap();
+    assert_eq!(
+        next_settings(&mut client).await,
+        json!({ "ui": { "density": "normal" }, "keymap": [], "error": null })
+    );
+}
+
+// spec: DMN-009
+#[tokio::test(flavor = "multi_thread")]
+async fn without_a_config_file_settings_live_in_memory() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    client
+        .ok("settings.set", json!({ "ui": { "density": "normal" } }))
+        .await;
+    let set = client
+        .ok(
+            "settings.set",
+            json!({ "keymap": [{ "mode": "cmdline", "keys": "Ctrl-p", "command": "" }] }),
+        )
+        .await;
+    assert_eq!(
+        set,
+        json!({
+            "ui": { "density": "normal" },
+            "keymap": [{ "mode": "cmdline", "keys": "Ctrl-p", "command": "" }],
+            "error": null
+        })
+    );
+    assert_eq!(client.ok("settings.get", json!({})).await, set);
 }

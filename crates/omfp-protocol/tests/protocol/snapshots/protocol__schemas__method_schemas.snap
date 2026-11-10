@@ -228,6 +228,459 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "settings.get": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "Density": {
+          "description": "Row height and spacing of the UI.",
+          "enum": [
+            "compact",
+            "normal"
+          ],
+          "type": "string"
+        },
+        "FontSettings": {
+          "description": "CSS `font-family` values overriding the font tokens; absent ones keep the theme's.",
+          "properties": {
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "prose": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ui": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "KeymapEntry": {
+          "description": "One key binding of the config file's `[keymap]` (UI-097).",
+          "properties": {
+            "command": {
+              "description": "Command id; `\"\"` removes the default binding of `keys`.",
+              "type": "string"
+            },
+            "keys": {
+              "description": "Key sequence, e.g. `g g`, `Ctrl-d`, `Space n`.",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/KeymapMode"
+            }
+          },
+          "required": [
+            "mode",
+            "keys",
+            "command"
+          ],
+          "type": "object"
+        },
+        "KeymapMode": {
+          "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+          "enum": [
+            "normal",
+            "insert",
+            "cmdline"
+          ],
+          "type": "string"
+        },
+        "NotificationMode": {
+          "description": "When the UI shows system notifications (UI-096).",
+          "oneOf": [
+            {
+              "enum": [
+                "always",
+                "never"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "background",
+              "description": "Only while the window has no focus (default).",
+              "type": "string"
+            }
+          ]
+        },
+        "UiSettings": {
+          "description": "The `[ui]` table of the config file; an absent value is the default (UI-097).",
+          "properties": {
+            "density": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Density"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fonts": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FontSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "notifications": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NotificationMode"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097).",
+      "properties": {
+        "error": {
+          "description": "Why the last reload of the config file failed (the previous settings stay); `null` when it is valid.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keymap": {
+          "description": "Bindings over the defaults, in file order; `command: \"\"` removes a default binding.",
+          "items": {
+            "$ref": "#/$defs/KeymapEntry"
+          },
+          "type": "array"
+        },
+        "ui": {
+          "$ref": "#/$defs/UiSettings"
+        }
+      },
+      "required": [
+        "ui",
+        "keymap",
+        "error"
+      ],
+      "title": "Settings",
+      "type": "object"
+    }
+  },
+  "settings.set": {
+    "params": {
+      "$defs": {
+        "Density": {
+          "description": "Row height and spacing of the UI.",
+          "enum": [
+            "compact",
+            "normal"
+          ],
+          "type": "string"
+        },
+        "FontSettings": {
+          "description": "CSS `font-family` values overriding the font tokens; absent ones keep the theme's.",
+          "properties": {
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "prose": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ui": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "KeymapEntry": {
+          "description": "One key binding of the config file's `[keymap]` (UI-097).",
+          "properties": {
+            "command": {
+              "description": "Command id; `\"\"` removes the default binding of `keys`.",
+              "type": "string"
+            },
+            "keys": {
+              "description": "Key sequence, e.g. `g g`, `Ctrl-d`, `Space n`.",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/KeymapMode"
+            }
+          },
+          "required": [
+            "mode",
+            "keys",
+            "command"
+          ],
+          "type": "object"
+        },
+        "KeymapMode": {
+          "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+          "enum": [
+            "normal",
+            "insert",
+            "cmdline"
+          ],
+          "type": "string"
+        },
+        "NotificationMode": {
+          "description": "When the UI shows system notifications (UI-096).",
+          "oneOf": [
+            {
+              "enum": [
+                "always",
+                "never"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "background",
+              "description": "Only while the window has no focus (default).",
+              "type": "string"
+            }
+          ]
+        },
+        "UiSettings": {
+          "description": "The `[ui]` table of the config file; an absent value is the default (UI-097).",
+          "properties": {
+            "density": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Density"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fonts": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FontSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "notifications": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NotificationMode"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`settings.set` params: values merged into the config file (DMN-009); absent ones are unchanged.",
+      "properties": {
+        "keymap": {
+          "description": "Bindings replacing the ones with the same mode and keys (`command: \"\"` unbinds the default).",
+          "items": {
+            "$ref": "#/$defs/KeymapEntry"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "ui": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UiSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "`[ui]` values to set; absent fields are unchanged."
+        }
+      },
+      "title": "SetSettingsParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "Density": {
+          "description": "Row height and spacing of the UI.",
+          "enum": [
+            "compact",
+            "normal"
+          ],
+          "type": "string"
+        },
+        "FontSettings": {
+          "description": "CSS `font-family` values overriding the font tokens; absent ones keep the theme's.",
+          "properties": {
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "prose": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ui": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "type": "object"
+        },
+        "KeymapEntry": {
+          "description": "One key binding of the config file's `[keymap]` (UI-097).",
+          "properties": {
+            "command": {
+              "description": "Command id; `\"\"` removes the default binding of `keys`.",
+              "type": "string"
+            },
+            "keys": {
+              "description": "Key sequence, e.g. `g g`, `Ctrl-d`, `Space n`.",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/KeymapMode"
+            }
+          },
+          "required": [
+            "mode",
+            "keys",
+            "command"
+          ],
+          "type": "object"
+        },
+        "KeymapMode": {
+          "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+          "enum": [
+            "normal",
+            "insert",
+            "cmdline"
+          ],
+          "type": "string"
+        },
+        "NotificationMode": {
+          "description": "When the UI shows system notifications (UI-096).",
+          "oneOf": [
+            {
+              "enum": [
+                "always",
+                "never"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "background",
+              "description": "Only while the window has no focus (default).",
+              "type": "string"
+            }
+          ]
+        },
+        "UiSettings": {
+          "description": "The `[ui]` table of the config file; an absent value is the default (UI-097).",
+          "properties": {
+            "density": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Density"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "fonts": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/FontSettings"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "notifications": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/NotificationMode"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097).",
+      "properties": {
+        "error": {
+          "description": "Why the last reload of the config file failed (the previous settings stay); `null` when it is valid.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "keymap": {
+          "description": "Bindings over the defaults, in file order; `command: \"\"` removes a default binding.",
+          "items": {
+            "$ref": "#/$defs/KeymapEntry"
+          },
+          "type": "array"
+        },
+        "ui": {
+          "$ref": "#/$defs/UiSettings"
+        }
+      },
+      "required": [
+        "ui",
+        "keymap",
+        "error"
+      ],
+      "title": "Settings",
+      "type": "object"
+    }
+  },
   "subscribe": {
     "params": {
       "$defs": {
@@ -341,7 +794,7 @@ expression: method_schemas()
       "description": "`system.hello`: first frame of every connection (PRT-001).",
       "properties": {
         "client": {
-          "description": "Client name, recorded as provenance (PRT-033), e.g. `omfp-ui/web`.",
+          "description": "Client name, recorded as provenance (PRT-033), e.g. `omfp/web`.",
           "type": "string"
         },
         "protocol": {
@@ -626,6 +1079,58 @@ expression: method_schemas()
         "rows"
       ],
       "title": "ResizeTerminalParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
+  "theme.get": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The user's theme: CSS applied after the built-in tokens (DMN-075).",
+      "properties": {
+        "css": {
+          "description": "`null`: the built-in themes only.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "css"
+      ],
+      "title": "Theme",
+      "type": "object"
+    }
+  },
+  "theme.set": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The user's theme: CSS applied after the built-in tokens (DMN-075).",
+      "properties": {
+        "css": {
+          "description": "`null`: the built-in themes only.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "css"
+      ],
+      "title": "Theme",
       "type": "object"
     },
     "result": {
@@ -1573,7 +2078,7 @@ expression: method_schemas()
             },
             {
               "additionalProperties": false,
-              "description": "A new workspace, as `workspaces.create` makes it; its name defaults to the thread's title.",
+              "description": "A new workspace, as `workspaces.create` makes it; its name defaults to the thread's title, else to the first\nwords of its first message.",
               "properties": {
                 "new": {
                   "$ref": "#/$defs/CreateWorkspaceParams"
@@ -1591,7 +2096,7 @@ expression: method_schemas()
       "description": "`threads.create` params.",
       "properties": {
         "approvalMode": {
-          "description": "omp's `--approval-mode`.",
+          "description": "omp's `--approval-mode`; default `yolo` (DMN-074).",
           "type": [
             "string",
             "null"
@@ -1620,19 +2125,20 @@ expression: method_schemas()
         },
         "thinkingLevel": true,
         "title": {
-          "type": "string"
+          "description": "For scripts and agents; without it the title is generated from the conversation (DMN-073).",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "workspace": {
           "$ref": "#/$defs/ThreadWorkspace",
           "default": {
             "new": {}
           },
-          "description": "`{ \"id\": … }` or `{ \"new\": { \"name\"?, \"path\"? } }`; default: a new folder named after the title."
+          "description": "`{ \"id\": … }` or `{ \"new\": { \"name\"?, \"path\"? } }`; default: a new folder named after the first message."
         }
       },
-      "required": [
-        "title"
-      ],
       "title": "CreateThreadParams",
       "type": "object"
     },
@@ -1689,6 +2195,26 @@ expression: method_schemas()
             "createdBy"
           ],
           "type": "object"
+        },
+        "TitleSource": {
+          "description": "Where a thread's title comes from (DMN-073).",
+          "oneOf": [
+            {
+              "const": "placeholder",
+              "description": "The first words of the first message (or `\"\"` before it), until a title is generated or set.",
+              "type": "string"
+            },
+            {
+              "const": "generated",
+              "description": "Generated from the conversation by the daemon.",
+              "type": "string"
+            },
+            {
+              "const": "set",
+              "description": "Set by the user or an agent (`threads.create`, `threads.update`, host tool `set_thread_title`); never replaced.",
+              "type": "string"
+            }
+          ]
         }
       },
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1729,7 +2255,11 @@ expression: method_schemas()
           "type": "array"
         },
         "title": {
+          "description": "`\"\"` until the first message (DMN-073).",
           "type": "string"
+        },
+        "titleSource": {
+          "$ref": "#/$defs/TitleSource"
         },
         "updatedAt": {
           "format": "int64",
@@ -1743,6 +2273,7 @@ expression: method_schemas()
       "required": [
         "id",
         "title",
+        "titleSource",
         "tags",
         "workspaceId",
         "process",
@@ -1805,6 +2336,13 @@ expression: method_schemas()
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "`threads.update` params; absent fields are unchanged.",
       "properties": {
+        "approvalMode": {
+          "description": "omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "tags": {
           "items": {
             "type": "string"
@@ -1883,6 +2421,26 @@ expression: method_schemas()
             "createdBy"
           ],
           "type": "object"
+        },
+        "TitleSource": {
+          "description": "Where a thread's title comes from (DMN-073).",
+          "oneOf": [
+            {
+              "const": "placeholder",
+              "description": "The first words of the first message (or `\"\"` before it), until a title is generated or set.",
+              "type": "string"
+            },
+            {
+              "const": "generated",
+              "description": "Generated from the conversation by the daemon.",
+              "type": "string"
+            },
+            {
+              "const": "set",
+              "description": "Set by the user or an agent (`threads.create`, `threads.update`, host tool `set_thread_title`); never replaced.",
+              "type": "string"
+            }
+          ]
         }
       },
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1923,7 +2481,11 @@ expression: method_schemas()
           "type": "array"
         },
         "title": {
+          "description": "`\"\"` until the first message (DMN-073).",
           "type": "string"
+        },
+        "titleSource": {
+          "$ref": "#/$defs/TitleSource"
         },
         "updatedAt": {
           "format": "int64",
@@ -1937,6 +2499,7 @@ expression: method_schemas()
       "required": [
         "id",
         "title",
+        "titleSource",
         "tags",
         "workspaceId",
         "process",

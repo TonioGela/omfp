@@ -1,5 +1,5 @@
-//! The WebSocket server (03-protocol): `/api/ws` for clients, and the web UI's static files at `/` when
-//! `--static-dir` is set.
+//! The WebSocket server (03-protocol): `/api/ws` for clients, the user's theme at `/theme.css` (DMN-075), and the
+//! web UI's static files at `/` when `--static-dir` is set.
 
 mod auth;
 mod connection;
@@ -47,8 +47,23 @@ pub(crate) struct AppState {
 pub(crate) fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/ws", get(upgrade))
+        .route("/theme.css", get(theme_css))
         .fallback(static_file)
         .with_state(state)
+}
+
+/// The user's theme CSS (DMN-075): empty when none is set, never cached (a change must show on reload), and served
+/// without the token like the bundle.
+async fn theme_css(State(state): State<Arc<AppState>>) -> Response {
+    let css = state.services.theme().css.unwrap_or_default();
+    (
+        [
+            (header::CONTENT_TYPE, "text/css; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        css,
+    )
+        .into_response()
 }
 
 /// Whether a WebSocket upgrade with this `Origin` may proceed (PRT-003): no `Origin` (not a browser), the daemon's

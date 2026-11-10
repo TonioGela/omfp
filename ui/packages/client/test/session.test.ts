@@ -18,7 +18,7 @@ function snapshot(epoch: string, seq: number, state: unknown): Frame {
 }
 
 function emptyIndex(): Frame {
-  return { repositories: [], workspaces: [], threads: [] };
+  return { repositories: [], workspaces: [], threads: [], theme: { css: null } };
 }
 
 function indexEvent(epoch: string, seq: number, id: string): Frame {

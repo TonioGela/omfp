@@ -12,7 +12,8 @@ An application for working with many omp agents in parallel:
 - **known repositories** are an optional list that makes adding repos to a workspace quick;
 - conversations stream live, with readable tool cards, approvals, agent questions, the message queue, subagents and the
   session tree;
-- the same interface runs **in the browser** (wasm) and **as a desktop app** (webview), connected to the same daemon;
+- the same interface (a TypeScript web app, D-18) runs **in the browser** and **as a desktop app** (Tauri webview, M7),
+  connected to the same daemon;
 - anything the UI does not cover could later be reached from a **terminal panel** on the same session (deferred, D-06);
 - long term, **agents drive the interface**: they spawn threads, create workspaces and publish views. This is the last
   milestone, but every earlier choice must keep it possible ([08](08-agent-control.md)).
@@ -50,8 +51,8 @@ erDiagram
 ```mermaid
 flowchart LR
   subgraph client["Clients (one or more)"]
-    W["omfp-ui (web, wasm)"]
-    D["omfp-ui (desktop, webview)"]
+    W["web app (browser, TypeScript)"]
+    D["omfp desktop (Tauri webview, M7)"]
   end
   subgraph daemon["omfp daemon"]
     WS[WebSocket server + static files]
@@ -78,28 +79,30 @@ flowchart LR
 | ARC-003 | `omfp desktop` MUST connect to the local daemon for its data directory when one is running (DMN-007), otherwise start one in the background (`127.0.0.1`, random port) and connect to it; the UI connects like a web client (D-15, D-16). |
 | ARC-004 | Several clients MUST be able to connect to the same daemon at once and see the same state. |
 | ARC-005 | Each thread MUST have at most one live omp process at a time (RPC or terminal, never both). |
-| ARC-006 | A thread's visible state MUST derive from the `omfp-core` reducer applied to its event sequence; daemon and UI run the same code. |
+| ARC-006 | A thread's visible state MUST derive from the `omfp-core` reducer applied to its event sequence; the UI runs its TypeScript port (`@omfp/core`), which produces the same state on every recorded fixture (D-04). |
 | ARC-007 | **API-first** (D-12): every action available in the UI MUST be a protocol method; the UI holds no business logic that another client could not reproduce through the protocol. |
 | ARC-008 | Threads MUST NOT be bound to a single repository: a thread lives in a workspace folder that holds zero or more repositories, and repositories can be added to and removed from the workspace during the thread's life, by the user or by the agent (D-11). |
 | ARC-009 | Every created entity (thread, workspace, view) MUST record its provenance: `user` or the id of the thread whose agent created it (needed by 08). |
 
-## Cargo workspace
+## Cargo workspace and UI packages
 
 ```text
 crates/
-  omfp-protocol/   UI↔daemon protocol types (serde). Compiles to wasm.
+  omfp-protocol/   UI↔daemon protocol types (serde), JSON Schemas. Compiles to wasm.
   omfp-core/       Domain model and pure reducer over omp events. Compiles to wasm. No I/O.
   omfp-daemon/     Daemon library (tokio, axum, rusqlite, omp-rpc, portable-pty): `omfp_daemon::start`, `omfp_daemon::run`.
-  omfp-ui/         The app: Dioxus UI (`web` and `desktop` features) and the single `omfp` binary (D-15).
+  omfp/            The single `omfp` binary (D-15): `omfp daemon`, `omfp theme set`.
   fake-llm/       Scripted OpenAI-compatible server for tests (lib + bin).
   omfp-testkit/    Test helpers: temporary git repos, isolated omp agent dir, test daemon.
 e2e/              End-to-end tests (WebDriver) against the web build.
+ui/packages/      The TypeScript UI (Bun workspace, 04-ui): protocol (generated types), core (reducer port),
+                  client (transport, session, model), kit (React Aria wrappers, tokens), app (the web app).
 ```
 
 | ID | Requirement |
 | --- | --- |
 | ARC-010 | `omfp-protocol` and `omfp-core` MUST compile for `wasm32-unknown-unknown` and MUST NOT use tokio, `std::process` or the filesystem. |
-| ARC-011 | `omfp-core` MUST reuse `omp_rpc::wire` types for omp events and messages instead of redefining them. The whole `omp-rpc` crate compiles for wasm (S-01), but `omfp-core` and the UI use only its `wire` module; its process client is for the daemon. |
+| ARC-011 | `omfp-core` MUST reuse `omp_rpc::wire` types for omp events and messages instead of redefining them. The whole `omp-rpc` crate compiles for wasm (S-01), but `omfp-core` uses only its `wire` module; its process client is for the daemon. |
 | ARC-012 | System dependencies (git, omp, PTY, clock, ID generation) MUST sit behind traits ("ports") in `omfp-daemon`, so component tests can use fake implementations. |
 
 ## Main flow: one prompt

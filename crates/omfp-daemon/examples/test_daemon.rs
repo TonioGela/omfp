@@ -1,12 +1,10 @@
-//! The daemon the transport suites run against (`just test-wasm` for the Rust web transport, `just test-ts` for the
-//! TypeScript client): an in-process daemon on `127.0.0.1:0` with the fake omp launcher and fake git (as in the native
-//! L2 tests) and the data directory given as the only argument.
+//! The daemon the TypeScript client's transport suite runs against (`just test-ts`, TST-030): an in-process daemon on
+//! `127.0.0.1:0` with the fake omp launcher and fake git (as in the native L2 tests) and the data directory given as
+//! the only argument.
 //!
-//! It reserves a free port for `wasm-bindgen-test-runner` and allows that origin (PRT-003), prints
-//! `<websocket url> <token> <runner address>` on one line, and serves until SIGINT or SIGTERM.
+//! It prints `<websocket url> <token>` on one line and serves until SIGINT or SIGTERM.
 
 use std::io::Write as _;
-use std::net::TcpListener;
 use std::sync::Arc;
 
 use clap::Parser;
@@ -21,9 +19,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = std::env::args()
         .nth(1)
         .ok_or("usage: test_daemon <data-dir>")?;
-    // Released at once: the test runner binds it next.
-    let runner = TcpListener::bind("127.0.0.1:0")?.local_addr()?;
-    let origin = format!("http://{runner}");
     let workspaces = format!("{data_dir}/workspaces");
     let cli = Cli::try_parse_from([
         "daemon",
@@ -33,8 +28,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &data_dir,
         "--workspaces-root",
         &workspaces,
-        "--allow-origin",
-        &origin,
     ])?;
     let ports = Ports {
         launcher: Arc::new(FakeLauncher::new()),
@@ -48,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut stdout = std::io::stdout();
     writeln!(
         stdout,
-        "ws://{}/api/ws {} {runner}",
+        "ws://{}/api/ws {}",
         daemon.addr(),
         daemon.token().expose()
     )?;

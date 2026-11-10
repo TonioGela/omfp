@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::dto::{RepoStatus, Repository, TerminalInfo, TerminalKind};
+use crate::dto::{KeymapEntry, RepoStatus, Repository, TerminalInfo, TerminalKind, UiSettings};
 use crate::topic::Topic;
 
 /// No params, or the `{}` result.
@@ -23,7 +23,7 @@ pub struct HelloParams {
     pub token: String,
     /// Protocol version the client speaks (PRT-004).
     pub protocol: u32,
-    /// Client name, recorded as provenance (PRT-033), e.g. `omfp-ui/web`.
+    /// Client name, recorded as provenance (PRT-033), e.g. `omfp/web`.
     pub client: String,
 }
 
@@ -228,7 +228,8 @@ pub struct WorkspaceDiffParams {
 pub enum ThreadWorkspace {
     /// An existing workspace.
     Id(String),
-    /// A new workspace, as `workspaces.create` makes it; its name defaults to the thread's title.
+    /// A new workspace, as `workspaces.create` makes it; its name defaults to the thread's title, else to the first
+    /// words of its first message.
     New(CreateWorkspaceParams),
 }
 
@@ -242,8 +243,10 @@ impl Default for ThreadWorkspace {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateThreadParams {
-    pub title: String,
-    /// `{ "id": … }` or `{ "new": { "name"?, "path"? } }`; default: a new folder named after the title.
+    /// For scripts and agents; without it the title is generated from the conversation (DMN-073).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// `{ "id": … }` or `{ "new": { "name"?, "path"? } }`; default: a new folder named after the first message.
     #[serde(default)]
     pub workspace: ThreadWorkspace,
     #[serde(default)]
@@ -254,7 +257,7 @@ pub struct CreateThreadParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<Value>")]
     pub thinking_level: Option<ThinkingLevel>,
-    /// omp's `--approval-mode`.
+    /// omp's `--approval-mode`; default `yolo` (DMN-074).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approval_mode: Option<String>,
     /// First message, sent once the thread is created.
@@ -271,6 +274,9 @@ pub struct UpdateThreadParams {
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+    /// omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_mode: Option<String>,
 }
 
 /// Params naming one thread.
@@ -608,4 +614,16 @@ pub struct ListTerminalsParams {
 #[serde(rename_all = "camelCase")]
 pub struct TerminalList {
     pub terminals: Vec<TerminalInfo>,
+}
+
+/// `settings.set` params: values merged into the config file (DMN-009); absent ones are unchanged.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSettingsParams {
+    /// `[ui]` values to set; absent fields are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui: Option<UiSettings>,
+    /// Bindings replacing the ones with the same mode and keys (`command: ""` unbinds the default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keymap: Option<Vec<KeymapEntry>>,
 }

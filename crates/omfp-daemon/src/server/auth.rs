@@ -62,7 +62,9 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.subagents"
         | "thread.subagent_messages"
         | "thread.git"
-        | "thread.state" => Read,
+        | "thread.state"
+        | "theme.get"
+        | "settings.get" => Read,
         "repos.add"
         | "repos.remove"
         | "workspaces.create"
@@ -75,7 +77,9 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "threads.update"
         | "threads.archive"
         | "threads.unarchive"
-        | "threads.delete" => Manage,
+        | "threads.delete"
+        | "theme.set"
+        | "settings.set" => Manage,
         "thread.prompt"
         | "thread.steer"
         | "thread.follow_up"
@@ -145,7 +149,7 @@ mod tests {
     #[test]
     fn the_owner_may_call_every_method() {
         let owner = Principal::Owner {
-            client: "omfp-ui/web".into(),
+            client: "omfp/web".into(),
         };
 
         for method in omfp_protocol::METHODS {

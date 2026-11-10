@@ -1,0 +1,52 @@
+/** Window state slots shared by several widgets and the frame. Widget-private slots live next to their widget. */
+
+import type { ImageContent } from "@omfp/core";
+import { type WindowKey, windowKey } from "./window-store.ts";
+
+/** The thread this window shows; `undefined` for none. */
+export const SELECTED_THREAD = windowKey<string | undefined>("selectedThread", undefined);
+
+/** A composer draft: text and pasted or dropped images (UI-060, UI-064). */
+export interface Draft {
+  readonly text: string;
+  readonly images: readonly ImageContent[];
+}
+
+export const EMPTY_DRAFT: Draft = { text: "", images: [] };
+
+/** The draft of one thread, kept across thread switches and reconnects (UI-064); dropped when the thread is archived
+ * or deleted (UI-026). */
+export function draftKey(threadId: string): WindowKey<Draft> {
+  let key = DRAFT_KEYS.get(threadId);
+  if (key === undefined) {
+    key = windowKey<Draft>(`draft/${threadId}`, EMPTY_DRAFT);
+    DRAFT_KEYS.set(threadId, key);
+  }
+  return key;
+}
+
+/** One key object per thread, so hooks see a stable key. */
+const DRAFT_KEYS = new Map<string, WindowKey<Draft>>();
+
+/** Manual colour scheme override (UI-091), per window; `system` follows `prefers-color-scheme`. Density is a daemon
+ * setting (`useSettings`, UI-097). */
+export type ColorScheme = "system" | "light" | "dark";
+
+export const COLOR_SCHEME = windowKey<ColorScheme>("colorScheme", "system", (stored) =>
+  stored === "light" || stored === "dark" || stored === "system" ? stored : undefined,
+);
+
+/** Id of the view the window shows (one default view in M3). */
+export const ACTIVE_VIEW = windowKey<string>("activeView", "default");
+
+/** The new-thread dialog is open (UI-023); any widget or command may open it. */
+export const NEW_THREAD_DIALOG = windowKey<boolean>("newThreadDialog", false);
+
+/** The thread whose delete confirmation is open (UI-026). */
+export const DELETE_THREAD = windowKey<string | undefined>("deleteThread", undefined);
+
+/** The thread whose title is being edited in place (UI-030). */
+export const RENAMING_THREAD = windowKey<string | undefined>("renamingThread", undefined);
+
+/** Errors of failed actions, oldest first, shown by the frame until dismissed. */
+export const ERRORS = windowKey<readonly string[]>("errors", []);

@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use omfp_daemon::store::{Provenance, Store, StoreError, Thread, Workspace, new_id, now_ms};
+use omfp_daemon::store::{
+    Provenance, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
+};
 use rusqlite::{Connection, params};
 use tempfile::TempDir;
 
@@ -65,6 +67,7 @@ fn thread(workspace_id: &str, tags: Vec<String>) -> Thread {
     Thread {
         id: new_id(),
         title: "t".into(),
+        title_source: TitleSource::Placeholder,
         workspace_id: workspace_id.into(),
         session_dir: "/data/threads/x/sessions".into(),
         omp_session_id: None,
@@ -85,7 +88,7 @@ fn opening_an_empty_file_applies_every_migration() {
     let db = dir.path().join("omfp.db");
     drop(open(&dir));
 
-    assert_eq!(user_version(&db), 3);
+    assert_eq!(user_version(&db), 4);
     // Only metadata lives in the database: no transcript tables, no repositories of workspaces (DMN-022).
     assert_eq!(
         tables(&db),
@@ -113,9 +116,38 @@ fn reopening_is_idempotent_and_keeps_data() {
         store.insert_thread(&t).unwrap();
     }
     let store = open(&dir);
-    assert_eq!(user_version(&db), 3);
+    assert_eq!(user_version(&db), 4);
     assert_eq!(store.workspaces().unwrap(), vec![ws]);
     assert_eq!(store.threads().unwrap(), vec![t]);
+}
+
+// spec: DMN-010, DMN-073
+#[test]
+fn migration_4_counts_existing_titles_as_set() {
+    let dir = TempDir::new().unwrap();
+    let db = dir.path().join("omfp.db");
+    let ws = workspace("a");
+    let t = thread(&ws.id, Vec::new());
+    {
+        let store = open(&dir);
+        store.insert_workspace(&ws).unwrap();
+        store.insert_thread(&t).unwrap();
+    }
+    // Back to a version-3 database: no `title_source` column.
+    let conn = raw(&db);
+    conn.execute_batch("ALTER TABLE threads DROP COLUMN title_source; PRAGMA user_version = 3;")
+        .unwrap();
+    drop(conn);
+
+    let store = open(&dir);
+    assert_eq!(user_version(&db), 4);
+    assert_eq!(
+        store.threads().unwrap(),
+        vec![Thread {
+            title_source: TitleSource::Set,
+            ..t
+        }]
+    );
 }
 
 // spec: DMN-010
@@ -131,7 +163,7 @@ fn a_database_from_a_newer_daemon_is_refused() {
             error,
             StoreError::UnknownSchemaVersion {
                 found: 99,
-                supported: 3
+                supported: 4
             }
         ),
         "{error:?}"
@@ -193,7 +225,8 @@ fn deleting_a_thread_cascades_to_its_roots_and_tags() {
 struct OldModel {
     db: PathBuf,
     root: PathBuf,
-    /// Created by the user from `omfp-ui`; managed worktree, adopted dirs, a removed and a missing workspace.
+    /// Created by the user from the old web UI (client `omfp-ui`); managed worktree, adopted dirs, a removed and a
+    /// missing workspace.
     first: Thread,
     /// Created by `first`'s agent, archived, no workspace.
     second: Thread,
@@ -210,6 +243,7 @@ fn old_thread(base: &Path, title: &str, created_by: Provenance) -> Thread {
         session_dir: base.join("data/threads").join(&id).join("sessions"),
         id,
         title: title.into(),
+        title_source: TitleSource::Set,
         workspace_id: String::new(),
         omp_session_id: None,
         approval_mode: None,
@@ -425,7 +459,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
 
     let store = Store::open(&old.db, &old.root).unwrap();
 
-    assert_eq!(user_version(&old.db), 3);
+    assert_eq!(user_version(&old.db), 4);
     assert_eq!(
         tables(&old.db),
         [
@@ -444,7 +478,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
     // Reopening is a no-op: same records, no new folders.
     drop(store);
     let store = Store::open(&old.db, &old.root).unwrap();
-    assert_eq!(user_version(&old.db), 3);
+    assert_eq!(user_version(&old.db), 4);
     assert_eq!(
         assert_migrated_records(&store, &old),
         (one.clone(), two.clone())

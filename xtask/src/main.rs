@@ -20,7 +20,7 @@ struct Cli {
 enum Task {
     /// List requirement citations and fail on broken traceability (TST-040).
     SpecTrace,
-    /// Check that omp, omp-rpc, wasm-bindgen and dioxus versions agree (ENV-010, ENV-011, ENV-012).
+    /// Check that the omp release pins agree (ENV-010, ENV-011).
     CheckVersions,
     /// Regenerate the TypeScript protocol types from the daemon's JSON Schemas (AGT-007).
     GenTs,
@@ -67,13 +67,8 @@ fn main() -> anyhow::Result<ExitCode> {
             }
             if problems.is_empty() {
                 println!(
-                    "omp {} (flake {} / omp-rpc {}), wasm-bindgen {}, dioxus {} / dx {}",
-                    observed.omp_version,
-                    observed.flake_ref,
-                    observed.cargo_tag,
-                    observed.wasm_bindgen_crate,
-                    observed.dioxus_crate,
-                    observed.dx_cli
+                    "omp {} (flake {} / omp-rpc {})",
+                    observed.omp_version, observed.flake_ref, observed.cargo_tag
                 );
             }
             Ok(if problems.is_empty() {

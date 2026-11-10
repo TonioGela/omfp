@@ -74,6 +74,6 @@ Output and input travel as **binary** WebSocket frames: `[u32 channel, big-endia
 
 | ID | Requirement |
 | --- | --- |
-| TRM-020 | The terminal panel uses **xterm.js** (plus the fit addon), vendored as pinned files with integrity hashes and loaded through Dioxus assets; no Node toolchain. |
-| TRM-021 | The Rust ↔ xterm.js bridge MUST go through `document::eval` message passing, which works on both web and desktop builds. |
+| TRM-020 | The terminal panel uses **xterm.js** (plus the fit addon) as a JavaScript dependency of the UI bundle (`ui/bun.lock`, from Nix like every UI dependency, ENV-001), served by the daemon with the rest of the bundle; no CDN, no Node toolchain. |
+| TRM-021 | The terminal widget MUST drive xterm.js directly from the TypeScript UI (D-18), with binary frames over the same WebSocket (`terminal/<id>`), so the web app and the desktop webview (M7) share one code path. |
 | TRM-022 | The thread view MUST show clearly when a thread is in terminal mode, with a "return to app" action that closes the `omp` terminal (sends `/exit` then SIGHUP after a grace period). |

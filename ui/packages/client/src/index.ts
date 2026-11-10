@@ -15,7 +15,7 @@
  * - Clock: reconnect delays go through a {@link Timer} ({@link systemTimer} by default), so tests use virtual time.
  *
  * ```ts
- * const client = connect({ connector: webSocketConnector(url), token, client: "omfp-ui/web" });
+ * const client = connect({ connector: webSocketConnector(url), token, client: "omfp/web" });
  * client.subscribe(INDEX_TOPIC);
  * const changes = client.changes();
  * for (;;) {

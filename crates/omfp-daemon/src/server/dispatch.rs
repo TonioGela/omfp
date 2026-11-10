@@ -25,8 +25,9 @@ use super::convert::{
 };
 use super::services::Services;
 use crate::agent::OmpCall;
-use crate::store::Provenance;
+use crate::store::{Provenance, TitleSource};
 use crate::threads::NewThread;
+use crate::titles;
 use crate::workspaces::{NewWorkspace, RepoRef, RepoSource, WorkspaceError};
 
 type Reply = Result<Value, ErrorBody>;
@@ -115,6 +116,13 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         | Call::TerminalResize(_)
         | Call::TerminalClose(_)
         | Call::TerminalList(_) => Err(bad_request("terminals are not available yet (M6)")),
+        Call::ThemeGet(_) => ok(&services.theme()),
+        Call::ThemeSet(params) => {
+            services.set_theme(params.css).await?;
+            empty()
+        }
+        Call::SettingsGet(_) => ok(&services.settings()),
+        Call::SettingsSet(params) => ok(&services.set_settings(params).await?),
         call => thread(services, principal, call).await,
     }
 }
@@ -268,18 +276,25 @@ async fn workspaces(services: &Services, principal: &Principal, call: Call) -> R
     ok(&services.workspace_summary(&id).await?)
 }
 
-/// `threads.create`: the thread in an existing workspace or a new one named after the title, then its first
-/// message.
+/// `threads.create`: the thread in an existing workspace or a new one named after its title (else its first message),
+/// then its first message. Without a title the thread's title comes from the conversation (DMN-073).
 async fn create_thread(
     services: &Services,
     principal: &Principal,
     params: omfp_protocol::CreateThreadParams,
 ) -> Reply {
     let client = principal.client().to_owned();
+    let title = params
+        .title
+        .map(|title| title.trim().to_owned())
+        .filter(|title| !title.is_empty());
     let (workspace_id, created) = match params.workspace {
         ThreadWorkspace::Id(id) => (id, false),
         ThreadWorkspace::New(new) => {
-            let fallback = Some(params.title.clone());
+            let fallback = title.clone().or_else(|| {
+                let words = titles::placeholder(params.prompt.as_deref()?);
+                Some(words.trim_end_matches('…').to_owned())
+            });
             let id = create_workspace(
                 services,
                 new,
@@ -292,7 +307,12 @@ async fn create_thread(
         }
     };
     let new = NewThread {
-        title: params.title,
+        title_source: if title.is_some() {
+            TitleSource::Set
+        } else {
+            TitleSource::Placeholder
+        },
+        title: title.unwrap_or_default(),
         workspace_id: workspace_id.clone(),
         tags: params.tags,
         model: params.model,
@@ -347,18 +367,24 @@ async fn threads(services: &Services, principal: &Principal, call: Call) -> Repl
         Call::ThreadsCreate(params) => create_thread(services, principal, params).await,
         Call::ThreadsUpdate(params) => {
             let id = params.thread_id.clone();
+            if let Some(title) = params.title {
+                supervisor
+                    .set_title(&id, title.trim().to_owned(), TitleSource::Set)
+                    .await
+                    .map_err(supervisor_error)?;
+            }
+            let (tags, approval_mode) = (params.tags, params.approval_mode);
+            let thread_id = id.clone();
             blocking(move || {
-                if let Some(title) = &params.title {
+                if let Some(tags) = &tags {
+                    threads.set_tags(&thread_id, tags).map_err(thread_error)?;
+                }
+                if let Some(mode) = &approval_mode {
                     threads
-                        .rename(&params.thread_id, title)
+                        .set_approval_mode(&thread_id, mode)
                         .map_err(thread_error)?;
                 }
-                if let Some(tags) = &params.tags {
-                    threads
-                        .set_tags(&params.thread_id, tags)
-                        .map_err(thread_error)?;
-                }
-                threads.get(&params.thread_id).map_err(thread_error)
+                threads.get(&thread_id).map_err(thread_error)
             })
             .await?;
             ok(&services.thread_summary(&id).await?)

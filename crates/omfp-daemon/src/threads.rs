@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::paths::DataDir;
-use crate::store::{Provenance, Store, StoreError, Thread, new_id, now_ms};
+use crate::store::{Provenance, Store, StoreError, Thread, TitleSource, new_id, now_ms};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ThreadError {
@@ -24,6 +24,9 @@ pub type Result<T, E = ThreadError> = std::result::Result<T, E>;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewThread {
     pub title: String,
+    /// [`TitleSource::Set`] for a title given at creation; [`TitleSource::Placeholder`] (with an empty title) when the
+    /// title is to come from the conversation (DMN-073).
+    pub title_source: TitleSource,
     /// The workspace the thread lives in (ARC-008).
     pub workspace_id: String,
     pub tags: Vec<String>,
@@ -35,11 +38,12 @@ pub struct NewThread {
 }
 
 impl NewThread {
-    /// A thread created by the user in `workspace_id`, with no tag or setting.
+    /// A thread created by the user in `workspace_id` with a set title, no tag or setting.
     #[must_use]
     pub fn new(title: impl Into<String>, workspace_id: impl Into<String>) -> Self {
         Self {
             title: title.into(),
+            title_source: TitleSource::Set,
             workspace_id: workspace_id.into(),
             tags: Vec::new(),
             model: None,
@@ -49,6 +53,9 @@ impl NewThread {
         }
     }
 }
+
+/// omp `--approval-mode` of a new thread when none is given (DMN-074).
+pub const DEFAULT_APPROVAL_MODE: &str = "yolo";
 
 #[derive(Debug)]
 pub struct Threads {
@@ -62,7 +69,8 @@ impl Threads {
         Self { store, data }
     }
 
-    /// Creates a thread in a workspace, with its private session directory (ARC-020).
+    /// Creates a thread in a workspace, with its private session directory (ARC-020); without an approval mode it
+    /// gets [`DEFAULT_APPROVAL_MODE`] (DMN-074).
     pub fn create(&self, new: NewThread) -> Result<Thread> {
         self.store.check_provenance(&new.created_by)?;
         self.store.workspace(&new.workspace_id)?;
@@ -72,10 +80,14 @@ impl Threads {
         let thread = Thread {
             id,
             title: new.title,
+            title_source: new.title_source,
             workspace_id: new.workspace_id,
             session_dir,
             omp_session_id: None,
-            approval_mode: new.approval_mode,
+            approval_mode: Some(
+                new.approval_mode
+                    .unwrap_or_else(|| DEFAULT_APPROVAL_MODE.to_owned()),
+            ),
             model: new.model,
             thinking_level: new.thinking_level,
             created_by: new.created_by,
@@ -100,14 +112,26 @@ impl Threads {
         Ok(self.store.threads()?)
     }
 
-    pub fn rename(&self, id: &str, title: &str) -> Result<Thread> {
-        self.store.set_thread_title(id, title)?;
+    /// Sets the title (DMN-073); a [`TitleSource::Set`] title is never replaced by a generated one.
+    pub fn rename(&self, id: &str, title: &str, source: TitleSource) -> Result<Thread> {
+        self.store.set_thread_title(id, title, source)?;
         self.get(id)
+    }
+
+    /// Sets the title if it is still a placeholder; returns whether it did (a title set meanwhile wins, DMN-073).
+    pub fn replace_placeholder(&self, id: &str, title: &str, source: TitleSource) -> Result<bool> {
+        Ok(self.store.replace_placeholder_title(id, title, source)?)
     }
 
     /// Replaces the tags (stored sorted, without duplicates).
     pub fn set_tags(&self, id: &str, tags: &[String]) -> Result<Thread> {
         self.store.set_thread_tags(id, tags)?;
+        self.get(id)
+    }
+
+    /// Changes the omp `--approval-mode`; it applies from the next start of the thread's omp (DMN-074).
+    pub fn set_approval_mode(&self, id: &str, mode: &str) -> Result<Thread> {
+        self.store.set_thread_approval_mode(id, mode)?;
         self.get(id)
     }
 

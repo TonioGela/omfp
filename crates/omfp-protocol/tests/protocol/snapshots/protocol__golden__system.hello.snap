@@ -7,7 +7,7 @@ expression: golden
     "id": "c42",
     "method": "system.hello",
     "params": {
-      "client": "omfp-ui/web",
+      "client": "omfp/web",
       "protocol": 1,
       "token": "3f9c1e…"
     },

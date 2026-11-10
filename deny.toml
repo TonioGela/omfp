@@ -18,7 +18,7 @@ allow = [
   # Permissive data license of the Mozilla CA roots (`webpki-root-certs`, via thirtyfour's reqwest in `e2e` only).
   "CDLA-Permissive-2.0",
   "MIT",
-  # File-level copyleft, unmodified upstream use only: cssparser and dtoa-short (via ammonia and scraper).
+  # File-level copyleft, unmodified upstream use only: option-ext (via thirtyfour's `dirs` in `e2e` only).
   "MPL-2.0",
   "Unicode-3.0",
   "Unlicense",

@@ -12,16 +12,18 @@ use rusqlite::{Connection, Transaction, params};
 use tracing::{info, warn};
 
 use super::{
-    Provenance, Result, StoreError, Thread, Workspace, insert_workspace, new_id, path_str,
+    Provenance, Result, StoreError, Thread, TitleSource, Workspace, insert_workspace, new_id,
+    path_str,
 };
 use crate::names::{slugify, unique};
 
 const MIGRATION_1: &str = include_str!("0001_initial.sql");
 const MIGRATION_2: &str = include_str!("0002_created_client.sql");
 const MIGRATION_3: &str = include_str!("0003_workspace_folders.sql");
+const MIGRATION_4: &str = include_str!("0004_title_source.sql");
 
 /// Number of migrations: the highest `user_version` this daemon knows.
-const LATEST: i64 = 3;
+const LATEST: i64 = 4;
 
 /// Applies pending migrations. Foreign keys are off while migrating (tables are rebuilt) and checked before each
 /// commit; the caller turns them on afterwards.
@@ -39,7 +41,8 @@ pub(super) fn run(conn: &mut Connection, workspaces_root: &Path) -> Result<()> {
         match version {
             1 => tx.execute_batch(MIGRATION_1)?,
             2 => tx.execute_batch(MIGRATION_2)?,
-            _ => to_workspace_folders(&tx, workspaces_root)?,
+            3 => to_workspace_folders(&tx, workspaces_root)?,
+            _ => tx.execute_batch(MIGRATION_4)?,
         }
         check_foreign_keys(&tx)?;
         tx.pragma_update(None, "user_version", version)?;
@@ -121,6 +124,7 @@ fn old_threads(tx: &Transaction<'_>) -> Result<Vec<OldThread>> {
                 Thread {
                     id: row.get(0)?,
                     title: row.get(1)?,
+                    title_source: TitleSource::Set,
                     workspace_id: String::new(),
                     session_dir: PathBuf::from(row.get::<_, String>(2)?),
                     omp_session_id: row.get(3)?,

@@ -1,0 +1,20 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "theme.set",
+    "params": {
+      "css": ":root { --omfp-primary: #6750a4; }"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {},
+    "type": "response"
+  }
+}

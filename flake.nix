@@ -1,5 +1,5 @@
 {
-  description = "omfp: native + web GUI for oh-my-pi (Dioxus) — development environment only";
+  description = "omfp: web and desktop GUI for oh-my-pi (TypeScript UI, Rust daemon) — development environment only";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -61,11 +61,6 @@
           rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
           omp = inputs.oh-my-pi.packages.${system}.omp;
 
-          # nixpkgs' dioxus-cli 0.7.10 fails to build: zstd-sys cannot find libzstd via pkg-config.
-          dioxus-cli = pkgs.dioxus-cli.overrideAttrs (old: {
-            buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.zstd ];
-          });
-
           # bun2nix (the oh-my-pi input's, shared via `follows`) with nix-community/bun2nix#110 (open, commit
           # 0456acb): 2.1.2 refuses the `lockfileVersion: 2` of Bun 1.4 although the `packages` layout is
           # unchanged. Drop it once the PR is released and the oh-my-pi input moves to that bun2nix.
@@ -91,21 +86,6 @@
               args: lib.filterAttrs (name: _: !lib.hasPrefix "@omfp/" name) (uiBunNix args)
             ) (lib.functionArgs uiBunNix);
           };
-
-          # Native dependencies of dioxus-desktop (wry/webkitgtk) on Linux.
-          desktopLibs = with pkgs; [
-            gtk3
-            webkitgtk_4_1
-            libsoup_3
-            glib
-            glib-networking
-            cairo
-            pango
-            gdk-pixbuf
-            atk
-            xdotool
-            openssl
-          ];
         in
         {
           formatter = pkgs.nixfmt;
@@ -160,12 +140,8 @@
               # Agent (version pinned by the oh-my-pi input)
               omp
 
-              # Rust + Dioxus
+              # Rust
               rustToolchain
-              dioxus-cli
-              pkgs.wasm-bindgen-cli # must match the wasm-bindgen crate version (see docs/specs/01)
-              pkgs.binaryen
-              pkgs.pkg-config
 
               # Testing (TDD): runner, snapshots, coverage, mutation, dependency lint
               pkgs.cargo-nextest
@@ -191,31 +167,25 @@
               pkgs.nixfmt
             ]
             ++ config.pre-commit.settings.enabledPackages
-            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux (
-              desktopLibs
-              ++ [
-                # Web UI E2E over WebDriver (versions aligned in nixpkgs)
-                pkgs.chromium
-                pkgs.chromedriver
-                # Desktop smoke test under a virtual X server
-                pkgs.xvfb-run
-              ]
-            );
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+              # Web UI E2E over WebDriver (versions aligned in nixpkgs)
+              pkgs.chromium
+              pkgs.chromedriver
+              # Desktop smoke test under a virtual X server
+              pkgs.xvfb-run
+            ];
 
             env = {
               RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
               OMFP_BUN_CACHE = "${uiBunDeps}/share/bun-cache";
             }
             // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-              # webkitgtk on NixOS/non-Intel GPUs: avoid blank windows from the DMABUF renderer.
-              WEBKIT_DISABLE_DMABUF_RENDERER = "1";
-              GIO_MODULE_DIR = "${pkgs.glib-networking}/lib/gio/modules";
               CHROME_BIN = lib.getExe pkgs.chromium;
             };
 
             shellHook = ''
               ${config.pre-commit.installationScript}
-              echo "omfp dev shell — $(omp --version 2>/dev/null | head -n1), $(rustc --version), dx $(dx --version 2>/dev/null), bun $(bun --version)"
+              echo "omfp dev shell — $(omp --version 2>/dev/null | head -n1), $(rustc --version), bun $(bun --version)"
             '';
           };
         };

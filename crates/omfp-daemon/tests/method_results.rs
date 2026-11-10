@@ -14,15 +14,15 @@ use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
 use omfp_daemon::{DaemonHandle, Ports, start_with};
 use omfp_protocol::method::{
-    InteractionRespond, ReposAdd, ReposList, ReposRemove, Subscribe, SystemHello, ThreadAbort,
-    ThreadBash, ThreadBtw, ThreadCommands, ThreadCompact, ThreadFollowUp, ThreadFork, ThreadGit,
-    ThreadGoal, ThreadLabel, ThreadModels, ThreadNavigate, ThreadPrompt, ThreadQueuePromote,
-    ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking, ThreadState, ThreadSteer,
-    ThreadStop, ThreadSubagentCancel, ThreadSubagentMessages, ThreadSubagentSteer, ThreadSubagents,
-    ThreadThinkingLevels, ThreadTree, ThreadsArchive, ThreadsCreate, ThreadsDelete,
-    ThreadsUnarchive, ThreadsUpdate, Unsubscribe, WorkspacesAddRepo, WorkspacesCreate,
-    WorkspacesDiff, WorkspacesRemove, WorkspacesRemoveRepo, WorkspacesRescan, WorkspacesStatus,
-    WorkspacesUpdate,
+    InteractionRespond, ReposAdd, ReposList, ReposRemove, Subscribe, SystemHello, ThemeGet,
+    ThemeSet, ThreadAbort, ThreadBash, ThreadBtw, ThreadCommands, ThreadCompact, ThreadFollowUp,
+    ThreadFork, ThreadGit, ThreadGoal, ThreadLabel, ThreadModels, ThreadNavigate, ThreadPrompt,
+    ThreadQueuePromote, ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking,
+    ThreadState, ThreadSteer, ThreadStop, ThreadSubagentCancel, ThreadSubagentMessages,
+    ThreadSubagentSteer, ThreadSubagents, ThreadThinkingLevels, ThreadTree, ThreadsArchive,
+    ThreadsCreate, ThreadsDelete, ThreadsUnarchive, ThreadsUpdate, Unsubscribe, WorkspacesAddRepo,
+    WorkspacesCreate, WorkspacesDiff, WorkspacesRemove, WorkspacesRemoveRepo, WorkspacesRescan,
+    WorkspacesStatus, WorkspacesUpdate,
 };
 use omfp_protocol::{
     AddRepoParams, AddRepositoryParams, BashParams, BtwParams, CompactParams, CreateThreadParams,
@@ -30,7 +30,7 @@ use omfp_protocol::{
     LabelParams, MessageParams, NavigateParams, PromptParams, QueueMessageParams, RemoveRepoParams,
     RemoveWorkspaceParams, RepoRef, RepoSource, RepositoryRef, RespondParams, SetModelParams,
     SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
-    SubscribeResult, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
+    SubscribeResult, Theme, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
     UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
 };
 use tempfile::TempDir;
@@ -98,7 +98,7 @@ fn fixture(name: &str) -> FakeRun {
 
 fn new_thread(title: &str) -> CreateThreadParams {
     CreateThreadParams {
-        title: title.into(),
+        title: Some(title.into()),
         workspace: ThreadWorkspace::default(),
         tags: Vec::new(),
         model: None,
@@ -235,6 +235,7 @@ async fn thread_management_methods_return_their_declared_results() {
             thread_id: thread.id.clone(),
             title: Some("renamed".into()),
             tags: Some(vec!["tag".into()]),
+            approval_mode: Some("always-ask".into()),
         })
         .await;
     assert_eq!(
@@ -251,6 +252,23 @@ async fn thread_management_methods_return_their_declared_results() {
         .await;
     let doomed = client.typed::<ThreadsCreate>(new_thread("doomed")).await;
     client.typed::<ThreadsDelete>(thread_ref(&doomed.id)).await;
+}
+
+// spec: AGT-007, DMN-075
+#[tokio::test(flavor = "multi_thread")]
+async fn theme_methods_return_their_declared_results() {
+    let daemon = daemon().await;
+    let mut client = daemon.client().await;
+    assert_eq!(
+        client.typed::<ThemeGet>(Empty {}).await,
+        Theme { css: None }
+    );
+
+    let theme = Theme {
+        css: Some(":root { --omfp-primary: #6750a4; }".into()),
+    };
+    assert_eq!(client.typed::<ThemeSet>(theme.clone()).await, Empty {});
+    assert_eq!(client.typed::<ThemeGet>(Empty {}).await, theme);
 }
 
 // spec: AGT-007

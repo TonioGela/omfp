@@ -16,14 +16,80 @@ use crate::store::new_id;
 /// Name of the tool that opens a file for the user.
 pub const OPEN_IN_EDITOR: &str = "open_in_editor";
 
+/// Name of the tool that renames the agent's thread (DMN-073).
+pub const SET_THREAD_TITLE: &str = "set_thread_title";
+
+/// Longest title `set_thread_title` accepts, in characters.
+pub const MAX_TITLE_CHARS: usize = 200;
+
 /// Receives the events a host tool adds to its thread.
 pub type Emit = Arc<dyn Fn(ThreadEvent) + Send + Sync>;
 
+/// Stores a title the agent set for its thread; the error goes back to the agent.
+pub type SetTitle = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
+
 /// The host tools of one thread: `cwd` (omp's working directory, the thread's workspace folder, DMN-030) resolves
-/// relative paths and `emit` delivers the presentation events to the thread's clients.
+/// relative paths, `emit` delivers the presentation events to the thread's clients and `set_title` renames the thread.
 #[must_use]
-pub fn thread_tools(cwd: PathBuf, emit: Emit) -> Vec<HostTool> {
-    vec![open_in_editor(cwd, emit)]
+pub fn thread_tools(cwd: PathBuf, emit: Emit, set_title: SetTitle) -> Vec<HostTool> {
+    vec![open_in_editor(cwd, emit), set_thread_title(set_title)]
+}
+
+/// `set_thread_title { title }`: renames the thread; a title set this way is never replaced by a generated one
+/// (DMN-073).
+#[must_use]
+pub fn set_thread_title(set_title: SetTitle) -> HostTool {
+    let parameters = json!({
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_TITLE_CHARS,
+                "description": "The new title: a few words saying what the thread is about."
+            }
+        },
+        "required": ["title"],
+        "additionalProperties": false
+    })
+    .as_object()
+    .cloned()
+    .unwrap_or_default();
+    HostTool::new(
+        SET_THREAD_TITLE,
+        "Renames this thread in the omfp thread list, e.g. when the user asks for another title.",
+        parameters,
+        move |arguments, context| {
+            run_set_thread_title(&arguments, || context.is_cancelled(), &*set_title)
+        },
+    )
+    .label("Set thread title")
+}
+
+/// The body of [`set_thread_title`], without the `omp-rpc` context. Bad arguments and cancellation become tool errors
+/// (`isError: true`), never panics (DMN-061).
+pub fn run_set_thread_title(
+    arguments: &Map<String, Value>,
+    is_cancelled: impl Fn() -> bool,
+    set_title: &dyn Fn(&str) -> Result<(), String>,
+) -> Result<HostToolOutput, HostToolError> {
+    if is_cancelled() {
+        return Err("cancelled".into());
+    }
+    let title = match arguments.get("title") {
+        Some(Value::String(title)) if !title.trim().is_empty() => title.trim(),
+        _ => return Err("`title` must be a non-empty string".into()),
+    };
+    if title.chars().count() > MAX_TITLE_CHARS {
+        return Err(format!("`title` must be at most {MAX_TITLE_CHARS} characters").into());
+    }
+    if is_cancelled() {
+        return Err("cancelled".into());
+    }
+    set_title(title)?;
+    Ok(HostToolOutput::Text(format!(
+        "The thread is now titled \"{title}\"."
+    )))
 }
 
 /// `open_in_editor { path, line? }`: asks the user's UI to open a file (an `open_url` presentation event with a
@@ -202,11 +268,59 @@ mod tests {
 
     // spec: DMN-060
     #[test]
-    fn the_tool_is_registered_with_its_schema() {
-        let tools = thread_tools("/home".into(), Arc::new(|_| {}));
-        let definition = tools[0].definition();
+    fn the_tools_are_registered_with_their_schemas() {
+        let tools = thread_tools("/home".into(), Arc::new(|_| {}), Arc::new(|_| Ok(())));
+        let definitions: Vec<_> = tools.iter().map(HostTool::definition).collect();
 
-        assert_eq!(definition.name, OPEN_IN_EDITOR);
-        assert_eq!(definition.parameters["required"], json!(["path"]));
+        assert_eq!(definitions[0].name, OPEN_IN_EDITOR);
+        assert_eq!(definitions[0].parameters["required"], json!(["path"]));
+        assert_eq!(definitions[1].name, SET_THREAD_TITLE);
+        assert_eq!(definitions[1].parameters["required"], json!(["title"]));
+    }
+
+    fn rename(arguments: Value, cancelled: bool) -> (Result<String, String>, Vec<String>) {
+        let titles = Mutex::new(Vec::new());
+        let result = run_set_thread_title(&args(arguments), || cancelled, &|title| {
+            titles.lock().unwrap().push(title.to_owned());
+            Ok(())
+        });
+        let result = match result {
+            Ok(HostToolOutput::Text(text)) => Ok(text),
+            Ok(other) => panic!("unexpected output {other:?}"),
+            Err(error) => Err(error.to_string()),
+        };
+        (result, titles.into_inner().unwrap())
+    }
+
+    // spec: DMN-060, DMN-073
+    #[test]
+    fn set_thread_title_renames_the_thread() {
+        let (result, titles) = rename(json!({ "title": "  Checkout v2 " }), false);
+
+        assert_eq!(result.unwrap(), "The thread is now titled \"Checkout v2\".");
+        assert_eq!(titles, ["Checkout v2"]);
+    }
+
+    // spec: DMN-061
+    #[test]
+    fn set_thread_title_rejects_bad_titles_and_honours_cancellation() {
+        for arguments in [
+            json!({}),
+            json!({ "title": " " }),
+            json!({ "title": 3 }),
+            json!({ "title": "x".repeat(MAX_TITLE_CHARS + 1) }),
+        ] {
+            let (result, titles) = rename(arguments.clone(), false);
+            assert!(result.is_err(), "{arguments}");
+            assert_eq!(titles, Vec::<String>::new());
+        }
+        let (result, titles) = rename(json!({ "title": "Late" }), true);
+        assert_eq!(result, Err("cancelled".to_owned()));
+        assert_eq!(titles, Vec::<String>::new());
+
+        let failed = run_set_thread_title(&args(json!({ "title": "x" })), || false, &|_| {
+            Err("thread 01X not found".into())
+        });
+        assert_eq!(failed.unwrap_err().to_string(), "thread 01X not found");
     }
 }

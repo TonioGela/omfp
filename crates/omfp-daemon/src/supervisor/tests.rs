@@ -12,7 +12,7 @@ use super::*;
 use crate::agent::{FakeCall, FakeLauncher, FakeReply, FakeRun};
 use crate::event_log::Start;
 use crate::git::{FakeGit, Git};
-use crate::host_tools::OPEN_IN_EDITOR;
+use crate::host_tools::{OPEN_IN_EDITOR, SET_THREAD_TITLE, run_set_thread_title};
 use crate::store::Store;
 use crate::threads::NewThread;
 use crate::workspaces::{NewWorkspace, Workspaces};
@@ -211,7 +211,7 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
     assert_eq!(launch.spec.approval_mode.as_deref(), Some("always-ask"));
     assert_eq!(launch.spec.stderr_log, h.data.thread_log(&id));
     assert_eq!(launch.spec.env, [("OMFP_TEST".into(), Some("1".into()))]);
-    assert_eq!(launch.tools, [OPEN_IN_EDITOR]);
+    assert_eq!(launch.tools, [OPEN_IN_EDITOR, SET_THREAD_TITLE]);
     // The session is stored once omp opened it (DMN-032), and its roots are the flags (DMN-029).
     assert!(h.threads.get(&id).unwrap().omp_session_id.is_some());
     assert_eq!(h.threads.roots(&id).unwrap(), launch.spec.add_dirs);
@@ -705,4 +705,171 @@ fn the_stderr_tail_keeps_the_last_lines() {
 
     assert_eq!(tail, "line 28\nline 29\nline 30");
     assert_eq!(stderr_tail(&dir.path().join("missing"), 3), "");
+}
+
+impl Harness {
+    /// A thread without a title in a new workspace: it gets one from its first message (DMN-073).
+    fn untitled_thread(&self) -> (String, PathBuf) {
+        let (ws, path) = self.workspace();
+        let new = NewThread {
+            title_source: TitleSource::Placeholder,
+            ..NewThread::new("", ws)
+        };
+        (self.threads.create(new).unwrap().id, path)
+    }
+
+    fn title(&self, id: &str) -> (String, TitleSource) {
+        let thread = self.threads.get(id).unwrap();
+        (thread.title, thread.title_source)
+    }
+
+    /// The sessions names the thread's first process got.
+    fn session_names(&self) -> Vec<String> {
+        self.launcher
+            .process(0)
+            .calls()
+            .into_iter()
+            .filter_map(|call| match call {
+                FakeCall::Call(OmpCall::SetSessionName(command)) => Some(command.name),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+// spec: DMN-073
+#[tokio::test]
+async fn the_first_message_gives_a_placeholder_then_a_generated_title_and_session_name() {
+    let h = harness(|config| {
+        config.omp_env = vec![("OMFP_TEST".into(), Some("1".into()))];
+    });
+    h.launcher.push_run(fixture("text_reply"));
+    h.launcher.push_title(Ok("Greeting the room"));
+    let (id, folder) = h.untitled_thread();
+
+    h.supervisor
+        .prompt(&id, prompt("say hi to everyone in the room please"))
+        .await
+        .unwrap();
+    assert_eq!(
+        h.title(&id),
+        (
+            "say hi to everyone in the…".into(),
+            TitleSource::Placeholder
+        )
+    );
+    h.supervisor.title_generated(&id).await;
+
+    assert_eq!(
+        h.title(&id),
+        ("Greeting the room".into(), TitleSource::Generated)
+    );
+    assert_eq!(h.session_names(), ["Greeting the room"]);
+    let requests = h.launcher.title_requests();
+    assert_eq!(
+        requests,
+        [TitleRequest {
+            program: "omp".into(),
+            cwd: folder,
+            env: vec![("OMFP_TEST".into(), Some("1".into()))],
+            message: "say hi to everyone in the room please".into(),
+        }]
+    );
+    // Later messages keep the title.
+    h.supervisor.prompt(&id, prompt("again")).await.unwrap();
+    assert_eq!(h.launcher.title_requests().len(), 1);
+}
+
+// spec: DMN-073
+#[tokio::test]
+async fn a_title_set_while_the_title_is_generated_is_kept() {
+    let h = harness(|_| {});
+    h.launcher.push_run(fixture("text_reply"));
+    h.launcher.push_title(Ok("Generated"));
+    let gate = h.launcher.gate_titles();
+    let (id, _) = h.untitled_thread();
+    h.supervisor.prompt(&id, prompt("say hi")).await.unwrap();
+    gate.arrived(1).await;
+
+    h.supervisor
+        .set_title(&id, "Mine".into(), TitleSource::Set)
+        .await
+        .unwrap();
+    gate.open();
+    h.supervisor.title_generated(&id).await;
+
+    assert_eq!(h.title(&id), ("Mine".into(), TitleSource::Set));
+    assert_eq!(h.session_names(), ["Mine"]);
+}
+
+// spec: DMN-073
+#[tokio::test]
+async fn a_set_title_is_never_generated_and_a_failed_generation_keeps_the_placeholder() {
+    let h = harness(|_| {});
+    let titled = h.thread();
+    h.supervisor
+        .prompt(&titled, prompt("say hi"))
+        .await
+        .unwrap();
+    assert_eq!(h.title(&titled), ("t".into(), TitleSource::Set));
+    assert_eq!(h.launcher.title_requests(), Vec::new());
+
+    h.launcher.push_title(Err("no model for the smol role"));
+    let (untitled, _) = h.untitled_thread();
+    h.supervisor
+        .prompt(&untitled, prompt("fix the build"))
+        .await
+        .unwrap();
+    h.supervisor.title_generated(&untitled).await;
+    assert_eq!(
+        h.title(&untitled),
+        ("fix the build".into(), TitleSource::Placeholder)
+    );
+}
+
+// spec: DMN-073
+#[tokio::test]
+async fn without_title_generation_the_placeholder_stays() {
+    let h = harness(|config| config.title_generation = false);
+    let (id, _) = h.untitled_thread();
+
+    h.supervisor
+        .prompt(&id, prompt("fix the build"))
+        .await
+        .unwrap();
+    h.supervisor.title_generated(&id).await;
+
+    assert_eq!(
+        h.title(&id),
+        ("fix the build".into(), TitleSource::Placeholder)
+    );
+    assert_eq!(h.launcher.title_requests(), Vec::new());
+}
+
+// spec: DMN-060, DMN-073
+#[tokio::test]
+async fn set_thread_title_stores_a_set_title_and_names_the_session() {
+    let h = harness(|_| {});
+    let (id, _) = h.untitled_thread();
+    h.supervisor.start(&id).await.unwrap();
+    let mut changes = h.supervisor.subscribe_changes();
+    let gate = h.launcher.gate("set_session_name");
+    let set_title = h.supervisor.title_setter(&id);
+
+    // omp-rpc runs host tool handlers on their own threads.
+    let result = tokio::task::spawn_blocking(move || {
+        let arguments = json!({ "title": "Agent's choice" });
+        run_set_thread_title(arguments.as_object().unwrap(), || false, &*set_title)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(result, Ok(()));
+    assert_eq!(h.title(&id), ("Agent's choice".into(), TitleSource::Set));
+    assert_eq!(changes.recv().await.unwrap(), id);
+    gate.arrived(1).await;
+    gate.open();
+    assert_eq!(h.session_names(), ["Agent's choice"]);
 }

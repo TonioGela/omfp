@@ -118,6 +118,86 @@ expression: type_schemas()
           }
         ]
       },
+      "Density": {
+        "description": "Row height and spacing of the UI.",
+        "enum": [
+          "compact",
+          "normal"
+        ],
+        "type": "string"
+      },
+      "FontSettings": {
+        "description": "CSS `font-family` values overriding the font tokens; absent ones keep the theme's.",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ui": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "KeymapEntry": {
+        "description": "One key binding of the config file's `[keymap]` (UI-097).",
+        "properties": {
+          "command": {
+            "description": "Command id; `\"\"` removes the default binding of `keys`.",
+            "type": "string"
+          },
+          "keys": {
+            "description": "Key sequence, e.g. `g g`, `Ctrl-d`, `Space n`.",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/$defs/KeymapMode"
+          }
+        },
+        "required": [
+          "mode",
+          "keys",
+          "command"
+        ],
+        "type": "object"
+      },
+      "KeymapMode": {
+        "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+        "enum": [
+          "normal",
+          "insert",
+          "cmdline"
+        ],
+        "type": "string"
+      },
+      "NotificationMode": {
+        "description": "When the UI shows system notifications (UI-096).",
+        "oneOf": [
+          {
+            "enum": [
+              "always",
+              "never"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "background",
+            "description": "Only while the window has no focus (default).",
+            "type": "string"
+          }
+        ]
+      },
       "Provenance": {
         "description": "Who created an entity (ARC-009).",
         "properties": {
@@ -173,6 +253,50 @@ expression: type_schemas()
         ],
         "type": "object"
       },
+      "Settings": {
+        "description": "UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097).",
+        "properties": {
+          "error": {
+            "description": "Why the last reload of the config file failed (the previous settings stay); `null` when it is valid.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keymap": {
+            "description": "Bindings over the defaults, in file order; `command: \"\"` removes a default binding.",
+            "items": {
+              "$ref": "#/$defs/KeymapEntry"
+            },
+            "type": "array"
+          },
+          "ui": {
+            "$ref": "#/$defs/UiSettings"
+          }
+        },
+        "required": [
+          "ui",
+          "keymap",
+          "error"
+        ],
+        "type": "object"
+      },
+      "Theme": {
+        "description": "The user's theme: CSS applied after the built-in tokens (DMN-075).",
+        "properties": {
+          "css": {
+            "description": "`null`: the built-in themes only.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "css"
+        ],
+        "type": "object"
+      },
       "ThreadSummary": {
         "description": "What the thread list shows about a thread.",
         "properties": {
@@ -211,7 +335,11 @@ expression: type_schemas()
             "type": "array"
           },
           "title": {
+            "description": "`\"\"` until the first message (DMN-073).",
             "type": "string"
+          },
+          "titleSource": {
+            "$ref": "#/$defs/TitleSource"
           },
           "updatedAt": {
             "format": "int64",
@@ -225,6 +353,7 @@ expression: type_schemas()
         "required": [
           "id",
           "title",
+          "titleSource",
           "tags",
           "workspaceId",
           "process",
@@ -234,6 +363,62 @@ expression: type_schemas()
           "createdAt",
           "updatedAt"
         ],
+        "type": "object"
+      },
+      "TitleSource": {
+        "description": "Where a thread's title comes from (DMN-073).",
+        "oneOf": [
+          {
+            "const": "placeholder",
+            "description": "The first words of the first message (or `\"\"` before it), until a title is generated or set.",
+            "type": "string"
+          },
+          {
+            "const": "generated",
+            "description": "Generated from the conversation by the daemon.",
+            "type": "string"
+          },
+          {
+            "const": "set",
+            "description": "Set by the user or an agent (`threads.create`, `threads.update`, host tool `set_thread_title`); never replaced.",
+            "type": "string"
+          }
+        ]
+      },
+      "UiSettings": {
+        "description": "The `[ui]` table of the config file; an absent value is the default (UI-097).",
+        "properties": {
+          "density": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Density"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fonts": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/FontSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notifications": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/NotificationMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
         "type": "object"
       },
       "Workspace": {
@@ -488,6 +673,40 @@ expression: type_schemas()
           "threadId"
         ],
         "type": "object"
+      },
+      {
+        "description": "The user's theme changed (DMN-075).",
+        "properties": {
+          "kind": {
+            "const": "theme_changed",
+            "type": "string"
+          },
+          "theme": {
+            "$ref": "#/$defs/Theme"
+          }
+        },
+        "required": [
+          "kind",
+          "theme"
+        ],
+        "type": "object"
+      },
+      {
+        "description": "The UI settings of the config file changed (DMN-009, UI-097).",
+        "properties": {
+          "kind": {
+            "const": "settings_changed",
+            "type": "string"
+          },
+          "settings": {
+            "$ref": "#/$defs/Settings"
+          }
+        },
+        "required": [
+          "kind",
+          "settings"
+        ],
+        "type": "object"
       }
     ],
     "title": "IndexEvent"
@@ -524,6 +743,86 @@ expression: type_schemas()
               "threadId"
             ],
             "type": "object"
+          }
+        ]
+      },
+      "Density": {
+        "description": "Row height and spacing of the UI.",
+        "enum": [
+          "compact",
+          "normal"
+        ],
+        "type": "string"
+      },
+      "FontSettings": {
+        "description": "CSS `font-family` values overriding the font tokens; absent ones keep the theme's.",
+        "properties": {
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prose": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ui": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "KeymapEntry": {
+        "description": "One key binding of the config file's `[keymap]` (UI-097).",
+        "properties": {
+          "command": {
+            "description": "Command id; `\"\"` removes the default binding of `keys`.",
+            "type": "string"
+          },
+          "keys": {
+            "description": "Key sequence, e.g. `g g`, `Ctrl-d`, `Space n`.",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/$defs/KeymapMode"
+          }
+        },
+        "required": [
+          "mode",
+          "keys",
+          "command"
+        ],
+        "type": "object"
+      },
+      "KeymapMode": {
+        "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+        "enum": [
+          "normal",
+          "insert",
+          "cmdline"
+        ],
+        "type": "string"
+      },
+      "NotificationMode": {
+        "description": "When the UI shows system notifications (UI-096).",
+        "oneOf": [
+          {
+            "enum": [
+              "always",
+              "never"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "background",
+            "description": "Only while the window has no focus (default).",
+            "type": "string"
           }
         ]
       },
@@ -582,6 +881,50 @@ expression: type_schemas()
         ],
         "type": "object"
       },
+      "Settings": {
+        "description": "UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097).",
+        "properties": {
+          "error": {
+            "description": "Why the last reload of the config file failed (the previous settings stay); `null` when it is valid.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keymap": {
+            "description": "Bindings over the defaults, in file order; `command: \"\"` removes a default binding.",
+            "items": {
+              "$ref": "#/$defs/KeymapEntry"
+            },
+            "type": "array"
+          },
+          "ui": {
+            "$ref": "#/$defs/UiSettings"
+          }
+        },
+        "required": [
+          "ui",
+          "keymap",
+          "error"
+        ],
+        "type": "object"
+      },
+      "Theme": {
+        "description": "The user's theme: CSS applied after the built-in tokens (DMN-075).",
+        "properties": {
+          "css": {
+            "description": "`null`: the built-in themes only.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "css"
+        ],
+        "type": "object"
+      },
       "ThreadSummary": {
         "description": "What the thread list shows about a thread.",
         "properties": {
@@ -620,7 +963,11 @@ expression: type_schemas()
             "type": "array"
           },
           "title": {
+            "description": "`\"\"` until the first message (DMN-073).",
             "type": "string"
+          },
+          "titleSource": {
+            "$ref": "#/$defs/TitleSource"
           },
           "updatedAt": {
             "format": "int64",
@@ -634,6 +981,7 @@ expression: type_schemas()
         "required": [
           "id",
           "title",
+          "titleSource",
           "tags",
           "workspaceId",
           "process",
@@ -643,6 +991,62 @@ expression: type_schemas()
           "createdAt",
           "updatedAt"
         ],
+        "type": "object"
+      },
+      "TitleSource": {
+        "description": "Where a thread's title comes from (DMN-073).",
+        "oneOf": [
+          {
+            "const": "placeholder",
+            "description": "The first words of the first message (or `\"\"` before it), until a title is generated or set.",
+            "type": "string"
+          },
+          {
+            "const": "generated",
+            "description": "Generated from the conversation by the daemon.",
+            "type": "string"
+          },
+          {
+            "const": "set",
+            "description": "Set by the user or an agent (`threads.create`, `threads.update`, host tool `set_thread_title`); never replaced.",
+            "type": "string"
+          }
+        ]
+      },
+      "UiSettings": {
+        "description": "The `[ui]` table of the config file; an absent value is the default (UI-097).",
+        "properties": {
+          "density": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Density"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fonts": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/FontSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "notifications": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/NotificationMode"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
         "type": "object"
       },
       "Workspace": {
@@ -808,6 +1212,12 @@ expression: type_schemas()
         },
         "type": "array"
       },
+      "settings": {
+        "$ref": "#/$defs/Settings"
+      },
+      "theme": {
+        "$ref": "#/$defs/Theme"
+      },
       "threads": {
         "items": {
           "$ref": "#/$defs/ThreadSummary"
@@ -824,7 +1234,9 @@ expression: type_schemas()
     "required": [
       "repositories",
       "workspaces",
-      "threads"
+      "threads",
+      "theme",
+      "settings"
     ],
     "title": "IndexSnapshot",
     "type": "object"

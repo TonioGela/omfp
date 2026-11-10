@@ -1,0 +1,157 @@
+/**
+ * The fallback tool card (UI-050): name, one-line argument summary, status, duration, and expandable pretty JSON
+ * arguments and text result. Failed tools are distinct and expanded by default (UI-052).
+ */
+
+import type { JsonValue, ToolCall, ToolResultMessage, ToolRun, UserContent } from "@omfp/core";
+import { strings } from "../strings/index.ts";
+
+/** Longest argument summary. */
+const SUMMARY_CHARS = 96;
+
+/** `text` with whitespace runs collapsed to one space, cut to `max` characters with an ellipsis. */
+export function oneLine(text: string, max: number): string {
+  const flat = text.split(/\s+/).filter(Boolean).join(" ");
+  const chars = [...flat];
+  if (chars.length <= max) {
+    return flat;
+  }
+  return `${chars.slice(0, Math.max(0, max - 1)).join("")}…`;
+}
+
+/** Pretty-printed JSON. */
+export function prettyJson(value: unknown): string {
+  return JSON.stringify(value, null, 2) ?? "null";
+}
+
+/** Progress shown on a card. */
+export type CardStatus = "composing" | "pending" | "running" | "succeeded" | "failed";
+
+/** Everything the fallback card shows. */
+export interface ToolCard {
+  readonly toolCallId: string;
+  readonly name: string;
+  readonly summary: string;
+  readonly status: CardStatus;
+  /** Milliseconds from the end of the calling message to the result, when both carry timestamps. */
+  readonly durationMs: number | undefined;
+  /** Pretty JSON, or the partial argument text while composing. */
+  readonly args: string;
+  /** Text parts of the result (or of the latest partial result), else its pretty JSON. */
+  readonly result: string | undefined;
+}
+
+/** Cards start collapsed, failed ones expanded (UI-052). */
+export function expandedByDefault(card: ToolCard): boolean {
+  return card.status === "failed";
+}
+
+/**
+ * The card of one tool call. `call` is the assistant's tool-call block (absent when only the run is known), `run` the
+ * execution tracked by the reducer, `result` the transcript's tool result message, `calledAt` the calling message's
+ * completion timestamp.
+ */
+export function toolCard(
+  toolCallId: string,
+  call: ToolCall | undefined,
+  run: ToolRun | undefined,
+  result: ToolResultMessage | undefined,
+  calledAt: number | undefined,
+): ToolCard {
+  const name = call?.name ?? run?.tool_name ?? result?.toolName ?? strings.chat.tool.fallbackName;
+  const partial = call?.partialArgs;
+  const args: JsonValue | undefined = call?.arguments ?? run?.args ?? undefined;
+  const intent = call?.intent ?? run?.intent ?? undefined;
+  const finishedAt = result?.timestamp;
+  return {
+    toolCallId,
+    name,
+    summary: summaryOf(intent, args, partial),
+    status: statusOf(partial !== undefined && args === undefined, run, result),
+    durationMs:
+      calledAt !== undefined && finishedAt !== undefined && calledAt > 0 && finishedAt >= calledAt
+        ? finishedAt - calledAt
+        : undefined,
+    args: args !== undefined ? prettyJson(args) : (partial ?? "{}"),
+    result: resultOf(run, result),
+  };
+}
+
+function summaryOf(intent: string | undefined, args: JsonValue | undefined, partial: string | undefined): string {
+  if (intent !== undefined) {
+    return oneLine(intent, SUMMARY_CHARS);
+  }
+  if (isObject(args)) {
+    return summarize(args);
+  }
+  return partial === undefined ? "" : oneLine(partial, SUMMARY_CHARS);
+}
+
+function resultOf(run: ToolRun | undefined, result: ToolResultMessage | undefined): string | undefined {
+  const value = run?.result ?? run?.partial_result ?? null;
+  if (value !== null) {
+    return resultText(value);
+  }
+  return result?.content === undefined ? undefined : userContentText(result.content);
+}
+
+function statusOf(composing: boolean, run: ToolRun | undefined, result: ToolResultMessage | undefined): CardStatus {
+  if (run?.status === "failed" || result?.isError === true) {
+    return "failed";
+  }
+  if (run?.status === "succeeded" || (run === undefined && result !== undefined)) {
+    return "succeeded";
+  }
+  if (run?.status === "running") {
+    return "running";
+  }
+  return run === undefined && composing ? "composing" : "pending";
+}
+
+export function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** `key: value` of the scalar arguments, by key, on one line. */
+function summarize(args: Readonly<Record<string, unknown>>): string {
+  const parts = Object.keys(args)
+    .sort()
+    .flatMap((key) => {
+      const value = args[key];
+      return typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+        ? [`${key}: ${String(value)}`]
+        : [];
+    });
+  return oneLine(parts.join(", "), SUMMARY_CHARS);
+}
+
+/** The text parts of a tool result value (`{content: [{type: "text", text}], …}`), else its pretty JSON. */
+export function resultText(value: JsonValue): string {
+  if (isObject(value) && Array.isArray(value.content)) {
+    const texts = value.content.flatMap((part) =>
+      isObject(part) && part.type === "text" && typeof part.text === "string" ? [part.text] : [],
+    );
+    if (texts.length > 0) {
+      return texts.join("\n");
+    }
+  }
+  return typeof value === "string" ? value : prettyJson(value);
+}
+
+function userContentText(content: readonly UserContent[]): string {
+  return content.map((part) => (part.type === "text" ? (part.text ?? "") : strings.chat.tool.image)).join("\n");
+}
+
+/** `1.2 s`, `350 ms`, `2 min 5 s`. */
+export function formatDuration(ms: number): string {
+  const { duration } = strings.chat;
+  if (ms < 1000) {
+    return duration.ms(ms);
+  }
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return duration.seconds(seconds);
+  }
+  const minutes = Math.floor(seconds / 60);
+  return duration.minutes(minutes, seconds - minutes * 60);
+}

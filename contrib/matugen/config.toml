@@ -1,0 +1,16 @@
+# Example matugen configuration for omfp (merge into ~/.config/matugen/config.toml).
+# Copy omfp.css to ~/.config/matugen/templates/omfp.css, then run e.g. `matugen image ~/wallpaper.png`.
+
+[config.custom_colors]
+# omfp's status roles have no Material 3 counterpart: matugen derives success/on_success and warning/on_warning
+# (plus *_container variants) from these seeds, harmonized with the source color when `blend = true`.
+success = { color = "#2e7d32", blend = true }
+warning = { color = "#b26a00", blend = true }
+
+[templates.omfp]
+input_path = "~/.config/matugen/templates/omfp.css"
+# The daemon watches this file on its host and pushes every change to all windows.
+output_path = "~/.config/omfp/theme.css"
+# Remote daemon instead (the file above is only read by a daemon on this machine): push the generated theme with the
+# CLI. The hook runs through the shell, so $OMFP_TOKEN expands; omit --daemon/--token for a local running daemon.
+# post_hook = "omfp theme set ~/.config/omfp/theme.css --daemon https://devbox.example:7421 --token \"$OMFP_TOKEN\""

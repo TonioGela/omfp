@@ -1,18 +1,19 @@
 # AGENTS.md
 
 Guidance for coding agents working on **omfp** (formerly pmo, renamed at the end of M1): a GUI client (web + desktop)
-for the omp coding agent (oh-my-pi). One binary, `omfp`: `omfp daemon` runs the daemon (one `omp --mode rpc-ui`
-process per thread, WebSocket API, web UI); `omfp desktop` (M7, Tauri) opens one more window on the local daemon,
-starting it in the background if needed (D-15, D-16). Threads run in **workspace folders** whose top-level entries are
-repositories (D-11). The UI moves from Dioxus to **TypeScript/React with Bun** in M3 (D-18); the current Dioxus UI
-(`omfp-ui`) and `omfp-client` will be deleted then. Direction (D-17): agents get full access to the protocol and build
-widgets in JavaScript (M4, M10); never design something that would only be reachable from the human UI.
+for the omp coding agent (oh-my-pi). One binary, `omfp` (`crates/omfp`): `omfp daemon` runs the daemon (one
+`omp --mode rpc-ui` process per thread, WebSocket API, web UI); `omfp theme set <file>` sets the UI theme of a daemon;
+`omfp desktop` (M7, Tauri) opens one more window on the local daemon, starting it in the background if needed (D-15,
+D-16). Threads run in **workspace folders** whose top-level entries are repositories (D-11). The UI is a
+**TypeScript/React** web app built and tested with **Bun** (`ui/`, D-18), served by the daemon. Direction (D-17):
+agents get full access to the protocol and build widgets in JavaScript (M4, M10); never design something that would
+only be reachable from the human UI.
 
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-18), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M2 and M2b done; next: M3
-  TypeScript UI); `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M3 and M2b done; next: M4 widgets);
+  `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
 ## Ground rules
@@ -31,20 +32,19 @@ widgets in JavaScript (M4, M10); never design something that would only be reach
 
 ```sh
 nix develop                      # or: nix develop -c sh -c '<command>'
-just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-ts, test-contract, test-wasm, test-e2e, deny
-just test                        # fast tests (no omp process)
-just test-ts                     # bun test in ui/ (reducer goldens, client; transport suite against a fake-launcher daemon)
+just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-ts, test-contract, test-e2e, deny
+just test                        # fast Rust tests (no omp process)
+just test-ts                     # `bun run test` in ui/ (reducer goldens, client, kit + app component tests; transport suite against a fake-launcher daemon)
 just test-contract               # contract tests against the pinned omp + fake LLM
 just record-fixtures             # re-record fixtures/ (review the diff!), then `just gen-states`
 just gen-states                  # golden reducer states fixtures/states/<ver>/ from the Rust reducer
 just gen-ts                      # ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas
 just gen-bun-nix                 # ui/bun.nix from ui/bun.lock (bun2nix), after every JS dependency change
-just test-wasm                   # web transport suite in headless Chromium against a fake-launcher daemon
 just test-e2e                    # L5 journeys: builds the web bundle, headless Chromium + daemon + omp + fake LLM
-just build-web                   # dx build -p omfp-ui --platform web --release (no dev-tools overlay)
+just build-web                   # release bundle of the TypeScript UI into ui/packages/app/dist (`bun run build`)
 just serve [daemon args]         # try the app: release bundle + `omfp daemon` with your HOME, ~/.omp, default data dir
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
-cargo xtask check-versions       # omp / omp-rpc / wasm-bindgen / dioxus pins agree
+cargo xtask check-versions       # omp / omp-rpc pins agree
 ```
 
 Clippy runs with `pedantic` as errors. Notable: `assert_is_empty` forbids `assert!(x.is_empty())` — use
@@ -53,26 +53,28 @@ Clippy runs with `pedantic` as errors. Notable: `assert_is_empty` forbids `asser
 ## Layout
 
 ```text
-crates/omfp-core      reducer over omp events (ThreadEvent → ThreadState); no I/O; compiles to wasm
-crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wasm
+crates/omfp-core      reducer over omp events (ThreadEvent → ThreadState); no I/O; compiles to wasm (ARC-010)
+crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wasm (ARC-010)
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs),
                       supervisor (launch in the workspace folder, root sync), agent conventions (conventions.rs),
                       event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
                       workspaces/scan.rs, add/remove repo), threads, git port + FakeGit, host tools, WebSocket
                       server; `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`);
-                      examples/test_daemon.rs: the fake-launcher daemon the transport suites (wasm, TS) run against
-crates/omfp-client    protocol client without UI: Transport (native tokio-tungstenite / web-sys WebSocket), session
-                      (hello, subscriptions, reconnect backoff), model (index, ThreadState per thread, dirty set)
-crates/omfp-ui        the app: Dioxus UI (features web / desktop), the host glue (host/: client model → view input
-                      per animation frame, intents → protocol calls, web token handling) and the `omfp` binary
+                      examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
+crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI)
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
 e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process) and the M2 journeys
-ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + Biome (`just lint`), `bun test`
+ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + Biome (`just lint`), `bun run test`
 ui/packages/protocol  @omfp/protocol: generated protocol types + method table (generated.ts), envelope, topics
 ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked against fixtures/states/
 ui/packages/client    @omfp/client: WebSocket transport, session (hello, subscriptions, reconnect), model
+ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css, kit.css)
+ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK: host, frame store, hooks, commands), vm (view
+                      models), widgets, frame, view (layout tree + widget registry), keymap, theme, strings;
+                      build.ts → dist/ (`just build-web`)
+ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)
 fixtures/states/<ver>/   ThreadState JSONL, one line per fixture event: the Rust reducer's goldens for the TS port
@@ -110,12 +112,15 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 
 - Browsers in tests, spikes and smoke checks always run **headless** (Chromium `--headless=new`; WebKitGTK under
   `xvfb-run`), never on the user's display: a visible window can be disturbed by the mouse and changes results.
-- `dx` 0.7.10 panics when the workspace has glob `default-members`: keep none; build with `dx build -p omfp-ui`.
-- nixpkgs' `dioxus-cli` needs `zstd` (overridden in `flake.nix`); `convco` does not build, so commitizen checks
-  commit messages.
+- `convco` does not build from nixpkgs, so commitizen checks commit messages.
 - `typos` skips `fixtures/` (streamed deltas split words).
-- Dioxus web only drops a `false` boolean attribute it knows (`disabled`, `checked`, `hidden`, …); others such as
-  `inert` are written as `inert="false"`, which still applies. Use `attr: if condition { "true" }` for those.
+- Component tests need a DOM: `bun run test` (in `ui/`) preloads `ui/test/dom.ts` (happy-dom) only for
+  `packages/kit` and `packages/app` (their `bunfig.toml` does the same for a plain `bun test` inside them), because
+  happy-dom replaces `WebSocket`, `fetch` and timers, which the client's transport suite needs from Bun. Never run the
+  client tests with the preload.
+- The web bundle has no user theme: `build.ts` adds `<link rel="stylesheet" href="/theme.css" data-omfp-theme>` after
+  the bundle's CSS; the daemon serves `/theme.css` (UI-091), and the app replaces the link with a
+  `<style data-omfp-theme>` when the theme changes.
 - Fixtures are normalized (timestamps, durations, UUIDs, random ids, temp roots); if a re-record shows churn, add the
   volatile field to `omfp_testkit::normalize_frame` rather than accepting noise.
 - TypeScript (`ui/`): one root `tsconfig.json` (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`),

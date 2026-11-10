@@ -2,9 +2,9 @@
 
 import { describe, expect, test } from "bun:test";
 import { replay, type ThreadEvent } from "@omfp/core";
-import { type EventFrame, INDEX_TOPIC, type IndexSnapshot, type SubscribeResult, threadTopic } from "@omfp/protocol";
+import { type EventFrame, INDEX_TOPIC, type SubscribeResult, threadTopic } from "@omfp/protocol";
 import { type Dirty, isDirtyEmpty, Model, type ThreadView } from "../src/index.ts";
-import { FIXTURES, fixture, indexFrame, repository, summary, threadFrame } from "./support.ts";
+import { FIXTURES, fixture, indexFrame, indexState, repository, summary, threadFrame } from "./support.ts";
 
 const THREAD = "01THREAD";
 const TOPIC = threadTopic(THREAD);
@@ -150,11 +150,10 @@ describe("model", () => {
   test("the index is keyed and ordered by id and follows its events", () => {
     const model = new Model();
     model.track(INDEX_TOPIC);
-    const state: IndexSnapshot = {
+    const state = indexState({
       repositories: [repository("01R2"), repository("01R1")],
-      workspaces: [],
       threads: [summary("01T2", "second"), summary("01T1", "first")],
-    };
+    });
     expect(model.applySubscribed(INDEX_TOPIC, snapshot("i1", 7, state)).ok).toBe(true);
 
     const renamed = summary("01T1", "renamed");
@@ -174,16 +173,69 @@ describe("model", () => {
     expect([...index.repositories.keys()]).toEqual(["01R1"]);
   });
 
+  // spec: DMN-075
+  test("the index carries the user's theme and follows theme changes", () => {
+    const model = new Model();
+    expect(model.index.theme).toEqual({ css: null });
+    model.track(INDEX_TOPIC);
+    const themed = indexState({ theme: { css: ":root { --omfp-primary: red; }" } });
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i1", 1, themed)).ok).toBe(true);
+    expect(model.index.theme).toEqual({ css: ":root { --omfp-primary: red; }" });
+    model.takeDirty();
+
+    const cleared = indexFrame("i1", 2, { kind: "theme_changed", theme: { css: null } });
+    expect(model.applyEvent(cleared)).toBe("applied");
+
+    expect(model.index.theme).toEqual({ css: null });
+    expect(model.takeDirty().index).toBe(true);
+  });
+
+  // spec: DMN-075
+  test("a snapshot without a theme has the built-in themes only", () => {
+    const model = new Model();
+    model.track(INDEX_TOPIC);
+    const { theme: _, ...older } = indexState({ threads: [summary("01T1", "one")] });
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i1", 1, older)).ok).toBe(true);
+    expect(model.index.theme).toEqual({ css: null });
+    expect(model.index.threads.size).toBe(1);
+
+    const broken = { ...indexState(), theme: { css: 42 } };
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i2", 1, broken)).ok).toBe(false);
+  });
+
+  // spec: DMN-009, UI-097
+  test("the index carries the UI settings and follows settings changes", () => {
+    const model = new Model();
+    expect(model.index.settings).toEqual({ ui: {}, keymap: [], error: null });
+    model.track(INDEX_TOPIC);
+    const { settings: _, ...older } = indexState();
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i1", 1, older)).ok).toBe(true);
+    expect(model.index.settings).toEqual({ ui: {}, keymap: [], error: null });
+    model.takeDirty();
+
+    const settings = {
+      ui: { density: "normal", fonts: { prose: "Literata, serif" } },
+      keymap: [{ mode: "normal", keys: "Space t", command: "theme.set" }],
+      error: "config.toml: unknown field `densty`",
+    } as const;
+    const changed = indexFrame("i1", 2, {
+      kind: "settings_changed",
+      settings: { ...settings, keymap: [...settings.keymap] },
+    });
+    expect(model.applyEvent(changed)).toBe("applied");
+
+    expect(model.index.settings).toEqual({ ...settings, keymap: [...settings.keymap] });
+    expect(model.takeDirty().index).toBe(true);
+    const broken = { ...indexState(), settings: { ui: {}, keymap: [{ keys: 1 }], error: null } };
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i2", 1, broken)).ok).toBe(false);
+  });
+
   test("a snapshot replaces the previous state and position", () => {
     const model = new Model();
     model.track(INDEX_TOPIC);
-    const first: IndexSnapshot = {
-      repositories: [repository("01R1")],
-      workspaces: [],
-      threads: [summary("01T1", "one")],
-    };
+    const first = indexState({ repositories: [repository("01R1")], threads: [summary("01T1", "one")] });
     model.applySubscribed(INDEX_TOPIC, snapshot("i1", 3, first));
-    const second: IndexSnapshot = { repositories: [], workspaces: [], threads: [summary("01T9", "nine")] };
+    const second = indexState({ threads: [summary("01T9", "nine")] });
 
     model.applySubscribed(INDEX_TOPIC, snapshot("i2", 1, second));
 
@@ -261,7 +313,7 @@ describe("model", () => {
     const revision = model.revision;
 
     applyAll(model, "e1", 2, events.slice(1));
-    const state: IndexSnapshot = { repositories: [], workspaces: [], threads: [] };
+    const state = indexState();
     model.applySubscribed(INDEX_TOPIC, snapshot("i1", 0, state));
 
     expect(model.revision).toBeGreaterThan(revision);

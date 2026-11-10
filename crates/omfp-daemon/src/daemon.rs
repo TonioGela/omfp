@@ -15,7 +15,7 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::agent::{AgentLauncher, OmpLauncher};
-use crate::config::{Cli, Config, web_bundle};
+use crate::config::{Cli, Config, default_config_file, web_bundle};
 use crate::conventions;
 use crate::git::{Git, GitCli};
 use crate::omp_binary;
@@ -23,6 +23,7 @@ use crate::paths::DataDir;
 use crate::server::{self, AppState, Services};
 use crate::store::Store;
 use crate::supervisor::{Supervisor, SupervisorConfig};
+use crate::theme::default_theme_file;
 use crate::threads::Threads;
 use crate::token::Token;
 use crate::workspaces::Workspaces;
@@ -257,17 +258,36 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
             idle_timeout: config.idle_timeout,
             event_capacity: config.event_buffer,
             agent_dir,
+            title_generation: config.title_generation,
             ..SupervisorConfig::new(ports.omp_program)
         },
     );
     let services = Services::new(store, threads, workspaces, supervisor.clone())
         .await
         .map_err(|error| anyhow::anyhow!(error.message))?;
-    let background = vec![
+    let mut background = vec![
         supervisor.spawn_reaper(),
         services.spawn_index_updates(),
         services.spawn_rescans(),
     ];
+    if let Some(path) = config.theme_file.clone() {
+        info!(theme = %path.display(), "following the theme file");
+        background.push(
+            services
+                .watch_theme_file(path)
+                .await
+                .map_err(|error| anyhow::anyhow!(error.message))?,
+        );
+    }
+    if let Some(path) = config.config_file.clone() {
+        info!(config = %path.display(), "following the config file");
+        background.push(
+            services
+                .follow_config_file(path, config.file_options.clone())
+                .await
+                .map_err(|error| anyhow::anyhow!(error.message))?,
+        );
+    }
 
     let listener = tokio::net::TcpListener::bind(config.bind)
         .await
@@ -314,7 +334,7 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
 }
 
 /// `omfp daemon`: starts the daemon, prints its URL, and stops on SIGINT/SIGTERM (DMN-005).
-pub fn run(cli: Cli) -> anyhow::Result<()> {
+pub fn run(mut cli: Cli) -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -322,12 +342,20 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
         )
         .with_writer(std::io::stderr)
         .init();
-    let config = Config::from_cli(
+    let xdg_config_home = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from);
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    cli.config = cli
+        .config
+        .or_else(|| default_config_file(xdg_config_home.clone(), home.clone()));
+    let mut config = Config::from_cli(
         cli,
         std::env::var_os("XDG_DATA_HOME").map(PathBuf::from),
-        std::env::var_os("HOME").map(PathBuf::from),
+        home.clone(),
     )
     .map_err(anyhow::Error::msg)?;
+    config.theme_file = config
+        .theme_file
+        .or_else(|| default_theme_file(xdg_config_home, home));
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?

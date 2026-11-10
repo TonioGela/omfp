@@ -13,7 +13,6 @@ license = "GPL-3.0-or-later"
 # Internal crates
 omfp-core = { path = "crates/omfp-core" }
 omfp-protocol = { path = "crates/omfp-protocol" }
-omfp-client = { path = "crates/omfp-client" }
 omfp-daemon = { path = "crates/omfp-daemon" }
 fake-llm = { path = "crates/fake-llm" }
 omfp-testkit = { path = "crates/omfp-testkit" }
@@ -21,22 +20,7 @@ omfp-testkit = { path = "crates/omfp-testkit" }
 # omp RPC client: the tag MUST match the oh-my-pi flake input and omfp_core::OMP_VERSION (ENV-010).
 omp-rpc = { git = "https://github.com/can1357/oh-my-pi", tag = "v18.18.6" }
 
-# UI: dioxus minor MUST match `dx`, wasm-bindgen MUST equal the shell's wasm-bindgen-cli (ENV-012).
-dioxus = { version = "0.7.10" }
-wasm-bindgen = "=0.2.130"
-# Browser bindings: versions move in lockstep with wasm-bindgen (pinned above).
-js-sys = "0.3.107"
-web-sys = "0.3.107"
-wasm-bindgen-futures = "0.4.80"
-wasm-bindgen-test = "0.3.80"
-gloo-timers = { version = "0.3", features = ["futures"] }
-# UI rendering and tests
-ammonia = "4"
-dioxus-ssr = "0.7.10"
-pulldown-cmark = { version = "0.13", default-features = false, features = [
-  "html",
-] }
-scraper = "0.29"
+# E2E browser driver
 thirtyfour = "0.38"
 
 anyhow = "1"
@@ -73,6 +57,8 @@ tokio = { version = "1", features = [
 tokio-stream = "0.1"
 tokio-tungstenite = "0.30"
 toml = "1"
+# Config file write-back keeping comments (DMN-009); already in the tree through proc-macro-crate.
+toml_edit = "0.25"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ulid = { version = "3", features = ["serde"] }

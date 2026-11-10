@@ -2,8 +2,9 @@
 
 use omfp_core::ProcessState;
 use omfp_protocol::{
-    CreatedBy, FileChange, FileStatus, GitStatus, Provenance, RepoKind, RepoStatus, Repository,
-    ThreadSummary, Workspace, WorkspaceRepo,
+    CreatedBy, Density, FileChange, FileStatus, FontSettings, GitStatus, KeymapEntry, KeymapMode,
+    NotificationMode, Provenance, RepoKind, RepoStatus, Repository, Settings, Theme, ThreadSummary,
+    TitleSource, UiSettings, Workspace, WorkspaceRepo,
 };
 
 pub const REPO_ID: &str = "01JD8X3Q4T9V2W6Y5Z7A1B3C6F";
@@ -17,7 +18,7 @@ pub const CREATED_AT: i64 = 1_794_268_800_000;
 pub fn user_provenance() -> Provenance {
     Provenance {
         created_by: CreatedBy::User,
-        client: Some("omfp-ui/web".to_owned()),
+        client: Some("omfp/web".to_owned()),
     }
 }
 
@@ -102,6 +103,7 @@ pub fn thread() -> ThreadSummary {
     ThreadSummary {
         id: THREAD_ID.to_owned(),
         title: "Checkout v2".to_owned(),
+        title_source: TitleSource::Generated,
         tags: vec!["checkout-v2".to_owned()],
         workspace_id: WORKSPACE_ID.to_owned(),
         process: ProcessState::Stopped,
@@ -111,6 +113,41 @@ pub fn thread() -> ThreadSummary {
         created_at: CREATED_AT,
         updated_at: CREATED_AT + 60_000,
         archived_at: None,
+    }
+}
+
+/// A user theme (DMN-075), as `theme.set` takes it and the `index` topic carries it.
+pub fn theme() -> Theme {
+    Theme {
+        css: Some(":root { --omfp-primary: #6750a4; }".to_owned()),
+    }
+}
+
+/// UI settings of a config file (DMN-009, UI-097): every `[ui]` value and one binding per mode.
+pub fn settings() -> Settings {
+    Settings {
+        ui: UiSettings {
+            density: Some(Density::Normal),
+            notifications: Some(NotificationMode::Always),
+            fonts: Some(FontSettings {
+                prose: Some("Literata, serif".to_owned()),
+                ui: None,
+                code: Some("\"JetBrains Mono\", monospace".to_owned()),
+            }),
+        },
+        keymap: vec![
+            KeymapEntry {
+                mode: KeymapMode::Normal,
+                keys: "Space t".to_owned(),
+                command: "theme.set".to_owned(),
+            },
+            KeymapEntry {
+                mode: KeymapMode::Insert,
+                keys: "Ctrl-j".to_owned(),
+                command: String::new(),
+            },
+        ],
+        error: None,
     }
 }
 

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use omfp_daemon::store::{
-    Provenance, Repository, Store, StoreError, Thread, Workspace, new_id, now_ms,
+    Provenance, Repository, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -43,6 +43,7 @@ fn thread(created_by: Provenance, workspace_id: &str) -> Thread {
         session_dir: format!("/data/threads/{id}/sessions").into(),
         id,
         title: "Fix login".into(),
+        title_source: TitleSource::Set,
         workspace_id: workspace_id.into(),
         omp_session_id: None,
         approval_mode: Some("always-ask".into()),
@@ -106,7 +107,9 @@ fn unknown_ids_are_not_found() {
         store.rename_workspace("nope", "x").unwrap_err(),
         store.delete_workspace("nope").unwrap_err(),
         store.delete_thread("nope").unwrap_err(),
-        store.set_thread_title("nope", "x").unwrap_err(),
+        store
+            .set_thread_title("nope", "x", TitleSource::Set)
+            .unwrap_err(),
         store.set_thread_tags("nope", &[]).unwrap_err(),
         store.set_thread_roots("nope", &[]).unwrap_err(),
         store.set_created_client("nope", "cli").unwrap_err(),
@@ -227,7 +230,10 @@ fn thread_fields_are_updated() {
     let t = thread(Provenance::User, &ws.id);
     store.insert_thread(&t).unwrap();
 
-    store.set_thread_title(&t.id, "Renamed").unwrap();
+    store
+        .set_thread_title(&t.id, "Renamed", TitleSource::Generated)
+        .unwrap();
+    store.set_thread_approval_mode(&t.id, "yolo").unwrap();
     store
         .set_thread_tags(&t.id, &["zeta".into(), "alpha".into(), "zeta".into()])
         .unwrap();
@@ -243,6 +249,8 @@ fn thread_fields_are_updated() {
         updated,
         Thread {
             title: "Renamed".into(),
+            title_source: TitleSource::Generated,
+            approval_mode: Some("yolo".into()),
             tags: vec!["alpha".into(), "zeta".into()],
             archived_at: Some(7),
             omp_session_id: Some("sess-1".into()),
@@ -250,6 +258,37 @@ fn thread_fields_are_updated() {
             thinking_level: Some("low".into()),
             ..t
         }
+    );
+}
+
+// spec: DMN-073
+#[test]
+fn only_a_placeholder_title_is_replaced() {
+    let (_dir, store, ws) = with_workspace();
+    let t = Thread {
+        title: String::new(),
+        title_source: TitleSource::Placeholder,
+        ..thread(Provenance::User, &ws.id)
+    };
+    store.insert_thread(&t).unwrap();
+
+    assert!(
+        store
+            .replace_placeholder_title(&t.id, "Fix the login…", TitleSource::Placeholder)
+            .unwrap()
+    );
+    store
+        .set_thread_title(&t.id, "Mine", TitleSource::Set)
+        .unwrap();
+    assert!(
+        !store
+            .replace_placeholder_title(&t.id, "Generated", TitleSource::Generated)
+            .unwrap()
+    );
+    let stored = store.thread(&t.id).unwrap();
+    assert_eq!(
+        (stored.title.as_str(), stored.title_source),
+        ("Mine", TitleSource::Set)
     );
 }
 
@@ -285,13 +324,13 @@ fn the_creating_client_is_recorded_for_threads_and_workspaces() {
     store.insert_thread(&silent).unwrap();
     assert_eq!(store.created_clients().unwrap(), HashMap::new());
 
-    store.set_created_client(&t.id, "omfp-ui").unwrap();
+    store.set_created_client(&t.id, "omfp/web").unwrap();
     store.set_created_client(&ws.id, "omfp-cli").unwrap();
 
     assert_eq!(
         store.created_clients().unwrap(),
         HashMap::from([
-            (t.id.clone(), "omfp-ui".to_owned()),
+            (t.id.clone(), "omfp/web".to_owned()),
             (ws.id.clone(), "omfp-cli".to_owned()),
         ])
     );
@@ -328,4 +367,21 @@ fn settings_hold_json_values() {
         store.setting("idle_timeout").unwrap(),
         Some(json!({"minutes": 5}))
     );
+}
+
+// spec: DMN-075
+#[test]
+fn the_theme_is_a_setting_that_can_be_cleared() {
+    let (_dir, store) = open();
+    assert_eq!(store.theme().unwrap(), None);
+
+    store
+        .set_theme(Some(":root { --omfp-primary: red; }"))
+        .unwrap();
+    assert_eq!(
+        store.theme().unwrap().as_deref(),
+        Some(":root { --omfp-primary: red; }")
+    );
+    store.set_theme(None).unwrap();
+    assert_eq!(store.theme().unwrap(), None);
 }

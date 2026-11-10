@@ -37,6 +37,8 @@ async fn start(harness: &Harness) -> (DaemonHandle, TempDir) {
         workspaces.to_str().unwrap(),
         "--omp-bin",
         &omp,
+        // The fake LLM scripts every model call; a title run would take a step (DMN-073).
+        "--no-title-generation",
     ])
     .unwrap();
     let config = Config::from_cli(cli, None, None).unwrap();
@@ -75,7 +77,7 @@ async fn omp_forwarded_methods_return_their_declared_results() {
     let mut client = Client::hello(daemon.addr(), daemon.token().expose(), "test").await;
     let thread = client
         .typed::<ThreadsCreate>(CreateThreadParams {
-            title: "typed results".into(),
+            title: Some("typed results".into()),
             workspace: ThreadWorkspace::default(),
             tags: Vec::new(),
             model: Some(format!("{FAKE_PROVIDER}/{FAKE_MODEL}")),

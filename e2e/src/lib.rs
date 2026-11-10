@@ -1,9 +1,10 @@
 //! End-to-end tests (docs/specs/06-testing.md, layer L5): headless Chromium driven over WebDriver (`thirtyfour` and
-//! `chromedriver`) against the web bundle served by a real daemon, which runs the pinned omp against the fake LLM in an
-//! isolated environment (`omfp_testkit`). Run through `just test-e2e`, which builds the bundle first.
+//! `chromedriver`) against the TypeScript web bundle served by a real daemon, which runs the pinned omp against the
+//! fake LLM in an isolated environment (`omfp_testkit`). Run through `just test-e2e`, which builds the bundle first.
 //!
 //! Every selector is a `data-testid` (TST-031). Waiting polls the page until a condition holds or [`TIMEOUT`] passes;
-//! nothing waits for a fixed time.
+//! nothing waits for a fixed time. Title generation (DMN-073) is off, so the fake LLM only answers scripted turns and
+//! threads keep the placeholder title of their first message.
 
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
@@ -14,8 +15,11 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, bail};
 use clap::Parser;
 use fake_llm::{FakeLlm, Script, Step};
+use omfp::remote::{Connection, Target};
 use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::{DaemonHandle, Ports, start_with};
+use omfp_protocol::method::ThreadsCreate;
+use omfp_protocol::{CreateThreadParams, CreateWorkspaceParams, ThreadWorkspace};
 use omfp_testkit::{
     DenyProxy, FAKE_MODEL, KNOWN_DISCOVERY_HOSTS, OmpEnv, omp_bin, require_pinned_omp,
 };
@@ -28,20 +32,19 @@ use thirtyfour::prelude::*;
 pub const TIMEOUT: Duration = Duration::from_secs(60);
 const POLL: Duration = Duration::from_millis(50);
 
-/// The web bundle built by `just build-web`, or `OMFP_WEB_BUNDLE`.
+/// The web bundle built by `just build-web` (`ui/packages/app/dist`), or `OMFP_WEB_BUNDLE`.
 #[must_use]
 pub fn web_bundle() -> PathBuf {
     std::env::var_os("OMFP_WEB_BUNDLE").map_or_else(
-        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/dx/omfp/release/web/public"),
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../ui/packages/app/dist"),
         PathBuf::from,
     )
 }
 
-/// omp settings added to the isolated environment, e.g. `tools.approvalMode`.
-#[derive(Debug, Clone, Default)]
-pub struct Settings {
-    /// omp `tools.approvalMode` (`always-ask`, …); omp's default (`yolo`) when `None`.
-    pub approval_mode: Option<&'static str>,
+/// The CSS selector of the sidebar row of thread `id`.
+#[must_use]
+pub fn row(id: &str) -> String {
+    format!("[data-testid=thread-row][data-thread-id=\"{id}\"]")
 }
 
 /// `chromedriver` on a free port; killed on drop.
@@ -108,7 +111,7 @@ impl std::fmt::Debug for Journey {
 
 impl Journey {
     /// Starts everything with the model replying `steps` in order, then opens the UI with the token in the URL.
-    pub async fn start(steps: Vec<Step>, settings: Settings) -> anyhow::Result<Self> {
+    pub async fn start(steps: Vec<Step>) -> anyhow::Result<Self> {
         let started = Instant::now();
         require_pinned_omp();
         let bundle = web_bundle();
@@ -121,12 +124,6 @@ impl Journey {
         let fake = FakeLlm::start(Script::new(FAKE_MODEL, steps)).await?;
         let proxy = DenyProxy::start().await?;
         let env = OmpEnv::new(&fake.base_url(), Some(&proxy))?;
-        if let Some(mode) = settings.approval_mode {
-            let config = env.agent_dir().join("config.yml");
-            let text = std::fs::read_to_string(&config).unwrap_or_default();
-            let text = format!("{text}tools:\n  approvalMode: {mode}\n");
-            std::fs::write(&config, text)?;
-        }
         let data = tempfile::tempdir()?;
         let daemon = start_daemon(&env, data.path(), &bundle).await?;
         let profile = tempfile::tempdir()?;
@@ -152,6 +149,13 @@ impl Journey {
         self.data.path()
     }
 
+    /// The daemon's config file (DMN-009): `config.toml` in the data directory, absent until a journey writes it, so
+    /// the user's own `~/.config/omfp/config.toml` never applies.
+    #[must_use]
+    pub fn config_file(&self) -> PathBuf {
+        config_file(self.data.path())
+    }
+
     /// The running daemon.
     ///
     /// # Panics
@@ -159,6 +163,21 @@ impl Journey {
     #[must_use]
     pub fn daemon(&self) -> &DaemonHandle {
         self.daemon.as_ref().expect("the daemon runs until finish")
+    }
+
+    /// Where the protocol client of the command line reaches the daemon.
+    #[must_use]
+    pub fn target(&self) -> Target {
+        let daemon = self.daemon();
+        Target {
+            url: format!("ws://{}/api/ws", daemon.addr()),
+            token: daemon.token().expose().to_owned(),
+        }
+    }
+
+    /// A protocol connection of its own to the daemon, for what the UI does not offer (e.g. the approval mode).
+    pub async fn connect(&self) -> anyhow::Result<Connection> {
+        Connection::open(&self.target()).await
     }
 
     /// Polls `probe` until it returns `Some`, failing after [`TIMEOUT`] with `what` and the page's state.
@@ -206,6 +225,17 @@ impl Journey {
             .unwrap_or_default())
     }
 
+    /// How many elements match `css`.
+    pub async fn count(&self, css: &str) -> anyhow::Result<usize> {
+        let value = self
+            .eval(
+                "return document.querySelectorAll(arguments[0]).length;",
+                vec![json!(css)],
+            )
+            .await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
     /// Attribute `name` of every element matching `css`.
     pub async fn attrs(&self, css: &str, name: &str) -> anyhow::Result<Vec<Option<String>>> {
         let value = self
@@ -217,6 +247,30 @@ impl Journey {
         Ok(serde_json::from_value(value)?)
     }
 
+    /// Attribute `name` of the first element matching `css`.
+    pub async fn attr(&self, css: &str, name: &str) -> anyhow::Result<Option<String>> {
+        Ok(self.attrs(css, name).await?.into_iter().next().flatten())
+    }
+
+    /// The `data-testid` of the focused element.
+    pub async fn focused(&self) -> anyhow::Result<Option<String>> {
+        let value = self
+            .eval(
+                "const e = document.activeElement; return e && e.dataset ? e.dataset.testid || null : null;",
+                Vec::new(),
+            )
+            .await?;
+        Ok(serde_json::from_value(value)?)
+    }
+
+    /// Waits until the focused element has the test id `testid`.
+    pub async fn until_focused(&self, testid: &str) -> anyhow::Result<()> {
+        self.until(&format!("the focus on {testid}"), async |page| {
+            Ok((page.focused().await?.as_deref() == Some(testid)).then_some(()))
+        })
+        .await
+    }
+
     /// The first element matching `css`, once it is displayed.
     pub async fn element(&self, css: &str) -> anyhow::Result<WebElement> {
         Ok(self
@@ -226,6 +280,14 @@ impl Journey {
             .and_displayed()
             .first()
             .await?)
+    }
+
+    /// Waits until nothing matches `css`.
+    pub async fn gone(&self, css: &str) -> anyhow::Result<()> {
+        self.until(&format!("{css} to go"), async |page| {
+            Ok((page.count(css).await? == 0).then_some(()))
+        })
+        .await
     }
 
     /// Clicks the first displayed element matching `css`.
@@ -240,53 +302,108 @@ impl Journey {
         Ok(())
     }
 
-    /// Chooses the option with value `value` in the `<select>` matching `css`.
-    pub async fn select(&self, css: &str, value: &str) -> anyhow::Result<()> {
-        let select = self.element(css).await?;
-        select
-            .find(By::Css(format!("option[value=\"{value}\"]")))
-            .await?
-            .click()
-            .await?;
+    /// Presses `keys` on whatever has the focus.
+    pub async fn keys(&self, keys: impl Into<TypingData>) -> anyhow::Result<()> {
+        self.driver.action_chain().send_keys(keys).perform().await?;
         Ok(())
     }
 
-    /// Waits until the page is connected and shows its shell.
+    /// Chooses the option with id `key` in the kit `Select` whose root has the test id `testid`: its trigger opens a
+    /// listbox in a popover at the end of the body.
+    pub async fn select(&self, testid: &str, key: &str) -> anyhow::Result<()> {
+        self.click(&format!("[data-testid={testid}] button"))
+            .await?;
+        self.click(&format!("[data-testid=select-option][data-key=\"{key}\"]"))
+            .await?;
+        self.gone("[data-testid=select-option]").await
+    }
+
+    /// Waits until the page is connected and shows its view.
     pub async fn connected(&self) -> anyhow::Result<()> {
-        self.element("[data-testid=shell]").await?;
-        self.until("the connection", async |page| {
-            Ok(
-                (page.texts("[data-testid=connection-banner]").await? == Vec::<String>::new())
-                    .then_some(()),
-            )
-        })
+        self.element("[data-testid=view]").await?;
+        self.gone("[data-testid=connection-banner]").await
+    }
+
+    /// The ids of the threads in the sidebar.
+    pub async fn thread_ids(&self) -> anyhow::Result<Vec<String>> {
+        Ok(self
+            .attrs("[data-testid=thread-row]", "data-thread-id")
+            .await?
+            .into_iter()
+            .flatten()
+            .collect())
+    }
+
+    /// The selected thread's id.
+    pub async fn selected(&self) -> anyhow::Result<Option<String>> {
+        self.attr(
+            "[data-testid=thread-row][aria-current=true]",
+            "data-thread-id",
+        )
         .await
     }
 
-    /// Creates a thread through the new-thread dialog (no workspace) and waits until it is open.
-    pub async fn create_thread(&self, title: &str) -> anyhow::Result<String> {
+    /// Opens the new-thread dialog from the sidebar.
+    pub async fn open_new_thread(&self) -> anyhow::Result<()> {
         self.click("[data-testid=new-thread]").await?;
-        self.type_into("[data-testid=new-thread-title]", title)
-            .await?;
-        self.click("[data-testid=create-thread]").await?;
-        self.opened(title).await
+        self.element("[data-testid=new-thread-dialog]").await?;
+        Ok(())
     }
 
-    /// Waits until the thread titled `title` is open and its composer ready; returns its id.
-    pub async fn opened(&self, title: &str) -> anyhow::Result<String> {
-        self.until(&format!("thread {title:?} to open"), async |page| {
-            let header = page.text("[data-testid=thread-title]").await?;
-            let composer = page.texts("[data-testid=composer-input]").await?;
-            if header != title || composer.is_empty() {
-                return Ok(None);
-            }
-            let id = page
-                .attrs(
-                    "[data-testid=thread-row][aria-current=true]",
-                    "data-thread-id",
-                )
-                .await?;
-            Ok(id.into_iter().next().flatten())
+    /// Creates a thread in a new workspace named `workspace` through the new-thread dialog (no repository, no first
+    /// message) and waits until it is open; returns its id.
+    pub async fn create_thread(&self, workspace: &str) -> anyhow::Result<String> {
+        let before = self.thread_ids().await?;
+        self.open_new_thread().await?;
+        self.type_into("[data-testid=new-workspace-name]", workspace)
+            .await?;
+        self.click("[data-testid=create-thread]").await?;
+        self.created(&before).await
+    }
+
+    /// Waits until a thread not in `before` is selected and open; returns its id.
+    pub async fn created(&self, before: &[String]) -> anyhow::Result<String> {
+        let id = self
+            .until("the new thread to be selected", async |page| {
+                Ok(page.selected().await?.filter(|id| !before.contains(id)))
+            })
+            .await?;
+        self.gone("[data-testid=new-thread-dialog]").await?;
+        self.opened(&id).await?;
+        Ok(id)
+    }
+
+    /// Creates a thread whose omp asks before every tool (`always-ask`; the UI keeps the `yolo` default, DMN-074)
+    /// through the protocol, then opens it from the sidebar; returns its id.
+    pub async fn create_asking_thread(&self, workspace: &str) -> anyhow::Result<String> {
+        let mut connection = self.connect().await?;
+        let thread = connection
+            .call::<ThreadsCreate>(CreateThreadParams {
+                title: None,
+                workspace: ThreadWorkspace::New(CreateWorkspaceParams {
+                    name: Some(workspace.to_owned()),
+                    path: None,
+                }),
+                tags: Vec::new(),
+                model: None,
+                thinking_level: None,
+                approval_mode: Some("always-ask".to_owned()),
+                prompt: None,
+            })
+            .await?;
+        connection.close().await?;
+        self.click(&row(&thread.id)).await?;
+        self.opened(&thread.id).await?;
+        Ok(thread.id)
+    }
+
+    /// Waits until thread `id` shows in the chat and its composer is ready.
+    pub async fn opened(&self, id: &str) -> anyhow::Result<()> {
+        let chat = format!("[data-testid=thread][data-thread-id=\"{id}\"]");
+        self.until(&format!("thread {id} to open"), async |page| {
+            let shown = page.count(&chat).await? == 1;
+            let composer = page.count("[data-testid=composer-input]").await? == 1;
+            Ok((shown && composer).then_some(()))
         })
         .await
     }
@@ -315,7 +432,7 @@ impl Journey {
 
     /// Waits until the thread `thread_id` shows `status` in the thread list (`idle`, `running`, `awaiting`, …).
     pub async fn status(&self, thread_id: &str, status: &str) -> anyhow::Result<()> {
-        let css = format!("[data-testid=thread-row][data-thread-id=\"{thread_id}\"]");
+        let css = row(thread_id);
         self.until(
             &format!("thread {thread_id} to be {status}"),
             async |page| {
@@ -324,6 +441,42 @@ impl Journey {
             },
         )
         .await
+    }
+
+    /// Waits until the composer shows the selected thread busy.
+    pub async fn busy(&self) -> anyhow::Result<()> {
+        self.until("the busy composer", async |page| {
+            let busy = page.attrs("[data-testid=composer]", "data-busy").await?;
+            Ok((busy == vec![Some("true".to_owned())]).then_some(()))
+        })
+        .await
+    }
+
+    /// Switches the colour scheme with the sidebar's picker (`light`, `dark`, `system`) and waits until the page
+    /// applies it.
+    pub async fn scheme(&self, scheme: &str) -> anyhow::Result<()> {
+        self.select("theme-mode", scheme).await?;
+        self.until_scheme(scheme).await
+    }
+
+    /// Waits until `<html>` carries `data-color-scheme="<scheme>"`.
+    pub async fn until_scheme(&self, scheme: &str) -> anyhow::Result<()> {
+        self.until(&format!("the {scheme} colour scheme"), async |page| {
+            let value = page.attr("html", "data-color-scheme").await?;
+            Ok((value.as_deref() == Some(scheme)).then_some(()))
+        })
+        .await
+    }
+
+    /// The computed value of the custom property `name` on `<html>`.
+    pub async fn token(&self, name: &str) -> anyhow::Result<String> {
+        let value = self
+            .eval(
+                "return getComputedStyle(document.documentElement).getPropertyValue(arguments[0]).trim();",
+                vec![json!(name)],
+            )
+            .await?;
+        Ok(value.as_str().unwrap_or_default().to_owned())
     }
 
     /// Saves a screenshot of the window as `omfp-<name>.png` in `OMFP_SCREENSHOT_DIR` (default `/tmp`; the dev shell's
@@ -337,17 +490,26 @@ impl Journey {
         Ok(path)
     }
 
-    /// Fails when the first element matching `css` scrolls sideways (`scrollWidth > clientWidth`).
+    /// Fails when the first element matching `css` scrolls sideways (`scrollWidth > clientWidth`), naming the
+    /// descendants that stick out on the right.
     pub async fn fits(&self, css: &str) -> anyhow::Result<()> {
         let value = self
             .eval(
-                "const e = document.querySelector(arguments[0]); return [e.scrollWidth, e.clientWidth];",
+                "const e = document.querySelector(arguments[0]);
+                 const right = e.getBoundingClientRect().left + e.clientLeft + e.clientWidth;
+                 const out = [...e.querySelectorAll('*')]
+                   .filter(d => d.getBoundingClientRect().right > right + 0.5)
+                   .map(d => `${d.tagName.toLowerCase()}[${d.dataset.testid || d.className || ''}]`
+                             + ` ${Math.round(d.getBoundingClientRect().width)}px`);
+                 return [e.scrollWidth, e.clientWidth, out.slice(0, 8)];",
                 vec![json!(css)],
             )
             .await?;
-        let (scroll, client): (u64, u64) = serde_json::from_value(value)?;
+        let (scroll, client, out): (u64, u64, Vec<String>) = serde_json::from_value(value)?;
         if scroll > client {
-            bail!("{css} overflows sideways: scrollWidth {scroll} > clientWidth {client}");
+            bail!(
+                "{css} overflows sideways: scrollWidth {scroll} > clientWidth {client}: {out:#?}"
+            );
         }
         Ok(())
     }
@@ -355,7 +517,9 @@ impl Journey {
     /// Stops the browser and the daemon, then checks that the page showed no error, nothing reached the network and
     /// the model got only scripted requests. Prints how long the journey took.
     pub async fn finish(mut self, name: &str) -> anyhow::Result<()> {
-        let errors = self.texts("[data-testid=error]").await?;
+        let errors = self
+            .texts("[data-testid=error], [data-testid=widget-error]")
+            .await?;
         if !errors.is_empty() {
             bail!("the page shows errors: {errors:#?}");
         }
@@ -375,6 +539,37 @@ impl Journey {
     }
 }
 
+/// The system prompt of a recorded model request (its `system`/`developer` messages).
+#[must_use]
+pub fn system_prompt(request: &Value) -> String {
+    request["messages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|message| message["role"] == "system" || message["role"] == "developer")
+        .map(|message| match &message["content"] {
+            Value::String(text) => text.clone(),
+            other => other.to_string(),
+        })
+        .collect()
+}
+
+/// The `<workspace-roots>` list of a system prompt, one path per entry.
+#[must_use]
+pub fn workspace_roots(prompt: &str) -> Vec<String> {
+    let Some(start) = prompt.find("<workspace-roots>") else {
+        return Vec::new();
+    };
+    let end = prompt[start..]
+        .find("</workspace-roots>")
+        .map_or(prompt.len(), |end| end + start);
+    prompt[start..end]
+        .lines()
+        .filter_map(|line| line.strip_prefix("- "))
+        .map(str::to_owned)
+        .collect()
+}
+
 async fn start_daemon(env: &OmpEnv, data: &Path, bundle: &Path) -> anyhow::Result<DaemonHandle> {
     let omp = omp_bin();
     let path = |path: &Path| path.to_string_lossy().into_owned();
@@ -390,11 +585,18 @@ async fn start_daemon(env: &OmpEnv, data: &Path, bundle: &Path) -> anyhow::Resul
         omp,
         "--static-dir".to_owned(),
         path(bundle),
+        "--no-title-generation".to_owned(),
+        "--config".to_owned(),
+        path(&config_file(data)),
     ])?;
     let config = Config::from_cli(cli, None, None).map_err(anyhow::Error::msg)?;
     let mut ports = Ports::resolve(&config)?;
     ports.omp_env = env.env_overrides();
     start_with(config, ports).await
+}
+
+fn config_file(data: &Path) -> PathBuf {
+    data.join("config.toml")
 }
 
 /// Headless Chromium with its own profile; every non-loopback request goes to a closed proxy port.

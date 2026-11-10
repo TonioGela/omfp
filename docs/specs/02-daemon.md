@@ -7,6 +7,7 @@ mode, the UI's static files.
 
 ```text
 omfp daemon [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-dir DIR] [--allow-omp-mismatch]
+            [--theme-file PATH] [--no-title-generation] [--config FILE]
 ```
 
 | ID | Requirement |
@@ -18,20 +19,22 @@ omfp daemon [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-
 | DMN-005 | On SIGTERM/SIGINT or `DaemonHandle::shutdown` the daemon MUST stop every omp process and finish within 10 s. Stopping closes the `omp-rpc` client, which closes omp's stdin and then terminates its process group (SIGTERM, SIGKILL after 1 s); omp-rpc 18.18.6 gives omp no longer drain window. |
 | DMN-006 | The omp binary MUST be resolved in this order: `--omp-bin`; the omp bundled next to the daemon executable (packaging, D-14); `omp` on `PATH` (dev shell). The resolved path is logged at startup. |
 | DMN-007 | At most one daemon MUST run per data directory (exclusive lock file). A running daemon MUST publish its address in `<data-dir>/daemon.json` (removed on shutdown), so local clients such as `omfp desktop` can find it and authenticate with the `token` file (D-16). |
-| DMN-008 | The web UI bundle MUST be resolved in this order: `--static-dir`; the `web/` directory next to the daemon executable when it holds an `index.html` (packaging: the `dx build` output ships there); otherwise only the API is served and a warning is logged. The bundle is served at `/`, unknown paths fall back to `index.html`. |
+| DMN-008 | The web UI bundle MUST be resolved in this order: `--static-dir`; the `web/` directory next to the daemon executable when it holds an `index.html` (packaging: the release bundle of `just build-web`, `ui/packages/app/dist`, ships there); otherwise only the API is served and a warning is logged. The bundle is served at `/`, unknown paths fall back to `index.html`. |
+| DMN-009 | The daemon MUST read an optional TOML config file, `$XDG_CONFIG_HOME/omfp/config.toml` (else `~/.config/omfp/config.toml`; `--config <file>` picks another): `[daemon]` holds every `omfp daemon` option under the flag's name in snake case (`bind`, `data_dir`, `workspaces_root`, `omp_bin`, `static_dir`, `idle_timeout_minutes`, `max_processes`, `event_buffer`, `allow_origin`, `theme_file`, `title_generation`, …; `~` expanded); precedence is flag > file > default; unknown keys are an error naming the key. `[ui]` (UI-097) and `[keymap]` are UI settings the daemon keeps and serves (`settings.get`, pushed to every window on change); the daemon re-reads the file when it changes (polling) and applies `[ui]`/`[keymap]` live, while `[daemon]` changes need a restart (logged). `settings.set` (e.g. from `:set`) writes the change back into the file, preserving comments and other keys where possible. An invalid file is reported at startup (fatal) or, on reload, logged and shown in the UI while the previous settings stay. |
 
 ## Persistence (SQLite)
 
-Schema (`PRAGMA user_version = 3`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11):
+Schema (`PRAGMA user_version = 4`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11;
+migration 4 adds `title_source`, DMN-073):
 
 | Table | Main columns |
 | --- | --- |
 | `repositories` | `id` (ULID), `name`, `path` (absolute, unique), `default_base_ref`, `remote_url` (nullable), `created_at` — known repositories, a shortcut for adding repos to workspaces |
 | `workspaces` | `id` (ULID), `name`, `path` (absolute, unique), `owned` (the daemon created the folder), `created_by` (`user` \| thread id), `created_client` (nullable, PRT-033), `created_at` |
-| `threads` | `id` (ULID), `title`, `workspace_id`, `session_dir`, `omp_session_id` (nullable), `approval_mode` (nullable), `model` (nullable, `provider/id`), `thinking_level` (nullable), `created_by` (`user` \| thread id), `created_client` (nullable), `created_at`, `archived_at` (nullable) |
+| `threads` | `id` (ULID), `title`, `title_source` (`placeholder` \| `generated` \| `set`; `set` for threads older than migration 4), `workspace_id`, `session_dir`, `omp_session_id` (nullable), `approval_mode` (nullable; new threads get `yolo`, DMN-074), `model` (nullable, `provider/id`), `thinking_level` (nullable), `created_by` (`user` \| thread id), `created_client` (nullable), `created_at`, `archived_at` (nullable) |
 | `thread_roots` | `thread_id`, `path` — the `--add-dir` roots last given to the thread's omp session (DMN-029) |
 | `thread_tags` | `thread_id`, `tag` |
-| `settings` | `key`, `value` (JSON) |
+| `settings` | `key`, `value` (JSON); `theme`: the user's theme CSS, a string or `null` (DMN-075) |
 
 Repositories inside a workspace are not stored: they are discovered from the folder (DMN-022).
 
@@ -131,7 +134,7 @@ dialogs).
 
 | ID | Requirement |
 | --- | --- |
-| DMN-060 | The daemon MUST register its host tools when it launches a thread's omp (they are per thread). Initial set: `open_in_editor { path, line? }`. The daemon runs the user's editor itself — `$VISUAL`, else `$EDITOR`, from the daemon's environment, with the file (and `+<line>` when given) — but only when the window the user last used on that thread is a desktop window on the daemon's machine (M7). Otherwise, and when no editor is set, the tool returns an error the agent can act on (e.g. "open_in_editor is not available from the web client"). A terminal editor (`vim`, `nano`, `hx`, …) has no terminal to run in: the tool reports that too instead of spawning it. |
+| DMN-060 | The daemon MUST register its host tools when it launches a thread's omp (they are per thread). Initial set: `open_in_editor { path, line? }` and `set_thread_title { title }` (renames the thread with a `set` title, at most 200 characters, and names the omp session, DMN-073). The daemon runs the user's editor itself — `$VISUAL`, else `$EDITOR`, from the daemon's environment, with the file (and `+<line>` when given) — but only when the window the user last used on that thread is a desktop window on the daemon's machine (M7). Otherwise, and when no editor is set, the tool returns an error the agent can act on (e.g. "open_in_editor is not available from the web client"). A terminal editor (`vim`, `nano`, `hx`, …) has no terminal to run in: the tool reports that too instead of spawning it. |
 | DMN-061 | Every host tool MUST honour cancellation (`HostToolContext::is_cancelled`) and return an error (`isError: true`) instead of panicking. |
 
 ## Commands towards omp
@@ -154,11 +157,18 @@ Mapping between protocol commands ([03](03-protocol.md)) and omp RPC commands. A
 | `thread.btw` | `btw` |
 | `thread.bash` | `bash` (with `excludeFromContext` when the `ready` frame supports it) |
 | `thread.state` | `get_state` |
+| `threads.update { title }`, host tool `set_thread_title`, a generated title (DMN-073) | `set_session_name` (when the thread's omp runs) |
 
 | ID | Requirement |
 | --- | --- |
 | DMN-070 | A command on a `Stopped` thread that needs omp (e.g. `thread.prompt`) MUST start the process first. Read-only commands on a stopped thread (e.g. `thread.tree`) MAY start it. |
 | DMN-071 | omp errors (`success: false`, with `code` when present: `session_busy`, `stale_cursor`, `entry_not_found`, …) MUST reach the UI with the same `code`. |
 | DMN-072 | After a `fork` the daemon MUST re-read `get_state` and update `omp_session_id` (fork moves the process to a new session file). |
-| DMN-073 | Thread titles come from the conversation, not from the user at creation: `threads.create` takes no title from the UI (an optional `title` stays for scripts and agents); until a title exists the thread shows a placeholder from the first words of its first message. omp 18.18.6 forces `PI_NO_TITLE` in RPC modes, so after the first message the daemon generates the title itself by running omp once in print mode with the user's configuration and its small model role, no session and no tools **[VERIFY flags and role name]**, then stores it and sends `set_session_name` to the thread's omp. A title set by the user (`threads.update`) or by the agent (host tool `set_thread_title { title }`, DMN-060) is never replaced. |
-| DMN-074 | A new thread's approval mode defaults to `yolo` (the thread's `approval_mode`, passed as `--approval-mode`); `threads.create` and `threads.update` may set another mode. |
+| DMN-073 | Thread titles come from the conversation, not from the user at creation: `threads.create` takes no title from the UI (an optional `title` stays for scripts and agents; it is `set`). A thread without a title shows `""` until its first message (`titleSource: placeholder`), then the first words of that message (at most six words and 48 characters, `…` when cut; also the default name of a new workspace). omp 18.18.6 forces `PI_NO_TITLE=1` in RPC modes (`rpc`, `rpc-ui`, `acp`: `packages/coding-agent/src/main.ts` lines 2025–2032, `docs/rpc.md` line 29), so after the first message the daemon generates the title itself with one omp run, in the background, through the agent port (`AgentLauncher::generate_title`; fake in L1/L2, real in L3): the thread's omp binary, environment and workspace folder (the user's configuration), `omp -p --no-session --no-tools --no-title --no-lsp --no-context-files --no-skills --no-rules --model @smol --system-prompt <title instructions> --max-time 120 -- <first message>`. Verified in the omp source at tag `9058ab9`: `-p`/`--print`, `--no-session`, `--no-tools`, `--no-title` (print mode is not an RPC mode, so without it omp would title its throwaway session with an extra model call) in `packages/coding-agent/src/cli/args.ts` lines 363–397 and `docs/cli-reference.md` lines 80, 93, 142, 183; `--model` takes a role as `@<role>` (`docs/cli-reference.md` line 104, `MODEL_ROLE_ALIAS_PREFIX = "@"` in `src/config/model-roles.ts` line 19); `smol` is omp's fast-model role (`src/config/model-roles.ts` line 58, "Fast"); omp's own title generator uses `tiny`, which resolves through `smol` (`src/utils/title-generator.ts` line 160, `src/config/model-resolver.ts` line 1186), and a `smol` role the user did not configure inherits the default model (`src/config/model-resolver.ts` lines 1168–1170). The first line of the output, without quotes or a `Title:` label, becomes the title (`generated`, at most 80 characters); the daemon stores it, sends `set_session_name` to the thread's omp, then publishes it on the `index` topic. A failed run keeps the placeholder. A title set by the user (`threads.update`) or by the agent (host tool `set_thread_title`, DMN-060) is `set` and never replaced, also when it arrives while a title is generated. `--no-title-generation` turns the run off: contract tests and E2E journeys against the fake LLM pass it unless they script the extra model call (contract test `the_first_message_names_the_thread_through_an_omp_print_mode_run` does); the fake launcher answers title runs from its script (`FakeLauncher::push_title`; none scripted: the placeholder stays). |
+| DMN-074 | A new thread's approval mode defaults to `yolo` (the thread's `approval_mode`, passed as `--approval-mode`); `threads.create` and `threads.update` may set another mode, which applies from the next start of the thread's omp. |
+
+### User theme
+
+| ID | Requirement |
+| --- | --- |
+| DMN-075 | The daemon MUST keep one user theme, CSS applied by every window after the built-in tokens: stored in SQLite (`settings.theme`), read with `theme.get` and replaced with `theme.set` (`null` restores the built-in themes; over 1 MiB is `bad_request`), published on the `index` topic (`IndexSnapshot.theme`, event `theme_changed`) so every connected window changes without reload, and served at `GET /theme.css` (`text/css`, empty when unset, `Cache-Control: no-store`, no token, like the bundle). The daemon also follows a theme file on its host, `--theme-file`, by default `$XDG_CONFIG_HOME/omfp/theme.css` (else `~/.config/omfp/theme.css`): read at startup (a missing file keeps the stored theme), then polled every second (no file-watching dependency); new content becomes the theme, removing the file clears it, a file over 1 MiB is ignored with a warning. The last change wins, whether from `theme.set` or from the file. `omfp theme set <file>` sends the file with `theme.set`. |
