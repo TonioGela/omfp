@@ -14,21 +14,28 @@ nix develop          # or: direnv allow (.envrc contains `use flake`)
 | Rust | toolchain from `rust-toolchain.toml` via rust-overlay (1.99.1, `wasm32-unknown-unknown`, clippy, rustfmt, rust-analyzer, rust-src, llvm-tools) |
 | Dioxus | `dx` (dioxus-cli 0.7.10, with a local override adding `zstd`, see below), `wasm-bindgen-cli` 0.2.130, `binaryen` |
 | Testing | `cargo-nextest`, `cargo-insta`, `cargo-llvm-cov`, `cargo-mutants`, `cargo-deny`, `bacon` |
-| TypeScript (`ui/`) | `bun` 1.4.4 (runtime, package manager, test runner), `biome` 2.6.5 (format and lint; from nixpkgs because the npm build is a glibc binary NixOS cannot run); `typescript` 7.0.2 (native `tsc`) and `@types/bun` come from `ui/bun.lock` |
+| TypeScript (`ui/`) | `bun` 1.4.4 (runtime, package manager, test runner), `bun2nix` 2.1.2 (patched, see below), `biome` 2.6.5 (format and lint; from nixpkgs because the npm build is a glibc binary NixOS cannot run); `typescript` 7.0.2 (native `tsc`) and `@types/bun` come from `ui/bun.lock` through `ui/bun.nix` |
 | E2E / smoke (Linux) | `chromium`, `chromedriver`, `xvfb-run` |
 | Desktop libs (Linux) | gtk3, webkitgtk 4.1, libsoup 3, glib(-networking), cairo, pango, gdk-pixbuf, atk, xdotool, openssl |
 | Utilities | `just`, `git`, `jq`, `websocat`, `nixfmt` |
 
-Environment set by the shell (Linux): `WEBKIT_DISABLE_DMABUF_RENDERER=1` (blank webkitgtk windows on some GPUs),
-`GIO_MODULE_DIR` (TLS in webkitgtk), `CHROME_BIN`, `RUST_SRC_PATH`.
+Environment set by the shell: `RUST_SRC_PATH`, `OMFP_BUN_CACHE` (the Bun install cache of `ui/`'s dependencies, built by
+Nix from `ui/bun.nix`); on Linux also `WEBKIT_DISABLE_DMABUF_RENDERER=1` (blank webkitgtk windows on some GPUs),
+`GIO_MODULE_DIR` (TLS in webkitgtk), `CHROME_BIN`.
 
-Known workaround: nixpkgs' `dioxus-cli` 0.7.10 fails to build at the locked nixpkgs revision (`zstd-sys` cannot find
-`libzstd` through pkg-config). The flake overrides it with `zstd` in `buildInputs`. Remove the override when nixpkgs
-fixes it.
+Known workarounds:
+
+- nixpkgs' `dioxus-cli` 0.7.10 fails to build at the locked nixpkgs revision (`zstd-sys` cannot find `libzstd` through
+  pkg-config). The flake overrides it with `zstd` in `buildInputs`. Remove the override when nixpkgs fixes it.
+- bun2nix 2.1.2 (the `oh-my-pi/bun2nix` input) rejects Bun 1.4's `bun.lock` only because it checks
+  `lockfileVersion == 1`; version 2 parses unchanged. The flake builds it with
+  `nix/patches/bun2nix-lockfile-v2.patch` (accept versions 1 and 2). Drop the patch once upstream bun2nix accepts
+  version 2; if an omp upgrade (ENV-020) moves the input and the patch no longer applies, check whether it is still
+  needed.
 
 | ID | Requirement |
 | --- | --- |
-| ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time (S-05 confirmed `dx` uses the shell's wasm-bindgen). One exception until bun2nix reads Bun 1.4's lockfile (version 2; bun2nix 2.1.2 reads version 1 only): the JavaScript dependencies of `ui/` are fetched by `bun install --frozen-lockfile` (`just ui-install`) from the integrity-pinned `ui/bun.lock`, once into Bun's cache; every test runs offline after that. |
+| ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time (S-05 confirmed `dx` uses the shell's wasm-bindgen). The JavaScript dependencies of `ui/` come from Nix too: `bun2nix` turns `ui/bun.lock` into `ui/bun.nix` (`just gen-bun-nix`, committed; `just check-bun-nix`, run by `just ui-install`, fails when it is stale), Nix builds Bun's install cache from it (`OMFP_BUN_CACHE`), and `just ui-install` runs `bun install --frozen-lockfile --offline` against that cache. |
 | ENV-002 | `flake.lock` pins every input. `nixpkgs` and `rust-overlay` are updated deliberately, in their own commits, with `just ci` green. |
 | ENV-003 | Supported dev systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. Linux-only tools (desktop libs, Chromium, xvfb) are excluded on macOS. |
 

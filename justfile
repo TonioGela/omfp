@@ -37,9 +37,19 @@ test-wasm:
     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
         cargo test -p omfp-client --target wasm32-unknown-unknown --test transport_web
 
-# JavaScript dependencies of ui/ exactly as locked in ui/bun.lock (downloaded once into bun's cache, offline after)
-ui-install:
-    cd ui && bun install --frozen-lockfile
+# JavaScript dependencies of ui/ exactly as locked in ui/bun.lock, offline from the dev shell's Bun cache, which Nix
+# builds from ui/bun.nix (ENV-001); the cache is read-only, bun copies the packages into ui/node_modules
+ui-install: check-bun-nix
+    cd ui && BUN_INSTALL_CACHE_DIR="${OMFP_BUN_CACHE:?run inside the dev shell (nix develop)}" \
+        bun install --frozen-lockfile --offline
+
+# Regenerate ui/bun.nix from ui/bun.lock (after every `bun add`/`bun update`, then re-enter the dev shell)
+gen-bun-nix:
+    cd ui && bun2nix -o bun.nix && nixfmt bun.nix
+
+# spec: ENV-001 — ui/bun.nix matches ui/bun.lock
+check-bun-nix:
+    cd ui && bun2nix | nixfmt - | diff -u bun.nix - || { echo 'ui/bun.nix is stale: run `just gen-bun-nix`' >&2; exit 1; }
 
 # spec: TST-030 — TypeScript tests (`bun test` in ui/), the client's transport suite against a daemon started here
 test-ts: ui-install

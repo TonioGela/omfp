@@ -38,6 +38,7 @@ just test-contract               # contract tests against the pinned omp + fake 
 just record-fixtures             # re-record fixtures/ (review the diff!), then `just gen-states`
 just gen-states                  # golden reducer states fixtures/states/<ver>/ from the Rust reducer
 just gen-ts                      # ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas
+just gen-bun-nix                 # ui/bun.nix from ui/bun.lock (bun2nix), after every JS dependency change
 just test-wasm                   # web transport suite in headless Chromium against a fake-launcher daemon
 just test-e2e                    # L5 journeys: builds the web bundle, headless Chromium + daemon + omp + fake LLM
 just build-web                   # dx build -p omfp-ui --platform web --release (no dev-tools overlay)
@@ -107,6 +108,8 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 
 ## Tooling gotchas
 
+- Browsers in tests, spikes and smoke checks always run **headless** (Chromium `--headless=new`; WebKitGTK under
+  `xvfb-run`), never on the user's display: a visible window can be disturbed by the mouse and changes results.
 - `dx` 0.7.10 panics when the workspace has glob `default-members`: keep none; build with `dx build -p omfp-ui`.
 - nixpkgs' `dioxus-cli` needs `zstd` (overridden in `flake.nix`); `convco` does not build, so commitizen checks
   commit messages.
@@ -118,5 +121,7 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 - TypeScript (`ui/`): one root `tsconfig.json` (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`),
   type-checked by `typescript` 7's native `tsc` (`bun run check`); no `any`. Biome comes from nixpkgs (the npm
   `@biomejs/biome` binary is dynamically linked against glibc and does not run on NixOS); its formatter skips the
-  generated `generated.ts`. JS dependencies are installed by `bun install --frozen-lockfile`, not bun2nix: bun2nix
-  cannot read Bun 1.4's lockfile version 2 yet (ENV-001).
+  generated `generated.ts`. JS dependencies come from Nix (ENV-001): after changing `ui/package.json`/`bun.lock`
+  (`bun add`, `bun update`), run `just gen-bun-nix` and re-enter the dev shell; `just ui-install` then installs
+  offline from the shell's Bun cache (`OMFP_BUN_CACHE`). bun2nix is patched to read Bun 1.4's lockfile version 2
+  (`nix/patches/`).
