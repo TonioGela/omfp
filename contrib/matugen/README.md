@@ -36,7 +36,8 @@ light|dark|system`) keeps working:
 | `:root[data-color-scheme="dark"]` | dark, forced |
 
 Fonts, sizes, spacing, radii and density are not part of the template; add declarations for `--omfp-font-prose`,
-`--omfp-font-ui`, `--omfp-font-code`, … to the generated `:root` rule (or the template) to change them.
+`--omfp-font-ui`, `--omfp-font-code`, … to the generated `:root` rule (or the template) to change them. The overall text size is the
+`[ui] font_size` setting of the config file (root font size in px; every rem-based token scales with it).
 
 ## Token mapping
 

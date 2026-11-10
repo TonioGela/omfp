@@ -24,12 +24,12 @@ omfp daemon [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-
 
 ## Persistence (SQLite)
 
-Schema (`PRAGMA user_version = 4`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11;
-migration 4 adds `title_source`, DMN-073):
+Schema (`PRAGMA user_version = 5`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11;
+migration 4 adds `title_source`, DMN-073; migration 5 drops the old `repositories` registry and adds `seen_repositories`):
 
 | Table | Main columns |
 | --- | --- |
-| `repositories` | `id` (ULID), `name`, `path` (absolute, unique), `default_base_ref`, `remote_url` (nullable), `created_at` — known repositories, a shortcut for adding repos to workspaces |
+| `seen_repositories` | `path` (canonical, unique), `last_seen_at` — every repository the daemon has found in any workspace, for suggestions (DMN-021) |
 | `workspaces` | `id` (ULID), `name`, `path` (absolute, unique), `owned` (the daemon created the folder), `created_by` (`user` \| thread id), `created_client` (nullable, PRT-033), `created_at` |
 | `threads` | `id` (ULID), `title`, `title_source` (`placeholder` \| `generated` \| `set`; `set` for threads older than migration 4), `workspace_id`, `session_dir`, `omp_session_id` (nullable), `approval_mode` (nullable; new threads get `yolo`, DMN-074), `model` (nullable, `provider/id`), `thinking_level` (nullable), `created_by` (`user` \| thread id), `created_client` (nullable), `created_at`, `archived_at` (nullable) |
 | `thread_roots` | `thread_id`, `path` — the `--add-dir` roots last given to the thread's omp session (DMN-029) |
@@ -53,7 +53,7 @@ resolves PRs; first implementation over the `gh` CLI **[VERIFY in S-08]**.
 | ID | Requirement |
 | --- | --- |
 | DMN-020 | Creating a workspace MUST either make a new folder `<workspaces-root>/<slug>` (`--workspaces-root`, default `~/omfp/workspaces`; `owned = true`), or record an existing folder given by path (`owned = false`), which may itself be a git repository. Names and paths are unique. |
-| DMN-021 | Registering a known repository MUST verify the path is the root of a git repository (`git rev-parse --show-toplevel`) and reject duplicates. Registration is optional: no other feature may require it. |
+| DMN-021 | There is no repository registry. To make adding repos quick the daemon MUST offer **suggestions**: `repos.suggest { query? }` returns the repositories it has seen in any workspace (the canonical path of links and clones, the main repository of worktrees; recorded on every scan, most recent first, filtered by `query`), and `fs.complete { path }` returns the child directories of a path on the daemon host (`~` expanded), marking git roots, so a path can be typed with completion even when the browser is remote. |
 | DMN-022 | The daemon MUST discover a workspace's repositories by scanning its folder: the folder itself when it is a git root, and every top-level entry that is a git root, following symlinks. Each repo has a `name` (entry name), its `path` inside the workspace (the symlink path, never the target), and a `kind`: `link` (symlink; with its target), `worktree` (linked worktree; with the main repository from `git rev-parse --git-common-dir`), or `clone`; plus branch and HEAD. Non-git entries, hidden entries (names starting with `.`, such as `.omp`) and anything deeper are ignored. |
 | DMN-023 | The daemon MUST rescan a workspace on startup, on every workspace method, after every `tool_execution_end` of a thread in it, and on `workspaces.rescan`; a change updates the `index` topic. No filesystem watcher is required. |
 | DMN-024 | Adding a repository to a workspace MUST support: `link` (create a symlink `<name> → <path>`), `worktree` (`git worktree add <workspace>/<name>` on a new branch from `baseRef`, default branch `omfp/<slug>-<suffix>` unique in the repo, or on an existing branch; the repository given by id or path), `clone` (`git clone <url> <name>`), and, after S-08, `pr` (fetch the PR head into a branch, then as `worktree`, keeping the PR URL). |

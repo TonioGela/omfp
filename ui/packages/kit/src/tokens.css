@@ -64,9 +64,9 @@
 
   :root,
   :root[data-density="compact"] {
-    --omfp-font-size-sm: 0.75rem;
-    --omfp-font-size-md: 0.8125rem;
-    --omfp-font-size-lg: 0.9375rem;
+    --omfp-font-size-sm: 0.8125rem;
+    --omfp-font-size-md: 0.875rem;
+    --omfp-font-size-lg: 1rem;
     --omfp-space-1: 2px;
     --omfp-space-2: 4px;
     --omfp-space-3: 6px;
@@ -77,9 +77,9 @@
   }
 
   :root[data-density="normal"] {
-    --omfp-font-size-sm: 0.8125rem;
-    --omfp-font-size-md: 0.875rem;
-    --omfp-font-size-lg: 1rem;
+    --omfp-font-size-sm: 0.875rem;
+    --omfp-font-size-md: 0.9375rem;
+    --omfp-font-size-lg: 1.0625rem;
     --omfp-space-1: 4px;
     --omfp-space-2: 6px;
     --omfp-space-3: 8px;

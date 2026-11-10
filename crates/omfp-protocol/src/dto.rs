@@ -168,6 +168,10 @@ pub struct Settings {
 pub struct UiSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub density: Option<Density>,
+    /// Root font size in px (10..=28, default 16); every rem-based size token scales with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(range(min = 10, max = 28))]
+    pub font_size: Option<u8>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notifications: Option<NotificationMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

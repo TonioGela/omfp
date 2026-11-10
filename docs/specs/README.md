@@ -1,10 +1,11 @@
 # omfp — Specifications
 
 A GUI client for [oh-my-pi](https://github.com/can1357/oh-my-pi) (omp), in the spirit of Orca and T3 Code: it runs many
-agent threads in parallel. A thread is not tied to a repository: it works on any set of **workspaces** (typically one git
-worktree per PR, possibly across several repositories, e.g. frontend + backend). It ships as a web app in the browser
-and as a desktop app (M7), both the same TypeScript UI served by a Rust daemon (D-18). Long term, the interface is
-meant to be **driven by the agents themselves** (spawning threads, publishing views) — see [08](08-agent-control.md).
+agent threads in parallel. A thread is not tied to a repository: it runs in a **workspace** folder whose entries are the
+repositories it works on (links, clones or worktrees, possibly of several projects, e.g. frontend + backend). It ships
+as a web app in the browser and as a desktop app (M7), both the same TypeScript UI served by a Rust daemon (D-18).
+Long term, the interface is meant to be **driven by the agents themselves** (spawning threads, publishing views) — see
+[08](08-agent-control.md).
 
 ## Documents
 

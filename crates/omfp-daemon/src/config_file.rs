@@ -9,6 +9,7 @@
 //!
 //! [ui]
 //! density = "normal"            # compact | normal
+//! font_size = 16                # root font size in px, 10..=28
 //! notifications = "background"  # background | always | never
 //!
 //! [ui.fonts]
@@ -94,6 +95,7 @@ struct RawFile {
 #[serde(deny_unknown_fields)]
 struct RawUi {
     density: Option<Density>,
+    font_size: Option<u8>,
     notifications: Option<NotificationMode>,
     fonts: Option<RawFonts>,
 }
@@ -119,6 +121,15 @@ impl ConfigFile {
     /// Parses the file's text; an unknown key or a wrong value is an error naming it.
     pub fn parse(text: &str) -> Result<Self, String> {
         let raw: RawFile = toml::from_str(text).map_err(|error| error.to_string())?;
+        if let Some(size) = raw.ui.font_size
+            && !FONT_SIZES.contains(&size)
+        {
+            return Err(format!(
+                "`ui.font_size` must be between {} and {} (px), not {size}",
+                FONT_SIZES.start(),
+                FONT_SIZES.end()
+            ));
+        }
         let fonts = raw.ui.fonts.map(|fonts| FontSettings {
             prose: fonts.prose,
             ui: fonts.ui,
@@ -128,6 +139,7 @@ impl ConfigFile {
             daemon: raw.daemon,
             ui: UiSettings {
                 density: raw.ui.density,
+                font_size: raw.ui.font_size,
                 notifications: raw.ui.notifications,
                 fonts,
             },
@@ -156,6 +168,9 @@ impl ConfigFile {
         }
     }
 }
+
+/// The accepted `[ui] font_size` values in px (UI-097).
+pub const FONT_SIZES: std::ops::RangeInclusive<u8> = 10..=28;
 
 const MODE_TABLES: [(&str, KeymapMode); 2] = [
     ("insert", KeymapMode::Insert),
@@ -215,6 +230,9 @@ pub fn write_back(text: &str, update: &SetSettingsParams) -> Result<String, Stri
         if let Some(density) = ui.density {
             set(table, "density", density_name(density));
         }
+        if let Some(size) = ui.font_size {
+            set(table, "font_size", i64::from(size));
+        }
         if let Some(notifications) = ui.notifications {
             set(table, "notifications", notifications_name(notifications));
         }
@@ -261,15 +279,16 @@ fn child<'a>(parent: &'a mut Table, key: &str) -> Result<&'a mut Table, String> 
         .ok_or_else(|| format!("`{key}` in the config file is not a table"))
 }
 
-/// Sets `key` to the string `value`, keeping the comments around an existing value.
-fn set(table: &mut Table, key: &str, value: &str) {
+/// Sets `key` to `value`, keeping the comments around an existing value.
+fn set(table: &mut Table, key: &str, value: impl Into<toml_edit::Value>) {
+    let value = value.into();
     match table.get_mut(key).and_then(Item::as_value_mut) {
         Some(existing) => {
             let decor = existing.decor().clone();
-            *existing = value.into();
+            *existing = value;
             *existing.decor_mut() = decor;
         }
-        None => table[key] = toml_edit::value(value),
+        None => table[key] = Item::Value(value),
     }
 }
 
@@ -299,6 +318,7 @@ max_processes = 4 # enough
 [ui]
 # Roomier rows.
 density = "compact" # for now
+font_size = 15
 [ui.fonts]
 prose = "Literata, serif"
 
@@ -328,6 +348,7 @@ prose = "Literata, serif"
             file.ui,
             UiSettings {
                 density: Some(Density::Compact),
+                font_size: Some(15),
                 notifications: None,
                 fonts: Some(FontSettings {
                     prose: Some("Literata, serif".into()),
@@ -355,6 +376,9 @@ prose = "Literata, serif"
             ("[colors]\na = 1", "colors"),
             ("[ui]\ndensty = \"normal\"", "densty"),
             ("[ui]\ndensity = \"huge\"", "huge"),
+            ("[ui]\nfont_size = 9", "ui.font_size"),
+            ("[ui]\nfont_size = 29", "ui.font_size"),
+            ("[ui]\nfont_size = \"big\"", "font_size"),
             ("[ui.fonts]\nserif = \"x\"", "serif"),
             ("[keymap.visual]\nj = \"nav.next\"", "keymap.visual"),
             ("[keymap]\nj = 1", "keymap.\"j\""),
@@ -395,6 +419,7 @@ prose = "Literata, serif"
         let update = SetSettingsParams {
             ui: Some(UiSettings {
                 density: Some(Density::Normal),
+                font_size: Some(18),
                 notifications: Some(NotificationMode::Never),
                 fonts: Some(FontSettings {
                     prose: None,
@@ -419,6 +444,7 @@ max_processes = 4 # enough
 [ui]
 # Roomier rows.
 density = "normal" # for now
+font_size = 18
 notifications = "never"
 [ui.fonts]
 prose = "Literata, serif"
@@ -443,6 +469,7 @@ Ctrl-p = "nav.prev"
         let update = SetSettingsParams {
             ui: Some(UiSettings {
                 density: Some(Density::Compact),
+                font_size: Some(20),
                 ..UiSettings::default()
             }),
             keymap: Some(vec![entry(KeymapMode::Insert, "Ctrl-j", "")]),
@@ -450,10 +477,23 @@ Ctrl-p = "nav.prev"
         let text = write_back("", &update).unwrap();
         let file = ConfigFile::parse(&text).unwrap();
         assert_eq!(file.ui.density, Some(Density::Compact));
+        assert_eq!(file.ui.font_size, Some(20));
         assert_eq!(file.keymap, [entry(KeymapMode::Insert, "Ctrl-j", "")]);
 
         assert!(write_back("[ui", &update).is_err());
         assert!(write_back("ui = 1", &update).is_err());
+        let too_big = SetSettingsParams {
+            ui: Some(UiSettings {
+                font_size: Some(40),
+                ..UiSettings::default()
+            }),
+            keymap: None,
+        };
+        assert!(
+            write_back("", &too_big)
+                .unwrap_err()
+                .contains("ui.font_size")
+        );
         let no_keys = SetSettingsParams {
             ui: None,
             keymap: Some(vec![entry(KeymapMode::Normal, " ", "x")]),

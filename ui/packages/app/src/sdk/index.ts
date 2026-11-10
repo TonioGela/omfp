@@ -19,7 +19,7 @@
  * | `useThreadActions()` | select, archive/unarchive, delete (`requestDelete` asks first), rename, tags, stop, restart; archiving or deleting forgets the selection and the draft (UI-026) |
  * | `useReportError()` | puts a failure in the frame's error list (`ERRORS`) |
  * | `useHost()` | the host itself (registry, window store), for frame-level code |
- * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
+ * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
  * | `useSetSettings()` | `settings.set(patch)`: merges `ui`/`keymap` into the config file; failures go to `ERRORS` |
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `COLOR_SCHEME` (persisted, applied to `<html>` by the frame),
@@ -86,6 +86,14 @@ export {
   RENAMING_THREAD,
   SELECTED_THREAD,
 } from "./keys.ts";
-export { DEFAULT_DENSITY, DEFAULT_NOTIFICATIONS, useSetSettings, useSettings } from "./settings.ts";
+export {
+  DEFAULT_DENSITY,
+  DEFAULT_FONT_SIZE,
+  DEFAULT_NOTIFICATIONS,
+  FONT_SIZE_MAX,
+  FONT_SIZE_MIN,
+  useSetSettings,
+  useSettings,
+} from "./settings.ts";
 export type { WidgetComponent, WidgetProps } from "./widget.ts";
 export { type KeyValueStorage, type Update, type WindowKey, WindowStore, windowKey } from "./window-store.ts";

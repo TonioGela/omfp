@@ -47,12 +47,12 @@ sequenceDiagram
 
 ## Topics, snapshots and catch-up
 
-Topics: `index` (known repositories, workspaces with their discovered repositories, threads with their summaries and
+Topics: `index` (workspaces with their discovered repositories, threads with their summaries and
 tags, and the user's theme), `thread/<id>` (one thread), `workspace/<id>` (git status of each repository of one
 workspace), `terminal/<id>` (terminal output, [05](05-terminal.md)).
 
-The `index` state is `{ repositories, workspaces, threads, theme, settings }`; its events are `repository_upserted` /
-`repository_removed`, `workspace_upserted` / `workspace_removed`, `thread_upserted` / `thread_removed`,
+The `index` state is `{ workspaces, threads, theme, settings }`; its events are
+`workspace_upserted` / `workspace_removed`, `thread_upserted` / `thread_removed`,
 `theme_changed { theme }` (`theme` is `{ css: string | null }`, DMN-075) and `settings_changed { settings }` (DMN-009,
 UI-097). `settings` is `{ ui: { density?, notifications?, fonts?: { prose?, ui?, code? } }, keymap: { mode: "normal" |
 "insert" | "cmdline", keys, command }[], error: string | null }`: the `[ui]` and `[keymap]` tables of the daemon's
@@ -100,7 +100,8 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | --- | --- | --- |
 | `system.hello` | `token`, `protocol`, `client` | versions, warnings |
 | `subscribe` / `unsubscribe` | `topic`, `since?` | see above |
-| `repos.add` / `.remove` / `.list` | `path` / `repositoryId` | known repository / list (DMN-021) |
+| `repos.suggest` | `query?` | `{ repos: [{ path, name, lastSeenAt }] }`: repositories seen in any workspace (DMN-021) |
+| `fs.complete` | `path` | `{ entries: [{ name, path, isGitRoot }] }`: child directories on the daemon host (DMN-021) |
 | `workspaces.create` | `name?`, `path?` (existing folder; omitted = new folder under the workspaces root) | workspace |
 | `workspaces.update` | `workspaceId`, `name` | workspace |
 | `workspaces.remove` | `workspaceId`, `deleteFolder?`, `force?` | `{}` (DMN-028) |

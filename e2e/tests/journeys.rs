@@ -777,12 +777,28 @@ async fn until_density(journey: &Journey, density: &str) -> anyhow::Result<()> {
         .await
 }
 
+/// Waits until `<html>`'s computed `font-size` is `size` (in px, e.g. `"16px"`).
+async fn until_root_font_size(journey: &Journey, size: &str) -> anyhow::Result<()> {
+    journey
+        .until(&format!("a root font size of {size}"), async |page| {
+            let value = page
+                .eval(
+                    "return getComputedStyle(document.documentElement).fontSize;",
+                    Vec::new(),
+                )
+                .await?;
+            Ok((value.as_str() == Some(size)).then_some(()))
+        })
+        .await
+}
+
 // spec: DMN-009, UI-097
 #[tokio::test(flavor = "multi_thread")]
 async fn editing_the_config_file_changes_the_open_page_live() -> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
     journey.connected().await?;
     until_density(&journey, "compact").await?;
+    until_root_font_size(&journey, "16px").await?;
     let compact = journey.token("--omfp-row-height").await?;
     journey
         .eval("window.omfpE2eMarker = 'kept';", Vec::new())
@@ -790,8 +806,12 @@ async fn editing_the_config_file_changes_the_open_page_live() -> anyhow::Result<
 
     // The user edits the daemon's config file while the page is open.
     let config = journey.config_file();
-    std::fs::write(&config, "# edited by hand\n[ui]\ndensity = \"normal\"\n")?;
+    std::fs::write(
+        &config,
+        "# edited by hand\n[ui]\ndensity = \"normal\"\nfont_size = 20\n",
+    )?;
     until_density(&journey, "normal").await?;
+    until_root_font_size(&journey, "20px").await?;
     let normal = journey.token("--omfp-row-height").await?;
     assert_ne!(normal, compact, "the density changes the row height");
     let marker = journey
@@ -802,6 +822,7 @@ async fn editing_the_config_file_changes_the_open_page_live() -> anyhow::Result<
     // And back.
     std::fs::write(&config, "[ui]\ndensity = \"compact\"\n")?;
     until_density(&journey, "compact").await?;
+    until_root_font_size(&journey, "16px").await?;
     assert_eq!(journey.token("--omfp-row-height").await?, compact);
     journey.finish("config file").await
 }

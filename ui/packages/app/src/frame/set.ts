@@ -1,11 +1,12 @@
 /**
  * `:set <key>=<value>` (UI-097): one setting of the daemon's `[ui]` or `[keymap]`, sent with `settings.set`. Keys:
- * `density`, `notifications`, `fonts.prose|ui|code`, `keymap.<keys>` (normal mode) and `keymap.<mode>.<keys>`;
- * a keymap value is a command id, `""` removes the binding.
+ * `density`, `font_size` (px, 10..=28), `notifications`, `fonts.prose|ui|code`, `keymap.<keys>` (normal mode) and
+ * `keymap.<mode>.<keys>`; a keymap value is a command id, `""` removes the binding.
  */
 
 import type { Density, NotificationMode, SetSettingsParams } from "@omfp/protocol";
 import { type Mode, normalizeKeys } from "../keymap/keymap.ts";
+import { FONT_SIZE_MAX, FONT_SIZE_MIN } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 
 type FontRole = "prose" | "ui" | "code";
@@ -18,6 +19,7 @@ const MODES: readonly Mode[] = ["normal", "insert", "cmdline"];
 /** Completions of the key part (`:set ` …). */
 export const SET_KEYS: readonly string[] = [
   ...DENSITIES.map((density) => `density=${density}`),
+  "font_size=",
   ...NOTIFICATIONS.map((mode) => `notifications=${mode}`),
   ...FONT_ROLES.map((role) => `fonts.${role}=`),
   "keymap.",
@@ -40,6 +42,12 @@ export function parseSet(line: string): ParsedSet {
   if (key === "density") {
     const density = DENSITIES.find((candidate) => candidate === value);
     return density === undefined ? invalid(key, value) : { ok: true, patch: { ui: { density } } };
+  }
+  if (key === "font_size") {
+    const fontSize = /^\d+$/.test(value) ? Number(value) : Number.NaN;
+    return fontSize >= FONT_SIZE_MIN && fontSize <= FONT_SIZE_MAX
+      ? { ok: true, patch: { ui: { fontSize } } }
+      : invalid(key, value);
   }
   if (key === "notifications") {
     const notifications = NOTIFICATIONS.find((candidate) => candidate === value);

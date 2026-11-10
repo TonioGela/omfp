@@ -303,6 +303,19 @@ describe("daemon settings", () => {
     expect(style.getPropertyValue("--omfp-font-prose")).toBe("");
   });
 
+  // spec: UI-097, UI-094
+  test("the font size becomes the root font-size on <html>, 16px without one", () => {
+    const { client, flush } = setup();
+    const style = document.documentElement.style;
+    expect(style.fontSize).toBe("16px");
+    client.indexEvents({ kind: "settings_changed", settings: settings({ fontSize: 20 }) });
+    flush();
+    expect(style.fontSize).toBe("20px");
+    client.indexEvents({ kind: "settings_changed", settings: settings({}) });
+    flush();
+    expect(style.fontSize).toBe("16px");
+  });
+
   // spec: UI-097, UI-095
   test("keymap entries apply live over the defaults", () => {
     const { client, flush, host } = setup();
@@ -329,9 +342,12 @@ describe("daemon settings", () => {
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "set fonts.ui=Inter, sans-serif{Enter}");
     press(":");
+    await user.type(screen.getByTestId("command-line-input"), "set font_size=18{Enter}");
+    press(":");
     await user.type(screen.getByTestId("command-line-input"), "set keymap.insert.Ctrl-s=composer.send{Enter}");
     expect(client.callsTo("settings.set").map((call) => call.params)).toEqual([
       { ui: { fonts: { ui: "Inter, sans-serif" } } },
+      { ui: { fontSize: 18 } },
       { keymap: [{ mode: "insert", keys: "Ctrl-s", command: "composer.send" }] },
     ]);
     press(":");

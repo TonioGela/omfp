@@ -734,6 +734,7 @@ fn settings_omit_defaults_and_null_the_error() {
     );
     let wire = serde_json::to_value(settings()).unwrap();
     assert_eq!(wire["ui"]["density"], "normal");
+    assert_eq!(wire["ui"]["fontSize"], 18);
     assert_eq!(wire["ui"]["notifications"], "always");
     assert_eq!(
         wire["ui"]["fonts"],

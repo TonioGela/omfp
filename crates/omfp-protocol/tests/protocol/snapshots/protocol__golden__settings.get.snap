@@ -28,6 +28,7 @@ expression: golden
       ],
       "ui": {
         "density": "normal",
+        "fontSize": 18,
         "fonts": {
           "code": "\"JetBrains Mono\", monospace",
           "prose": "Literata, serif"

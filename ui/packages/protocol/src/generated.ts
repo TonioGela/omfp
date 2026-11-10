@@ -628,6 +628,8 @@ export type TopicParams = {
 /** The `[ui]` table of the config file; an absent value is the default (UI-097). */
 export type UiSettings = {
   density?: Density | null;
+  /** Root font size in px (10..=28, default 16); every rem-based size token scales with it. */
+  fontSize?: number | null;
   fonts?: FontSettings | null;
   notifications?: NotificationMode | null;
 };

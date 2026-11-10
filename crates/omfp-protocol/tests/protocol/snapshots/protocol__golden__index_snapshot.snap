@@ -116,6 +116,7 @@ expression: snapshot
   "settings": {
     "ui": {
       "density": "normal",
+      "fontSize": 18,
       "notifications": "always",
       "fonts": {
         "prose": "Literata, serif",

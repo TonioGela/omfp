@@ -128,6 +128,7 @@ pub fn settings() -> Settings {
     Settings {
         ui: UiSettings {
             density: Some(Density::Normal),
+            font_size: Some(18),
             notifications: Some(NotificationMode::Always),
             fonts: Some(FontSettings {
                 prose: Some("Literata, serif".to_owned()),

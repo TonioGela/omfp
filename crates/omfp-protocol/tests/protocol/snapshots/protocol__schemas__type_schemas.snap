@@ -398,6 +398,16 @@ expression: type_schemas()
               }
             ]
           },
+          "fontSize": {
+            "description": "Root font size in px (10..=28, default 16); every rem-based size token scales with it.",
+            "format": "uint8",
+            "maximum": 28,
+            "minimum": 10,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "fonts": {
             "anyOf": [
               {
@@ -1024,6 +1034,16 @@ expression: type_schemas()
               {
                 "type": "null"
               }
+            ]
+          },
+          "fontSize": {
+            "description": "Root font size in px (10..=28, default 16); every rem-based size token scales with it.",
+            "format": "uint8",
+            "maximum": 28,
+            "minimum": 10,
+            "type": [
+              "integer",
+              "null"
             ]
           },
           "fonts": {

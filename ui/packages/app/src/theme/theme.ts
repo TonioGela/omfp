@@ -1,7 +1,8 @@
 /**
  * Theme, density and fonts on the document (UI-091, UI-094, UI-097). The built-in light and dark tokens follow
  * `prefers-color-scheme` unless `<html data-color-scheme="light|dark">` (window-local) overrides it; `data-density`
- * (the daemon's `[ui] density`) picks compact or normal spacing; `[ui.fonts]` set `--omfp-font-prose|ui|code` inline
+ * (the daemon's `[ui] density`) picks compact or normal spacing; `[ui] font_size` is `<html>`'s inline `font-size`
+ * (so every rem-based token scales); `[ui.fonts]` set `--omfp-font-prose|ui|code` inline
  * on `<html>`, which beats any stylesheet, user theme included. The user theme is the daemon's (global,
  * `theme.get`/`theme.set`): the page loads it first through `<link rel="stylesheet" href="/theme.css"
  * data-omfp-theme>` (so it applies before the socket connects), then the `index` topic's `theme` replaces that link
@@ -15,6 +16,7 @@ import {
   COLOR_SCHEME,
   type ColorScheme,
   DEFAULT_DENSITY,
+  DEFAULT_FONT_SIZE,
   useSettings,
   useSnapshot,
   useWindowState,
@@ -28,10 +30,12 @@ export function applyAppearance(
   root: HTMLElement,
   scheme: ColorScheme,
   density: Density,
+  fontSize: number,
   fonts: FontSettings | null | undefined,
 ): void {
   root.dataset.colorScheme = scheme;
   root.dataset.density = density;
+  root.style.fontSize = `${fontSize}px`;
   for (const role of FONT_ROLES) {
     const family = fonts?.[role];
     if (family === undefined || family === null || family === "") {
@@ -61,13 +65,14 @@ export function applyUserTheme(document: Document, css: string | null): void {
   }
 }
 
-/** Keeps `<html>`'s colour scheme (window state), density and fonts (daemon settings) current. */
+/** Keeps `<html>`'s colour scheme (window state), density, font size and fonts (daemon settings) current. */
 export function useAppearance(root: HTMLElement = document.documentElement): void {
   const [scheme] = useWindowState(COLOR_SCHEME);
   const { ui } = useSettings();
   const density = ui.density ?? DEFAULT_DENSITY;
+  const fontSize = ui.fontSize ?? DEFAULT_FONT_SIZE;
   const { fonts } = ui;
-  useEffect(() => applyAppearance(root, scheme, density, fonts), [root, scheme, density, fonts]);
+  useEffect(() => applyAppearance(root, scheme, density, fontSize, fonts), [root, scheme, density, fontSize, fonts]);
 }
 
 /** Applies the daemon's theme once the `index` topic is live, and every change after (`theme_changed`). */
