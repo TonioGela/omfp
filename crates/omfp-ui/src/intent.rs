@@ -18,6 +18,12 @@ pub enum Intent {
         title: Option<String>,
         tags: Option<Vec<String>>,
     },
+    /// `threads.archive` (UI-026).
+    ArchiveThread { thread_id: String },
+    /// `threads.unarchive` (UI-026).
+    UnarchiveThread { thread_id: String },
+    /// `threads.delete`; the workspaces are kept (UI-026).
+    DeleteThread { thread_id: String },
     /// `threads.attach`, appended.
     AttachWorkspace {
         thread_id: String,
@@ -30,6 +36,8 @@ pub enum Intent {
     },
     /// `repos.add`.
     AddRepository { path: String },
+    /// `repos.remove`; its workspaces stay (UI-025).
+    RemoveRepository { repository_id: String },
     /// `workspaces.create`, `workspaces.from_pr` or `workspaces.adopt`, without a thread.
     CreateWorkspace(WorkspaceSource),
     /// `workspaces.remove`.

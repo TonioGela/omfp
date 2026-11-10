@@ -20,8 +20,8 @@ use omfp_protocol::method::{
     ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking, ThreadState, ThreadSteer,
     ThreadStop, ThreadSubagentCancel, ThreadSubagentMessages, ThreadSubagentSteer, ThreadSubagents,
     ThreadThinkingLevels, ThreadTree, ThreadsArchive, ThreadsAttach, ThreadsCreate, ThreadsDelete,
-    ThreadsDetach, ThreadsUpdate, Unsubscribe, WorkspacesAdopt, WorkspacesCreate, WorkspacesDiff,
-    WorkspacesForget, WorkspacesRemove, WorkspacesStatus,
+    ThreadsDetach, ThreadsUnarchive, ThreadsUpdate, Unsubscribe, WorkspacesAdopt, WorkspacesCreate,
+    WorkspacesDiff, WorkspacesForget, WorkspacesRemove, WorkspacesStatus,
 };
 use omfp_protocol::{
     AddRepositoryParams, AdoptWorkspaceParams, AttachWorkspaceParams, BashParams, BtwParams,
@@ -239,6 +239,9 @@ async fn thread_management_methods_return_their_declared_results() {
     assert_eq!(detached.workspace_ids, Vec::<String>::new());
 
     client.typed::<ThreadsArchive>(thread_ref(&thread.id)).await;
+    client
+        .typed::<ThreadsUnarchive>(thread_ref(&thread.id))
+        .await;
     let doomed = client.typed::<ThreadsCreate>(new_thread("doomed")).await;
     client.typed::<ThreadsDelete>(thread_ref(&doomed.id)).await;
 }

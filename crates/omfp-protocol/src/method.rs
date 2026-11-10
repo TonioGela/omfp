@@ -146,6 +146,8 @@ methods! {
     ThreadsDetach = "threads.detach" (params::DetachWorkspaceParams) -> ThreadSummary;
     /// Archives a thread.
     ThreadsArchive = "threads.archive" (params::ThreadRef) -> params::Empty;
+    /// Brings an archived thread back.
+    ThreadsUnarchive = "threads.unarchive" (params::ThreadRef) -> params::Empty;
     /// Deletes a thread; its workspaces are kept.
     ThreadsDelete = "threads.delete" (params::ThreadRef) -> params::Empty;
     /// Sends a prompt (omp `prompt`).

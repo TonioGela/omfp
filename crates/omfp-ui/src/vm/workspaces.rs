@@ -1,5 +1,5 @@
 //! The Workspaces panel (UI-025): every workspace with its threads, git status and PR link; a workspace attached to
-//! several threads carries a warning (DMN-027).
+//! several threads carries a warning (DMN-027). Its Repositories section lists the registered repositories.
 
 use std::collections::BTreeMap;
 
@@ -54,6 +54,41 @@ pub fn workspace_rows(
                 threads: attached,
                 git: git.get(&workspace.id).map(git_summary),
             }
+        })
+        .collect()
+}
+
+/// One registered repository in the panel's Repositories section.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RepositoryRow {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub default_base_ref: String,
+    /// Live managed worktrees created from it.
+    pub worktrees: usize,
+}
+
+/// Repository rows in index order.
+#[must_use]
+pub fn repository_rows(
+    repositories: &[Repository],
+    workspaces: &[Workspace],
+) -> Vec<RepositoryRow> {
+    repositories
+        .iter()
+        .map(|repository| RepositoryRow {
+            id: repository.id.clone(),
+            name: repository.name.clone(),
+            path: repository.path.clone(),
+            default_base_ref: repository.default_base_ref.clone(),
+            worktrees: workspaces
+                .iter()
+                .filter(|workspace| {
+                    workspace.kind == WorkspaceKind::ManagedWorktree
+                        && workspace.repository_id.as_deref() == Some(repository.id.as_str())
+                })
+                .count(),
         })
         .collect()
 }
@@ -146,5 +181,38 @@ mod tests {
         assert!(!rows[1].shared);
         assert!(!rows[1].managed);
         assert_eq!(rows[1].git, None);
+    }
+
+    // spec: UI-025
+    #[test]
+    fn repository_rows_count_the_live_worktrees_of_each_repository() {
+        let repositories = vec![repository("r-fe", "fe"), repository("r-be", "be")];
+        let mut adopted = workspace("w-in-fe", None, None);
+        adopted.repository_id = Some("r-fe".to_owned());
+        let workspaces = vec![
+            workspace("w1", Some("r-fe"), Some("a")),
+            workspace("w2", Some("r-fe"), Some("b")),
+            adopted,
+        ];
+        let rows = repository_rows(&repositories, &workspaces);
+        assert_eq!(
+            rows,
+            vec![
+                RepositoryRow {
+                    id: "r-fe".to_owned(),
+                    name: "fe".to_owned(),
+                    path: "/src/fe".to_owned(),
+                    default_base_ref: "main".to_owned(),
+                    worktrees: 2,
+                },
+                RepositoryRow {
+                    id: "r-be".to_owned(),
+                    name: "be".to_owned(),
+                    path: "/src/be".to_owned(),
+                    default_base_ref: "main".to_owned(),
+                    worktrees: 0,
+                },
+            ]
+        );
     }
 }

@@ -2,6 +2,7 @@
 
 pub mod app;
 mod composer;
+mod delete_thread;
 mod header;
 mod interactions;
 mod new_thread;

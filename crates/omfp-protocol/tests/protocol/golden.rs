@@ -243,6 +243,7 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
             &thread(),
         ),
         example::<method::ThreadsArchive>(thread_ref(), &Empty {}),
+        example::<method::ThreadsUnarchive>(thread_ref(), &Empty {}),
         example::<method::ThreadsDelete>(thread_ref(), &Empty {}),
     ]
 }

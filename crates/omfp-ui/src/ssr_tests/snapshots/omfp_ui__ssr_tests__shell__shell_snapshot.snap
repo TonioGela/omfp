@@ -20,6 +20,7 @@ expression: "normalize(&render(input, ui))"
 </label>
 <label>Filter <select data-testid="filter-key" value="">
 <option value="">all</option>
+<option value="archived">Archived</option>
 <option value="tag:release">tag: release</option>
 <option value="workspace:w-be2">workspace: be:flaky</option>
 <option value="workspace:w-be">workspace: be:main</option>
@@ -225,10 +226,39 @@ expression: "normalize(&render(input, ui))"
 <input aria-label="Directory to adopt" placeholder="/path/to/directory" value=""/>
 <button type="submit">Adopt</button>
 </form>
+<section class="repositories" data-testid="repositories" aria-labelledby="repositories-heading">
+<h3 id="repositories-heading">Repositories</h3>
+<ul class="repository-list">
+<li class="repository-row" data-testid="repository-row" data-repository-id="r-fe">
+<div class="workspace-title">
+<strong>fe</strong>
+<span class="muted" data-testid="repository-worktrees"> 1 worktree</span>
+</div>
+<code class="workspace-path">/src/fe</code>
+<span class="muted" data-testid="repository-base">base main</span>
+<div class="choice-buttons">
+<button type="button" data-testid="repository-new-worktree">New worktree</button>
+<button type="button" data-testid="remove-repository">Remove…</button>
+</div>
+</li>
+<li class="repository-row" data-testid="repository-row" data-repository-id="r-be">
+<div class="workspace-title">
+<strong>be</strong>
+<span class="muted" data-testid="repository-worktrees"> 2 worktrees</span>
+</div>
+<code class="workspace-path">/src/be</code>
+<span class="muted" data-testid="repository-base">base main</span>
+<div class="choice-buttons">
+<button type="button" data-testid="repository-new-worktree">New worktree</button>
+<button type="button" data-testid="remove-repository">Remove…</button>
+</div>
+</li>
+</ul>
 <form class="inline-form" data-testid="add-repository">
 <input aria-label="Repository path" placeholder="/path/to/repository" value=""/>
 <button type="submit">Add repository</button>
 </form>
+</section>
 </div>
 </section>
 </aside>

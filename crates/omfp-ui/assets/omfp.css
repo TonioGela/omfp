@@ -384,11 +384,17 @@ button.link {
 .header-title,
 .header-workspaces,
 .header-session,
-.header-process {
+.header-process,
+.header-lifecycle {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
+}
+
+/* Archive and delete sit at the far end of the header (UI-026). */
+.header-lifecycle {
+  margin-left: auto;
 }
 
 .tags {
@@ -756,18 +762,25 @@ pre {
   font-size: 1rem;
 }
 
-.workspace-list {
+.workspace-list,
+.repository-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.workspace-row {
+.workspace-row,
+.repository-row {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--border);
+}
+
+.repositories h3 {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.95rem;
 }
 
 .workspace-path {

@@ -38,6 +38,8 @@ pub struct HeaderView {
     pub failure: Option<String>,
     /// The process runs (or starts): it can be stopped.
     pub can_stop: bool,
+    /// The thread is archived: the header offers unarchive instead of archive (UI-026).
+    pub archived: bool,
 }
 
 /// The header of `summary`'s thread.
@@ -125,6 +127,7 @@ pub fn header_view(
             summary.process,
             ProcessState::Running | ProcessState::Starting
         ),
+        archived: summary.archived_at.is_some(),
     }
 }
 

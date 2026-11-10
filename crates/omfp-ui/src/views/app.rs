@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use dioxus::prelude::*;
 
 use super::Ctx;
+use super::delete_thread::DeleteThreadDialog;
 use super::new_thread::NewThreadDialog;
 use super::panels::{BottomPanels, FloatingPanels, SidePanels};
 use super::sidebar::Sidebar;
@@ -39,7 +40,9 @@ pub fn App(
 
     let state = ui.read();
     let view = input.read();
-    let dialog_open = state.new_thread.is_some();
+    let new_thread_open = state.new_thread.is_some();
+    let delete_open = state.delete_thread.is_some();
+    let dialog_open = new_thread_open || delete_open;
     let theme = match state.theme {
         Theme::System => None,
         theme => Some(theme.token()),
@@ -77,8 +80,10 @@ pub fn App(
                 Errors { errors }
             }
             LiveRegion { text: status }
-            if dialog_open {
+            if new_thread_open {
                 NewThreadDialog {}
+            } else if delete_open {
+                DeleteThreadDialog {}
             }
         }
     }

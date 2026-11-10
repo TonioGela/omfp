@@ -2018,6 +2018,28 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "threads.unarchive": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one thread.",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadRef",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
   "threads.update": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

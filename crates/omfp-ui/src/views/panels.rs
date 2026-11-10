@@ -5,7 +5,7 @@ use dioxus::prelude::*;
 use super::Ctx;
 use crate::intent::{Intent, WorkspaceSource};
 use crate::panels::{PanelContent, Placement};
-use crate::vm::workspaces::{WorkspaceRow, workspace_rows};
+use crate::vm::workspaces::{RepositoryRow, WorkspaceRow, repository_rows, workspace_rows};
 
 fn panel_ids(ctx: Ctx, placement: Placement) -> Vec<String> {
     ctx.ui
@@ -155,7 +155,8 @@ fn take(mut field: Signal<String>) -> String {
     value
 }
 
-/// All workspaces with their threads, git status and PR link; create, adopt, remove (UI-025).
+/// All workspaces with their threads, git status and PR link; create, adopt, remove; the registered repositories
+/// (UI-025).
 #[component]
 fn WorkspacesPanel() -> Element {
     let ctx = Ctx::get();
@@ -166,6 +167,7 @@ fn WorkspacesPanel() -> Element {
         &input.threads,
         &input.git,
     );
+    let registered = repository_rows(&input.repositories, &input.workspaces);
     let repositories: Vec<(String, String)> = input
         .repositories
         .iter()
@@ -173,6 +175,7 @@ fn WorkspacesPanel() -> Element {
         .collect();
     drop(input);
     let confirm_remove: Signal<Option<String>> = use_signal(|| None);
+    let worktree_repo = use_signal(String::new);
     rsx! {
         div { class: "workspaces", "data-testid": "workspaces-panel",
             ul { class: "workspace-list",
@@ -180,9 +183,92 @@ fn WorkspacesPanel() -> Element {
                     WorkspaceRowView { key: "{row.id}", row, confirm_remove }
                 }
             }
-            WorktreeForm { repositories }
+            WorktreeForm { repositories, worktree_repo }
             AdoptForm {}
+            Repositories { rows: registered, worktree_repo }
+        }
+    }
+}
+
+/// The registered repositories with their worktree count: start a worktree of one, or remove it (its workspaces
+/// stay); the form registering one comes last.
+#[component]
+fn Repositories(rows: Vec<RepositoryRow>, worktree_repo: Signal<String>) -> Element {
+    let confirm_remove: Signal<Option<String>> = use_signal(|| None);
+    rsx! {
+        section { class: "repositories", "data-testid": "repositories", "aria-labelledby": "repositories-heading",
+            h3 { id: "repositories-heading", "Repositories" }
+            if rows.is_empty() {
+                p { class: "muted", "data-testid": "no-repositories", "No repository yet: add one with its path." }
+            } else {
+                ul { class: "repository-list",
+                    for row in rows {
+                        RepositoryRowView { key: "{row.id}", row, worktree_repo, confirm_remove }
+                    }
+                }
+            }
             RepositoryForm {}
+        }
+    }
+}
+
+/// One repository: name, path, default base ref, worktree count, "New worktree" and removal.
+#[component]
+fn RepositoryRowView(
+    row: RepositoryRow,
+    worktree_repo: Signal<String>,
+    confirm_remove: Signal<Option<String>>,
+) -> Element {
+    let ctx = Ctx::get();
+    let mut worktree_repo = worktree_repo;
+    let mut confirm_remove = confirm_remove;
+    let noun = if row.worktrees == 1 {
+        "worktree"
+    } else {
+        "worktrees"
+    };
+    let confirming = confirm_remove().as_deref() == Some(row.id.as_str());
+    let (preselect, confirm, remove) = (row.id.clone(), row.id.clone(), row.id.clone());
+    rsx! {
+        li { class: "repository-row", "data-testid": "repository-row", "data-repository-id": "{row.id}",
+            div { class: "workspace-title",
+                strong { "{row.name}" }
+                span { class: "muted", "data-testid": "repository-worktrees", " {row.worktrees} {noun}" }
+            }
+            code { class: "workspace-path", "{row.path}" }
+            span { class: "muted", "data-testid": "repository-base", "base {row.default_base_ref}" }
+            div { class: "choice-buttons",
+                button {
+                    r#type: "button",
+                    "data-testid": "repository-new-worktree",
+                    onclick: move |_| worktree_repo.set(preselect.clone()),
+                    "New worktree"
+                }
+                if confirming {
+                    span { "data-testid": "remove-repository-note", "Its workspaces stay." }
+                    button {
+                        r#type: "button",
+                        class: "danger",
+                        "data-testid": "confirm-remove-repository",
+                        onclick: move |_| {
+                            confirm_remove.set(None);
+                            if *worktree_repo.peek() == remove {
+                                worktree_repo.set(String::new());
+                            }
+                            ctx.send(Intent::RemoveRepository { repository_id: remove.clone() });
+                        },
+                        "Remove the repository"
+                    }
+                    button { r#type: "button", onclick: move |_| confirm_remove.set(None), "Keep" }
+                } else {
+                    button {
+                        r#type: "button",
+                        "data-testid": "remove-repository",
+                        onclick: move |_| confirm_remove.set(Some(confirm.clone())),
+                        "Remove…"
+                    }
+                }
+            }
         }
     }
 }
@@ -280,11 +366,12 @@ fn RemoveWorkspace(workspace_id: String, confirm_remove: Signal<Option<String>>)
     }
 }
 
-/// A new managed worktree of a registered repository.
+/// A new managed worktree of a registered repository; `worktree_repo` is the chosen one, which a repository row can
+/// preselect.
 #[component]
-fn WorktreeForm(repositories: Vec<(String, String)>) -> Element {
+fn WorktreeForm(repositories: Vec<(String, String)>, worktree_repo: Signal<String>) -> Element {
     let ctx = Ctx::get();
-    let mut worktree_repo = use_signal(String::new);
+    let mut worktree_repo = worktree_repo;
     let mut worktree_branch = use_signal(String::new);
     rsx! {
         form {

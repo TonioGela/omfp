@@ -94,6 +94,8 @@ pub struct UiState {
     pub seen: BTreeMap<String, i64>,
     /// The new-thread dialog, when open.
     pub new_thread: Option<NewThreadForm>,
+    /// The thread whose delete confirmation is open (UI-026).
+    pub delete_thread: Option<String>,
     /// Header editor of the selected thread, when open.
     pub header_edit: Option<HeaderEdit>,
     /// Errors to show until dismissed.
@@ -115,6 +117,20 @@ impl UiState {
         }
         Intent::SelectThread {
             thread_id: thread_id.to_owned(),
+        }
+    }
+
+    /// Forgets what this window keeps for `thread_id` as it is archived or deleted (UI-026): the selection moves to no
+    /// thread when it was selected, and its draft and delete confirmation are dropped.
+    pub fn drop_thread(&mut self, thread_id: &str) {
+        if self.selected.as_deref() == Some(thread_id) {
+            self.selected = None;
+            self.main_tab = None;
+            self.header_edit = None;
+        }
+        self.drafts.remove(thread_id);
+        if self.delete_thread.as_deref() == Some(thread_id) {
+            self.delete_thread = None;
         }
     }
 
@@ -363,6 +379,37 @@ mod tests {
                 ui.last_outcome
             ),
             (Some("t9"), true, Some(4))
+        );
+    }
+
+    // spec: UI-026
+    #[test]
+    fn archiving_or_deleting_a_thread_clears_its_selection_and_drops_its_draft() {
+        let mut ui = UiState::default();
+        ui.select("t", None);
+        ui.delete_thread = Some("t".to_owned());
+        ui.header_edit = Some(HeaderEdit::default());
+        for id in ["t", "u"] {
+            ui.drafts.insert(
+                id.to_owned(),
+                Draft {
+                    text: format!("draft of {id}"),
+                    images: Vec::new(),
+                },
+            );
+        }
+        ui.drop_thread("u");
+        assert_eq!(ui.selected.as_deref(), Some("t"));
+        assert_eq!(ui.delete_thread.as_deref(), Some("t"));
+        ui.drop_thread("t");
+        assert_eq!(
+            (
+                ui.selected,
+                ui.delete_thread,
+                ui.header_edit,
+                ui.drafts.keys().cloned().collect::<Vec<_>>()
+            ),
+            (None, None, None, Vec::<String>::new())
         );
     }
 

@@ -16,7 +16,7 @@ fn edit(mut ui: Signal<crate::UiState>, change: impl FnOnce(&mut NewThreadForm))
     }
 }
 
-fn focus(target: Signal<Option<Rc<MountedData>>>) {
+pub(super) fn focus(target: Signal<Option<Rc<MountedData>>>) {
     if let Some(target) = target.peek().clone() {
         spawn(async move {
             // Focus is best effort: the element may be gone.

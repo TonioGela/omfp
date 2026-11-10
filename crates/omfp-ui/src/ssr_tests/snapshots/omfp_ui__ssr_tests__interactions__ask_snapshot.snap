@@ -20,6 +20,7 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 </label>
 <label>Filter <select data-testid="filter-key" value="">
 <option value="">all</option>
+<option value="archived">Archived</option>
 <option value="tag:release">tag: release</option>
 <option value="workspace:w-be2">workspace: be:flaky</option>
 <option value="workspace:w-be">workspace: be:main</option>
@@ -138,6 +139,10 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 </span>
 <span class="state-label">awaiting input</span>
 <button type="button" data-testid="process-action">Stop</button>
+</div>
+<div class="header-lifecycle">
+<button type="button" data-testid="archive-thread">Archive</button>
+<button type="button" class="danger" data-testid="delete-thread">Delete…</button>
 </div>
 </header>
 <div class="transcript" data-testid="transcript" data-thread-id="t-checkout" data-pinned=true role="log" aria-label="Transcript" tabindex="0">
@@ -297,10 +302,39 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 <input aria-label="Directory to adopt" placeholder="/path/to/directory" value=""/>
 <button type="submit">Adopt</button>
 </form>
+<section class="repositories" data-testid="repositories" aria-labelledby="repositories-heading">
+<h3 id="repositories-heading">Repositories</h3>
+<ul class="repository-list">
+<li class="repository-row" data-testid="repository-row" data-repository-id="r-fe">
+<div class="workspace-title">
+<strong>fe</strong>
+<span class="muted" data-testid="repository-worktrees"> 1 worktree</span>
+</div>
+<code class="workspace-path">/src/fe</code>
+<span class="muted" data-testid="repository-base">base main</span>
+<div class="choice-buttons">
+<button type="button" data-testid="repository-new-worktree">New worktree</button>
+<button type="button" data-testid="remove-repository">Remove…</button>
+</div>
+</li>
+<li class="repository-row" data-testid="repository-row" data-repository-id="r-be">
+<div class="workspace-title">
+<strong>be</strong>
+<span class="muted" data-testid="repository-worktrees"> 2 worktrees</span>
+</div>
+<code class="workspace-path">/src/be</code>
+<span class="muted" data-testid="repository-base">base main</span>
+<div class="choice-buttons">
+<button type="button" data-testid="repository-new-worktree">New worktree</button>
+<button type="button" data-testid="remove-repository">Remove…</button>
+</div>
+</li>
+</ul>
 <form class="inline-form" data-testid="add-repository">
 <input aria-label="Repository path" placeholder="/path/to/repository" value=""/>
 <button type="submit">Add repository</button>
 </form>
+</section>
 </div>
 </section>
 </aside>

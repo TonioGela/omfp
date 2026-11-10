@@ -121,6 +121,7 @@ fn filters_by_key_and_text_narrow_the_list_and_offer_every_key() {
         filter: Filter {
             text: "flaky".to_owned(),
             key: Some((Dimension::Repository, "r-be".to_owned())),
+            ..Filter::default()
         },
         ..UiState::default()
     };
@@ -135,6 +136,7 @@ fn filters_by_key_and_text_narrow_the_list_and_offer_every_key() {
         options,
         vec![
             "all",
+            "Archived",
             "tag: release",
             "workspace: be:flaky",
             "workspace: be:main",
@@ -145,6 +147,75 @@ fn filters_by_key_and_text_narrow_the_list_and_offer_every_key() {
             "pr: fe#412",
         ]
     );
+}
+
+// spec: UI-026
+#[test]
+fn the_archived_filter_lists_only_archived_threads() {
+    let mut input = index();
+    input.threads[1].archived_at = Some(5);
+    assert_eq!(
+        rows(&Page::new(input.clone(), UiState::default()))
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect::<Vec<_>>(),
+        vec!["t-checkout", "t-scratch", "t-idle"]
+    );
+    let ui = UiState {
+        filter: Filter {
+            archived: true,
+            ..Filter::default()
+        },
+        ..UiState::default()
+    };
+    let page = Page::new(input, ui);
+    assert_eq!(rows(&page), pairs(&[("t-flaky", "running")]));
+    let selected: Vec<&str> = page
+        .all("[data-testid=\"filter-key\"] option[selected]")
+        .into_iter()
+        .filter_map(|option| attr(option, "value"))
+        .collect();
+    assert_eq!(selected, vec!["archived"]);
+}
+
+// spec: UI-026
+#[test]
+fn the_header_offers_archive_or_unarchive_and_delete() {
+    let page = Page::new(index(), selecting("t-idle"));
+    assert_eq!(text(page.one("archive-thread")), "Archive");
+    assert_eq!(text(page.one("delete-thread")), "Delete…");
+    let mut input = index();
+    input.threads[3].archived_at = Some(5);
+    let archived = Page::new(input, selecting("t-idle"));
+    assert_eq!(text(archived.one("archive-thread")), "Unarchive");
+    archived.one("delete-thread");
+}
+
+// spec: UI-026, UI-092
+#[test]
+fn deleting_asks_for_confirmation_in_a_focus_trapping_dialog() {
+    let ui = UiState {
+        delete_thread: Some("t-idle".to_owned()),
+        ..selecting("t-idle")
+    };
+    let page = Page::new(index(), ui);
+    let dialog = page.one("delete-thread-dialog");
+    assert_eq!(
+        (attr(dialog, "role"), attr(dialog, "aria-modal")),
+        (Some("dialog"), Some("true"))
+    );
+    assert_eq!(attr(page.one("shell"), "inert"), Some("true"));
+    assert_eq!(
+        page.testid("focus-start").len() + page.testid("focus-end").len(),
+        2
+    );
+    assert!(text(dialog).contains("idle-notes"), "{}", text(dialog));
+    assert_eq!(
+        text(page.one("delete-thread-message")),
+        "The thread's history (transcript, session and log) is removed for good. Its workspaces are kept."
+    );
+    page.one("confirm-delete-thread");
+    page.one("cancel-delete-thread");
 }
 
 // spec: UI-021
@@ -292,6 +363,55 @@ fn the_workspaces_panel_lists_threads_git_status_pr_and_warns_on_shared_workspac
     for form in ["create-worktree", "adopt-workspace", "add-repository"] {
         page.one(form);
     }
+}
+
+// spec: UI-025
+#[test]
+fn the_workspaces_panel_lists_registered_repositories_with_their_worktrees() {
+    let page = Page::new(index(), UiState::default());
+    let rows: Vec<(String, String)> = page
+        .testid("repository-row")
+        .into_iter()
+        .map(|row| {
+            let parts: Vec<String> = row
+                .select(&scraper::Selector::parse("strong, span, code, button").expect("selector"))
+                .map(text)
+                .collect();
+            (
+                attr(row, "data-repository-id")
+                    .unwrap_or_default()
+                    .to_owned(),
+                parts.join(" | "),
+            )
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        pairs(&[
+            (
+                "r-fe",
+                "fe | 1 worktree | /src/fe | base main | New worktree | Remove…"
+            ),
+            (
+                "r-be",
+                "be | 2 worktrees | /src/be | base main | New worktree | Remove…"
+            ),
+        ])
+    );
+    assert_eq!(page.testid("no-repositories").len(), 0);
+    page.one("add-repository");
+
+    let empty = ViewInput {
+        repositories: Vec::new(),
+        ..index()
+    };
+    let page = Page::new(empty, UiState::default());
+    assert_eq!(page.testid("repository-row").len(), 0);
+    assert_eq!(
+        text(page.one("no-repositories")),
+        "No repository yet: add one with its path."
+    );
+    page.one("add-repository");
 }
 
 // spec: UI-003

@@ -66,7 +66,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         "repos.add" | "repos.remove" | "workspaces.create" | "workspaces.from_pr"
         | "workspaces.adopt" | "workspaces.remove" | "workspaces.forget" | "threads.create"
         | "threads.update" | "threads.attach" | "threads.detach" | "threads.archive"
-        | "threads.delete" => Manage,
+        | "threads.unarchive" | "threads.delete" => Manage,
         "thread.prompt"
         | "thread.steer"
         | "thread.follow_up"

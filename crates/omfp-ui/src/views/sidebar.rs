@@ -1,5 +1,5 @@
-//! The thread list (UI-020..022): grouping, filtering, state badges, workspace chips, the attention shortcut, and the
-//! theme override (UI-091).
+//! The thread list (UI-020..022): grouping, filtering (archived threads only under the "Archived" filter, UI-026),
+//! state badges, workspace chips, the attention shortcut, and the theme override (UI-091).
 
 use dioxus::prelude::*;
 
@@ -14,6 +14,8 @@ use crate::vm::threads::{
 
 /// Separator of `dimension` and key in the filter selector's values.
 const KEY_SEPARATOR: char = ':';
+/// The filter selector's value listing archived threads (UI-026); it has no separator, so it is never a key.
+const ARCHIVED: &str = "archived";
 
 #[component]
 pub(crate) fn Sidebar() -> Element {
@@ -91,18 +93,22 @@ fn SidebarActions(waiting: usize) -> Element {
     }
 }
 
-/// Grouping, filter key and free-text filter (UI-022).
+/// Grouping, filter key (or archived threads) and free-text filter (UI-022, UI-026).
 #[component]
 fn SidebarControls(options: Vec<(Dimension, GroupKey)>) -> Element {
     let mut ui = Ctx::get().ui;
     let state = ui.read();
     let grouping = state.grouping.token();
-    let filter_value = state
-        .filter
-        .key
-        .as_ref()
-        .map(|(dimension, key)| format!("{dimension}{KEY_SEPARATOR}{key}"))
-        .unwrap_or_default();
+    let filter_value = if state.filter.archived {
+        ARCHIVED.to_owned()
+    } else {
+        state
+            .filter
+            .key
+            .as_ref()
+            .map(|(dimension, key)| format!("{dimension}{KEY_SEPARATOR}{key}"))
+            .unwrap_or_default()
+    };
     let filter_text = state.filter.text.clone();
     drop(state);
     rsx! {
@@ -126,11 +132,14 @@ fn SidebarControls(options: Vec<(Dimension, GroupKey)>) -> Element {
                     value: "{filter_value}",
                     onchange: move |event| {
                         let value = event.value();
-                        ui.write().filter.key = value.split_once(KEY_SEPARATOR).and_then(|(dimension, key)| {
+                        let mut state = ui.write();
+                        state.filter.archived = value == ARCHIVED;
+                        state.filter.key = value.split_once(KEY_SEPARATOR).and_then(|(dimension, key)| {
                             Some((Dimension::from_token(dimension)?, key.to_owned()))
                         });
                     },
                     option { value: "", "all" }
+                    option { value: ARCHIVED, selected: filter_value == ARCHIVED, "Archived" }
                     for (dimension, key) in options {
                         option {
                             value: "{dimension}{KEY_SEPARATOR}{key.key}",

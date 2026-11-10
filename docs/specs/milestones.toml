@@ -120,6 +120,7 @@ requirements = [
   "UI-023",
   "UI-024",
   "UI-025",
+  "UI-026",
   # Thread view
   "UI-030",
   "UI-040",

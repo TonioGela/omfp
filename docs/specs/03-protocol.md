@@ -98,7 +98,7 @@ Topics: `index` (repositories, workspaces, threads with their summaries and tags
 | `threads.create` | `title`, `workspaceIds[]` (ordered, may be empty), `tags[]`, `model?`, `thinkingLevel?`, `approvalMode?`, `prompt?` (first message) | thread |
 | `threads.update` | `threadId`, `title?`, `tags?` | thread |
 | `threads.attach` / `threads.detach` | `threadId`, `workspaceId`, `position?` | thread (DMN-029) |
-| `threads.archive` / `.delete` | `threadId` | `{}` (workspaces are never removed implicitly) |
+| `threads.archive` / `.unarchive` / `.delete` | `threadId` | `{}`; archive stops the thread's omp process and sets `archivedAt`, unarchive clears it, delete removes the thread's records and directory (workspaces are never removed implicitly) |
 | `thread.prompt` | `threadId`, `text`, `images?`, `behavior?: "steer" \| "followUp"` | `{ promptId }`; completion arrives as `prompt_result` |
 | `thread.steer` / `thread.follow_up` | `threadId`, `text`, `images?` | `{}` |
 | `thread.abort` | `threadId` | `{ steering[], followUp[] }` (to restore into the composer) |

@@ -25,6 +25,7 @@ flowchart LR
 | S-06 | Transcript virtualization in Dioxus with variable-height items, streaming at the bottom. | UI-042 | **Done (M2):** in headless Chromium 157 a 10,000-message transcript keeps 7–13 items (≈150–400 nodes) in the DOM: unmeasured items count as 120 px, measured heights come from `onresize` per item, two spacers stand for the rest. Bottom pinning holds through streaming; only user scrolling (wheel up, ArrowUp/PageUp/Home, pointer or touch drag) unpins — layout-driven scroll events must not, or the bottom is lost while streaming — and reaching the bottom pins again. The container exposes `data-pinned`. |
 | S-07 | Multi-workspace threads: `/add-dir` and `/remove-dir` over RPC (idle and busy); repo-level context files (`AGENTS.md`) and rules picked up from `--add-dir` roots when cwd is the thread home; injecting a per-thread MCP server through `<home>/.omp/mcp.json` (08). | DMN-029, DMN-030, 08 | **Done (M1):** `/add-dir` over RPC is a local command (no model turn) that adds the root live; `AGENTS.md` of every `--add-dir` root reaches the model, but only when the session is bound at launch (`--session-dir … --continue`, DMN-030); `<home>/.omp/mcp.json` is honored and its headers are sent. `/add-dir` while the thread is busy is still unverified against real omp (DMN-029). |
 | S-08 | Workspaces from PRs: fetching a PR head (GitHub via `gh`, generic `refs/pull/N/head`), storing PR metadata, detecting merged/closed PRs. | DMN-022 | |
+| S-09 | Live voice through omp's `live_connect`: a WebRTC peer (Opus sendrecv track + `oai-events` data channel) in Chromium and in the desktop webview (webkitgtk), SDP relayed by the daemon; secure-context requirements for the microphone. | M9 | |
 
 ## M0 — Foundations (done)
 
@@ -104,12 +105,13 @@ progress frames and goal updates.
 Acceptance: contract scenarios for a `task` tool spawning a subagent (scripted), fork from an entry, navigate with
 `editorText` restored; L4 tests for each panel.
 
-## M6 — Terminal
+## M6 — Terminal (deferred)
 
-Scope: TRM-001..022.
+Not planned for now (D-06 revised): the user does not rely on the TUI-only commands. [05](05-terminal.md) stays as the
+design to pick up if a real need appears (TUI-only features, or a shell panel per workspace).
 
-Acceptance: E2E-07; L2 tests for PTY spawn, replay buffer, resize, channel isolation (TRM-012); handoff refused while
-`Busy` (TRM-001).
+Scope when resumed: TRM-001..022. Acceptance: E2E-07; L2 tests for PTY spawn, replay buffer, resize, channel isolation
+(TRM-012); handoff refused while `Busy` (TRM-001).
 
 ## M7 — Hardening
 
@@ -125,10 +127,36 @@ Acceptance: all of the above documented and green in CI.
 
 ## M8 — Agent control
 
-Scope: turn [08](08-agent-control.md) into requirements, then: scoped principals per thread, tool registry adapters (RPC
-host tools, `omfp://` host URIs, MCP server), view documents and their renderers, view events, safety limits and audit
-log.
+Scope: turn [08](08-agent-control.md) into requirements (D-17), after a spike on the JavaScript UI pieces (SDK surface,
+widget kit, loading on web and desktop), then:
+
+- every protocol method as an agent tool, plus `omfp_call`, through the tool registry adapters (RPC host tools,
+  `omfp://` host URIs, MCP server);
+- UI pieces in HTML/CSS/JS mounted in thread panels, dashboards or windows, with the `omfp` SDK (full protocol, live
+  sources such as a tool run's output or a daemon job, storage shared across windows and sessions, messages to agents)
+  and the optional widget kit;
+- the component library (user, project `.omfp/ui/`, thread drafts) with save, list and "save as component";
+- full access by default; provenance, cascade stop and an activity log of agent-originated actions; limits opt-in.
 
 Acceptance: an orchestrating thread (scripted with `fake-llm`) creates two workspaces in two repositories, spawns two
-threads, waits for both, and publishes a dashboard view with a button whose click reaches it; the same tools work from a
-terminal-mode thread through MCP.
+threads, waits for both, and mounts a dashboard piece that shows both threads' live state and has a button whose click
+reaches the orchestrator; a piece bound to a long `bash` call shows its progress live; the dashboard is saved as a
+component and mounted again from a new thread; the same tools work over MCP from an omp session outside omfp.
+
+## M9 — Live voice (scheduled right after M3)
+
+omp 18.18.6 exposes its `/live` realtime voice over RPC (`docs/rpc.md` → "Live Voice Sub-Protocol"): the realtime
+model talks with the user and delegates work into the thread as ordinary turns. `live_connect` takes a WebRTC SDP offer
+from the client's own peer, so audio stays in the browser or desktop webview (works with a remote daemon), while
+`live_start` would use the daemon machine's microphone. Draft-only dictation (`dictation_*`) uses the daemon machine's
+microphone only.
+
+Scope: spike S-09 first (WebRTC `live_connect` from Chromium and from the desktop webview; `getUserMedia` needs a
+secure context: `localhost`/`127.0.0.1` or HTTPS through the deployer's proxy); protocol methods `thread.live_connect`
+/ `.live_stop` / `.live_mute`; reducer state for `live_phase` and `live_transcript` (levels are client-side for
+`live_connect`); UI: mic button in the composer, phase indicator, live transcript, mute and stop, stop on peer
+disconnect; one live session per thread (omp allows one per process).
+
+Acceptance: L1/L3 tests for the command plumbing and frames (the realtime model itself cannot be faked offline, so the
+contract test covers the failure path and frame decoding); a manual check with a real OpenAI realtime key, recorded in
+the spike result.

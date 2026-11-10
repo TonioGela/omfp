@@ -381,12 +381,9 @@ fn queue_actions_report_whether_omp_applied_them() {
     );
 }
 
-// spec: UI-061
-#[test]
-fn intents_without_results_map_to_their_calls_and_failures_come_back() {
-    let rpc = FakeRpc::default();
-    let mut dispatcher = Dispatcher::new(rpc.clone());
-    let cases = vec![
+/// Intents whose results the UI does not need, with the call each maps to.
+fn call_cases() -> Vec<(Intent, &'static str, Value)> {
+    vec![
         (
             Intent::UpdateThread {
                 thread_id: "t1".into(),
@@ -418,6 +415,13 @@ fn intents_without_results_map_to_their_calls_and_failures_come_back() {
             },
             "repos.add",
             json!({ "path": "/src/a" }),
+        ),
+        (
+            Intent::RemoveRepository {
+                repository_id: "r1".into(),
+            },
+            "repos.remove",
+            json!({ "repositoryId": "r1" }),
         ),
         (
             Intent::RemoveWorkspace {
@@ -461,7 +465,15 @@ fn intents_without_results_map_to_their_calls_and_failures_come_back() {
             "thread.restart",
             json!({ "threadId": "t1" }),
         ),
-    ];
+    ]
+}
+
+// spec: UI-061, UI-025
+#[test]
+fn intents_without_results_map_to_their_calls_and_failures_come_back() {
+    let rpc = FakeRpc::default();
+    let mut dispatcher = Dispatcher::new(rpc.clone());
+    let cases = call_cases();
     for (intent, method, params) in cases {
         assert_eq!(
             block_on(dispatcher.dispatch(intent.clone())),
@@ -481,6 +493,68 @@ fn intents_without_results_map_to_their_calls_and_failures_come_back() {
         );
         rpc.take();
     }
+}
+
+// spec: UI-026
+#[test]
+fn archiving_unarchiving_and_deleting_map_to_their_calls_and_drop_the_watched_topic() {
+    let rpc = FakeRpc::default();
+    let mut dispatcher = Dispatcher::new(rpc.clone());
+    let _ = block_on(dispatcher.dispatch(select("t1")));
+    rpc.take();
+    let thread = json!({ "threadId": "t1" });
+
+    // Another thread's removal leaves the watched topic alone.
+    let _ = block_on(dispatcher.dispatch(Intent::ArchiveThread {
+        thread_id: "t2".into(),
+    }));
+    assert_eq!(
+        rpc.take(),
+        vec![Sent::Call("threads.archive", json!({ "threadId": "t2" }))]
+    );
+    assert_eq!(dispatcher.watched(), Some("t1"));
+
+    let _ = block_on(dispatcher.dispatch(Intent::ArchiveThread {
+        thread_id: "t1".into(),
+    }));
+    assert_eq!(
+        rpc.take(),
+        vec![
+            Sent::Unsubscribe(thread_topic("t1")),
+            Sent::Call("threads.archive", thread.clone()),
+        ]
+    );
+    assert_eq!(dispatcher.watched(), None);
+
+    let _ = block_on(dispatcher.dispatch(Intent::UnarchiveThread {
+        thread_id: "t1".into(),
+    }));
+    assert_eq!(
+        rpc.take(),
+        vec![Sent::Call("threads.unarchive", thread.clone())]
+    );
+
+    let _ = block_on(dispatcher.dispatch(select("t1")));
+    rpc.take();
+    rpc.answer("threads.delete", Err(CallError::ConnectionLost));
+    let intent = Intent::DeleteThread {
+        thread_id: "t1".into(),
+    };
+    assert_eq!(
+        outcomes(block_on(dispatcher.dispatch(intent.clone()))),
+        vec![IntentOutcome::Failed {
+            intent,
+            message: "the connection was lost before the response arrived".into(),
+        }]
+    );
+    assert_eq!(
+        rpc.take(),
+        vec![
+            Sent::Unsubscribe(thread_topic("t1")),
+            Sent::Call("threads.delete", thread),
+        ]
+    );
+    assert_eq!(dispatcher.watched(), None);
 }
 
 // spec: UI-030

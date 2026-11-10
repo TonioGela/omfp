@@ -219,6 +219,8 @@ pub struct Filter {
     pub text: String,
     /// Only threads with this key.
     pub key: Option<(Dimension, String)>,
+    /// Only archived threads; they are hidden otherwise (UI-026).
+    pub archived: bool,
 }
 
 /// One grouping/filter key of a thread.
@@ -316,8 +318,9 @@ pub struct Group {
     pub thread_ids: Vec<String>,
 }
 
-/// The sidebar's sections: non-archived threads that pass `filter`, in index order within each group. With a grouping,
-/// a thread appears under every group it has a key for; threads without any key come last in their own group.
+/// The sidebar's sections: threads that pass `filter` (archived ones only under [`Filter::archived`], UI-026), in index
+/// order within each group. With a grouping, a thread appears under every group it has a key for; threads without any
+/// key come last in their own group.
 #[must_use]
 pub fn group_threads(
     threads: &[ThreadSummary],
@@ -328,7 +331,7 @@ pub fn group_threads(
 ) -> Vec<Group> {
     let visible = threads
         .iter()
-        .filter(|thread| thread.archived_at.is_none())
+        .filter(|thread| thread.archived_at.is_some() == filter.archived)
         .filter(|thread| matches(thread, filter, workspaces, repositories));
     let Grouping::By(dimension) = grouping else {
         return vec![Group {
@@ -555,8 +558,8 @@ mod tests {
     #[test]
     fn filtering_by_key_and_free_text_combines() {
         let by_repository = Filter {
-            text: String::new(),
             key: Some((Dimension::Repository, "r-be".to_owned())),
+            ..Filter::default()
         };
         assert_eq!(
             groups(Grouping::None, &by_repository)[0].1,
@@ -564,17 +567,18 @@ mod tests {
         );
         let text = Filter {
             text: "FEAT/check".to_owned(),
-            key: None,
+            ..Filter::default()
         };
         assert_eq!(groups(Grouping::None, &text)[0].1, ids(&["t-checkout"]));
         let both = Filter {
             text: "ci".to_owned(),
             key: Some((Dimension::Tag, "release".to_owned())),
+            ..Filter::default()
         };
         assert_eq!(groups(Grouping::None, &both)[0].1, ids(&["t-flaky"]));
         let by_pr = Filter {
-            text: String::new(),
             key: Some((Dimension::Pr, "fe#412".to_owned())),
+            ..Filter::default()
         };
         assert_eq!(groups(Grouping::By(Dimension::Workspace), &by_pr).len(), 2);
     }
@@ -598,6 +602,30 @@ mod tests {
             .map(|(_, key)| key.key)
             .collect();
         assert_eq!(tags, ids(&["release"]));
+    }
+
+    // spec: UI-026
+    #[test]
+    fn the_archived_filter_lists_only_archived_threads() {
+        let (repositories, workspaces, mut threads) = index();
+        threads[1].archived_at = Some(5);
+        let archived = |text: &str| {
+            group_threads(
+                &threads,
+                &workspaces,
+                &repositories,
+                Grouping::None,
+                &Filter {
+                    text: text.to_owned(),
+                    archived: true,
+                    ..Filter::default()
+                },
+            )[0]
+            .thread_ids
+            .clone()
+        };
+        assert_eq!(archived(""), ids(&["t-flaky"]));
+        assert_eq!(archived("checkout"), Vec::<String>::new());
     }
 
     // spec: UI-021

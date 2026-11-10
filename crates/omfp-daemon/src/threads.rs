@@ -190,6 +190,11 @@ impl Threads {
         self.get(id)
     }
 
+    pub fn unarchive(&self, id: &str) -> Result<Thread> {
+        self.store.set_thread_archived_at(id, None)?;
+        self.get(id)
+    }
+
     /// Records the omp session the thread is bound to (DMN-032, DMN-072).
     pub fn set_omp_session_id(&self, id: &str, session_id: &str) -> Result<()> {
         Ok(self.store.set_thread_omp_session_id(id, Some(session_id))?)

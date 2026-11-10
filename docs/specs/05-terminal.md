@@ -1,5 +1,8 @@
 # 05 — Terminal (escape hatch to the TUI)
 
+**Status:** deferred (D-06, M6 not planned). Kept as the design to resume if TUI-only features or a shell panel become
+necessary.
+
 RPC does not expose everything the omp TUI can do (verified on omp 18.18.1: plan mode, `/vibe`, `/settings`, `/agents`,
 `/collab`, `/record`, `/pause`, `/advisor configure`, and extension UI built from TUI components are missing; see
 `docs/rpc.md` → "Extension UI Sub-Protocol" and `slash-command-internals.md` upstream). For these, a thread can be

@@ -85,6 +85,7 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         | Call::ThreadsAttach(_)
         | Call::ThreadsDetach(_)
         | Call::ThreadsArchive(_)
+        | Call::ThreadsUnarchive(_)
         | Call::ThreadsDelete(_)
         | Call::ThreadGit(_)) => threads(services, principal, call).await,
         Call::TerminalOpen(_)
@@ -292,6 +293,11 @@ async fn threads(services: &Services, principal: &Principal, call: Call) -> Repl
                 .await
                 .map_err(supervisor_error)?;
             blocking(move || threads.archive(&params.thread_id).map_err(thread_error)).await?;
+            services.refresh_index_quietly().await;
+            empty()
+        }
+        Call::ThreadsUnarchive(params) => {
+            blocking(move || threads.unarchive(&params.thread_id).map_err(thread_error)).await?;
             services.refresh_index_quietly().await;
             empty()
         }

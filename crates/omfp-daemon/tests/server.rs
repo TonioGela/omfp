@@ -551,6 +551,55 @@ async fn the_index_follows_thread_process_changes() {
     }
 }
 
+/// The next `thread_upserted` of `thread` on the index.
+async fn next_upsert(client: &mut Client, thread: &str) -> Value {
+    loop {
+        let event = client.event("index").await;
+        if event["event"]["kind"] == "thread_upserted" && event["event"]["thread"]["id"] == thread {
+            return event["event"]["thread"].clone();
+        }
+    }
+}
+
+// spec: UI-026
+#[tokio::test(flavor = "multi_thread")]
+async fn archive_unarchive_and_delete_update_the_index() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let thread = create_thread(&mut client).await;
+    client.ok("subscribe", json!({ "topic": "index" })).await;
+
+    client
+        .ok("threads.archive", json!({ "threadId": thread }))
+        .await;
+    assert!(next_upsert(&mut client, &thread).await["archivedAt"].is_i64());
+
+    let result = client
+        .ok("threads.unarchive", json!({ "threadId": thread }))
+        .await;
+    assert_eq!(result, json!({}));
+    assert_eq!(
+        next_upsert(&mut client, &thread).await.get("archivedAt"),
+        None
+    );
+
+    client
+        .ok("threads.delete", json!({ "threadId": thread }))
+        .await;
+    loop {
+        let event = client.event("index").await;
+        if event["event"]["kind"] == "thread_removed" {
+            assert_eq!(event["event"]["threadId"], thread);
+            break;
+        }
+    }
+    let error = client
+        .call("threads.unarchive", json!({ "threadId": thread }))
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "not_found");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_web_ui_is_served_from_the_static_directory() {
     let site = tempfile::tempdir().unwrap();

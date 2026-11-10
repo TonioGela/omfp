@@ -677,3 +677,179 @@ async fn the_transcript_keeps_its_scroll_position_per_thread_and_pasted_images_a
     );
     journey.finish("browser behaviour").await
 }
+
+/// How many sidebar rows show the thread `thread_id`.
+async fn rows_of(journey: &Journey, thread_id: &str) -> anyhow::Result<usize> {
+    Ok(journey
+        .texts(&format!(
+            "[data-testid=thread-row][data-thread-id=\"{thread_id}\"]"
+        ))
+        .await?
+        .len())
+}
+
+/// Waits until the sidebar shows the thread `thread_id` `count` times.
+async fn until_rows(journey: &Journey, thread_id: &str, count: usize) -> anyhow::Result<()> {
+    journey
+        .until(&format!("{count} rows of {thread_id}"), async |page| {
+            Ok((rows_of(page, thread_id).await? == count).then_some(()))
+        })
+        .await
+}
+
+// spec: UI-026, UI-092
+#[tokio::test(flavor = "multi_thread")]
+async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted() -> anyhow::Result<()>
+{
+    let journey = Journey::start(Vec::new(), Settings::default()).await?;
+    journey.connected().await?;
+    let survivor = journey.create_thread("survivor").await?;
+    let doomed = journey.create_thread("doomed").await?;
+
+    // Archiving hides it and leaves no thread selected.
+    journey.click("[data-testid=archive-thread]").await?;
+    until_rows(&journey, &doomed, 0).await?;
+    journey.element("[data-testid=no-thread]").await?;
+
+    // The Archived filter lists only it; it opens from there and comes back with Unarchive.
+    journey
+        .select("[data-testid=filter-key]", "archived")
+        .await?;
+    until_rows(&journey, &doomed, 1).await?;
+    assert_eq!(rows_of(&journey, &survivor).await?, 0);
+    journey
+        .click(&format!(
+            "[data-testid=thread-row][data-thread-id=\"{doomed}\"]"
+        ))
+        .await?;
+    journey.opened("doomed").await?;
+    assert_eq!(
+        journey.text("[data-testid=archive-thread]").await?,
+        "Unarchive"
+    );
+    journey.click("[data-testid=archive-thread]").await?;
+    until_rows(&journey, &doomed, 0).await?;
+    journey.select("[data-testid=filter-key]", "").await?;
+    until_rows(&journey, &doomed, 1).await?;
+    journey
+        .until("the Archive button", async |page| {
+            Ok((page.text("[data-testid=archive-thread]").await? == "Archive").then_some(()))
+        })
+        .await?;
+
+    // Delete asks first, in a dialog that takes the focus; workspaces are kept.
+    journey.click("[data-testid=delete-thread]").await?;
+    let message = journey.text("[data-testid=delete-thread-message]").await?;
+    assert!(message.contains("Its workspaces are kept."), "{message}");
+    let focused = journey
+        .until("the focus in the delete dialog", async |page| {
+            let focused = page
+                .eval(
+                    "return document.activeElement && document.activeElement.dataset.testid;",
+                    Vec::new(),
+                )
+                .await?;
+            Ok((focused == json!("cancel-delete-thread")).then_some(focused))
+        })
+        .await?;
+    assert_eq!(focused, json!("cancel-delete-thread"));
+    journey.click("[data-testid=confirm-delete-thread]").await?;
+    until_rows(&journey, &doomed, 0).await?;
+    assert_eq!(
+        journey.texts("[data-testid=delete-thread-dialog]").await?,
+        Vec::<String>::new()
+    );
+    journey
+        .until("the thread directory to go", async |page| {
+            Ok((!page.data_dir().join("threads").join(&doomed).exists()).then_some(()))
+        })
+        .await?;
+
+    // Gone after a reload too, under every filter.
+    journey.driver.refresh().await?;
+    journey.connected().await?;
+    until_rows(&journey, &survivor, 1).await?;
+    assert_eq!(rows_of(&journey, &doomed).await?, 0);
+    journey
+        .select("[data-testid=filter-key]", "archived")
+        .await?;
+    until_rows(&journey, &survivor, 0).await?;
+    assert_eq!(rows_of(&journey, &doomed).await?, 0);
+    journey.finish("archive and delete").await
+}
+
+// spec: UI-025
+#[tokio::test(flavor = "multi_thread")]
+async fn a_registered_repository_is_listed_starts_a_worktree_and_is_removed() -> anyhow::Result<()>
+{
+    let repo = repository("listed-3");
+    let journey = Journey::start(Vec::new(), Settings::default()).await?;
+    journey.connected().await?;
+    journey.element("[data-testid=no-repositories]").await?;
+
+    journey
+        .type_into(
+            "[data-testid=add-repository] input",
+            &repo.path().to_string_lossy(),
+        )
+        .await?;
+    journey.click("[data-testid=add-repository] button").await?;
+    let row = journey
+        .until("the repository row", async |page| {
+            Ok(page
+                .texts("[data-testid=repository-row]")
+                .await?
+                .into_iter()
+                .next())
+        })
+        .await?;
+    assert!(row.contains(&*repo.path().to_string_lossy()), "{row}");
+    assert!(row.contains("0 worktrees"), "{row}");
+    assert_eq!(
+        journey.texts("[data-testid=no-repositories]").await?,
+        Vec::<String>::new()
+    );
+
+    // "New worktree" preselects the repository in the worktree form.
+    journey
+        .click("[data-testid=repository-new-worktree]")
+        .await?;
+    let id = journey
+        .attrs("[data-testid=repository-row]", "data-repository-id")
+        .await?
+        .into_iter()
+        .next()
+        .flatten();
+    let chosen = journey
+        .eval(
+            "return document.querySelector('[data-testid=create-worktree] select').value;",
+            Vec::new(),
+        )
+        .await?;
+    assert_eq!(chosen.as_str(), id.as_deref());
+    journey
+        .type_into("[data-testid=create-worktree] input", "listed-branch")
+        .await?;
+    journey
+        .click("[data-testid=create-worktree] button")
+        .await?;
+    journey
+        .until("one worktree of the repository", async |page| {
+            let count = page.text("[data-testid=repository-worktrees]").await?;
+            Ok((count == "1 worktree").then_some(()))
+        })
+        .await?;
+
+    // Removing asks first and keeps the worktree.
+    journey.click("[data-testid=remove-repository]").await?;
+    assert_eq!(
+        journey.text("[data-testid=remove-repository-note]").await?,
+        "Its workspaces stay."
+    );
+    journey
+        .click("[data-testid=confirm-remove-repository]")
+        .await?;
+    journey.element("[data-testid=no-repositories]").await?;
+    assert_eq!(journey.texts("[data-testid=workspace-row]").await?.len(), 1);
+    journey.finish("repositories").await
+}

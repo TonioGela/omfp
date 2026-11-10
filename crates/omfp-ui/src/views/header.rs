@@ -1,5 +1,5 @@
 //! The thread header (UI-030): title and tags (editable), workspace chips with attach/detach, model and thinking
-//! selectors, context usage, session cost, process state with stop/restart.
+//! selectors, context usage, session cost, process state with stop/restart, and archive/unarchive/delete (UI-026).
 
 use dioxus::prelude::*;
 use omfp_core::wire::ThinkingLevel;
@@ -32,7 +32,8 @@ pub(crate) fn Header(thread_id: String) -> Element {
             HeaderTitle { thread_id: thread_id.clone(), view: view.clone() }
             HeaderWorkspaces { thread_id: thread_id.clone(), view: view.clone() }
             HeaderSession { thread_id: thread_id.clone(), view: view.clone() }
-            HeaderProcess { thread_id, view }
+            HeaderProcess { thread_id: thread_id.clone(), view: view.clone() }
+            HeaderLifecycle { thread_id, archived: view.archived }
         }
     }
 }
@@ -232,6 +233,37 @@ fn HeaderProcess(thread_id: String, view: HeaderView) -> Element {
                 button { r#type: "button", "data-testid": "process-action", onclick: on_process,
                     if stopped { "Restart" } else { "Stop" }
                 }
+            }
+        }
+    }
+}
+
+/// Archive (unarchive when archived) and delete, which asks for confirmation first (UI-026).
+#[component]
+fn HeaderLifecycle(thread_id: String, archived: bool) -> Element {
+    let ctx = Ctx::get();
+    let mut ui = ctx.ui;
+    let id = thread_id.clone();
+    let on_archive = move |_| {
+        let thread_id = id.clone();
+        if archived {
+            ctx.send(Intent::UnarchiveThread { thread_id });
+        } else {
+            ui.write().drop_thread(&thread_id);
+            ctx.send(Intent::ArchiveThread { thread_id });
+        }
+    };
+    rsx! {
+        div { class: "header-lifecycle",
+            button { r#type: "button", "data-testid": "archive-thread", onclick: on_archive,
+                if archived { "Unarchive" } else { "Archive" }
+            }
+            button {
+                r#type: "button",
+                class: "danger",
+                "data-testid": "delete-thread",
+                onclick: move |_| ui.write().delete_thread = Some(thread_id.clone()),
+                "Delete…"
             }
         }
     }

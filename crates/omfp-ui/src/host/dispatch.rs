@@ -2,22 +2,23 @@
 //!
 //! Selecting a thread moves the window's thread subscription (the previous thread is unsubscribed, so the daemon
 //! knows nobody watches it any more and may reap its idle process, DMN-034) and fetches the thread's details.
+//! Archiving or deleting the watched thread drops its subscription (UI-026): the window no longer shows it.
 
 use futures::future::join4;
 use omfp_client::{CallError, Client};
 use omfp_core::wire::RestoredQueuedMessage;
 use omfp_protocol::method::{
-    InteractionRespond, ReposAdd, ThreadAbort, ThreadGit, ThreadModels, ThreadPrompt,
+    InteractionRespond, ReposAdd, ReposRemove, ThreadAbort, ThreadGit, ThreadModels, ThreadPrompt,
     ThreadQueuePromote, ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking,
-    ThreadState, ThreadStop, ThreadThinkingLevels, ThreadsAttach, ThreadsCreate, ThreadsDetach,
-    ThreadsUpdate, WorkspacesAdopt, WorkspacesCreate, WorkspacesFromPr, WorkspacesRemove,
-    WorkspacesStatus,
+    ThreadState, ThreadStop, ThreadThinkingLevels, ThreadsArchive, ThreadsAttach, ThreadsCreate,
+    ThreadsDelete, ThreadsDetach, ThreadsUnarchive, ThreadsUpdate, WorkspacesAdopt,
+    WorkspacesCreate, WorkspacesFromPr, WorkspacesRemove, WorkspacesStatus,
 };
 use omfp_protocol::{
     AddRepositoryParams, AdoptWorkspaceParams, AttachWorkspaceParams, Call, CreateThreadParams,
     CreateWorkspaceParams, DetachWorkspaceParams, Method, PromptParams, QueueMessageParams,
-    RemoveWorkspaceParams, RespondParams, SetModelParams, SetThinkingParams, ThreadRef, Topic,
-    UpdateThreadParams, WorkspaceFromPrParams, WorkspaceRef,
+    RemoveWorkspaceParams, RepositoryRef, RespondParams, SetModelParams, SetThinkingParams,
+    ThreadRef, Topic, UpdateThreadParams, WorkspaceFromPrParams, WorkspaceRef,
 };
 use serde_json::Value;
 
@@ -75,8 +76,12 @@ impl<R: Rpc> Dispatcher<R> {
     /// Starts `intent`: subscriptions change at once, calls run in the returned future, which resolves to the effects
     /// to apply to the view input.
     pub fn dispatch(&mut self, intent: Intent) -> impl Future<Output = Vec<Effect>> + 'static {
-        if let Intent::SelectThread { thread_id } = &intent {
-            self.watch(thread_id);
+        match &intent {
+            Intent::SelectThread { thread_id } => self.watch(thread_id),
+            Intent::ArchiveThread { thread_id } | Intent::DeleteThread { thread_id } => {
+                self.unwatch(thread_id);
+            }
+            _ => {}
         }
         let rpc = self.rpc.clone();
         async move {
@@ -100,6 +105,14 @@ impl<R: Rpc> Dispatcher<R> {
             self.rpc.unsubscribe(Topic::Thread(previous));
         }
         self.rpc.subscribe(Topic::Thread(thread_id.to_owned()));
+    }
+
+    /// Stops following `thread_id` if this window follows it.
+    fn unwatch(&mut self, thread_id: &str) {
+        if self.watched.as_deref() == Some(thread_id) {
+            self.watched = None;
+            self.rpc.unsubscribe(Topic::Thread(thread_id.to_owned()));
+        }
     }
 }
 
@@ -127,6 +140,7 @@ fn thread_ref(thread_id: &str) -> ThreadRef {
 }
 
 /// Runs one intent; every arm names its calls, so a new intent fails to compile until it is mapped.
+#[allow(clippy::too_many_lines)] // One arm per intent.
 async fn run(rpc: &impl Rpc, intent: &Intent) -> Effects {
     let call = match intent.clone() {
         Intent::SelectThread { thread_id } => return open_thread(rpc, &thread_id).await,
@@ -176,6 +190,9 @@ async fn run(rpc: &impl Rpc, intent: &Intent) -> Effects {
             title,
             tags,
         }),
+        Intent::ArchiveThread { thread_id } => ThreadsArchive::call(thread_ref(&thread_id)),
+        Intent::UnarchiveThread { thread_id } => ThreadsUnarchive::call(thread_ref(&thread_id)),
+        Intent::DeleteThread { thread_id } => ThreadsDelete::call(thread_ref(&thread_id)),
         Intent::AttachWorkspace {
             thread_id,
             workspace_id,
@@ -192,6 +209,9 @@ async fn run(rpc: &impl Rpc, intent: &Intent) -> Effects {
             workspace_id,
         }),
         Intent::AddRepository { path } => ReposAdd::call(AddRepositoryParams { path }),
+        Intent::RemoveRepository { repository_id } => {
+            ReposRemove::call(RepositoryRef { repository_id })
+        }
         Intent::RemoveWorkspace {
             workspace_id,
             force,
