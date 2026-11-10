@@ -46,7 +46,7 @@ flowchart BT
 | --- | --- |
 | TST-010 | `omfp-core`'s reducer MUST have example tests for every event kind it handles, plus property tests. |
 | TST-011 | Property tests MUST check at least: (a) rebuilding an assistant message from `messageUpdates: "delta"` events equals the `message_end` content for any generated message; (b) snapshot → serialize → deserialize → apply remaining events equals applying all events (PRT-021); (c) queue chips always equal the last `queue_update`. |
-| TST-012 | Contract tests (L3) MUST record each scenario as a fixture file written with `just record-fixtures` and normalized so that re-recording only shows real changes (wall-clock and duration fields zeroed; random ids, UUIDs, session-file timestamps and temporary paths replaced). Two formats: raw omp stdout frames (`fixtures/omp/<version>/`, M0 smoke) and the daemon's reducer inputs, `omfp_core::ThreadEvent` as JSON lines (`fixtures/threads/<version>/`, recorded through the daemon's omp adapter). L0/L1/L4 tests replay the thread fixtures, so the whole stack is tested against real omp output without starting omp. |
+| TST-012 | Contract tests (L3) MUST record each scenario as a fixture file written with `just record-fixtures` and normalized so that re-recording only shows real changes (wall-clock and duration fields zeroed; random ids, UUIDs, session-file timestamps and temporary paths replaced). Two formats: raw omp stdout frames (`fixtures/omp/<version>/`, M0 smoke) and the daemon's reducer inputs, `omfp_core::ThreadEvent` as JSON lines (`fixtures/threads/<version>/`, recorded through the daemon's omp adapter). L0/L1/L4 tests replay the thread fixtures, so the whole stack is tested against real omp output without starting omp. `fixtures/states/<version>/` holds, per thread fixture, the Rust reducer's state after each event (`just gen-states`), which the TypeScript reducer must reproduce exactly (D-04). |
 | TST-013 | Contract tests MUST fail fast with a clear message if `omp --version` differs from the pinned version (DMN-001). |
 | TST-014 | L1 fakes MUST be driven by the same fixture format as TST-012, so a fake never invents frames omp does not send. |
 
@@ -98,7 +98,7 @@ refuses and records every connection. The discovery requests fail at once, so ru
 
 | ID | Requirement |
 | --- | --- |
-| TST-030 | Transport suite: the same tests run against both `Transport` implementations (native in L2, web in `wasm-bindgen-test` against a daemon started by the test harness) — hello, auth failure, subscribe/snapshot, replay, reconnect (UI-001). |
+| TST-030 | Transport suite: the same tests run against every client transport against a real daemon — hello, auth failure, subscribe/snapshot, replay, reconnect (UI-001): the Rust native one in L2 and web one in `wasm-bindgen-test` against a daemon started by the test harness, and the TypeScript client's WebSocket transport under `bun test` against the same test daemon (`crates/omfp-daemon/examples/test_daemon.rs`, started by `just test-ts`). |
 | TST-031 | Components get `data-testid` attributes for L4/L5 selectors; tests never select by CSS class or text that is likely to change. |
 | TST-032 | HTML snapshots MUST be normalized (generated ids and timestamps stripped) so they only change when markup really changes. |
 | TST-033 | The desktop build has a smoke test: start with `OMFP_SMOKE=1` under a virtual X server, connect to the in-process daemon, render the shell, exit 0. |
@@ -123,7 +123,7 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 
 | ID | Requirement |
 | --- | --- |
-| TST-040 | `cargo xtask spec-trace` MUST list every requirement ID in `docs/specs/*.md` and the sources citing it (`spec: <ID>` in Rust sources or the justfile), and fail on IDs cited but missing from the specs. `docs/specs/milestones.toml` lists each milestone's requirements: once a milestone is marked `done`, any of them without a citation fails `just ci`. |
+| TST-040 | `cargo xtask spec-trace` MUST list every requirement ID in `docs/specs/*.md` and the sources citing it (`spec: <ID>` in Rust or TypeScript sources or the justfile; `target/`, `node_modules/` and hidden directories are skipped), and fail on IDs cited but missing from the specs. `docs/specs/milestones.toml` lists each milestone's requirements: once a milestone is marked `done`, any of them without a citation fails `just ci`. |
 
 ## Commands
 
@@ -132,6 +132,8 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 | `just test` | L0, L1, L2, L4 (SSR) — fast, every change |
 | `just test-contract` | L3 against the pinned omp (needs the dev shell) |
 | `just test-wasm` | `wasm-bindgen-test` in headless Chromium |
+| `just test-ts` | `bun test` in `ui/`: the TypeScript reducer against the golden states, client session/model tests, the client transport suite against the test daemon |
+| `just gen-ts` / `just gen-states` | regenerate the TypeScript protocol types (`ui/packages/protocol/src/generated.ts`) / the golden reducer states (`fixtures/states/<version>/`); `just test` fails while either is stale |
 | `just test-e2e` | L5 (builds the release web bundle first: a debug bundle runs Dioxus dev-tools) |
 | `just mutants` | `cargo mutants` on `omfp-core`, `omfp-protocol`, `omfp-ui/vm` (`--in-diff` for changed code) |
 | `just cov` | `cargo llvm-cov` report |

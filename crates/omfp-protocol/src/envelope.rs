@@ -3,6 +3,7 @@
 use std::fmt;
 
 use omfp_core::ThreadEvent;
+use schemars::JsonSchema;
 use serde::de::Error as _;
 use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -132,7 +133,7 @@ fn decode_value(value: Value) -> Result<Request, ProtocolError> {
 }
 
 /// Error codes (PRT-011); a closed set.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorCode {
     Unauthorized,
@@ -167,7 +168,7 @@ impl ErrorCode {
 }
 
 /// The `error` of a failed response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ErrorBody {
     pub code: ErrorCode,
@@ -351,7 +352,7 @@ pub enum TopicEvent {
 }
 
 /// Change on the `index` topic.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum IndexEvent {
     RepositoryUpserted {
@@ -378,7 +379,7 @@ pub enum IndexEvent {
 }
 
 /// Change on a `workspace/<id>` topic, whose state is the git status of each repository of the workspace.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum WorkspaceEvent {
     /// The git status of the workspace's repositories changed; replaces the previous list.

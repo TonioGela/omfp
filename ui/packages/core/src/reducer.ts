@@ -1,0 +1,375 @@
+/**
+ * The thread reducer (port of `omfp-core/src/reducer.rs`; ARC-006, D-04): a total, pure function from (state, event)
+ * to state, shared with the daemon's Rust reducer. It never mutates its inputs and never throws on a JSON-decoded
+ * event; unchanged parts of the state are shared with the previous state.
+ */
+
+import { arrayOf, type Decoder, decodeOrUndefined, Invalid } from "./decode.ts";
+import { processState, resolution, sessionInfo, type ThreadEvent } from "./event.ts";
+import { isObject, type JsonValue, withKey, withoutKey } from "./json.ts";
+import type { Notice, NoticeFrame, StreamingMessage, ThreadState, ToolRun, ToolStatus } from "./state.ts";
+import { emptyThreadState } from "./state.ts";
+import { applyStreamEvent, newStreamingMessage } from "./stream.ts";
+import {
+  agentMessage,
+  autoCompactionEndEvent,
+  autoCompactionStartEvent,
+  autoRetryEndEvent,
+  autoRetryStartEvent,
+  availableCommandsUpdateEvent,
+  type ExtensionUiRequest,
+  extensionError,
+  extensionUiRequest,
+  manualCompactionEndEvent,
+  manualCompactionStartEvent,
+  messageEvent,
+  messageUpdateEvent,
+  noticeEvent,
+  promptResultEvent,
+  queueUpdateEvent,
+  rpcFrameErrorEvent,
+  subagentLifecycleEvent,
+  subagentProgressEvent,
+  toolExecutionEndEvent,
+  toolExecutionStartEvent,
+  toolExecutionUpdateEvent,
+  toolStreamUpdateEvent,
+} from "./wire.ts";
+
+/** Frames omp-rpc knows that do not change the visible state. */
+const IGNORED_FRAMES: Record<string, true> = {
+  ready: true,
+  subagent_event: true,
+  live_phase: true,
+  live_levels: true,
+  live_transcript: true,
+  live_end: true,
+  dictation_state: true,
+  dictation_transcript: true,
+  dictation_end: true,
+  btw_delta: true,
+  btw_record: true,
+  command_output: true,
+  session_info_update: true,
+  config_update: true,
+  // `agent_end.messages` can be compacted: the transcript comes from `message_end` only (DMN-043).
+  agent_end: true,
+  turn_start: true,
+  turn_end: true,
+  cache_warming_start: true,
+  cache_warming_end: true,
+  retry_fallback_applied: true,
+  retry_fallback_succeeded: true,
+  model_changed: true,
+  config_warnings_changed: true,
+  advisor_cost_changed: true,
+  advisor_yielded: true,
+  ttsr_triggered: true,
+  todo_reminder: true,
+  todo_auto_clear: true,
+  irc_message: true,
+  thinking_level_changed: true,
+  goal_updated: true,
+};
+
+type NoticeType = Exclude<NoticeFrame["type"], "unknown">;
+
+/** Frames kept as notices, with the decoder of their payload. */
+const NOTICE_FRAMES: { [T in NoticeType]: Decoder<Extract<NoticeFrame, { type: T }>["data"]> } = {
+  auto_compaction_start: autoCompactionStartEvent,
+  auto_compaction_end: autoCompactionEndEvent,
+  manual_compaction_start: manualCompactionStartEvent,
+  manual_compaction_end: manualCompactionEndEvent,
+  auto_retry_start: autoRetryStartEvent,
+  auto_retry_end: autoRetryEndEvent,
+  notice: noticeEvent,
+  extension_error: extensionError,
+  rpc_frame_error: rpcFrameErrorEvent,
+};
+
+/** The id of a dialog request (`select`, `confirm`, `input`, `editor`, `ask`); `undefined` for other methods. */
+export function dialogId(request: ExtensionUiRequest): string | undefined {
+  switch (request.method) {
+    case "select":
+    case "confirm":
+    case "input":
+    case "editor":
+    case "ask":
+      return request.id;
+    default:
+      return undefined;
+  }
+}
+
+function notice(state: ThreadState, frame: NoticeFrame): ThreadState {
+  const entry: Notice = { position: state.transcript.length, frame };
+  return { ...state, notices: [...state.notices, entry] };
+}
+
+/** Removes the pending dialog(s) with omp id `id`. */
+function closeInteraction(state: ThreadState, id: string): ThreadState {
+  const interactions = state.interactions.filter((request) => dialogId(request) !== id);
+  return interactions.length === state.interactions.length ? state : { ...state, interactions };
+}
+
+/** `state` with the run `toolCallId` changed by `update`; a new run starts with `toolName` and `status`. */
+function updateTool(
+  state: ThreadState,
+  toolCallId: string,
+  toolName: string,
+  status: ToolStatus,
+  update: (run: ToolRun) => ToolRun,
+): ThreadState {
+  const index = state.tools.findIndex((run) => run.tool_call_id === toolCallId);
+  const existing = state.tools[index];
+  if (existing !== undefined) {
+    const tools = [...state.tools];
+    tools[index] = update(existing);
+    return { ...state, tools };
+  }
+  const run: ToolRun = {
+    tool_call_id: toolCallId,
+    tool_name: toolName,
+    args: null,
+    intent: null,
+    status,
+    partial_result: null,
+    preview: null,
+    result: null,
+  };
+  return { ...state, tools: [...state.tools, update(run)] };
+}
+
+function applyUiRequest(state: ThreadState, request: ExtensionUiRequest): ThreadState {
+  const presentation = state.presentation;
+  switch (request.method) {
+    case "select":
+    case "confirm":
+    case "input":
+    case "editor":
+    case "ask":
+      return { ...state, interactions: [...state.interactions, request] };
+    case "cancel":
+      return closeInteraction(state, request.targetId);
+    case "notify": {
+      const { type: _type, method: _method, ...notify } = request;
+      return { ...state, presentation: { ...presentation, notifications: [...presentation.notifications, notify] } };
+    }
+    case "setStatus": {
+      const statuses =
+        request.statusText === undefined
+          ? withoutKey(presentation.statuses, request.statusKey)
+          : withKey(presentation.statuses, request.statusKey, request.statusText);
+      return { ...state, presentation: { ...presentation, statuses } };
+    }
+    case "setWidget": {
+      const widgets =
+        request.widgetLines === undefined
+          ? withoutKey(presentation.widgets, request.widgetKey)
+          : withKey(presentation.widgets, request.widgetKey, {
+              lines: request.widgetLines,
+              placement: request.widgetPlacement ?? null,
+            });
+      return { ...state, presentation: { ...presentation, widgets } };
+    }
+    case "setTitle":
+      return { ...state, presentation: { ...presentation, title: request.title } };
+    case "set_editor_text":
+      return { ...state, presentation: { ...presentation, editor_text: request.text } };
+    case "open_url": {
+      const { type: _type, method: _method, ...open } = request;
+      return { ...state, presentation: { ...presentation, open_url: open } };
+    }
+  }
+}
+
+function applyMessageUpdate(state: ThreadState, frame: Record<string, unknown>): ThreadState {
+  const { assistantMessageEvent: event, messageId } = messageUpdateEvent(frame);
+  if (event.type === "done" || event.type === "error") {
+    return state;
+  }
+  const id = messageId ?? null;
+  const current: StreamingMessage =
+    state.streaming !== null && state.streaming.message_id === id ? state.streaming : newStreamingMessage(id);
+  return { ...state, streaming: applyStreamEvent(current, event) };
+}
+
+function endMessage(state: ThreadState, frame: Record<string, unknown>): ThreadState {
+  const { message, messageId } = messageEvent(frame);
+  const entry = { message_id: messageId ?? null, message };
+  const index = messageId === undefined ? -1 : state.transcript.findIndex((item) => item.message_id === messageId);
+  const transcript = [...state.transcript];
+  if (index === -1) {
+    transcript.push(entry);
+  } else {
+    transcript[index] = entry;
+  }
+  // Records injected mid-stream (IRC, advisor cards) end without ending the streaming reply.
+  return { ...state, transcript, streaming: message.role === "assistant" ? null : state.streaming };
+}
+
+/** Applies a frame of known `type`; throws {@link Invalid} when it does not decode. */
+function applyFrame(state: ThreadState, type: string, frame: Record<string, unknown>): ThreadState {
+  switch (type) {
+    case "agent_start":
+      return { ...state, settled: false };
+    case "session_settled":
+      return { ...state, settled: true };
+    case "prompt_result": {
+      const result = promptResultEvent(frame);
+      return result.id === undefined ? state : { ...state, prompts: withKey(state.prompts, result.id, result) };
+    }
+    case "extension_ui_request":
+      return applyUiRequest(state, extensionUiRequest(frame));
+    case "available_commands_update":
+      return { ...state, commands: availableCommandsUpdateEvent(frame).commands };
+    case "subagent_lifecycle": {
+      const { payload } = subagentLifecycleEvent(frame);
+      const progress = Object.hasOwn(state.subagents, payload.id)
+        ? (state.subagents[payload.id]?.progress ?? null)
+        : null;
+      return { ...state, subagents: withKey(state.subagents, payload.id, { lifecycle: payload, progress }) };
+    }
+    case "subagent_progress": {
+      const { payload } = subagentProgressEvent(frame);
+      // The subagent id lives in the raw `AgentProgress` record.
+      const id = payload.progress.id;
+      if (typeof id !== "string") {
+        return state;
+      }
+      const lifecycle = Object.hasOwn(state.subagents, id) ? (state.subagents[id]?.lifecycle ?? null) : null;
+      return { ...state, subagents: withKey(state.subagents, id, { lifecycle, progress: payload }) };
+    }
+    case "message_start": {
+      const { message, messageId } = messageEvent(frame);
+      return message.role === "assistant" ? { ...state, streaming: { message_id: messageId ?? null, message } } : state;
+    }
+    case "message_update":
+      return applyMessageUpdate(state, frame);
+    case "message_end":
+      return endMessage(state, frame);
+    case "tool_execution_start": {
+      const start = toolExecutionStartEvent(frame);
+      return updateTool(state, start.toolCallId, start.toolName, "running", (run) => ({
+        ...run,
+        status: "running",
+        args: start.args ?? null,
+        intent: start.intent ?? null,
+      }));
+    }
+    case "tool_execution_update": {
+      const update = toolExecutionUpdateEvent(frame);
+      return updateTool(state, update.toolCallId, update.toolName, "running", (run) => ({
+        ...run,
+        args: update.args ?? run.args,
+        partial_result: update.partialResult ?? null,
+      }));
+    }
+    case "tool_stream_update": {
+      const update = toolStreamUpdateEvent(frame);
+      return updateTool(state, update.toolCallId, update.toolName, "pending", (run) => ({
+        ...run,
+        preview: update.update ?? null,
+      }));
+    }
+    case "tool_execution_end": {
+      const end = toolExecutionEndEvent(frame);
+      return updateTool(state, end.toolCallId, end.toolName, "running", (run) => ({
+        ...run,
+        result: end.result ?? null,
+        status: end.isError === true ? "failed" : "succeeded",
+      }));
+    }
+    case "queue_update": {
+      const queue = queueUpdateEvent(frame);
+      return {
+        ...state,
+        queue: { steering: queue.steering, follow_up: queue.followUp, live_steered: queue.liveSteered },
+      };
+    }
+  }
+  if (Object.hasOwn(NOTICE_FRAMES, type)) {
+    const noticeType = type as NoticeType;
+    // The cast pairs `noticeType` with the payload its own decoder produced.
+    return notice(state, { type: noticeType, data: NOTICE_FRAMES[noticeType](frame) } as NoticeFrame);
+  }
+  if (Object.hasOwn(IGNORED_FRAMES, type)) {
+    return state;
+  }
+  throw new Invalid("unknown frame type");
+}
+
+function applyOmp(state: ThreadState, frame: JsonValue): ThreadState {
+  const type = isObject(frame) ? frame.type : undefined;
+  if (isObject(frame) && typeof type === "string") {
+    try {
+      return applyFrame(state, type, frame);
+    } catch (error) {
+      if (!(error instanceof Invalid)) {
+        throw error;
+      }
+    }
+  }
+  // A frame omp-rpc cannot decode reaches the reducer as `unknown` (DMN-042).
+  return notice(state, { type: "unknown", data: frame });
+}
+
+/**
+ * Applies one event. Frames that do not change the visible state return `state` itself; an event that is not a valid
+ * `ThreadEvent` (it would not have decoded in Rust) is ignored the same way.
+ */
+export function reduce(state: ThreadState, event: ThreadEvent): ThreadState {
+  const value: unknown = event;
+  if (!isObject(value)) {
+    return state;
+  }
+  switch (value.kind) {
+    case "omp":
+      return value.frame === undefined ? state : applyOmp(state, value.frame as JsonValue);
+    case "history": {
+      const session = decodeOrUndefined(sessionInfo, value.session);
+      const messages = decodeOrUndefined(arrayOf(agentMessage), value.messages);
+      if (session === undefined || messages === undefined) {
+        return state;
+      }
+      return {
+        ...state,
+        session,
+        transcript: messages.map((message) => ({ message_id: null, message })),
+        streaming: null,
+        // Their positions referred to the replaced transcript.
+        notices: [],
+        // A new process numbers its requests from scratch, so old prompt ids would collide.
+        prompts: {},
+      };
+    }
+    case "process": {
+      const process = decodeOrUndefined(processState, value.state);
+      if (process === undefined) {
+        return state;
+      }
+      if (process.state === "running" || process.state === "starting") {
+        return { ...state, process };
+      }
+      // Nothing can answer, settle or finish streaming without a process (DMN-035).
+      return { ...state, process, settled: true, interactions: [], streaming: null };
+    }
+    case "interaction_resolved":
+      return typeof value.id === "string" && decodeOrUndefined(resolution, value.resolution) !== undefined
+        ? closeInteraction(state, value.id)
+        : state;
+    case "unknown":
+      return value.raw === undefined ? state : notice(state, { type: "unknown", data: value.raw as JsonValue });
+    default:
+      return state;
+  }
+}
+
+/** Applies `events` in order to a fresh state. */
+export function replay(events: Iterable<ThreadEvent>): ThreadState {
+  let state = emptyThreadState();
+  for (const event of events) {
+    state = reduce(state, event);
+  }
+  return state;
+}

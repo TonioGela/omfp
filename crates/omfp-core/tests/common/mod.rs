@@ -17,10 +17,31 @@ pub const FIXTURES: [&str; 6] = [
     "text_reply",
 ];
 
-fn fixture_dir() -> PathBuf {
+/// Directory of the recorded thread fixtures of the pinned omp version.
+pub fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../fixtures/threads")
         .join(omfp_core::OMP_VERSION)
+}
+
+/// Names (file stems) of the `*.jsonl` files in `dir`, sorted.
+pub fn jsonl_names(dir: &std::path::Path) -> Vec<String> {
+    let entries =
+        std::fs::read_dir(dir).unwrap_or_else(|error| panic!("{}: {error}", dir.display()));
+    let mut names: Vec<String> = entries
+        .map(|entry| {
+            entry
+                .unwrap_or_else(|error| panic!("{}: {error}", dir.display()))
+                .path()
+        })
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "jsonl")
+        })
+        .filter_map(|path| Some(path.file_stem()?.to_str()?.to_owned()))
+        .collect();
+    names.sort();
+    names
 }
 
 /// The recorded reducer inputs of fixture `name`.

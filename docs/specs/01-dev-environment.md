@@ -14,6 +14,7 @@ nix develop          # or: direnv allow (.envrc contains `use flake`)
 | Rust | toolchain from `rust-toolchain.toml` via rust-overlay (1.99.1, `wasm32-unknown-unknown`, clippy, rustfmt, rust-analyzer, rust-src, llvm-tools) |
 | Dioxus | `dx` (dioxus-cli 0.7.10, with a local override adding `zstd`, see below), `wasm-bindgen-cli` 0.2.130, `binaryen` |
 | Testing | `cargo-nextest`, `cargo-insta`, `cargo-llvm-cov`, `cargo-mutants`, `cargo-deny`, `bacon` |
+| TypeScript (`ui/`) | `bun` 1.4.4 (runtime, package manager, test runner), `biome` 2.6.5 (format and lint; from nixpkgs because the npm build is a glibc binary NixOS cannot run); `typescript` 7.0.2 (native `tsc`) and `@types/bun` come from `ui/bun.lock` |
 | E2E / smoke (Linux) | `chromium`, `chromedriver`, `xvfb-run` |
 | Desktop libs (Linux) | gtk3, webkitgtk 4.1, libsoup 3, glib(-networking), cairo, pango, gdk-pixbuf, atk, xdotool, openssl |
 | Utilities | `just`, `git`, `jq`, `websocat`, `nixfmt` |
@@ -27,7 +28,7 @@ fixes it.
 
 | ID | Requirement |
 | --- | --- |
-| ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time (S-05 confirmed `dx` uses the shell's wasm-bindgen). |
+| ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time (S-05 confirmed `dx` uses the shell's wasm-bindgen). One exception until bun2nix reads Bun 1.4's lockfile (version 2; bun2nix 2.1.2 reads version 1 only): the JavaScript dependencies of `ui/` are fetched by `bun install --frozen-lockfile` (`just ui-install`) from the integrity-pinned `ui/bun.lock`, once into Bun's cache; every test runs offline after that. |
 | ENV-002 | `flake.lock` pins every input. `nixpkgs` and `rust-overlay` are updated deliberately, in their own commits, with `just ci` green. |
 | ENV-003 | Supported dev systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. Linux-only tools (desktop libs, Chromium, xvfb) are excluded on macOS. |
 

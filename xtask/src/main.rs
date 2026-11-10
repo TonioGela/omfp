@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 
+mod gen_ts;
 mod spec_trace;
 mod versions;
 
@@ -21,6 +22,8 @@ enum Task {
     SpecTrace,
     /// Check that omp, omp-rpc, wasm-bindgen and dioxus versions agree (ENV-010, ENV-011, ENV-012).
     CheckVersions,
+    /// Regenerate the TypeScript protocol types from the daemon's JSON Schemas (AGT-007).
+    GenTs,
 }
 
 fn repo_root() -> PathBuf {
@@ -33,6 +36,11 @@ fn repo_root() -> PathBuf {
 fn main() -> anyhow::Result<ExitCode> {
     let root = repo_root();
     match Cli::parse().command {
+        Task::GenTs => {
+            gen_ts::run(&root)?;
+            println!("wrote {}", gen_ts::OUTPUT);
+            Ok(ExitCode::SUCCESS)
+        }
         Task::SpecTrace => {
             let report = spec_trace::run(&root)?;
             for (id, files) in &report.citations {

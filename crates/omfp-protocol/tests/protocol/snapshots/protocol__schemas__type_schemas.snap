@@ -1,0 +1,1096 @@
+---
+source: crates/omfp-protocol/tests/protocol/schemas.rs
+expression: type_schemas()
+---
+{
+  "ErrorBody": {
+    "$defs": {
+      "ErrorCode": {
+        "description": "Error codes (PRT-011); a closed set.",
+        "oneOf": [
+          {
+            "enum": [
+              "unauthorized",
+              "bad_request",
+              "not_found",
+              "conflict",
+              "already_resolved",
+              "limit_reached",
+              "version_mismatch",
+              "thread_failed",
+              "git_error",
+              "internal"
+            ],
+            "type": "string"
+          },
+          {
+            "const": "omp_error",
+            "description": "omp refused the command; its own code is in `ompCode` (DMN-071).",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "The `error` of a failed response.",
+    "properties": {
+      "code": {
+        "$ref": "#/$defs/ErrorCode"
+      },
+      "details": true,
+      "message": {
+        "type": "string"
+      },
+      "ompCode": {
+        "description": "omp's `code`, for `omp_error`.",
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "code",
+      "message"
+    ],
+    "title": "ErrorBody",
+    "type": "object"
+  },
+  "ErrorCode": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "Error codes (PRT-011); a closed set.",
+    "oneOf": [
+      {
+        "enum": [
+          "unauthorized",
+          "bad_request",
+          "not_found",
+          "conflict",
+          "already_resolved",
+          "limit_reached",
+          "version_mismatch",
+          "thread_failed",
+          "git_error",
+          "internal"
+        ],
+        "type": "string"
+      },
+      {
+        "const": "omp_error",
+        "description": "omp refused the command; its own code is in `ompCode` (DMN-071).",
+        "type": "string"
+      }
+    ],
+    "title": "ErrorCode"
+  },
+  "IndexEvent": {
+    "$defs": {
+      "CreatedBy": {
+        "description": "The principal behind a created entity: the user, or the agent of a thread.",
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "user",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "thread",
+                "type": "string"
+              },
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "threadId"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Provenance": {
+        "description": "Who created an entity (ARC-009).",
+        "properties": {
+          "client": {
+            "description": "`client` of the creating connection's `system.hello` (PRT-033).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdBy": {
+            "$ref": "#/$defs/CreatedBy"
+          }
+        },
+        "required": [
+          "createdBy"
+        ],
+        "type": "object"
+      },
+      "Repository": {
+        "description": "A known git repository: a shortcut for adding repositories to workspaces (DMN-021).",
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "defaultBaseRef": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the repository root.",
+            "type": "string"
+          },
+          "remoteUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "defaultBaseRef",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ThreadSummary": {
+        "description": "What the thread list shows about a thread.",
+        "properties": {
+          "archivedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "needsAttention": {
+            "description": "Interactive requests are waiting for an answer.",
+            "type": "boolean"
+          },
+          "process": {
+            "description": "`omfp_core::ProcessState`."
+          },
+          "provenance": {
+            "$ref": "#/$defs/Provenance"
+          },
+          "settled": {
+            "description": "Idle with nothing queued or pending (omp's `session_settled`).",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspaceId": {
+            "description": "The workspace the thread lives in: its omp cwd (ARC-008, DMN-029).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "tags",
+          "workspaceId",
+          "process",
+          "settled",
+          "needsAttention",
+          "provenance",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "Workspace": {
+        "description": "A folder threads work in; its repositories are its top-level entries (D-11, DMN-020).",
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "description": "Unique among workspaces.",
+            "type": "string"
+          },
+          "owned": {
+            "description": "The daemon created the folder and may delete it (DMN-028).",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Absolute path of the folder, unique among workspaces.",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/$defs/Provenance"
+          },
+          "repos": {
+            "description": "Repositories discovered in the folder (DMN-022): the folder itself first when it is a git root, then the\nentries by name.",
+            "items": {
+              "$ref": "#/$defs/WorkspaceRepo"
+            },
+            "type": "array"
+          },
+          "threadIds": {
+            "description": "Threads living in the workspace, archived ones included, oldest first (DMN-027).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "owned",
+          "repos",
+          "threadIds",
+          "provenance",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "WorkspaceRepo": {
+        "description": "A repository discovered in a workspace folder (DMN-022).",
+        "oneOf": [
+          {
+            "description": "A symlink to a repository elsewhere.",
+            "properties": {
+              "kind": {
+                "const": "link",
+                "type": "string"
+              },
+              "target": {
+                "description": "The symlink's target, as written in the link.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "target"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A linked git worktree.",
+            "properties": {
+              "kind": {
+                "const": "worktree",
+                "type": "string"
+              },
+              "main": {
+                "description": "Root of the main working tree (`git rev-parse --git-common-dir`).",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "main"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A repository of its own (a clone, or a folder initialized in place).",
+            "properties": {
+              "kind": {
+                "const": "clone",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "branch": {
+            "description": "`None` on a detached HEAD.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canonicalPath": {
+            "description": "The checkout with symlinks resolved: entries with the same canonical path are the same files (DMN-027).",
+            "type": "string"
+          },
+          "head": {
+            "description": "Commit id of HEAD; `None` before the first commit.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isRoot": {
+            "description": "The workspace folder itself is this repository.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Entry name in the folder; the folder's own name for the root.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path inside the workspace (the symlink path for a link, never its target).",
+            "type": "string"
+          },
+          "sharedWith": {
+            "description": "Other workspaces holding the same checkout (same canonical path), so clients can warn (DMN-027).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "isRoot",
+          "canonicalPath",
+          "sharedWith"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "Change on the `index` topic.",
+    "oneOf": [
+      {
+        "properties": {
+          "kind": {
+            "const": "repository_upserted",
+            "type": "string"
+          },
+          "repository": {
+            "$ref": "#/$defs/Repository"
+          }
+        },
+        "required": [
+          "kind",
+          "repository"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "kind": {
+            "const": "repository_removed",
+            "type": "string"
+          },
+          "repositoryId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "repositoryId"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "kind": {
+            "const": "workspace_upserted",
+            "type": "string"
+          },
+          "workspace": {
+            "$ref": "#/$defs/Workspace"
+          }
+        },
+        "required": [
+          "kind",
+          "workspace"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "kind": {
+            "const": "workspace_removed",
+            "type": "string"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "workspaceId"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "kind": {
+            "const": "thread_upserted",
+            "type": "string"
+          },
+          "thread": {
+            "$ref": "#/$defs/ThreadSummary"
+          }
+        },
+        "required": [
+          "kind",
+          "thread"
+        ],
+        "type": "object"
+      },
+      {
+        "properties": {
+          "kind": {
+            "const": "thread_removed",
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "threadId"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "IndexEvent"
+  },
+  "IndexSnapshot": {
+    "$defs": {
+      "CreatedBy": {
+        "description": "The principal behind a created entity: the user, or the agent of a thread.",
+        "oneOf": [
+          {
+            "properties": {
+              "kind": {
+                "const": "user",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "thread",
+                "type": "string"
+              },
+              "threadId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "threadId"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "Provenance": {
+        "description": "Who created an entity (ARC-009).",
+        "properties": {
+          "client": {
+            "description": "`client` of the creating connection's `system.hello` (PRT-033).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdBy": {
+            "$ref": "#/$defs/CreatedBy"
+          }
+        },
+        "required": [
+          "createdBy"
+        ],
+        "type": "object"
+      },
+      "Repository": {
+        "description": "A known git repository: a shortcut for adding repositories to workspaces (DMN-021).",
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "defaultBaseRef": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "description": "Absolute path of the repository root.",
+            "type": "string"
+          },
+          "remoteUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "defaultBaseRef",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "ThreadSummary": {
+        "description": "What the thread list shows about a thread.",
+        "properties": {
+          "archivedAt": {
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "needsAttention": {
+            "description": "Interactive requests are waiting for an answer.",
+            "type": "boolean"
+          },
+          "process": {
+            "description": "`omfp_core::ProcessState`."
+          },
+          "provenance": {
+            "$ref": "#/$defs/Provenance"
+          },
+          "settled": {
+            "description": "Idle with nothing queued or pending (omp's `session_settled`).",
+            "type": "boolean"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "workspaceId": {
+            "description": "The workspace the thread lives in: its omp cwd (ARC-008, DMN-029).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "tags",
+          "workspaceId",
+          "process",
+          "settled",
+          "needsAttention",
+          "provenance",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
+      "Workspace": {
+        "description": "A folder threads work in; its repositories are its top-level entries (D-11, DMN-020).",
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "description": "Unique among workspaces.",
+            "type": "string"
+          },
+          "owned": {
+            "description": "The daemon created the folder and may delete it (DMN-028).",
+            "type": "boolean"
+          },
+          "path": {
+            "description": "Absolute path of the folder, unique among workspaces.",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/$defs/Provenance"
+          },
+          "repos": {
+            "description": "Repositories discovered in the folder (DMN-022): the folder itself first when it is a git root, then the\nentries by name.",
+            "items": {
+              "$ref": "#/$defs/WorkspaceRepo"
+            },
+            "type": "array"
+          },
+          "threadIds": {
+            "description": "Threads living in the workspace, archived ones included, oldest first (DMN-027).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "owned",
+          "repos",
+          "threadIds",
+          "provenance",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      "WorkspaceRepo": {
+        "description": "A repository discovered in a workspace folder (DMN-022).",
+        "oneOf": [
+          {
+            "description": "A symlink to a repository elsewhere.",
+            "properties": {
+              "kind": {
+                "const": "link",
+                "type": "string"
+              },
+              "target": {
+                "description": "The symlink's target, as written in the link.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "target"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A linked git worktree.",
+            "properties": {
+              "kind": {
+                "const": "worktree",
+                "type": "string"
+              },
+              "main": {
+                "description": "Root of the main working tree (`git rev-parse --git-common-dir`).",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "main"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "A repository of its own (a clone, or a folder initialized in place).",
+            "properties": {
+              "kind": {
+                "const": "clone",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
+          }
+        ],
+        "properties": {
+          "branch": {
+            "description": "`None` on a detached HEAD.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "canonicalPath": {
+            "description": "The checkout with symlinks resolved: entries with the same canonical path are the same files (DMN-027).",
+            "type": "string"
+          },
+          "head": {
+            "description": "Commit id of HEAD; `None` before the first commit.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "isRoot": {
+            "description": "The workspace folder itself is this repository.",
+            "type": "boolean"
+          },
+          "name": {
+            "description": "Entry name in the folder; the folder's own name for the root.",
+            "type": "string"
+          },
+          "path": {
+            "description": "Path inside the workspace (the symlink path for a link, never its target).",
+            "type": "string"
+          },
+          "sharedWith": {
+            "description": "Other workspaces holding the same checkout (same canonical path), so clients can warn (DMN-027).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "path",
+          "isRoot",
+          "canonicalPath",
+          "sharedWith"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "State of the `index` topic.",
+    "properties": {
+      "repositories": {
+        "items": {
+          "$ref": "#/$defs/Repository"
+        },
+        "type": "array"
+      },
+      "threads": {
+        "items": {
+          "$ref": "#/$defs/ThreadSummary"
+        },
+        "type": "array"
+      },
+      "workspaces": {
+        "items": {
+          "$ref": "#/$defs/Workspace"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "repositories",
+      "workspaces",
+      "threads"
+    ],
+    "title": "IndexSnapshot",
+    "type": "object"
+  },
+  "RepoStatus": {
+    "$defs": {
+      "FileChange": {
+        "description": "One changed file with its line counts.",
+        "properties": {
+          "additions": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deletions": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "oldPath": {
+            "description": "Previous path of a renamed file.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/FileStatus"
+          }
+        },
+        "required": [
+          "path",
+          "status",
+          "additions",
+          "deletions"
+        ],
+        "type": "object"
+      },
+      "FileStatus": {
+        "description": "Kind of change to a file.",
+        "enum": [
+          "added",
+          "modified",
+          "deleted",
+          "renamed",
+          "untracked"
+        ],
+        "type": "string"
+      },
+      "GitStatus": {
+        "description": "Git state of a repository relative to its upstream or base ref (DMN-026).",
+        "properties": {
+          "ahead": {
+            "description": "Commits on HEAD not in the base ref.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "baseRef": {
+            "description": "What `ahead`/`behind` count against: the branch's upstream; absent without one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "behind": {
+            "description": "Commits in the base ref not on HEAD.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "branch": {
+            "description": "`None` on a detached HEAD.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dirty": {
+            "description": "Uncommitted changes, untracked files included.",
+            "type": "boolean"
+          },
+          "files": {
+            "description": "Files changed since the base ref, committed or not.",
+            "items": {
+              "$ref": "#/$defs/FileChange"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ahead",
+          "behind",
+          "dirty",
+          "files"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "Git status of one repository of a workspace (the `workspace/<id>` topic, DMN-026).",
+    "properties": {
+      "name": {
+        "description": "The repository's name in the workspace.",
+        "type": "string"
+      },
+      "status": {
+        "$ref": "#/$defs/GitStatus"
+      }
+    },
+    "required": [
+      "name",
+      "status"
+    ],
+    "title": "RepoStatus",
+    "type": "object"
+  },
+  "Topic": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "`index`, `thread/<id>`, `workspace/<id>` or `terminal/<id>`.",
+    "pattern": "^(index|(thread|workspace|terminal)/[A-Za-z0-9_-]+)$",
+    "title": "Topic",
+    "type": "string"
+  },
+  "WorkspaceEvent": {
+    "$defs": {
+      "FileChange": {
+        "description": "One changed file with its line counts.",
+        "properties": {
+          "additions": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deletions": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "oldPath": {
+            "description": "Previous path of a renamed file.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/FileStatus"
+          }
+        },
+        "required": [
+          "path",
+          "status",
+          "additions",
+          "deletions"
+        ],
+        "type": "object"
+      },
+      "FileStatus": {
+        "description": "Kind of change to a file.",
+        "enum": [
+          "added",
+          "modified",
+          "deleted",
+          "renamed",
+          "untracked"
+        ],
+        "type": "string"
+      },
+      "GitStatus": {
+        "description": "Git state of a repository relative to its upstream or base ref (DMN-026).",
+        "properties": {
+          "ahead": {
+            "description": "Commits on HEAD not in the base ref.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "baseRef": {
+            "description": "What `ahead`/`behind` count against: the branch's upstream; absent without one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "behind": {
+            "description": "Commits in the base ref not on HEAD.",
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "branch": {
+            "description": "`None` on a detached HEAD.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dirty": {
+            "description": "Uncommitted changes, untracked files included.",
+            "type": "boolean"
+          },
+          "files": {
+            "description": "Files changed since the base ref, committed or not.",
+            "items": {
+              "$ref": "#/$defs/FileChange"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "ahead",
+          "behind",
+          "dirty",
+          "files"
+        ],
+        "type": "object"
+      },
+      "RepoStatus": {
+        "description": "Git status of one repository of a workspace (the `workspace/<id>` topic, DMN-026).",
+        "properties": {
+          "name": {
+            "description": "The repository's name in the workspace.",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/$defs/GitStatus"
+          }
+        },
+        "required": [
+          "name",
+          "status"
+        ],
+        "type": "object"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "Change on a `workspace/<id>` topic, whose state is the git status of each repository of the workspace.",
+    "oneOf": [
+      {
+        "description": "The git status of the workspace's repositories changed; replaces the previous list.",
+        "properties": {
+          "kind": {
+            "const": "status",
+            "type": "string"
+          },
+          "repos": {
+            "items": {
+              "$ref": "#/$defs/RepoStatus"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "repos"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "WorkspaceEvent"
+  }
+}

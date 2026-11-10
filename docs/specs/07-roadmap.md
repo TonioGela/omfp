@@ -117,6 +117,13 @@ binary stays in Rust and embeds or serves the bundle (DMN-008).
 Acceptance: E2E-01..05, E2E-08, E2E-09 pass on the new UI (the L5 harness stays in Rust); component tests for the
 shell; the Dioxus crate and `omfp-client` are deleted.
 
+Progress (framework-agnostic foundation): `ui/` is a Bun workspace (strict `tsc`, Biome, `bun test`; dependencies from
+`ui/bun.lock`, see ENV-001) with `@omfp/protocol` (types and the method table generated from the daemon's JSON
+Schemas by `just gen-ts`, plus the envelope and topics), `@omfp/core` (the reducer port, reproducing the Rust
+reducer's state after every event of every thread fixture, `fixtures/states/<version>/`, `just gen-states`) and
+`@omfp/client` (WebSocket transport, session, model; the transport suite runs against the test daemon in
+`just test-ts`). `just test` fails while the generated types or the golden states are stale.
+
 ## M4 — Widgets (agent-made UI, from 08)
 
 Scope: D-17's UI part brought forward, as designed in [08](08-agent-control.md#agent-made-ui-views-and-widgets-m4): a

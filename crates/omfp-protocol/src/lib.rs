@@ -9,6 +9,7 @@ mod dto;
 mod envelope;
 pub mod method;
 mod params;
+mod schema;
 mod topic;
 
 pub use dto::{
@@ -32,6 +33,7 @@ pub use params::{
     SubscribeResult, TerminalList, TerminalRef, ThreadGit, ThreadRef, ThreadWorkspace, TopicParams,
     UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
 };
+pub use schema::type_schemas;
 pub use topic::{Topic, TopicParseError};
 
 /// Protocol version announced in `system.hello` (PRT-004).

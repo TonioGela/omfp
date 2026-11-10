@@ -1,6 +1,6 @@
 //! JSON Schemas of method params and results, for deriving agent tools.
 
-use omfp_protocol::{METHODS, method_schemas};
+use omfp_protocol::{METHODS, method_schemas, type_schemas};
 use serde_json::{Value, json};
 
 // spec: AGT-007
@@ -43,4 +43,26 @@ fn params_schemas_describe_the_wire_fields() {
 #[test]
 fn method_schemas_golden() {
     insta::assert_json_snapshot!("method_schemas", method_schemas());
+}
+
+// spec: AGT-007
+#[test]
+fn type_schemas_are_titled_by_their_key() {
+    let schemas = type_schemas();
+    let object = schemas.as_object().expect("schemas keyed by type name");
+    for (name, schema) in object {
+        assert_eq!(schema["title"], json!(name), "{name}");
+    }
+    let index_event = &schemas["IndexEvent"];
+    assert_eq!(
+        index_event["oneOf"].as_array().map(Vec::len),
+        Some(6),
+        "one schema per index event kind"
+    );
+}
+
+// spec: AGT-007
+#[test]
+fn type_schemas_golden() {
+    insta::assert_json_snapshot!("type_schemas", type_schemas());
 }

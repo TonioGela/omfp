@@ -3,3 +3,4 @@
 /.direnv
 /dist
 /.pre-commit-config.yaml
+node_modules/

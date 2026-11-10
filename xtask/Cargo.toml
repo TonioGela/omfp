@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Repository automation: spec traceability and version checks."
+description = "Repository automation: spec traceability, version checks and TypeScript protocol generation."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,6 +10,7 @@ publish.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 omfp-core.workspace = true
+omfp-protocol.workspace = true
 regex.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -1,5 +1,6 @@
-//! The daemon `just test-wasm` runs the web transport suite against: an in-process daemon on `127.0.0.1:0` with the
-//! fake omp launcher and fake git (as in the native L2 tests) and the data directory given as the only argument.
+//! The daemon the transport suites run against (`just test-wasm` for the Rust web transport, `just test-ts` for the
+//! TypeScript client): an in-process daemon on `127.0.0.1:0` with the fake omp launcher and fake git (as in the native
+//! L2 tests) and the data directory given as the only argument.
 //!
 //! It reserves a free port for `wasm-bindgen-test-runner` and allows that origin (PRT-003), prints
 //! `<websocket url> <token> <runner address>` on one line, and serves until SIGINT or SIGTERM.

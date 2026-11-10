@@ -31,10 +31,13 @@ widgets in JavaScript (M4, M10); never design something that would only be reach
 
 ```sh
 nix develop                      # or: nix develop -c sh -c '<command>'
-just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-contract, test-wasm, test-e2e, deny
+just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-ts, test-contract, test-wasm, test-e2e, deny
 just test                        # fast tests (no omp process)
+just test-ts                     # bun test in ui/ (reducer goldens, client; transport suite against a fake-launcher daemon)
 just test-contract               # contract tests against the pinned omp + fake LLM
-just record-fixtures             # re-record fixtures/ (review the diff!)
+just record-fixtures             # re-record fixtures/ (review the diff!), then `just gen-states`
+just gen-states                  # golden reducer states fixtures/states/<ver>/ from the Rust reducer
+just gen-ts                      # ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas
 just test-wasm                   # web transport suite in headless Chromium against a fake-launcher daemon
 just test-e2e                    # L5 journeys: builds the web bundle, headless Chromium + daemon + omp + fake LLM
 just build-web                   # dx build -p omfp-ui --platform web --release (no dev-tools overlay)
@@ -55,17 +58,23 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       supervisor (launch in the workspace folder, root sync), agent conventions (conventions.rs),
                       event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
                       workspaces/scan.rs, add/remove repo), threads, git port + FakeGit, host tools, WebSocket
-                      server; `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`)
+                      server; `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`);
+                      examples/test_daemon.rs: the fake-launcher daemon the transport suites (wasm, TS) run against
 crates/omfp-client    protocol client without UI: Transport (native tokio-tungstenite / web-sys WebSocket), session
                       (hello, subscriptions, reconnect backoff), model (index, ThreadState per thread, dirty set)
 crates/omfp-ui        the app: Dioxus UI (features web / desktop), the host glue (host/: client model → view input
                       per animation frame, intents → protocol calls, web token handling) and the `omfp` binary
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
-xtask                 spec-trace, check-versions
+xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
 e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process) and the M2 journeys
+ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + Biome (`just lint`), `bun test`
+ui/packages/protocol  @omfp/protocol: generated protocol types + method table (generated.ts), envelope, topics
+ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked against fixtures/states/
+ui/packages/client    @omfp/client: WebSocket transport, session (hello, subscriptions, reconnect), model
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)
+fixtures/states/<ver>/   ThreadState JSONL, one line per fixture event: the Rust reducer's goldens for the TS port
 ```
 
 ## Version pinning
@@ -106,3 +115,8 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   `inert` are written as `inert="false"`, which still applies. Use `attr: if condition { "true" }` for those.
 - Fixtures are normalized (timestamps, durations, UUIDs, random ids, temp roots); if a re-record shows churn, add the
   volatile field to `omfp_testkit::normalize_frame` rather than accepting noise.
+- TypeScript (`ui/`): one root `tsconfig.json` (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`),
+  type-checked by `typescript` 7's native `tsc` (`bun run check`); no `any`. Biome comes from nixpkgs (the npm
+  `@biomejs/biome` binary is dynamically linked against glibc and does not run on NixOS); its formatter skips the
+  generated `generated.ts`. JS dependencies are installed by `bun install --frozen-lockfile`, not bun2nix: bun2nix
+  cannot read Bun 1.4's lockfile version 2 yet (ENV-001).

@@ -106,7 +106,8 @@ pub fn trace(
     report
 }
 
-/// Files scanned for citations: Rust sources and the justfile, outside `target/` and hidden directories.
+/// Files scanned for citations: Rust and TypeScript sources and the justfile, outside `target/`, `node_modules/` and
+/// hidden directories.
 fn citing_files(root: &Path) -> Vec<PathBuf> {
     walkdir::WalkDir::new(root)
         .into_iter()
@@ -115,6 +116,7 @@ fn citing_files(root: &Path) -> Vec<PathBuf> {
             entry.depth() == 0
                 || !(name.starts_with('.')
                     || name == "target"
+                    || name == "node_modules"
                     || name == "docs"
                     || name == "fixtures")
         })
@@ -122,7 +124,8 @@ fn citing_files(root: &Path) -> Vec<PathBuf> {
         .filter(|entry| entry.file_type().is_file())
         .map(walkdir::DirEntry::into_path)
         .filter(|path| {
-            path.extension().is_some_and(|ext| ext == "rs")
+            path.extension()
+                .is_some_and(|ext| ext == "rs" || ext == "ts")
                 || path.file_name().is_some_and(|n| n == "justfile")
         })
         .collect()
@@ -259,6 +262,51 @@ Text mentioning ARC-001 is not a definition.
         assert_eq!(
             report.errors,
             ["milestone M0 lists XYZ-001, which no spec defines"]
+        );
+    }
+
+    // spec: TST-040
+    #[test]
+    fn citations_are_read_from_rust_typescript_and_the_justfile_outside_build_and_dependency_dirs()
+    {
+        let root = tempfile::tempdir().expect("temp dir");
+        let files = [
+            "justfile",
+            "crates/a/src/lib.rs",
+            "ui/packages/core/src/reducer.ts",
+            "ui/packages/core/test/reducer.test.ts",
+            "ui/node_modules/typescript/lib/lib.d.ts",
+            "ui/packages/core/node_modules/dep/index.ts",
+            "target/debug/build.rs",
+            "docs/specs/README.md",
+            ".git/hooks/x.rs",
+            "ui/package.json",
+        ];
+        for file in files {
+            let path = root.path().join(file);
+            std::fs::create_dir_all(path.parent().expect("parent")).expect("dirs");
+            std::fs::write(&path, "").expect("file");
+        }
+
+        let mut found: Vec<String> = citing_files(root.path())
+            .iter()
+            .map(|path| {
+                path.strip_prefix(root.path())
+                    .expect("under root")
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        found.sort();
+
+        assert_eq!(
+            found,
+            [
+                "crates/a/src/lib.rs",
+                "justfile",
+                "ui/packages/core/src/reducer.ts",
+                "ui/packages/core/test/reducer.test.ts",
+            ]
         );
     }
 }

@@ -7725,6 +7725,7 @@ dependencies = [
  "anyhow",
  "clap",
  "omfp-core",
+ "omfp-protocol",
  "regex",
  "serde",
  "serde_json",

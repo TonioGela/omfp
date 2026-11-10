@@ -145,6 +145,12 @@
               pkgs.cargo-deny
               pkgs.bacon
 
+              # TypeScript UI (D-10, D-18): Bun is runtime, package manager and test runner; `bun install
+              # --frozen-lockfile` in ui/ pins the JS dependencies. Biome comes from nixpkgs: the npm build is a
+              # dynamically linked glibc binary NixOS cannot run.
+              pkgs.bun
+              pkgs.biome
+
               # Utilities
               pkgs.just
               pkgs.git
@@ -176,7 +182,7 @@
 
             shellHook = ''
               ${config.pre-commit.installationScript}
-              echo "omfp dev shell — $(omp --version 2>/dev/null | head -n1), $(rustc --version), dx $(dx --version 2>/dev/null)"
+              echo "omfp dev shell — $(omp --version 2>/dev/null | head -n1), $(rustc --version), dx $(dx --version 2>/dev/null), bun $(bun --version)"
             '';
           };
         };
