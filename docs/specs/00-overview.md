@@ -95,8 +95,8 @@ e2e/              End-to-end tests (WebDriver) against the web build.
 
 | ID | Requirement |
 | --- | --- |
-| ARC-010 | `pmo-protocol` and `pmo-core` MUST compile for `wasm32-unknown-unknown` and MUST NOT depend on tokio, `std::process` or the filesystem. |
-| ARC-011 | `pmo-core` MUST reuse `omp_rpc::wire` types for omp events and messages instead of redefining them. If the `omp-rpc` crate does not compile for wasm, isolate the `wire` module (spike S-01 in [07](07-roadmap.md)). |
+| ARC-010 | `pmo-protocol` and `pmo-core` MUST compile for `wasm32-unknown-unknown` and MUST NOT use tokio, `std::process` or the filesystem. |
+| ARC-011 | `pmo-core` MUST reuse `omp_rpc::wire` types for omp events and messages instead of redefining them. The whole `omp-rpc` crate compiles for wasm (S-01), but `pmo-core` and the UI use only its `wire` module; its process client is for the daemon. |
 | ARC-012 | System dependencies (git, omp, PTY, clock, ID generation) MUST sit behind traits ("ports") in `pmo-daemon`, so component tests can use fake implementations. |
 
 ## Main flow: one prompt

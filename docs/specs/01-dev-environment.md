@@ -27,7 +27,7 @@ fixes it.
 
 | ID | Requirement |
 | --- | --- |
-| ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time (see S-05 for `dx` and wasm-bindgen). |
+| ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time (S-05 confirmed `dx` uses the shell's wasm-bindgen). |
 | ENV-002 | `flake.lock` pins every input. `nixpkgs` and `rust-overlay` are updated deliberately, in their own commits, with `just ci` green. |
 | ENV-003 | Supported dev systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. Linux-only tools (desktop libs, Chromium, xvfb) are excluded on macOS. |
 
@@ -47,9 +47,9 @@ exact omp version its client was built for.
 
 | ID | Requirement |
 | --- | --- |
-| ENV-010 | A test (M0) MUST check that the oh-my-pi tag in `flake.lock`, the `omp-rpc` tag in `Cargo.lock`, `pmo_core::OMP_VERSION`, and `omp --version` all agree. |
+| ENV-010 | `cargo xtask check-versions` (part of `just ci`) MUST check that the oh-my-pi tag and commit in `flake.lock`, the `omp-rpc` tag and commit in `Cargo.lock`, `pmo_core::OMP_VERSION`, and `omp --version` all agree. |
 | ENV-011 | omp MUST be pinned to a release tag, never to `main` or an untagged commit. |
-| ENV-012 | A test MUST check that the `wasm-bindgen` version in `Cargo.lock` equals `wasm-bindgen --version` from the shell, and that the `dioxus` minor version equals `dx --version`'s. |
+| ENV-012 | The same check MUST verify that the `wasm-bindgen` version in `Cargo.lock` equals `wasm-bindgen --version` from the shell, and that the `dioxus` minor version equals `dx --version`'s. |
 
 ## omp upgrade playbook
 

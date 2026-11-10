@@ -38,7 +38,7 @@ flowchart BT
 | L0 | Reducer, view-models, protocol (de)serialization, naming/slug rules, `ask` validation, ring buffer, state machines | `cargo nextest`, `proptest`, `insta` | `just test` |
 | L1 | ThreadService, AgentSupervisor, WorktreeManager, interactions, idle reaper — against `FakeGit`, `FakeAgent` (scripted omp frames), `FakeClock`, `FakePty` | `tokio::test(start_paused = true)` | `just test` |
 | L2 | Real `git` on temp repos, real SQLite file, real WebSocket server with a native protocol client | `pmo-testkit` | `just test` |
-| L3 | Our assumptions about omp: real pinned `omp --mode rpc-ui` talking to `fake-llm` | `pmo-testkit`, `fake-llm` | `just test-contract` |
+| L3 | Our assumptions about omp: real pinned `omp --mode rpc-ui` talking to `fake-llm` (`crates/*/tests/contract_*.rs`) | `pmo-testkit`, `fake-llm` | `just test-contract` |
 | L4 | Components rendered via `VirtualDom` + `dioxus-ssr`, asserted with selectors and HTML snapshots; browser-only code (web transport, xterm bridge) | `scraper`, `insta`, `wasm-bindgen-test` in headless Chromium | `just test`, `just test-wasm` |
 | L5 | Critical user journeys on the web build | `thirtyfour` (WebDriver) + `chromedriver` + Chromium | `just test-e2e` |
 
@@ -46,7 +46,7 @@ flowchart BT
 | --- | --- |
 | TST-010 | `pmo-core`'s reducer MUST have example tests for every event kind it handles, plus property tests. |
 | TST-011 | Property tests MUST check at least: (a) rebuilding an assistant message from `messageUpdates: "delta"` events equals the `message_end` content for any generated message; (b) snapshot → serialize → deserialize → apply remaining events equals applying all events (PRT-021); (c) queue chips always equal the last `queue_update`. |
-| TST-012 | Contract tests (L3) MUST record the raw omp frames of each scenario as fixture files (`fixtures/omp/<version>/<scenario>.jsonl`). L0/L1/L4 tests replay these fixtures, so the whole stack is tested against real omp output without starting omp. |
+| TST-012 | Contract tests (L3) MUST record the raw omp frames of each scenario as fixture files (`fixtures/omp/<version>/<scenario>.jsonl`, written with `just record-fixtures`), normalized so that re-recording only shows real changes (wall-clock fields zeroed, random ids and temporary paths replaced). L0/L1/L4 tests replay these fixtures, so the whole stack is tested against real omp output without starting omp. |
 | TST-013 | Contract tests MUST fail fast with a clear message if `omp --version` differs from the pinned version (DMN-001). |
 | TST-014 | L1 fakes MUST be driven by the same fixture format as TST-012, so a fake never invents frames omp does not send. |
 
@@ -62,8 +62,9 @@ An OpenAI-compatible server (axum) that answers from a script, making omp runs d
 - Every received request is recorded and exposed in-process (and at `GET /__requests`) for assertions.
 - An unexpected request (script exhausted or no match) answers 500 and fails the test with the request body.
 
-omp is pointed at it through an isolated agent directory (`PI_CODING_AGENT_DIR`, see upstream
-`environment-variables.md`) containing a `models.yml` with a custom provider (shape from upstream `models.md`):
+omp runs in an isolated environment (`pmo_testkit::OmpEnv`): its own `HOME`, agent directory (`PI_CODING_AGENT_DIR`,
+see upstream `environment-variables.md`), XDG directories and working directory, with provider credentials removed
+from the environment. The agent directory holds a `models.yml` with a custom provider (shape from upstream `models.md`):
 
 ```yaml
 providers:
@@ -80,14 +81,18 @@ providers:
         maxTokens: 8192
 ```
 
-and launched with `--model fake/scripted`. Settings that would reach the network or add nondeterminism (model catalog
-refresh, update checks, title generation, memory, advisor) MUST be disabled in that directory's `config.yml`
-**[VERIFY in spike S-02: exact keys]**.
+and a `config.yml` setting `modelRoles.default: fake/scripted`; omp is launched with `--model fake/scripted`.
+
+Spike S-02 found that omp always runs a background model-catalog discovery at startup: the shared catalog
+(`catalog.stencil.so`) and the model lists of keyless providers. No setting turns it off entirely
+(`disabledProviders` removes the keyless providers but not the shared catalog). Contract tests therefore run omp behind
+`pmo_testkit::DenyProxy`, an HTTP(S) proxy set in `HTTP_PROXY`/`HTTPS_PROXY` (loopback excluded with `NO_PROXY`) that
+refuses and records every connection. The discovery requests fail at once, so runs stay offline and deterministic.
 
 | ID | Requirement |
 | --- | --- |
 | TST-020 | `fake-llm` itself is developed test-first: its own tests check SSE framing, tool-call chunking and request recording. |
-| TST-021 | A contract test MUST fail if omp makes any request to a host other than `fake-llm` during the run **[VERIFY in S-02 how to detect: e.g. `HTTP(S)_PROXY` pointing at a refusing proxy]**. |
+| TST-021 | Contract tests MUST run omp behind the deny proxy and fail when omp tries to reach a host outside `pmo_testkit::KNOWN_DISCOVERY_HOSTS`. That list is reviewed on every omp upgrade. |
 
 ## UI testing
 
@@ -117,7 +122,7 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 
 | ID | Requirement |
 | --- | --- |
-| TST-040 | `cargo xtask spec-trace` MUST list every requirement ID in `docs/specs/*.md` and the tests citing it (`spec: <ID>` in test source), and fail on IDs cited in tests but missing from specs. Requirements in a finished milestone with no test fail `just ci`. |
+| TST-040 | `cargo xtask spec-trace` MUST list every requirement ID in `docs/specs/*.md` and the sources citing it (`spec: <ID>` in Rust sources or the justfile), and fail on IDs cited but missing from the specs. `docs/specs/milestones.toml` lists each milestone's requirements: once a milestone is marked `done`, any of them without a citation fails `just ci`. |
 
 ## Commands
 
