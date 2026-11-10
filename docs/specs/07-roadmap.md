@@ -132,8 +132,9 @@ with widget references and props), edited by the agent as a file and by the user
 components (built-in `omfp:*`, workspace `./widgets/<name>`, user library `user:<name>`) running in the window under
 error boundaries, with the SDK as hooks (full protocol, tool-run output, daemon jobs, git, storage, messages to agents)
 and the shell's kit and theme; the daemon serves and transpiles workspace widgets and pushes changes found on rescan.
-Built-in panels (repos, changes, todos) become `omfp:*` widgets; transcript and composer too, while the frame
-(connection, view switcher, pending interactions) stays outside the manifest. Agents learn it from the daemon's
+Built-in panels (repos, changes, todos) become `omfp:*` widgets, and so does the conversation (`omfp:chat`: transcript,
+interactions, queue, composer); only a thin frame (connection, view switcher, keymap and command line, and a safety net
+that shows pending interactions no widget renders) stays outside the manifest. Agents learn it from the daemon's
 `--append-system-prompt` note, `omfp://docs/widgets` and the manifest schema. Spike first: transpiling in the daemon
 (`oxc`) vs buildless modules (`htm`), hot reload, how much of the shell becomes widgets.
 
@@ -214,3 +215,9 @@ Not planned for now (D-06 revised): the user does not rely on the TUI-only comma
 design to pick up if a real need appears (TUI-only features, or a shell panel per workspace). Scope when resumed:
 TRM-001..022. Acceptance: E2E-07; L2 tests for PTY spawn, replay buffer, resize, channel isolation (TRM-012); handoff
 refused while `Busy` (TRM-001).
+
+## Later (noted, not scheduled)
+
+- Helix-style modal editing in the composer (UI-095 keeps a keymap with modes, so it fits later).
+- Configurable fonts, keymap and density from a settings file (the tokens and the keymap are data from M3).
+- Terminal widget over PTY jobs (see "Terminal (deferred)").

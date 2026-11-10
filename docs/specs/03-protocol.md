@@ -98,8 +98,8 @@ tags), `thread/<id>` (one thread), `workspace/<id>` (git status of each reposito
 | `workspaces.add_repo` | `workspaceId`, `name?`, `source`: `link { path }` \| `worktree { repo (id or path), branch?, baseRef? }` \| `clone { url }` \| `pr { pr }` (after S-08) | workspace (DMN-024) |
 | `workspaces.remove_repo` | `workspaceId`, `name`, `force?`, `deleteBranch?` | workspace (DMN-025) |
 | `workspaces.status` / `.diff` | `workspaceId`, `repo` (name), `path?`, `cursor?` | status / paged diff of one repository |
-| `threads.create` | `title`, `workspace`: `{ id }` \| `{ new: { name?, path? } }` (default: a new folder named after the title), `tags[]`, `model?`, `thinkingLevel?`, `approvalMode?`, `prompt?` (first message) | thread |
-| `threads.update` | `threadId`, `title?`, `tags?` | thread |
+| `threads.create` | `workspace`: `{ id }` \| `{ new: { name?, path? } }` (default: a new folder named from the first message), `prompt?` (first message), `tags[]`, `model?`, `thinkingLevel?`, `approvalMode?` (default `yolo`, DMN-074), `title?` (scripts and agents; otherwise generated, DMN-073) | thread |
+| `threads.update` | `threadId`, `title?`, `tags?`, `approvalMode?` | thread |
 | `threads.archive` / `.unarchive` / `.delete` | `threadId` | `{}`; archive stops the thread's omp process and sets `archivedAt`, unarchive clears it, delete removes the thread's records and directory (workspaces are never removed implicitly) |
 | `thread.prompt` | `threadId`, `text`, `images?`, `behavior?: "steer" \| "followUp"` | `{ promptId }`; completion arrives as `prompt_result` |
 | `thread.steer` / `thread.follow_up` | `threadId`, `text`, `images?` | `{}` |

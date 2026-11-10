@@ -83,8 +83,11 @@ hide, add, switch view), so both always edit the same thing:
   `./widgets/<name>` are the workspace's own; `user:<name>` come from the user library in the data dir.
 - An invalid manifest never breaks the window: the shell shows the default view and a banner with the validation error
   (which the agent can read through the SDK and fix).
-- Fixed outside the manifest: the frame (connection banner, view switcher, thread switcher shortcut, interactions that
-  need an answer), so a manifest can never hide a pending approval.
+- The conversation with the agent is a widget like any other: `omfp:chat` (transcript, interactions such as approvals
+  and `ask`, queue and composer), built from smaller `omfp:transcript`, `omfp:interactions` and `omfp:composer`, all
+  copyable and replaceable. Only a thin frame stays outside the manifest: connection banner, view switcher, the
+  keymap and command line, and a **safety net** — when the selected thread has a pending interaction that no widget in
+  the current view renders, the frame shows it itself, so a manifest can never hide an approval.
 
 **Widgets** — a widget is an ES module whose default export is a React component, in `<workspace>/.omfp/widgets/<name>/`
 (`index.tsx` or `index.js`, plus assets). It runs in the window's document, under an error boundary (a crash shows the

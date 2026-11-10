@@ -57,7 +57,8 @@ agents themselves** (spawning threads, publishing views) — see [08](08-agent-c
 
 ## Open questions
 
-1. **Desktop platforms**: Linux only at first, macOS later? (Windows: not planned.)
-2. **Project license.**
-3. **Reusable agent-made UI**: the SDK surface, the widget kit, how pieces load on desktop, and whether pieces may run
-   without a window — direction in [08](08-agent-control.md#agent-made-ui-javascript).
+1. **Reusable agent-made UI**: the SDK surface, the widget kit, how pieces load on desktop, and whether pieces may run
+   without a window — direction in [08](08-agent-control.md#agent-made-ui-views-and-widgets-m4).
+
+Resolved: desktop platforms — Linux only for now (Windows and macOS not planned); license — GPL-3.0-or-later
+(`LICENSE`).

@@ -24,7 +24,7 @@ allow = [
   "Unlicense",
   "Zlib",
 ]
-# Workspace crates are unpublished and have no license yet (README open question 3).
+# Workspace crates are GPL-3.0-or-later and unpublished; only third-party licenses are checked.
 private = { ignore = true }
 
 [bans]
