@@ -1,0 +1,18 @@
+# Milestones of 07-roadmap.md and the requirements each one must trace to tests (TST-040).
+#
+# status: "planned" | "in-progress" | "done". `cargo xtask spec-trace` fails when a done milestone lists a
+# requirement that no test (or justfile recipe) cites with `spec: <ID>`; for a milestone in progress it only reports
+# what is still missing. Add a milestone's list when the milestone starts.
+
+[M0]
+status = "done"
+requirements = [
+  "ARC-010", # shared crates compile for wasm (justfile check-wasm)
+  "ENV-010", # omp pin agrees everywhere (xtask check-versions)
+  "ENV-011", # omp pinned to a release tag
+  "ENV-012", # wasm-bindgen and dioxus agree with the shell tools
+  "TST-013", # contract tests fail fast on the wrong omp
+  "TST-020", # fake-llm developed test-first
+  "TST-021", # contract tests catch stray network access
+  "TST-040", # this traceability check
+]
