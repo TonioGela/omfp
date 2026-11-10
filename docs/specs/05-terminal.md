@@ -10,8 +10,8 @@ workspace.
 
 | Kind | Command | cwd | Conflicts with the RPC process |
 | --- | --- | --- | --- |
-| `omp` | `omp --session-dir <thread session_dir> --continue --add-dir <ws>…` | thread cwd (DMN-030) | yes: only one owner per session (ARC-005) |
-| `shell` | `$SHELL -l` | a chosen workspace (or the thread cwd) | no |
+| `omp` | `omp --session-dir <thread session_dir> --continue --add-dir <ws>…` | thread home (DMN-028) | yes: only one owner per session (ARC-005) |
+| `shell` | `$SHELL -l` | a chosen workspace (or the thread home) | no |
 
 `--session-dir <dir> --continue` is the interactive equivalent of RPC's `open_session { sessionDir }`, so both sides
 open the same session. The `--add-dir` flags are passed explicitly, with the same cwd as the RPC process, so the TUI sees

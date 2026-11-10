@@ -26,13 +26,10 @@ agents themselves** (spawning threads, publishing views) — see [08](08-agent-c
 - Every requirement has a stable ID (`DMN-012`, `PRT-003`, …). Tests covering it cite the ID in their name or in a
   `// spec: DMN-012` comment. A requirement without a test counts as not implemented (see
   [06](06-testing.md#traceability)).
-
 - Prefixes: `ARC` architecture, `ENV` environment, `DMN` daemon, `PRT` protocol, `UI` interface, `TRM` terminal,
   `TST` testing, `AGT` agent control.
-
 - Facts about omp cite upstream documentation (`docs/*.md` in the oh-my-pi repo, at the tag pinned in `flake.lock`).
   Unverified points are marked **[VERIFY]** and have a spike in the roadmap.
-
 - Docs, plans, code, comments and commit messages are in English.
 
 ## Decision log
@@ -49,18 +46,13 @@ agents themselves** (spawning threads, publishing views) — see [08](08-agent-c
 | D-08 | **TDD** is mandatory; a scripted fake LLM written in Rust makes tests against the real omp deterministic | Fast, repeatable tests without real model calls | Only protocol mocks (would not catch omp breaking changes) |
 | D-09 | Daemon persistence in **SQLite** (`rusqlite`, bundled) | Simple, transactional, no external service | JSON files (no transactions), Postgres (extra service) |
 | D-10 | Styling with **plain CSS** and custom properties (design tokens), no Node toolchain | Fewer dependencies in the dev shell | Tailwind (needs its binary and config) |
-| D-11 | **Threads and workspaces are many-to-many**; repositories are an optional registry, not a container. A thread's first workspace is its cwd, the others are passed with `--add-dir` (live: `/add-dir`, `/remove-dir`) | Matches a PR-per-worktree workflow where one session spans several repos; the UI must not impose a hierarchy | Repo → threads tree (Orca/T3 style), too rigid |
+| D-11 | **Threads and workspaces are many-to-many**; repositories are an optional registry, not a container. A thread's cwd is its own **home directory** (`threads/<id>/home`); every workspace is passed with `--add-dir` (live: `/add-dir`, `/remove-dir`) | Matches a PR-per-worktree workflow where one session spans several repos; the UI must not impose a hierarchy; per-thread `.omp/` config (e.g. an injected MCP server, 08) lives in the home dir without touching user repos | Repo → threads tree (Orca/T3 style), too rigid; first workspace as cwd (per-thread config would have to be written into a user repo) |
 | D-12 | **API-first**: every capability of the UI is a daemon protocol method usable by any authorized client, including (later) agents | Agent control (08) becomes an adapter, not a rewrite | UI-only features |
+| D-13 | **Network exposure is the deployer's job**: the daemon listens on a configurable address and port, with the token as its only authentication; tunnels, reverse proxies and TLS are configured by whoever installs it | Keeps the daemon small; every setup (SSH, Tailscale, reverse proxy) works the same way | A built-in login system or TLS termination |
+| D-14 | **omp is bundled** with the app at the pinned version; a different binary is only used when given explicitly (`--omp-bin`) and still passes the version check (DMN-001) | The client is generated for one omp version; bundling removes "wrong omp on PATH" failures | Relying on the system omp |
 
 ## Open questions
 
 1. **Product and binary name** (for now `pmo`, and `pmod` for the daemon).
-2. **Remote access** to the web app: is SSH/Tailscale tunnel plus token enough (proposal for M7), or do we need a login
-   system?
-3. **Desktop platforms**: Linux only at first, macOS later? (Windows: not planned.)
-4. **Project license.**
-5. **Shipping omp**: bundle the pinned omp with the app (sidecar), or require the system one with a version check?
-   (Proposal: version check now, sidecar when packaging.)
-6. **cwd of multi-workspace threads**: first workspace (current proposal) or a daemon-owned thread home directory with
-   every workspace as `--add-dir`? The second makes per-thread `.omp/` config (e.g. an injected MCP server, see 08)
-   possible without touching user repos, but repo-level `.omp/` settings would then not apply. Decided in spike S-07.
+2. **Desktop platforms**: Linux only at first, macOS later? (Windows: not planned.)
+3. **Project license.**

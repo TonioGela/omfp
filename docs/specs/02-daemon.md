@@ -11,11 +11,12 @@ pmod [--bind 127.0.0.1:7420] [--data-dir DIR] [--omp-bin PATH] [--static-dir DIR
 
 | ID | Requirement |
 | --- | --- |
-| DMN-001 | On startup the daemon MUST run `omp --version` and compare it with the expected version compiled into the binary (the same version as the `omp-rpc` tag, see [01](01-dev-environment.md)). On mismatch it MUST refuse to start unless `--allow-omp-mismatch` is given, in which case a warning is also shown in the UI. |
-| DMN-002 | The default `--bind` MUST be `127.0.0.1` (never `0.0.0.0` by default). |
+| DMN-001 | On startup the daemon MUST run `omp --version` and compare it with `pmo_core::OMP_VERSION` (the version of the `omp-rpc` tag, see [01](01-dev-environment.md)). On mismatch it MUST refuse to start unless `--allow-omp-mismatch` is given, in which case a warning is also shown in the UI. |
+| DMN-002 | The default `--bind` MUST be `127.0.0.1:7420`; any address and port MAY be configured. Exposure beyond the machine (tunnels, reverse proxies, TLS) is the deployer's job (D-13). |
 | DMN-003 | On first run the daemon MUST generate a random token (≥ 256 bits) in `<data-dir>/token` with mode `0600`; every WebSocket connection MUST present it (see PRT-002). |
 | DMN-004 | The daemon MUST also work as a library (`pmo_daemon::start(config) -> DaemonHandle` exposing the bound address and token) for in-process use by the desktop app (ARC-003). |
 | DMN-005 | On SIGTERM/SIGINT or `DaemonHandle::shutdown` the daemon MUST close every omp process's stdin (omp drains accepted work and exits), wait at most 10 s, then close the `omp-rpc` client (SIGTERM, then SIGKILL to the process group). |
+| DMN-006 | The omp binary MUST be resolved in this order: `--omp-bin`; the omp bundled next to the daemon executable (packaging, D-14); `omp` on `PATH` (dev shell). The resolved path is logged at startup. |
 
 ## Persistence (SQLite)
 
@@ -56,8 +57,8 @@ A `Git` port (trait) with a real implementation over the `git` CLI (`tokio::proc
 
 | ID | Requirement |
 | --- | --- |
-| DMN-028 | A thread MAY have zero workspaces; its cwd is then its own directory `threads/<id>/home` (created on demand). |
-| DMN-029 | Attaching a workspace to a thread with a live RPC process MUST send `/add-dir <path>` through `prompt` (omp built-in available over RPC, verified on 18.18.1); detaching MUST send `/remove-dir <path>`. Changing the first workspace (cwd) MUST restart the process. Behavior while the thread is `Busy` **[VERIFY in S-07]**. |
+| DMN-028 | Every thread MUST have its own home directory `threads/<id>/home`, used as the omp cwd (D-11). It holds per-thread omp configuration (e.g. `.omp/mcp.json`, 08) and scratch files; it is never a git workspace. |
+| DMN-029 | Attaching a workspace to a thread with a live RPC process MUST send `/add-dir <path>` through `prompt` (omp built-in available over RPC, verified on 18.18.1); detaching MUST send `/remove-dir <path>`. Behavior while the thread is `Busy` **[VERIFY in S-07]**. |
 
 ## Agent supervision
 
@@ -89,7 +90,7 @@ dialogs).
 
 | ID | Requirement |
 | --- | --- |
-| DMN-030 | The process MUST be started as `omp --mode rpc-ui` with cwd = the thread's first workspace (or its home dir, DMN-028), one `--add-dir <path>` per other workspace, plus `--approval-mode` and `--model` when set on the thread. |
+| DMN-030 | The process MUST be started as `omp --mode rpc-ui` with cwd = the thread's home directory (DMN-028), one `--add-dir <path>` per attached workspace in order, plus `--approval-mode` and `--model` when set on the thread. |
 | DMN-031 | After the `ready` frame the daemon MUST check that `supportedProtocolVersions` contains `2` (`omp-rpc` performs the negotiation), then send in order: `open_session { sessionDir }`, `set_event_filter { events: null, messageUpdates: "delta" }`, `set_subagent_subscription { level: "progress" }`, `set_ask_dialog { enabled: true }`, `set_host_tools`. A failure in any step moves the thread to `Failed` with the error message. |
 | DMN-032 | After `open_session` the daemon MUST store `sessionId` in `threads.omp_session_id` and load history with `get_messages` (paged by `omp-rpc`) as the reducer's initial event. |
 | DMN-033 | Before starting omp on a thread that already has `omp_session_id`, the daemon MUST check the session lease (`omp session lease --json -- <id>`): if another omp process owns the session, startup MUST fail with an error saying so (e.g. the session is open in an external terminal). |

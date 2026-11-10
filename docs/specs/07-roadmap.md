@@ -23,7 +23,7 @@ flowchart LR
 | S-04 | Dioxus 0.7 desktop on NixOS in the dev shell: window opens (webkitgtk), native WebSocket client, `document::eval` bridge with xterm.js on both platforms. | UI-001, TRM-021 |
 | S-05 | `dx` 0.7.10 + nixpkgs `wasm-bindgen-cli` 0.2.130: pin `wasm-bindgen = "=0.2.130"` in the workspace and check `dx build --platform web` uses the shell's binary without downloading another. | 01 |
 | S-06 | Transcript virtualization in Dioxus with variable-height items, streaming at the bottom. | UI-042 |
-| S-07 | Multi-workspace threads: `/add-dir` and `/remove-dir` over RPC (idle and busy); cwd = first workspace vs a thread home dir (README open question 6); options to inject a per-thread MCP server (08). | DMN-029, DMN-030, 08 |
+| S-07 | Multi-workspace threads: `/add-dir` and `/remove-dir` over RPC (idle and busy); repo-level context files (`AGENTS.md`) and rules picked up from `--add-dir` roots when cwd is the thread home; injecting a per-thread MCP server through `<home>/.omp/mcp.json` (08). | DMN-029, DMN-030, 08 |
 | S-08 | Workspaces from PRs: fetching a PR head (GitHub via `gh`, generic `refs/pull/N/head`), storing PR metadata, detecting merged/closed PRs. | DMN-022 |
 
 ## M0 — Foundations
@@ -47,13 +47,11 @@ spike S-07.
 Acceptance:
 
 - A native protocol client (test) creates two managed workspaces in two different repositories, creates one thread on
-  both (cwd = first, `--add-dir` = second), prompts, and receives streamed events that the reducer turns into the
+  both (cwd = thread home, one `--add-dir` per workspace), prompts, and receives streamed events that the reducer turns into the
   expected transcript; attaching a third workspace live sends `/add-dir`.
-
 - Approval and `ask` round trip through the protocol (contract scenario with approval mode `always-ask`).
 - Disconnect mid-stream and resubscribe with `since` → replay with no gaps; with an evicted position → snapshot that
   equals the daemon's state.
-
 - Process crash → `Failed` with stderr tail; next prompt restarts and history reloads.
 - Idle reaper stops an unwatched settled thread (L1 with paused time).
 
@@ -97,7 +95,7 @@ Acceptance: E2E-07; L2 tests for PTY spawn, replay buffer, resize, channel isola
 
 Scope:
 
-- Remote access guide (SSH/Tailscale tunnel) and `Origin` allow-list configuration.
+- `Origin` allow-list configuration for deployments behind a tunnel or reverse proxy (D-13).
 - Performance: 10k-message transcript stays responsive (S-06); streaming at 100 events/s without dropped frames.
 - Coverage and mutation gates enforced (TST-050).
 - CI on Nix (GitHub Actions or similar) running `just ci`.

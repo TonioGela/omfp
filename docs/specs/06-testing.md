@@ -59,7 +59,6 @@ An OpenAI-compatible server (axum) that answers from a script, making omp runs d
 - Each step: optional match on the request (substring in the last user message or tool result), then a reply made of
   text chunks, tool calls (`id`, `name`, JSON arguments), finish reason; optionally an HTTP error (429/500) or a delay to
   test retries and streaming.
-
 - Every received request is recorded and exposed in-process (and at `GET /__requests`) for assertions.
 - An unexpected request (script exhausted or no match) answers 500 and fails the test with the request body.
 

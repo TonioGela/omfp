@@ -8,11 +8,9 @@ An application for working with many omp agents in parallel:
 - a **workspace** is a directory the agent works in — typically a git worktree for one PR — and may belong to any
   repository; one thread can span several repositories (e.g. a frontend PR and a backend PR), and a workspace can be
   shared by several threads;
-
 - **repositories** are an optional registry that makes creating worktrees quick; they are not a container for threads;
 - conversations stream live, with readable tool cards, approvals, agent questions, the message queue, subagents and the
   session tree;
-
 - the same interface runs **in the browser** (wasm) and **as a desktop app** (webview), connected to the same daemon;
 - anything the UI does not cover is reachable from a **terminal panel** that opens interactive omp on the same session;
 - long term, **agents drive the interface**: they spawn threads, create workspaces and publish views. This is the last
@@ -65,8 +63,8 @@ flowchart LR
   WS --> TS
   TS --> SUP & WK & DB
   TS --> PTY
-  SUP -- "stdio JSONL (omp-rpc)" --> O1["omp --mode rpc-ui (thread A: cwd=ws1, --add-dir ws2)"]
-  SUP --> O2["omp --mode rpc-ui (thread B: cwd=ws3)"]
+  SUP -- "stdio JSONL (omp-rpc)" --> O1["omp --mode rpc-ui (thread A: cwd=home, --add-dir ws1 ws2)"]
+  SUP --> O2["omp --mode rpc-ui (thread B: cwd=home, --add-dir ws3)"]
   PTY -- "pty" --> OTERM["interactive omp (thread C, terminal mode)"]
 ```
 
@@ -109,7 +107,7 @@ sequenceDiagram
   participant D as pmod
   participant O as omp (rpc-ui)
   UI->>D: thread.prompt {threadId, text}
-  D->>D: start omp if stopped (cwd = first workspace, --add-dir others, open_session)
+  D->>D: start omp if stopped (cwd = thread home, --add-dir per workspace, open_session)
   D->>O: prompt {id, message}
   O-->>D: response (admitted)
   D-->>UI: ack

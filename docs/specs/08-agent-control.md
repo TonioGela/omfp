@@ -45,7 +45,7 @@ One tool registry in the daemon, several adapters:
 | Adapter | Reaches | Notes |
 | --- | --- | --- |
 | **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for `open_in_editor` (DMN-060). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
-| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside pmo, other MCP-capable agents | How to inject it per process without touching user config is open **[S-07]**: a `.omp/mcp.json` in a daemon-owned thread home dir used as cwd (README open question 6), or a user-level entry whose `Authorization` header uses `${PMO_TOKEN}` (omp resolves `${VAR}` in MCP headers) with the token passed per process in the environment. |
+| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside pmo, other MCP-capable agents | Injected per thread through `<thread home>/.omp/mcp.json` (project-scoped config follows the cwd, D-11), with the thread's token in the `Authorization` header; to be confirmed in S-07. |
 | **Host URI scheme** `pmo://` (`set_host_uri_schemes`) | RPC threads | Read-only state for the agent's `read` tool: `pmo://threads`, `pmo://threads/<id>`, `pmo://views/<id>`. |
 
 ## Agent-drawn UI
@@ -54,16 +54,12 @@ One tool registry in the daemon, several adapters:
   layout (`row`, `col`, `card`, `tabs`), content (`md`, `table`, `kv`, `list`, `code`, `diff`, `image`, `chart`,
   `progress`, `badge`, `link`, `thread_ref`, `workspace_ref`), controls (`button`, `form` with text/select/checkbox).
   Same idea as Tern's Surface Protocol or omp's `ask`, but ours and transport-independent.
-
 - Views have an id, an owner thread, a placement (thread panel, dashboard, floating), and a lifetime (until removed or
   until the owner is archived). They are stored by the daemon and survive restarts.
-
 - Updates replace the document or apply node operations (add / set / remove / append text), so streaming content does
   not resend everything.
-
 - Control events (`view_event { viewId, nodeId, action, values }`) go to the owner agent. Delivery is open: as a
   follow-up message, or kept for `pmo_thread_wait` / a `pmo_view_events` tool **[decide in M8]**.
-
 - Rendering uses the panel registry (UI-024); each node kind is a component, unknown kinds fall back to formatted JSON.
 - Optional, off by default: a **sandboxed HTML** node (`iframe` with `sandbox="allow-scripts"`, no same-origin, CSP
   without network) for free-form visualizations, talking only through a `postMessage` bridge to the same event channel.
@@ -72,13 +68,10 @@ One tool registry in the daemon, several adapters:
 
 - Each thread process gets its own scoped principal (PRT-034). Default permissions: thread, workspace and view
   operations; destructive operations (forced workspace removal, thread deletion) raise an interaction for the user.
-
 - Limits: spawned threads per thread, depth of agent-spawned chains, the global process limit (DMN-038), optional cost
   caps for spawned threads (omp `session.maxCost`).
-
 - Provenance (ARC-009) is visible in the UI; filters such as "spawned by X"; a cascade stop for everything a thread
   spawned.
-
 - An audit log records every action taken by an agent principal.
 
 ## Constraints that apply from day one
