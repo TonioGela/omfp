@@ -34,6 +34,7 @@ just ci                          # lint, check-versions, spec-trace, check-wasm,
 just test                        # fast tests (no omp process)
 just test-contract               # contract tests against the pinned omp + fake LLM
 just record-fixtures             # re-record fixtures/ (review the diff!)
+just test-wasm                   # web transport suite in headless Chromium against a fake-launcher daemon
 just build-web                   # dx build -p omfp-ui --platform web
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
 cargo xtask check-versions       # omp / omp-rpc / wasm-bindgen / dioxus pins agree
@@ -50,6 +51,8 @@ crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wa
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs),
                       supervisor, event log, store, workspaces, threads, host tools, WebSocket server;
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`)
+crates/omfp-client    protocol client without UI: Transport (native tokio-tungstenite / web-sys WebSocket), session
+                      (hello, subscriptions, reconnect backoff), model (index, ThreadState per thread, dirty set)
 crates/omfp-ui        the app: Dioxus UI (features web / desktop) and the `omfp` binary with subcommands
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization

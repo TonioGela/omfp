@@ -18,7 +18,19 @@ record-fixtures:
 
 # spec: ARC-010 — the shared crates compile for the browser
 check-wasm:
-    cargo check -p omfp-core -p omfp-protocol --target wasm32-unknown-unknown
+    cargo check -p omfp-core -p omfp-protocol -p omfp-client --target wasm32-unknown-unknown
+
+# spec: TST-030 — the web transport runs the transport suite in headless Chromium against a daemon started here
+test-wasm:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    data=$(mktemp -d)
+    coproc daemon { exec cargo run -q -p omfp-client --example test_daemon -- "$data"; }
+    trap 'kill "$daemon_PID" 2>/dev/null; wait "$daemon_PID" 2>/dev/null || true; rm -rf "$data"' EXIT
+    read -r url token runner <&"${daemon[0]}"
+    OMFP_TEST_DAEMON_URL="$url" OMFP_TEST_DAEMON_TOKEN="$token" WASM_BINDGEN_TEST_ADDRESS="$runner" \
+    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
+        cargo test -p omfp-client --target wasm32-unknown-unknown --test transport_web
 
 # Web bundle in target/dx/omfp (dx uses the dev shell's wasm-bindgen)
 build-web:
