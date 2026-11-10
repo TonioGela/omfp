@@ -109,9 +109,11 @@ fn selecting_a_thread_moves_the_subscription_and_fetches_its_details() {
     let rpc = FakeRpc::default();
     let mut dispatcher = Dispatcher::new(rpc.clone());
     rpc.answer("thread.state", Ok(json!({ "sessionId": "s1" })));
-    // The daemon answers these two with bare arrays (omp-rpc's decoded output).
-    rpc.answer("thread.models", Ok(json!([])));
-    rpc.answer("thread.thinking_levels", Ok(json!(["off", "low"])));
+    rpc.answer("thread.models", Ok(json!({ "models": [] })));
+    rpc.answer(
+        "thread.thinking_levels",
+        Ok(json!({ "levels": ["off", "low"] })),
+    );
     rpc.answer(
         "thread.git",
         Ok(json!({ "workspaces": [{ "workspaceId": "w1" }] })),
@@ -178,8 +180,8 @@ fn details_that_arrived_are_applied_when_another_fetch_fails() {
     let rpc = FakeRpc::default();
     let mut dispatcher = Dispatcher::new(rpc.clone());
     rpc.answer("thread.state", Err(daemon_error("omp failed to start")));
-    rpc.answer("thread.thinking_levels", Ok(json!(["off"])));
-    rpc.answer("thread.models", Ok(json!([])));
+    rpc.answer("thread.thinking_levels", Ok(json!({ "levels": ["off"] })));
+    rpc.answer("thread.models", Ok(json!({ "models": [] })));
     rpc.answer("thread.git", Ok(json!({ "workspaces": [] })));
     let effects = block_on(dispatcher.dispatch(select("t1")));
     assert_eq!(

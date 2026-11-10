@@ -32,7 +32,7 @@ const POLL: Duration = Duration::from_millis(50);
 #[must_use]
 pub fn web_bundle() -> PathBuf {
     std::env::var_os("OMFP_WEB_BUNDLE").map_or_else(
-        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/dx/omfp/debug/web/public"),
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/dx/omfp/release/web/public"),
         PathBuf::from,
     )
 }
@@ -324,6 +324,32 @@ impl Journey {
             },
         )
         .await
+    }
+
+    /// Saves a screenshot of the window as `omfp-<name>.png` in `OMFP_SCREENSHOT_DIR` (default `/tmp`; the dev shell's
+    /// `TMPDIR` goes away with the shell) and returns its path.
+    pub async fn screenshot(&self, name: &str) -> anyhow::Result<PathBuf> {
+        let dir = std::env::var_os("OMFP_SCREENSHOT_DIR")
+            .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+        let path = dir.join(format!("omfp-{name}.png"));
+        self.driver.screenshot(&path).await?;
+        eprintln!("screenshot: {}", path.display());
+        Ok(path)
+    }
+
+    /// Fails when the first element matching `css` scrolls sideways (`scrollWidth > clientWidth`).
+    pub async fn fits(&self, css: &str) -> anyhow::Result<()> {
+        let value = self
+            .eval(
+                "const e = document.querySelector(arguments[0]); return [e.scrollWidth, e.clientWidth];",
+                vec![json!(css)],
+            )
+            .await?;
+        let (scroll, client): (u64, u64) = serde_json::from_value(value)?;
+        if scroll > client {
+            bail!("{css} overflows sideways: scrollWidth {scroll} > clientWidth {client}");
+        }
+        Ok(())
     }
 
     /// Stops the browser and the daemon, then checks that the page showed no error, nothing reached the network and

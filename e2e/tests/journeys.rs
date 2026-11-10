@@ -477,6 +477,8 @@ async fn a_thread_on_two_repositories_shows_under_both_when_grouped_by_repositor
     journey.connected().await?;
 
     two_worktrees(&journey, &front, &back).await?;
+    // The Workspaces panel and its forms fit the side column at a 1400 px window.
+    journey.fits("[data-testid=side-panels]").await?;
 
     // Alt+N opens the new-thread dialog with the title focused (UI-092); no workspace.
     journey

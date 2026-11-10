@@ -12,7 +12,7 @@ use omp_rpc::{
     Event, ExtensionUiResponse, HostTool, OpenSessionResult, PromptCommand, ReadyEvent,
     RpcAgentEvent, RpcNotification,
 };
-use serde_json::Value;
+use serde_json::{Value, json};
 use tokio::sync::watch;
 
 use super::{AgentLauncher, AgentProcess, Launched, Lease, OmpCall, PromptAdmission};
@@ -218,7 +218,8 @@ impl FakeLauncher {
         lock(&self.script).runs.push_back(run);
     }
 
-    /// Answers every later `command` (omp name, e.g. `get_state`) with `reply`; default: `{}`.
+    /// Answers every later `command` (omp name, e.g. `get_state`) with `reply`; default: the smallest response data
+    /// of the command's wire type (see [`default_data`]).
     pub fn reply(&self, command: &str, reply: FakeReply) {
         lock(&self.script).replies.insert(command.to_owned(), reply);
     }
@@ -270,6 +271,7 @@ impl AgentLauncher for FakeLauncher {
                 sender: Mutex::new(Some(sender)),
                 segments: Mutex::new(run.segments),
                 calls: Mutex::new(Vec::new()),
+                session_id: run.startup.session.session_id.clone(),
                 script: Arc::clone(&self.script),
             }),
         };
@@ -303,6 +305,8 @@ struct Shared {
     sender: Mutex<Option<Sender<Event>>>,
     segments: Mutex<VecDeque<Vec<RpcNotification>>>,
     calls: Mutex<Vec<FakeCall>>,
+    /// The session the process reports in `get_state`.
+    session_id: String,
     script: Arc<Mutex<Script>>,
 }
 
@@ -416,7 +420,9 @@ impl AgentProcess for FakeAgent {
         if process.is_closed() {
             return Err(omp_rpc::Error::Closed);
         }
-        match reply.unwrap_or(FakeReply::Ok(Value::Object(serde_json::Map::new()))) {
+        match reply
+            .unwrap_or_else(|| FakeReply::Ok(default_data(command, &process.shared.session_id)))
+        {
             FakeReply::Ok(value) => Ok(value),
             FakeReply::Fail { message, code } => Err(omp_rpc::Error::Command {
                 command: command.to_owned(),
@@ -434,6 +440,38 @@ impl AgentProcess for FakeAgent {
         }
         process.play_next();
         Ok(())
+    }
+}
+
+/// omp's response data to `command` when the test scripted none: the smallest value of the command's wire type
+/// (`GetAvailableModelsResult` for `get_available_models`, …), `null` for commands without data.
+fn default_data(command: &str, session_id: &str) -> Value {
+    match command {
+        "get_state" => json!({ "sessionId": session_id }),
+        "abort_and_restore_queue" => json!({ "steering": [], "followUp": [] }),
+        "remove_queued_message" => json!({ "removed": false }),
+        "promote_queued_message" => json!({ "promoted": false }),
+        "get_available_models" => json!({ "models": [] }),
+        "get_available_thinking_levels" => json!({ "levels": ["off"] }),
+        "get_available_commands" => json!({ "commands": [] }),
+        "compact" => json!({ "summary": "", "firstKeptEntryId": "", "tokensBefore": 0 }),
+        "get_tree" => json!({ "tree": [], "leafId": null }),
+        "navigate_tree" | "fork" => json!({ "cancelled": false }),
+        "get_subagents" => json!({ "subagents": [] }),
+        "get_subagent_messages" => json!({
+            "sessionFile": "", "fromByte": 0, "nextByte": 0, "reset": false, "entries": [], "messages": []
+        }),
+        "cancel_subagent" => json!(false),
+        "goal" => json!({ "goal": null, "state": null }),
+        "btw" => json!({ "record": {
+            "question": "", "answer": "", "status": "complete", "createdAt": 0, "updatedAt": 0, "id": "btw",
+            "leafId": null
+        }}),
+        "bash" => json!({
+            "output": "", "cancelled": false, "truncated": false, "totalLines": 0, "totalBytes": 0,
+            "outputLines": 0, "outputBytes": 0, "exitCode": 0
+        }),
+        _ => Value::Null,
     }
 }
 

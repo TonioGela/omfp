@@ -458,6 +458,51 @@ pre {
   font-family: var(--mono);
 }
 
+.markdown :not(pre) > code {
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: var(--bg-muted);
+  font-size: 0.9em;
+}
+
+/* Headings stay in proportion to the transcript's 14px text. */
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+  margin: 0.9rem 0 0.4rem;
+  line-height: 1.25;
+}
+
+.markdown h1 {
+  font-size: 1.35rem;
+}
+
+.markdown h2 {
+  font-size: 1.15rem;
+}
+
+.markdown h3,
+.markdown h4 {
+  font-size: 1rem;
+}
+
+.markdown table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.6rem;
+  text-align: left;
+}
+
+.markdown th {
+  background: var(--bg-muted);
+}
+
 .markdown a {
   color: var(--accent);
 }
@@ -748,14 +793,23 @@ pre {
   padding-left: 1rem;
 }
 
+/* The forms wrap inside the side column instead of widening it: fields shrink to a usable minimum, then the button
+   moves to the next line. */
 .inline-form {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
   margin-top: var(--gap);
 }
 
-.inline-form input {
-  flex: 1;
+.inline-form input,
+.inline-form select {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.inline-form button {
+  flex: none;
 }
 
 /* Dialogs and toasts */
@@ -798,15 +852,27 @@ pre {
   align-items: center;
 }
 
+/* A workspace line keeps its fields on one row while they fit; the repository field gets the most room. */
+.workspace-choice input,
+.workspace-choice select {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.workspace-choice input[list] {
+  flex-grow: 2;
+}
+
 .dialog-actions {
   justify-content: flex-end;
 }
 
+/* Bottom left, over the sidebar footer: in the middle they would hide the composer's buttons. */
 .toasts {
   position: fixed;
-  left: 50%;
+  left: 1rem;
   bottom: 1rem;
-  transform: translateX(-50%);
+  max-width: min(36rem, calc(100vw - 2rem));
   list-style: none;
   margin: 0;
   padding: 0;

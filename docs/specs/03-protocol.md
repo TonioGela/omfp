@@ -104,15 +104,19 @@ Topics: `index` (repositories, workspaces, threads with their summaries and tags
 | `thread.abort` | `threadId` | `{ steering[], followUp[] }` (to restore into the composer) |
 | `thread.queue.remove` / `.promote` | `threadId`, `message`, `queue?` | `{ removed }` / `{ promoted }` |
 | `thread.set_model` / `thread.set_thinking` | `threadId`, `provider`+`modelId` / `level` | `{}` |
-| `thread.models` / `thread.thinking_levels` / `thread.commands` | `threadId` | lists |
+| `thread.models` / `thread.thinking_levels` / `thread.commands` | `threadId` | `{ models }` / `{ levels }` / `{ commands }` |
 | `thread.compact` | `threadId`, `instructions?` | compaction result |
 | `thread.tree` / `.navigate` / `.fork` / `.label` | `threadId`, `entryId?`, … | tree / result |
-| `thread.subagents` / `.subagent_messages` / `.subagent_steer` / `.subagent_cancel` | `threadId`, `subagentId`, … | lists / `{}` |
-| `thread.goal` / `thread.btw` / `thread.bash` | per 02 | per omp |
+| `thread.subagents` / `.subagent_messages` / `.subagent_steer` / `.subagent_cancel` | `threadId`, `subagentId`, … | `{ subagents }` / transcript page / `{}` |
+| `thread.goal` / `thread.btw` / `thread.bash` | per 02 | `{ goal, state }` / `{ record }` / bash result |
 | `thread.git` | `threadId` | per-workspace status summary (convenience over `workspaces.status`) |
 | `thread.restart` / `thread.stop` | `threadId` | `{}` |
 | `interaction.respond` | `threadId`, `interactionId`, `response` (`value` \| `confirmed` \| `cancelled` \| `answers`) | `{}` or `already_resolved` |
 | `terminal.*` | see [05](05-terminal.md) | |
+
+Results of omp-forwarded methods are omp's response data (`data` of its `response` frame), the `omp-rpc` wire
+`*Result` type named in the method table, even where `omp-rpc` decodes the command's output to the bare list or
+record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 
 | ID | Requirement |
 | --- | --- |

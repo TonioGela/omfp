@@ -65,12 +65,20 @@ and the server runs L2 tests with a native WebSocket client. `omfp daemon` serve
 (DMN-005), prompt ids unique per process epoch (PRT-030). Open: `/add-dir` on a busy thread (S-07), PR workspaces
 (S-08), `terminal.*`.
 
-## M2 — Web UI MVP
+## M2 — Web UI MVP (done)
 
 Scope: UI-001..003, UI-010..012, UI-020..025, UI-030, UI-040..043, UI-050 (fallback card only), UI-060..064,
 UI-070..073, UI-091..092; daemon serves the web bundle.
 
 Acceptance: E2E-01, E2E-02, E2E-03, E2E-04, E2E-05, E2E-08 pass.
+
+Result: the journeys run in `e2e/` (L5: headless Chromium, in-process daemon serving the release bundle, real omp
+18.18.6, fake LLM), next to the transport suite in Chromium (`just test-wasm`); both are part of `just ci`. `just serve`
+builds the bundle and runs the daemon with the user's own omp configuration. The protocol client lives in its own crate
+(`omfp-client`); every method's result is decoded into its declared type by L2 tests and, for the methods forwarded to
+omp that the UI uses, by an L3 test. Known gaps: no browser test for the countdown ticking (UI-073); "answered
+elsewhere" covers only what happened while watching live; the PR option of the new-thread dialog is disabled until
+S-08.
 
 ## M3 — Tools and changes
 

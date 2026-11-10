@@ -5,7 +5,7 @@
 
 use futures::future::join4;
 use omfp_client::{CallError, Client};
-use omfp_core::wire::{ModelInfo, RestoredQueuedMessage, ThinkingLevel};
+use omfp_core::wire::RestoredQueuedMessage;
 use omfp_protocol::method::{
     InteractionRespond, ReposAdd, ThreadAbort, ThreadGit, ThreadModels, ThreadPrompt,
     ThreadQueuePromote, ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking,
@@ -274,32 +274,20 @@ async fn queue_op(rpc: &impl Rpc, op: QueueOp, params: QueueMessageParams) -> Ef
     })])
 }
 
-/// A list result. The daemon forwards omp-rpc's decoded output, a bare array, for `thread.models` and
-/// `thread.thinking_levels`, although the method table names omp's `{models}` / `{levels}` wrappers.
-async fn bare_list<T: serde::de::DeserializeOwned>(
-    rpc: &impl Rpc,
-    call: Call,
-) -> Result<Vec<T>, CallError> {
-    let method = call.method();
-    let value = rpc.call(call).await?;
-    serde_json::from_value(value)
-        .map_err(|error| CallError::Codec(format!("invalid {method} result: {error}")))
-}
-
 /// The thread's details (`thread.state`, `thread.models`, `thread.thinking_levels`) and its workspaces' git status.
 /// Whatever arrived is applied; the first error is reported.
 async fn open_thread(rpc: &impl Rpc, thread_id: &str) -> Effects {
     let (session, models, levels, git) = join4(
         request::<ThreadState>(rpc, thread_ref(thread_id)),
-        bare_list::<ModelInfo>(rpc, ThreadModels::call(thread_ref(thread_id))),
-        bare_list::<ThinkingLevel>(rpc, ThreadThinkingLevels::call(thread_ref(thread_id))),
+        request::<ThreadModels>(rpc, thread_ref(thread_id)),
+        request::<ThreadThinkingLevels>(rpc, thread_ref(thread_id)),
         request::<ThreadGit>(rpc, thread_ref(thread_id)),
     )
     .await;
     let mut errors = Vec::new();
     let session = kept(&mut errors, session).map(Box::new);
-    let models = kept(&mut errors, models);
-    let thinking_levels = kept(&mut errors, levels);
+    let models = kept(&mut errors, models.map(|result| result.models));
+    let thinking_levels = kept(&mut errors, levels.map(|result| result.levels));
     let git = kept(&mut errors, git);
     let mut effects = vec![Effect::Details {
         thread_id: thread_id.to_owned(),

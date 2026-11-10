@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
 use omfp_core::{ThreadEvent, ThreadState};
+use omfp_protocol::Method;
 use serde_json::{Value, json};
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -107,6 +108,19 @@ impl Client {
         self.call(method, params)
             .await
             .unwrap_or_else(|error| panic!("{method} failed: {error}"))
+    }
+
+    /// Calls `M` with typed params; panics with the error, or when the result is not `M`'s declared type (AGT-007).
+    pub async fn typed<M: Method>(&mut self, params: M::Params) -> M::Result {
+        let result = self
+            .ok(M::NAME, serde_json::to_value(params).unwrap())
+            .await;
+        serde_json::from_value(result.clone()).unwrap_or_else(|error| {
+            panic!(
+                "{} returned {result}, not its declared result: {error}",
+                M::NAME
+            )
+        })
     }
 
     /// The next frame that is not the response to one of our requests.

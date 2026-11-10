@@ -37,9 +37,15 @@ test-wasm:
     CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner \
         cargo test -p omfp-client --target wasm32-unknown-unknown --test transport_web
 
-# Web bundle in target/dx/omfp (dx uses the dev shell's wasm-bindgen)
+# Web bundle in target/dx/omfp/release/web/public (dx uses the dev shell's wasm-bindgen). Release: a debug bundle
+# runs Dioxus dev-tools, which poll a dev server that is not there and can cover the page with a rebuild overlay.
 build-web:
-    dx build -p omfp-ui --platform web
+    dx build -p omfp-ui --platform web --release
+
+# Try the app: the release web bundle on a daemon with your own HOME, omp config (~/.omp) and default data dir;
+# arguments go to the daemon, e.g. `just serve --bind 127.0.0.1:7421`
+serve *args: build-web
+    cargo run --release -p omfp-ui --bin omfp -- daemon --static-dir target/dx/omfp/release/web/public {{ args }}
 
 # Formatting and lints
 lint:

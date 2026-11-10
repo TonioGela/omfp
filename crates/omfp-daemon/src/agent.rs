@@ -10,12 +10,13 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, PoisonError, RwLock};
 
 use omp_rpc::{
-    AbortAndRestoreQueueCommand, BashCommand, BtwCommand, CancelSubagentCommand, Client,
+    AbortAndRestoreQueueCommand, BashCommand, BtwCommand, BtwResult, CancelSubagentCommand, Client,
     CompactCommand, Event, ExtensionUiResponse, FollowUpCommand, ForkCommand,
-    GetAvailableCommandsCommand, GetAvailableModelsCommand, GetAvailableThinkingLevelsCommand,
-    GetStateCommand, GetSubagentMessagesCommand, GetSubagentsCommand, GetTreeCommand, GoalCommand,
-    HostTool, NavigateTreeCommand, PromoteQueuedMessageCommand, PromptCommand,
-    RemoveQueuedMessageCommand, RpcInbound, SetLabelCommand, SetModelCommand,
+    GetAvailableCommandsCommand, GetAvailableCommandsResult, GetAvailableModelsCommand,
+    GetAvailableModelsResult, GetAvailableThinkingLevelsCommand, GetAvailableThinkingLevelsResult,
+    GetStateCommand, GetSubagentMessagesCommand, GetSubagentsCommand, GetSubagentsResult,
+    GetTreeCommand, GoalCommand, HostTool, NavigateTreeCommand, PromoteQueuedMessageCommand,
+    PromptCommand, RemoveQueuedMessageCommand, RpcInbound, SetLabelCommand, SetModelCommand,
     SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
 };
 use serde::{Deserialize, Serialize};
@@ -218,15 +219,30 @@ struct OmpAgent {
 }
 
 impl OmpAgent {
+    /// Runs `command` and returns its output as omp sent it, re-wrapped by `data` where `omp-rpc` unwraps omp's
+    /// response (e.g. `{models}` decoded to the bare list): the JSON is the command's wire `*Result`.
+    fn run_as<C, D>(
+        &self,
+        command: &C,
+        data: impl FnOnce(C::Output) -> D,
+    ) -> Result<Value, omp_rpc::Error>
+    where
+        C: omp_rpc::Command,
+        D: Serialize,
+    {
+        let _shared = self.order.read().unwrap_or_else(PoisonError::into_inner);
+        self.next_request.fetch_add(1, Ordering::SeqCst);
+        let output = self.client.call(command)?;
+        serde_json::to_value(data(output)).map_err(omp_rpc::Error::Json)
+    }
+
+    /// Runs a command whose output is omp's response data unchanged.
     fn run<C>(&self, command: &C) -> Result<Value, omp_rpc::Error>
     where
         C: omp_rpc::Command,
         C::Output: Serialize,
     {
-        let _shared = self.order.read().unwrap_or_else(PoisonError::into_inner);
-        self.next_request.fetch_add(1, Ordering::SeqCst);
-        let output = self.client.call(command)?;
-        serde_json::to_value(output).map_err(omp_rpc::Error::Json)
+        self.run_as(command, std::convert::identity)
     }
 }
 
@@ -250,20 +266,29 @@ impl AgentProcess for OmpAgent {
             OmpCall::PromoteQueued(command) => self.run(command),
             OmpCall::SetModel(command) => self.run(command),
             OmpCall::SetThinkingLevel(command) => self.run(command),
-            OmpCall::AvailableModels => self.run(&GetAvailableModelsCommand {}),
-            OmpCall::ThinkingLevels => self.run(&GetAvailableThinkingLevelsCommand {}),
-            OmpCall::Commands => self.run(&GetAvailableCommandsCommand {}),
+            OmpCall::AvailableModels => self.run_as(&GetAvailableModelsCommand {}, |models| {
+                GetAvailableModelsResult { models }
+            }),
+            OmpCall::ThinkingLevels => self
+                .run_as(&GetAvailableThinkingLevelsCommand {}, |levels| {
+                    GetAvailableThinkingLevelsResult { levels }
+                }),
+            OmpCall::Commands => self.run_as(&GetAvailableCommandsCommand {}, |commands| {
+                GetAvailableCommandsResult { commands }
+            }),
             OmpCall::Compact(command) => self.run(command),
             OmpCall::Tree => self.run(&GetTreeCommand {}),
             OmpCall::NavigateTree(command) => self.run(command),
             OmpCall::Fork(command) => self.run(command),
             OmpCall::SetLabel(command) => self.run(command),
-            OmpCall::Subagents => self.run(&GetSubagentsCommand {}),
+            OmpCall::Subagents => self.run_as(&GetSubagentsCommand {}, |subagents| {
+                GetSubagentsResult { subagents }
+            }),
             OmpCall::SubagentMessages(command) => self.run(command),
             OmpCall::SteerSubagent(command) => self.run(command),
             OmpCall::CancelSubagent(command) => self.run(command),
             OmpCall::Goal(command) => self.run(command),
-            OmpCall::Btw(command) => self.run(command),
+            OmpCall::Btw(command) => self.run_as(command, |record| BtwResult { record }),
             OmpCall::Bash(command) => self.run(command),
             OmpCall::State => self.run(&GetStateCommand {}),
         }

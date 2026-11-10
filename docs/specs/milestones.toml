@@ -104,7 +104,7 @@ requirements = [
 ]
 
 [M2]
-status = "in-progress"
+status = "done"
 requirements = [
   # Transport and state
   "UI-001",

@@ -10,7 +10,7 @@ Long-term direction (M8, D-17): agents get full access to the protocol and build
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-17), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0 and M1 done; next: M2, web UI MVP);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0, M1 and M2 done; next: M3, tools and changes);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -30,13 +30,14 @@ Long-term direction (M8, D-17): agents get full access to the protocol and build
 
 ```sh
 nix develop                      # or: nix develop -c sh -c '<command>'
-just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-contract, deny
+just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-contract, test-wasm, test-e2e, deny
 just test                        # fast tests (no omp process)
 just test-contract               # contract tests against the pinned omp + fake LLM
 just record-fixtures             # re-record fixtures/ (review the diff!)
 just test-wasm                   # web transport suite in headless Chromium against a fake-launcher daemon
 just test-e2e                    # L5 journeys: builds the web bundle, headless Chromium + daemon + omp + fake LLM
-just build-web                   # dx build -p omfp-ui --platform web
+just build-web                   # dx build -p omfp-ui --platform web --release (no dev-tools overlay)
+just serve [daemon args]         # try the app: release bundle + `omfp daemon` with your HOME, ~/.omp, default data dir
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
 cargo xtask check-versions       # omp / omp-rpc / wasm-bindgen / dioxus pins agree
 ```

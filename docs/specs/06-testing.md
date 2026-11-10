@@ -131,7 +131,7 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 | `just test` | L0, L1, L2, L4 (SSR) — fast, every change |
 | `just test-contract` | L3 against the pinned omp (needs the dev shell) |
 | `just test-wasm` | `wasm-bindgen-test` in headless Chromium |
-| `just test-e2e` | L5 (builds the web bundle first) |
+| `just test-e2e` | L5 (builds the release web bundle first: a debug bundle runs Dioxus dev-tools) |
 | `just mutants` | `cargo mutants` on `omfp-core`, `omfp-protocol`, `omfp-ui/vm` (`--in-diff` for changed code) |
 | `just cov` | `cargo llvm-cov` report |
 | `just ci` | everything above + `spec-trace`, `clippy -D warnings`, `fmt --check`, `cargo deny check` |
