@@ -27,6 +27,7 @@ flowchart LR
 | S-08 | Workspaces from PRs: fetching a PR head (GitHub via `gh`, generic `refs/pull/N/head`), storing PR metadata, detecting merged/closed PRs. | DMN-024 | |
 | S-09 | Live voice through omp's `live_connect`: a WebRTC peer (Opus sendrecv track + `oai-events` data channel) in Chromium and in the desktop webview (webkitgtk), SDP relayed by the daemon; secure-context requirements for the microphone. | M9 | |
 | S-10 | Workspace folders (D-11 revised): cwd = a non-git folder whose top-level entries are repos (real clones and symlinks to external repos); context files, roots, tools through symlinks, `--append-system-prompt`, `--config` overlays. | D-11, DMN-022..030 | **Done:** without `--add-dir` omp shows nothing about child repos (no context files, no roots); with `--add-dir <ws>/<name>` (symlink path) their `AGENTS.md` load and `<workspace-roots>` lists them under the symlink path, live `/add-dir` too; omp never resolves the symlink. `read`/`write`/`bash` through a symlink work and change the external target; no path refusal. Roots saved in a session are merged with the flags on `--continue`: dropping a flag does not detach, `/remove-dir` does. `--append-system-prompt` lands verbatim at the very end of the prompt and disables every `APPEND_SYSTEM.md` (user, cwd `.omp/`; a repo's `.omp/APPEND_SYSTEM.md` is never read). A `--config` overlay with `workspace.additionalDirectories` equals `--add-dir`. A non-git cwd causes no warning. Tests: `crates/omfp-daemon/tests/contract_workspace_folder.rs`. |
+| S-11 | Preact + `preact/compat` with React Aria Components: dialog (focus trap), menu, popover, combobox (`/` commands), tabs, listbox, virtualized list; keyboard, focus and portal event behaviour in Chromium and WebKitGTK; bundle size and streaming render cost vs React 19 on the same screens. | D-18, UI-092, UI-093 | |
 
 ## M0 — Foundations (done)
 
@@ -82,7 +83,7 @@ omp that the UI uses, by an L3 test. Known gaps: no browser test for the countdo
 elsewhere" covers only what happened while watching live; the PR option of the new-thread dialog is disabled until
 S-08.
 
-## M2b — Workspace folders
+## M2b — Workspace folders (done: daemon and protocol)
 
 Scope: the revised D-11 — DMN-020..030 (workspace folders, discovered repositories, add/remove repo, rescan, root sync,
 launch with `--append-system-prompt`), ARC-008, the protocol methods of 03 for workspaces and `threads.create`, UI-020,
@@ -94,69 +95,55 @@ Workspace panel and the agent's next turn has its `AGENTS.md`; a scripted agent 
 the workspace → both appear live; remove the link → `/remove-dir` sent and the repo disappears); L1 tests for scanning
 with `FakeGit`; L3 test that a launch carries the user's `APPEND_SYSTEM.md` after the daemon's text.
 
-## M3 — Tools and changes
+M2b's UI part (UI-020..030 under the new model, E2E-09) is delivered by M3 on the new stack (D-18); M2b closes with the
+daemon, protocol and their tests.
 
-Scope: specialized tool cards (UI-050..052) from recorded fixtures; Changes panel (UI-080, DMN-026); PR workspaces
-(DMN-022, after S-08); `open_in_editor` host tool (DMN-060/061); code highlighting (UI-090, after S-03).
+Result: migration 3 moves every thread into its own new workspace folder holding links to its old directories (L2 test
+on a database built with migrations 1+2; L3 test that omp resumes a session with its history after the cwd changes).
+omp starts in the workspace with one `--add-dir` per repo and the conventions text plus the user's `APPEND_SYSTEM.md`
+(`conventions.rs`); rescans run at startup, after workspace methods and after every finished tool run; omp refuses
+`/add-dir` and `/remove-dir` while streaming, so a busy thread's root sync waits until it settles (DMN-029). Hidden
+entries are not repositories (DMN-022). The Dioxus UI got only the minimal changes; E2E-09 moves to M3.
 
-Acceptance: E2E-06; every specialized card has fixture-driven L4 tests for success, error and streaming states.
+## M3 — TypeScript UI
 
-## M4 — Desktop
+Scope (D-18): replace the Dioxus UI and `omfp-client` with a TypeScript web app — Preact (or React 19, after spike S-11) with React Aria Components, Bun for bundling and tests, no
+Node toolchain; TypeScript protocol types generated from the JSON Schemas (AGT-007) and checked in CI; a TypeScript
+client (transport, session with replay/snapshot/resync and backoff, model) passing the transport suite against a real
+daemon (TST-030); the reducer ported to TypeScript and checked against golden states produced by the Rust reducer for
+every fixture (D-04); parity with M2 (every UI-0xx row M2 covered) plus the workspace-folder UI of M2b. The `omfp`
+binary stays in Rust and embeds or serves the bundle (DMN-008).
 
-Scope: ARC-003, DMN-004, UI-004, UI-005, native transport, TST-033, `omfp desktop` (finds or starts the local daemon in the
-background and opens one more window on it, D-15/D-16); spike S-04 first.
+Acceptance: E2E-01..05, E2E-08, E2E-09 pass on the new UI (the L5 harness stays in Rust); component tests for the
+shell; the Dioxus crate and `omfp-client` are deleted.
 
-Acceptance: desktop smoke test passes under `xvfb-run`; a second `omfp desktop` opens another window on the same daemon,
-each window selecting a different thread; a browser attaches to the same daemon and sees the same threads; transport
-suite (TST-030) passes for both implementations.
+## M4 — Widgets (agent-made UI, from 08)
 
-## M5 — Subagents, tree, goal
+Scope: D-17's UI part brought forward, as designed in [08](08-agent-control.md#agent-made-ui-views-and-widgets-m4): a
+**views manifest** per workspace (`.omfp/views.json`: several views, each a layout tree of `row`/`col`/`tabs`/`stack`
+with widget references and props), edited by the agent as a file and by the user from the UI; **widgets** as React
+components (built-in `omfp:*`, workspace `./widgets/<name>`, user library `user:<name>`) running in the window under
+error boundaries, with the SDK as hooks (full protocol, tool-run output, daemon jobs, git, storage, messages to agents)
+and the shell's kit and theme; the daemon serves and transpiles workspace widgets and pushes changes found on rescan.
+Built-in panels (repos, changes, todos) become `omfp:*` widgets; transcript and composer too, while the frame
+(connection, view switcher, pending interactions) stays outside the manifest. Agents learn it from the daemon's
+`--append-system-prompt` note, `omfp://docs/widgets` and the manifest schema. Spike first: transpiling in the daemon
+(`oxc`) vs buildless modules (`htm`), hot reload, how much of the shell becomes widgets.
 
-Scope: UI-081..083; daemon commands for subagents, tree, fork, label, goal, btw, compact; reducer support for subagent
-progress frames and goal updates.
+Acceptance: a scripted agent writes a widget that charts test results from a daemon job and adds it to a view in
+`views.json` → it appears live; an invalid manifest shows the default view and the error; the user moves and hides
+widgets and `views.json` changes; a built-in widget copied into the workspace and modified replaces the original there;
+two views switch from the shell.
 
-Acceptance: contract scenarios for a `task` tool spawning a subagent (scripted), fork from an entry, navigate with
-`editorText` restored; L4 tests for each panel.
+## M5 — Tools and changes
 
-## M6 — Terminal (deferred)
+Scope: specialized tool cards in the transcript (UI-050..052) from recorded fixtures; the git changes widget with diffs
+(UI-080, DMN-026); PR repositories (DMN-024 `pr`, after S-08); `open_in_editor` (DMN-060/061: `$VISUAL`/`$EDITOR` from
+desktop windows, a clear error from the web); code highlighting (UI-090, after S-03).
 
-Not planned for now (D-06 revised): the user does not rely on the TUI-only commands. [05](05-terminal.md) stays as the
-design to pick up if a real need appears (TUI-only features, or a shell panel per workspace).
+Acceptance: E2E-06; every specialized card has fixture-driven tests for success, error and streaming states.
 
-Scope when resumed: TRM-001..022. Acceptance: E2E-07; L2 tests for PTY spawn, replay buffer, resize, channel isolation
-(TRM-012); handoff refused while `Busy` (TRM-001).
-
-## M7 — Hardening
-
-Scope:
-
-- `Origin` allow-list configuration for deployments behind a tunnel or reverse proxy (D-13).
-- Performance: 10k-message transcript stays responsive (S-06); streaming at 100 events/s without dropped frames.
-- Coverage and mutation gates enforced (TST-050).
-- CI on Nix (GitHub Actions or similar) running `just ci`.
-- omp upgrade playbook rehearsed once on a real release (ENV-020).
-
-Acceptance: all of the above documented and green in CI.
-
-## M8 — Agent control
-
-Scope: turn [08](08-agent-control.md) into requirements (D-17), after a spike on the JavaScript UI pieces (SDK surface,
-widget kit, loading on web and desktop), then:
-
-- every protocol method as an agent tool, plus `omfp_call`, through the tool registry adapters (RPC host tools,
-  `omfp://` host URIs, MCP server);
-- UI pieces in HTML/CSS/JS mounted in thread panels, dashboards or windows, with the `omfp` SDK (full protocol, live
-  sources such as a tool run's output or a daemon job, storage shared across windows and sessions, messages to agents)
-  and the optional widget kit;
-- the component library (user, project `.omfp/ui/`, thread drafts) with save, list and "save as component";
-- full access by default; provenance, cascade stop and an activity log of agent-originated actions; limits opt-in.
-
-Acceptance: an orchestrating thread (scripted with `fake-llm`) creates two workspaces in two repositories, spawns two
-threads, waits for both, and mounts a dashboard piece that shows both threads' live state and has a button whose click
-reaches the orchestrator; a piece bound to a long `bash` call shows its progress live; the dashboard is saved as a
-component and mounted again from a new thread; the same tools work over MCP from an omp session outside omfp.
-
-## M9 — Live voice (scheduled right after M3)
+## M6 — Live voice
 
 omp 18.18.6 exposes its `/live` realtime voice over RPC (`docs/rpc.md` → "Live Voice Sub-Protocol"): the realtime
 model talks with the user and delegates work into the thread as ordinary turns. `live_connect` takes a WebRTC SDP offer
@@ -170,6 +157,53 @@ secure context: `localhost`/`127.0.0.1` or HTTPS through the deployer's proxy); 
 `live_connect`); UI: mic button in the composer, phase indicator, live transcript, mute and stop, stop on peer
 disconnect; one live session per thread (omp allows one per process).
 
-Acceptance: L1/L3 tests for the command plumbing and frames (the realtime model itself cannot be faked offline, so the
+Acceptance: tests for the command plumbing and frames (the realtime model itself cannot be faked offline, so the
 contract test covers the failure path and frame decoding); a manual check with a real OpenAI realtime key, recorded in
 the spike result.
+
+## M7 — Desktop
+
+Scope: ARC-003, DMN-004, UI-004, UI-005, TST-033, `omfp desktop` with Tauri 2 (D-18): finds or starts the local daemon
+in the background and opens one more window on it (D-15/D-16), or with `--connect <url>` opens a window on a remote daemon; watches the client-side theme file and pushes it (UI-091); spike S-04 (Tauri on NixOS, webkitgtk) first.
+
+Acceptance: desktop smoke test passes under `xvfb-run`; a second `omfp desktop` opens another window on the same daemon,
+each window selecting a different thread; a browser attaches to the same daemon and sees the same threads.
+
+## M8 — Subagents, tree, goal
+
+Scope: UI-081..083 (as built-in widgets); daemon commands for subagents, tree, fork, label, goal, btw, compact; reducer
+support for subagent progress frames and goal updates.
+
+Acceptance: contract scenarios for a `task` tool spawning a subagent (scripted), fork from an entry, navigate with
+`editorText` restored; tests for each widget.
+
+## M9 — Hardening
+
+Scope:
+
+- `Origin` allow-list configuration for deployments behind a tunnel or reverse proxy (D-13).
+- Performance: 10k-message transcript stays responsive (S-06); streaming at 100 events/s without dropped frames.
+- Coverage and mutation gates enforced (TST-050).
+- CI on Nix (GitHub Actions or similar) running `just ci`.
+- omp upgrade playbook rehearsed once on a real release (ENV-020).
+
+Acceptance: all of the above documented and green in CI.
+
+## M10 — Agent control
+
+Scope: the rest of [08](08-agent-control.md) (D-17): every protocol method as an agent tool, plus `omfp_call`, through
+the tool registry adapters (RPC host tools, `omfp://` host URIs, MCP server); widgets mounted by agents in dashboards and
+windows beyond the workspace layout; the component library shared across workspaces with save, list and "save as
+component"; full access by default; provenance, cascade stop and an activity log of agent-originated actions; limits
+opt-in.
+
+Acceptance: an orchestrating thread (scripted with `fake-llm`) creates two workspaces, spawns two threads, waits for
+both, and mounts a dashboard widget that shows both threads' live state and has a button whose click reaches the
+orchestrator; the same tools work over MCP from an omp session outside omfp.
+
+## Terminal (deferred)
+
+Not planned for now (D-06 revised): the user does not rely on the TUI-only commands. [05](05-terminal.md) stays as the
+design to pick up if a real need appears (TUI-only features, or a shell panel per workspace). Scope when resumed:
+TRM-001..022. Acceptance: E2E-07; L2 tests for PTY spawn, replay buffer, resize, channel isolation (TRM-012); handoff
+refused while `Busy` (TRM-001).

@@ -156,7 +156,7 @@ requirements = [
 ]
 
 [M2b]
-status = "in-progress"
+status = "done"
 requirements = [
   "ARC-008",
   "DMN-020",
@@ -169,12 +169,4 @@ requirements = [
   "DMN-028",
   "DMN-029",
   "DMN-030",
-  "UI-020",
-  "UI-022",
-  "UI-023",
-  "UI-025",
-  "UI-030",
-  "E2E-01",
-  "E2E-08",
-  "E2E-09",
 ]

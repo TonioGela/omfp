@@ -1,6 +1,6 @@
 # 05 — Terminal (escape hatch to the TUI)
 
-**Status:** deferred (D-06, M6 not planned). Kept as the design to resume if TUI-only features or a shell panel become
+**Status:** deferred (D-06, not planned). Kept as the design to resume if TUI-only features or a shell panel become
 necessary.
 
 RPC does not expose everything the omp TUI can do (verified on omp 18.18.1: plan mode, `/vibe`, `/settings`, `/agents`,

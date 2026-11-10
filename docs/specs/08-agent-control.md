@@ -1,8 +1,9 @@
 # 08 — Agent control (direction)
 
-**Status:** direction. The features in this document are the **last milestone** (M8). Only the section
+**Status:** direction. Widgets (agent-made UI in the workspace layout) are milestone **M4**; the rest (agent tools for
+every method, MCP, dashboards, the shared component library) is **M10**. Only the section
 [Constraints that apply from day one](#constraints-that-apply-from-day-one) is binding now; everything else is a sketch
-to be turned into requirements when M8 starts. No earlier choice may make this direction harder.
+to be turned into requirements when those milestones start. No earlier choice may make this direction harder.
 
 ## Vision
 
@@ -46,64 +47,124 @@ One tool registry in the daemon, several adapters:
 | **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for `open_in_editor` (DMN-060). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
 | **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside omfp, other MCP-capable agents | Only needed for omp sessions not run by the daemon (RPC threads get host tools); configured in the user's own `mcp.json`, since the daemon writes nothing into workspaces (D-11). S-07 verified that a project `.omp/mcp.json` is honored and its headers are sent. |
 | **Host URI scheme** `omfp://` (`set_host_uri_schemes`) | RPC threads | State for the agent's `read` tool: `omfp://threads`, `omfp://threads/<id>`, `omfp://ui/…`. |
-| **JS SDK** | UI pieces | The same API from inside a UI piece (below). |
+| **SDK** | widgets | The same API from inside a widget, as React hooks (below). |
 
-## Agent-made UI (JavaScript)
+## Agent-made UI: views and widgets (M4)
 
-**A UI piece is arbitrary web code.** HTML, CSS and JavaScript, rendered inside the client's webview (the browser on
-web; the webview on desktop — Dioxus desktop renders through one), isolated in its own frame so a broken piece cannot
-break the app or another piece. No fixed vocabulary limits what it can draw.
+The window is described by a **views manifest** per workspace; everything in it is a **widget**, a React component.
+The shell (D-18) is React too, so built-in widgets, agent widgets and the shell are the same kind of code.
 
-**A common layer, never a cage.** Every piece gets an `omfp` SDK and a widget kit so most pieces look native and take a
-few lines, while anything else stays possible:
+**Views manifest** — `<workspace>/.omfp/views.json` (for a folder the daemon does not own, kept in the daemon's data
+dir instead). Declarative, schema-checked, edited by the agent as a file and by the user from the UI (move, resize,
+hide, add, switch view), so both always edit the same thing:
 
-- **API**: `omfp.call(method, params)` and `omfp.subscribe(topic, since?)` — the full daemon protocol with the snapshot
-  and replay semantics of 03 (so state survives reconnects and is the same in every window), plus helpers such as
-  `omfp.threads()`, `omfp.thread(id).prompt(text)`, `omfp.thread(id).rename(title)`.
-- **Sources**: `omfp.tool(toolCallId)` streams an omp tool run's output (e.g. the `bash` call the agent just started),
-  `omfp.job(command)` starts a daemon-run job (output lines, exit code, cancel), plus thread state, workspace git
-  status, timers.
-- **Talking to agents**: `omfp.agent.send(text)` / `omfp.agent.event(payload)` to the owning thread (or any thread).
-- **Storage**: `omfp.storage` — key-value state per component and per instance, kept by the daemon, shared by every
-  window and session.
-- **Widgets and theme**: web components (`<omfp-progress>`, `<omfp-log>`, `<omfp-table>`, `<omfp-card>`,
-  `<omfp-button>`, `<omfp-diff>`, `<omfp-markdown>`, …) and the app's CSS custom properties, so pieces match light and
-  dark themes. Optional to use.
-
-```html
-<!-- A piece the agent could mount, and save for later. -->
-<omfp-card head="Tests">
-  <omfp-progress id="bar"></omfp-progress>
-  <omfp-log id="log" lines="20"></omfp-log>
-  <omfp-button id="cancel">Cancel</omfp-button>
-</omfp-card>
-<script type="module">
-  const { params, tool } = omfp;
-  let done = 0;
-  for await (const line of tool(params.toolCallId).lines()) {
-    if (line.startsWith("ok ")) bar.value = ++done / params.total;
-    log.append(line);
+```jsonc
+{
+  "$schema": "omfp://schemas/views.json",
+  "default": "work",
+  "views": {
+    "work": {
+      "title": "Work",
+      "layout": ["row", { "sizes": [3, 1] },
+        ["col", {}, "omfp:transcript", "omfp:composer"],
+        ["tabs", {}, "omfp:repos", ["omfp:changes", { "repo": "frontend" }], "./widgets/test-chart"]]
+    },
+    "review": {
+      "title": "Review",
+      "layout": ["row", {}, ["omfp:changes", { "groupBy": "repo" }], "omfp:transcript"]
+    }
   }
-  cancel.onclick = () => omfp.call("thread.abort", { threadId: params.threadId });
-</script>
+}
 ```
 
-**Persistence and sharing.** A component is a folder (`manifest.json` with name, version, parameters; `index.html` and
-any assets), so it can be reviewed and versioned like a skill:
+- Containers: `row`, `col`, `tabs`, `stack` with sizes; leaves are widget references with props. Several views per
+  workspace, switched from the shell.
+- `omfp:*` are built-in widgets (transcript, composer, thread list, repos, changes, todos, subagents, tree, …);
+  `./widgets/<name>` are the workspace's own; `user:<name>` come from the user library in the data dir.
+- An invalid manifest never breaks the window: the shell shows the default view and a banner with the validation error
+  (which the agent can read through the SDK and fix).
+- Fixed outside the manifest: the frame (connection banner, view switcher, thread switcher shortcut, interactions that
+  need an answer), so a manifest can never hide a pending approval.
 
-| Library | Where | Shared with |
+**Widgets** — a widget is an ES module whose default export is a React component, in `<workspace>/.omfp/widgets/<name>/`
+(`index.tsx` or `index.js`, plus assets). It runs in the window's document, under an error boundary (a crash shows the
+error in place of the widget, not a broken window), and gets the SDK as hooks and props:
+
+- **Protocol**: `useCall()`, `useTopic(topic)` — the full daemon protocol with the replay/snapshot semantics of 03, so
+  state is the same in every window and survives reconnects; helpers such as `useThreads()`, `useThread(id)`,
+  `useWorkspace()`, `useGit(repo)`.
+- **Sources**: `useToolRun(toolCallId)` streams an omp tool run's output; `useJob(command)` runs a daemon job (output
+  lines, exit code, cancel) — e.g. the test chart runs the test command and parses its output.
+- **Agents**: `useAgent(threadId?)` to send a message or an event to the owning thread or any thread.
+- **Storage**: `useStored(key, initial)` — state kept by the daemon per widget instance, shared across windows and
+  sessions.
+- **Kit and theme**: React components of the shell (cards, tables, lists, diff, markdown, progress, log, buttons,
+  charts) and the CSS custom properties, so widgets look native in light and dark themes. Optional to use.
+
+```tsx
+// .omfp/widgets/test-chart/index.tsx — written by the agent, reloaded live when it changes.
+import { Card, Progress, Log, Button } from "omfp/kit";
+import { useJob } from "omfp/sdk";
+
+export default function TestChart({ command = "cargo nextest run" }) {
+  const run = useJob(command);
+  const passed = run.lines.filter((l) => l.includes(" PASS ")).length;
+  return (
+    <Card title="Tests">
+      <Progress value={passed} max={run.lines.filter((l) => /PASS|FAIL/.test(l)).length || undefined} />
+      <Log lines={run.lines.slice(-20)} />
+      <Button onClick={run.restart}>Run again</Button>
+    </Card>
+  );
+}
+```
+
+**System access goes through the daemon.** A widget runs in the browser (or desktop webview), possibly on another
+machine; it never touches the system itself. Everything it needs runs in the daemon, on the workspace's machine, as the
+user, with no restrictions (full access, D-17):
+
+| Need | SDK | Daemon side |
 | --- | --- | --- |
-| User | data directory | every thread and session of the user |
-| Project | `.omfp/ui/` in a repository | everyone working on the repository (git) |
-| Thread draft | the thread's private directory (`threads/<id>/`) | that thread, until saved |
+| Follow a command the agent runs with its `bash` tool | `useToolRun(toolCallId)` or `useToolRun({ match: /nextest/ })` (latest matching run in the thread) | omp's `tool_execution_update` frames already stream in the thread topic **[VERIFY: partial output granularity for `bash`]** |
+| Run its own command | `useJob(command, { cwd?, env? })` → `{ lines, exitCode, running, kill, restart }` | **jobs**: `jobs.start { workspaceId, command, cwd? }` → `{ jobId }`, topic `job/<id>` (stdout/stderr lines with `seq`, replay and snapshot like threads, last 1 MiB kept), `jobs.kill`, `jobs.list`. A job runs in the workspace folder in its own process group, belongs to the workspace (not to the widget): it survives reloads and closed windows, every window sees it, and it is killed on daemon shutdown. |
+| Read or watch a file | `useFile(path)` | `workspaces.read_file` plus change notifications from rescan |
+| Share state with the agent | `useStored(key)` | per-instance state the agent can also read and write (`omfp_widget_state` host tool) |
 
-An agent saves a piece with `omfp_component_save`; the user can do the same with "save as component" on any mounted
-piece. Agents discover the library through `omfp_component_list` and `omfp://ui/`. Mounted instances record the
-component version (content hash).
+The agent can start jobs too (`omfp_job_start` / `omfp_job_output` host tools): a long build or test run becomes a job,
+the agent mounts a widget bound to it and keeps working instead of blocking its turn on `bash`, then reads the output
+when it needs it.
 
-**Open points (spike before M8)**: the exact SDK surface and widget kit; how pieces load on desktop (custom protocol vs
-`srcdoc`); whether pieces may also run without a window (e.g. QuickJS in the daemon for background jobs) or leave that
-to agents; how agents learn the SDK (tool description, instructions injected like skills).
+**Loading** — the daemon serves workspace widgets over HTTP as ES modules, transpiling TypeScript/JSX on the fly, and an
+import map points `react`, `omfp/sdk` and `omfp/kit` at the shell's own copies, so widgets share one React instance.
+A rescan (DMN-023) that sees a changed widget or manifest pushes an update; the window reloads that widget only.
+
+```tsx
+// A progress bar wired to a command: the agent writes this widget and adds it to views.json.
+import { Card, Progress, Log, Button } from "omfp/kit";
+import { useJob } from "omfp/sdk";
+
+export default function Tests({ command = "cargo nextest run" }) {
+  const job = useJob(command); // runs in the daemon, in the workspace folder
+  const total = Number(job.lines.find((l) => /Starting \d+ tests/.test(l))?.match(/\d+/)?.[0]) || undefined;
+  const done = job.lines.filter((l) => /^\s*(PASS|FAIL)/.test(l)).length;
+  return (
+    <Card title={job.running ? `Tests ${done}/${total ?? "?"}` : `Tests finished (exit ${job.exitCode})`}>
+      <Progress value={done} max={total} />
+      <Log lines={job.lines.slice(-10)} />
+      <Button onClick={job.running ? job.kill : job.restart}>{job.running ? "Stop" : "Run again"}</Button>
+    </Card>
+  );
+}
+```
+
+**Sharing** — widgets and views are files: commit `.omfp/` with a repository to share them, or save a widget to the user
+library ("save as user widget", or the agent copying the folder). Built-in widgets can be copied into `.omfp/widgets/`
+and changed; a workspace widget with the same name as a built-in replaces it in that workspace.
+
+**Open points (spike at the start of M4)**: transpiling in the daemon (e.g. the `oxc` Rust crates) versus buildless
+modules (`htm` tagged templates, no JSX); hot reload granularity; how much of the shell becomes widgets (transcript and
+composer as `omfp:*` widgets is assumed above); how agents learn the SDK (a short note in `--append-system-prompt`, docs
+at `omfp://docs/widgets` and the manifest schema at `omfp://schemas/views.json`).
 
 ## Permissions and limits
 
