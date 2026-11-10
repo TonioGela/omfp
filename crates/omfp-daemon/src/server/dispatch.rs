@@ -184,7 +184,7 @@ async fn create_workspace(
     let new = NewWorkspace {
         name: params.name,
         fallback_name,
-        path: params.path.map(PathBuf::from),
+        link: params.link.map(PathBuf::from),
         created_by,
     };
     let id = blocking(move || {
@@ -218,7 +218,7 @@ async fn workspaces(services: &Services, principal: &Principal, call: Call) -> R
         Call::WorkspacesRemove(params) => {
             blocking(move || {
                 workspaces
-                    .remove(&params.workspace_id, params.delete_folder, params.force)
+                    .remove(&params.workspace_id, params.force)
                     .map_err(workspace_error)
             })
             .await?;
@@ -324,7 +324,6 @@ async fn create_thread(
         },
         title: title.unwrap_or_default(),
         workspace_id: workspace_id.clone(),
-        tags: params.tags,
         model: params.model,
         thinking_level: params.thinking_level.map(thinking_name).transpose()?,
         approval_mode: params.approval_mode,
@@ -346,7 +345,7 @@ async fn create_thread(
                 let workspaces = Arc::clone(&services.workspaces);
                 let _ = blocking(move || {
                     workspaces
-                        .remove(&workspace_id, true, false)
+                        .remove(&workspace_id, false)
                         .map_err(workspace_error)
                 })
                 .await;
@@ -383,12 +382,9 @@ async fn threads(services: &Services, principal: &Principal, call: Call) -> Repl
                     .await
                     .map_err(supervisor_error)?;
             }
-            let (tags, approval_mode) = (params.tags, params.approval_mode);
+            let approval_mode = params.approval_mode;
             let thread_id = id.clone();
             blocking(move || {
-                if let Some(tags) = &tags {
-                    threads.set_tags(&thread_id, tags).map_err(thread_error)?;
-                }
                 if let Some(mode) = &approval_mode {
                     threads
                         .set_approval_mode(&thread_id, mode)

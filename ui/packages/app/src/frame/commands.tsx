@@ -1,7 +1,8 @@
 /**
  * The global commands of the frame (UI-095), shared by the keymap and the `:` line: a draft thread in the current
- * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030), colour scheme (UI-091,
- * window-local), density and `:set` (daemon settings, UI-094, UI-097), and the view switch.
+ * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030), a rescan of the current
+ * workspace (DMN-023), colour scheme (UI-091, window-local), density and `:set` (daemon settings, UI-094, UI-097), and
+ * the view switch.
  */
 
 import type { ReactNode } from "react";
@@ -56,6 +57,18 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
         host.commands.run("workspace.new", [], []);
       } else {
         actions.openDraft(workspaceId);
+      }
+    },
+  });
+  useCommand({
+    id: "workspace.rescan",
+    title: titles.rescan,
+    aliases: ["rescan"],
+    enabled: () => currentWorkspaceId(host) !== undefined,
+    run: () => {
+      const workspaceId = currentWorkspaceId(host);
+      if (workspaceId !== undefined) {
+        host.client.call("workspaces.rescan", { workspaceId }).catch((error: unknown) => reportError(host, error));
       }
     },
   });

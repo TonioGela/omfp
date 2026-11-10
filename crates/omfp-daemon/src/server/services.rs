@@ -1,6 +1,8 @@
 //! What request handlers use: the store-backed services, the agent supervisor, and the logs of the `index` and
 //! `workspace/<id>` topics. Workspace folders are rescanned here (DMN-023), and a change reaches the index and the
-//! roots of the live threads in the workspace (DMN-029).
+//! roots of the live threads in the workspace (DMN-029); watched workspaces are polled (`polls`).
+
+mod polls;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

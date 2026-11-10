@@ -30,28 +30,10 @@ async fn header_chips(journey: &Journey) -> anyhow::Result<Vec<(String, String)>
         .collect())
 }
 
-/// Adds a new worktree of the repository at `path` (typed; focusing the branch field closes the completion list) on
-/// `branch` from the Workspace widget.
-async fn add_worktree(journey: &Journey, path: &str, branch: &str) -> anyhow::Result<()> {
-    journey
-        .click("[data-testid=add-repo-kind] [data-value=worktree]")
-        .await?;
-    journey
-        .type_into("[data-testid=add-repo-path]", path)
-        .await?;
-    journey
-        .type_into("[data-testid=add-repo-branch]", branch)
-        .await?;
-    journey.click("[data-testid=add-repo-submit]").await?;
-    journey
-        .element("[data-testid=workspace-repo][data-kind=worktree]")
-        .await?;
-    Ok(())
-}
-
 // spec: E2E-01, UI-001, UI-002, UI-012, UI-023, TST-031
 #[tokio::test(flavor = "multi_thread")]
-async fn a_draft_thread_on_a_new_worktree_is_created_by_its_first_message() -> anyhow::Result<()> {
+async fn a_draft_thread_in_a_workspace_linking_a_repository_is_created_by_its_first_message()
+-> anyhow::Result<()> {
     let repo = repository("kumquat-17");
     let journey = Journey::start(vec![
         Step::reply(Reply::tool_calls(vec![ToolCall::new(
@@ -59,7 +41,7 @@ async fn a_draft_thread_on_a_new_worktree_is_created_by_its_first_message() -> a
             "bash",
             json!({ "command": "pwd && cat */AGENTS.md" }),
         )])),
-        Step::reply(Reply::text("Hello from the new worktree.")),
+        Step::reply(Reply::text("Hello from the linked repository.")),
     ])
     .await?;
     journey.connected().await?;
@@ -67,30 +49,35 @@ async fn a_draft_thread_on_a_new_worktree_is_created_by_its_first_message() -> a
     let url = journey.driver.current_url().await?;
     assert_eq!(url.fragment(), None, "{url}");
 
-    // "+ workspace" opens a draft thread in the new workspace; a new worktree of a repository given by its path goes
-    // into it from the Workspace widget; the first message creates the thread (UI-023).
-    journey.new_workspace("worktree journey").await?;
+    // "+ workspace" with a repository's path, picked from the daemon's completions, makes a workspace holding a link
+    // to it and opens a draft thread there; the first message creates the thread (UI-023, DMN-021).
+    journey
+        .new_linked_workspace(&partial(repo.path()), &repo.path().to_string_lossy())
+        .await?;
     assert_eq!(
         journey.thread_ids().await?,
         Vec::<String>::new(),
         "a draft is no thread yet"
     );
-    add_worktree(&journey, &repo.path().to_string_lossy(), "feat-e2e").await?;
+    journey
+        .element("[data-testid=workspace-repo][data-kind=link]")
+        .await?;
     let thread = journey.first_message("hello").await?;
 
-    // The workspace chip, then the new worktree on its branch.
+    // The workspace chip, named after the repository's folder, then the link.
+    let name = dir_name(&repo);
     let chips = journey
-        .until("the worktree chip", async |page| {
+        .until("the link chip", async |page| {
             let chips = header_chips(page).await?;
             Ok((chips.len() == 2).then_some(chips))
         })
         .await?;
     assert_eq!(chips[0].0, "workspace", "{chips:?}");
-    assert!(chips[0].1.contains("worktree journey"), "{chips:?}");
-    assert_eq!(chips[1].0, "worktree", "{chips:?}");
-    assert!(chips[1].1.contains("feat-e2e"), "{chips:?}");
+    assert!(chips[0].1.contains(&name), "{chips:?}");
+    assert_eq!(chips[1].0, "link", "{chips:?}");
+    assert!(chips[1].1.contains(&name), "{chips:?}");
 
-    journey.reply("Hello from the new worktree.").await?;
+    journey.reply("Hello from the linked repository.").await?;
     journey.status(&thread, "idle").await?;
     // The streamed reply is rendered as Markdown, and the first message is the thread's placeholder title.
     assert_eq!(
@@ -103,15 +90,15 @@ async fn a_draft_thread_on_a_new_worktree_is_created_by_its_first_message() -> a
         journey.attr(&row(&thread), "data-title-source").await?,
         Some("placeholder".to_owned())
     );
-    // The agent runs in the workspace folder, the worktree inside it.
+    // The agent runs in the workspace folder, made under the workspaces root, the linked repository inside it.
     let request = journey.fake.requests()[1].to_string();
     assert!(
-        request.contains("/workspaces/worktree-journey"),
+        request.contains("/workspaces/"),
         "the cwd is the workspace folder: {request}"
     );
     assert!(
         request.contains("kumquat-17"),
-        "the worktree is an entry of the workspace folder"
+        "the link is an entry of the workspace folder"
     );
     journey.finish("E2E-01").await
 }
@@ -375,11 +362,15 @@ async fn send_mode(journey: &Journey, mode: &str) -> anyhow::Result<()> {
         .await
 }
 
-// spec: E2E-05, UI-061, UI-062, UI-063
+// spec: E2E-05, UI-061, UI-062, UI-063, UI-095
 #[tokio::test(flavor = "multi_thread")]
 async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
 -> anyhow::Result<()> {
-    let journey = Journey::start(vec![Step::reply(Reply::text("Never sent.")).gated()]).await?;
+    let journey = Journey::start(vec![
+        Step::reply(Reply::text("Never sent.")).gated(),
+        Step::reply(Reply::text("Never sent either.")).gated(),
+    ])
+    .await?;
     journey.connected().await?;
     let thread = journey.create_thread("queue journey").await?;
     journey.send("start").await?;
@@ -436,7 +427,34 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
         .await?;
     journey.status(&thread, "idle").await?;
     assert_eq!(queue(&journey).await?, Vec::new());
+
+    // Ctrl-C clears a draft (UI-063): the restored one, with what was typed after it.
+    input.send_keys(" and more").await?;
+    input.send_keys(Key::Control + "c").await?;
+    journey
+        .until("the cleared draft", async |page| {
+            Ok(draft(page).await?.is_empty().then_some(()))
+        })
+        .await?;
+    journey.status(&thread, "idle").await?;
+
+    // Busy again with a queued follow-up: Ctrl-C clears the half-typed draft (with its hint), the second one aborts
+    // the turn and drops the queue without putting it back into the composer.
+    journey.send("again").await?;
+    journey.fake.wait_for_gate(1).await;
+    journey.busy().await?;
+    journey.send("queued later").await?;
+    queued(&journey, "follow-up", "queued later").await?;
+    input.send_keys("half typed").await?;
+    input.send_keys(Key::Control + "c").await?;
+    journey.element("[data-testid=interrupt-hint]").await?;
+    assert_eq!(draft(&journey).await?, "");
+    input.send_keys(Key::Control + "c").await?;
+    journey.status(&thread, "idle").await?;
+    journey.gone("[data-testid=queue-chip]").await?;
+    assert_eq!(draft(&journey).await?, "");
     journey.fake.release_gate(0);
+    journey.fake.release_gate(1);
     journey.finish("E2E-05").await
 }
 
@@ -486,39 +504,23 @@ fn dir_name(repo: &TempRepo) -> String {
         .into_owned()
 }
 
-/// Links `back` and adds a new worktree of `front`, both picked from the path field's completions (DMN-021), into
-/// the shown workspace.
-async fn link_and_worktree_by_completion(
+/// Links `front` and `back`, two repositories in two different folders, each picked from the path field's
+/// completions (DMN-021), into the shown workspace.
+async fn link_two_by_completion(
     journey: &Journey,
     front: &TempRepo,
     back: &TempRepo,
 ) -> anyhow::Result<()> {
     let path = "[data-testid=add-repo-path]";
     let links = "[data-testid=workspace-repo][data-kind=link]";
-    let before = journey.attrs(links, "data-name").await?;
-    journey
-        .pick_path(path, &partial(back.path()), &back.path().to_string_lossy())
-        .await?;
-    journey.click("[data-testid=add-repo-submit]").await?;
-    new_entry(journey, links, &before).await?;
-
-    journey
-        .click("[data-testid=add-repo-kind] [data-value=worktree]")
-        .await?;
-    journey
-        .pick_path(
-            path,
-            &partial(front.path()),
-            &front.path().to_string_lossy(),
-        )
-        .await?;
-    journey
-        .type_into("[data-testid=add-repo-branch]", "front-branch")
-        .await?;
-    journey.click("[data-testid=add-repo-submit]").await?;
-    journey
-        .element("[data-testid=workspace-repo][data-kind=worktree]")
-        .await?;
+    for repo in [back, front] {
+        let before = journey.attrs(links, "data-name").await?;
+        journey
+            .pick_path(path, &partial(repo.path()), &repo.path().to_string_lossy())
+            .await?;
+        journey.click("[data-testid=add-repo-submit]").await?;
+        new_entry(journey, links, &before).await?;
+    }
     journey
         .until("the workspace and both repository chips", async |page| {
             Ok((header_chips(page).await?.len() == 3).then_some(()))
@@ -549,7 +551,7 @@ async fn repositories_picked_by_completion_make_the_thread_findable_by_their_nam
     // Space w (normal mode) focuses the "+ workspace" field; Enter opens a draft, the first message makes the thread.
     normal_mode(&journey).await?;
     journey.keys(" w").await?;
-    journey.until_focused("new-workspace-name").await?;
+    journey.until_focused("new-workspace-input").await?;
     journey.keys("two repositories").await?;
     journey.keys(Key::Enter).await?;
     journey.element("[data-testid=draft-thread]").await?;
@@ -557,8 +559,8 @@ async fn repositories_picked_by_completion_make_the_thread_findable_by_their_nam
     let thread = journey.first_message("hello").await?;
     journey.reply("Ready.").await?;
 
-    // A link and a worktree from two places, both picked from the completions.
-    link_and_worktree_by_completion(&journey, &front, &back).await?;
+    // Two links from two different folders, both picked from the completions.
+    link_two_by_completion(&journey, &front, &back).await?;
     // The Workspace widget and its add control fit its column at a 1400 px window.
     journey.fits("[data-widget=\"omfp:workspace\"]").await?;
 

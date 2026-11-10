@@ -29,7 +29,6 @@ pub struct NewThread {
     pub title_source: TitleSource,
     /// The workspace the thread lives in (ARC-008).
     pub workspace_id: String,
-    pub tags: Vec<String>,
     /// `provider/id`.
     pub model: Option<String>,
     pub thinking_level: Option<String>,
@@ -38,14 +37,13 @@ pub struct NewThread {
 }
 
 impl NewThread {
-    /// A thread created by the user in `workspace_id` with a set title, no tag or setting.
+    /// A thread created by the user in `workspace_id` with a set title, no setting.
     #[must_use]
     pub fn new(title: impl Into<String>, workspace_id: impl Into<String>) -> Self {
         Self {
             title: title.into(),
             title_source: TitleSource::Set,
             workspace_id: workspace_id.into(),
-            tags: Vec::new(),
             model: None,
             thinking_level: None,
             approval_mode: None,
@@ -93,7 +91,6 @@ impl Threads {
             created_by: new.created_by,
             created_at: now_ms(),
             archived_at: None,
-            tags: new.tags,
         };
         if let Err(error) = self.store.insert_thread(&thread) {
             // Best effort: no orphan directory for a thread that does not exist.
@@ -121,12 +118,6 @@ impl Threads {
     /// Sets the title if it is still a placeholder; returns whether it did (a title set meanwhile wins, DMN-073).
     pub fn replace_placeholder(&self, id: &str, title: &str, source: TitleSource) -> Result<bool> {
         Ok(self.store.replace_placeholder_title(id, title, source)?)
-    }
-
-    /// Replaces the tags (stored sorted, without duplicates).
-    pub fn set_tags(&self, id: &str, tags: &[String]) -> Result<Thread> {
-        self.store.set_thread_tags(id, tags)?;
-        self.get(id)
     }
 
     /// Changes the omp `--approval-mode`; it applies from the next start of the thread's omp (DMN-074).

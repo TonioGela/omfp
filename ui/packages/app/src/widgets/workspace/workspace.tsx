@@ -2,8 +2,9 @@
  * `omfp:workspace` (UI-025): the current workspace — the selected thread's, else the draft thread's (UI-023). Header:
  * name (renamed in place), folder path (copyable). Repositories: kind, name, branch, git status live from
  * `workspace/<id>`, origin (link target, worktree's main repository), a badge when the checkout is in another workspace
- * with live threads (DMN-027), remove (confirmation for anything but a link, DMN-025), rescan. One "add repository"
- * control with a Link / Worktree / Clone switch; paths come with suggestions and completion (DMN-021).
+ * with live threads (DMN-027), remove for every kind (confirmation for anything but a link, DMN-025). One "add
+ * repository" control with a Link / Clone switch; paths come with suggestions and completion (DMN-021). The daemon
+ * rescans on its own (DMN-023); `:rescan` forces it.
  */
 
 import { Badge, Button, ConfirmDialog, IconButton, PathField, Radio, RadioGroup, TextField } from "@omfp/kit";
@@ -113,14 +114,13 @@ function Header({ workspace, row }: { workspace: Workspace; row: WorkspaceRow })
         </code>
         <IconButton label={text.copyPath} icon="⎘" data-testid="copy-workspace-path" onPress={copy} />
       </div>
-      <div className="omfp-workspace__meta">
-        <Badge>{row.owned ? text.owned : text.folder}</Badge>
-        {row.shared && (
+      {row.shared && (
+        <div className="omfp-workspace__meta">
           <Badge tone="warning" data-testid="shared-warning" title={text.sharedHint}>
             {text.shared(row.threadCount)}
           </Badge>
-        )}
-      </div>
+        </div>
+      )}
     </header>
   );
 }
@@ -189,17 +189,7 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
   const remove = (name: string) => void attempt(() => call("workspaces.remove_repo", { workspaceId: row.id, name }));
   return (
     <section className="omfp-workspace__repos" aria-labelledby="omfp-workspace-repos">
-      <div className="omfp-workspace__heading">
-        <h3 id="omfp-workspace-repos">{text.repos}</h3>
-        <Button
-          size="sm"
-          variant="quiet"
-          data-testid="refresh-workspace"
-          onPress={() => void attempt(() => call("workspaces.rescan", { workspaceId: row.id }))}
-        >
-          {text.rescan}
-        </Button>
-      </div>
+      <h3 id="omfp-workspace-repos">{text.repos}</h3>
       {row.repos.length === 0 ? (
         <p className="omfp-muted">{text.noRepo}</p>
       ) : (
@@ -277,37 +267,33 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
   );
 }
 
-/** One control adds a link, a worktree or a clone: a kind switch, the kind's fields, one submit. Enter in a field
- * submits too; the fields clear once the repository is added. */
+/** One control adds a link or a clone (UI-025): a kind switch, the kind's field, one submit. Enter in a field submits
+ * too; the fields clear once the repository is added. */
 function AddRepository({ workspaceId }: { workspaceId: string }): ReactNode {
   const call = useCall();
   const attempt = useAttempt();
   const { suggest, complete } = usePathSources();
   const [kind, setKind] = useState<AddKind>("link");
   const [path, setPath] = useState("");
-  const [branch, setBranch] = useState("");
   const [url, setUrl] = useState("");
-  const source = addRepoSource(kind, { path, branch, url });
+  const source = addRepoSource(kind, { path, url });
   const submit = (typedPath = path) => {
-    const chosen = addRepoSource(kind, { path: typedPath, branch, url });
+    const chosen = addRepoSource(kind, { path: typedPath, url });
     if (chosen === undefined) {
       return;
     }
     void attempt(() => call("workspaces.add_repo", { workspaceId, source: chosen })).then((ok) => {
       if (ok) {
         setPath("");
-        setBranch("");
         setUrl("");
       }
     });
   };
-  const submitOnEnter = {
-    onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        submit();
-      }
-    },
+  const submitOnEnter = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submit();
+    }
   };
   return (
     <section className="omfp-workspace__add" aria-labelledby="omfp-workspace-add" data-testid="add-repo">
@@ -337,29 +323,19 @@ function AddRepository({ workspaceId }: { workspaceId: string }): ReactNode {
             placeholder={text.clonePlaceholder}
             value={url}
             onChange={setUrl}
-            inputProps={{ "data-testid": "add-repo-url", ...submitOnEnter }}
+            inputProps={{ "data-testid": "add-repo-url", onKeyDown: submitOnEnter }}
           />
         ) : (
           <PathField
-            label={kind === "link" ? text.linkPath : text.worktreeRepo}
+            label={text.linkPath}
             hideLabel
-            placeholder={kind === "link" ? text.linkPlaceholder : text.worktreePlaceholder}
+            placeholder={text.linkPlaceholder}
             value={path}
             onChange={setPath}
             onSubmit={submit}
             suggest={suggest}
             complete={complete}
             data-testid="add-repo-path"
-          />
-        )}
-        {kind === "worktree" && (
-          <TextField
-            label={text.worktreeBranch}
-            hideLabel
-            placeholder={text.worktreeBranch}
-            value={branch}
-            onChange={setBranch}
-            inputProps={{ "data-testid": "add-repo-branch", ...submitOnEnter }}
           />
         )}
         <Button

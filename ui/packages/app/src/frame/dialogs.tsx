@@ -50,8 +50,8 @@ export function DeleteThreadDialog(): ReactNode {
 
 /**
  * Deleting a workspace (UI-020, DMN-028): the daemon refuses while it has threads, so the dialog lists them and
- * deletes them first once "delete the threads too" is ticked; an owned folder may be deleted with it. Cancel has the
- * focus when it opens.
+ * deletes them first once "delete the threads too" is ticked; the folder is deleted, linked projects are kept. Cancel
+ * has the focus when it opens.
  */
 export function DeleteWorkspaceDialog(): ReactNode {
   const [workspaceId, setWorkspaceId] = useWindowState(DELETE_WORKSPACE);
@@ -93,14 +93,12 @@ function DeleteWorkspaceForm({
 }): ReactNode {
   const host = useHost();
   const [deleteThreads, setDeleteThreads] = useState(false);
-  const [deleteFolder, setDeleteFolder] = useState(false);
   const text = strings.shell.deleteWorkspace;
   const blocked = threads.length > 0 && !deleteThreads;
   return (
     <>
       <div className="omfp-dialog__message" data-testid="delete-workspace-message">
-        <p>{text.message}</p>
-        {!workspace.owned && <p>{text.keptFolder(workspace.path)}</p>}
+        <p>{text.message(workspace.path)}</p>
         {threads.length > 0 && (
           <>
             <p>{text.threads(threads.length)}</p>
@@ -116,11 +114,6 @@ function DeleteWorkspaceForm({
             </Checkbox>
           </>
         )}
-        {workspace.owned && (
-          <Checkbox isSelected={deleteFolder} onChange={setDeleteFolder} data-testid="delete-workspace-folder">
-            {text.deleteFolder(workspace.path)}
-          </Checkbox>
-        )}
       </div>
       <div className="omfp-dialog__actions">
         <Button variant="quiet" onPress={close} autoFocus data-testid="cancel-delete-workspace">
@@ -132,10 +125,7 @@ function DeleteWorkspaceForm({
           data-testid="confirm-delete-workspace"
           onPress={() => {
             close();
-            void removeWorkspace(host, workspace.id, {
-              threadIds: deleteThreads ? threads.map((thread) => thread.id) : [],
-              deleteFolder,
-            });
+            void removeWorkspace(host, workspace.id, deleteThreads ? threads.map((thread) => thread.id) : []);
           }}
         >
           {text.confirm}

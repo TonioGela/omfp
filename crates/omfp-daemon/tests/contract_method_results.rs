@@ -79,7 +79,6 @@ async fn omp_forwarded_methods_return_their_declared_results() {
         .typed::<ThreadsCreate>(CreateThreadParams {
             title: Some("typed results".into()),
             workspace: ThreadWorkspace::default(),
-            tags: Vec::new(),
             model: Some(format!("{FAKE_PROVIDER}/{FAKE_MODEL}")),
             thinking_level: None,
             approval_mode: None,

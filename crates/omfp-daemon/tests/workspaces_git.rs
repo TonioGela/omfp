@@ -8,6 +8,7 @@ use omfp_daemon::git::{ChangedFile, Git, GitCli, WorktreeBranch};
 use omfp_daemon::store::Store;
 use omfp_daemon::workspaces::{
     Discovered, NewWorkspace, RepoKind, RepoSource, WorkspaceError, WorkspaceView, Workspaces,
+    fingerprint,
 };
 use omfp_testkit::TempRepo;
 use tempfile::TempDir;
@@ -197,30 +198,44 @@ fn a_folder_with_a_real_clone_worktree_and_link_is_scanned() {
     );
 }
 
-// spec: DMN-020, DMN-022
+// spec: DMN-020, DMN-024
 #[test]
-fn an_existing_repository_folder_is_its_own_root() {
+fn a_workspace_created_with_a_real_repository_links_it_in_a_new_folder() {
     let env = env();
+    let plain = TempDir::new().unwrap();
+    for bad in [plain.path().to_owned(), env.root.join(".git")] {
+        env.workspaces
+            .create(NewWorkspace {
+                link: Some(bad),
+                ..NewWorkspace::new()
+            })
+            .unwrap_err();
+    }
+    assert!(!env.workspaces_root.exists());
 
     let view = env
         .workspaces
         .create(NewWorkspace {
-            path: Some(env.repo.path().to_owned()),
+            link: Some(env.repo.path().to_owned()),
             ..NewWorkspace::new()
         })
         .unwrap();
 
-    assert!(!view.workspace.owned);
-    assert_eq!(view.workspace.path, env.root);
+    let name = dir_name(&env.root);
+    assert_eq!(view.workspace.name, name);
+    let folder = view.workspace.path;
+    assert_eq!(folder.parent(), Some(env.workspaces_root.as_path()));
     assert_eq!(
         view.repos,
         vec![Discovered {
-            name: dir_name(&env.root),
-            path: env.root.clone(),
-            kind: RepoKind::Clone,
+            name: name.clone(),
+            path: folder.join(&name),
+            kind: RepoKind::Link {
+                target: env.root.clone()
+            },
             branch: Some("main".into()),
             head: Some(env.head_of(&env.root)),
-            is_root: true,
+            is_root: false,
             canonical: env.root.clone(),
         }]
     );
@@ -399,7 +414,7 @@ fn status_and_diff_cover_commits_against_the_upstream_and_uncommitted_changes() 
 
 // spec: DMN-028
 #[test]
-fn deleting_an_owned_folder_removes_real_worktrees_and_keeps_link_targets() {
+fn removing_a_workspace_removes_real_worktrees_and_keeps_link_targets() {
     let env = env();
     let id = env.create("x").workspace.id;
     env.workspaces
@@ -411,7 +426,7 @@ fn deleting_an_owned_folder_removes_real_worktrees_and_keeps_link_targets() {
         .unwrap();
     let folder = view.workspace.path;
 
-    env.workspaces.remove(&id, true, false).unwrap();
+    env.workspaces.remove(&id, false).unwrap();
 
     assert!(!folder.exists());
     assert!(env.root.join("README.md").is_file());
@@ -461,4 +476,48 @@ fn git_cli_reports_toplevel_main_root_branch_head_and_upstream() {
     assert_eq!(env.git.current_branch(&env.root).unwrap(), None);
     assert_eq!(env.git.upstream(&env.root).unwrap(), None);
     assert_eq!(env.git.head(&env.root).unwrap(), Some(env.head_of(&wt)));
+}
+
+// spec: DMN-023
+/// Measures the cheap check (no git call) on a workspace of five real repositories: two links, a worktree and two
+/// clones. Run with `cargo nextest run -p omfp-daemon --run-ignored only --no-capture cheap_check`.
+#[test]
+#[ignore = "measurement: prints the median duration of the cheap check"]
+fn the_cheap_check_of_a_five_repository_workspace_takes_microseconds() {
+    let env = env();
+    let other = TempRepo::new().unwrap();
+    let folder = env.create("bench").workspace.path;
+    symlink(&env.root, folder.join("app")).unwrap();
+    symlink(other.path(), folder.join("lib")).unwrap();
+    let branch = WorktreeBranch::New {
+        name: "topic".into(),
+        base_ref: "main".into(),
+    };
+    env.git
+        .worktree_add(&env.root, &folder.join("wt"), &branch)
+        .unwrap();
+    for clone in ["copy", "copy-2"] {
+        env.git
+            .clone_repo(env.root.to_str().unwrap(), &folder.join(clone))
+            .unwrap();
+    }
+    std::fs::create_dir_all(folder.join(".omp")).unwrap();
+    std::fs::write(folder.join("notes.md"), "x").unwrap();
+
+    let mut times: Vec<std::time::Duration> = (0..2000)
+        .map(|_| {
+            let start = std::time::Instant::now();
+            std::hint::black_box(fingerprint(&folder));
+            start.elapsed()
+        })
+        .collect();
+    times.sort_unstable();
+
+    let (median, p90) = (times[times.len() / 2], times[times.len() * 9 / 10]);
+    println!(
+        "cheap check of 5 repositories: median {} µs, p90 {} µs",
+        median.as_micros(),
+        p90.as_micros()
+    );
+    assert!(median < std::time::Duration::from_millis(5), "{median:?}");
 }

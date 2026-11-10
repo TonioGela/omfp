@@ -120,11 +120,11 @@ methods! {
     ReposSuggest = "repos.suggest" (params::SuggestReposParams) -> params::RepoSuggestions;
     /// Child directories of a path on the daemon host (DMN-021).
     FsComplete = "fs.complete" (params::CompletePathParams) -> params::PathCompletions;
-    /// Creates a workspace: a new folder, or an existing one recorded as is.
+    /// Creates a workspace: a new folder under the workspaces root, optionally holding a link to a repository.
     WorkspacesCreate = "workspaces.create" (params::CreateWorkspaceParams) -> Workspace;
     /// Renames a workspace.
     WorkspacesUpdate = "workspaces.update" (params::UpdateWorkspaceParams) -> Workspace;
-    /// Removes a workspace without threads, deleting an owned folder on request.
+    /// Removes a workspace without threads: its repositories, then its folder.
     WorkspacesRemove = "workspaces.remove" (params::RemoveWorkspaceParams) -> params::Empty;
     /// Scans the workspace folder for repositories again.
     WorkspacesRescan = "workspaces.rescan" (params::WorkspaceRef) -> Workspace;
@@ -138,7 +138,7 @@ methods! {
     WorkspacesDiff = "workspaces.diff" (params::WorkspaceDiffParams) -> DiffPage;
     /// Creates a thread in an existing or a new workspace.
     ThreadsCreate = "threads.create" (params::CreateThreadParams) -> ThreadSummary;
-    /// Renames or retags a thread.
+    /// Renames a thread or changes its approval mode.
     ThreadsUpdate = "threads.update" (params::UpdateThreadParams) -> ThreadSummary;
     /// Archives a thread.
     ThreadsArchive = "threads.archive" (params::ThreadRef) -> params::Empty;

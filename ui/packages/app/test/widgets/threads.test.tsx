@@ -15,10 +15,10 @@ afterEach(cleanup);
 const INDEX: Partial<IndexSnapshot> = {
   workspaces: [
     { ...workspace("w1", [repo("w1", "fe", "main")]), name: "checkout" },
-    { ...workspace("w2"), name: "scratch", owned: false, path: "/home/me/scratch" },
+    { ...workspace("w2"), name: "scratch", path: "/home/me/scratch" },
   ],
   threads: [
-    thread("t1", "checkout-v2", "w1", { tags: ["release"], updatedAt: 5 }),
+    thread("t1", "checkout-v2", "w1", { updatedAt: 5 }),
     thread("t2", "", "w2", { needsAttention: true, updatedAt: 5 }),
     thread("t3", "old", "w2", { archivedAt: 3 }),
   ],
@@ -87,7 +87,7 @@ describe("omfp:threads", () => {
     expect(section("w1").dataset.current).toBe("true");
     expect(section("w2").dataset.current).toBeUndefined();
     client.indexEvents(
-      { kind: "thread_upserted", thread: thread("t1", "checkout-v2", "w1", { tags: ["release"], updatedAt: 9 }) },
+      { kind: "thread_upserted", thread: thread("t1", "checkout-v2", "w1", { updatedAt: 9 }) },
       { kind: "thread_upserted", thread: thread("t2", "", "w2", { needsAttention: true, updatedAt: 9 }) },
     );
     flush();
@@ -99,7 +99,7 @@ describe("omfp:threads", () => {
   });
 
   // spec: UI-022
-  test("the filter matches title, tags, workspace and repository names, hiding workspaces without a match", async () => {
+  test("the filter matches title, workspace and repository names, hiding workspaces without a match", async () => {
     const { user } = setup();
     await user.type(screen.getByTestId("thread-filter"), "FE");
     expect(sectionIds()).toEqual(["w1"]);
@@ -192,35 +192,44 @@ describe("omfp:threads", () => {
   });
 
   // spec: UI-023
-  test("+ workspace creates a workspace from an optional name, or an existing folder, and opens a draft in it", async () => {
+  test("+ workspace takes a name, or a path (/ or ~) completed on the daemon host that it links; Enter opens a draft", async () => {
     const { client, host, user } = setup();
     client.answers.set("workspaces.create", (params) => ({
       ...workspace("w9"),
       name: typeof params === "object" && params !== null && "name" in params ? String(params.name) : "workspace",
     }));
-    await user.type(screen.getByTestId("new-workspace-name"), "billing{Enter}");
+    client.answers.set("fs.complete", () => ({ entries: [{ name: "app", path: "/srv/app", isGitRoot: true }] }));
+    const field = screen.getByTestId("new-workspace-input");
+    await user.type(field, "billing{Enter}");
     expect(client.callsTo("workspaces.create").map((call) => call.params)).toEqual([{ name: "billing" }]);
     await waitFor(() => expect(host.window.get(DRAFT_THREAD)).toEqual({ workspaceId: "w9" }));
-    expect(screen.getByTestId("new-workspace-name")).toHaveProperty("value", "");
-    await user.click(screen.getByTestId("new-workspace-existing"));
-    expect(screen.queryByTestId("new-workspace-name")).toBeNull();
-    const path = screen.getByTestId("new-workspace-path");
-    await waitFor(() => expect(document.activeElement).toBe(path));
-    await user.type(path, "/srv/app/{Enter}");
+    expect(field).toHaveProperty("value", "");
+    expect(screen.getByTestId("new-workspace").dataset.mode).toBe("name");
+    expect(screen.queryByTestId("new-workspace-existing")).toBeNull();
+    act(() => host.window.set(DRAFT_THREAD, undefined));
+    await user.type(screen.getByTestId("new-workspace-input"), "/srv/a");
+    expect(screen.getByTestId("new-workspace").dataset.mode).toBe("path");
+    const option = await screen.findByTestId("path-option");
+    expect(option.dataset.path).toBe("/srv/app");
+    expect(client.callsTo("fs.complete").at(-1)?.params).toEqual({ path: "/srv/a" });
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByTestId("new-workspace-input")).toHaveProperty("value", "/srv/app");
+    await user.keyboard("{Enter}");
     expect(client.callsTo("workspaces.create").map((call) => call.params)).toEqual([
       { name: "billing" },
-      { path: "/srv/app" },
+      { link: "/srv/app" },
     ]);
-    await waitFor(() => expect(screen.getByTestId("new-workspace-name")).toBeDefined());
+    await waitFor(() => expect(host.window.get(DRAFT_THREAD)).toEqual({ workspaceId: "w9" }));
+    expect(screen.getByTestId("new-workspace").dataset.mode).toBe("name");
   });
 
   // spec: UI-023
   test("a failed workspace creation shows the error and keeps the name", async () => {
     const { client, user } = setup();
-    await user.type(screen.getByTestId("new-workspace-name"), "dup{Enter}");
+    await user.type(screen.getByTestId("new-workspace-input"), "dup{Enter}");
     act(() => client.callsTo("workspaces.create")[0]?.reject(new Error("name taken")));
     expect((await screen.findByTestId("new-workspace-error")).textContent).toBe("name taken");
-    expect(screen.getByTestId("new-workspace-name")).toHaveProperty("value", "dup");
+    expect(screen.getByTestId("new-workspace-input")).toHaveProperty("value", "dup");
   });
 
   // spec: UI-023
@@ -229,7 +238,7 @@ describe("omfp:threads", () => {
     expect(screen.getByTestId("no-workspaces-hint").textContent).toContain("No workspace yet");
     expect(screen.queryByTestId("thread-filter")).toBeNull();
     expect(screen.queryByTestId("workspace-section")).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("new-workspace-name")));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("new-workspace-input")));
   });
 
   // spec: UI-020
@@ -262,7 +271,7 @@ describe("omfp:threads", () => {
   });
 
   // spec: UI-020, DMN-028
-  test("deleting a workspace without threads asks, offering to delete its owned folder", async () => {
+  test("deleting a workspace without threads asks, saying its folder goes and linked projects stay", async () => {
     const { client, host, user } = setup({
       ...INDEX,
       threads: [thread("t2", "", "w2")],
@@ -271,12 +280,13 @@ describe("omfp:threads", () => {
     await user.click(within(section("w1")).getByTestId("delete-workspace"));
     const dialog = await screen.findByTestId("delete-workspace-dialog");
     expect(within(dialog).queryByTestId("delete-workspace-threads")).toBeNull();
-    await user.click(within(dialog).getByTestId("delete-workspace-folder"));
+    expect(within(dialog).queryByTestId("delete-workspace-folder")).toBeNull();
+    const message = within(dialog).getByTestId("delete-workspace-message").textContent ?? "";
+    expect(message).toContain("/work/w1 is deleted");
+    expect(message).toContain("linked projects are kept");
     await user.click(within(dialog).getByTestId("confirm-delete-workspace"));
     await waitFor(() =>
-      expect(client.callsTo("workspaces.remove").map((call) => call.params)).toEqual([
-        { workspaceId: "w1", deleteFolder: true },
-      ]),
+      expect(client.callsTo("workspaces.remove").map((call) => call.params)).toEqual([{ workspaceId: "w1" }]),
     );
     expect(client.callsTo("threads.delete")).toHaveLength(0);
     expect(host.window.get(DRAFT_THREAD)).toBeUndefined();
@@ -292,8 +302,6 @@ describe("omfp:threads", () => {
     const dialog = await screen.findByTestId("delete-workspace-dialog");
     const listed = within(within(dialog).getByTestId("delete-workspace-thread-list")).getAllByRole("listitem");
     expect(listed.map((item) => item.dataset.threadId)).toEqual(["t2", "t3"]);
-    // Not owned: its folder is kept, nothing to tick.
-    expect(within(dialog).queryByTestId("delete-workspace-folder")).toBeNull();
     const confirm = within(dialog).getByTestId("confirm-delete-workspace");
     expect(confirm.hasAttribute("disabled") || confirm.getAttribute("aria-disabled") === "true").toBe(true);
     await user.click(within(dialog).getByTestId("delete-workspace-threads"));
@@ -336,7 +344,7 @@ describe("omfp:threads", () => {
     run("nav.search");
     expect(document.activeElement).toBe(screen.getByTestId("thread-filter"));
     run("workspace.new");
-    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-name"));
+    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-input"));
   });
 
   // spec: UI-092
@@ -352,8 +360,7 @@ describe("omfp:threads", () => {
     }
     for (const testid of [
       "thread-filter",
-      "new-workspace-name",
-      "new-workspace-existing",
+      "new-workspace-input",
       "workspace-collapse",
       "workspace-menu",
       "delete-workspace",

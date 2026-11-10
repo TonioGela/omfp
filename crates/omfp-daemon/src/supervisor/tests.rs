@@ -68,7 +68,7 @@ impl Harness {
         self.threads.create(NewThread::new("t", ws)).unwrap().id
     }
 
-    /// A new owned workspace folder: its id and path.
+    /// A new workspace folder: its id and path.
     fn workspace(&self) -> (String, PathBuf) {
         let view = self.workspaces.create(NewWorkspace::new()).unwrap();
         (view.workspace.id, view.workspace.path)

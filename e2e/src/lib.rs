@@ -336,10 +336,32 @@ impl Journey {
     /// Creates a workspace named `name` from the "+ workspace" field at the top of the left column (UI-023) and waits
     /// until the draft thread it opens has the composer focused.
     pub async fn new_workspace(&self, name: &str) -> anyhow::Result<()> {
-        let field = self.element("[data-testid=new-workspace-name]").await?;
+        let field = self.element("[data-testid=new-workspace-input]").await?;
         field.click().await?;
         field.send_keys(name).await?;
         field.send_keys(Key::Enter).await?;
+        self.element("[data-testid=draft-thread]").await?;
+        self.until_focused("composer-input").await
+    }
+
+    /// Creates a workspace holding a link to the repository at `path` from the "+ workspace" field (UI-023): types
+    /// `typed` (a prefix of `path` starting with `/`), picks `path` among the daemon's completions (DMN-021), presses
+    /// Enter and waits until the draft thread it opens has the composer focused.
+    pub async fn new_linked_workspace(&self, typed: &str, path: &str) -> anyhow::Result<()> {
+        let input = "[data-testid=new-workspace-input]";
+        self.click(input).await?;
+        self.pick_path(input, typed, path).await?;
+        self.until("the picked path in the + workspace field", async |page| {
+            let value = page
+                .eval(
+                    "return document.querySelector(arguments[0]).value;",
+                    vec![json!(input)],
+                )
+                .await?;
+            Ok((value.as_str() == Some(path)).then_some(()))
+        })
+        .await?;
+        self.element(input).await?.send_keys(Key::Enter).await?;
         self.element("[data-testid=draft-thread]").await?;
         self.until_focused("composer-input").await
     }
@@ -386,9 +408,8 @@ impl Journey {
                 title: None,
                 workspace: ThreadWorkspace::New(CreateWorkspaceParams {
                     name: Some(workspace.to_owned()),
-                    path: None,
+                    link: None,
                 }),
-                tags: Vec::new(),
                 model: None,
                 thinking_level: None,
                 approval_mode: approval_mode.map(str::to_owned),

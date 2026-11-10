@@ -23,7 +23,6 @@ function setup(select: (host: OmfpHost) => void = (host) => host.window.set(SELE
   for (const method of [
     "workspaces.add_repo",
     "workspaces.remove_repo",
-    "workspaces.rescan",
     "workspaces.update",
   ] as const satisfies readonly CallMethod[]) {
     base.client.answers.set(method, () => ({}));
@@ -62,7 +61,7 @@ function pathInput(): HTMLInputElement {
 
 describe("omfp:workspace", () => {
   // spec: UI-025
-  test("the header shows the selected thread's workspace: name, folder and a shared warning", () => {
+  test("the header shows the selected thread's workspace: name, folder and a shared warning; no Rescan button", () => {
     const { client } = setup();
     expect(client.subscribed).toContain(workspaceTopic("w1"));
     expect(screen.getByTestId("workspace-name").textContent).toBe("checkout");
@@ -70,6 +69,7 @@ describe("omfp:workspace", () => {
     expect(screen.getByTestId("shared-warning").textContent).toBe("shared by 2 threads");
     expect(screen.queryByTestId("workspace-row")).toBeNull();
     expect(screen.queryByTestId("repositories")).toBeNull();
+    expect(screen.queryByTestId("refresh-workspace")).toBeNull();
   });
 
   // spec: UI-025, UI-023
@@ -135,7 +135,7 @@ describe("omfp:workspace", () => {
   });
 
   // spec: UI-025, DMN-025
-  test("removing a link is immediate; anything else asks first", async () => {
+  test("every kind can be removed: a link at once, a worktree or a clone after a confirmation", async () => {
     const { client, user } = setup();
     await user.click(within(row("be")).getByTestId("remove-repo"));
     expect(client.callsTo("workspaces.remove_repo").map((call) => call.params)).toEqual([
@@ -144,9 +144,12 @@ describe("omfp:workspace", () => {
     await user.click(within(row("fe")).getByTestId("remove-repo"));
     expect(screen.getByTestId("remove-repo-dialog")).toBeDefined();
     await user.click(screen.getByTestId("confirm-remove-repo"));
+    await user.click(within(row("api")).getByTestId("remove-repo"));
+    await user.click(await screen.findByTestId("confirm-remove-repo"));
     expect(client.callsTo("workspaces.remove_repo").map((call) => call.params)).toEqual([
       { workspaceId: "w1", name: "be" },
       { workspaceId: "w1", name: "fe" },
+      { workspaceId: "w1", name: "api" },
     ]);
   });
 
@@ -158,7 +161,7 @@ describe("omfp:workspace", () => {
       within(group)
         .getAllByRole("radio")
         .map((radio) => (radio as HTMLInputElement).value),
-    ).toEqual(["link", "worktree", "clone"]);
+    ).toEqual(["link", "clone"]);
     expect((within(group).getByRole("radio", { name: "Link" }) as HTMLInputElement).checked).toBe(true);
     expect(screen.queryByTestId("add-repo-url")).toBeNull();
     await user.type(pathInput(), "/tmp/x");
@@ -171,9 +174,8 @@ describe("omfp:workspace", () => {
   });
 
   // spec: UI-025, DMN-021
-  test("add a worktree of a suggested repository on an optional branch", async () => {
+  test("add a link to a suggested repository with the button", async () => {
     const { client, user } = setup();
-    await user.click(within(screen.getByTestId("add-repo-kind")).getByRole("radio", { name: "Worktree" }));
     expect(screen.getByTestId("add-repo-submit").hasAttribute("disabled")).toBe(true);
     await user.type(pathInput(), "fe");
     const option = (await screen.findAllByTestId("path-option")).find((element) => element.dataset.path === "/src/fe");
@@ -183,16 +185,15 @@ describe("omfp:workspace", () => {
     expect(option.dataset.kind).toBe("suggestion");
     await user.click(option);
     expect(pathInput().value).toBe("/src/fe");
-    await user.type(screen.getByTestId("add-repo-branch"), "feat/x");
     await user.click(screen.getByTestId("add-repo-submit"));
     expect(client.callsTo("workspaces.add_repo").map((call) => call.params)).toEqual([
-      { workspaceId: "w1", source: { kind: "worktree", repo: "/src/fe", branch: "feat/x" } },
+      { workspaceId: "w1", source: { kind: "link", path: "/src/fe" } },
     ]);
-    await waitFor(() => expect((screen.getByTestId("add-repo-branch") as HTMLInputElement).value).toBe(""));
+    await waitFor(() => expect(pathInput().value).toBe(""));
   });
 
   // spec: UI-025
-  test("add a clone by URL; rescan", async () => {
+  test("add a clone by URL", async () => {
     const { client, user } = setup();
     await user.click(within(screen.getByTestId("add-repo-kind")).getByRole("radio", { name: "Clone" }));
     expect(screen.queryByTestId("add-repo-path")).toBeNull();
@@ -200,16 +201,16 @@ describe("omfp:workspace", () => {
     expect(client.callsTo("workspaces.add_repo").map((call) => call.params)).toEqual([
       { workspaceId: "w1", source: { kind: "clone", url: "https://example.invalid/x.git" } },
     ]);
-    await user.click(screen.getByTestId("refresh-workspace"));
-    expect(client.callsTo("workspaces.rescan").map((call) => call.params)).toEqual([{ workspaceId: "w1" }]);
+    await waitFor(() => expect((screen.getByTestId("add-repo-url") as HTMLInputElement).value).toBe(""));
   });
 
   // spec: UI-025
   test("a failed action lands in the window's errors", async () => {
     const { client, host, user } = setup();
-    client.answers.delete("workspaces.rescan");
-    await user.click(screen.getByTestId("refresh-workspace"));
-    act(() => client.callsTo("workspaces.rescan")[0]?.reject(new Error("git_error: boom")));
+    client.answers.delete("workspaces.add_repo");
+    await user.click(within(screen.getByTestId("add-repo-kind")).getByRole("radio", { name: "Clone" }));
+    await user.type(screen.getByTestId("add-repo-url"), "https://example.invalid/x.git{Enter}");
+    act(() => client.callsTo("workspaces.add_repo")[0]?.reject(new Error("git_error: boom")));
     await waitFor(() => expect(host.window.get(ERRORS)).toEqual(["git_error: boom"]));
   });
 });

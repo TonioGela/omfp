@@ -1,5 +1,5 @@
 /**
- * `omfp:header`, the selected thread's header (UI-030): title with rename in place, tags, the workspace and
+ * `omfp:header`, the selected thread's header (UI-030): title with rename in place, the workspace and
  * repository chips, model and thinking selectors, context usage, session cost, the process state with stop/restart,
  * and archive/unarchive/delete (UI-026; delete asks first, in the frame's confirmation dialog). For the draft thread
  * (UI-023): its placeholder title and its workspace's chips.
@@ -31,7 +31,6 @@ import {
   type HeaderView,
   headerView,
   NO_DETAILS,
-  parseTags,
   splitModel,
   type ThreadDetails,
 } from "../../vm/header.ts";
@@ -87,7 +86,6 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
   return (
     <header className="omfp-header" data-testid="thread-header" data-thread-id={summary.id} data-omfp-scope="header">
       <Title threadId={summary.id} view={view} />
-      <Tags threadId={summary.id} tags={view.tags} />
       <Chips view={view} />
       <Session threadId={summary.id} view={view} onChanged={refreshSession} />
       <Process threadId={summary.id} view={view} />
@@ -167,40 +165,6 @@ function Title({ threadId, view }: { threadId: string; view: HeaderView }): Reac
       }}
       onCancel={() => setRenaming(undefined)}
     />
-  );
-}
-
-function Tags({ threadId, tags }: { threadId: string; tags: readonly string[] }): ReactNode {
-  const [editing, setEditing] = useState(false);
-  const actions = useThreadActions();
-  if (editing) {
-    return (
-      <InlineEditor
-        testid="tags-form"
-        inputTestId="tags-input"
-        label={text.tagsLabel}
-        initial={tags.join(", ")}
-        onSave={(value) => {
-          setEditing(false);
-          void actions.setTags(threadId, parseTags(value));
-        }}
-        onCancel={() => setEditing(false)}
-      />
-    );
-  }
-  return (
-    <div className="omfp-header__tags">
-      <ul aria-label={text.tags}>
-        {tags.map((tag) => (
-          <li key={tag} className="omfp-tag" data-testid="thread-tag">
-            {tag}
-          </li>
-        ))}
-      </ul>
-      <Button size="sm" variant="quiet" data-testid="edit-tags" onPress={() => setEditing(true)}>
-        {text.editTags}
-      </Button>
-    </div>
   );
 }
 

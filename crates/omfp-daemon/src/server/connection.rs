@@ -21,7 +21,7 @@ use super::convert::{bad_request, internal, supervisor_error};
 use super::dispatch::dispatch;
 use super::{AppState, OUTBOUND_QUEUE, SUPPORTED_PROTOCOLS};
 use crate::event_log::{Position, Sequenced, Start, Subscription};
-use crate::supervisor::WatchGuard;
+use crate::supervisor::{WatchGuard, WorkspaceWatchGuard};
 
 /// Close code for a connection that did not authenticate (PRT-001).
 pub(crate) const CLOSE_UNAUTHORIZED: u16 = 4401;
@@ -158,11 +158,18 @@ fn to_value(value: &impl Serialize) -> Result<Value, ErrorBody> {
     serde_json::to_value(value).map_err(internal)
 }
 
-/// A live subscription; dropping it stops delivery and, for a thread, stops watching it (PRT-024, PRT-025).
+/// Keeps a thread (PRT-025) or a workspace (DMN-023) watched while its subscription lives.
+enum Watch {
+    Thread { _guard: WatchGuard },
+    Workspace { _guard: WorkspaceWatchGuard },
+}
+
+/// A live subscription; dropping it stops delivery and stops watching its thread or workspace (PRT-024, PRT-025,
+/// DMN-023).
 struct Subscribed {
     generation: u64,
     task: JoinHandle<()>,
-    _watch: Option<WatchGuard>,
+    _watch: Option<Watch>,
 }
 
 impl Drop for Subscribed {
@@ -307,13 +314,14 @@ impl Connection {
                                 generation,
                             )
                             .await;
-                        Ok((task, Some(guard)))
+                        Ok((task, Some(Watch::Thread { _guard: guard })))
                     }
                     Err(error) => Err((id, error)),
                 }
             }
             Topic::Workspace(workspace_id) => match services.workspace_log(workspace_id).await {
                 Ok(log) => {
+                    let guard = services.supervisor.watch_workspace(workspace_id);
                     let subscription = log.subscribe(since.as_ref());
                     let task = self
                         .start(
@@ -325,7 +333,7 @@ impl Connection {
                             generation,
                         )
                         .await;
-                    Ok((task, None))
+                    Ok((task, Some(Watch::Workspace { _guard: guard })))
                 }
                 Err(error) => Err((id, error)),
             },

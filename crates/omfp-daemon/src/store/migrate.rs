@@ -1,30 +1,33 @@
 //! Embedded migrations (DMN-010), applied in order using `PRAGMA user_version`, each in its own transaction with
 //! foreign keys checked before commit.
 //!
-//! Migration 3 (workspace folders, D-11) is not only SQL: every existing thread gets a new owned workspace folder
-//! under the workspaces root, holding one symlink per directory of its old workspaces. Old worktrees stay where they
-//! are (the symlinks point at them), and the old roots are recorded so the first start removes them from the session
+//! Migration 3 (workspace folders, D-11) is not only SQL: every existing thread gets a new workspace folder under the
+//! workspaces root, holding one symlink per directory of its old workspaces. Old worktrees stay where they are (the
+//! symlinks point at them), and the old roots are recorded so the first start removes them from the session
 //! (DMN-029).
+//!
+//! Migration 6 (DMN-020) drops tags and `workspaces.owned`, then moves every workspace whose folder is not under the
+//! workspaces root into a new folder `<root>/<slug of its name>` holding one symlink, named after the old folder, to
+//! it (whatever it holds, even nothing). The old folder is never touched; ids, names and threads stay, so sessions
+//! resume (omp resumes a session whatever the cwd), and the first start syncs the roots (DMN-029).
 
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, Transaction, params};
 use tracing::{info, warn};
 
-use super::{
-    Provenance, Result, StoreError, Thread, TitleSource, Workspace, insert_workspace, new_id,
-    path_str,
-};
-use crate::names::{slugify, unique};
+use super::{Provenance, Result, StoreError, Thread, TitleSource, Workspace, new_id, path_str};
+use crate::names::{is_entry_name, slugify, unique};
 
 const MIGRATION_1: &str = include_str!("0001_initial.sql");
 const MIGRATION_2: &str = include_str!("0002_created_client.sql");
 const MIGRATION_3: &str = include_str!("0003_workspace_folders.sql");
 const MIGRATION_4: &str = include_str!("0004_title_source.sql");
 const MIGRATION_5: &str = include_str!("0005_seen_repositories.sql");
+const MIGRATION_6: &str = include_str!("0006_workspaces_under_root.sql");
 
 /// Number of migrations: the highest `user_version` this daemon knows.
-const LATEST: i64 = 5;
+const LATEST: i64 = 6;
 
 /// Applies pending migrations. Foreign keys are off while migrating (tables are rebuilt) and checked before each
 /// commit; the caller turns them on afterwards.
@@ -44,7 +47,8 @@ pub(super) fn run(conn: &mut Connection, workspaces_root: &Path) -> Result<()> {
             2 => tx.execute_batch(MIGRATION_2)?,
             3 => to_workspace_folders(&tx, workspaces_root)?,
             4 => tx.execute_batch(MIGRATION_4)?,
-            _ => tx.execute_batch(MIGRATION_5)?,
+            5 => tx.execute_batch(MIGRATION_5)?,
+            _ => to_workspaces_under_root(&tx, workspaces_root)?,
         }
         check_foreign_keys(&tx)?;
         tx.pragma_update(None, "user_version", version)?;
@@ -136,7 +140,6 @@ fn old_threads(tx: &Transaction<'_>) -> Result<Vec<OldThread>> {
                     created_by: Provenance::parse(&row.get::<_, String>(7)?),
                     created_at: row.get(8)?,
                     archived_at: row.get(9)?,
-                    tags: Vec::new(),
                 },
                 row.get(10)?,
             ))
@@ -187,8 +190,8 @@ fn old_dir(path: PathBuf, kind: &str, repository: Option<String>) -> OldDir {
     OldDir { path, name }
 }
 
-/// Creates the thread's owned folder (named after the thread, unique on disk and among names) with its links, and
-/// inserts the workspace row.
+/// Creates the thread's folder (named after the thread, unique on disk and among names) with its links, and inserts
+/// the workspace row.
 fn new_folder(
     tx: &Transaction<'_>,
     root: &Path,
@@ -223,11 +226,21 @@ fn new_folder(
         id: new_id(),
         name: name.clone(),
         path,
-        owned: true,
         created_by: old.thread.created_by.clone(),
         created_at: old.thread.created_at,
     };
-    insert_workspace(tx, &ws, old.client.as_deref())?;
+    tx.execute(
+        "INSERT INTO workspaces (id, name, path, owned, created_by, created_client, created_at)
+         VALUES (?1, ?2, ?3, 1, ?4, ?5, ?6)",
+        params![
+            ws.id,
+            ws.name,
+            path_str(&ws.path)?,
+            ws.created_by.as_str(),
+            old.client,
+            ws.created_at
+        ],
+    )?;
     names.push(name);
     Ok(ws)
 }
@@ -254,4 +267,67 @@ fn insert_thread_v3(tx: &Transaction<'_>, old: &OldThread, workspace_id: &str) -
         ],
     )?;
     Ok(())
+}
+
+/// Migration 6: see the module documentation.
+fn to_workspaces_under_root(tx: &Transaction<'_>, root: &Path) -> Result<()> {
+    tx.execute_batch(MIGRATION_6)?;
+    let workspaces: Vec<(String, String, PathBuf)> = {
+        let mut stmt = tx.prepare("SELECT id, name, path FROM workspaces ORDER BY id")?;
+        stmt.query_map([], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                PathBuf::from(row.get::<_, String>(2)?),
+            ))
+        })?
+        .collect::<Result<_, _>>()?
+    };
+    let under = |path: &Path, root: &Path| path != root && path.starts_with(root);
+    let canonical_root = std::fs::canonicalize(root).ok();
+    let outside: Vec<&(String, String, PathBuf)> = workspaces
+        .iter()
+        .filter(|(_, _, path)| {
+            !canonical_root
+                .as_deref()
+                .is_some_and(|root| under(path, root))
+        })
+        .collect();
+    if outside.is_empty() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(root).map_err(|error| io(root, &error))?;
+    let root = std::fs::canonicalize(root).map_err(|error| io(root, &error))?;
+    let mut paths: Vec<PathBuf> = workspaces.iter().map(|(_, _, path)| path.clone()).collect();
+    for (id, name, old) in outside {
+        let slug = unique(&slugify(name), "-", |slug| {
+            let path = root.join(slug);
+            Ok::<_, StoreError>(std::fs::symlink_metadata(&path).is_ok() || paths.contains(&path))
+        })?;
+        let path = root.join(slug);
+        std::fs::create_dir(&path).map_err(|error| io(&path, &error))?;
+        let link = path.join(link_name(old));
+        std::os::unix::fs::symlink(old, &link).map_err(|error| io(&link, &error))?;
+        tx.execute(
+            "UPDATE workspaces SET path = ?2 WHERE id = ?1",
+            params![id, path_str(&path)?],
+        )?;
+        info!(workspace = %id, from = %old.display(), to = %path.display(), "workspace moved under the workspaces root");
+        paths.push(path);
+    }
+    Ok(())
+}
+
+/// The entry name of the link to an old workspace folder: the folder's name without leading dots (hidden entries are
+/// not scanned), else `folder`.
+fn link_name(old: &Path) -> String {
+    let name = old
+        .file_name()
+        .map(|name| name.to_string_lossy().trim_start_matches('.').to_owned())
+        .unwrap_or_default();
+    if is_entry_name(&name) {
+        name
+    } else {
+        "folder".to_owned()
+    }
 }

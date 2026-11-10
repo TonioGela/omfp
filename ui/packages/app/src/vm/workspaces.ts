@@ -32,8 +32,6 @@ export interface WorkspaceRow {
   readonly id: string;
   readonly name: string;
   readonly path: string;
-  /** The daemon created the folder. */
-  readonly owned: boolean;
   /** Non-archived threads living in it. */
   readonly threadCount: number;
   /** More than one thread works in it (DMN-027). */
@@ -61,7 +59,6 @@ export function workspaceRow(
     id: workspace.id,
     name: workspace.name,
     path: workspace.path,
-    owned: workspace.owned,
     threadCount,
     shared: threadCount > 1,
     repos: workspace.repos.map((repo) => {
@@ -130,29 +127,24 @@ export function removalNeedsConfirmation(kind: RepoKind): boolean {
   return kind !== "link";
 }
 
-/** What the "add repository" control adds (its kind switch). */
-export type AddKind = "link" | "worktree" | "clone";
+/** What the "add repository" control adds (its kind switch, UI-025): worktrees are only made by the agent. */
+export type AddKind = "link" | "clone";
 
-export const ADD_KINDS: readonly AddKind[] = ["link", "worktree", "clone"];
+export const ADD_KINDS: readonly AddKind[] = ["link", "clone"];
 
 /** The fields of the "add repository" control; each kind reads its own. */
 export interface AddFields {
-  /** Folder to link, or the repository to make a worktree of. */
+  /** Folder to link. */
   readonly path: string;
-  /** Worktree branch (optional). */
-  readonly branch: string;
   readonly url: string;
 }
 
 /** The `workspaces.add_repo` source for `kind`, from trimmed fields; `undefined` while its required field is empty. */
 export function addRepoSource(kind: AddKind, fields: AddFields): RepoSource | undefined {
-  const path = fields.path.trim();
   switch (kind) {
-    case "link":
+    case "link": {
+      const path = fields.path.trim();
       return path === "" ? undefined : { kind: "link", path };
-    case "worktree": {
-      const branch = fields.branch.trim();
-      return path === "" ? undefined : { kind: "worktree", repo: path, ...(branch === "" ? {} : { branch }) };
     }
     case "clone": {
       const url = fields.url.trim();

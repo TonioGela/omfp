@@ -47,9 +47,9 @@ sequenceDiagram
 
 ## Topics, snapshots and catch-up
 
-Topics: `index` (workspaces with their discovered repositories, threads with their summaries and
-tags, and the user's theme), `thread/<id>` (one thread), `workspace/<id>` (git status of each repository of one
-workspace), `terminal/<id>` (terminal output, [05](05-terminal.md)).
+Topics: `index` (workspaces with their discovered repositories, threads with their summaries, and the user's theme),
+`thread/<id>` (one thread), `workspace/<id>` (git status of each repository of one workspace), `terminal/<id>` (terminal
+output, [05](05-terminal.md)).
 
 The `index` state is `{ workspaces, threads, theme, settings }`; its events are
 `workspace_upserted` / `workspace_removed`, `thread_upserted` / `thread_removed`,
@@ -102,15 +102,15 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `subscribe` / `unsubscribe` | `topic`, `since?` | see above |
 | `repos.suggest` | `query?` | `{ repos: [{ path, name, lastSeenAt }] }`: repositories seen in any workspace (DMN-021) |
 | `fs.complete` | `path` | `{ entries: [{ name, path, isGitRoot }] }`: child directories on the daemon host (DMN-021) |
-| `workspaces.create` | `name?`, `path?` (existing folder; omitted = new folder under the workspaces root) | workspace |
+| `workspaces.create` | `name?`, `link?` (a repository path: the new folder gets a link to it, DMN-020) | workspace; always a new folder under the workspaces root |
 | `workspaces.update` | `workspaceId`, `name` | workspace |
-| `workspaces.remove` | `workspaceId`, `deleteFolder?`, `force?` | `{}` (DMN-028) |
-| `workspaces.rescan` | `workspaceId` | workspace (DMN-023) |
+| `workspaces.remove` | `workspaceId`, `force?` | `{}`; removes the repositories and deletes the folder (DMN-028) |
+| `workspaces.rescan` | `workspaceId` | workspace (DMN-023; the daemon also rescans watched workspaces on its own) |
 | `workspaces.add_repo` | `workspaceId`, `name?`, `source`: `link { path }` \| `worktree { repo (id or path), branch?, baseRef? }` \| `clone { url }` \| `pr { pr }` (after S-08) | workspace (DMN-024) |
 | `workspaces.remove_repo` | `workspaceId`, `name`, `force?`, `deleteBranch?` | workspace (DMN-025) |
 | `workspaces.status` / `.diff` | `workspaceId`, `repo` (name), `path?`, `cursor?` | status / paged diff of one repository |
-| `threads.create` | `workspace`: `{ id }` \| `{ new: { name?, path? } }` (default: a new folder named after the title, else the first message), `prompt?` (first message), `tags[]`, `model?`, `thinkingLevel?`, `approvalMode?` (default `yolo`, DMN-074), `title?` (scripts and agents; otherwise generated, DMN-073) | thread |
-| `threads.update` | `threadId`, `title?` (a `set` title, DMN-073), `tags?`, `approvalMode?` (from the next start of the thread's omp) | thread |
+| `threads.create` | `workspace`: `{ id }` \| `{ new: { name?, link? } }` (default: a new folder named after the title, else the first message), `prompt?` (first message), `model?`, `thinkingLevel?`, `approvalMode?` (default `yolo`, DMN-074), `title?` (scripts and agents; otherwise generated, DMN-073) | thread |
+| `threads.update` | `threadId`, `title?` (a `set` title, DMN-073), `approvalMode?` (from the next start of the thread's omp) | thread |
 | `threads.archive` / `.unarchive` / `.delete` | `threadId` | `{}`; archive stops the thread's omp process and sets `archivedAt`, unarchive clears it, delete removes the thread's records and directory (workspaces are never removed implicitly) |
 | `threads.search` | `query` | `{ results: [{ threadId, snippet }] }`: threads whose conversation text contains `query`, most recently updated first (DMN-076) |
 | `thread.prompt` | `threadId`, `text`, `images?`, `behavior?: "steer" \| "followUp"` | `{ promptId }`; completion arrives as `prompt_result` |

@@ -1,15 +1,17 @@
 //! Workspace folders (02-daemon, "Workspaces and their repositories"): creating and removing workspaces, discovering
 //! their repositories (DMN-022) and suggesting the ones seen before (DMN-021), adding and removing repositories
-//! (DMN-024, DMN-025), and their git status (DMN-026).
+//! (DMN-024, DMN-025), their git status (DMN-026), and the cheap check that polls watched workspaces (DMN-023).
 //!
 //! Calls are blocking; the server layer runs them on blocking tasks.
 
+mod fingerprint;
 mod scan;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
+pub use fingerprint::{Fingerprint, fingerprint};
 pub use scan::{Discovered, RepoKind, scan};
 
 use crate::git::{Git, GitError, GitStatus, WorktreeBranch};
@@ -65,21 +67,21 @@ pub struct Suggestion {
 pub struct NewWorkspace {
     /// Exact name; taken names are refused.
     pub name: Option<String>,
-    /// Name used when `name` is absent, made unique (default: the folder's name, else `workspace`).
+    /// Name used when `name` is absent, made unique (default: the folder name of `link`, else `workspace`).
     pub fallback_name: Option<String>,
-    /// An existing folder to record; `None` makes a new owned folder under the workspaces root.
-    pub path: Option<PathBuf>,
+    /// A git repository to link into the new folder, as [`Workspaces::add_repo`] does with [`RepoSource::Link`].
+    pub link: Option<PathBuf>,
     pub created_by: Provenance,
 }
 
 impl NewWorkspace {
-    /// A new owned folder with every default.
+    /// A new empty folder with every default.
     #[must_use]
     pub fn new() -> Self {
         Self {
             name: None,
             fallback_name: None,
-            path: None,
+            link: None,
             created_by: Provenance::User,
         }
     }
@@ -119,7 +121,7 @@ pub struct WorkspaceView {
 pub struct Workspaces {
     store: Arc<Store>,
     git: Arc<dyn Git>,
-    /// Where owned folders are made (`--workspaces-root`).
+    /// Where workspace folders are made (`--workspaces-root`).
     root: PathBuf,
     /// One lock per repository (keyed by its main working tree), held during git operations that mutate the shared
     /// `.git` (DMN-025).
@@ -188,10 +190,16 @@ impl Workspaces {
         Ok(self.store.workspaces()?)
     }
 
-    /// Creates a workspace: a new owned folder `<root>/<slug>`, or an existing folder recorded as is (DMN-020).
+    /// Creates a workspace: always a new folder `<root>/<slug>` (DMN-020). With `link`, that repository is checked
+    /// first (nothing is created unless it is a git root), then linked into the folder as [`Self::add_repo`] does; the
+    /// name then defaults to the repository's folder name.
     pub fn create(&self, new: NewWorkspace) -> Result<WorkspaceView> {
         self.store.check_provenance(&new.created_by)?;
-        let existing = new.path.as_deref().map(existing_dir).transpose()?;
+        let target = new
+            .link
+            .as_deref()
+            .map(|path| git_root(&*self.git, path))
+            .transpose()?;
         let name = if let Some(name) = new.name {
             let name = name.trim();
             if name.is_empty() {
@@ -206,30 +214,31 @@ impl Workspaces {
         } else {
             let base = new
                 .fallback_name
-                .or_else(|| existing.as_deref().map(dir_name))
+                .or_else(|| target.as_deref().map(dir_name))
                 .filter(|name| !name.trim().is_empty())
                 .unwrap_or_else(|| "workspace".to_owned());
             unique(base.trim(), " ", |name| {
                 self.store.workspace_name_taken(name)
             })?
         };
-        let (path, owned) = match existing {
-            Some(path) => (path, false),
-            None => (self.new_folder(&name)?, true),
-        };
         let ws = Workspace {
             id: new_id(),
+            path: self.new_folder(&name)?,
             name,
-            path,
-            owned,
             created_by: new.created_by,
             created_at: now_ms(),
         };
-        if let Err(error) = self.store.insert_workspace(&ws) {
-            if owned {
-                let _ = std::fs::remove_dir(&ws.path);
+        let filled = || -> Result<()> {
+            if let Some(target) = &target {
+                let entry = entry_name(&ws.path, None, &dir_name(target))?;
+                std::os::unix::fs::symlink(target, ws.path.join(entry))?;
             }
-            return Err(error.into());
+            Ok(self.store.insert_workspace(&ws)?)
+        };
+        if let Err(error) = filled() {
+            // The folder is new and holds at most the link (never followed).
+            let _ = std::fs::remove_dir_all(&ws.path);
+            return Err(error);
         }
         self.view(ws)
     }
@@ -257,14 +266,15 @@ impl Workspaces {
         self.view(ws)
     }
 
-    /// Removes a workspace without threads (DMN-028). With `delete_folder`, an owned folder is deleted after its
-    /// repositories are removed as [`Self::remove_repo`] does; a folder the daemon does not own is only forgotten.
-    pub fn remove(&self, id: &str, delete_folder: bool, force: bool) -> Result<()> {
+    /// Removes a workspace without threads (DMN-028): its repositories are removed as [`Self::remove_repo`] does
+    /// (links unlinked, worktrees and clones refused with uncommitted changes unless `force`), then its folder is
+    /// deleted. Nothing outside the folder is deleted: symlinks are never followed.
+    pub fn remove(&self, id: &str, force: bool) -> Result<()> {
         let ws = self.get(id)?;
         if !self.store.workspace_thread_ids(id)?.is_empty() {
             return Err(WorkspaceError::HasThreads(ws.id));
         }
-        if delete_folder && ws.owned && ws.path.exists() {
+        if std::fs::symlink_metadata(&ws.path).is_ok_and(|meta| meta.is_dir()) {
             let repos = scan(&*self.git, &ws.path)?;
             if !force {
                 for repo in &repos {

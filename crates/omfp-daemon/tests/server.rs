@@ -437,11 +437,10 @@ async fn omp_errors_reach_the_client_with_omps_code() {
 async fn created_entities_record_the_creating_client() {
     let daemon = daemon(&[]).await;
     let mut script = daemon.client("script/nightly").await;
-    let folder = daemon.dir.path().join("existing");
-    std::fs::create_dir_all(&folder).unwrap();
+    let repo = daemon.external_repo("existing");
 
     let workspace = script
-        .ok("workspaces.create", json!({ "path": folder }))
+        .ok("workspaces.create", json!({ "link": repo }))
         .await;
     let thread = script
         .ok(
@@ -567,7 +566,6 @@ async fn linking_a_repository_into_a_live_threads_workspace_adds_its_root_and_un
             .ends_with("/workspaces/checkout-v2"),
         "{linked}"
     );
-    assert_eq!(linked["owned"], true);
     assert_eq!(linked["threadIds"], json!([id]));
     let repo = &linked["repos"][0];
     assert_eq!(
@@ -590,7 +588,7 @@ async fn linking_a_repository_into_a_live_threads_workspace_adds_its_root_and_un
     let removal = client
         .call(
             "workspaces.remove",
-            json!({ "workspaceId": workspace_id, "deleteFolder": true }),
+            json!({ "workspaceId": workspace_id, "force": true }),
         )
         .await
         .unwrap_err();
@@ -647,6 +645,45 @@ async fn a_repository_the_agent_links_appears_after_its_tool_run() {
         daemon.local_commands(),
         [format!("/add-dir {}", link.display())]
     );
+}
+
+// spec: DMN-020, DMN-023, DMN-028
+#[tokio::test(flavor = "multi_thread")]
+async fn a_workspace_open_in_a_window_is_polled_and_removing_it_unlinks_its_repositories() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let app = daemon.external_repo("app");
+    let workspace = client.ok("workspaces.create", json!({ "link": app })).await;
+    assert_eq!(workspace["name"], "app");
+    assert_eq!(
+        (
+            &workspace["repos"][0]["name"],
+            &workspace["repos"][0]["kind"]
+        ),
+        (&json!("app"), &json!("link"))
+    );
+    let id = workspace["id"].clone();
+    let folder = std::path::PathBuf::from(workspace["path"].as_str().unwrap());
+    client.ok("subscribe", json!({ "topic": "index" })).await;
+    let topic = format!("workspace/{}", id.as_str().unwrap());
+    client.ok("subscribe", json!({ "topic": topic })).await;
+
+    // No request follows: only the poll of the watched workspace sees the new link.
+    std::os::unix::fs::symlink(daemon.external_repo("lib"), folder.join("lib")).unwrap();
+    let updated = next_workspace(&mut client, &id).await;
+    let names: Vec<&str> = updated["repos"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|repo| repo["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["app", "lib"]);
+
+    client
+        .ok("workspaces.remove", json!({ "workspaceId": id }))
+        .await;
+    assert!(!folder.exists());
+    assert!(app.is_dir(), "a link's target is never touched");
 }
 
 #[tokio::test(flavor = "multi_thread")]

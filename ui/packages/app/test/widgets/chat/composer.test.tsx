@@ -4,12 +4,34 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { draftKey, SELECTED_THREAD } from "../../../src/sdk/index.ts";
+import { createKeyHandler } from "../../../src/keymap/handler.ts";
+import { DEFAULT_BINDINGS } from "../../../src/keymap/keymap.ts";
+import { draftKey, type OmfpHost, SELECTED_THREAD } from "../../../src/sdk/index.ts";
 import { ChatWidget, ComposerWidget } from "../../../src/widgets/chat/index.ts";
 import { eventsUntil, fixtureEvents, isFrame } from "./fixtures.ts";
-import { renderThread, THREAD } from "./harness.tsx";
+import { ManualClock, renderThread, THREAD } from "./harness.tsx";
 
-afterEach(cleanup);
+let removeKeymap: (() => void) | undefined;
+
+afterEach(() => {
+  removeKeymap?.();
+  removeKeymap = undefined;
+  cleanup();
+});
+
+/** The frame's global key handler with the default bindings, as in the app (UI-095). */
+function installKeymap(host: OmfpHost, clock: ManualClock): void {
+  const handler = createKeyHandler({ bindings: DEFAULT_BINDINGS, commands: host.commands, now: () => clock.now() });
+  document.addEventListener("keydown", handler);
+  removeKeymap = () => document.removeEventListener("keydown", handler);
+}
+
+/** A key press on the focused element, through React and then the document's keymap. */
+function press(key: string, init: KeyboardEventInit = {}): void {
+  act(() => {
+    fireEvent.keyDown(document.activeElement ?? document.body, { key, ...init });
+  });
+}
 
 const input = () => screen.getByTestId("composer-input") as HTMLTextAreaElement;
 
@@ -171,6 +193,97 @@ describe("composer", () => {
     flush();
     expect(input().value).toBe("draft for one");
     expect(host.window.get(draftKey("02T")).text).toBe("other");
+  });
+
+  // spec: UI-063, UI-095
+  test("Ctrl-C clears the draft (text and images) without aborting an idle thread; u restores it", async () => {
+    const clock = new ManualClock(0);
+    const { client, host } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"), clock);
+    installKeymap(host, clock);
+    const image = { type: "image" as const, data: "AA==", mimeType: "image/png" };
+    await userEvent.click(input());
+    await userEvent.keyboard("draft one");
+    act(() => host.window.set(draftKey(THREAD), (draft) => ({ ...draft, images: [image] })));
+    press("c", { ctrlKey: true });
+    expect(input().value).toBe("");
+    expect(host.window.get(draftKey(THREAD)).images).toEqual([]);
+    expect(screen.queryByTestId("interrupt-hint")).toBeNull();
+    // Empty draft on an idle thread: nothing to abort.
+    act(() => clock.advance(2000));
+    press("c", { ctrlKey: true });
+    expect(client.callsTo("thread.abort")).toHaveLength(0);
+    act(() => input().blur());
+    press("u");
+    expect(input().value).toBe("draft one");
+    expect(host.window.get(draftKey(THREAD)).images).toEqual([image]);
+  });
+
+  // spec: UI-063, UI-095
+  test("busy: Ctrl-C clears with a hint, a second press within 1 s aborts without restoring the queue", async () => {
+    const clock = new ManualClock(0);
+    const { client, host } = renderThread(<ComposerWidget />, queuedEvents(), clock);
+    installKeymap(host, clock);
+    await userEvent.click(input());
+    await userEvent.keyboard("typing");
+    press("c", { ctrlKey: true });
+    expect(input().value).toBe("");
+    expect(screen.getByTestId("interrupt-hint").textContent).toBe("Ctrl-C again to abort");
+    expect(client.callsTo("thread.abort")).toHaveLength(0);
+    act(() => clock.advance(500));
+    expect(screen.getByTestId("interrupt-hint")).toBeDefined();
+    press("c", { ctrlKey: true });
+    const [abort] = client.callsTo("thread.abort");
+    expect(abort?.params).toEqual({ threadId: THREAD });
+    await act(async () => abort?.resolve({ steering: [], followUp: [{ text: "later please" }] }));
+    expect(input().value).toBe("");
+    expect(screen.queryByTestId("interrupt-hint")).toBeNull();
+    expect(host.announcer.getSnapshot().message).toBe("Turn aborted");
+    // After the window the hint goes away and a press clears again instead of aborting.
+    await userEvent.keyboard("again");
+    press("c", { ctrlKey: true });
+    expect(screen.getByTestId("interrupt-hint")).toBeDefined();
+    act(() => clock.advance(1000));
+    expect(screen.getByTestId("interrupt-hint")).toBeDefined();
+    act(() => clock.advance(1));
+    expect(screen.queryByTestId("interrupt-hint")).toBeNull();
+    await userEvent.keyboard("more");
+    press("c", { ctrlKey: true });
+    expect(input().value).toBe("");
+    expect(client.callsTo("thread.abort")).toHaveLength(1);
+    // `u` restores the last cleared draft.
+    act(() => input().blur());
+    press("u");
+    expect(input().value).toBe("more");
+  });
+
+  // spec: UI-063
+  test("typing after a Ctrl-C ends the sequence: the next press within 1 s clears instead of aborting", async () => {
+    const clock = new ManualClock(0);
+    const { client, host } = renderThread(<ComposerWidget />, queuedEvents(), clock);
+    installKeymap(host, clock);
+    await userEvent.click(input());
+    await userEvent.keyboard("first");
+    press("c", { ctrlKey: true });
+    expect(screen.getByTestId("interrupt-hint")).toBeDefined();
+    act(() => clock.advance(300));
+    await userEvent.keyboard("second");
+    expect(screen.queryByTestId("interrupt-hint")).toBeNull();
+    press("c", { ctrlKey: true });
+    expect(input().value).toBe("");
+    expect(screen.getByTestId("interrupt-hint")).toBeDefined();
+    expect(client.callsTo("thread.abort")).toHaveLength(0);
+    press("c", { ctrlKey: true });
+    expect(client.callsTo("thread.abort")).toHaveLength(1);
+  });
+
+  // spec: UI-063
+  test("Ctrl-C on an empty draft of a busy thread aborts at once", async () => {
+    const clock = new ManualClock(0);
+    const { client, host } = renderThread(<ComposerWidget />, queuedEvents(), clock);
+    installKeymap(host, clock);
+    await userEvent.click(input());
+    press("c", { ctrlKey: true });
+    expect(client.callsTo("thread.abort").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
   });
 });
 

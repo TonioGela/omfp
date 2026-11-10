@@ -6,11 +6,13 @@ An application for working with many omp agents in parallel:
 
 - **threads** are conversations with an omp agent; each thread lives in one **workspace**, and several threads may
   share it;
-- a **workspace** is a folder the agent works in (its cwd); its **repositories** are its top-level entries — clones,
-  git worktrees, or links to projects elsewhere — so one thread can span several repositories (e.g. a frontend PR and a
-  backend PR); the agent adds or removes repos itself and the UI always shows them (D-11);
+- a **workspace** is a folder the daemon creates under its workspaces root, the agent's cwd; its **repositories** are
+  its top-level entries — clones, git worktrees, or links to projects elsewhere — so one thread can span several
+  repositories (e.g. a frontend PR and a backend PR); the agent adds or removes repos itself and the UI always shows
+  them, rescanning the folder on its own (D-11, DMN-023);
 - adding a repository is quick without any registry: the daemon suggests the repositories it has already seen and
-  completes paths on its own machine (DMN-021);
+  completes paths on its own machine (DMN-021); starting from an existing project is one step: typing its path in
+  "+ workspace" makes a workspace holding a link to it (UI-023);
 - conversations stream live, with readable tool cards, approvals, agent questions, the message queue, subagents and the
   session tree;
 - the same interface (a TypeScript web app, D-18) runs **in the browser** and **as a desktop app** (Tauri webview, M7),
@@ -34,16 +36,14 @@ erDiagram
   WORKSPACE ||--o{ THREAD : "cwd of"
   WORKSPACE ||--o{ WORKSPACE_REPO : "contains (discovered from the folder)"
   THREAD ||--|| OMP_SESSION_DIR : "owns"
-  THREAD }o--o{ TAG : "labelled"
   WORKSPACE_REPO |o--o| PULL_REQUEST : "optional link"
 ```
 
 | Entity | Meaning |
 | --- | --- |
-| Workspace | A folder: created by the daemon under the workspaces root, or an existing folder. The cwd of its threads. |
+| Workspace | A folder created by the daemon under the workspaces root (`<root>/<slug>`). The cwd of its threads. An existing project comes in as a link inside it, never as the workspace folder itself. |
 | Workspace repo | A git repository among the workspace's top-level entries: a `link` (symlink to a project elsewhere), a `worktree` (linked worktree of another repository) or a `clone`; or the folder itself when it is a repository. Not stored: discovered by scanning the folder. |
-| Thread | One omp session (its own session directory) in one workspace, title, tags, model settings, provenance. |
-| Tag | Free-form label for grouping threads in the UI (e.g. a feature name spanning several PRs). |
+| Thread | One omp session (its own session directory) in one workspace, title, model settings, provenance. |
 
 ## Components
 
@@ -133,7 +133,7 @@ sequenceDiagram
 
 ```text
 $XDG_DATA_HOME/omfp/            (default ~/.local/share/omfp)
-  omfp.db                        SQLite: repositories, workspaces, threads, tags, settings
+  omfp.db                        SQLite: seen repositories, workspaces, threads, settings
   token                         access token (mode 0600)
   threads/<thread-id>/sessions/ sessionDir passed to omp (open_session)
   threads/<thread-id>/omp.log   omp stderr

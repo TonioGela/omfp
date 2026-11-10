@@ -4,7 +4,7 @@
  * the "next thread needing attention" shortcut.
  */
 
-import type { ThreadSummary, Workspace, WorkspaceRepo } from "@omfp/protocol";
+import type { CreateWorkspaceParams, ThreadSummary, Workspace, WorkspaceRepo } from "@omfp/protocol";
 import { strings } from "../strings/index.ts";
 
 /** What a thread's badge says; also its `data-status` token. */
@@ -100,7 +100,7 @@ export function isFiltering(filter: ThreadFilter): boolean {
   return filter.query.trim() !== "";
 }
 
-/** `query` (case-insensitive) is in the title, a tag, the workspace's name or one of its repositories' names. */
+/** `query` (case-insensitive) is in the title, the workspace's name or one of its repositories' names. */
 export function matchesLocally(thread: ThreadSummary, workspace: Workspace | undefined, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (needle === "") {
@@ -108,7 +108,6 @@ export function matchesLocally(thread: ThreadSummary, workspace: Workspace | und
   }
   const fields = [
     displayTitle(thread),
-    ...thread.tags,
     ...(workspace === undefined
       ? []
       : [workspace.name, ...workspace.repos.flatMap((repo) => [repo.name, repoLabel(repo)])]),
@@ -119,6 +118,22 @@ export function matchesLocally(thread: ThreadSummary, workspace: Workspace | und
 /** The thread passes `filter`: locally or through its conversation. */
 export function matchesFilter(thread: ThreadSummary, workspace: Workspace | undefined, filter: ThreadFilter): boolean {
   return matchesLocally(thread, workspace, filter.query) || (isFiltering(filter) && filter.conversation.has(thread.id));
+}
+
+/** "+ workspace" input starting with `/` or `~` is a repository path, anything else a name (UI-023). */
+export function isWorkspacePath(input: string): boolean {
+  const trimmed = input.trim();
+  return trimmed.startsWith("/") || trimmed.startsWith("~");
+}
+
+/** `workspaces.create` params for the "+ workspace" input: `{ link }` for a path (without trailing slashes), else
+ * `{ name }`, or `{}` when empty (the daemon picks the placeholder name). */
+export function newWorkspaceParams(input: string): CreateWorkspaceParams {
+  const trimmed = input.trim();
+  if (isWorkspacePath(trimmed)) {
+    return { link: trimmed.length > 1 ? trimmed.replace(/\/+$/, "") : trimmed };
+  }
+  return trimmed === "" ? {} : { name: trimmed };
 }
 
 /** One workspace of the column. */

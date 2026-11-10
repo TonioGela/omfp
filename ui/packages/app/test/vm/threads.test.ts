@@ -8,8 +8,10 @@ import {
   decodeIds,
   displayTitle,
   isUnread,
+  isWorkspacePath,
   moveSelection,
   NO_FILTER,
+  newWorkspaceParams,
   nextNeedingAttention,
   SEARCH_DELAY_MS,
   type SearchHit,
@@ -38,8 +40,8 @@ function index(): { workspaces: Workspace[]; threads: ThreadSummary[] } {
     { ...workspace("w-empty"), name: "empty" },
   ];
   const threads = [
-    thread("t-checkout", "checkout-v2", "w-checkout", { tags: ["release"] }),
-    thread("t-flaky", "flaky-tests", "w-flaky", { tags: ["ci", "release"] }),
+    thread("t-checkout", "checkout-v2", "w-checkout"),
+    thread("t-flaky", "flaky-tests", "w-flaky"),
     thread("t-old", "old flake", "w-flaky", { archivedAt: 3 }),
     thread("t-scratch", "scratch", "w-scratch"),
     thread("t-orphan", "orphan", "w-gone"),
@@ -143,9 +145,8 @@ describe("thread list", () => {
   });
 
   // spec: UI-022
-  test("the filter matches title, tags, workspace and repository names, case-insensitively, and hides other workspaces", () => {
+  test("the filter matches title, workspace and repository names, case-insensitively, and hides other workspaces", () => {
     expect(sections(filter("V2"))).toEqual([["checkout", ["t-checkout"], []]]);
-    expect(sections(filter("ci"))).toEqual([["Flaky", ["t-flaky"], []]]);
     expect(sections(filter("flaky"))).toEqual([["Flaky", ["t-flaky"], ["t-old"]]]);
     expect(sections(filter("FE"))).toEqual([["checkout", ["t-checkout"], []]]);
     expect(sections(filter("be"))).toEqual([
@@ -153,6 +154,18 @@ describe("thread list", () => {
       ["Flaky", ["t-flaky"], ["t-old"]],
     ]);
     expect(sections(filter("nothing like it"))).toEqual([]);
+  });
+
+  // spec: UI-023
+  test("+ workspace input starting with / or ~ links that repository, anything else is the name", () => {
+    expect(isWorkspacePath("/src/be")).toBe(true);
+    expect(isWorkspacePath("~/src")).toBe(true);
+    expect(isWorkspacePath("checkout")).toBe(false);
+    expect(newWorkspaceParams(" /src/be/ ")).toEqual({ link: "/src/be" });
+    expect(newWorkspaceParams("~/src/fe")).toEqual({ link: "~/src/fe" });
+    expect(newWorkspaceParams("/")).toEqual({ link: "/" });
+    expect(newWorkspaceParams(" checkout ")).toEqual({ name: "checkout" });
+    expect(newWorkspaceParams("  ")).toEqual({});
   });
 
   // spec: UI-022

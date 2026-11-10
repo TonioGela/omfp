@@ -85,7 +85,6 @@ function summary(id: string): ThreadSummary {
     id,
     title: id,
     titleSource: "set",
-    tags: [],
     workspaceId: "01W",
     process: { state: "stopped" },
     settled: true,

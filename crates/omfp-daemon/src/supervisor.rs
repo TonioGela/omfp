@@ -279,6 +279,8 @@ struct Inner {
     changes: broadcast::Sender<String>,
     /// Ids of threads that finished a tool execution (a rescan trigger, DMN-023).
     tool_ends: broadcast::Sender<String>,
+    /// Clients watching each workspace (subscribers of `workspace/<id>`), which polls it (DMN-023).
+    workspace_watchers: Mutex<HashMap<String, usize>>,
     shutting_down: AtomicBool,
 }
 
@@ -315,6 +317,32 @@ impl Drop for WatchGuard {
     }
 }
 
+/// Counts a client watching a workspace while alive (DMN-023).
+pub struct WorkspaceWatchGuard {
+    inner: Arc<Inner>,
+    id: String,
+}
+
+impl std::fmt::Debug for WorkspaceWatchGuard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("WorkspaceWatchGuard")
+            .field(&self.id)
+            .finish()
+    }
+}
+
+impl Drop for WorkspaceWatchGuard {
+    fn drop(&mut self) {
+        let mut watchers = lock(&self.inner.workspace_watchers);
+        if let Some(count) = watchers.get_mut(&self.id) {
+            *count -= 1;
+            if *count == 0 {
+                watchers.remove(&self.id);
+            }
+        }
+    }
+}
+
 impl Supervisor {
     #[must_use]
     pub fn new(
@@ -336,6 +364,7 @@ impl Supervisor {
                 generations: AtomicU64::new(0),
                 changes: broadcast::channel(256).0,
                 tool_ends: broadcast::channel(256).0,
+                workspace_watchers: Mutex::new(HashMap::new()),
                 shutting_down: AtomicBool::new(false),
             }),
         }
@@ -377,6 +406,27 @@ impl Supervisor {
     pub fn is_running(&self, id: &str) -> bool {
         self.lookup(id)
             .is_some_and(|actor| lock(&actor.live).is_some())
+    }
+
+    /// Marks the workspace as watched until the guard drops (DMN-023).
+    #[must_use]
+    pub fn watch_workspace(&self, id: &str) -> WorkspaceWatchGuard {
+        *lock(&self.inner.workspace_watchers)
+            .entry(id.to_owned())
+            .or_default() += 1;
+        WorkspaceWatchGuard {
+            inner: Arc::clone(&self.inner),
+            id: id.to_owned(),
+        }
+    }
+
+    /// Number of clients watching the workspace (DMN-023).
+    #[must_use]
+    pub fn workspace_watchers(&self, id: &str) -> usize {
+        lock(&self.inner.workspace_watchers)
+            .get(id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// What the thread list shows about the thread.

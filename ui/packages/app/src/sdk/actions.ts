@@ -33,7 +33,6 @@ export interface ThreadActions {
   /** Deletes without asking. */
   remove(threadId: string): Promise<void>;
   rename(threadId: string, title: string): Promise<void>;
-  setTags(threadId: string, tags: readonly string[]): Promise<void>;
   stop(threadId: string): Promise<void>;
   restart(threadId: string): Promise<void>;
 }
@@ -78,33 +77,23 @@ function discardDraft(host: OmfpHost): void {
   host.window.reset(DRAFT_MESSAGE);
 }
 
-/** What removing a workspace takes along (UI-020, DMN-028). */
-export interface WorkspaceRemoval {
-  /** Deleted first: the daemon refuses a workspace that still has threads. */
-  readonly threadIds: readonly string[];
-  /** Also delete the folder the daemon created for it. */
-  readonly deleteFolder: boolean;
-}
-
-/** Deletes `removal.threadIds`, then removes the workspace, stopping at the first failure (reported to `ERRORS`);
- * drops the draft thread started in it. Resolves to whether everything worked. */
+/** Deletes `threadIds` first (the daemon refuses a workspace that still has threads), then removes the workspace,
+ * which deletes its folder (DMN-028), stopping at the first failure (reported to `ERRORS`); drops the draft thread
+ * started in it. Resolves to whether everything worked. */
 export async function removeWorkspace(
   host: OmfpHost,
   workspaceId: string,
-  removal: WorkspaceRemoval,
+  threadIds: readonly string[],
 ): Promise<boolean> {
   if (host.window.get(DRAFT_THREAD)?.workspaceId === workspaceId) {
     discardDraft(host);
   }
   try {
-    for (const threadId of removal.threadIds) {
+    for (const threadId of threadIds) {
       forget(host, threadId);
       await host.client.call("threads.delete", { threadId });
     }
-    await host.client.call("workspaces.remove", {
-      workspaceId,
-      ...(removal.deleteFolder ? { deleteFolder: true } : {}),
-    });
+    await host.client.call("workspaces.remove", { workspaceId });
     return true;
   } catch (error) {
     reportError(host, error);
@@ -164,7 +153,6 @@ export function threadActions(host: OmfpHost): ThreadActions {
       return attempt(() => client.call("threads.delete", { threadId }));
     },
     rename: (threadId, title) => attempt(() => client.call("threads.update", { threadId, title })),
-    setTags: (threadId, tags) => attempt(() => client.call("threads.update", { threadId, tags: [...tags] })),
     stop: (threadId) => attempt(() => client.call("thread.stop", { threadId })),
     restart: (threadId) => attempt(() => client.call("thread.restart", { threadId })),
   };

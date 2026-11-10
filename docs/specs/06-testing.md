@@ -109,14 +109,14 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 
 | ID | Scenario |
 | --- | --- |
-| E2E-01 | "+ workspace" with a name → a draft thread opens → add a new worktree of a repository given by path in the workspace widget → send the first message → the thread is created, the streamed reply renders (the agent's cwd is the workspace folder) → thread idle. |
+| E2E-01 | "+ workspace" with a repository's path typed with the path field's completion → a new workspace holding a link to it opens a draft thread → send the first message → the thread is created, the streamed reply renders (the agent's cwd is the workspace folder) → thread idle. |
 | E2E-02 | Prompt triggers a tool needing approval → approve in UI → tool card completes. |
 | E2E-03 | `ask` with two questions (single + multi) → answer → agent continues with the answers (checked on `fake-llm` recorded request). |
 | E2E-04 | Reload the page mid-stream → transcript continues without gaps or duplicates. |
-| E2E-05 | Queue a follow-up while busy → remove it → abort with queued steer → text restored in composer. |
+| E2E-05 | Queue a follow-up while busy → remove it → abort with queued steer → text restored in composer. Then `Ctrl-C`: type a draft → `Ctrl-C` clears it; queue a follow-up while busy → `Ctrl-C` twice → the turn is aborted, the queue and the composer are empty. |
 | E2E-06 | Agent edits a file → Changes panel shows the diff. |
 | E2E-07 | Open thread in `omp` terminal → `/exit` → back in app with history reloaded. |
-| E2E-08 | In a workspace, add two repositories from two different places (a link and a new worktree) with the path field's completion → `/` search by either repository's name finds the thread. |
+| E2E-08 | In a workspace, link two repositories from two different places with the path field's completion → `/` search by either repository's name finds the thread. |
 | E2E-09 | Workspace folders (D-11): link an external repo from the UI → it appears in the Workspace panel and the agent's next turn has its `AGENTS.md`; a scripted agent runs `git worktree add` and `ln -s` in the workspace → both appear live; remove the link → `/remove-dir` is sent and the repo disappears. |
 
 ## Traceability

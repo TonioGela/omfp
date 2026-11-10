@@ -8,9 +8,6 @@ expression: golden
     "method": "threads.update",
     "params": {
       "approvalMode": "always-ask",
-      "tags": [
-        "checkout-v2"
-      ],
       "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
       "title": "Checkout v2"
     },
@@ -33,9 +30,6 @@ expression: golden
         }
       },
       "settled": true,
-      "tags": [
-        "checkout-v2"
-      ],
       "title": "Checkout v2",
       "titleSource": "generated",
       "updatedAt": 1794268860000,

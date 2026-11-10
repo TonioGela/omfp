@@ -183,7 +183,7 @@ describe("frame", () => {
     expect(screen.getByTestId("draft-thread")).toBeDefined();
     press(" ");
     press("w");
-    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-name"));
+    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-input"));
   });
 
   // spec: UI-023
@@ -192,7 +192,24 @@ describe("frame", () => {
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "new{Enter}");
     expect(host.window.get(DRAFT_THREAD)).toBeUndefined();
-    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-name"));
+    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-input"));
+  });
+
+  // spec: UI-095, UI-025
+  test("`:rescan` completes like other commands and rescans the current workspace", async () => {
+    const { client, host, user } = setup();
+    client.answers.set("workspaces.rescan", () => workspace("w1"));
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "resc");
+    // Without a current workspace there is nothing to rescan.
+    expect(screen.queryAllByTestId("command-option").map((option) => option.dataset.value)).toEqual([]);
+    await user.keyboard("{Escape}");
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "resc");
+    expect(screen.getAllByTestId("command-option").map((option) => option.dataset.value)).toEqual(["rescan"]);
+    await user.click(screen.getAllByTestId("command-option")[0] ?? document.body);
+    expect(client.callsTo("workspaces.rescan").map((call) => call.params)).toEqual([{ workspaceId: "w1" }]);
   });
 
   // spec: UI-026, UI-092

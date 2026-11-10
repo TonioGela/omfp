@@ -74,6 +74,9 @@ export const chat = {
     focus: "Focus the composer",
     leave: "Leave the composer",
     abortCommand: "Abort the running turn",
+    interruptCommand: "Clear the draft, or abort when it is empty (Ctrl-C)",
+    restoreCommand: "Restore the last cleared draft",
+    interruptHint: "Ctrl-C again to abort",
   },
   queue: {
     label: "Queued messages",
@@ -114,6 +117,7 @@ export const chat = {
     request: (title: string) => `Request: ${title}`,
     aborted: "Turn aborted",
     abortFailed: "Abort failed",
+    draftCleared: "Draft cleared",
     queued: "Message queued",
   },
 } as const;

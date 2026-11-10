@@ -11,7 +11,7 @@ The interface is a surface shared by the user and the agents, and agents get **t
 everything the UI can do, an agent can do — directly through tools, or through UI it builds itself.
 
 1. **Everything in the protocol**: list threads and see what each one is doing (state, transcript, tool runs, pending
-   questions), spawn threads, send them messages, wait for them, rename, tag, archive; create workspaces and
+   questions), spawn threads, send them messages, wait for them, rename, archive; create workspaces and
    add or remove their repositories; read git status and diffs. Every protocol method is an agent tool (AGT-001).
 2. **Arbitrary UI**: an agent writes its own pieces of interface in JavaScript (HTML, CSS, JS — anything a web page can
    do), mounted in a thread panel, a dashboard or a window, live and interactive, wired to what it is doing (e.g. a real

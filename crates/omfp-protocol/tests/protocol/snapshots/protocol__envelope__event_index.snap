@@ -20,9 +20,6 @@ expression: golden
         }
       },
       "settled": true,
-      "tags": [
-        "checkout-v2"
-      ],
       "title": "Checkout v2",
       "titleSource": "generated",
       "updatedAt": 1794268860000,

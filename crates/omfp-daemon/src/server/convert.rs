@@ -124,7 +124,6 @@ pub(crate) fn workspace(
         id: ws.id.clone(),
         name: ws.name.clone(),
         path: text(&ws.path),
-        owned: ws.owned,
         repos: repos
             .iter()
             .map(|repo| WorkspaceRepo {
@@ -172,7 +171,6 @@ pub(crate) fn thread_summary(
             store::TitleSource::Generated => TitleSource::Generated,
             store::TitleSource::Set => TitleSource::Set,
         },
-        tags: thread.tags.clone(),
         workspace_id: thread.workspace_id.clone(),
         process: status.process,
         settled: status.settled,

@@ -51,6 +51,7 @@ impl State {
 pub struct FakeGit {
     state: Mutex<State>,
     on_worktree_add: Mutex<Option<Hook>>,
+    on_status: Mutex<Option<Hook>>,
 }
 
 impl fmt::Debug for FakeGit {
@@ -148,6 +149,15 @@ impl FakeGit {
     pub fn on_worktree_add(&self, hook: impl Fn(&Path) + Send + Sync + 'static) {
         *self
             .on_worktree_add
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(hook));
+    }
+
+    /// Calls `hook` with the checkout at the start of every `status` (one per repository in a full scan of a
+    /// workspace, DMN-023), outside the fake's own locks.
+    pub fn on_status(&self, hook: impl Fn(&Path) + Send + Sync + 'static) {
+        *self
+            .on_status
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(hook));
     }
@@ -309,6 +319,14 @@ impl Git for FakeGit {
     }
 
     fn status(&self, dir: &Path, base_ref: Option<&str>) -> Result<GitStatus> {
+        let hook = self
+            .on_status
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        if let Some(hook) = hook {
+            hook(dir);
+        }
         Ok(GitStatus {
             branch: self.current_branch(dir)?,
             ahead: base_ref.map(|_| 0),

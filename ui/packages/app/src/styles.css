@@ -423,7 +423,6 @@
   }
 
   .omfp-header__title,
-  .omfp-header__tags,
   .omfp-header__chips,
   .omfp-header__session,
   .omfp-header__process,
@@ -443,22 +442,6 @@
   .omfp-header__title h1[data-placeholder="true"] {
     font-style: italic;
     color: var(--omfp-on-surface-variant);
-  }
-
-  .omfp-header__tags ul {
-    display: flex;
-    gap: var(--omfp-space-1);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .omfp-tag {
-    padding: 0 var(--omfp-space-2);
-    border-radius: var(--omfp-radius-sm);
-    background: var(--omfp-tertiary-container);
-    color: var(--omfp-on-tertiary-container);
-    font-size: var(--omfp-font-size-sm);
   }
 
   .omfp-meter {
@@ -521,17 +504,12 @@
   .omfp-workspace__title,
   .omfp-workspace__folder,
   .omfp-workspace__meta,
-  .omfp-workspace__heading,
   .omfp-workspace__repo,
   .omfp-workspace__add-fields {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: var(--omfp-space-2);
-  }
-
-  .omfp-workspace__heading {
-    justify-content: space-between;
   }
 
   .omfp-workspace__path {

@@ -1,8 +1,9 @@
 /**
  * `omfp:composer`: queue chips (UI-062) and the composer (UI-060..064) of the selected thread. Multi-line input with
  * image paste/drop, `/` command completion (React Aria `Autocomplete` + `TextArea` + `Menu` in a non-modal `Popover`,
- * S-11), the send mode on the send button, Esc aborting a busy thread or leaving the composer, and drafts per thread.
- * With no thread selected, the composer of the draft thread (UI-023): its first message creates the thread.
+ * S-11), the send mode on the send button, Esc aborting a busy thread or leaving the composer, `Ctrl-C` clearing the
+ * draft (restored by `u`) then aborting without restoring the queue (UI-063), and drafts per thread. With no thread
+ * selected, the composer of the draft thread (UI-023): its first message creates the thread.
  */
 
 import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/core";
@@ -20,6 +21,7 @@ import {
   useAnnounce,
   useCall,
   useCommand,
+  useHost,
   useThreadActions,
   useWindowState,
 } from "../../sdk/index.ts";
@@ -30,11 +32,14 @@ import {
   canAbort,
   commandsOf,
   complete,
+  INTERRUPT_WINDOW_MS,
   imageAttachment,
+  interruptAction,
   isBlank,
   isBusy,
   keyAction,
   type Modifiers,
+  restoreCleared,
   restoreDraft,
   restoredTexts,
   restoreFailedPrompt,
@@ -46,7 +51,7 @@ import {
 } from "../../vm/composer.ts";
 import { type QueueChip, type QueueOp, queueChips, queueOpApplied, settleQueueOp } from "../../vm/queue.ts";
 import { testId, type WidgetProps } from "./props.ts";
-import { PENDING_QUEUE, useSelectedThread } from "./state.ts";
+import { clearedDraftKey, PENDING_QUEUE, useClock, useSelectedThread } from "./state.ts";
 
 const text = strings.chat.composer;
 
@@ -260,9 +265,17 @@ function useThreadCommands(
 
 /** The composer of one thread; mount it with `key={threadId}`. */
 export function Composer({ threadId, state }: { threadId: string; state: ThreadState }) {
+  const host = useHost();
   const call = useCall();
   const announce = useAnnounce();
+  const clock = useClock();
   const [draft, setDraft] = useWindowState(draftKey(threadId));
+  const [cleared, setCleared] = useWindowState(clearedDraftKey(threadId));
+  /** When `Ctrl-C` last cleared the draft: a second press within {@link INTERRUPT_WINDOW_MS}, with no typing in
+   * between, aborts (UI-063). */
+  const lastInterrupt = useRef<number | undefined>(undefined);
+  /** "Ctrl-C again to abort" shows while a second press would abort. */
+  const [interruptHint, setInterruptHint] = useState(false);
   const [steer, setSteer] = useState(false);
   /** Esc closed the suggestions; typing opens them again. */
   const [dismissed, setDismissed] = useState(false);
@@ -323,6 +336,40 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
     });
   };
 
+  /** `Ctrl-C` (UI-063): clears a non-empty draft, kept for `u`; aborts an empty one (or on a second press within
+   * {@link INTERRUPT_WINDOW_MS}) without putting the queued texts back. */
+  const interrupt = () => {
+    const now = clock.now();
+    const current = host.window.get(draftKey(threadId));
+    if (interruptAction(current, now, lastInterrupt.current) === "clear") {
+      lastInterrupt.current = now;
+      setCleared(current);
+      setDraft(EMPTY_DRAFT);
+      setInterruptHint(true);
+      announce(strings.chat.announce.draftCleared);
+      return;
+    }
+    lastInterrupt.current = undefined;
+    setInterruptHint(false);
+    if (abortable) {
+      call("thread.abort", { threadId }).then(
+        () => announce(strings.chat.announce.aborted),
+        () => announce(strings.chat.announce.abortFailed),
+      );
+    }
+  };
+  useEffect(() => {
+    if (!interruptHint) {
+      return undefined;
+    }
+    return clock.every(INTERRUPT_WINDOW_MS / 4, () => {
+      const since = lastInterrupt.current;
+      if (since === undefined || clock.now() - since > INTERRUPT_WINDOW_MS) {
+        setInterruptHint(false);
+      }
+    });
+  }, [clock, interruptHint]);
+
   useCommand({ id: "composer.focus", title: text.focus, run: () => inputRef.current?.focus() });
   useCommand({ id: "thread.abort", title: text.abortCommand, enabled: () => abortable, run: abort });
   useCommand({
@@ -331,9 +378,22 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
     scope: "composer",
     run: () => (abortable ? abort() : leave()),
   });
+  useCommand({ id: "composer.interrupt", title: text.interruptCommand, scope: "composer", run: interrupt });
+  useCommand({
+    id: "composer.restore",
+    title: text.restoreCommand,
+    enabled: () => cleared !== undefined,
+    run: () => {
+      if (cleared !== undefined) {
+        setDraft((previous) => restoreCleared(previous, cleared));
+        setCleared(undefined);
+      }
+    },
+  });
 
   // Captured before React Aria's Autocomplete: while no suggestion list is open the text area keeps its own keys
-  // (arrows move the caret), and the composer's bindings apply.
+  // (arrows move the caret), and the composer's bindings apply. Chords other than the send ones (Ctrl-C, Alt-a, …)
+  // go on to the keymap (UI-095).
   const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== inputRef.current || event.nativeEvent.isComposing) {
       return;
@@ -355,6 +415,9 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
         event.stopPropagation();
         setDismissed(true);
       }
+      return;
+    }
+    if ((modifiers.ctrl || modifiers.alt || modifiers.meta) && event.key !== "Enter") {
       return;
     }
     event.stopPropagation();
@@ -404,6 +467,9 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
         onInputChange={(value) => {
           setDraft((previous) => ({ ...previous, text: value }));
           setDismissed(false);
+          // Typing ends a `Ctrl-C` sequence: the next press clears what was typed rather than aborting (UI-063).
+          lastInterrupt.current = undefined;
+          setInterruptHint(false);
         }}
       >
         <TextArea
@@ -462,6 +528,11 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
           <Button variant="danger" data-testid="abort" onPress={abort}>
             {text.abort}
           </Button>
+        )}
+        {interruptHint && abortable && (
+          <p className="omfp-muted" role="status" data-testid="interrupt-hint">
+            {text.interruptHint}
+          </p>
         )}
       </div>
     </form>

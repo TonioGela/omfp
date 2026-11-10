@@ -46,7 +46,7 @@ describe("keymap", () => {
     expect(keyToken(key("Shift", { shiftKey: true }))).toBeUndefined();
   });
 
-  // spec: UI-095, UI-020, UI-022, UI-023
+  // spec: UI-095, UI-020, UI-022, UI-023, UI-063
   test("the defaults are vim-style, with the command line and the Space leader", () => {
     const table = (command: string, mode: "normal" | "insert" = "normal") => keysFor(DEFAULT_BINDINGS, command, mode);
     expect(table("nav.next")).toEqual(["j"]);
@@ -63,9 +63,13 @@ describe("keymap", () => {
     expect(table("nav.delete")).toEqual(["d d"]);
     expect(table("nav.toggleSection")).toEqual(["z a"]);
     expect(table("focus.leave", "insert")).toEqual(["Esc"]);
+    expect(table("composer.interrupt", "insert")).toEqual(["Ctrl-c"]);
+    expect(table("composer.interrupt")).toEqual(["Ctrl-c"]);
+    expect(table("composer.restore")).toEqual(["u"]);
     // No single-key binding while typing.
     expect(DEFAULT_BINDINGS.filter((binding) => binding.mode === "insert").map((binding) => binding.keys)).toEqual([
       "Esc",
+      "Ctrl-c",
       "Alt-a",
       "Alt-n",
     ]);
@@ -180,6 +184,25 @@ describe("global key handler", () => {
     expect(document.activeElement).toBe(field);
     expect(press(field, "Escape")).toBe(true);
     expect(document.activeElement).not.toBe(field);
+  });
+
+  // spec: UI-063, UI-095
+  test("Ctrl-c runs the composer's command only inside the composer; elsewhere it copies as usual", () => {
+    document.body.innerHTML = `<form ${SCOPE_ATTRIBUTE}="composer"><textarea id="draft"></textarea><button id="send">s</button></form><input id="filter"><p id="out" tabindex="-1"></p>`;
+    const { register, ran, press } = setup();
+    register("composer.interrupt", "composer");
+    const element = (id: string) => {
+      const found = document.getElementById(id);
+      if (found === null) {
+        throw new Error("fixture");
+      }
+      return found;
+    };
+    expect(press(element("draft"), "c", { ctrlKey: true })).toBe(true);
+    expect(press(element("send"), "c", { ctrlKey: true })).toBe(true);
+    expect(press(element("filter"), "c", { ctrlKey: true })).toBe(false);
+    expect(press(element("out"), "c", { ctrlKey: true })).toBe(false);
+    expect(ran).toEqual(["composer:composer.interrupt", "composer:composer.interrupt"]);
   });
 
   // spec: UI-095, UI-092

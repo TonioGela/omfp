@@ -20,7 +20,6 @@ fn workspace(name: &str, path: &str) -> Workspace {
         id: new_id(),
         name: name.into(),
         path: path.into(),
-        owned: false,
         created_by: Provenance::User,
         created_at: now_ms(),
     }
@@ -41,7 +40,6 @@ fn thread(created_by: Provenance, workspace_id: &str) -> Thread {
         created_by,
         created_at: now_ms(),
         archived_at: None,
-        tags: vec!["auth".into(), "backend".into()],
     }
 }
 
@@ -103,7 +101,6 @@ fn unknown_ids_are_not_found() {
         store
             .set_thread_title("nope", "x", TitleSource::Set)
             .unwrap_err(),
-        store.set_thread_tags("nope", &[]).unwrap_err(),
         store.set_thread_roots("nope", &[]).unwrap_err(),
         store.set_created_client("nope", "cli").unwrap_err(),
     ] {
@@ -115,14 +112,13 @@ fn unknown_ids_are_not_found() {
 #[test]
 fn workspaces_round_trip_by_id_path_and_name() {
     let (_dir, store, shop) = with_workspace();
-    let owned = Workspace {
-        owned: true,
+    let made = Workspace {
         created_by: Provenance::Thread("01JAGENT".into()),
         ..workspace("Fix login", "/omfp/workspaces/fix-login")
     };
-    store.insert_workspace(&owned).unwrap();
+    store.insert_workspace(&made).unwrap();
 
-    assert_eq!(store.workspace(&owned.id).unwrap(), owned);
+    assert_eq!(store.workspace(&made.id).unwrap(), made);
     assert_eq!(
         store.workspace_by_path("/work/shop".as_ref()).unwrap(),
         Some(shop.clone())
@@ -133,7 +129,7 @@ fn workspaces_round_trip_by_id_path_and_name() {
     );
     assert!(store.workspace_name_taken("Fix login").unwrap());
     assert!(!store.workspace_name_taken("fix login").unwrap());
-    assert_eq!(store.workspaces().unwrap(), vec![shop, owned]);
+    assert_eq!(store.workspaces().unwrap(), vec![shop, made]);
 }
 
 // spec: DMN-020
@@ -180,7 +176,7 @@ fn a_workspace_with_threads_is_not_deleted() {
 
 // spec: ARC-008, ARC-009, DMN-027
 #[test]
-fn threads_round_trip_with_their_workspace_tags_and_provenance() {
+fn threads_round_trip_with_their_workspace_and_provenance() {
     let (_dir, store, ws) = with_workspace();
     let other = workspace("other", "/work/other");
     store.insert_workspace(&other).unwrap();
@@ -214,9 +210,6 @@ fn thread_fields_are_updated() {
         .set_thread_title(&t.id, "Renamed", TitleSource::Generated)
         .unwrap();
     store.set_thread_approval_mode(&t.id, "yolo").unwrap();
-    store
-        .set_thread_tags(&t.id, &["zeta".into(), "alpha".into(), "zeta".into()])
-        .unwrap();
     store.set_thread_archived_at(&t.id, Some(7)).unwrap();
     store
         .set_thread_omp_session_id(&t.id, Some("sess-1"))
@@ -231,7 +224,6 @@ fn thread_fields_are_updated() {
             title: "Renamed".into(),
             title_source: TitleSource::Generated,
             approval_mode: Some("yolo".into()),
-            tags: vec!["alpha".into(), "zeta".into()],
             archived_at: Some(7),
             omp_session_id: Some("sess-1".into()),
             model: None,

@@ -121,12 +121,12 @@ pub struct PathCompletions {
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWorkspaceParams {
-    /// Unique name; default: the folder's name for an existing folder, else `workspace` (made unique).
+    /// Unique name; default: the folder name of `link` when given, else `workspace` (made unique).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    /// An existing folder to record (not owned by the daemon); absent: a new folder under the workspaces root.
+    /// A git repository to link into the new folder in the same call, as `workspaces.add_repo` with `link` does.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub path: Option<String>,
+    pub link: Option<String>,
 }
 
 /// `workspaces.update` params.
@@ -143,10 +143,7 @@ pub struct UpdateWorkspaceParams {
 #[serde(rename_all = "camelCase")]
 pub struct RemoveWorkspaceParams {
     pub workspace_id: String,
-    /// Also delete an owned folder, after removing its repositories as `workspaces.remove_repo` does.
-    #[serde(default)]
-    pub delete_folder: bool,
-    /// Remove worktrees and clones even with uncommitted changes.
+    /// Remove worktrees and clones even with uncommitted changes (DMN-028).
     #[serde(default)]
     pub force: bool,
 }
@@ -259,11 +256,9 @@ pub struct CreateThreadParams {
     /// For scripts and agents; without it the title is generated from the conversation (DMN-073).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// `{ "id": … }` or `{ "new": { "name"?, "path"? } }`; default: a new folder named after the first message.
+    /// `{ "id": … }` or `{ "new": { "name"?, "link"? } }`; default: a new folder named after the first message.
     #[serde(default)]
     pub workspace: ThreadWorkspace,
-    #[serde(default)]
-    pub tags: Vec<String>,
     /// `provider/id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -285,8 +280,6 @@ pub struct UpdateThreadParams {
     pub thread_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Vec<String>>,
     /// omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approval_mode: Option<String>,

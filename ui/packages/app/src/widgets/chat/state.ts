@@ -6,7 +6,7 @@
 import type { ThreadView } from "@omfp/client";
 import type { VirtualItem } from "@tanstack/react-virtual";
 import { createContext, useCallback, useContext } from "react";
-import { SELECTED_THREAD, useThread, useWindowState, type WindowKey, windowKey } from "../../sdk/index.ts";
+import { type Draft, SELECTED_THREAD, useThread, useWindowState, type WindowKey, windowKey } from "../../sdk/index.ts";
 import type { AskForm } from "../../vm/interaction.ts";
 import type { PendingQueueOp } from "../../vm/queue.ts";
 import { INITIAL_PIN, type PinState } from "../../vm/virtual.ts";
@@ -52,6 +52,18 @@ export function measurementsKey(threadId: string): WindowKey<readonly VirtualIte
 }
 
 const MEASUREMENT_KEYS = new Map<string, WindowKey<readonly VirtualItem[]>>();
+
+/** The draft `Ctrl-C` last cleared in each thread's composer, which `u` restores (UI-063). */
+export function clearedDraftKey(threadId: string): WindowKey<Draft | undefined> {
+  let key = CLEARED_DRAFT_KEYS.get(threadId);
+  if (key === undefined) {
+    key = windowKey<Draft | undefined>(`chat/clearedDraft/${threadId}`, undefined);
+    CLEARED_DRAFT_KEYS.set(threadId, key);
+  }
+  return key;
+}
+
+const CLEARED_DRAFT_KEYS = new Map<string, WindowKey<Draft | undefined>>();
 
 /** `<threadId>/<interactionId>`. */
 export function interactionKey(threadId: string, interactionId: string): string {

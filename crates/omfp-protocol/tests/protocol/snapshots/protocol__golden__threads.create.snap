@@ -10,9 +10,6 @@ expression: golden
       "approvalMode": "always-ask",
       "model": "anthropic/claude-sonnet-4-5",
       "prompt": "Implement checkout v2 as described in docs/checkout.md",
-      "tags": [
-        "checkout-v2"
-      ],
       "thinkingLevel": "high",
       "workspace": {
         "new": {
@@ -39,9 +36,6 @@ expression: golden
         }
       },
       "settled": true,
-      "tags": [
-        "checkout-v2"
-      ],
       "title": "Checkout v2",
       "titleSource": "generated",
       "updatedAt": 1794268860000,

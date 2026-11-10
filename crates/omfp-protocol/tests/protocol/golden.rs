@@ -169,8 +169,8 @@ fn workspace_examples() -> Vec<(&'static str, Value)> {
     vec![
         example::<method::WorkspacesCreate>(
             CreateWorkspaceParams {
-                name: Some("checkout-v2".to_owned()),
-                path: None,
+                name: None,
+                link: Some("/home/dev/src/shop-backend".to_owned()),
             },
             &workspace(),
         ),
@@ -184,7 +184,6 @@ fn workspace_examples() -> Vec<(&'static str, Value)> {
         example::<method::WorkspacesRemove>(
             RemoveWorkspaceParams {
                 workspace_id: WORKSPACE_ID.to_owned(),
-                delete_folder: true,
                 force: false,
             },
             &Empty {},
@@ -244,9 +243,8 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
                 title: None,
                 workspace: ThreadWorkspace::New(CreateWorkspaceParams {
                     name: Some("checkout-v2".to_owned()),
-                    path: None,
+                    link: None,
                 }),
-                tags: vec!["checkout-v2".to_owned()],
                 model: Some("anthropic/claude-sonnet-4-5".to_owned()),
                 thinking_level: Some(ThinkingLevel::High),
                 approval_mode: Some("always-ask".to_owned()),
@@ -258,7 +256,6 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
             UpdateThreadParams {
                 thread_id: THREAD_ID.to_owned(),
                 title: Some("Checkout v2".to_owned()),
-                tags: Some(vec!["checkout-v2".to_owned()]),
                 approval_mode: Some("always-ask".to_owned()),
             },
             &thread(),
@@ -748,6 +745,8 @@ fn a_discovered_repository_carries_its_kind_inline() {
         (root["kind"].clone(), root["isRoot"].clone()),
         (json!("clone"), json!(true))
     );
+    let link = serde_json::to_value(&root_workspace().repos[1]).unwrap();
+    assert_eq!(link["sharedWith"], json!([workspace().id]));
 }
 
 // spec: DMN-009, UI-097
@@ -818,10 +817,10 @@ fn a_new_thread_gets_a_new_workspace_unless_one_is_named() {
         ThreadWorkspace::Id(WORKSPACE_ID.to_owned())
     );
     assert_eq!(
-        decode(json!({ "workspace": { "new": { "path": "/src/app" } } })).workspace,
+        decode(json!({ "workspace": { "new": { "link": "/src/app" } } })).workspace,
         ThreadWorkspace::New(CreateWorkspaceParams {
             name: None,
-            path: Some("/src/app".to_owned()),
+            link: Some("/src/app".to_owned()),
         })
     );
 }

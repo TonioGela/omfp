@@ -1,5 +1,5 @@
 /**
- * The thread header (UI-030): title (placeholder until named, DMN-073), tags, workspace and repository chips, model and
+ * The thread header (UI-030): title (placeholder until named, DMN-073), workspace and repository chips, model and
  * thinking options, context usage, session cost, and process state with its action; archive state (UI-026).
  */
 
@@ -55,7 +55,6 @@ export interface HeaderView {
   readonly title: string;
   /** The title is the "New thread" placeholder (DMN-073). */
   readonly placeholder: boolean;
-  readonly tags: readonly string[];
   /** The thread's workspace, then its repositories. */
   readonly chips: readonly WorkspaceChip[];
   /** `provider/id` of the current model. */
@@ -99,7 +98,6 @@ export function headerView(
   return {
     title: displayTitle(summary),
     placeholder: summary.titleSource === "placeholder" || summary.title.trim() === "",
-    tags: summary.tags,
     chips: workspaceChips(summary.workspaceId, workspaces),
     model,
     models,
@@ -164,18 +162,6 @@ export function formatTokens(tokens: number): string {
     return `${Math.floor(tokens / 1_000_000)}.${Math.floor((tokens % 1_000_000) / 100_000)}M`;
   }
   return tokens >= 1000 ? `${Math.floor(tokens / 1000)}k` : String(tokens);
-}
-
-/** Tags typed as a comma-separated list, trimmed, without empties or duplicates. */
-export function parseTags(text: string): string[] {
-  return [
-    ...new Set(
-      text
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter((tag) => tag !== ""),
-    ),
-  ];
 }
 
 /** The model choice `provider/id` split in two (the id may contain slashes). */

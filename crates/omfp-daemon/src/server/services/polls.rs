@@ -1,0 +1,331 @@
+//! Polling of watched workspaces (DMN-023), with no filesystem watcher: every [`POLL`] the cheap check of each watched
+//! workspace (its [`fingerprint`]), a full scan (the rescan, then the git status of `workspace/<id>`) only when the
+//! fingerprint changed, and a full scan of each watched workspace every [`FULL_SCAN`] anyway (edits outside omfp that
+//! touch no git file). A workspace is watched while a client subscribes to `workspace/<id>` or to the `thread/<id>` of
+//! one of its threads, or while one of its threads runs omp.
+
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+
+use omfp_protocol::ErrorBody;
+use tokio::task::JoinHandle;
+use tokio::time::{Instant, MissedTickBehavior};
+use tracing::warn;
+
+use super::{Services, blocking};
+use crate::store::Store;
+use crate::supervisor::Supervisor;
+use crate::workspaces::{Fingerprint, fingerprint};
+
+/// How often watched workspaces get the cheap check.
+pub(crate) const POLL: Duration = Duration::from_secs(2);
+
+/// How often a watched workspace gets a full scan whatever its fingerprint.
+pub(crate) const FULL_SCAN: Duration = Duration::from_secs(30);
+
+/// A watched workspace's last full scan.
+struct Scanned {
+    /// Taken after the scan, so files git rewrites while scanning (the index) do not trigger another.
+    fingerprint: Fingerprint,
+    at: Instant,
+}
+
+impl Services {
+    /// Polls the watched workspaces until the returned task is aborted (DMN-023).
+    pub fn spawn_polls(&self) -> JoinHandle<()> {
+        let services = self.clone();
+        tokio::spawn(async move {
+            let mut scanned = HashMap::new();
+            let mut ticks = tokio::time::interval(POLL);
+            ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+            loop {
+                ticks.tick().await;
+                if let Err(error) = services.poll(&mut scanned).await {
+                    warn!(error = %error.message, "workspace poll failed");
+                }
+            }
+        })
+    }
+
+    /// One round: a full scan of each watched workspace that has none yet, changed, or is due.
+    async fn poll(&self, scanned: &mut HashMap<String, Scanned>) -> Result<(), ErrorBody> {
+        let (store, supervisor) = (Arc::clone(&self.store), self.supervisor.clone());
+        let watched = blocking(move || watched(&store, &supervisor)).await?;
+        // A workspace watched again starts with a full scan.
+        scanned.retain(|id, _| watched.iter().any(|(watched, _)| watched == id));
+        for (id, path) in watched {
+            let due = match scanned.get(&id) {
+                Some(last) if last.at.elapsed() < FULL_SCAN => {
+                    let path = path.clone();
+                    blocking(move || Ok(fingerprint(&path))).await? != last.fingerprint
+                }
+                _ => true,
+            };
+            if !due {
+                continue;
+            }
+            if let Err(error) = self.full_scan(&id).await {
+                warn!(workspace = %id, error = %error.message, "workspace scan failed");
+            }
+            let fingerprint = blocking(move || Ok(fingerprint(&path))).await?;
+            scanned.insert(
+                id,
+                Scanned {
+                    fingerprint,
+                    at: Instant::now(),
+                },
+            );
+        }
+        Ok(())
+    }
+
+    /// The rescan (a change reaches the index and the live threads' roots), then the git status published on
+    /// `workspace/<id>`.
+    async fn full_scan(&self, id: &str) -> Result<(), ErrorBody> {
+        self.rescan(id).await?;
+        self.workspace_status(id).await?;
+        Ok(())
+    }
+}
+
+/// The watched workspaces with their folders, oldest first.
+fn watched(store: &Store, supervisor: &Supervisor) -> Result<Vec<(String, PathBuf)>, ErrorBody> {
+    let holding: HashSet<String> = store
+        .threads()?
+        .into_iter()
+        .filter(|thread| supervisor.watchers(&thread.id) > 0 || supervisor.is_running(&thread.id))
+        .map(|thread| thread.workspace_id)
+        .collect();
+    Ok(store
+        .workspaces()?
+        .into_iter()
+        .filter(|ws| holding.contains(&ws.id) || supervisor.workspace_watchers(&ws.id) > 0)
+        .map(|ws| (ws.id, ws.path))
+        .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::sync::Mutex;
+
+    use tempfile::TempDir;
+
+    use super::*;
+    use crate::agent::FakeLauncher;
+    use crate::git::{FakeGit, Git};
+    use crate::paths::DataDir;
+    use crate::server::services::AbortOnDrop;
+    use crate::supervisor::SupervisorConfig;
+    use crate::threads::{NewThread, Threads};
+    use crate::workspaces::{NewWorkspace, Workspaces};
+
+    struct Harness {
+        dir: TempDir,
+        services: Services,
+        git: Arc<FakeGit>,
+        /// The checkouts `git status` ran in, in order.
+        statuses: Arc<Mutex<Vec<PathBuf>>>,
+        /// A workspace holding one fake clone, `app`.
+        workspace: String,
+        app: PathBuf,
+    }
+
+    async fn harness() -> Harness {
+        let dir = tempfile::tempdir().unwrap();
+        let data = DataDir::new(dir.path().join("data"));
+        std::fs::create_dir_all(data.root()).unwrap();
+        let root = dir.path().join("workspaces");
+        let store = Arc::new(Store::open(&data.db(), &root).unwrap());
+        let threads = Arc::new(Threads::new(Arc::clone(&store), data.clone()));
+        let git = Arc::new(FakeGit::new());
+        let workspaces = Arc::new(Workspaces::new(
+            Arc::clone(&store),
+            Arc::clone(&git) as Arc<dyn Git>,
+            root,
+        ));
+        let view = workspaces.create(NewWorkspace::new()).unwrap();
+        let app = view.workspace.path.join("app");
+        std::fs::create_dir_all(app.join(".git")).unwrap();
+        std::fs::write(app.join(".git/index"), "1").unwrap();
+        git.add_repo(&app, "main");
+        let statuses = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&statuses);
+        git.on_status(move |dir| seen.lock().unwrap().push(dir.to_owned()));
+        let supervisor = Supervisor::new(
+            Arc::new(FakeLauncher::new()),
+            Arc::clone(&threads),
+            Arc::clone(&workspaces),
+            data,
+            SupervisorConfig::new("omp"),
+        );
+        let services = Services::new(store, threads, workspaces, supervisor)
+            .await
+            .unwrap();
+        Harness {
+            dir,
+            services,
+            git,
+            statuses,
+            workspace: view.workspace.id,
+            app,
+        }
+    }
+
+    impl Harness {
+        /// Full scans of the workspace so far: `git status` runs once in `app` per full scan.
+        fn full_scans(&self) -> usize {
+            let statuses = self.statuses.lock().unwrap();
+            statuses.iter().filter(|dir| **dir == self.app).count()
+        }
+
+        fn thread(&self) -> String {
+            self.services
+                .threads
+                .create(NewThread::new("t", &self.workspace))
+                .unwrap()
+                .id
+        }
+
+        fn index_repos(&self) -> Vec<String> {
+            self.services.index.with_state(|index| {
+                index
+                    .workspaces
+                    .iter()
+                    .find(|ws| ws.id == self.workspace)
+                    .map(|ws| ws.repos.iter().map(|repo| repo.name.clone()).collect())
+                    .unwrap_or_default()
+            })
+        }
+
+        fn app_dirty(&self) -> Option<bool> {
+            self.services
+                .workspace_log_entry(&self.workspace)
+                .with_state(|repos| {
+                    repos
+                        .iter()
+                        .find(|repo| repo.name == "app")
+                        .map(|repo| repo.status.dirty)
+                })
+        }
+    }
+
+    /// Lets paused time run to `at` seconds after the start of the test (`start`), between two polls.
+    async fn until(start: Instant, at: u64) {
+        tokio::time::sleep_until(start + Duration::from_secs(at)).await;
+    }
+
+    fn grow(file: &Path) {
+        let mut text = std::fs::read_to_string(file).unwrap_or_default();
+        text.push('x');
+        std::fs::write(file, text).unwrap();
+    }
+
+    // spec: DMN-023
+    #[tokio::test(start_paused = true)]
+    async fn unwatched_workspaces_are_not_polled() {
+        let h = harness().await;
+        let start = Instant::now();
+        let _polls = AbortOnDrop(h.services.spawn_polls());
+
+        until(start, 61).await;
+
+        assert_eq!(h.full_scans(), 0);
+    }
+
+    // spec: DMN-023
+    #[tokio::test(start_paused = true)]
+    async fn a_watched_workspace_without_change_gets_a_full_scan_every_30_s_only() {
+        let h = harness().await;
+        let _watch = h.services.supervisor.watch_workspace(&h.workspace);
+        let start = Instant::now();
+        let _polls = AbortOnDrop(h.services.spawn_polls());
+
+        until(start, 1).await;
+        assert_eq!(h.full_scans(), 1, "the first poll scans");
+        until(start, 29).await;
+        assert_eq!(h.full_scans(), 1, "14 cheap checks, nothing changed");
+        until(start, 31).await;
+        assert_eq!(h.full_scans(), 2, "the 30 s full scan");
+    }
+
+    // spec: DMN-023
+    #[tokio::test(start_paused = true)]
+    async fn a_change_seen_by_the_cheap_check_runs_a_full_scan_at_the_next_poll() {
+        let h = harness().await;
+        let _watch = h.services.supervisor.watch_workspace(&h.workspace);
+        let start = Instant::now();
+        let _polls = AbortOnDrop(h.services.spawn_polls());
+        until(start, 1).await;
+        assert_eq!(
+            (h.full_scans(), h.index_repos()),
+            (1, vec!["app".to_owned()])
+        );
+
+        // A new link (a new top-level entry): the rescan updates the index.
+        let lib = h.dir.path().join("src/lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        h.git.add_repo(&lib, "main");
+        let folder = h.app.parent().unwrap();
+        std::os::unix::fs::symlink(&lib, folder.join("lib")).unwrap();
+        until(start, 3).await;
+        assert_eq!(h.full_scans(), 2);
+        assert_eq!(h.index_repos(), ["app", "lib"]);
+
+        // A touched index (git add, commit, checkout…): the git status reaches `workspace/<id>`.
+        assert_eq!(h.app_dirty(), Some(false));
+        h.git.set_dirty(&h.app, true);
+        grow(&h.app.join(".git/index"));
+        until(start, 5).await;
+        assert_eq!(h.full_scans(), 3);
+        assert_eq!(h.app_dirty(), Some(true));
+    }
+
+    // spec: DMN-023
+    #[tokio::test(start_paused = true)]
+    async fn the_fingerprint_is_taken_after_the_scan_so_files_git_rewrites_do_not_loop() {
+        let h = harness().await;
+        // `git status` refreshes the index, as real git does.
+        let index = h.app.join(".git/index");
+        let seen = Arc::clone(&h.statuses);
+        h.git.on_status(move |dir| {
+            seen.lock().unwrap().push(dir.to_owned());
+            grow(&index);
+        });
+        let _watch = h.services.supervisor.watch_workspace(&h.workspace);
+        let start = Instant::now();
+        let _polls = AbortOnDrop(h.services.spawn_polls());
+
+        until(start, 1).await;
+        assert_eq!(h.full_scans(), 1);
+        until(start, 29).await;
+        assert_eq!(h.full_scans(), 1);
+    }
+
+    // spec: DMN-023
+    #[tokio::test(start_paused = true)]
+    async fn a_watched_or_running_thread_makes_its_workspace_watched() {
+        let h = harness().await;
+        let thread = h.thread();
+        let start = Instant::now();
+        let _polls = AbortOnDrop(h.services.spawn_polls());
+        until(start, 1).await;
+        assert_eq!(h.full_scans(), 0);
+
+        // A client on `thread/<id>`.
+        let watch = h.services.supervisor.watch(&thread).await.unwrap();
+        until(start, 3).await;
+        assert_eq!(h.full_scans(), 1);
+        drop(watch);
+        until(start, 61).await;
+        assert_eq!(h.full_scans(), 1, "unwatched again");
+
+        // The thread's omp runs.
+        h.services.supervisor.start(&thread).await.unwrap();
+        let started = Instant::now();
+        tokio::time::sleep_until(started + POLL).await;
+        assert_eq!(h.full_scans(), 2);
+    }
+}

@@ -1,8 +1,8 @@
 //! Screenshots of the main screens for a visual check (06-testing.md, L5): a busy thread with a Markdown reply, a tool
 //! card and a queued follow-up in the light and dark schemes and in a custom matugen theme, the `:` command line, the
-//! left column's "+ workspace" path field completing a folder, the Workspace widget with a linked repository and its
-//! path field completing a folder, a pending approval and an `ask` question. The screenshots land in `/tmp` (or
-//! `OMFP_SCREENSHOT_DIR`); nothing compares pixels. Run with `just test-e2e`.
+//! left column's "+ workspace" field in path mode completing a folder, the Workspace widget (Link / Clone switch) with
+//! two linked repositories and its path field completing a folder, a pending approval and an `ask` question. The
+//! screenshots land in `/tmp` (or `OMFP_SCREENSHOT_DIR`); nothing compares pixels. Run with `just test-e2e`.
 
 use std::path::Path;
 
@@ -197,13 +197,13 @@ async fn a_busy_thread_in_every_theme_the_command_line_and_the_new_workspace_pat
     journey.reply("The follow-up is done.").await?;
     journey.status(&thread, "idle").await?;
 
-    // "+ workspace" on an existing folder: the path field completes on the daemon host (UI-023, DMN-021).
+    // "+ workspace" with a path: the field switches to path mode and completes on the daemon host (UI-023, DMN-021).
     let (_folder, typed) = completion_folder()?;
     journey
-        .click("[data-testid=new-workspace-existing]")
+        .type_into("[data-testid=new-workspace-input]", &typed)
         .await?;
     journey
-        .type_into("[data-testid=new-workspace-path]", &typed)
+        .element("[data-testid=new-workspace][data-mode=path]")
         .await?;
     journey
         .until("three completions", async |page| {
@@ -215,6 +215,7 @@ async fn a_busy_thread_in_every_theme_the_command_line_and_the_new_workspace_pat
         })
         .await?;
     journey.screenshot("paths-new-workspace").await?;
+    journey.screenshot("fix1-left-column").await?;
     journey
         .finish("screenshots: themes, command line and path completion")
         .await
@@ -259,6 +260,8 @@ async fn the_workspace_panel_path_completion_a_pending_approval_and_an_ask_quest
 </form>"#;
     let linked = TempRepo::new()?;
     linked.commit_file("README.md", "Linked for the screenshot.\n", "readme")?;
+    let other = TempRepo::new()?;
+    other.commit_file("README.md", "Linked too.\n", "readme")?;
     let journey = Journey::start(vec![
         Step::reply(Reply::tool_calls(vec![ToolCall::new(
             "call_bash_1",
@@ -277,24 +280,33 @@ async fn the_workspace_panel_path_completion_a_pending_approval_and_an_ask_quest
     journey.scheme("light").await?;
     let thread = journey.create_asking_thread("approval screenshot").await?;
 
-    journey
-        .type_into(
-            "[data-testid=add-repo-path]",
-            &linked.path().to_string_lossy(),
-        )
-        .await?;
-    journey.click("[data-testid=add-repo-submit]").await?;
-    journey
-        .element("[data-testid=workspace-repo][data-kind=link]")
-        .await?;
+    for repo in [&linked, &other] {
+        let before = journey
+            .count("[data-testid=workspace-repo][data-kind=link]")
+            .await?;
+        journey
+            .type_into(
+                "[data-testid=add-repo-path]",
+                &repo.path().to_string_lossy(),
+            )
+            .await?;
+        journey.click("[data-testid=add-repo-submit]").await?;
+        journey
+            .until("the new link", async |page| {
+                Ok((page
+                    .count("[data-testid=workspace-repo][data-kind=link]")
+                    .await?
+                    > before)
+                    .then_some(()))
+            })
+            .await?;
+    }
     journey.fits("[data-widget=\"omfp:workspace\"]").await?;
     journey.screenshot("g-workspace-linked").await?;
+    journey.screenshot("fix1-workspace-widget").await?;
     journey.screenshot("paths-workspace").await?;
-    // The add control's path field, completing a worktree's repository.
+    // The add control's path field, completing a folder to link.
     let (_folder, typed) = completion_folder()?;
-    journey
-        .click("[data-testid=add-repo-kind] [data-value=worktree]")
-        .await?;
     journey
         .type_into("[data-testid=add-repo-path]", &typed)
         .await?;

@@ -46,6 +46,11 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { mode: "normal", keys: "Space R", command: "thread.restart" },
   { mode: "normal", keys: "Space :", command: "cmdline.open" },
   { mode: "insert", keys: "Esc", command: "focus.leave" },
+  // In the composer: clear the draft, then abort; `u` restores the last cleared draft (UI-063). Elsewhere `Ctrl-c`
+  // resolves to no command and copies as usual.
+  { mode: "insert", keys: "Ctrl-c", command: "composer.interrupt" },
+  { mode: "normal", keys: "Ctrl-c", command: "composer.interrupt" },
+  { mode: "normal", keys: "u", command: "composer.restore" },
   // One chord reaches the next waiting thread from anywhere, even while typing (UI-021).
   { mode: "normal", keys: "Alt-a", command: "thread.nextAttention" },
   { mode: "insert", keys: "Alt-a", command: "thread.nextAttention" },

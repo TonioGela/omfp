@@ -56,20 +56,19 @@ export type CreateThreadParams = {
   model?: string | null;
   /** First message, sent once the thread is created. */
   prompt?: string | null;
-  tags?: string[];
   thinkingLevel?: unknown;
   /** For scripts and agents; without it the title is generated from the conversation (DMN-073). */
   title?: string | null;
-  /** `{ "id": … }` or `{ "new": { "name"?, "path"? } }`; default: a new folder named after the first message. */
+  /** `{ "id": … }` or `{ "new": { "name"?, "link"? } }`; default: a new folder named after the first message. */
   workspace?: ThreadWorkspace;
 };
 
 /** `workspaces.create` params (DMN-020). */
 export type CreateWorkspaceParams = {
-  /** Unique name; default: the folder's name for an existing folder, else `workspace` (made unique). */
+  /** A git repository to link into the new folder in the same call, as `workspaces.add_repo` with `link` does. */
+  link?: string | null;
+  /** Unique name; default: the folder name of `link` when given, else `workspace` (made unique). */
   name?: string | null;
-  /** An existing folder to record (not owned by the daemon); absent: a new folder under the workspaces root. */
-  path?: string | null;
 };
 
 /** The principal behind a created entity: the user, or the agent of a thread. */
@@ -375,9 +374,7 @@ export type RemoveRepoParams = {
 
 /** `workspaces.remove` params (DMN-028). */
 export type RemoveWorkspaceParams = {
-  /** Also delete an owned folder, after removing its repositories as `workspaces.remove_repo` does. */
-  deleteFolder?: boolean;
-  /** Remove worktrees and clones even with uncommitted changes. */
+  /** Remove worktrees and clones even with uncommitted changes (DMN-028). */
   force?: boolean;
   workspaceId: string;
 };
@@ -611,7 +608,6 @@ export type ThreadSummary = {
   provenance: Provenance;
   /** Idle with nothing queued or pending (omp's `session_settled`). */
   settled: boolean;
-  tags: string[];
   /** `""` until the first message (DMN-073). */
   title: string;
   titleSource: TitleSource;
@@ -664,7 +660,6 @@ export type UiSettings = {
 export type UpdateThreadParams = {
   /** omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074). */
   approvalMode?: string | null;
-  tags?: string[] | null;
   threadId: string;
   title?: string | null;
 };
@@ -682,9 +677,7 @@ export type Workspace = {
   id: string;
   /** Unique among workspaces. */
   name: string;
-  /** The daemon created the folder and may delete it (DMN-028). */
-  owned: boolean;
-  /** Absolute path of the folder, unique among workspaces. */
+  /** Absolute path of the folder (under the daemon's workspaces root), unique among workspaces. */
   path: string;
   provenance: Provenance;
   /**

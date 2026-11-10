@@ -230,6 +230,7 @@ pub async fn start(mut config: Config) -> anyhow::Result<DaemonHandle> {
 }
 
 /// Starts a daemon in-process on the given ports.
+#[allow(clippy::too_many_lines)] // Startup wires every part in order.
 pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHandle> {
     let data_dir = std::path::absolute(&config.data_dir)?;
     std::fs::create_dir_all(&data_dir)
@@ -269,6 +270,7 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         supervisor.spawn_reaper(),
         services.spawn_index_updates(),
         services.spawn_rescans(),
+        services.spawn_polls(),
     ];
     if let Some(path) = config.theme_file.clone() {
         info!(theme = %path.display(), "following the theme file");

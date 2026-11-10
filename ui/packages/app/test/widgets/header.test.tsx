@@ -37,7 +37,7 @@ function answer(client: FakeClient): void {
   }
 }
 
-function setup(summary: ThreadSummary = thread("t1", "checkout", "w1", { tags: ["ci"] })) {
+function setup(summary: ThreadSummary = thread("t1", "checkout", "w1")) {
   const base = testHost();
   answer(base.client);
   base.host.window.set(SELECTED_THREAD, summary.id);
@@ -61,10 +61,10 @@ describe("omfp:header", () => {
   });
 
   // spec: UI-030, UI-020
-  test("it shows the title, tags, chips, process state and the session's model, thinking and context", async () => {
+  test("it shows the title, chips, process state and the session's model, thinking and context; no tags", async () => {
     setup();
     expect(screen.getByTestId("thread-title").textContent).toBe("checkout");
-    expect(screen.getAllByTestId("thread-tag").map((tag) => tag.textContent)).toEqual(["ci"]);
+    expect(screen.queryByTestId("edit-tags")).toBeNull();
     expect(screen.getAllByTestId("workspace-chip").map((chip) => chip.textContent)).toEqual(["⌂w1", "fe:main"]);
     expect(screen.getByTestId("thread-state").dataset.status).toBe("idle");
     await waitFor(() => expect(screen.getByTestId("context-usage").textContent).toBe("42% of 200k"));
@@ -89,18 +89,6 @@ describe("omfp:header", () => {
     await user.type(screen.getByTestId("title-input"), "x{Escape}");
     expect(screen.queryByTestId("title-input")).toBeNull();
     expect(client.callsTo("threads.update")).toHaveLength(1);
-  });
-
-  // spec: UI-030
-  test("tags are edited as a comma-separated list", async () => {
-    const { client, user } = setup();
-    await user.click(screen.getByTestId("edit-tags"));
-    const input = screen.getByTestId("tags-input");
-    await user.clear(input);
-    await user.type(input, "ci, release, ci{Enter}");
-    expect(client.callsTo("threads.update").map((call) => call.params)).toEqual([
-      { threadId: "t1", tags: ["ci", "release"] },
-    ]);
   });
 
   // spec: UI-030

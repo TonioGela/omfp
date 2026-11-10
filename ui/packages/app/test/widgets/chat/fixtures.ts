@@ -66,7 +66,6 @@ export function summary(id: string, settled = true): ThreadSummary {
     id,
     title: id,
     titleSource: "set",
-    tags: [],
     workspaceId: "01W",
     process: { state: "running" },
     settled,

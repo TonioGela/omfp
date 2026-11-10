@@ -57,13 +57,12 @@ fn workspace(name: &str) -> Workspace {
         id: new_id(),
         name: name.into(),
         path: PathBuf::from("/work").join(name),
-        owned: true,
         created_by: Provenance::User,
         created_at: now_ms(),
     }
 }
 
-fn thread(workspace_id: &str, tags: Vec<String>) -> Thread {
+fn thread(workspace_id: &str) -> Thread {
     Thread {
         id: new_id(),
         title: "t".into(),
@@ -77,9 +76,14 @@ fn thread(workspace_id: &str, tags: Vec<String>) -> Thread {
         created_by: Provenance::User,
         created_at: now_ms(),
         archived_at: None,
-        tags,
     }
 }
+
+/// Turns a database back into a version-5 one: thread tags and `workspaces.owned` again.
+const BACK_TO_5: &str = "CREATE TABLE thread_tags (
+    thread_id TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE, tag TEXT NOT NULL,
+    PRIMARY KEY (thread_id, tag));
+    ALTER TABLE workspaces ADD COLUMN owned INTEGER NOT NULL DEFAULT 1 CHECK (owned IN (0, 1));";
 
 // spec: DMN-010, DMN-012
 #[test]
@@ -88,7 +92,7 @@ fn opening_an_empty_file_applies_every_migration() {
     let db = dir.path().join("omfp.db");
     drop(open(&dir));
 
-    assert_eq!(user_version(&db), 5);
+    assert_eq!(user_version(&db), 6);
     // Only metadata lives in the database: no transcript tables, no repositories of workspaces (DMN-022).
     assert_eq!(
         tables(&db),
@@ -96,7 +100,6 @@ fn opening_an_empty_file_applies_every_migration() {
             "seen_repositories",
             "settings",
             "thread_roots",
-            "thread_tags",
             "threads",
             "workspaces"
         ]
@@ -109,14 +112,14 @@ fn reopening_is_idempotent_and_keeps_data() {
     let dir = TempDir::new().unwrap();
     let db = dir.path().join("omfp.db");
     let ws = workspace("a");
-    let t = thread(&ws.id, vec!["x".into()]);
+    let t = thread(&ws.id);
     {
         let store = open(&dir);
         store.insert_workspace(&ws).unwrap();
         store.insert_thread(&t).unwrap();
     }
     let store = open(&dir);
-    assert_eq!(user_version(&db), 5);
+    assert_eq!(user_version(&db), 6);
     assert_eq!(store.workspaces().unwrap(), vec![ws]);
     assert_eq!(store.threads().unwrap(), vec![t]);
 }
@@ -127,7 +130,7 @@ fn migration_4_counts_existing_titles_as_set() {
     let dir = TempDir::new().unwrap();
     let db = dir.path().join("omfp.db");
     let ws = workspace("a");
-    let t = thread(&ws.id, Vec::new());
+    let t = thread(&ws.id);
     {
         let store = open(&dir);
         store.insert_workspace(&ws).unwrap();
@@ -136,14 +139,14 @@ fn migration_4_counts_existing_titles_as_set() {
     // Back to a version-3 database: no `title_source` column, the registry of known repositories.
     let conn = raw(&db);
     conn.execute_batch(&format!(
-        "ALTER TABLE threads DROP COLUMN title_source; DROP TABLE seen_repositories; {OLD_REGISTRY}
+        "{BACK_TO_5} ALTER TABLE threads DROP COLUMN title_source; DROP TABLE seen_repositories; {OLD_REGISTRY}
          PRAGMA user_version = 3;"
     ))
     .unwrap();
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 5);
+    assert_eq!(user_version(&db), 6);
     assert_eq!(
         store.threads().unwrap(),
         vec![Thread {
@@ -166,7 +169,7 @@ fn migration_5_keeps_known_repositories_as_seen_ones_and_drops_the_registry() {
     drop(open(&dir));
     let conn = raw(&db);
     conn.execute_batch(&format!(
-        "DROP TABLE seen_repositories; {OLD_REGISTRY}
+        "{BACK_TO_5} DROP TABLE seen_repositories; {OLD_REGISTRY}
          INSERT INTO repositories VALUES ('01R1', 'app', '/src/app', 'main', NULL, 7);
          INSERT INTO repositories VALUES ('01R2', 'api', '/src/api', 'main', 'git@x:api.git', 9);
          PRAGMA user_version = 4;"
@@ -175,7 +178,7 @@ fn migration_5_keeps_known_repositories_as_seen_ones_and_drops_the_registry() {
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 5);
+    assert_eq!(user_version(&db), 6);
     assert!(!tables(&db).contains(&"repositories".to_owned()));
     assert_eq!(
         store.seen_repositories().unwrap(),
@@ -205,7 +208,7 @@ fn a_database_from_a_newer_daemon_is_refused() {
             error,
             StoreError::UnknownSchemaVersion {
                 found: 99,
-                supported: 5
+                supported: 6
             }
         ),
         "{error:?}"
@@ -231,7 +234,7 @@ fn foreign_keys_are_enforced() {
     let store = open(&dir);
 
     let error = store
-        .insert_thread(&thread("missing-workspace", Vec::new()))
+        .insert_thread(&thread("missing-workspace"))
         .unwrap_err();
     assert!(matches!(error, StoreError::Sqlite(_)), "{error:?}");
     assert_eq!(store.threads().unwrap(), Vec::new());
@@ -239,13 +242,13 @@ fn foreign_keys_are_enforced() {
 
 // spec: DMN-011
 #[test]
-fn deleting_a_thread_cascades_to_its_roots_and_tags() {
+fn deleting_a_thread_cascades_to_its_roots() {
     let dir = TempDir::new().unwrap();
     let db = dir.path().join("omfp.db");
     let store = open(&dir);
     let ws = workspace("a");
     store.insert_workspace(&ws).unwrap();
-    let t = thread(&ws.id, vec!["feature".into()]);
+    let t = thread(&ws.id);
     store.insert_thread(&t).unwrap();
     store
         .set_thread_roots(&t.id, &[PathBuf::from("/work/a/app")])
@@ -257,7 +260,6 @@ fn deleting_a_thread_cascades_to_its_roots_and_tags() {
         store.workspace_thread_ids(&ws.id).unwrap(),
         Vec::<String>::new()
     );
-    assert_eq!(count(&db, "thread_tags"), 0);
     assert_eq!(count(&db, "thread_roots"), 0);
     // The workspace itself is untouched.
     assert_eq!(store.workspace(&ws.id).unwrap(), ws);
@@ -294,7 +296,6 @@ fn old_thread(base: &Path, title: &str, created_by: Provenance) -> Thread {
         created_by,
         created_at: now_ms(),
         archived_at: None,
-        tags: Vec::new(),
     }
 }
 
@@ -318,13 +319,6 @@ fn insert_old_thread(conn: &Connection, t: &Thread, client: Option<&str>) {
         ],
     )
     .unwrap();
-    for tag in &t.tags {
-        conn.execute(
-            "INSERT INTO thread_tags (thread_id, tag) VALUES (?1, ?2)",
-            params![t.id, tag],
-        )
-        .unwrap();
-    }
 }
 
 /// Inserts an old workspace attached to thread `old.0` at position `old.1`.
@@ -367,7 +361,6 @@ fn old_model(dir: &TempDir) -> OldModel {
     first.model = Some("fake/scripted".into());
     first.thinking_level = Some("high".into());
     first.approval_mode = Some("always-ask".into());
-    first.tags = vec!["auth".into(), "backend".into()];
     let mut second = old_thread(&base, "Fix login", Provenance::Thread(first.id.clone()));
     second.archived_at = Some(42);
 
@@ -386,6 +379,13 @@ fn old_model(dir: &TempDir) -> OldModel {
     )
     .unwrap();
     insert_old_thread(&conn, &first, Some("omfp-ui"));
+    for tag in ["auth", "backend"] {
+        conn.execute(
+            "INSERT INTO thread_tags (thread_id, tag) VALUES (?1, ?2)",
+            params![first.id, tag],
+        )
+        .unwrap();
+    }
     insert_old_thread(&conn, &second, None);
     let gone = base.join("src/gone");
     let old = |position| (first.id.as_str(), position);
@@ -424,7 +424,6 @@ fn assert_migrated_records(store: &Store, old: &OldModel) -> (Workspace, Workspa
             id: one.id.clone(),
             name: "Fix login".into(),
             path: old.root.join("fix-login"),
-            owned: true,
             created_by: Provenance::User,
             created_at: old.first.created_at,
         }
@@ -435,7 +434,6 @@ fn assert_migrated_records(store: &Store, old: &OldModel) -> (Workspace, Workspa
             id: two.id.clone(),
             name: "Fix login 2".into(),
             path: old.root.join("fix-login-2"),
-            owned: true,
             created_by: Provenance::Thread(old.first.id.clone()),
             created_at: old.second.created_at,
         }
@@ -501,14 +499,13 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
 
     let store = Store::open(&old.db, &old.root).unwrap();
 
-    assert_eq!(user_version(&old.db), 5);
+    assert_eq!(user_version(&old.db), 6);
     assert_eq!(
         tables(&old.db),
         [
             "seen_repositories",
             "settings",
             "thread_roots",
-            "thread_tags",
             "threads",
             "workspaces"
         ]
@@ -526,10 +523,142 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
     // Reopening is a no-op: same records, no new folders.
     drop(store);
     let store = Store::open(&old.db, &old.root).unwrap();
-    assert_eq!(user_version(&old.db), 5);
+    assert_eq!(user_version(&old.db), 6);
     assert_eq!(
         assert_migrated_records(&store, &old),
         (one.clone(), two.clone())
     );
     assert_migrated_folders(&old, &one, &two);
+}
+
+/// The column names of a table.
+fn columns(db: &Path, table: &str) -> Vec<String> {
+    let conn = raw(db);
+    let mut stmt = conn
+        .prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
+        .unwrap();
+    stmt.query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+fn assert_dropped_tags_and_owned(db: &Path) {
+    assert_eq!(user_version(db), 6);
+    assert!(!tables(db).contains(&"thread_tags".to_owned()));
+    assert_eq!(
+        columns(db, "workspaces"),
+        [
+            "id",
+            "name",
+            "path",
+            "created_by",
+            "created_client",
+            "created_at"
+        ]
+    );
+}
+
+// spec: DMN-010, DMN-020
+#[test]
+fn migration_6_moves_workspaces_outside_the_root_into_new_folders_and_drops_tags() {
+    let dir = TempDir::new().unwrap();
+    let base = dir.path().canonicalize().unwrap();
+    let (db, root) = (base.join("omfp.db"), base.join("workspaces"));
+    let store = Store::open(&db, &root).unwrap();
+    let at = |name: &str, path: PathBuf| Workspace {
+        path,
+        ..workspace(name)
+    };
+    // Already under the root: unchanged.
+    let inside = at("Fix login", root.join("fix-login"));
+    // Outside: a folder with files, a missing one, a hidden one.
+    let shop = at("Shop", base.join("src/shop"));
+    let gone = at("Fix login!", base.join("src/gone"));
+    let hidden = at("Config", base.join("src/.config"));
+    for (path, file) in [
+        (&inside.path, "notes.txt"),
+        (&shop.path, "README"),
+        (&hidden.path, "settings"),
+    ] {
+        std::fs::create_dir_all(path).unwrap();
+        std::fs::write(path.join(file), path.to_str().unwrap()).unwrap();
+    }
+    // A stray folder takes the slug `shop`.
+    std::fs::create_dir_all(root.join("shop")).unwrap();
+    for ws in [&inside, &shop, &gone, &hidden] {
+        store.insert_workspace(ws).unwrap();
+    }
+    let t = thread(&shop.id);
+    store.insert_thread(&t).unwrap();
+    let roots = vec![shop.path.join("app")];
+    store.set_thread_roots(&t.id, &roots).unwrap();
+    drop(store);
+    let conn = raw(&db);
+    conn.execute_batch(&format!("{BACK_TO_5} PRAGMA user_version = 5;"))
+        .unwrap();
+    conn.execute("UPDATE workspaces SET owned = 0 WHERE id = ?1", [&shop.id])
+        .unwrap();
+    conn.execute(
+        "INSERT INTO thread_tags (thread_id, tag) VALUES (?1, 'auth')",
+        [&t.id],
+    )
+    .unwrap();
+    drop(conn);
+
+    let store = Store::open(&db, &root).unwrap();
+
+    assert_dropped_tags_and_owned(&db);
+    let moved = |ws: &Workspace, slug: &str| Workspace {
+        path: root.join(slug),
+        ..ws.clone()
+    };
+    let expected = vec![
+        inside.clone(),
+        moved(&shop, "shop-2"),
+        moved(&gone, "fix-login-2"),
+        moved(&hidden, "config"),
+    ];
+    assert_eq!(store.workspaces().unwrap(), expected);
+    // Threads keep their workspace (and so their session) and their recorded roots, synced at the first start.
+    assert_eq!(store.threads().unwrap(), vec![t.clone()]);
+    assert_eq!(store.thread_roots(&t.id).unwrap(), roots);
+    let assert_folders = || {
+        assert_eq!(
+            entries(&root),
+            ["config", "fix-login", "fix-login-2", "shop", "shop-2"]
+        );
+        for (folder, entry, target) in [
+            ("shop-2", "shop", &shop.path),
+            ("fix-login-2", "gone", &gone.path),
+            ("config", "config", &hidden.path),
+        ] {
+            assert_eq!(entries(&root.join(folder)), [entry]);
+            assert_eq!(
+                std::fs::read_link(root.join(folder).join(entry)).unwrap(),
+                *target
+            );
+        }
+        // The old folders are untouched.
+        for (path, file) in [
+            (&inside.path, "notes.txt"),
+            (&shop.path, "README"),
+            (&hidden.path, "settings"),
+        ] {
+            assert_eq!(entries(path), [file]);
+            assert_eq!(
+                std::fs::read_to_string(path.join(file)).unwrap(),
+                path.to_str().unwrap()
+            );
+        }
+        assert!(!gone.path.exists());
+        assert_eq!(entries(&root.join("shop")), Vec::<String>::new());
+    };
+    assert_folders();
+
+    // Reopening is a no-op.
+    drop(store);
+    let store = Store::open(&db, &root).unwrap();
+    assert_eq!(store.workspaces().unwrap(), expected);
+    assert_folders();
 }

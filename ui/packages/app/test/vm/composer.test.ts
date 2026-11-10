@@ -7,10 +7,13 @@ import {
   canAbort,
   commandsOf,
   complete,
+  INTERRUPT_WINDOW_MS,
   imageAttachment,
+  interruptAction,
   isBusy,
   keyAction,
   type Modifiers,
+  restoreCleared,
   restoreDraft,
   restoredTexts,
   restoreFailedPrompt,
@@ -114,6 +117,30 @@ describe("composer", () => {
     expect(restoreFailedPrompt({ text: "more", images: [] }, "first", [image])).toEqual({
       text: "first\n\nmore",
       images: [image],
+    });
+  });
+
+  // spec: UI-063, UI-095
+  test("Ctrl-C clears a non-empty draft, aborts an empty one or on a second press within the window", () => {
+    const image = { type: "image" as const, data: "AA==", mimeType: "image/png" };
+    expect(interruptAction({ text: "typing", images: [] }, 5000, undefined)).toBe("clear");
+    expect(interruptAction({ text: "", images: [image] }, 5000, undefined)).toBe("clear");
+    expect(interruptAction({ text: " ", images: [] }, 5000, undefined)).toBe("clear");
+    expect(interruptAction({ text: "", images: [] }, 5000, undefined)).toBe("abort");
+    expect(interruptAction({ text: "typing", images: [] }, 5000 + INTERRUPT_WINDOW_MS, 5000)).toBe("abort");
+    expect(interruptAction({ text: "typing", images: [] }, 5001 + INTERRUPT_WINDOW_MS, 5000)).toBe("clear");
+  });
+
+  // spec: UI-063
+  test("u puts the cleared draft back before what was typed since", () => {
+    const image = { type: "image" as const, data: "AA==", mimeType: "image/png" };
+    expect(restoreCleared({ text: "", images: [] }, { text: "cleared", images: [image] })).toEqual({
+      text: "cleared",
+      images: [image],
+    });
+    expect(restoreCleared({ text: "new", images: [] }, { text: "cleared", images: [] })).toEqual({
+      text: "cleared\n\nnew",
+      images: [],
     });
   });
 

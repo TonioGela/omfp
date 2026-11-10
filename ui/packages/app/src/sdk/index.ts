@@ -16,7 +16,7 @@
  * | `useWindowState(key)` | window-local state by {@link WindowKey} (`SELECTED_THREAD`, `draftKey(id)`, …) |
  * | `useCommand(command)` / `useRunCommand()` | commands for the keymap and the `:` line (UI-095) |
  * | `useAnnounce()` | the ARIA live region (UI-092) |
- * | `useThreadActions()` | select, draft threads (open, discard, send the first message), archive/unarchive, delete (`requestDelete` asks first), rename, tags, stop, restart; archiving or deleting forgets the selection and the draft (UI-023, UI-026) |
+ * | `useThreadActions()` | select, draft threads (open, discard, send the first message), archive/unarchive, delete (`requestDelete` asks first), rename, stop, restart; archiving or deleting forgets the selection and the draft (UI-023, UI-026) |
  * | `useReportError()` | puts a failure in the frame's error list (`ERRORS`) |
  * | `useHost()` | the host itself (registry, window store), for frame-level code |
  * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
@@ -37,7 +37,6 @@ export {
   threadActions,
   useReportError,
   useThreadActions,
-  type WorkspaceRemoval,
 } from "./actions.ts";
 export { type Command, CommandRegistry, SCOPE_ATTRIBUTE, scopesAt } from "./commands.ts";
 export {

@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import type { GitStatus, WorkspaceRepo } from "@omfp/protocol";
 import {
+  ADD_KINDS,
   addRepoSource,
   currentWorkspaceId,
   gitSummary,
@@ -35,14 +36,7 @@ describe("workspaces", () => {
       throw new Error("fixture");
     }
     const row = workspaceRow(first, threads, workspaces, [{ name: "fe", status }]);
-    expect([row.id, row.name, row.path, row.owned, row.threadCount, row.shared]).toEqual([
-      "w1",
-      "w1",
-      "/work/w1",
-      true,
-      2,
-      true,
-    ]);
+    expect([row.id, row.name, row.path, row.threadCount, row.shared]).toEqual(["w1", "w1", "/work/w1", 2, true]);
     expect(row.repos).toEqual([
       {
         name: "fe",
@@ -94,21 +88,16 @@ describe("workspaces", () => {
   });
 
   // spec: UI-025
-  test("the add control builds a link, worktree or clone source from its trimmed fields", () => {
-    const fields = { path: " /src/fe ", branch: " ", url: "" };
+  test("the add control offers link and clone only, built from their trimmed fields", () => {
+    expect(ADD_KINDS).toEqual(["link", "clone"]);
+    const fields = { path: " /src/fe ", url: "" };
     expect(addRepoSource("link", fields)).toEqual({ kind: "link", path: "/src/fe" });
-    expect(addRepoSource("worktree", fields)).toEqual({ kind: "worktree", repo: "/src/fe" });
-    expect(addRepoSource("worktree", { ...fields, branch: "feat/x " })).toEqual({
-      kind: "worktree",
-      repo: "/src/fe",
-      branch: "feat/x",
-    });
     expect(addRepoSource("clone", fields)).toBeUndefined();
     expect(addRepoSource("clone", { ...fields, url: " https://example.invalid/x.git" })).toEqual({
       kind: "clone",
       url: "https://example.invalid/x.git",
     });
-    expect(addRepoSource("link", { path: "  ", branch: "", url: "" })).toBeUndefined();
+    expect(addRepoSource("link", { path: "  ", url: "" })).toBeUndefined();
   });
 
   // spec: UI-025

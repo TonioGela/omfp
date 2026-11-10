@@ -1,6 +1,6 @@
 /**
- * The composer (UI-060..064): send mode while busy, `/` command completion, key bindings, image attachments, and
- * drafts restored after an abort or a failed send.
+ * The composer (UI-060..064): send mode while busy, `/` command completion, key bindings, image attachments, drafts
+ * restored after an abort or a failed send, and `Ctrl-C` clearing the draft, then aborting (UI-063).
  */
 
 import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/core";
@@ -173,6 +173,29 @@ export function restoreDraft(draft: string, steering: readonly string[], followU
  */
 export function restoreFailedPrompt(draft: Draft, text: string, images: readonly ImageContent[]): Draft {
   return { text: restoreDraft(draft.text, [text], []), images: [...images, ...draft.images] };
+}
+
+/** A second `Ctrl-C` within this many milliseconds of the one that cleared the draft aborts (UI-063). */
+export const INTERRUPT_WINDOW_MS = 1000;
+
+/** What `Ctrl-C` in the composer does (UI-063). */
+export type Interrupt = "clear" | "abort";
+
+/**
+ * `Ctrl-C` at `now` (UI-063): clears a non-empty draft; aborts on an empty one, or when the previous `Ctrl-C`
+ * (`lastPress`) was at most {@link INTERRUPT_WINDOW_MS} ago.
+ */
+export function interruptAction(draft: Draft, now: number, lastPress: number | undefined): Interrupt {
+  if (lastPress !== undefined && now - lastPress <= INTERRUPT_WINDOW_MS) {
+    return "abort";
+  }
+  return draft.text === "" && draft.images.length === 0 ? "abort" : "clear";
+}
+
+/** The draft after `u` restored the draft `Ctrl-C` cleared: its text and images first, then what was typed since
+ * (UI-063). */
+export function restoreCleared(draft: Draft, cleared: Draft): Draft {
+  return restoreFailedPrompt(draft, cleared.text, cleared.images);
 }
 
 /** The texts of a `thread.abort` result (`{ steering: [{ text }], followUp: [{ text }] }`). */

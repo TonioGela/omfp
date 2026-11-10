@@ -1,5 +1,5 @@
-//! SQLite persistence (02-daemon, "Persistence"): workspace folders, threads, their roots and tags, the repositories
-//! seen in workspaces (DMN-021), settings.
+//! SQLite persistence (02-daemon, "Persistence"): workspace folders, threads and their roots, the repositories seen in
+//! workspaces (DMN-021), settings.
 //!
 //! Transcripts are not stored here (DMN-012): omp's session files in each thread's `session_dir` are the source of
 //! truth, and the repositories inside a workspace are discovered from its folder (DMN-022). All calls are blocking;
@@ -78,10 +78,8 @@ pub struct Workspace {
     pub id: String,
     /// Unique.
     pub name: String,
-    /// Absolute, canonical path of the folder; unique.
+    /// Absolute, canonical path of the folder: one the daemon made under the workspaces root (DMN-020); unique.
     pub path: PathBuf,
-    /// The daemon created the folder (and may delete it, DMN-028).
-    pub owned: bool,
     pub created_by: Provenance,
     /// Unix milliseconds.
     pub created_at: i64,
@@ -137,8 +135,6 @@ pub struct Thread {
     /// Unix milliseconds.
     pub created_at: i64,
     pub archived_at: Option<i64>,
-    /// Sorted and deduplicated.
-    pub tags: Vec<String>,
 }
 
 /// A new ULID as a string. IDs are monotonic within the process, so ordering by id is ordering by creation.
@@ -167,7 +163,7 @@ pub struct Store {
     conn: Mutex<Connection>,
 }
 
-const WORKSPACE_COLUMNS: &str = "id, name, path, owned, created_by, created_at";
+const WORKSPACE_COLUMNS: &str = "id, name, path, created_by, created_at";
 const THREAD_COLUMNS: &str = "id, title, workspace_id, session_dir, omp_session_id, approval_mode, model, \
      thinking_level, created_by, created_at, archived_at, title_source";
 /// The `settings` key of the user's theme CSS (DMN-075): a JSON string, or `null`.
@@ -175,7 +171,7 @@ const THEME_SETTING: &str = "theme";
 
 impl Store {
     /// Opens (creating if needed) the database at `path`, enables WAL and foreign keys (DMN-011) and applies pending
-    /// migrations (DMN-010). Migration 3 creates a workspace folder under `workspaces_root` for every thread.
+    /// migrations (DMN-010). Migrations 3 and 6 create workspace folders under `workspaces_root`.
     pub fn open(path: &Path, workspaces_root: &Path) -> Result<Self> {
         let mut conn = Connection::open(path)?;
         conn.busy_timeout(Duration::from_secs(5))?;
@@ -326,42 +322,28 @@ impl Store {
 
     // Threads
 
-    /// Inserts a thread with its tags, in one transaction.
     pub fn insert_thread(&self, thread: &Thread) -> Result<()> {
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        insert_thread(&tx, thread)?;
-        write_tags(&tx, &thread.id, &thread.tags)?;
-        tx.commit()?;
-        Ok(())
+        insert_thread(&self.conn(), thread)
     }
 
     pub fn thread(&self, id: &str) -> Result<Thread> {
-        let conn = self.conn();
-        let thread = conn
+        self.conn()
             .query_row(
                 &format!("SELECT {THREAD_COLUMNS} FROM threads WHERE id = ?1"),
                 [id],
                 thread_from_row,
             )
             .optional()?
-            .ok_or_else(|| not_found("thread", id))?;
-        with_tags(&conn, thread)
+            .ok_or_else(|| not_found("thread", id))
     }
 
     /// Every thread, archived ones included, oldest first.
     pub fn threads(&self) -> Result<Vec<Thread>> {
         let conn = self.conn();
-        let threads: Vec<Thread> = {
-            let mut stmt =
-                conn.prepare(&format!("SELECT {THREAD_COLUMNS} FROM threads ORDER BY id"))?;
-            stmt.query_map([], thread_from_row)?
-                .collect::<Result<_, _>>()?
-        };
-        threads
-            .into_iter()
-            .map(|thread| with_tags(&conn, thread))
-            .collect()
+        let mut stmt =
+            conn.prepare(&format!("SELECT {THREAD_COLUMNS} FROM threads ORDER BY id"))?;
+        let rows = stmt.query_map([], thread_from_row)?;
+        Ok(rows.collect::<Result<_, _>>()?)
     }
 
     pub fn set_thread_title(&self, id: &str, title: &str, source: TitleSource) -> Result<()> {
@@ -449,17 +431,6 @@ impl Store {
         Ok(())
     }
 
-    /// Replaces the thread's tags.
-    pub fn set_thread_tags(&self, id: &str, tags: &[String]) -> Result<()> {
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        ensure_thread(&tx, id)?;
-        tx.execute("DELETE FROM thread_tags WHERE thread_id = ?1", [id])?;
-        write_tags(&tx, id, tags)?;
-        tx.commit()?;
-        Ok(())
-    }
-
     /// The `--add-dir` roots last given to the thread's omp session (DMN-029), sorted.
     pub fn thread_roots(&self, id: &str) -> Result<Vec<PathBuf>> {
         let conn = self.conn();
@@ -480,7 +451,7 @@ impl Store {
         Ok(())
     }
 
-    /// Deletes a thread with its roots and tags; its workspace stays.
+    /// Deletes a thread with its roots; its workspace stays.
     pub fn delete_thread(&self, id: &str) -> Result<()> {
         if self
             .conn()
@@ -587,13 +558,12 @@ fn ensure_thread(conn: &Connection, id: &str) -> Result<()> {
 
 fn insert_workspace(conn: &Connection, ws: &Workspace, client: Option<&str>) -> Result<()> {
     conn.execute(
-        "INSERT INTO workspaces (id, name, path, owned, created_by, created_client, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        "INSERT INTO workspaces (id, name, path, created_by, created_client, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             ws.id,
             ws.name,
             path_str(&ws.path)?,
-            ws.owned,
             ws.created_by.as_str(),
             client,
             ws.created_at
@@ -636,15 +606,6 @@ fn insert_thread(conn: &Connection, thread: &Thread) -> Result<()> {
     Ok(())
 }
 
-fn write_tags(conn: &Connection, thread_id: &str, tags: &[String]) -> Result<()> {
-    let mut stmt =
-        conn.prepare("INSERT OR IGNORE INTO thread_tags (thread_id, tag) VALUES (?1, ?2)")?;
-    for tag in tags {
-        stmt.execute(params![thread_id, tag])?;
-    }
-    Ok(())
-}
-
 fn write_roots(conn: &Connection, thread_id: &str, roots: &[PathBuf]) -> Result<()> {
     let mut stmt =
         conn.prepare("INSERT OR IGNORE INTO thread_roots (thread_id, path) VALUES (?1, ?2)")?;
@@ -654,22 +615,13 @@ fn write_roots(conn: &Connection, thread_id: &str, roots: &[PathBuf]) -> Result<
     Ok(())
 }
 
-fn with_tags(conn: &Connection, mut thread: Thread) -> Result<Thread> {
-    let mut stmt = conn.prepare("SELECT tag FROM thread_tags WHERE thread_id = ?1 ORDER BY tag")?;
-    thread.tags = stmt
-        .query_map([&thread.id], |row| row.get(0))?
-        .collect::<Result<_, _>>()?;
-    Ok(thread)
-}
-
 fn workspace_from_row(row: &Row<'_>) -> rusqlite::Result<Workspace> {
     Ok(Workspace {
         id: row.get(0)?,
         name: row.get(1)?,
         path: PathBuf::from(row.get::<_, String>(2)?),
-        owned: row.get(3)?,
-        created_by: Provenance::parse(&row.get::<_, String>(4)?),
-        created_at: row.get(5)?,
+        created_by: Provenance::parse(&row.get::<_, String>(3)?),
+        created_at: row.get(4)?,
     })
 }
 
@@ -687,7 +639,6 @@ fn thread_from_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
         created_at: row.get(9)?,
         archived_at: row.get(10)?,
         title_source: TitleSource::parse(&row.get::<_, String>(11)?),
-        tags: Vec::new(),
     })
 }
 

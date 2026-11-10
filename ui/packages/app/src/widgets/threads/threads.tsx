@@ -7,18 +7,7 @@
  * section; it registers `nav.search` (`/`) and `workspace.new` (`Space w`).
  */
 
-import {
-  Button,
-  Checkbox,
-  IconButton,
-  Menu,
-  MenuItem,
-  MenuTrigger,
-  PathField,
-  Popover,
-  SearchField,
-  TextField,
-} from "@omfp/kit";
+import { Button, IconButton, Menu, MenuItem, MenuTrigger, PathField, Popover, SearchField, TextField } from "@omfp/kit";
 import { INDEX_TOPIC, type ThreadSummary, type Workspace } from "@omfp/protocol";
 import {
   type FormEvent,
@@ -58,8 +47,10 @@ import {
   isCollapsed,
   isFiltering,
   isUnread,
+  isWorkspacePath,
   type Move,
   moveSelection,
+  newWorkspaceParams,
   type Section,
   type Seen,
   sidebarSections,
@@ -297,7 +288,8 @@ function ThreadFilterField({ search }: { search: RefObject<HTMLInputElement | nu
   );
 }
 
-/** "+ workspace" (UI-023): an optional name, or an existing folder; Enter creates it and opens a draft thread in it. */
+/** "+ workspace" (UI-023): one field taking a name (optional) or, when it starts with `/` or `~`, the path of a
+ * repository to link (completed as in DMN-021); Enter creates the workspace and opens a draft thread in it. */
 function NewWorkspace({
   inputRef,
   focus,
@@ -309,9 +301,7 @@ function NewWorkspace({
   const actions = useThreadActions();
   const sources = usePathSources();
   const labels = strings.shell.newWorkspace;
-  const [existing, setExisting] = useState(false);
-  const [name, setName] = useState("");
-  const [path, setPath] = useState("");
+  const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   useEffect(() => {
@@ -319,18 +309,16 @@ function NewWorkspace({
       inputRef.current?.focus();
     }
   }, [focus, inputRef]);
-  const create = (params: { name?: string; path?: string }) => {
+  const submit = (typed: string) => {
     if (busy) {
       return;
     }
     setBusy(true);
     setError(undefined);
-    call("workspaces.create", params).then(
+    call("workspaces.create", newWorkspaceParams(typed)).then(
       (workspace) => {
         setBusy(false);
-        setName("");
-        setPath("");
-        setExisting(false);
+        setValue("");
         actions.openDraft(workspace.id);
       },
       (failure: unknown) => {
@@ -339,55 +327,23 @@ function NewWorkspace({
       },
     );
   };
-  const submitName = (event: FormEvent) => {
-    event.preventDefault();
-    const trimmed = name.trim();
-    create(trimmed === "" ? {} : { name: trimmed });
-  };
-  const submitPath = (value: string) => {
-    const trimmed = value.trim();
-    if (trimmed !== "") {
-      create({ path: trimmed.length > 1 ? trimmed.replace(/\/+$/, "") : trimmed });
-    }
-  };
   return (
-    <div className="omfp-threads__new-workspace" data-testid="new-workspace">
-      {existing ? (
-        <PathField
-          label={labels.pathLabel}
-          hideLabel
-          placeholder={labels.pathPlaceholder}
-          value={path}
-          onChange={setPath}
-          onSubmit={submitPath}
-          complete={sources.complete}
-          autoFocus
-          inputRef={inputRef}
-          data-testid="new-workspace-path"
-        />
-      ) : (
-        <form onSubmit={submitName}>
-          <TextField
-            label={labels.label}
-            hideLabel
-            placeholder={labels.namePlaceholder}
-            value={name}
-            onChange={setName}
-            inputRef={inputRef}
-            inputProps={{ "data-testid": "new-workspace-name" }}
-          />
-        </form>
-      )}
-      <Checkbox
-        isSelected={existing}
-        onChange={(selected) => {
-          setExisting(selected);
-          setError(undefined);
-        }}
-        data-testid="new-workspace-existing"
-      >
-        {labels.existing}
-      </Checkbox>
+    <div
+      className="omfp-threads__new-workspace"
+      data-testid="new-workspace"
+      data-mode={isWorkspacePath(value) ? "path" : "name"}
+    >
+      <PathField
+        label={labels.label}
+        hideLabel
+        placeholder={labels.placeholder}
+        value={value}
+        onChange={setValue}
+        onSubmit={submit}
+        complete={sources.complete}
+        inputRef={inputRef}
+        data-testid="new-workspace-input"
+      />
       {error !== undefined && (
         <p className="omfp-form-error" role="alert" data-testid="new-workspace-error">
           {error}

@@ -8,7 +8,6 @@ expression: snapshot
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
       "name": "checkout-v2",
       "path": "/home/dev/omfp/workspaces/checkout-v2",
-      "owned": true,
       "repos": [
         {
           "name": "backend",
@@ -48,17 +47,27 @@ expression: snapshot
     },
     {
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C7G",
-      "name": "shop-backend",
-      "path": "/home/dev/src/shop-backend",
-      "owned": false,
+      "name": "scratch",
+      "path": "/home/dev/omfp/workspaces/scratch",
       "repos": [
         {
-          "name": "shop-backend",
-          "path": "/home/dev/src/shop-backend",
+          "name": "scratch",
+          "path": "/home/dev/omfp/workspaces/scratch",
           "kind": "clone",
           "branch": "main",
           "head": "f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a",
           "isRoot": true,
+          "canonicalPath": "/home/dev/omfp/workspaces/scratch",
+          "sharedWith": []
+        },
+        {
+          "name": "shop-backend",
+          "path": "/home/dev/omfp/workspaces/scratch/shop-backend",
+          "kind": "link",
+          "target": "/home/dev/src/shop-backend",
+          "branch": "main",
+          "head": "f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a",
+          "isRoot": false,
           "canonicalPath": "/home/dev/src/shop-backend",
           "sharedWith": [
             "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
@@ -81,9 +90,6 @@ expression: snapshot
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
       "title": "Checkout v2",
       "titleSource": "generated",
-      "tags": [
-        "checkout-v2"
-      ],
       "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
       "process": {
         "state": "stopped"

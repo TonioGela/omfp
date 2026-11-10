@@ -26,7 +26,6 @@ pub fn workspace() -> Workspace {
         id: WORKSPACE_ID.to_owned(),
         name: "checkout-v2".to_owned(),
         path: "/home/dev/omfp/workspaces/checkout-v2".to_owned(),
-        owned: true,
         repos: vec![
             WorkspaceRepo {
                 name: "backend".to_owned(),
@@ -59,23 +58,36 @@ pub fn workspace() -> Workspace {
     }
 }
 
-/// An existing folder that is itself a repository, recorded by an agent.
+/// A workspace an agent made a repository itself (`git init`), holding a link to a repository of [`workspace`].
 pub fn root_workspace() -> Workspace {
     Workspace {
         id: OTHER_WORKSPACE_ID.to_owned(),
-        name: "shop-backend".to_owned(),
-        path: "/home/dev/src/shop-backend".to_owned(),
-        owned: false,
-        repos: vec![WorkspaceRepo {
-            name: "shop-backend".to_owned(),
-            path: "/home/dev/src/shop-backend".to_owned(),
-            kind: RepoKind::Clone,
-            branch: Some("main".to_owned()),
-            head: Some("f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a".to_owned()),
-            is_root: true,
-            canonical_path: "/home/dev/src/shop-backend".to_owned(),
-            shared_with: vec![WORKSPACE_ID.to_owned()],
-        }],
+        name: "scratch".to_owned(),
+        path: "/home/dev/omfp/workspaces/scratch".to_owned(),
+        repos: vec![
+            WorkspaceRepo {
+                name: "scratch".to_owned(),
+                path: "/home/dev/omfp/workspaces/scratch".to_owned(),
+                kind: RepoKind::Clone,
+                branch: Some("main".to_owned()),
+                head: Some("f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a".to_owned()),
+                is_root: true,
+                canonical_path: "/home/dev/omfp/workspaces/scratch".to_owned(),
+                shared_with: Vec::new(),
+            },
+            WorkspaceRepo {
+                name: "shop-backend".to_owned(),
+                path: "/home/dev/omfp/workspaces/scratch/shop-backend".to_owned(),
+                kind: RepoKind::Link {
+                    target: "/home/dev/src/shop-backend".to_owned(),
+                },
+                branch: Some("main".to_owned()),
+                head: Some("f6ab326c0e3d4b2a1f9e8d7c6b5a4f3e2d1c0b9a".to_owned()),
+                is_root: false,
+                canonical_path: "/home/dev/src/shop-backend".to_owned(),
+                shared_with: vec![WORKSPACE_ID.to_owned()],
+            },
+        ],
         thread_ids: Vec::new(),
         provenance: Provenance {
             created_by: CreatedBy::Thread {
@@ -92,7 +104,6 @@ pub fn thread() -> ThreadSummary {
         id: THREAD_ID.to_owned(),
         title: "Checkout v2".to_owned(),
         title_source: TitleSource::Generated,
-        tags: vec!["checkout-v2".to_owned()],
         workspace_id: WORKSPACE_ID.to_owned(),
         process: ProcessState::Stopped,
         settled: true,

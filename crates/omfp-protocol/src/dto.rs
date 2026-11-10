@@ -56,10 +56,8 @@ pub struct Workspace {
     pub id: String,
     /// Unique among workspaces.
     pub name: String,
-    /// Absolute path of the folder, unique among workspaces.
+    /// Absolute path of the folder (under the daemon's workspaces root), unique among workspaces.
     pub path: String,
-    /// The daemon created the folder and may delete it (DMN-028).
-    pub owned: bool,
     /// Repositories discovered in the folder (DMN-022): the folder itself first when it is a git root, then the
     /// entries by name.
     pub repos: Vec<WorkspaceRepo>,
@@ -119,7 +117,6 @@ pub struct ThreadSummary {
     /// `""` until the first message (DMN-073).
     pub title: String,
     pub title_source: TitleSource,
-    pub tags: Vec<String>,
     /// The workspace the thread lives in: its omp cwd (ARC-008, DMN-029).
     pub workspace_id: String,
     /// `omfp_core::ProcessState`.

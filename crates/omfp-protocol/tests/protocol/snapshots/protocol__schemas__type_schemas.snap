@@ -292,12 +292,6 @@ expression: type_schemas()
             "description": "Idle with nothing queued or pending (omp's `session_settled`).",
             "type": "boolean"
           },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "title": {
             "description": "`\"\"` until the first message (DMN-073).",
             "type": "string"
@@ -318,7 +312,6 @@ expression: type_schemas()
           "id",
           "title",
           "titleSource",
-          "tags",
           "workspaceId",
           "process",
           "settled",
@@ -409,12 +402,8 @@ expression: type_schemas()
             "description": "Unique among workspaces.",
             "type": "string"
           },
-          "owned": {
-            "description": "The daemon created the folder and may delete it (DMN-028).",
-            "type": "boolean"
-          },
           "path": {
-            "description": "Absolute path of the folder, unique among workspaces.",
+            "description": "Absolute path of the folder (under the daemon's workspaces root), unique among workspaces.",
             "type": "string"
           },
           "provenance": {
@@ -439,7 +428,6 @@ expression: type_schemas()
           "id",
           "name",
           "path",
-          "owned",
           "repos",
           "threadIds",
           "provenance",
@@ -862,12 +850,6 @@ expression: type_schemas()
             "description": "Idle with nothing queued or pending (omp's `session_settled`).",
             "type": "boolean"
           },
-          "tags": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
           "title": {
             "description": "`\"\"` until the first message (DMN-073).",
             "type": "string"
@@ -888,7 +870,6 @@ expression: type_schemas()
           "id",
           "title",
           "titleSource",
-          "tags",
           "workspaceId",
           "process",
           "settled",
@@ -979,12 +960,8 @@ expression: type_schemas()
             "description": "Unique among workspaces.",
             "type": "string"
           },
-          "owned": {
-            "description": "The daemon created the folder and may delete it (DMN-028).",
-            "type": "boolean"
-          },
           "path": {
-            "description": "Absolute path of the folder, unique among workspaces.",
+            "description": "Absolute path of the folder (under the daemon's workspaces root), unique among workspaces.",
             "type": "string"
           },
           "provenance": {
@@ -1009,7 +986,6 @@ expression: type_schemas()
           "id",
           "name",
           "path",
-          "owned",
           "repos",
           "threadIds",
           "provenance",

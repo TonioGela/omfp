@@ -100,7 +100,6 @@ fn new_thread(title: &str) -> CreateThreadParams {
     CreateThreadParams {
         title: Some(title.into()),
         workspace: ThreadWorkspace::default(),
-        tags: Vec::new(),
         model: None,
         thinking_level: None,
         approval_mode: None,
@@ -167,7 +166,7 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
     let workspace = client
         .typed::<WorkspacesCreate>(CreateWorkspaceParams {
             name: Some("checkout".into()),
-            path: None,
+            link: None,
         })
         .await;
     let workspace_ref = || WorkspaceRef {
@@ -232,7 +231,6 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
     client
         .typed::<WorkspacesRemove>(RemoveWorkspaceParams {
             workspace_id: workspace.id.clone(),
-            delete_folder: true,
             force: false,
         })
         .await;
@@ -249,14 +247,10 @@ async fn thread_management_methods_return_their_declared_results() {
         .typed::<ThreadsUpdate>(UpdateThreadParams {
             thread_id: thread.id.clone(),
             title: Some("renamed".into()),
-            tags: Some(vec!["tag".into()]),
             approval_mode: Some("always-ask".into()),
         })
         .await;
-    assert_eq!(
-        (updated.title.as_str(), updated.tags),
-        ("renamed", vec!["tag".to_owned()])
-    );
+    assert_eq!(updated.title, "renamed");
     let git = client.typed::<ThreadGit>(thread_ref(&thread.id)).await;
     assert_eq!(git.workspace_id, thread.workspace_id);
     assert_eq!(git.repos, Vec::new());

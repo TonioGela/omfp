@@ -10,7 +10,6 @@ import {
   formatTokens,
   headerView,
   NO_DETAILS,
-  parseTags,
   sessionCost,
   splitModel,
   type ThreadDetails,
@@ -108,8 +107,7 @@ describe("header", () => {
   });
 
   // spec: UI-030
-  test("tags and model values are parsed from the editors", () => {
-    expect(parseTags(" ci, release ,, ci")).toEqual(["ci", "release"]);
+  test("model values are parsed from the selector", () => {
     expect(splitModel("openrouter/anthropic/opus")).toEqual({ provider: "openrouter", modelId: "anthropic/opus" });
     expect(splitModel("opus")).toBeUndefined();
     expect(splitModel("/opus")).toBeUndefined();
