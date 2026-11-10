@@ -36,21 +36,5 @@ fn main() -> std::process::ExitCode {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    dioxus::launch(web::Root);
-}
-
-#[cfg(target_arch = "wasm32")]
-mod web {
-    use dioxus::prelude::*;
-    use omfp_ui::{App, ViewInput};
-
-    /// The web root: the app over its view input. Connecting `omfp-client` to the input and mapping intents to
-    /// protocol calls is the host glue's job (M2 glue phase); until then the app shows "Connecting…".
-    #[component]
-    pub fn Root() -> Element {
-        let input = use_signal(ViewInput::default);
-        rsx! {
-            App { input, on_intent: move |_| {} }
-        }
-    }
+    dioxus::launch(omfp_ui::host::web::Root);
 }

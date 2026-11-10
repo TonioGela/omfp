@@ -18,9 +18,12 @@ path = "src/main.rs"
 [dependencies]
 ammonia.workspace = true
 dioxus.workspace = true
+futures.workspace = true
+omfp-client.workspace = true
 omfp-core.workspace = true
 omfp-protocol.workspace = true
 pulldown-cmark.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -41,6 +44,10 @@ web-sys = { workspace = true, features = [
   "Event",
   "File",
   "FileList",
+  "History",
+  "Location",
+  "Storage",
+  "Window",
 ] }
 
 [dev-dependencies]

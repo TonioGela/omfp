@@ -56,9 +56,17 @@ pub fn App(
             class: "app",
             "data-testid": "app",
             "data-theme": theme,
+            // Shortcuts listen here: the app takes the focus when the page loads and whenever a click lands outside
+            // any control, so keys never go to `<body>` past the handler.
+            tabindex: "-1",
+            onmounted: move |event| async move {
+                // Best effort: there may be no focusable document (server-side rendering).
+                let _ = event.data().set_focus(true).await;
+            },
             onkeydown: move |event| global_shortcut(ctx, &event),
             ConnectionBanner { connection }
-            div { class: "shell", "data-testid": "shell", inert: dialog_open,
+            // Dioxus web writes `inert="false"` for a false bool, and any `inert` value disables the subtree.
+            div { class: "shell", "data-testid": "shell", inert: if dialog_open { "true" },
                 Sidebar {}
                 MainArea {}
                 SidePanels {}
@@ -94,7 +102,7 @@ fn use_input_effects(ctx: Ctx) {
                 input
                     .outcomes
                     .last()
-                    .is_some_and(|entry| entry.seq > state.last_outcome),
+                    .is_some_and(|entry| state.is_fresh_outcome(entry.seq)),
             )
         };
         if updates.is_empty() && !fresh {

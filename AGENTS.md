@@ -35,6 +35,7 @@ just test                        # fast tests (no omp process)
 just test-contract               # contract tests against the pinned omp + fake LLM
 just record-fixtures             # re-record fixtures/ (review the diff!)
 just test-wasm                   # web transport suite in headless Chromium against a fake-launcher daemon
+just test-e2e                    # L5 journeys: builds the web bundle, headless Chromium + daemon + omp + fake LLM
 just build-web                   # dx build -p omfp-ui --platform web
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
 cargo xtask check-versions       # omp / omp-rpc / wasm-bindgen / dioxus pins agree
@@ -53,10 +54,12 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`)
 crates/omfp-client    protocol client without UI: Transport (native tokio-tungstenite / web-sys WebSocket), session
                       (hello, subscriptions, reconnect backoff), model (index, ThreadState per thread, dirty set)
-crates/omfp-ui        the app: Dioxus UI (features web / desktop) and the `omfp` binary with subcommands
+crates/omfp-ui        the app: Dioxus UI (features web / desktop), the host glue (host/: client model → view input
+                      per animation frame, intents → protocol calls, web token handling) and the `omfp` binary
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
 xtask                 spec-trace, check-versions
+e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process) and the M2 journeys
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)
 ```
@@ -89,5 +92,7 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 - nixpkgs' `dioxus-cli` needs `zstd` (overridden in `flake.nix`); `convco` does not build, so commitizen checks
   commit messages.
 - `typos` skips `fixtures/` (streamed deltas split words).
+- Dioxus web only drops a `false` boolean attribute it knows (`disabled`, `checked`, `hidden`, …); others such as
+  `inert` are written as `inert="false"`, which still applies. Use `attr: if condition { "true" }` for those.
 - Fixtures are normalized (timestamps, durations, UUIDs, random ids, temp roots); if a re-record shows churn, add the
   volatile field to `omfp_testkit::normalize_frame` rather than accepting noise.

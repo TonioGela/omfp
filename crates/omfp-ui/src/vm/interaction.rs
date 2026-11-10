@@ -20,6 +20,13 @@ pub fn request_id(request: &ExtensionUiRequest) -> Option<&str> {
     }
 }
 
+/// The key of a request's card: its id, so closing an earlier request never remounts the cards after it (typed text
+/// and focus stay); the position only for requests without one.
+#[must_use]
+pub fn card_key(request: &ExtensionUiRequest, index: usize) -> String {
+    request_id(request).map_or_else(|| format!("at-{index}"), |id| format!("id-{id}"))
+}
+
 /// The request's title (the first question for `ask`).
 #[must_use]
 pub fn title(request: &ExtensionUiRequest) -> String {
@@ -349,5 +356,22 @@ mod tests {
         );
         assert_eq!(rows[0].title, "Proceed?");
         assert_eq!(closed_rows(&closed, |_| false, |id| id != "b").len(), 1);
+    }
+
+    // spec: UI-070
+    #[test]
+    fn cards_are_keyed_by_request_id_and_by_position_only_without_one() {
+        let confirm: ExtensionUiRequest = serde_json::from_value(
+            json!({"method": "confirm", "id": "c-7", "title": "Proceed?", "message": "m"}),
+        )
+        .expect("confirm");
+        assert_eq!(
+            (card_key(&confirm, 0), card_key(&confirm, 3)),
+            ("id-c-7".to_owned(), "id-c-7".to_owned())
+        );
+        let notify: ExtensionUiRequest =
+            serde_json::from_value(json!({"method": "notify", "id": "n", "message": "hi"}))
+                .expect("notify");
+        assert_eq!(card_key(&notify, 2), "at-2");
     }
 }

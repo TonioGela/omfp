@@ -143,6 +143,8 @@ requirements = [
   "TST-030",
   "TST-031",
   "TST-032",
+  # Daemon serves the web bundle
+  "DMN-008",
   # End-to-end journeys
   "E2E-01",
   "E2E-02",

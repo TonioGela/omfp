@@ -90,6 +90,23 @@ impl ListMetrics {
         self.pinned = false;
     }
 
+    /// Where a freshly mounted list scrolls to: the stored position when the user had scrolled up, `None` for the
+    /// bottom (pinned, or never scrolled).
+    #[must_use]
+    pub fn mount_scroll_top(&self) -> Option<f64> {
+        self.viewport
+            .filter(|_| !self.pinned)
+            .map(|viewport| viewport.scroll_top)
+    }
+
+    /// A keydown reached the list: a scroll-up key (`ArrowUp`, `PageUp`, `Home`) unpins, unless it was typed into a
+    /// form control (an interaction's input, textarea, select or button), where it edits or moves within the control.
+    pub fn on_key(&mut self, scroll_up_key: bool, from_control: bool) {
+        if scroll_up_key && !from_control {
+            self.scrolled_up_by_user();
+        }
+    }
+
     /// The window over the items with `keys`, in order.
     #[must_use]
     pub fn window(&self, keys: &[String]) -> Window {
@@ -214,5 +231,28 @@ mod tests {
         let grown = metrics.window(&keys(11));
         assert_eq!((grown.start, grown.end), (9, 11));
         assert!((grown.pad_top - 9.0 * ESTIMATED_ITEM_PX).abs() < 1e-6);
+    }
+
+    // spec: UI-042
+    #[test]
+    fn a_remounted_list_returns_to_the_bottom_or_to_where_the_user_scrolled() {
+        let mut metrics = ListMetrics::default();
+        assert_eq!(metrics.mount_scroll_top(), None);
+        metrics.on_scroll(400.0, 5000.0, 600.0);
+        metrics.scrolled_up_by_user();
+        assert_eq!(metrics.mount_scroll_top(), Some(400.0));
+        metrics.on_scroll(4400.0, 5000.0, 600.0);
+        assert_eq!(metrics.mount_scroll_top(), None);
+    }
+
+    // spec: UI-042
+    #[test]
+    fn scroll_keys_typed_into_a_control_keep_the_list_pinned() {
+        let mut metrics = ListMetrics::default();
+        metrics.on_key(true, true);
+        metrics.on_key(false, false);
+        assert!(metrics.pinned);
+        metrics.on_key(true, false);
+        assert!(!metrics.pinned);
     }
 }

@@ -12,6 +12,7 @@ publish = false
 # Internal crates
 omfp-core = { path = "crates/omfp-core" }
 omfp-protocol = { path = "crates/omfp-protocol" }
+omfp-client = { path = "crates/omfp-client" }
 omfp-daemon = { path = "crates/omfp-daemon" }
 fake-llm = { path = "crates/fake-llm" }
 omfp-testkit = { path = "crates/omfp-testkit" }

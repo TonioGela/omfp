@@ -4,13 +4,18 @@
 default:
     @just --list
 
-# Fast tests: unit, component and integration; no omp process (L0, L1, L2, L4)
+# Fast tests: unit, component and integration; no omp process (L0, L1, L2, L4). `e2e` builds on its own: thirtyfour
+# turns on `serde_json/preserve_order`, which would change every crate's `Value` if built together.
 test:
-    cargo nextest run --workspace -E 'not binary(/^contract_/)'
+    cargo nextest run --workspace --exclude e2e -E 'not binary(/^contract_/)'
 
 # Contract tests against the pinned omp and the fake LLM (L3)
 test-contract:
-    cargo nextest run --workspace -E 'binary(/^contract_/)'
+    cargo nextest run --workspace --exclude e2e -E 'binary(/^contract_/)'
+
+# End-to-end journeys (L5): headless Chromium on the web bundle, a daemon with the pinned omp and the fake LLM
+test-e2e: build-web
+    cargo nextest run -p e2e
 
 # Re-record omp fixtures under fixtures/omp/<version>/ (TST-012)
 record-fixtures:
@@ -39,7 +44,9 @@ build-web:
 # Formatting and lints
 lint:
     cargo fmt --all --check
-    cargo clippy --workspace --all-targets -- -D warnings
+    cargo clippy --workspace --exclude e2e --all-targets -- -D warnings
+    cargo clippy -p e2e --all-targets --no-deps -- -D warnings
+    cargo clippy -p omfp-ui --target wasm32-unknown-unknown --features web -- -D warnings
 
 # spec: ENV-010, ENV-011, ENV-012 — omp, omp-rpc, wasm-bindgen and dioxus versions agree
 check-versions:
@@ -59,7 +66,7 @@ mutants *args:
 
 # Coverage report (HTML in target/llvm-cov/html)
 cov:
-    cargo llvm-cov nextest --workspace --html -E 'not binary(/^contract_/)'
+    cargo llvm-cov nextest --workspace --exclude e2e --html -E 'not binary(/^contract_/)'
 
 # Everything a change must pass
-ci: lint check-versions spec-trace check-wasm test test-contract deny
+ci: lint check-versions spec-trace check-wasm test test-contract test-wasm test-e2e deny

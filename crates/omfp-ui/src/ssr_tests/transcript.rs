@@ -205,6 +205,27 @@ fn a_long_transcript_renders_only_its_tail_with_a_spacer_for_the_rest() {
 
 // spec: UI-042
 #[test]
+fn the_transcript_container_belongs_to_the_selected_thread() {
+    let input = with_open(
+        with_open(index(), "t-checkout", fixture("text_reply")),
+        "t-idle",
+        fixture("text_reply"),
+    );
+    for thread_id in ["t-checkout", "t-idle"] {
+        let page = Page::new(input.clone(), selecting(thread_id));
+        let transcript = page.one("transcript");
+        assert_eq!(
+            (
+                attr(transcript, "data-thread-id"),
+                attr(transcript, "data-pinned")
+            ),
+            (Some(thread_id), Some("true"))
+        );
+    }
+}
+
+// spec: UI-042
+#[test]
 fn the_streaming_reply_is_rendered_last_and_marked_busy() {
     let events = fixture_events("text_reply");
     let end = events

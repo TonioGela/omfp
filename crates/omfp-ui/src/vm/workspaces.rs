@@ -89,7 +89,7 @@ mod tests {
     use super::*;
     use crate::test_support::{repository, thread, workspace};
 
-    // spec: UI-025
+    // spec: UI-025, UI-011
     #[test]
     fn rows_list_threads_git_status_pr_and_flag_shared_workspaces() {
         let repositories = vec![repository("r", "fe")];

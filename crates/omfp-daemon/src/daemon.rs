@@ -15,7 +15,7 @@ use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
 use crate::agent::{AgentLauncher, OmpLauncher};
-use crate::config::{Cli, Config};
+use crate::config::{Cli, Config, web_bundle};
 use crate::git::{Git, GitCli};
 use crate::omp_binary;
 use crate::paths::DataDir;
@@ -211,9 +211,19 @@ impl DaemonHandle {
     }
 }
 
-/// Starts a daemon in-process with the real ports (DMN-004).
-pub async fn start(config: Config) -> anyhow::Result<DaemonHandle> {
+/// Starts a daemon in-process with the real ports (DMN-004), serving the web bundle shipped next to the executable
+/// unless `--static-dir` names one (DMN-008).
+pub async fn start(mut config: Config) -> anyhow::Result<DaemonHandle> {
     let ports = Ports::resolve(&config)?;
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf));
+    config.static_dir = web_bundle(config.static_dir.as_deref(), exe_dir.as_deref());
+    if let Some(dir) = &config.static_dir {
+        info!(web = %dir.display(), "serving the web UI");
+    } else {
+        warn!("no web UI bundle: pass --static-dir to serve one");
+    }
     start_with(config, ports).await
 }
 

@@ -219,7 +219,8 @@ fn the_new_thread_dialog_offers_every_workspace_source_and_traps_focus() {
     assert_eq!(attr(page.one("add-pr"), "disabled"), Some("true"));
     let closed = Page::new(index(), UiState::default());
     assert_eq!(closed.testid("new-thread-dialog").len(), 0);
-    assert_ne!(attr(closed.one("shell"), "inert"), Some("true"));
+    // `inert` is a boolean attribute: any value, even "false", would disable the shell.
+    assert_eq!(attr(closed.one("shell"), "inert"), None);
 }
 
 // spec: UI-024
@@ -310,7 +311,7 @@ fn the_connection_banner_shows_while_disconnected_without_blocking_the_shell() {
         text(banner),
         "Connection lost. Reconnecting in 2 s (attempt 2)…"
     );
-    assert_ne!(attr(page.one("shell"), "inert"), Some("true"));
+    assert_eq!(attr(page.one("shell"), "inert"), None);
     assert_eq!(page.testid("thread-row").len(), 4);
     assert_eq!(
         Page::new(index(), UiState::default())

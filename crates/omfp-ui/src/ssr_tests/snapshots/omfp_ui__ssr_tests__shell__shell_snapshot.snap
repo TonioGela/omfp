@@ -2,7 +2,7 @@
 source: crates/omfp-ui/src/ssr_tests/shell.rs
 expression: "normalize(&render(input, ui))"
 ---
-<div class="app" data-testid="app">
+<div class="app" data-testid="app" tabindex="-1">
 <div class="shell" data-testid="shell">
 <nav class="sidebar" aria-label="Threads" data-testid="sidebar">
 <div class="sidebar-actions">

@@ -2,7 +2,7 @@
 source: crates/omfp-ui/src/ssr_tests/interactions.rs
 expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 ---
-<div class="app" data-testid="app">
+<div class="app" data-testid="app" tabindex="-1">
 <div class="shell" data-testid="shell">
 <nav class="sidebar" aria-label="Threads" data-testid="sidebar">
 <div class="sidebar-actions">
@@ -140,7 +140,7 @@ expression: "normalize(&render(with_ask(), selecting(\"t-checkout\")))"
 <button type="button" data-testid="process-action">Stop</button>
 </div>
 </header>
-<div class="transcript" data-testid="transcript" data-pinned=true role="log" aria-label="Transcript" tabindex="0">
+<div class="transcript" data-testid="transcript" data-thread-id="t-checkout" data-pinned=true role="log" aria-label="Transcript" tabindex="0">
 <div class="transcript-content">
 <div class="spacer" data-testid="spacer-top" style="height: 0px">
 </div>

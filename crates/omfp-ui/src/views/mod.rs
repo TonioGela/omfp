@@ -8,6 +8,7 @@ mod new_thread;
 mod panels;
 mod sidebar;
 mod thread;
+pub mod token;
 mod transcript;
 
 use std::collections::BTreeMap;

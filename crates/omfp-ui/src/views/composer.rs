@@ -273,6 +273,12 @@ pub(crate) fn Composer(thread_id: String) -> Element {
                 oninput: move |event| set_draft_text(ctx, &input_id, event.value()),
                 onkeydown: on_keydown,
                 onkeyup: on_keyup,
+                // A modifier released outside the textarea sends no keyup here: forget it with the focus.
+                onblur: move |_| {
+                    if ui.peek().steer_modifier {
+                        ui.write().steer_modifier = false;
+                    }
+                },
                 onpaste: move |event| attach_pasted(ctx, paste_id.clone(), &event),
             }
             ComposerActions { thread_id, mode, busy }

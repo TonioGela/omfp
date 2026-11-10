@@ -281,6 +281,7 @@ fn WorktreeInputs(
     let line = index + 1;
     rsx! {
         input {
+            "data-testid": "worktree-repo",
             "aria-label": "Repository of workspace {line} (registered id or path)",
             placeholder: "repository or /path",
             list: "new-thread-repositories",
@@ -300,6 +301,7 @@ fn WorktreeInputs(
             }
         }
         input {
+            "data-testid": "worktree-branch",
             "aria-label": "Branch of workspace {line}",
             placeholder: "branch (optional)",
             value: "{branch}",
@@ -313,6 +315,7 @@ fn WorktreeInputs(
             },
         }
         input {
+            "data-testid": "worktree-base",
             "aria-label": "Base ref of workspace {line}",
             placeholder: "base (optional)",
             value: "{base_ref}",

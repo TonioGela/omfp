@@ -207,7 +207,7 @@ mod tests {
         .expect("session state")
     }
 
-    // spec: UI-030
+    // spec: UI-030, UI-011
     #[test]
     fn header_shows_model_thinking_context_and_attachable_workspaces() {
         let repositories = vec![repository("r", "fe")];

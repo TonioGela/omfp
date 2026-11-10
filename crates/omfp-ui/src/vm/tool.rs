@@ -237,7 +237,7 @@ mod tests {
         cards
     }
 
-    // spec: UI-050
+    // spec: UI-050, UI-011
     #[test]
     fn a_finished_bash_call_renders_through_the_fallback_card() {
         let state = fixture("bash_tool_call");
@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(card.summary, "{\"command\": \"ec");
     }
 
-    // spec: UI-052
+    // spec: UI-052, UI-011
     #[test]
     fn failed_tools_are_expanded_by_default_and_take_the_error_text() {
         let run = ToolRun {

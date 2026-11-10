@@ -206,6 +206,16 @@ pub fn restore_draft(draft: &str, steering: &[String], follow_up: &[String]) -> 
         .join("\n\n")
 }
 
+/// The draft after a prompt failed to send: the failed text, then what was typed since, one blank line apart; the
+/// failed images, then the images attached since. Nothing the user wrote is lost (UI-064).
+#[must_use]
+pub fn restore_failed_prompt(draft: &Draft, text: &str, images: &[ImageContent]) -> Draft {
+    Draft {
+        text: restore_draft(&draft.text, &[text.to_owned()], &[]),
+        images: images.iter().chain(&draft.images).cloned().collect(),
+    }
+}
+
 /// An image attachment from pasted or dropped bytes; `None` for anything but `image/*` (UI-060).
 #[must_use]
 pub fn image_attachment(mime: &str, bytes: &[u8]) -> Option<ImageContent> {

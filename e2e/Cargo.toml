@@ -1,10 +1,21 @@
 [package]
 name = "e2e"
-description = "End-to-end tests (WebDriver) against the web build; scenarios E2E-01..08 arrive with M2."
+description = "End-to-end tests (WebDriver) against the web build: scenarios E2E-01..08 (06-testing.md, L5)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+fake-llm.workspace = true
+omfp-daemon.workspace = true
+omfp-testkit.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+thirtyfour.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true

@@ -2,6 +2,7 @@
 //! item reports its height through a resize observer, and the content reports growth: while pinned, growth scrolls the
 //! container to the bottom. Pending interactions sit after the list, inside the same scroll container.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
@@ -66,21 +67,32 @@ fn update_metrics(
     change(metrics.write().entry(thread_id.to_owned()).or_default());
 }
 
-/// Scrolls `container` to its bottom.
-fn scroll_to_bottom(container: Rc<MountedData>) {
+/// Scrolls `container` to `top`.
+fn scroll_to(container: Rc<MountedData>, top: f64) {
     spawn(async move {
         // A failed scroll leaves the view where it is; the next growth retries.
         let _ = container
-            .scroll(PixelsVector2D::new(0.0, BOTTOM), ScrollBehavior::Instant)
+            .scroll(PixelsVector2D::new(0.0, top), ScrollBehavior::Instant)
             .await;
     });
 }
 
+/// The transcript of `thread_id`, remounted for each thread: a fresh scroll container never shows the previous
+/// thread's scroll position, and mounting restores this thread's own.
 #[component]
 pub(crate) fn Transcript(thread_id: String) -> Element {
+    rsx! {
+        ThreadTranscript { key: "{thread_id}", thread_id }
+    }
+}
+
+#[component]
+fn ThreadTranscript(thread_id: String) -> Element {
     let ctx = Ctx::get();
     let metrics = ctx.metrics;
     let mut container: Signal<Option<Rc<MountedData>>> = use_signal(|| None);
+    // Set by the requests' keydown handler, which runs before the bubbling event reaches the list.
+    let from_control = use_hook(|| Rc::new(Cell::new(false)));
 
     let input = ctx.input.read();
     let Some(open) = input.open.get(&thread_id) else {
@@ -110,10 +122,25 @@ pub(crate) fn Transcript(thread_id: String) -> Element {
         }
     };
     let id = thread_id.clone();
+    let typed_in_control = from_control.clone();
     let on_keydown = move |event: KeyboardEvent| {
-        if pinned && matches!(event.key(), Key::ArrowUp | Key::PageUp | Key::Home) {
-            update_metrics(metrics, &id, ListMetrics::scrolled_up_by_user);
+        let scroll_up_key = matches!(event.key(), Key::ArrowUp | Key::PageUp | Key::Home);
+        let in_control = typed_in_control.replace(false);
+        if pinned && scroll_up_key {
+            update_metrics(metrics, &id, |metrics| {
+                metrics.on_key(scroll_up_key, in_control);
+            });
         }
+    };
+    let mount_id = thread_id.clone();
+    let on_mounted = move |event: MountedEvent| {
+        let data = event.data();
+        container.set(Some(data.clone()));
+        let restored = metrics
+            .peek()
+            .get(&mount_id)
+            .and_then(ListMetrics::mount_scroll_top);
+        scroll_to(data, restored.unwrap_or(BOTTOM));
     };
     let (down_id, up_id) = (thread_id.clone(), thread_id.clone());
     let (touch_id, untouch_id) = (thread_id.clone(), thread_id.clone());
@@ -124,7 +151,7 @@ pub(crate) fn Transcript(thread_id: String) -> Element {
             .get(&resize_id)
             .is_none_or(|metrics| metrics.pinned);
         if pinned && let Some(container) = container.peek().clone() {
-            scroll_to_bottom(container);
+            scroll_to(container, BOTTOM);
         }
     };
 
@@ -132,15 +159,12 @@ pub(crate) fn Transcript(thread_id: String) -> Element {
         div {
             class: "transcript",
             "data-testid": "transcript",
+            "data-thread-id": "{thread_id}",
             "data-pinned": pinned,
             role: "log",
             "aria-label": "Transcript",
             tabindex: "0",
-            onmounted: move |event| {
-                let data = event.data();
-                container.set(Some(data.clone()));
-                scroll_to_bottom(data);
-            },
+            onmounted: on_mounted,
             onscroll: on_scroll,
             onwheel: on_wheel,
             onkeydown: on_keydown,
@@ -155,7 +179,7 @@ pub(crate) fn Transcript(thread_id: String) -> Element {
                     TranscriptRow { key: "{key}", thread_id: thread_id.clone(), item_key: key.clone(), row }
                 }
                 div { class: "spacer", "data-testid": "spacer-bottom", style: "height: {px(window.pad_bottom)}" }
-                Interactions { thread_id: thread_id.clone() }
+                Interactions { thread_id: thread_id.clone(), onkeydown: move |_| from_control.set(true) }
             }
         }
     }

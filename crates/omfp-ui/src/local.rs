@@ -8,7 +8,7 @@ use omfp_protocol::ThreadSummary;
 use crate::input::OutcomeEntry;
 use crate::intent::{Intent, IntentOutcome};
 use crate::panels::PanelRegistry;
-use crate::vm::composer::{Draft, restore_draft};
+use crate::vm::composer::{Draft, restore_draft, restore_failed_prompt};
 use crate::vm::interaction::AskForm;
 use crate::vm::new_thread::NewThreadForm;
 use crate::vm::queue::PendingQueueOp;
@@ -100,8 +100,8 @@ pub struct UiState {
     pub errors: Vec<String>,
     /// The steer modifier is held (the send button shows "Steer now", UI-061).
     pub steer_modifier: bool,
-    /// Sequence number of the last applied outcome.
-    pub last_outcome: u64,
+    /// Sequence number of the last applied outcome; `None` before the first one.
+    pub last_outcome: Option<u64>,
 }
 
 impl UiState {
@@ -135,14 +135,20 @@ impl UiState {
             .collect()
     }
 
+    /// Whether the outcome numbered `seq` has not been applied yet.
+    #[must_use]
+    pub fn is_fresh_outcome(&self, seq: u64) -> bool {
+        self.last_outcome.is_none_or(|last| seq > last)
+    }
+
     /// Applies the outcomes not applied yet, in order, and returns the intents they lead to.
     pub fn apply_outcomes(&mut self, outcomes: &[OutcomeEntry]) -> Vec<Intent> {
         let mut follow_ups = Vec::new();
         for entry in outcomes {
-            if entry.seq <= self.last_outcome {
+            if !self.is_fresh_outcome(entry.seq) {
                 continue;
             }
-            self.last_outcome = entry.seq;
+            self.last_outcome = Some(entry.seq);
             follow_ups.extend(self.apply_outcome(&entry.outcome));
         }
         follow_ups
@@ -199,6 +205,15 @@ impl UiState {
                         self.answered_here
                             .remove(&(thread_id.clone(), interaction_id.clone()));
                     }
+                    Intent::Prompt {
+                        thread_id,
+                        text,
+                        images,
+                        ..
+                    } => {
+                        let draft = self.drafts.entry(thread_id.clone()).or_default();
+                        *draft = restore_failed_prompt(draft, text, images);
+                    }
                     _ => {}
                 }
                 self.errors.push(message.clone());
@@ -244,6 +259,7 @@ mod tests {
     use super::*;
     use crate::intent::QueueOp;
     use crate::test_support::thread;
+    use crate::vm::composer::image_attachment;
 
     fn entry(seq: u64, outcome: IntentOutcome) -> OutcomeEntry {
         OutcomeEntry { seq, outcome }
@@ -346,8 +362,77 @@ mod tests {
                 ui.new_thread.is_none(),
                 ui.last_outcome
             ),
-            (Some("t9"), true, 4)
+            (Some("t9"), true, Some(4))
         );
+    }
+
+    #[test]
+    fn an_outcome_numbered_zero_is_applied_once() {
+        let mut ui = UiState::default();
+        let outcomes = vec![entry(
+            0,
+            IntentOutcome::Failed {
+                intent: Intent::SelectThread {
+                    thread_id: "t".to_owned(),
+                },
+                message: "boom".to_owned(),
+            },
+        )];
+        assert!(ui.is_fresh_outcome(0));
+        ui.apply_outcomes(&outcomes);
+        ui.apply_outcomes(&outcomes);
+        assert_eq!(
+            (ui.errors, ui.last_outcome),
+            (vec!["boom".to_owned()], Some(0))
+        );
+    }
+
+    // spec: UI-064
+    #[test]
+    fn a_failed_prompt_goes_back_into_that_threads_draft_before_what_was_typed_since() {
+        let failed_image = image_attachment("image/png", &[1]).expect("image");
+        let new_image = image_attachment("image/png", &[2]).expect("image");
+        let mut ui = UiState::default();
+        ui.drafts.insert(
+            "t".to_owned(),
+            Draft {
+                text: "typed since".to_owned(),
+                images: vec![new_image.clone()],
+            },
+        );
+        ui.apply_outcome(&IntentOutcome::Failed {
+            intent: Intent::Prompt {
+                thread_id: "t".to_owned(),
+                text: "fix the bug".to_owned(),
+                images: vec![failed_image.clone()],
+                behavior: None,
+            },
+            message: "thread stopped".to_owned(),
+        });
+        assert_eq!(
+            ui.draft("t"),
+            Draft {
+                text: "fix the bug\n\ntyped since".to_owned(),
+                images: vec![failed_image.clone(), new_image],
+            }
+        );
+        ui.apply_outcome(&IntentOutcome::Failed {
+            intent: Intent::Prompt {
+                thread_id: "u".to_owned(),
+                text: "hello".to_owned(),
+                images: vec![failed_image.clone()],
+                behavior: None,
+            },
+            message: "thread stopped".to_owned(),
+        });
+        assert_eq!(
+            ui.draft("u"),
+            Draft {
+                text: "hello".to_owned(),
+                images: vec![failed_image],
+            }
+        );
+        assert_eq!(ui.errors.len(), 2);
     }
 
     // spec: UI-020

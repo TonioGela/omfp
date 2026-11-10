@@ -457,7 +457,7 @@ mod tests {
         ids.iter().map(|id| (*id).to_owned()).collect()
     }
 
-    // spec: UI-020
+    // spec: UI-020, UI-011
     #[test]
     fn status_puts_attention_before_the_process_and_the_settled_flag() {
         let mut summary = thread("t", "t", &[]);
@@ -477,7 +477,7 @@ mod tests {
         assert_eq!(ThreadStatus::of(&summary), ThreadStatus::Stopped);
     }
 
-    // spec: UI-020
+    // spec: UI-020, UI-011
     #[test]
     fn chips_show_repository_branch_and_pr_and_mark_the_first_as_cwd() {
         let (repositories, workspaces, threads) = index();
@@ -497,7 +497,7 @@ mod tests {
         assert_eq!(scratch[0].label, "w-scratch");
     }
 
-    // spec: UI-022
+    // spec: UI-022, UI-011
     #[test]
     fn grouping_by_workspace_lists_a_thread_under_each_of_its_workspaces() {
         assert_eq!(
@@ -511,7 +511,7 @@ mod tests {
         );
     }
 
-    // spec: UI-022
+    // spec: UI-022, UI-011
     #[test]
     fn grouping_by_repository_lists_a_thread_once_per_repository() {
         assert_eq!(
@@ -524,7 +524,7 @@ mod tests {
         );
     }
 
-    // spec: UI-022
+    // spec: UI-022, UI-011
     #[test]
     fn grouping_by_tag_and_pr_and_none() {
         assert_eq!(

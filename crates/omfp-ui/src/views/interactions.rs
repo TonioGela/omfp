@@ -13,10 +13,13 @@ use crate::components::Countdown;
 use crate::intent::Intent;
 use crate::local::InteractionKey;
 use crate::platform;
-use crate::vm::interaction::{AnswerDraft, AskForm, closed_rows, request_id, timeout_ms, title};
+use crate::vm::interaction::{
+    AnswerDraft, AskForm, card_key, closed_rows, request_id, timeout_ms, title,
+};
 
+/// The open requests and closed rows of `thread_id`; `onkeydown` sees every key typed into their controls.
 #[component]
-pub(crate) fn Interactions(thread_id: String) -> Element {
+pub(crate) fn Interactions(thread_id: String, onkeydown: EventHandler<KeyboardEvent>) -> Element {
     let ctx = Ctx::get();
     let mut ui = ctx.ui;
     let input = ctx.input.read();
@@ -37,10 +40,14 @@ pub(crate) fn Interactions(thread_id: String) -> Element {
         return rsx! {};
     }
     rsx! {
-        section { class: "interactions", "data-testid": "interactions", "aria-label": "Requests",
+        section {
+            class: "interactions",
+            "data-testid": "interactions",
+            "aria-label": "Requests",
+            onkeydown: move |event| onkeydown.call(event),
             for (index, request) in requests.into_iter().enumerate() {
                 InteractionCard {
-                    key: "{request_id(&request).unwrap_or_default()}-{index}",
+                    key: "{card_key(&request, index)}",
                     thread_id: thread_id.clone(),
                     request,
                     first: index == 0,

@@ -1,7 +1,7 @@
 //! Daemon configuration from the command line (02-daemon, "Startup and configuration").
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use clap::Parser;
@@ -22,7 +22,7 @@ pub struct Cli {
     /// omp executable; default: the bundled one, else `omp` on PATH (DMN-006).
     #[arg(long)]
     pub omp_bin: Option<PathBuf>,
-    /// Directory with the web UI bundle to serve.
+    /// Directory with the web UI bundle to serve; default: the `web/` bundle next to the executable (DMN-008).
     #[arg(long)]
     pub static_dir: Option<PathBuf>,
     /// Run even if omp is not the pinned release (DMN-001); the UI shows a warning.
@@ -90,6 +90,21 @@ impl Config {
     }
 }
 
+/// Name of the web bundle directory shipped next to the `omfp` executable (packaging, DMN-008).
+pub const BUNDLED_WEB_DIR: &str = "web";
+
+/// The web UI to serve (DMN-008): `--static-dir`, else the bundle next to the executable when it holds an
+/// `index.html`; `None` serves only the API.
+#[must_use]
+pub fn web_bundle(explicit: Option<&Path>, exe_dir: Option<&Path>) -> Option<PathBuf> {
+    if let Some(explicit) = explicit {
+        return Some(explicit.to_path_buf());
+    }
+    exe_dir
+        .map(|dir| dir.join(BUNDLED_WEB_DIR))
+        .filter(|bundle| bundle.join("index.html").is_file())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -136,5 +151,24 @@ mod tests {
         assert!(
             Config::from_cli(parse(&["--max-processes", "0"]), Some("/x".into()), None).is_err()
         );
+    }
+
+    // spec: DMN-008
+    #[test]
+    fn the_web_bundle_is_the_static_dir_else_the_one_next_to_the_executable() {
+        let exe_dir = tempfile::tempdir().unwrap();
+        let explicit = Path::new("/srv/omfp-web");
+        assert_eq!(
+            web_bundle(Some(explicit), Some(exe_dir.path())),
+            Some(explicit.to_path_buf())
+        );
+        // No bundle (or an empty directory): the API only.
+        assert_eq!(web_bundle(None, Some(exe_dir.path())), None);
+        let bundle = exe_dir.path().join(BUNDLED_WEB_DIR);
+        std::fs::create_dir(&bundle).unwrap();
+        assert_eq!(web_bundle(None, Some(exe_dir.path())), None);
+        std::fs::write(bundle.join("index.html"), "<!doctype html>").unwrap();
+        assert_eq!(web_bundle(None, Some(exe_dir.path())), Some(bundle));
+        assert_eq!(web_bundle(None, None), None);
     }
 }
