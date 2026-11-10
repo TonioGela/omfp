@@ -16,6 +16,8 @@ allow = [
   "CC0-1.0",
   "ISC",
   "MIT",
+  # File-level copyleft, unmodified upstream use only: cssparser and dtoa-short (via ammonia and scraper).
+  "MPL-2.0",
   "Unicode-3.0",
   "Unlicense",
   "Zlib",

@@ -1,10 +1,14 @@
 [package]
 name = "omfp-ui"
-description = "The omfp binary: `omfp daemon` natively, the Dioxus UI on the web (and desktop)."
+description = "The omfp app (Dioxus UI, compiles natively for SSR tests) and the `omfp` binary."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[lib]
+name = "omfp_ui"
+path = "src/lib.rs"
 
 # The single binary (D-15).
 [[bin]]
@@ -12,15 +16,38 @@ name = "omfp"
 path = "src/main.rs"
 
 [dependencies]
+ammonia.workspace = true
 dioxus.workspace = true
+omfp-core.workspace = true
+omfp-protocol.workspace = true
+pulldown-cmark.workspace = true
+serde_json.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 clap.workspace = true
 omfp-daemon.workspace = true
+tokio = { workspace = true, features = ["time"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-# Pinned to the dev shell's wasm-bindgen-cli (ENV-012); unused directly.
+gloo-timers.workspace = true
+js-sys.workspace = true
+# Pinned to the dev shell's wasm-bindgen-cli (ENV-012).
 wasm-bindgen.workspace = true
+wasm-bindgen-futures.workspace = true
+web-sys = { workspace = true, features = [
+  "Blob",
+  "ClipboardEvent",
+  "DataTransfer",
+  "Event",
+  "File",
+  "FileList",
+] }
+
+[dev-dependencies]
+dioxus-ssr.workspace = true
+insta.workspace = true
+regex.workspace = true
+scraper.workspace = true
 
 [features]
 default = []
