@@ -136,7 +136,7 @@
               pkgs.nixfmt
             ]
             ++ config.pre-commit.settings.enabledPackages
-            ++ lib.optionals pkgs.stdenv.isLinux (
+            ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux (
               desktopLibs
               ++ [
                 # Web UI E2E over WebDriver (versions aligned in nixpkgs)
@@ -150,7 +150,7 @@
             env = {
               RUST_SRC_PATH = "${rustToolchain}/lib/rustlib/src/rust/library";
             }
-            // lib.optionalAttrs pkgs.stdenv.isLinux {
+            // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
               # webkitgtk on NixOS/non-Intel GPUs: avoid blank windows from the DMABUF renderer.
               WEBKIT_DISABLE_DMABUF_RENDERER = "1";
               GIO_MODULE_DIR = "${pkgs.glib-networking}/lib/gio/modules";
