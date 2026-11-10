@@ -22,6 +22,20 @@ omp-rpc = { git = "https://github.com/can1357/oh-my-pi", tag = "v18.18.6" }
 # UI: dioxus minor MUST match `dx`, wasm-bindgen MUST equal the shell's wasm-bindgen-cli (ENV-012).
 dioxus = { version = "0.7.10" }
 wasm-bindgen = "=0.2.130"
+# Browser bindings: versions move in lockstep with wasm-bindgen (pinned above).
+js-sys = "0.3.107"
+web-sys = "0.3.107"
+wasm-bindgen-futures = "0.4.80"
+wasm-bindgen-test = "0.3.80"
+gloo-timers = { version = "0.3", features = ["futures"] }
+# UI rendering and tests
+ammonia = "4"
+dioxus-ssr = "0.7.10"
+pulldown-cmark = { version = "0.13", default-features = false, features = [
+  "html",
+] }
+scraper = "0.29"
+thirtyfour = "0.38"
 
 anyhow = "1"
 axum = { version = "0.8", features = ["ws"] }

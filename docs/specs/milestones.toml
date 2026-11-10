@@ -102,3 +102,52 @@ requirements = [
   "TST-014",
   "AGT-007",
 ]
+
+[M2]
+status = "in-progress"
+requirements = [
+  # Transport and state
+  "UI-001",
+  "UI-002",
+  "UI-003",
+  "UI-010",
+  "UI-011",
+  "UI-012",
+  # Layout
+  "UI-020",
+  "UI-021",
+  "UI-022",
+  "UI-023",
+  "UI-024",
+  "UI-025",
+  # Thread view
+  "UI-030",
+  "UI-040",
+  "UI-041",
+  "UI-042",
+  "UI-043",
+  "UI-050",
+  "UI-060",
+  "UI-061",
+  "UI-062",
+  "UI-063",
+  "UI-064",
+  "UI-070",
+  "UI-071",
+  "UI-072",
+  "UI-073",
+  # Styling and accessibility
+  "UI-091",
+  "UI-092",
+  # UI testing
+  "TST-030",
+  "TST-031",
+  "TST-032",
+  # End-to-end journeys
+  "E2E-01",
+  "E2E-02",
+  "E2E-03",
+  "E2E-04",
+  "E2E-05",
+  "E2E-08",
+]
