@@ -211,6 +211,12 @@ methods! {
     ThreadRestart = "thread.restart" (params::ThreadRef) -> params::Empty;
     /// Stops the omp process.
     ThreadStop = "thread.stop" (params::ThreadRef) -> params::Empty;
+    /// Starts a live voice session on the client's WebRTC peer (omp `live_connect`, DMN-100).
+    ThreadLiveConnect = "thread.live_connect" (params::LiveConnectParams) -> params::LiveConnected;
+    /// Stops the thread's live voice session, if any (omp `live_stop`, DMN-102).
+    ThreadLiveStop = "thread.live_stop" (params::ThreadRef) -> params::Empty;
+    /// Mutes or unmutes the live voice session (omp `live_mute`, DMN-102).
+    ThreadLiveMute = "thread.live_mute" (params::LiveMuteParams) -> params::LiveMuted;
     /// Answers an interactive request; `already_resolved` if another client answered first.
     InteractionRespond = "interaction.respond" (params::RespondParams) -> params::Empty;
     /// Opens a terminal.

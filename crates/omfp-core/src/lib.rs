@@ -5,16 +5,18 @@
 
 mod ask;
 mod event;
+mod live;
 mod reducer;
 mod state;
 mod stream;
 
 pub use ask::validate_ask_answers;
-pub use event::{ProcessState, Resolution, SessionInfo, ThreadEvent};
+pub use event::{LiveOwner, ProcessState, Resolution, SessionInfo, ThreadEvent};
+pub use live::live_error_message;
 pub use reducer::replay;
 pub use state::{
-    Notice, NoticeFrame, Presentation, QueueState, StreamingMessage, Subagent, ThreadState,
-    ToolRun, ToolStatus, TranscriptEntry, Widget,
+    LiveLine, LiveSession, Notice, NoticeFrame, Presentation, QueueState, StreamingMessage,
+    Subagent, ThreadState, ToolRun, ToolStatus, TranscriptEntry, Widget,
 };
 
 /// omp RPC wire types, reused as-is instead of being redefined (ARC-011).

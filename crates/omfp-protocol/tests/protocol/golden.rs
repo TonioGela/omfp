@@ -7,19 +7,19 @@ use omfp_protocol::{
     CopyWidgetParams, CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileCandidate,
     FileCandidates, FileContent, FileDiff, FileKind, FileMatch, FileWritten, FindFileParams,
     ForkParams, GoalParams, HelloParams, HelloResult, IndexSnapshot, InteractionResponse, JobInfo,
-    JobRef, JobStatus, LabelParams, ListTerminalsParams, METHODS, MessageParams, Method,
-    NavigateParams, OpenTerminalParams, OpenTerminalResult, PROTOCOL_VERSION, PathCompletions,
-    PathEntry, Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams,
-    ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
-    ReportWidgetsParams, Request, ResizeTerminalParams, RespondParams, Response,
-    SearchThreadsParams, SeenRepository, ServerFrame, SetModelParams, SetSettingsParams,
-    SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
-    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
-    SuggestReposParams, TerminalInfo, TerminalKind, TerminalList, TerminalRef, Theme, ThreadGit,
-    ThreadRef, ThreadSearchResult, ThreadSearchResults, ThreadWorkspace, Topic, TopicParams,
-    UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied, WidgetJobReport, WidgetReport,
-    WidgetReportState, WidgetSource, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
-    decode_request, method,
+    JobRef, JobStatus, LabelParams, ListTerminalsParams, LiveConnectParams, LiveConnected,
+    LiveMuteParams, LiveMuted, METHODS, MessageParams, Method, NavigateParams, OpenTerminalParams,
+    OpenTerminalResult, PROTOCOL_VERSION, PathCompletions, PathEntry, Position, PromptBehavior,
+    PromptParams, PromptResult, QueueMessageParams, ReadFileParams, RemoveRepoParams,
+    RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions, ReportWidgetsParams, Request,
+    ResizeTerminalParams, RespondParams, Response, SearchThreadsParams, SeenRepository,
+    ServerFrame, SetModelParams, SetSettingsParams, SetThinkingParams, SetViewsParams,
+    SetWidgetStateParams, StartJobParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
+    SubscribeParams, SubscribeResult, SuggestReposParams, TerminalInfo, TerminalKind, TerminalList,
+    TerminalRef, Theme, ThreadGit, ThreadRef, ThreadSearchResult, ThreadSearchResults,
+    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied,
+    WidgetJobReport, WidgetReport, WidgetReportState, WidgetSource, WorkspaceDiffParams,
+    WorkspaceRef, WriteFileParams, decode_request, method,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -103,6 +103,7 @@ fn system_examples() -> Vec<(&'static str, Value)> {
                 omp: "18.18.6".to_owned(),
                 warnings: vec!["omp version mismatch allowed (--allow-omp-mismatch)".to_owned()],
                 widget_base: "/widgets/8c1f…".to_owned(),
+                connection: 3,
             },
         ),
         example::<method::Subscribe>(
@@ -605,6 +606,24 @@ fn tool_examples() -> Vec<(&'static str, Value)> {
         ),
         example::<method::ThreadRestart>(thread_ref(), &Empty {}),
         example::<method::ThreadStop>(thread_ref(), &Empty {}),
+        example::<method::ThreadLiveConnect>(
+            LiveConnectParams {
+                thread_id: THREAD_ID.to_owned(),
+                sdp_offer: "v=0\r\no=- 46117 2 IN IP4 127.0.0.1\r\n…".to_owned(),
+            },
+            &LiveConnected {
+                sdp_answer: "v=0\r\no=- 7215 1 IN IP4 0.0.0.0\r\n…".to_owned(),
+                voice: "sol".to_owned(),
+            },
+        ),
+        example::<method::ThreadLiveStop>(thread_ref(), &Empty {}),
+        example::<method::ThreadLiveMute>(
+            LiveMuteParams {
+                thread_id: THREAD_ID.to_owned(),
+                muted: true,
+            },
+            &LiveMuted { muted: true },
+        ),
         example::<method::InteractionRespond>(
             RespondParams {
                 thread_id: THREAD_ID.to_owned(),
@@ -777,11 +796,69 @@ fn hello_names_where_widgets_are_served() {
         omp: "18.18.6".to_owned(),
         warnings: Vec::new(),
         widget_base: "/widgets/abc".to_owned(),
+        connection: 1,
     };
     assert_eq!(
         serde_json::to_value(&result).unwrap()["widgetBase"],
         json!("/widgets/abc")
     );
+}
+
+// spec: PRT-051
+#[test]
+fn hello_names_the_connection() {
+    let result = HelloResult {
+        protocol: PROTOCOL_VERSION,
+        daemon: "0.1.0".to_owned(),
+        omp: "18.18.6".to_owned(),
+        warnings: Vec::new(),
+        widget_base: "/widgets/abc".to_owned(),
+        connection: 42,
+    };
+    assert_eq!(
+        serde_json::to_value(&result).unwrap()["connection"],
+        json!(42)
+    );
+}
+
+// spec: PRT-050
+#[test]
+fn live_methods_have_the_shapes_of_the_spec() {
+    let connect = Request::new(
+        "c1",
+        method::ThreadLiveConnect::call(LiveConnectParams {
+            thread_id: THREAD_ID.to_owned(),
+            sdp_offer: "v=0".to_owned(),
+        }),
+    );
+    assert_eq!(
+        serde_json::to_value(&connect).unwrap()["params"],
+        json!({ "threadId": THREAD_ID, "sdpOffer": "v=0" })
+    );
+    let connected = LiveConnected {
+        sdp_answer: "v=0".to_owned(),
+        voice: "sol".to_owned(),
+    };
+    assert_eq!(
+        serde_json::to_value(&connected).unwrap(),
+        json!({ "sdpAnswer": "v=0", "voice": "sol" })
+    );
+    let mute = Request::new(
+        "c2",
+        method::ThreadLiveMute::call(LiveMuteParams {
+            thread_id: THREAD_ID.to_owned(),
+            muted: false,
+        }),
+    );
+    assert_eq!(
+        serde_json::to_value(&mute).unwrap()["params"],
+        json!({ "threadId": THREAD_ID, "muted": false })
+    );
+    assert_eq!(
+        serde_json::to_value(LiveMuted { muted: false }).unwrap(),
+        json!({ "muted": false })
+    );
+    assert_eq!(method::ThreadLiveStop::NAME, "thread.live_stop");
 }
 
 #[test]

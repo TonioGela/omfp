@@ -42,6 +42,9 @@ pub struct HelloResult {
     pub warnings: Vec<String>,
     /// Path under which this daemon serves widget modules to this client (`/widgets/<key>`, DMN-084, PRT-042).
     pub widget_base: String,
+    /// Number of this connection, unique while the daemon runs: the `owner.connection` of the live sessions it
+    /// starts (PRT-051).
+    pub connection: u64,
 }
 
 /// A position in a topic's event stream.
@@ -545,6 +548,40 @@ pub struct ThreadGit {
     pub workspace_id: String,
     /// In the order of the workspace's `repos`.
     pub repos: Vec<RepoStatus>,
+}
+
+/// `thread.live_connect` params (PRT-050, DMN-100).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveConnectParams {
+    pub thread_id: String,
+    /// SDP offer of the client's WebRTC peer: one sendrecv Opus audio track plus an `oai-events` data channel.
+    pub sdp_offer: String,
+}
+
+/// `thread.live_connect` result: omp's answer once the call is signaled (PRT-050).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveConnected {
+    /// SDP answer to apply to the peer right away.
+    pub sdp_answer: String,
+    /// The realtime voice omp uses.
+    pub voice: String,
+}
+
+/// `thread.live_mute` params (PRT-050, DMN-102).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveMuteParams {
+    pub thread_id: String,
+    pub muted: bool,
+}
+
+/// `thread.live_mute` result: the mute state omp applied.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveMuted {
+    pub muted: bool,
 }
 
 /// `interaction.respond` params (DMN-051).

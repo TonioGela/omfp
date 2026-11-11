@@ -98,7 +98,19 @@ pub(crate) fn supervisor_error(error: SupervisorError) -> ErrorBody {
             return body;
         }
         SupervisorError::AlreadyResolved(_) => ErrorCode::AlreadyResolved,
-        SupervisorError::InvalidResponse(_) => ErrorCode::BadRequest,
+        SupervisorError::InvalidResponse(_) | SupervisorError::EmptyOffer => ErrorCode::BadRequest,
+        SupervisorError::LiveActive { .. } | SupervisorError::NoLiveSession => ErrorCode::Conflict,
+        SupervisorError::Live { omp, .. } => {
+            // omp's own refusal of a second session (DMN-104): the same conflict the daemon reports itself.
+            let code = if omp.contains("A live session is already active") {
+                ErrorCode::Conflict
+            } else {
+                ErrorCode::OmpError
+            };
+            let mut body = ErrorBody::new(code, error.to_string());
+            body.details = Some(serde_json::json!({ "ompError": omp }));
+            return body;
+        }
     };
     ErrorBody::new(code, error.to_string())
 }

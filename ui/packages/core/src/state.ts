@@ -4,7 +4,7 @@
  * fields, `null` for empty `Option`s, maps as plain objects.
  */
 
-import type { ProcessState, SessionInfo } from "./event.ts";
+import type { LiveOwner, ProcessState, SessionInfo } from "./event.ts";
 import type { JsonValue } from "./json.ts";
 import type {
   AgentMessage,
@@ -16,6 +16,8 @@ import type {
   AvailableSlashCommand,
   ExtensionError,
   ExtensionUiRequest,
+  LivePhase,
+  LiveRole,
   ManualCompactionEndEvent,
   ManualCompactionStartEvent,
   NoticeEvent,
@@ -56,6 +58,32 @@ export interface ThreadState {
   subagents: Record<string, Subagent>;
   /** Noteworthy frames outside the transcript, shown as inline rows (UI-043). */
   notices: Notice[];
+  /**
+   * The live voice session (PRT-052): opened by a `live_session` event, closed by `live_end`, a `live_session` without
+   * owner, or the end of the process.
+   */
+  live: LiveSession | null;
+  /** Readable message of the failure the last live session ended on (DMN-104); cleared when the next one opens. */
+  live_error: string | null;
+}
+
+/** A live voice session (PRT-052). */
+export interface LiveSession {
+  /** The connection that started it. */
+  owner: LiveOwner;
+  /** The last `live_phase`; `null` until omp reports one. */
+  phase: LivePhase | null;
+  /** One line per role and turn, in order of first appearance. */
+  transcript: LiveLine[];
+}
+
+/** The text of one realtime turn of one speaker (`live_transcript`). */
+export interface LiveLine {
+  role: LiveRole;
+  turn: number;
+  text: string;
+  /** omp sent the turn's last frame; later frames of the turn are ignored. */
+  final: boolean;
 }
 
 /** One finished transcript message. */
@@ -171,5 +199,7 @@ export function emptyThreadState(): ThreadState {
     prompts: {},
     subagents: {},
     notices: [],
+    live: null,
+    live_error: null,
   };
 }

@@ -6,9 +6,10 @@ use std::sync::Arc;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{SinkExt, StreamExt};
+use omfp_core::LiveOwner;
 use omfp_protocol::{
-    Call, ErrorBody, ErrorCode, EventFrame, HelloResult, Request, Response, ServerFrame,
-    SubscribeParams, SubscribeResult, Topic, TopicEvent, decode_request,
+    Call, ErrorBody, ErrorCode, EventFrame, HelloResult, LiveConnected, Request, Response,
+    ServerFrame, SubscribeParams, SubscribeResult, Topic, TopicEvent, decode_request,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -75,11 +76,13 @@ pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>) {
         let _ = sink.close().await;
     });
 
-    if let Some(principal) = hello(&app, &mut stream, &out).await {
+    // Names the connection: its widget report (PRT-043) and the live sessions it owns (PRT-051, DMN-103).
+    let number = app.services.reports_connection();
+    if let Some(principal) = hello(&app, &mut stream, &out, number).await {
         let (dropped_tx, dropped) = mpsc::unbounded_channel();
         let mut connection = Connection {
             app: Arc::clone(&app),
-            number: app.services.reports_connection(),
+            number,
             principal,
             out: out.clone(),
             subscriptions: HashMap::new(),
@@ -90,6 +93,9 @@ pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>) {
         // Closing the socket unsubscribes everything (PRT-024) and forgets the window's widget report (PRT-043).
         connection.subscriptions.clear();
         app.services.forget_widget_reports(connection.number);
+        // The window's audio peer is gone with it: stop the live sessions it started (DMN-103).
+        let supervisor = app.services.supervisor.clone();
+        tokio::spawn(async move { supervisor.release_live(number).await });
     }
     drop(out);
     let _ = writer.await;
@@ -106,6 +112,7 @@ async fn hello(
     app: &AppState,
     stream: &mut futures::stream::SplitStream<WebSocket>,
     out: &mpsc::Sender<Outbound>,
+    number: u64,
 ) -> Option<Principal> {
     let unauthorized = || Outbound::Close(CLOSE_UNAUTHORIZED, "system.hello required");
     loop {
@@ -149,6 +156,7 @@ async fn hello(
             omp: app.omp_version.clone(),
             warnings: app.warnings.clone(),
             widget_base: app.widget_base.clone(),
+            connection: number,
         };
         send(out, Outbound::response(id, to_value(&result))).await;
         return Some(Principal::Owner {
@@ -183,7 +191,7 @@ impl Drop for Subscribed {
 
 struct Connection {
     app: Arc<AppState>,
-    /// Names this connection's widget report (PRT-043).
+    /// Names this connection's widget report (PRT-043) and the live sessions it owns (PRT-051).
     number: u64,
     principal: Principal,
     out: mpsc::Sender<Outbound>,
@@ -265,6 +273,28 @@ impl Connection {
                     .report_widgets(self.number, self.principal.client(), params);
                 let result = to_value(&omfp_protocol::Empty {});
                 send(&self.out, Outbound::response(id, result)).await;
+            }
+            Call::ThreadLiveConnect(params) => {
+                // The connection owns the session: closing it stops the session (DMN-103).
+                let owner = LiveOwner {
+                    client: self.principal.client().to_owned(),
+                    connection: self.number,
+                };
+                let supervisor = self.app.services.supervisor.clone();
+                let out = self.out.clone();
+                tokio::spawn(async move {
+                    let result = supervisor
+                        .live_connect(&params.thread_id, owner, params.sdp_offer)
+                        .await
+                        .map_err(supervisor_error)
+                        .and_then(|answer| {
+                            to_value(&LiveConnected {
+                                sdp_answer: answer.sdp_answer,
+                                voice: answer.voice,
+                            })
+                        });
+                    send(&out, Outbound::response(id, result)).await;
+                });
             }
             call => {
                 // Requests run concurrently; responses may arrive out of order (PRT-010).

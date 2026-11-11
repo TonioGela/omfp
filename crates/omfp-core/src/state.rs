@@ -6,12 +6,12 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::event::{ProcessState, SessionInfo};
+use crate::event::{LiveOwner, ProcessState, SessionInfo};
 use crate::wire::{
     AgentMessage, AssistantMessage, AutoCompactionEndEvent, AutoCompactionStartEvent,
     AutoRetryEndEvent, AutoRetryStartEvent, AvailableSlashCommand, ExtensionError,
-    ExtensionUiRequest, ManualCompactionEndEvent, ManualCompactionStartEvent, NoticeEvent,
-    NotifyUiRequest, OpenUrlUiRequest, PromptResultEvent, RpcFrameErrorEvent,
+    ExtensionUiRequest, LivePhase, LiveRole, ManualCompactionEndEvent, ManualCompactionStartEvent,
+    NoticeEvent, NotifyUiRequest, OpenUrlUiRequest, PromptResultEvent, RpcFrameErrorEvent,
     SubagentLifecyclePayload, SubagentProgressPayload, WidgetPlacement,
 };
 
@@ -44,6 +44,11 @@ pub struct ThreadState {
     pub subagents: BTreeMap<String, Subagent>,
     /// Noteworthy frames outside the transcript, shown as inline rows (UI-043).
     pub notices: Vec<Notice>,
+    /// The live voice session (PRT-052): opened by a `live_session` event, closed by `live_end`, a `live_session`
+    /// without owner, or the end of the process.
+    pub live: Option<LiveSession>,
+    /// Readable message of the failure the last live session ended on (DMN-104); cleared when the next one opens.
+    pub live_error: Option<String>,
 }
 
 impl Default for ThreadState {
@@ -62,8 +67,31 @@ impl Default for ThreadState {
             prompts: BTreeMap::new(),
             subagents: BTreeMap::new(),
             notices: Vec::new(),
+            live: None,
+            live_error: None,
         }
     }
+}
+
+/// A live voice session (PRT-052).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveSession {
+    /// The connection that started it.
+    pub owner: LiveOwner,
+    /// The last `live_phase`; `None` until omp reports one.
+    pub phase: Option<LivePhase>,
+    /// One line per role and turn, in order of first appearance.
+    pub transcript: Vec<LiveLine>,
+}
+
+/// The text of one realtime turn of one speaker (`live_transcript`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveLine {
+    pub role: LiveRole,
+    pub turn: i64,
+    pub text: String,
+    /// omp sent the turn's last frame; later frames of the turn are ignored.
+    pub r#final: bool,
 }
 
 /// One finished transcript message.

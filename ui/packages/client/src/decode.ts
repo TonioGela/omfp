@@ -136,6 +136,7 @@ const THREAD_EVENTS: Record<ThreadEvent["kind"], (event: Record<string, unknown>
   process: (event) => isObject(event.state) && typeof event.state.state === "string",
   interaction_resolved: (event) =>
     typeof event.id === "string" && isObject(event.resolution) && typeof event.resolution.by === "string",
+  live_session: (event) => event.owner === undefined || isNullableObject(event.owner),
   unknown: (event) => "raw" in event,
 };
 
@@ -261,7 +262,7 @@ export function decodeServerFrame(value: unknown): Decoded<ServerFrame> {
   }
 }
 
-/** Decodes the result of `system.hello` (PRT-005). */
+/** Decodes the result of `system.hello` (PRT-005, PRT-051). */
 export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
   if (
     !isObject(value) ||
@@ -269,9 +270,10 @@ export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
     typeof value.daemon !== "string" ||
     typeof value.omp !== "string" ||
     !isStringArray(value.warnings) ||
-    typeof value.widgetBase !== "string"
+    typeof value.widgetBase !== "string" ||
+    !isSeq(value.connection)
   ) {
-    return invalid("expected `protocol`, `daemon`, `omp`, `warnings` and `widgetBase`");
+    return invalid("expected `protocol`, `daemon`, `omp`, `warnings`, `widgetBase` and `connection`");
   }
   return {
     ok: true,
@@ -281,6 +283,7 @@ export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
       omp: value.omp,
       warnings: value.warnings,
       widgetBase: value.widgetBase,
+      connection: value.connection,
     },
   };
 }
@@ -334,6 +337,8 @@ const THREAD_STATE_FIELDS: Record<keyof ThreadState, (field: unknown) => boolean
   prompts: isObject,
   subagents: isObject,
   notices: Array.isArray,
+  live: isNullableObject,
+  live_error: (field) => field === null || typeof field === "string",
 };
 
 /** Decodes the state of a `thread/<id>` snapshot: the daemon's `ThreadState` (PRT-021). */

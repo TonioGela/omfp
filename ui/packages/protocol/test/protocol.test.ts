@@ -75,6 +75,7 @@ describe("method table", () => {
       protocol: 1,
       warnings: [],
       widgetBase: "/widgets/0123",
+      connection: 1,
     };
     expect(result.protocol).toBe(PROTOCOL_VERSION);
 

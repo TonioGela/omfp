@@ -105,6 +105,9 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.bash"
         | "thread.restart"
         | "thread.stop"
+        | "thread.live_connect"
+        | "thread.live_stop"
+        | "thread.live_mute"
         | "interaction.respond"
         | "jobs.start"
         | "jobs.kill" => Drive,

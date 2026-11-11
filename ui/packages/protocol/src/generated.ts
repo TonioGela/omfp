@@ -273,6 +273,11 @@ export type HelloParams = {
 
 /** `system.hello` result (PRT-005). */
 export type HelloResult = {
+  /**
+   * Number of this connection, unique while the daemon runs: the `owner.connection` of the live sessions it
+   * starts (PRT-051).
+   */
+  connection: number;
   /** Daemon version. */
   daemon: string;
   /** omp version. */
@@ -423,6 +428,32 @@ export type LabelParams = {
 export type ListTerminalsParams = {
   threadId?: string | null;
   workspaceId?: string | null;
+};
+
+/** `thread.live_connect` params (PRT-050, DMN-100). */
+export type LiveConnectParams = {
+  /** SDP offer of the client's WebRTC peer: one sendrecv Opus audio track plus an `oai-events` data channel. */
+  sdpOffer: string;
+  threadId: string;
+};
+
+/** `thread.live_connect` result: omp's answer once the call is signaled (PRT-050). */
+export type LiveConnected = {
+  /** SDP answer to apply to the peer right away. */
+  sdpAnswer: string;
+  /** The realtime voice omp uses. */
+  voice: string;
+};
+
+/** `thread.live_mute` params (PRT-050, DMN-102). */
+export type LiveMuteParams = {
+  muted: boolean;
+  threadId: string;
+};
+
+/** `thread.live_mute` result: the mute state omp applied. */
+export type LiveMuted = {
+  muted: boolean;
 };
 
 /** `thread.steer` / `thread.follow_up` params. */
@@ -1122,6 +1153,9 @@ export interface Methods {
   "thread.state": { params: ThreadRef; result: unknown };
   "thread.restart": { params: ThreadRef; result: Empty };
   "thread.stop": { params: ThreadRef; result: Empty };
+  "thread.live_connect": { params: LiveConnectParams; result: LiveConnected };
+  "thread.live_stop": { params: ThreadRef; result: Empty };
+  "thread.live_mute": { params: LiveMuteParams; result: LiveMuted };
   "interaction.respond": { params: RespondParams; result: Empty };
   "terminal.open": { params: OpenTerminalParams; result: OpenTerminalResult };
   "terminal.resize": { params: ResizeTerminalParams; result: Empty };
@@ -1194,6 +1228,9 @@ export const METHODS: readonly MethodName[] = [
   "thread.state",
   "thread.restart",
   "thread.stop",
+  "thread.live_connect",
+  "thread.live_stop",
+  "thread.live_mute",
   "interaction.respond",
   "terminal.open",
   "terminal.resize",

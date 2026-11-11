@@ -892,3 +892,307 @@ async fn set_thread_title_stores_a_set_title_and_names_the_session() {
     gate.open();
     assert_eq!(h.session_names(), ["Agent's choice"]);
 }
+
+fn owner(connection: u64) -> LiveOwner {
+    LiveOwner {
+        client: "omfp/web".into(),
+        connection,
+    }
+}
+
+const OFFER: &str = "v=0\r\na=setup:actpass\r\na=mid:0\r\n";
+
+/// The `live_connect` offers a fake process received.
+fn live_offers(process: &crate::agent::FakeProcess) -> Vec<String> {
+    process
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            FakeCall::Call(OmpCall::LiveConnect(connect)) => Some(connect.sdp_offer),
+            _ => None,
+        })
+        .collect()
+}
+
+fn live_phase(state: &ThreadState) -> Option<&'static str> {
+    state
+        .live
+        .as_ref()
+        .and_then(|live| live.phase)
+        .map(omp_rpc::LivePhase::as_str)
+}
+
+// spec: DMN-100, TST-015
+#[tokio::test]
+async fn live_connect_starts_omp_records_the_owner_and_relays_the_answer() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher.script_live(crate::agent::FakeLive::connect(
+        crate::agent::FakeLive::call_frames(),
+    ));
+
+    let answer = h
+        .supervisor
+        .live_connect(&id, owner(4), OFFER.into())
+        .await
+        .unwrap();
+
+    assert_eq!(answer.voice, "sol");
+    assert_eq!(answer.sdp_answer, crate::agent::answer_for(OFFER));
+    assert_eq!(live_offers(&h.launcher.process(0)), vec![OFFER.to_owned()]);
+    h.wait(&id, "the call's transcript", |state| {
+        state
+            .live
+            .as_ref()
+            .is_some_and(|live| live.transcript.len() == 2)
+    })
+    .await;
+    let state = h.log(&id).await.with_state(Clone::clone);
+    let live = state.live.clone().unwrap();
+    assert_eq!(live.owner, owner(4));
+    assert_eq!(live_phase(&state), Some("listening"));
+    assert!(live.transcript.iter().all(|line| line.r#final));
+}
+
+// spec: DMN-100
+#[tokio::test]
+async fn a_blank_offer_is_refused_without_omp() {
+    let h = harness(|_| {});
+    let id = h.thread();
+
+    let error = h
+        .supervisor
+        .live_connect(&id, owner(1), " \n".into())
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, SupervisorError::EmptyOffer), "{error:?}");
+    assert_eq!(h.launcher.launches().len(), 0);
+}
+
+// spec: DMN-101, DMN-102
+#[tokio::test]
+async fn one_live_session_per_thread_until_omp_ends_it() {
+    let h = harness(|_| {});
+    let (id, other) = (h.thread(), h.thread());
+    h.supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap();
+
+    let error = h
+        .supervisor
+        .live_connect(&id, owner(2), OFFER.into())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, SupervisorError::LiveActive { client } if client == "omfp/web"),
+        "{error:?}"
+    );
+    assert_eq!(
+        live_offers(&h.launcher.process(0)).len(),
+        1,
+        "omp never saw the second offer"
+    );
+    h.supervisor
+        .live_connect(&other, owner(2), OFFER.into())
+        .await
+        .expect("another thread has its own session");
+
+    h.supervisor.live_stop(&id).await.unwrap();
+    h.wait(&id, "the end of the session", |state| state.live.is_none())
+        .await;
+    h.supervisor
+        .live_connect(&id, owner(3), OFFER.into())
+        .await
+        .expect("a new session once omp ended the first");
+    let state = h.log(&id).await.with_state(Clone::clone);
+    assert_eq!(state.live.map(|live| live.owner), Some(owner(3)));
+}
+
+// spec: DMN-102
+#[tokio::test]
+async fn live_stop_and_mute_never_start_omp() {
+    let h = harness(|_| {});
+    let id = h.thread();
+
+    h.supervisor.live_stop(&id).await.unwrap();
+    let error = h.supervisor.live_mute(&id, true).await.unwrap_err();
+
+    assert!(matches!(error, SupervisorError::NoLiveSession), "{error:?}");
+    assert_eq!(h.launcher.launches().len(), 0);
+}
+
+// spec: DMN-102, TST-015
+#[tokio::test]
+async fn live_mute_forwards_the_mute_and_omp_reports_the_phase() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap();
+
+    assert!(h.supervisor.live_mute(&id, true).await.unwrap());
+    h.wait(&id, "the muted phase", |state| {
+        live_phase(state) == Some("muted")
+    })
+    .await;
+    assert!(!h.supervisor.live_mute(&id, false).await.unwrap());
+    h.wait(&id, "the listening phase", |state| {
+        live_phase(state) == Some("listening")
+    })
+    .await;
+    let mutes: Vec<Option<bool>> = h
+        .launcher
+        .process(0)
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            FakeCall::Call(OmpCall::LiveMute(mute)) => Some(mute.muted),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(mutes, vec![Some(true), Some(false)]);
+}
+
+// spec: DMN-104, TST-015
+#[tokio::test]
+async fn a_missing_codex_login_reads_as_a_login_hint() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher
+        .script_live(crate::agent::FakeLive::no_credential());
+
+    let error = h
+        .supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap_err();
+
+    let SupervisorError::Live { message, omp } = &error else {
+        panic!("{error:?}");
+    };
+    assert_eq!(omp, crate::agent::NO_CREDENTIAL);
+    assert!(message.contains("`openai-codex` login"), "{message}");
+    assert!(message.contains("/login openai-codex"), "{message}");
+    h.wait(&id, "the end of the session", |state| {
+        state.live.is_none() && state.live_error.is_some()
+    })
+    .await;
+    let state = h.log(&id).await.with_state(Clone::clone);
+    assert_eq!(state.live_error.as_deref(), Some(message.as_str()));
+    // omp's `live_end` freed the thread for another try.
+    h.launcher.script_live(crate::agent::FakeLive::default());
+    h.supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap();
+}
+
+// spec: DMN-101, DMN-104
+#[tokio::test]
+async fn a_refusal_before_the_session_closes_it_at_once() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher.reply(
+        "live_connect",
+        FakeReply::Fail {
+            message: "End dictation before starting live voice".into(),
+            code: None,
+        },
+    );
+
+    let error = h
+        .supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "end dictation before starting live voice"
+    );
+    let state = h.log(&id).await.with_state(Clone::clone);
+    assert_eq!(state.live, None, "a `live_session` without owner closed it");
+    let again = h
+        .supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap_err();
+    assert!(matches!(again, SupervisorError::Live { .. }), "{again:?}");
+}
+
+// spec: DMN-103
+#[tokio::test]
+async fn a_closed_connection_stops_only_its_own_sessions() {
+    let h = harness(|_| {});
+    let (mine, theirs) = (h.thread(), h.thread());
+    h.supervisor
+        .live_connect(&mine, owner(1), OFFER.into())
+        .await
+        .unwrap();
+    h.supervisor
+        .live_connect(&theirs, owner(2), OFFER.into())
+        .await
+        .unwrap();
+
+    h.supervisor.release_live(1).await;
+
+    h.wait(&mine, "the stop", |state| state.live.is_none())
+        .await;
+    assert!(!h.launcher.process(0).live_active());
+    assert!(h.launcher.process(1).live_active());
+    let state = h.log(&theirs).await.with_state(Clone::clone);
+    assert_eq!(state.live.map(|live| live.owner), Some(owner(2)));
+}
+
+// spec: DMN-103
+#[tokio::test]
+async fn a_live_session_ends_with_its_process() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap();
+
+    h.launcher.process(0).exit();
+    h.wait(&id, "the crash", |state| {
+        matches!(state.process, ProcessState::Failed { .. })
+    })
+    .await;
+
+    assert_eq!(
+        h.log(&id).await.with_state(|state| state.live.clone()),
+        None
+    );
+    h.supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .expect("the slot died with the process");
+    assert_eq!(h.launcher.launches().len(), 2);
+}
+
+// spec: DMN-103, DMN-034
+#[tokio::test(start_paused = true)]
+async fn the_reaper_keeps_a_process_with_a_live_session() {
+    let timeout = Duration::from_mins(1);
+    let h = harness(|config| config.idle_timeout = timeout);
+    let id = h.thread();
+    h.supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap();
+    let reaper = h.supervisor.spawn_reaper();
+
+    tokio::time::sleep(timeout * 10).await;
+    assert!(h.supervisor.is_running(&id), "a live session keeps omp");
+
+    h.supervisor.live_stop(&id).await.unwrap();
+    h.wait(&id, "the idle stop after the session", |state| {
+        state.process == ProcessState::Stopped
+    })
+    .await;
+    reaper.abort();
+}

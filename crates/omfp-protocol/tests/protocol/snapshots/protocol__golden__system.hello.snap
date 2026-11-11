@@ -17,6 +17,7 @@ expression: golden
     "id": "c42",
     "ok": true,
     "result": {
+      "connection": 3,
       "daemon": "0.1.0",
       "omp": "18.18.6",
       "protocol": 1,

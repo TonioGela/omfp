@@ -5,9 +5,19 @@
  */
 
 import { arrayOf, type Decoder, decodeOrUndefined, Invalid } from "./decode.ts";
-import { processState, resolution, sessionInfo, type ThreadEvent } from "./event.ts";
+import { liveOwner, processState, resolution, sessionInfo, type ThreadEvent } from "./event.ts";
 import { isObject, type JsonValue, withKey, withoutKey } from "./json.ts";
-import type { Notice, NoticeFrame, StreamingMessage, ThreadState, ToolRun, ToolStatus } from "./state.ts";
+import { liveErrorMessage } from "./live.ts";
+import type {
+  LiveLine,
+  LiveSession,
+  Notice,
+  NoticeFrame,
+  StreamingMessage,
+  ThreadState,
+  ToolRun,
+  ToolStatus,
+} from "./state.ts";
 import { emptyThreadState } from "./state.ts";
 import { applyStreamEvent, newStreamingMessage } from "./stream.ts";
 import {
@@ -20,6 +30,9 @@ import {
   type ExtensionUiRequest,
   extensionError,
   extensionUiRequest,
+  liveEndEvent,
+  livePhaseEvent,
+  liveTranscriptEvent,
   manualCompactionEndEvent,
   manualCompactionStartEvent,
   messageEvent,
@@ -40,10 +53,7 @@ import {
 const IGNORED_FRAMES: Record<string, true> = {
   ready: true,
   subagent_event: true,
-  live_phase: true,
   live_levels: true,
-  live_transcript: true,
-  live_end: true,
   dictation_state: true,
   dictation_transcript: true,
   dictation_end: true,
@@ -208,6 +218,18 @@ function endMessage(state: ThreadState, frame: Record<string, unknown>): ThreadS
   return { ...state, transcript, streaming: message.role === "assistant" ? null : state.streaming };
 }
 
+/** One line per role and turn; a later frame replaces the text until the final one (PRT-052). */
+function liveTranscript(live: LiveSession, line: LiveLine): LiveSession {
+  const index = live.transcript.findIndex((known) => known.role === line.role && known.turn === line.turn);
+  if (index === -1) {
+    return { ...live, transcript: [...live.transcript, line] };
+  }
+  if (live.transcript[index]?.final === true) {
+    return live;
+  }
+  return { ...live, transcript: live.transcript.map((known, at) => (at === index ? line : known)) };
+}
+
 /** Applies a frame of known `type`; throws {@link Invalid} when it does not decode. */
 function applyFrame(state: ThreadState, type: string, frame: Record<string, unknown>): ThreadState {
   switch (type) {
@@ -287,6 +309,28 @@ function applyFrame(state: ThreadState, type: string, frame: Record<string, unkn
         queue: { steering: queue.steering, follow_up: queue.followUp, live_steered: queue.liveSteered },
       };
     }
+    case "live_phase": {
+      const { phase } = livePhaseEvent(frame);
+      // omp repeats the `error` phase after `live_end`: phases only apply to an open session (PRT-052).
+      return state.live === null ? state : { ...state, live: { ...state.live, phase } };
+    }
+    case "live_transcript": {
+      const event = liveTranscriptEvent(frame);
+      if (state.live === null) {
+        return state;
+      }
+      const live = liveTranscript(state.live, {
+        role: event.role,
+        turn: event.turn,
+        text: event.text,
+        final: event.final,
+      });
+      return live === state.live ? state : { ...state, live };
+    }
+    case "live_end": {
+      const { error } = liveEndEvent(frame);
+      return { ...state, live: null, live_error: error === undefined ? null : liveErrorMessage(error) };
+    }
   }
   if (Object.hasOwn(NOTICE_FRAMES, type)) {
     const noticeType = type as NoticeType;
@@ -351,13 +395,21 @@ export function reduce(state: ThreadState, event: ThreadEvent): ThreadState {
       if (process.state === "running" || process.state === "starting") {
         return { ...state, process };
       }
-      // Nothing can answer, settle or finish streaming without a process (DMN-035).
-      return { ...state, process, settled: true, interactions: [], streaming: null };
+      // Nothing can answer, settle or finish streaming without a process (DMN-035); a live session ends with it
+      // (DMN-103).
+      return { ...state, process, settled: true, interactions: [], streaming: null, live: null };
     }
     case "interaction_resolved":
       return typeof value.id === "string" && decodeOrUndefined(resolution, value.resolution) !== undefined
         ? closeInteraction(state, value.id)
         : state;
+    case "live_session": {
+      if (value.owner === undefined || value.owner === null) {
+        return { ...state, live: null };
+      }
+      const owner = decodeOrUndefined(liveOwner, value.owner);
+      return owner === undefined ? state : { ...state, live: { owner, phase: null, transcript: [] }, live_error: null };
+    }
     case "unknown":
       return value.raw === undefined ? state : notice(state, { type: "unknown", data: value.raw as JsonValue });
     default:

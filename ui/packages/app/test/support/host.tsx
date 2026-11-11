@@ -94,7 +94,14 @@ export class FakeClient implements SdkClient {
   connected(): void {
     this.model.setConnection({
       kind: "connected",
-      hello: { protocol: 1, daemon: "0.1.0", omp: "18.18.6", warnings: [], widgetBase: "/widgets/test" },
+      hello: {
+        protocol: 1,
+        daemon: "0.1.0",
+        omp: "18.18.6",
+        warnings: [],
+        widgetBase: "/widgets/test",
+        connection: 1,
+      },
     });
     this.notify();
   }

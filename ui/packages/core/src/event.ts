@@ -4,7 +4,7 @@
  * fixtures (TST-012).
  */
 
-import { bool, type Decoder, Invalid, i32, optional, record, str } from "./decode.ts";
+import { bool, type Decoder, Invalid, i32, int, optional, record, str } from "./decode.ts";
 import { isObject, type JsonValue } from "./json.ts";
 import type { AgentMessage, RpcNotification } from "./wire.ts";
 
@@ -32,6 +32,15 @@ export interface Resolution {
   client: string;
 }
 
+/**
+ * Who started a live voice session (DMN-100): the daemon's number of the connection (the `connection` of its
+ * `system.hello` result, PRT-051) and that connection's `system.hello` client name.
+ */
+export interface LiveOwner {
+  client: string;
+  connection: number;
+}
+
 /** One input of the thread reducer, discriminated by `kind`. */
 export type ThreadEvent =
   /** A frame from omp that is not a command response. */
@@ -42,6 +51,11 @@ export type ThreadEvent =
   | { kind: "process"; state: ProcessState }
   /** The daemon forwarded an answer to the interactive request with omp id `id` (DMN-051). */
   | { kind: "interaction_resolved"; id: string; resolution: Resolution }
+  /**
+   * The daemon opened a live voice session for `owner` before forwarding `live_connect` (DMN-100), or closed one omp
+   * never started (`null`, DMN-101). omp's `live_*` frames arrive as `omp` events.
+   */
+  | { kind: "live_session"; owner: LiveOwner | null }
   /** A frame omp-rpc could not decode, or a response nobody waited for (DMN-042). */
   | { kind: "unknown"; raw: JsonValue };
 
@@ -79,3 +93,14 @@ export const resolution = record<Resolution>({
   },
   client: str,
 });
+
+/** A `u64` connection number. */
+const connectionNumber: Decoder<number> = (value) => {
+  const decoded = int(value);
+  if (decoded < 0) {
+    throw new Invalid("negative connection number");
+  }
+  return decoded;
+};
+
+export const liveOwner = record<LiveOwner>({ client: str, connection: connectionNumber });

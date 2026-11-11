@@ -1046,6 +1046,12 @@ expression: method_schemas()
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "`system.hello` result (PRT-005).",
       "properties": {
+        "connection": {
+          "description": "Number of this connection, unique while the daemon runs: the `owner.connection` of the live sessions it\nstarts (PRT-051).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "daemon": {
           "description": "Daemon version.",
           "type": "string"
@@ -1075,7 +1081,8 @@ expression: method_schemas()
         "daemon",
         "omp",
         "warnings",
-        "widgetBase"
+        "widgetBase",
+        "connection"
       ],
       "title": "HelloResult",
       "type": "object"
@@ -1767,6 +1774,103 @@ expression: method_schemas()
         "entryId"
       ],
       "title": "LabelParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
+  "thread.live_connect": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`thread.live_connect` params (PRT-050, DMN-100).",
+      "properties": {
+        "sdpOffer": {
+          "description": "SDP offer of the client's WebRTC peer: one sendrecv Opus audio track plus an `oai-events` data channel.",
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId",
+        "sdpOffer"
+      ],
+      "title": "LiveConnectParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`thread.live_connect` result: omp's answer once the call is signaled (PRT-050).",
+      "properties": {
+        "sdpAnswer": {
+          "description": "SDP answer to apply to the peer right away.",
+          "type": "string"
+        },
+        "voice": {
+          "description": "The realtime voice omp uses.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sdpAnswer",
+        "voice"
+      ],
+      "title": "LiveConnected",
+      "type": "object"
+    }
+  },
+  "thread.live_mute": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`thread.live_mute` params (PRT-050, DMN-102).",
+      "properties": {
+        "muted": {
+          "type": "boolean"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId",
+        "muted"
+      ],
+      "title": "LiveMuteParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`thread.live_mute` result: the mute state omp applied.",
+      "properties": {
+        "muted": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "muted"
+      ],
+      "title": "LiveMuted",
+      "type": "object"
+    }
+  },
+  "thread.live_stop": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one thread.",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadRef",
       "type": "object"
     },
     "result": {

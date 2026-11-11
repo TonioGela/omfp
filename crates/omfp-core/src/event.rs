@@ -49,6 +49,14 @@ pub enum Resolution {
     Client { client: String },
 }
 
+/// Who started a live voice session (DMN-100): the daemon's number of the connection (`system.hello` reports it to
+/// the client, PRT-051) and that connection's `system.hello` client name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveOwner {
+    pub client: String,
+    pub connection: u64,
+}
+
 /// One input of the thread reducer.
 #[allow(clippy::large_enum_variant)] // Mirrors omp-rpc's unboxed frame unions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -66,6 +74,9 @@ pub enum ThreadEvent {
     Process { state: ProcessState },
     /// The daemon forwarded an answer to the interactive request with omp id `id` (DMN-051).
     InteractionResolved { id: String, resolution: Resolution },
+    /// The daemon opened a live voice session for `owner` before forwarding `live_connect` (DMN-100), or closed one
+    /// omp never started (`None`, DMN-101). omp's `live_*` frames arrive as [`ThreadEvent::Omp`].
+    LiveSession { owner: Option<LiveOwner> },
     /// A frame `omp-rpc` could not decode, or a response nobody waited for (DMN-042).
     Unknown { raw: Value },
 }

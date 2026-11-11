@@ -885,3 +885,174 @@ fn frames_the_reducer_does_not_need_leave_the_state_unchanged() {
         assert_eq!(state, base, "{frame}");
     }
 }
+
+fn live_session(client: &str, connection: u64) -> omfp_core::ThreadEvent {
+    event(
+        json!({ "kind": "live_session", "owner": { "client": client, "connection": connection } }),
+    )
+}
+
+fn live_transcript(role: &str, turn: i64, text: &str, last: bool) -> omfp_core::ThreadEvent {
+    omp(
+        json!({ "type": "live_transcript", "role": role, "turn": turn, "text": text, "final": last }),
+    )
+}
+
+fn live_lines(state: &ThreadState) -> Vec<(String, i64, String, bool)> {
+    state
+        .live
+        .iter()
+        .flat_map(|live| &live.transcript)
+        .map(|line| {
+            (
+                line.role.as_str().to_owned(),
+                line.turn,
+                line.text.clone(),
+                line.r#final,
+            )
+        })
+        .collect()
+}
+
+// spec: PRT-052, TST-010
+#[test]
+fn a_live_session_opens_with_its_owner_and_follows_omp_phases() {
+    let mut state = replay(&[
+        process(json!({ "state": "running" })),
+        omp(
+            json!({ "type": "live_end", "error": "No Codex OAuth credential is available for a live call." }),
+        ),
+    ]);
+    assert!(state.live_error.is_some());
+
+    state.apply(&live_session("omfp/web", 7));
+    let live = state.live.clone().expect("session open");
+    assert_eq!(live.owner.client, "omfp/web");
+    assert_eq!(live.owner.connection, 7);
+    assert_eq!(live.phase, None);
+    assert_eq!(
+        state.live_error, None,
+        "a new session clears the last failure"
+    );
+
+    for phase in ["connecting", "listening", "muted"] {
+        state.apply(&omp(json!({ "type": "live_phase", "phase": phase })));
+        let shown = state
+            .live
+            .as_ref()
+            .and_then(|live| live.phase)
+            .map(omfp_core::wire::LivePhase::as_str);
+        assert_eq!(shown, Some(phase));
+    }
+    let before = state.clone();
+    state.apply(&omp(
+        json!({ "type": "live_levels", "input": 0.4, "output": 0.1 }),
+    ));
+    assert_eq!(state, before, "levels are client-side");
+}
+
+// spec: PRT-052, TST-010
+#[test]
+fn live_transcripts_keep_one_line_per_role_and_turn_until_final() {
+    // The order of a real call (S-09): a user final can arrive after assistant partials.
+    let state = replay(&[
+        process(json!({ "state": "running" })),
+        live_session("omfp/web", 1),
+        live_transcript("user", 1, "Ciao,", false),
+        live_transcript("user", 1, "Ciao, mi senti", false),
+        live_transcript("assistant", 1, "Sì", false),
+        live_transcript("user", 1, "Ciao, mi senti?", true),
+        live_transcript("user", 1, "late partial", false),
+        live_transcript("assistant", 1, "Sì.", true),
+        live_transcript("user", 2, "Grazie", false),
+    ]);
+    assert_eq!(
+        live_lines(&state),
+        vec![
+            ("user".into(), 1, "Ciao, mi senti?".into(), true),
+            ("assistant".into(), 1, "Sì.".into(), true),
+            ("user".into(), 2, "Grazie".into(), false),
+        ]
+    );
+}
+
+// spec: PRT-052, DMN-104, TST-010
+#[test]
+fn live_end_clears_the_session_and_names_its_failure() {
+    // The no-credential sequence of the pinned omp: the `error` phase is repeated after `live_end`.
+    let state = replay(&[
+        process(json!({ "state": "running" })),
+        live_session("omfp/web", 1),
+        omp(json!({ "type": "live_phase", "phase": "connecting" })),
+        omp(json!({ "type": "live_phase", "phase": "error" })),
+        omp(
+            json!({ "type": "live_end", "error": "No Codex OAuth credential is available for a live call." }),
+        ),
+        omp(json!({ "type": "live_phase", "phase": "error" })),
+    ]);
+    assert_eq!(state.live, None);
+    assert_eq!(
+        state.live_error.as_deref(),
+        Some(
+            "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
+        )
+    );
+
+    let ended = replay(&[
+        process(json!({ "state": "running" })),
+        live_session("omfp/web", 1),
+        omp(json!({ "type": "live_phase", "phase": "listening" })),
+        omp(json!({ "type": "live_end" })),
+    ]);
+    assert_eq!((ended.live, ended.live_error), (None, None));
+}
+
+// spec: PRT-052, DMN-101, DMN-103, TST-010
+#[test]
+fn a_session_without_owner_or_process_is_closed() {
+    let refused = replay(&[
+        process(json!({ "state": "running" })),
+        live_session("omfp/web", 1),
+        event(json!({ "kind": "live_session", "owner": null })),
+    ]);
+    assert_eq!((refused.live, refused.live_error), (None, None));
+
+    let stopped = replay(&[
+        process(json!({ "state": "running" })),
+        live_session("omfp/web", 1),
+        omp(json!({ "type": "live_phase", "phase": "listening" })),
+        process(json!({ "state": "stopped" })),
+    ]);
+    assert_eq!(stopped.live, None);
+}
+
+// spec: DMN-104
+#[test]
+fn live_failures_read_as_what_the_user_can_do() {
+    use omfp_core::live_error_message;
+
+    let login = "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again";
+    assert_eq!(
+        live_error_message("No Codex OAuth credential is available for a live call."),
+        login
+    );
+    assert_eq!(
+        live_error_message("No OAuth credential available for provider: openai-codex"),
+        login
+    );
+    assert!(
+        live_error_message("Codex live signaling failed (401): unauthorized").contains("rejected")
+    );
+    assert_eq!(
+        live_error_message("A live session is already active"),
+        "a live session is already running on this thread"
+    );
+    assert_eq!(
+        live_error_message("End dictation before starting live voice"),
+        "end dictation before starting live voice"
+    );
+    assert_eq!(
+        live_error_message("socket closed"),
+        "live voice failed: socket closed"
+    );
+}

@@ -727,6 +727,42 @@ export const extensionUiRequest: Decoder<ExtensionUiRequest> = (value) => {
  */
 export type RpcNotification = JsonValue;
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Live voice frames (`live_phase`, `live_transcript`, `live_end`; `live_levels` changes no state)
+
+export type LivePhase = "connecting" | "listening" | "working" | "speaking" | "muted" | "error";
+export type LiveRole = "user" | "assistant";
+
+export interface LivePhaseEvent {
+  phase: LivePhase;
+}
+
+/** Accumulated text of one realtime turn; replaces earlier frames with the same `role` and `turn`. */
+export interface LiveTranscriptEvent {
+  role: LiveRole;
+  turn: number;
+  text: string;
+  final: boolean;
+}
+
+/** Sent exactly once when a live session ends; `error` carries the failure cause. */
+export interface LiveEndEvent {
+  error?: string;
+}
+
+export const livePhase = oneOf<LivePhase>(["connecting", "listening", "working", "speaking", "muted", "error"]);
+
+export const livePhaseEvent = record<LivePhaseEvent>({ phase: livePhase });
+
+export const liveTranscriptEvent = record<LiveTranscriptEvent>({
+  role: oneOf<LiveRole>(["user", "assistant"]),
+  turn: int,
+  text: str,
+  final: bool,
+});
+
+export const liveEndEvent = record<LiveEndEvent>({ error: optional(str) });
+
 /** `message_start` and `message_end`; `messageId` is shared by the start, updates, and end of one message. */
 export interface MessageEvent {
   message: AgentMessage;

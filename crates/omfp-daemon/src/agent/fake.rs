@@ -2,6 +2,8 @@
 //! (`fixtures/threads/<omp version>/*.jsonl`, the format of TST-012), so the fake only sends frames omp really sent
 //! (TST-014): the frames before the first turn at startup, then one segment per prompt and per answered interaction.
 
+mod live;
+
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::Path;
 use std::sync::mpsc::{Sender, channel};
@@ -14,6 +16,11 @@ use omp_rpc::{
 };
 use serde_json::{Value, json};
 use tokio::sync::watch;
+
+pub use live::{
+    FakeLive, NO_CREDENTIAL, answer_for, end as live_end, phase as live_phase,
+    transcript as live_transcript,
+};
 
 use super::{AgentLauncher, AgentProcess, Launched, Lease, OmpCall, PromptAdmission};
 use crate::omp::{LaunchSpec, StartError, Startup};
@@ -100,7 +107,9 @@ impl FakeRun {
                     }
                 }
                 ThreadEvent::InteractionResolved { .. } => run.segments.push_back(Vec::new()),
-                ThreadEvent::Process { .. } | ThreadEvent::Unknown { .. } => {}
+                ThreadEvent::Process { .. }
+                | ThreadEvent::LiveSession { .. }
+                | ThreadEvent::Unknown { .. } => {}
             }
         }
         if let Some(ready) = ready {
@@ -194,6 +203,8 @@ struct Script {
     /// Answers of the next title generations (DMN-073); without one a generation fails.
     titles: VecDeque<Result<String, String>>,
     title_requests: Vec<TitleRequest>,
+    /// How every later `live_connect` goes (TST-015).
+    live: FakeLive,
 }
 
 /// The fake launcher. Without queued runs, every launch plays [`FakeRun::fresh`].
@@ -286,6 +297,12 @@ impl FakeLauncher {
     pub fn title_requests(&self) -> Vec<TitleRequest> {
         lock(&self.script).title_requests.clone()
     }
+
+    /// Plays `live` for every later `live_connect` without a scripted [`FakeReply`]; by default a call connects
+    /// without further frames ([`FakeLive::default`]).
+    pub fn script_live(&self, live: FakeLive) {
+        lock(&self.script).live = live;
+    }
 }
 
 /// Gate key of title generations (not an omp command).
@@ -319,6 +336,7 @@ impl AgentLauncher for FakeLauncher {
                 calls: Mutex::new(Vec::new()),
                 session_id: run.startup.session.session_id.clone(),
                 script: Arc::clone(&self.script),
+                live: Mutex::new(None),
             }),
         };
         process.emit(startup_frames);
@@ -371,6 +389,8 @@ struct Shared {
     /// The session the process reports in `get_state`.
     session_id: String,
     script: Arc<Mutex<Script>>,
+    /// The live voice session (TST-015).
+    live: Mutex<live::LiveSlot>,
 }
 
 /// Test handle on one fake process.
@@ -475,7 +495,7 @@ impl AgentProcess for FakeAgent {
     fn call(&self, call: OmpCall) -> Result<Value, omp_rpc::Error> {
         let process = &self.0;
         let command = call.name();
-        process.record(FakeCall::Call(call));
+        process.record(FakeCall::Call(call.clone()));
         let (reply, gate) = process.scripted(command);
         if let Some(gate) = gate {
             gate.pass();
@@ -483,15 +503,24 @@ impl AgentProcess for FakeAgent {
         if process.is_closed() {
             return Err(omp_rpc::Error::Closed);
         }
-        match reply
-            .unwrap_or_else(|| FakeReply::Ok(default_data(command, &process.shared.session_id)))
-        {
-            FakeReply::Ok(value) => Ok(value),
-            FakeReply::Fail { message, code } => Err(omp_rpc::Error::Command {
-                command: command.to_owned(),
-                error: message,
-                code,
-            }),
+        if let Some(reply) = reply {
+            return match reply {
+                FakeReply::Ok(value) => Ok(value),
+                FakeReply::Fail { message, code } => Err(omp_rpc::Error::Command {
+                    command: command.to_owned(),
+                    error: message,
+                    code,
+                }),
+            };
+        }
+        match &call {
+            OmpCall::LiveConnect(connect) => {
+                let script = lock(&process.shared.script).live.clone();
+                process.live_connect(connect, script)
+            }
+            OmpCall::LiveMute(mute) => process.live_mute(mute),
+            OmpCall::LiveStop => Ok(process.live_stop()),
+            _ => Ok(default_data(command, &process.shared.session_id)),
         }
     }
 

@@ -406,3 +406,30 @@ requirements = [
   "UI-173",
   "UI-174",
 ]
+
+[M6]
+status = "in-progress"
+requirements = [
+  # Daemon: relay, one session per thread, stop and mute, stop on disconnect, readable errors
+  "DMN-100",
+  "DMN-101",
+  "DMN-102",
+  "DMN-103",
+  "DMN-104",
+  # Protocol: methods, connection number, live state in the reducer
+  "PRT-050",
+  "PRT-051",
+  "PRT-052",
+  # Fake launcher plays the live sequence
+  "TST-015",
+  # UI: mic button, peer, live panel, mute, speaking, stop, errors
+  "UI-180",
+  "UI-181",
+  "UI-182",
+  "UI-183",
+  "UI-184",
+  "UI-185",
+  "UI-186",
+  # End-to-end journey
+  "E2E-14",
+]

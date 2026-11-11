@@ -9,6 +9,7 @@ import { describe, expect, test } from "bun:test";
 import { OMP_VERSION } from "@omfp/core";
 import { INDEX_TOPIC, PROTOCOL_VERSION, type Topic, threadTopic } from "@omfp/protocol";
 import {
+  CallError,
   type Client,
   type Connector,
   connect,
@@ -341,6 +342,55 @@ describe("transport suite", () => {
         await until(follower, "the new thread", (model) => model.index.threads.has(created));
       } finally {
         follower.close();
+      }
+    },
+    TEST_MS,
+  );
+
+  // spec: TST-030, PRT-050, PRT-051, DMN-100, DMN-101, DMN-102, DMN-103
+  test(
+    "live voice",
+    async () => {
+      const owner = client("suite/live");
+      const watcher = client("suite/live-watcher");
+      try {
+        const thread = await createThread(owner, "live");
+        const topic = threadTopic(thread);
+        watcher.subscribe(topic);
+        await until(owner, "hello", connected);
+        const status = owner.model.connection;
+        const connection = status.kind === "connected" ? status.hello.connection : -1;
+        const failure = (error: unknown) => (error instanceof CallError ? error.failure : error);
+        const offer = "v=0\r\na=setup:actpass\r\na=mid:0\r\n";
+
+        const blank = await owner.call("thread.live_connect", { threadId: thread, sdpOffer: "" }).catch(failure);
+        expect(blank).toMatchObject({ kind: "daemon", error: { code: "bad_request" } });
+        const answer = await owner.call("thread.live_connect", { threadId: thread, sdpOffer: offer });
+        expect(answer).toEqual({ sdpAnswer: "v=0\r\na=setup:active\r\na=mid:0\r\n", voice: "sol" });
+        await until(
+          watcher,
+          "the listening session",
+          (model) => model.thread(thread)?.state.live?.phase === "listening",
+        );
+        expect(watcher.model.thread(thread)?.state.live?.owner).toEqual({ client: "suite/live", connection });
+
+        const second = await watcher.call("thread.live_connect", { threadId: thread, sdpOffer: offer }).catch(failure);
+        expect(second).toMatchObject({ kind: "daemon", error: { code: "conflict" } });
+        expect(await owner.call("thread.live_mute", { threadId: thread, muted: true })).toEqual({ muted: true });
+        await until(watcher, "the muted phase", (model) => model.thread(thread)?.state.live?.phase === "muted");
+        expect(await owner.call("thread.live_stop", { threadId: thread })).toEqual({});
+        await until(watcher, "the end of the session", (model) => model.thread(thread)?.state.live === null);
+        const mute = await owner.call("thread.live_mute", { threadId: thread, muted: false }).catch(failure);
+        expect(mute).toMatchObject({ kind: "daemon", error: { code: "conflict" } });
+
+        // The owner's connection goes: the daemon stops its session.
+        await owner.call("thread.live_connect", { threadId: thread, sdpOffer: offer });
+        await until(watcher, "the second session", (model) => model.thread(thread)?.state.live?.phase === "listening");
+        owner.close();
+        await until(watcher, "the stop on disconnect", (model) => model.thread(thread)?.state.live === null);
+      } finally {
+        owner.close();
+        watcher.close();
       }
     },
     TEST_MS,

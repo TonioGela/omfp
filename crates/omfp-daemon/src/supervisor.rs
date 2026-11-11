@@ -14,12 +14,15 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
 use omfp_core::wire::LitTrue;
-use omfp_core::{ProcessState, Resolution, ThreadEvent, ThreadState, validate_ask_answers};
+use omfp_core::{
+    LiveOwner, ProcessState, Resolution, ThreadEvent, ThreadState, live_error_message,
+    validate_ask_answers,
+};
 use omfp_protocol::InteractionResponse;
 use omp_rpc::{
     AnswersUiResponse, CancelUiResponse, ConfirmUiResponse, ExtensionUiRequest,
-    ExtensionUiResponse, PromptCommand, RpcAgentEvent, RpcNotification, SetSessionNameCommand,
-    ValueUiResponse,
+    ExtensionUiResponse, LiveConnectCommand, LiveConnectResult, LiveMuteCommand, PromptCommand,
+    RpcAgentEvent, RpcNotification, SetSessionNameCommand, ValueUiResponse,
 };
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, watch};
@@ -61,6 +64,17 @@ const READ_ONLY_TOOLS: &[&str] = &[
     "ask",
     "lsp",
 ];
+
+/// omp's `live_connect` failures that come before a session exists: no `live_end` follows them (S-09).
+const LIVE_NOT_STARTED: &[&str] = &[
+    "live_connect requires a non-empty sdpOffer",
+    "End dictation before starting live voice",
+    "Session is changing or shutting down",
+    "A live session is already active",
+];
+
+/// omp's `live_mute` failure without a session.
+const LIVE_NO_SESSION: &str = "No live session is active";
 
 /// Supervisor settings.
 #[derive(Debug, Clone)]
@@ -129,6 +143,15 @@ pub enum SupervisorError {
     AlreadyResolved(String),
     #[error("{0}")]
     InvalidResponse(String),
+    #[error("thread.live_connect needs a non-empty sdpOffer")]
+    EmptyOffer,
+    #[error("a live session is already running on this thread (started by {client})")]
+    LiveActive { client: String },
+    #[error("no live session is running on this thread")]
+    NoLiveSession,
+    /// A live voice failure, readable (DMN-104); `omp` is omp's own message.
+    #[error("{message}")]
+    Live { message: String, omp: String },
     #[error("the daemon is shutting down")]
     ShuttingDown,
     #[error(transparent)]
@@ -211,6 +234,13 @@ struct Live {
     ended: watch::Receiver<bool>,
 }
 
+/// The live voice session of a thread, from `thread.live_connect` until it ends (DMN-101).
+struct VoiceSlot {
+    /// Tells a session from the next one on the same thread.
+    id: u64,
+    owner: LiveOwner,
+}
+
 /// One thread: its log, its process and who watches it.
 struct Actor {
     id: String,
@@ -229,6 +259,8 @@ struct Actor {
     titled: AtomicBool,
     /// The running title generation, aborted when the thread is forgotten.
     title_task: Mutex<Option<JoinHandle<()>>>,
+    /// The live voice session (DMN-101).
+    voice: Mutex<Option<VoiceSlot>>,
 }
 
 impl Actor {
@@ -250,6 +282,7 @@ impl Actor {
             roots_pending: AtomicBool::new(false),
             titled: AtomicBool::new(false),
             title_task: Mutex::new(None),
+            voice: Mutex::new(None),
         }
     }
 
@@ -281,6 +314,18 @@ impl Actor {
                     && state.interactions.is_empty()
             })
             && now.saturating_duration_since(*lock(&self.last_activity)) >= timeout
+            && lock(&self.voice).is_none()
+    }
+
+    /// Frees the live session slot if it still holds session `id`; `true` when it did.
+    fn release_voice(&self, id: u64) -> bool {
+        let mut voice = lock(&self.voice);
+        if voice.as_ref().is_some_and(|slot| slot.id == id) {
+            voice.take();
+            true
+        } else {
+            false
+        }
     }
 }
 
@@ -294,6 +339,8 @@ struct Inner {
     /// Processes running or starting (DMN-038).
     running: AtomicUsize,
     generations: AtomicU64,
+    /// Numbers live sessions (DMN-101).
+    voice_ids: AtomicU64,
     /// Ids of threads whose [`ThreadStatus`] changed.
     changes: broadcast::Sender<String>,
     /// Ids of threads that finished a tool execution (a rescan trigger, DMN-023).
@@ -384,6 +431,7 @@ impl Supervisor {
                 actors: Mutex::new(HashMap::new()),
                 running: AtomicUsize::new(0),
                 generations: AtomicU64::new(0),
+                voice_ids: AtomicU64::new(0),
                 changes: broadcast::channel(256).0,
                 tool_ends: broadcast::channel(256).0,
                 workspace_watchers: Mutex::new(HashMap::new()),
@@ -678,6 +726,122 @@ impl Supervisor {
         Ok(())
     }
 
+    /// Starts a live voice session for `owner` on the client's peer (DMN-100): one per thread (DMN-101), recorded as a
+    /// `live_session` event before omp gets the offer. Returns omp's SDP answer once the call is signaled.
+    pub async fn live_connect(
+        &self,
+        id: &str,
+        owner: LiveOwner,
+        sdp_offer: String,
+    ) -> Result<LiveConnectResult> {
+        if sdp_offer.trim().is_empty() {
+            return Err(SupervisorError::EmptyOffer);
+        }
+        let actor = self.actor(id).await?;
+        let slot = self.inner.voice_ids.fetch_add(1, Ordering::SeqCst);
+        {
+            let mut voice = lock(&actor.voice);
+            if let Some(active) = &*voice {
+                return Err(SupervisorError::LiveActive {
+                    client: active.owner.client.clone(),
+                });
+            }
+            *voice = Some(VoiceSlot {
+                id: slot,
+                owner: owner.clone(),
+            });
+        }
+        let process = match self.ensure_running(&actor).await {
+            Ok(process) => process,
+            Err(error) => {
+                actor.release_voice(slot);
+                return Err(error);
+            }
+        };
+        self.push(&actor, ThreadEvent::LiveSession { owner: Some(owner) });
+        let call = OmpCall::LiveConnect(LiveConnectCommand {
+            sdp_offer,
+            voice: None,
+            instructions: None,
+        });
+        let answer = blocking(move || process.call(call)).await?;
+        actor.touch();
+        match answer {
+            Ok(value) => serde_json::from_value(value).map_err(|error| {
+                SupervisorError::Internal(format!("unexpected live_connect answer: {error}"))
+            }),
+            Err(error) => {
+                match &error {
+                    // omp refused before a session existed: no `live_end` will close it.
+                    omp_rpc::Error::Command { error, .. }
+                        if LIVE_NOT_STARTED.iter().any(|known| error.contains(known)) =>
+                    {
+                        if actor.release_voice(slot) {
+                            self.push(&actor, ThreadEvent::LiveSession { owner: None });
+                        }
+                    }
+                    // The session started and failed: omp's `live_end` frees the slot.
+                    omp_rpc::Error::Command { .. } => {}
+                    // The process is gone, and the session with it.
+                    _ => {
+                        actor.release_voice(slot);
+                    }
+                }
+                Err(live_failure(error))
+            }
+        }
+    }
+
+    /// Stops the thread's live voice session (DMN-102); a thread whose omp does not run has none, and omp succeeds
+    /// without one.
+    pub async fn live_stop(&self, id: &str) -> Result<()> {
+        let actor = self.actor(id).await?;
+        let Some(process) = actor.process() else {
+            return Ok(());
+        };
+        match blocking(move || process.call(OmpCall::LiveStop)).await? {
+            Ok(_) | Err(omp_rpc::Error::Closed) => Ok(()),
+            Err(error) => Err(live_failure(error)),
+        }
+    }
+
+    /// Mutes or unmutes the thread's live voice session (DMN-102); returns the mute omp applied.
+    pub async fn live_mute(&self, id: &str, muted: bool) -> Result<bool> {
+        let actor = self.actor(id).await?;
+        let process = actor
+            .process()
+            .filter(|_| lock(&actor.voice).is_some())
+            .ok_or(SupervisorError::NoLiveSession)?;
+        let call = OmpCall::LiveMute(LiveMuteCommand { muted: Some(muted) });
+        match blocking(move || process.call(call)).await? {
+            Ok(value) => value.get("muted").and_then(Value::as_bool).ok_or_else(|| {
+                SupervisorError::Internal(format!("unexpected live_mute answer: {value}"))
+            }),
+            Err(omp_rpc::Error::Command { error, .. }) if error.contains(LIVE_NO_SESSION) => {
+                Err(SupervisorError::NoLiveSession)
+            }
+            Err(error) => Err(live_failure(error)),
+        }
+    }
+
+    /// Stops every live voice session started by `connection`, which closed (DMN-103).
+    pub async fn release_live(&self, connection: u64) {
+        let owned: Vec<String> = lock(&self.inner.actors)
+            .values()
+            .filter(|actor| {
+                lock(&actor.voice)
+                    .as_ref()
+                    .is_some_and(|slot| slot.owner.connection == connection)
+            })
+            .map(|actor| actor.id.clone())
+            .collect();
+        for id in owned {
+            if let Err(error) = self.live_stop(&id).await {
+                warn!(thread = %id, %error, "cannot stop the live session of a closed connection");
+            }
+        }
+    }
+
     /// Answers a pending interactive request: the first valid answer is forwarded and recorded, later ones get
     /// `already_resolved` (DMN-051); `ask` answers are validated first (DMN-054).
     pub async fn respond(
@@ -871,6 +1035,15 @@ impl Supervisor {
                 frame: RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(end))
             } if !READ_ONLY_TOOLS.contains(&end.tool_name.as_str())
         );
+        if matches!(
+            &event,
+            ThreadEvent::Omp {
+                frame: RpcNotification::LiveEnd(_)
+            }
+        ) {
+            // omp ended the session: the thread may start another (DMN-101).
+            lock(&actor.voice).take();
+        }
         let before = actor.status();
         actor.log.push(event);
         actor.touch();
@@ -1114,6 +1287,8 @@ impl Supervisor {
             while let Some(event) = receiver.recv().await {
                 supervisor.push(&actor, event);
             }
+            // A live session ends with its process (DMN-103).
+            lock(&actor.voice).take();
             supervisor.process_ended(&actor, generation).await;
             let _ = ended.send(true);
         });
@@ -1166,6 +1341,17 @@ impl Supervisor {
         );
         info!(thread = %actor.id, "omp stopped");
         Ok(())
+    }
+}
+
+/// A failed live command, readable (DMN-104); other errors keep their meaning (a process gone stays one).
+fn live_failure(error: omp_rpc::Error) -> SupervisorError {
+    match error {
+        omp_rpc::Error::Command { error, .. } => SupervisorError::Live {
+            message: live_error_message(&error),
+            omp: error,
+        },
+        other => other.into(),
     }
 }
 

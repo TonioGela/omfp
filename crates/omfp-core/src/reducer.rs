@@ -3,13 +3,14 @@
 use serde_json::Value;
 
 use crate::event::{ProcessState, ThreadEvent};
+use crate::live::live_error_message;
 use crate::state::{
-    Notice, NoticeFrame, QueueState, StreamingMessage, ThreadState, ToolRun, ToolStatus,
-    TranscriptEntry, Widget,
+    LiveLine, LiveSession, Notice, NoticeFrame, QueueState, StreamingMessage, ThreadState, ToolRun,
+    ToolStatus, TranscriptEntry, Widget,
 };
 use crate::wire::{
-    AgentMessage, AssistantMessageEvent, ExtensionUiRequest, MessageEndEvent, MessageUpdateEvent,
-    RpcAgentEvent, RpcNotification,
+    AgentMessage, AssistantMessageEvent, ExtensionUiRequest, LivePhase, LiveTranscriptEvent,
+    MessageEndEvent, MessageUpdateEvent, RpcAgentEvent, RpcNotification,
 };
 
 impl ThreadState {
@@ -35,13 +36,26 @@ impl ThreadState {
             ThreadEvent::Process { state } => {
                 self.process = state.clone();
                 if !matches!(state, ProcessState::Running | ProcessState::Starting) {
-                    // Nothing can answer, settle or finish streaming without a process (DMN-035).
+                    // Nothing can answer, settle or finish streaming without a process (DMN-035); a live session
+                    // ends with it (DMN-103).
                     self.settled = true;
                     self.interactions.clear();
                     self.streaming = None;
+                    self.live = None;
                 }
             }
             ThreadEvent::InteractionResolved { id, .. } => self.close_interaction(id),
+            ThreadEvent::LiveSession { owner } => match owner {
+                Some(owner) => {
+                    self.live = Some(LiveSession {
+                        owner: owner.clone(),
+                        phase: None,
+                        transcript: Vec::new(),
+                    });
+                    self.live_error = None;
+                }
+                None => self.live = None,
+            },
             ThreadEvent::Unknown { raw } => self.notice(NoticeFrame::Unknown(raw.clone())),
         }
     }
@@ -80,12 +94,15 @@ impl ThreadState {
                 self.notice(NoticeFrame::RpcFrameError(error.clone()));
             }
             RpcNotification::Unknown(raw) => self.notice(NoticeFrame::Unknown(raw.clone())),
+            RpcNotification::LivePhase(event) => self.live_phase(event.phase),
+            RpcNotification::LiveTranscript(event) => self.live_transcript(event),
+            RpcNotification::LiveEnd(end) => {
+                self.live = None;
+                self.live_error = end.error.as_deref().map(live_error_message);
+            }
             RpcNotification::Ready(_)
             | RpcNotification::SubagentEvent(_)
-            | RpcNotification::LivePhase(_)
             | RpcNotification::LiveLevels(_)
-            | RpcNotification::LiveTranscript(_)
-            | RpcNotification::LiveEnd(_)
             | RpcNotification::DictationState(_)
             | RpcNotification::DictationTranscript(_)
             | RpcNotification::DictationEnd(_)
@@ -94,6 +111,35 @@ impl ThreadState {
             | RpcNotification::CommandOutput(_)
             | RpcNotification::SessionInfoUpdate(_)
             | RpcNotification::ConfigUpdate(_) => {}
+        }
+    }
+
+    /// omp repeats the `error` phase after `live_end`: phases only apply to an open session (PRT-052).
+    fn live_phase(&mut self, phase: LivePhase) {
+        if let Some(live) = &mut self.live {
+            live.phase = Some(phase);
+        }
+    }
+
+    /// One line per role and turn; a later frame replaces the text until the final one (PRT-052).
+    fn live_transcript(&mut self, event: &LiveTranscriptEvent) {
+        let Some(live) = &mut self.live else {
+            return;
+        };
+        let line = LiveLine {
+            role: event.role,
+            turn: event.turn,
+            text: event.text.clone(),
+            r#final: event.r#final,
+        };
+        match live
+            .transcript
+            .iter_mut()
+            .find(|known| known.role == event.role && known.turn == event.turn)
+        {
+            Some(known) if !known.r#final => *known = line,
+            Some(_) => {}
+            None => live.transcript.push(line),
         }
     }
 

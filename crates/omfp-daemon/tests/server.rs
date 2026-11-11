@@ -150,7 +150,7 @@ async fn upgrades_from_foreign_origins_are_rejected() {
     }
 }
 
-// spec: PRT-005, PRT-004, PRT-032, PRT-042
+// spec: PRT-005, PRT-004, PRT-032, PRT-042, PRT-051
 #[tokio::test(flavor = "multi_thread")]
 async fn hello_reports_versions_and_warnings_and_refuses_unknown_protocols() {
     let daemon = daemon(&[]).await;
@@ -176,6 +176,7 @@ async fn hello_reports_versions_and_warnings_and_refuses_unknown_protocols() {
             "omp": omfp_core::OMP_VERSION,
             "warnings": ["running anyway (--allow-omp-mismatch)"],
             "widgetBase": base,
+            "connection": accepted["result"]["connection"].as_u64().expect("a connection number"),
         })
     );
 
@@ -1316,4 +1317,166 @@ async fn without_a_config_file_settings_live_in_memory() {
         })
     );
     assert_eq!(client.ok("settings.get", json!({})).await, set);
+}
+
+/// Authenticates as `name` and returns the connection with its number (PRT-051).
+async fn numbered(daemon: &TestDaemon, name: &str) -> (Client, u64) {
+    let mut client = Client::connect(daemon.handle.addr()).await;
+    let hello = client
+        .ok(
+            "system.hello",
+            json!({ "token": daemon.handle.token().expose(), "protocol": 1, "client": name }),
+        )
+        .await;
+    (
+        client,
+        hello["connection"]
+            .as_u64()
+            .expect("hello names the connection"),
+    )
+}
+
+const OFFER: &str = "v=0\r\na=setup:actpass\r\na=mid:0\r\n";
+
+// spec: PRT-051, DMN-100
+#[tokio::test(flavor = "multi_thread")]
+async fn live_connect_relays_the_offer_and_records_the_owning_connection() {
+    let daemon = daemon(&[]).await;
+    let (mut first, first_number) = numbered(&daemon, "omfp/web").await;
+    let (mut second, second_number) = numbered(&daemon, "omfp/web").await;
+    assert_ne!(first_number, second_number);
+    let thread = create_thread(&mut first).await;
+
+    let answer = first
+        .ok(
+            "thread.live_connect",
+            json!({ "threadId": thread, "sdpOffer": OFFER }),
+        )
+        .await;
+
+    assert_eq!(
+        answer,
+        json!({ "sdpAnswer": omfp_daemon::agent::answer_for(OFFER), "voice": "sol" })
+    );
+    let mut follower = Follower::snapshot(&mut second, &thread, None).await;
+    follower
+        .until(&mut second, |state| {
+            state.live.as_ref().is_some_and(|live| live.phase.is_some())
+        })
+        .await;
+    let live = follower.state.live.clone().unwrap();
+    assert_eq!(live.owner.connection, first_number);
+    assert_eq!(live.owner.client, "omfp/web");
+}
+
+// spec: DMN-103
+#[tokio::test(flavor = "multi_thread")]
+async fn closing_the_owning_connection_stops_its_live_session() {
+    let daemon = daemon(&[]).await;
+    let (mut owner, _) = numbered(&daemon, "omfp/web").await;
+    let (mut watcher, _) = numbered(&daemon, "omfp/web").await;
+    let thread = create_thread(&mut owner).await;
+    owner
+        .ok(
+            "thread.live_connect",
+            json!({ "threadId": thread, "sdpOffer": OFFER }),
+        )
+        .await;
+    let mut follower = Follower::snapshot(&mut watcher, &thread, None).await;
+
+    drop(owner);
+
+    follower
+        .until(&mut watcher, |state| state.live.is_none())
+        .await;
+    let process = daemon.launcher.process(0);
+    assert!(!process.live_active());
+    assert!(process.calls().iter().any(|call| matches!(
+        call,
+        omfp_daemon::agent::FakeCall::Call(omfp_daemon::agent::OmpCall::LiveStop)
+    )));
+}
+
+// spec: DMN-101, DMN-102, DMN-104
+#[tokio::test(flavor = "multi_thread")]
+async fn live_errors_have_their_codes_and_readable_messages() {
+    let daemon = daemon(&[]).await;
+    let (mut client, _) = numbered(&daemon, "omfp/web").await;
+    let thread = create_thread(&mut client).await;
+
+    let blank = client
+        .call(
+            "thread.live_connect",
+            json!({ "threadId": thread, "sdpOffer": "" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(blank["code"], "bad_request", "{blank}");
+    let mute = client
+        .call(
+            "thread.live_mute",
+            json!({ "threadId": thread, "muted": true }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(mute["code"], "conflict", "{mute}");
+    assert_eq!(
+        client
+            .ok("thread.live_stop", json!({ "threadId": thread }))
+            .await,
+        json!({})
+    );
+
+    daemon
+        .launcher
+        .script_live(omfp_daemon::agent::FakeLive::no_credential());
+    let login = client
+        .call(
+            "thread.live_connect",
+            json!({ "threadId": thread, "sdpOffer": OFFER }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(login["code"], "omp_error", "{login}");
+    assert_eq!(
+        login["message"],
+        "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
+    );
+    assert_eq!(
+        login["details"]["ompError"],
+        omfp_daemon::agent::NO_CREDENTIAL
+    );
+
+    daemon
+        .launcher
+        .script_live(omfp_daemon::agent::FakeLive::default());
+    let mut follower = Follower::snapshot(&mut client, &thread, None).await;
+    follower
+        .until(&mut client, |state| {
+            state.live.is_none() && state.live_error.is_some()
+        })
+        .await;
+    client
+        .ok(
+            "thread.live_connect",
+            json!({ "threadId": thread, "sdpOffer": OFFER }),
+        )
+        .await;
+    let second = client
+        .call(
+            "thread.live_connect",
+            json!({ "threadId": thread, "sdpOffer": OFFER }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(second["code"], "conflict", "{second}");
+    assert_eq!(
+        client
+            .ok(
+                "thread.live_mute",
+                json!({ "threadId": thread, "muted": true })
+            )
+            .await,
+        json!({ "muted": true })
+    );
 }

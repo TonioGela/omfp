@@ -4,11 +4,14 @@
  */
 
 export { validateAskAnswers } from "./ask.ts";
-export type { ProcessState, Resolution, SessionInfo, ThreadEvent } from "./event.ts";
+export type { LiveOwner, ProcessState, Resolution, SessionInfo, ThreadEvent } from "./event.ts";
 export type { JsonObject, JsonValue } from "./json.ts";
+export { liveErrorMessage } from "./live.ts";
 export { dialogId, reduce, replay } from "./reducer.ts";
 export {
   emptyThreadState,
+  type LiveLine,
+  type LiveSession,
   type Notice,
   type NoticeFrame,
   type Presentation,

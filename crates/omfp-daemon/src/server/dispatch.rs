@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use omfp_core::wire::{ImageContent, ThinkingLevel};
 use omfp_protocol::{
-    Call, CreateWorkspaceParams, Empty, ErrorBody, PathCompletions, PathEntry, PromptBehavior,
-    PromptResult, RepoSuggestions, SeenRepository, ThreadGit, ThreadSearchResult,
+    Call, CreateWorkspaceParams, Empty, ErrorBody, LiveMuted, PathCompletions, PathEntry,
+    PromptBehavior, PromptResult, RepoSuggestions, SeenRepository, ThreadGit, ThreadSearchResult,
     ThreadSearchResults, ThreadWorkspace,
 };
 use omp_rpc::{
@@ -89,7 +89,8 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         Call::SystemHello(_)
         | Call::Subscribe(_)
         | Call::Unsubscribe(_)
-        | Call::WidgetsReport(_) => Err(bad_request("handled by the connection")),
+        | Call::WidgetsReport(_)
+        | Call::ThreadLiveConnect(_) => Err(bad_request("handled by the connection")),
         Call::ReposSuggest(params) => {
             let workspaces = Arc::clone(&services.workspaces);
             let query = params.query.unwrap_or_default();
@@ -719,6 +720,20 @@ async fn thread(services: &Services, principal: &Principal, call: Call) -> Reply
                 .await
                 .map_err(supervisor_error)?;
             empty()
+        }
+        Call::ThreadLiveStop(params) => {
+            supervisor
+                .live_stop(&params.thread_id)
+                .await
+                .map_err(supervisor_error)?;
+            empty()
+        }
+        Call::ThreadLiveMute(params) => {
+            let muted = supervisor
+                .live_mute(&params.thread_id, params.muted)
+                .await
+                .map_err(supervisor_error)?;
+            ok(&LiveMuted { muted })
         }
         Call::InteractionRespond(params) => {
             supervisor
