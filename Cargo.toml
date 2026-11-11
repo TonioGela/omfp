@@ -31,6 +31,15 @@ futures = "0.3"
 getrandom = "0.4"
 hex = "0.4"
 insta = { version = "1", features = ["json"] }
+# Widget modules (DMN-084, DMN-085): TypeScript/JSX → ES modules, checked imports; oxc pinned as validated in S-12.
+oxc_allocator = "=0.158.0"
+oxc_codegen = "=0.158.0"
+oxc_diagnostics = "=0.158.0"
+oxc_parser = "=0.158.0"
+oxc_semantic = "=0.158.0"
+oxc_span = "=0.158.0"
+oxc_syntax = "=0.158.0"
+oxc_transformer = "=0.158.0"
 proptest = "1"
 regex = "1"
 reqwest = { version = "0.13", default-features = false, features = [
@@ -38,6 +47,8 @@ reqwest = { version = "0.13", default-features = false, features = [
   "stream",
 ] }
 rusqlite = { version = "0.41", features = ["bundled"] }
+# Signals the process group of a job without `unsafe` (DMN-081); already in the tree through tempfile.
+rustix = { version = "1", features = ["process"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -5,15 +5,25 @@
  * (UI-023): its placeholder title and its workspace's chips.
  */
 
-import { Button, type Key, Select, TextField } from "@omfp/kit";
 import type { ThreadSummary } from "@omfp/protocol";
-import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Button, type Key, Select, TextField } from "omfp/kit";
 import {
   DRAFT_THREAD,
   type DraftThread,
+  decodeModels,
+  decodeSession,
+  decodeThinkingLevels,
+  type HeaderView,
+  headerView,
+  NO_DETAILS,
   RENAMING_THREAD,
   type SdkClient,
   SELECTED_THREAD,
+  StatusBadge,
+  splitModel,
+  statusLabel,
+  strings,
+  type ThreadDetails,
   useCall,
   useReportError,
   useThread,
@@ -22,20 +32,10 @@ import {
   useWindowState,
   useWorkspaces,
   type WidgetProps,
-} from "../../sdk/index.ts";
-import { strings } from "../../strings/index.ts";
-import {
-  decodeModels,
-  decodeSession,
-  decodeThinkingLevels,
-  type HeaderView,
-  headerView,
-  NO_DETAILS,
-  splitModel,
-  type ThreadDetails,
-} from "../../vm/header.ts";
-import { statusLabel, workspaceChips } from "../../vm/threads.ts";
-import { StatusBadge, WorkspaceChipView } from "../threads/index.ts";
+  WorkspaceChipView,
+  workspaceChips,
+} from "omfp/sdk";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 
 const text = strings.shell.header;
 

@@ -6,7 +6,28 @@
  */
 
 import type { ThreadState } from "@omfp/core";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+  type TranscriptItem as Item,
+  isScrollUpKey,
+  transcriptItems as items,
+  keyScrollTop,
+  messageView,
+  mountScrollTop,
+  type NavCommand,
+  navTarget,
+  noticeRow,
+  type PinEvent,
+  pinReducer,
+  SCOPE_ATTRIBUTE,
+  streamingView,
+  strings,
+  systemMessage,
+  systemNotice,
+  useAnnounce,
+  useCommand,
+  useVirtualizer,
+  useWindowState,
+} from "omfp/sdk";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -17,20 +38,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { SCOPE_ATTRIBUTE, useAnnounce, useCommand, useWindowState } from "../../sdk/index.ts";
-import { strings } from "../../strings/index.ts";
-import { noticeRow } from "../../vm/notice.ts";
-import { systemMessage, systemNotice } from "../../vm/system.ts";
-import { type Item, items, messageView, streamingView } from "../../vm/transcript.ts";
-import {
-  isScrollUpKey,
-  keyScrollTop,
-  mountScrollTop,
-  type NavCommand,
-  navTarget,
-  type PinEvent,
-  pinReducer,
-} from "../../vm/virtual.ts";
 import { MessageRow, NoticeRowView, SystemRowView } from "./message.tsx";
 import type { WidgetProps } from "./props.ts";
 import { measurementsKey, pinKey, useSelectedThread } from "./state.ts";

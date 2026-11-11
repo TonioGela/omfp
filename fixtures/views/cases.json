@@ -1,0 +1,126 @@
+{
+  "description": "Views manifests (AGT-010) and the error each one gets: null when valid. The daemon (crates/omfp-daemon) and the app (ui/packages/app) both check every case, so they apply the same rules with the same messages. View ids are checked in id order.",
+  "cases": [
+    {
+      "name": "the smallest manifest",
+      "manifest": { "views": { "work": { "layout": "omfp:chat" } } },
+      "error": null
+    },
+    {
+      "name": "everything",
+      "manifest": {
+        "$schema": "omfp://schemas/views.json",
+        "default": "work",
+        "views": {
+          "review": { "title": "Review", "layout": ["row", {}, "omfp:transcript", "./widgets/tests"] },
+          "work": {
+            "title": "Work",
+            "layout": [
+              "row",
+              { "sizes": [3, 1] },
+              ["col", {}, "omfp:header", "omfp:chat"],
+              ["tabs", {}, "omfp:workspace", ["./widgets/tests", { "command": "make test", "instance": "t1" }]]
+            ]
+          }
+        },
+        "comment": "unknown keys are ignored"
+      },
+      "error": null
+    },
+    {
+      "name": "an unknown widget reference is not a manifest error",
+      "manifest": { "views": { "work": { "layout": ["stack", {}, "nope:nothing", "user:charts"] } } },
+      "error": null
+    },
+    {
+      "name": "a title that is not a string falls back to the id",
+      "manifest": { "views": { "work": { "title": 3, "layout": "omfp:chat" } } },
+      "error": null
+    },
+    {
+      "name": "not an object",
+      "manifest": ["views"],
+      "error": "views: expected an object of views"
+    },
+    {
+      "name": "no views",
+      "manifest": { "default": "work" },
+      "error": "views: expected an object of views"
+    },
+    {
+      "name": "empty views",
+      "manifest": { "views": {} },
+      "error": "views: no view"
+    },
+    {
+      "name": "a view that is not an object",
+      "manifest": { "views": { "work": "omfp:chat" } },
+      "error": "views.work: expected { title, layout }"
+    },
+    {
+      "name": "an empty widget name",
+      "manifest": { "views": { "work": { "layout": " " } } },
+      "error": "views.work.layout: a widget name is empty"
+    },
+    {
+      "name": "a missing layout",
+      "manifest": { "views": { "work": { "title": "Work" } } },
+      "error": "views.work.layout: expected a widget name, [widget, props] or [container, props, ...children]"
+    },
+    {
+      "name": "an empty array",
+      "manifest": { "views": { "work": { "layout": [] } } },
+      "error": "views.work.layout: expected a widget name, [widget, props] or [container, props, ...children]"
+    },
+    {
+      "name": "a reference without props",
+      "manifest": { "views": { "work": { "layout": ["omfp:chat"] } } },
+      "error": "views.work.layout: omfp:chat needs a props object"
+    },
+    {
+      "name": "props that are not an object",
+      "manifest": { "views": { "work": { "layout": ["row", [], "omfp:chat"] } } },
+      "error": "views.work.layout: row needs a props object"
+    },
+    {
+      "name": "a reference with children",
+      "manifest": { "views": { "work": { "layout": ["omfp:chat", {}, "omfp:header"] } } },
+      "error": "views.work.layout: a widget reference is [name, props]"
+    },
+    {
+      "name": "a container without children",
+      "manifest": { "views": { "work": { "layout": ["tabs", {}] } } },
+      "error": "views.work.layout: tabs has no children"
+    },
+    {
+      "name": "sizes of the wrong length",
+      "manifest": { "views": { "work": { "layout": ["row", { "sizes": [1] }, "omfp:chat", "omfp:workspace"] } } },
+      "error": "views.work.layout: sizes must be 2 positive numbers"
+    },
+    {
+      "name": "a size that is not positive",
+      "manifest": { "views": { "work": { "layout": ["col", { "sizes": [1, 0] }, "omfp:chat", "omfp:workspace"] } } },
+      "error": "views.work.layout: sizes must be 2 positive numbers"
+    },
+    {
+      "name": "an error deep in the tree names its path",
+      "manifest": { "views": { "work": { "layout": ["row", {}, "omfp:chat", ["col", {}, "omfp:header", 7]] } } },
+      "error": "views.work.layout[3][3]: expected a widget name, [widget, props] or [container, props, ...children]"
+    },
+    {
+      "name": "views are checked in id order",
+      "manifest": { "views": { "zeta": { "layout": [] }, "alpha": { "layout": ["row", {}] } } },
+      "error": "views.alpha.layout: row has no children"
+    },
+    {
+      "name": "an unknown default view",
+      "manifest": { "default": "missing", "views": { "work": { "layout": "omfp:chat" } } },
+      "error": "default: no view missing"
+    },
+    {
+      "name": "a default that is not a string",
+      "manifest": { "default": 3, "views": { "work": { "layout": "omfp:chat" } } },
+      "error": "default: no view 3"
+    }
+  ]
+}

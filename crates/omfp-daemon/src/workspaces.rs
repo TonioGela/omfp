@@ -266,25 +266,43 @@ impl Workspaces {
         self.view(ws)
     }
 
-    /// Removes a workspace without threads (DMN-028): its repositories are removed as [`Self::remove_repo`] does
-    /// (links unlinked, worktrees and clones refused with uncommitted changes unless `force`), then its folder is
-    /// deleted. Nothing outside the folder is deleted: symlinks are never followed.
-    pub fn remove(&self, id: &str, force: bool) -> Result<()> {
+    /// Whether [`Self::remove`] would go ahead (DMN-028): no thread left in the workspace, and without `force` no
+    /// worktree or clone with uncommitted changes.
+    pub fn check_removal(&self, id: &str, force: bool) -> Result<()> {
+        self.checked_removal(id, force).map(drop)
+    }
+
+    /// The workspace and, when its folder exists, its repositories, once the removal checks passed.
+    fn checked_removal(
+        &self,
+        id: &str,
+        force: bool,
+    ) -> Result<(Workspace, Option<Vec<Discovered>>)> {
         let ws = self.get(id)?;
         if !self.store.workspace_thread_ids(id)?.is_empty() {
             return Err(WorkspaceError::HasThreads(ws.id));
         }
-        if std::fs::symlink_metadata(&ws.path).is_ok_and(|meta| meta.is_dir()) {
-            let repos = scan(&*self.git, &ws.path)?;
-            if !force {
-                for repo in &repos {
-                    if !matches!(repo.kind, RepoKind::Link { .. })
-                        && self.git.is_dirty(&repo.path)?
-                    {
-                        return Err(WorkspaceError::Dirty(repo.path.display().to_string()));
-                    }
+        if !std::fs::symlink_metadata(&ws.path).is_ok_and(|meta| meta.is_dir()) {
+            return Ok((ws, None));
+        }
+        let repos = scan(&*self.git, &ws.path)?;
+        if !force {
+            for repo in &repos {
+                if !matches!(repo.kind, RepoKind::Link { .. }) && self.git.is_dirty(&repo.path)? {
+                    return Err(WorkspaceError::Dirty(repo.path.display().to_string()));
                 }
             }
+        }
+        Ok((ws, Some(repos)))
+    }
+
+    /// Removes a workspace without threads (DMN-028): its repositories are removed as [`Self::remove_repo`] does
+    /// (links unlinked, worktrees and clones refused with uncommitted changes unless `force`, see
+    /// [`Self::check_removal`]), then its folder is deleted. Nothing outside the folder is deleted: symlinks are
+    /// never followed.
+    pub fn remove(&self, id: &str, force: bool) -> Result<()> {
+        let (ws, repos) = self.checked_removal(id, force)?;
+        if let Some(repos) = repos {
             for repo in repos.iter().filter(|repo| !repo.is_root) {
                 self.remove_entry(repo, true, false)?;
             }

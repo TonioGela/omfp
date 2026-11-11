@@ -1,11 +1,8 @@
 /** One transcript row: a message with its blocks (text, thinking, images, tool cards, records) or a notice row. */
 
-import { Card, Code, Disclosure, Markdown } from "@omfp/kit";
-import { strings } from "../../strings/index.ts";
-import type { NoticeRow } from "../../vm/notice.ts";
-import type { SystemRow } from "../../vm/system.ts";
-import { expandedByDefault, formatDuration, type ToolCard } from "../../vm/tool.ts";
-import type { Block, MessageView, Role } from "../../vm/transcript.ts";
+import { Card, Code, Disclosure, Markdown } from "omfp/kit";
+import type { MessageBlock as Block, MessageView, NoticeRow, MessageRole as Role, SystemRow } from "omfp/sdk";
+import { expandedByDefault, formatDuration, strings, type ToolCard } from "omfp/sdk";
 import { useExpanded } from "./state.ts";
 
 const text = strings.chat;

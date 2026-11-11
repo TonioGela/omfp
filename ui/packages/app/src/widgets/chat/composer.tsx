@@ -7,31 +7,19 @@
  */
 
 import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/core";
-import { Button, IconButton, Menu, MenuItem, Popover, TextArea } from "@omfp/kit";
-import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
-import { Autocomplete } from "react-aria-components";
-import {
-  DRAFT_MESSAGE,
-  DRAFT_THREAD,
-  type Draft,
-  type DraftThread,
-  draftKey,
-  EMPTY_DRAFT,
-  SCOPE_ATTRIBUTE,
-  useAnnounce,
-  useCall,
-  useCommand,
-  useHost,
-  useThreadActions,
-  useWindowState,
-} from "../../sdk/index.ts";
-import { strings } from "../../strings/index.ts";
+import { Autocomplete, Button, IconButton, Menu, MenuItem, Popover, TextArea } from "omfp/kit";
 import {
   alternative,
   behavior,
   canAbort,
   commandsOf,
   complete,
+  DRAFT_MESSAGE,
+  DRAFT_THREAD,
+  type Draft,
+  type DraftThread,
+  draftKey,
+  EMPTY_DRAFT,
   INTERRUPT_WINDOW_MS,
   imageAttachment,
   interruptAction,
@@ -39,17 +27,30 @@ import {
   isBusy,
   keyAction,
   type Modifiers,
+  type QueueChip,
+  type QueueOp,
+  queueChips,
+  queueOpApplied,
   restoreCleared,
   restoreDraft,
   restoredTexts,
   restoreFailedPrompt,
+  SCOPE_ATTRIBUTE,
   type SendMode,
   type Suggestion,
   sendMode,
+  settleQueueOp,
   slashSuggestions,
   steerModifier,
-} from "../../vm/composer.ts";
-import { type QueueChip, type QueueOp, queueChips, queueOpApplied, settleQueueOp } from "../../vm/queue.ts";
+  strings,
+  useAnnounce,
+  useCall,
+  useCommand,
+  useHost,
+  useThreadActions,
+  useWindowState,
+} from "omfp/sdk";
+import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { testId, type WidgetProps } from "./props.ts";
 import { clearedDraftKey, PENDING_QUEUE, useClock, useSelectedThread } from "./state.ts";
 

@@ -144,24 +144,36 @@ bundles with `bun build` into `ui/packages/app/dist`; E2E-01..05, 08, 09 and jou
 change pass in headless Chromium. Known gaps: the dialog focus trap's backward wrap is checked only in browsers
 (happy-dom does not wrap Shift+Tab); pull-request grouping and repositories wait for S-08.
 
-## M4 — Widgets (agent-made UI, from 08)
+## M4 — Widgets (agent-made UI, from 08) (done)
 
 Scope: D-17's UI part brought forward, as designed in [08](08-agent-control.md#agent-made-ui-views-and-widgets-m4): a
 **views manifest** per workspace (`.omfp/views.json`: several views, each a layout tree of `row`/`col`/`tabs`/`stack`
 with widget references and props), edited by the agent as a file and by the user from the UI; **widgets** as React
 components (built-in `omfp:*`, workspace `./widgets/<name>`, user library `user:<name>`) running in the window under
-error boundaries, with the SDK as hooks (full protocol, tool-run output, daemon jobs, git, storage, messages to agents)
-and the shell's kit and theme; the daemon serves and transpiles workspace widgets and pushes changes found on rescan.
-Built-in panels (repos, changes, todos) become `omfp:*` widgets, and so does the conversation (`omfp:chat`: transcript,
-interactions, queue, composer); only a thin frame (connection, view switcher, keymap and command line, and a safety net
-that shows pending interactions no widget renders) stays outside the manifest. Agents learn it from the daemon's
-`--append-system-prompt` note, `omfp://docs/widgets` and the manifest schema. Spike first: transpiling in the daemon
-(`oxc`) vs buildless modules (`htm`), hot reload, how much of the shell becomes widgets.
+error boundaries, with the SDK as hooks (full protocol, tool-run output, daemon jobs, storage) and the shell's kit and
+theme; the daemon serves and transpiles workspace widgets and pushes changes found on rescan and poll. The
+conversation is a widget (`omfp:chat`: transcript, interactions, queue, composer, with its parts), as are the header
+and the workspace panel, all copyable; only a thin frame (left column, connection, view switcher, keymap and command
+line, and a safety net that shows pending interactions no widget renders) stays outside the manifest. Agents learn it
+from the daemon's `--append-system-prompt` note, `omfp://docs/widgets` and the manifest schema. Spike S-12 first.
+Requirements: AGT-010..025, DMN-062, DMN-080..087, PRT-040..042, UI-100..106, E2E-10..12. Not in M4 (08, "Later"):
+`useAgent`, `useFile`/`workspaces.read_file`, the widget-state and job host tools, `:widget save`, dashboards and
+windows outside the workspace view; `omfp:changes` is M5.
 
 Acceptance: a scripted agent writes a widget that charts test results from a daemon job and adds it to a view in
 `views.json` → it appears live; an invalid manifest shows the default view and the error; the user moves and hides
 widgets and `views.json` changes; a built-in widget copied into the workspace and modified replaces the original there;
 two views switch from the shell.
+
+Result: E2E-10..12 pass in headless Chromium against real omp and the fake LLM — a scripted agent writes
+`.omfp/widgets/tests/index.tsx` (a progress bar over a daemon job via `useJob`) and adds it to `views.json`, and it
+appears and advances live; an invalid manifest shows the default view and a banner, and fixing the file recovers; layout
+editing (Move menu, hide, add from a picker, resize) writes `views.json`; `:widget copy` copies a built-in into the
+workspace where it replaces the original; a syntax error shows in place and recovers. Widgets are compiled by oxc
+`=0.158.0` with imports checked against the real `omfp/sdk` / `omfp/kit` exports and served under a per-start key
+handed out in `system.hello` (D-19). omp 18.18.6 streams partial `bash` output, so `useToolRun` is live. Left out by the
+scope check (08 lists them as later): `useAgent`, `useFile`, the agent's job and widget-state host tools, `jobs.list`,
+`:widget save`, pointer drag, dashboards outside the workspace view.
 
 ## M5 — Tools and changes
 

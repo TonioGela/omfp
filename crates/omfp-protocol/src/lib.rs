@@ -14,26 +14,29 @@ mod topic;
 
 pub use dto::{
     CreatedBy, Density, DiffPage, FileChange, FileDiff, FileStatus, FontSettings, GitStatus,
-    IndexSnapshot, KeymapEntry, KeymapMode, NotificationMode, PathEntry, Provenance, RepoKind,
-    RepoStatus, SeenRepository, Settings, TerminalInfo, TerminalKind, Theme, ThreadSummary,
-    TitleSource, UiSettings, Workspace, WorkspaceRepo,
+    IndexSnapshot, JobInfo, JobLine, JobState, JobStatus, JobStream, KeymapEntry, KeymapMode,
+    NotificationMode, PathEntry, Provenance, RepoKind, RepoStatus, SeenRepository, Settings,
+    TerminalInfo, TerminalKind, Theme, ThreadSummary, TitleSource, UiSettings, ViewsState,
+    WidgetInfo, WidgetSource, Workspace, WorkspaceRepo,
 };
 pub use envelope::{
-    ErrorBody, ErrorCode, EventFrame, IndexEvent, ProtocolError, Request, Response, ServerFrame,
-    TopicEvent, WorkspaceEvent, decode_request,
+    ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, ProtocolError, Request, Response,
+    ServerFrame, TopicEvent, ViewsEvent, WorkspaceEvent, decode_request,
 };
 pub use method::{Call, METHODS, Method, method_schemas};
 pub use params::{
-    AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CreateThreadParams,
-    CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams, HelloResult,
-    InteractionResponse, LabelParams, ListTerminalsParams, MessageParams, NavigateParams,
-    OpenTerminalParams, OpenTerminalResult, PathCompletions, Position, PromptBehavior,
-    PromptParams, PromptResult, QueueMessageParams, RemoveRepoParams, RemoveWorkspaceParams,
-    RepoRef, RepoSource, RepoSuggestions, ResizeTerminalParams, RespondParams, SearchThreadsParams,
-    SetModelParams, SetSettingsParams, SetThinkingParams, SubagentMessagesParams, SubagentRef,
+    AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CopyWidgetParams,
+    CreateThreadParams, CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams,
+    HelloResult, InteractionResponse, JobRef, LabelParams, ListTerminalsParams, MessageParams,
+    NavigateParams, OpenTerminalParams, OpenTerminalResult, PathCompletions, Position,
+    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, RemoveRepoParams,
+    RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions, ResizeTerminalParams,
+    RespondParams, SearchThreadsParams, SetModelParams, SetSettingsParams, SetThinkingParams,
+    SetViewsParams, SetWidgetStateParams, StartJobParams, SubagentMessagesParams, SubagentRef,
     SubagentSteerParams, SubscribeParams, SubscribeResult, SuggestReposParams, TerminalList,
     TerminalRef, ThreadGit, ThreadRef, ThreadSearchResult, ThreadSearchResults, ThreadWorkspace,
-    TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
+    TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied, WorkspaceDiffParams,
+    WorkspaceRef,
 };
 pub use schema::type_schemas;
 pub use topic::{Topic, TopicParseError};

@@ -18,6 +18,7 @@ use crate::agent::{AgentLauncher, OmpLauncher};
 use crate::config::{Cli, Config, default_config_file, web_bundle};
 use crate::conventions;
 use crate::git::{Git, GitCli};
+use crate::jobs::Jobs;
 use crate::omp_binary;
 use crate::paths::DataDir;
 use crate::server::{self, AppState, Services};
@@ -26,6 +27,7 @@ use crate::supervisor::{Supervisor, SupervisorConfig};
 use crate::theme::default_theme_file;
 use crate::threads::Threads;
 use crate::token::Token;
+use crate::widgets::Widgets;
 use crate::workspaces::Workspaces;
 
 /// The system dependencies a daemon runs on (ARC-012).
@@ -164,6 +166,7 @@ pub struct DaemonHandle {
     token: Token,
     data_dir: PathBuf,
     supervisor: Supervisor,
+    jobs: Jobs,
     stop: watch::Sender<bool>,
     server: JoinHandle<std::io::Result<()>>,
     background: Vec<JoinHandle<()>>,
@@ -193,11 +196,11 @@ impl DaemonHandle {
         format!("http://{addr}/#token={}", self.token.expose())
     }
 
-    /// Stops the daemon (DMN-005): connections close, every omp process stops (at most 10 s), `daemon.json` is
-    /// removed and the data directory unlocked.
+    /// Stops the daemon (DMN-005): connections close, every omp process and every job stops (at most 10 s),
+    /// `daemon.json` is removed and the data directory unlocked.
     pub async fn shutdown(self) -> anyhow::Result<()> {
         let _ = self.stop.send(true);
-        self.supervisor.shutdown().await;
+        tokio::join!(self.supervisor.shutdown(), self.jobs.shutdown());
         for task in &self.background {
             task.abort();
         }
@@ -248,6 +251,7 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         workspaces_root,
     ));
     let agent_dir = conventions::omp_agent_dir(&ports.omp_env, std::env::var_os("HOME").as_deref());
+    let widgets = Arc::new(Widgets::new(data.widgets(), config.static_dir.as_deref()));
     let supervisor = Supervisor::new(
         ports.launcher,
         Arc::clone(&threads),
@@ -260,12 +264,14 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
             event_capacity: config.event_buffer,
             agent_dir,
             title_generation: config.title_generation,
+            builtin_widgets: widgets.builtin_dir().map(Path::to_path_buf),
             ..SupervisorConfig::new(ports.omp_program)
         },
     );
-    let services = Services::new(store, threads, workspaces, supervisor.clone())
+    let services = Services::new(store, threads, workspaces, supervisor.clone(), widgets)
         .await
         .map_err(|error| anyhow::anyhow!(error.message))?;
+    let jobs = services.jobs.clone();
     let mut background = vec![
         supervisor.spawn_reaper(),
         services.spawn_index_updates(),
@@ -305,12 +311,15 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
     .context("cannot write daemon.json")?;
 
     let (stop, stopping) = watch::channel(false);
+    let mut widget_key = [0_u8; 16];
+    getrandom::fill(&mut widget_key).map_err(|error| anyhow::anyhow!("no randomness: {error}"))?;
     let state = Arc::new(AppState {
         token: token.clone(),
         omp_version: ports.omp_version,
         warnings: ports.warnings,
         allowed_origins: config.allowed_origins,
         static_dir: config.static_dir,
+        widget_base: format!("/widgets/{}", hex::encode(widget_key)),
         services,
         shutdown: stopping.clone(),
     });
@@ -328,6 +337,7 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         token,
         data_dir,
         supervisor,
+        jobs,
         stop,
         server,
         background,

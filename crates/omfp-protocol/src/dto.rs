@@ -2,9 +2,12 @@
 //!
 //! Timestamps are Unix epoch milliseconds.
 
+use std::collections::BTreeMap;
+
 use omfp_core::ProcessState;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Who created an entity (ARC-009).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -338,4 +341,98 @@ pub struct TerminalInfo {
     pub workspace_id: Option<String>,
     pub cols: u16,
     pub rows: u16,
+}
+
+/// Where a widget folder lives (AGT-012, AGT-023).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum WidgetSource {
+    /// `<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`.
+    Workspace,
+    /// `<data-dir>/widgets/<name>/`, referenced as `user:<name>`.
+    User,
+}
+
+/// A widget folder the daemon serves (DMN-082).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetInfo {
+    pub source: WidgetSource,
+    /// The folder's name.
+    pub name: String,
+    /// Hash of the relative path, size and modification time of every file in the folder: changes with every save.
+    pub version: String,
+    /// The entry file (`index.tsx`, `index.ts`, `index.jsx` or `index.js`, the first present); `null` without one.
+    pub entry: Option<String>,
+}
+
+/// State of a `views/<workspaceId>` topic (PRT-040, DMN-082).
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewsState {
+    /// The workspace's `.omfp/views.json` when it is a valid manifest (AGT-010); `null` without a file or when invalid.
+    pub manifest: Option<Value>,
+    /// Why the file is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or absent.
+    pub error: Option<String>,
+    /// Widget folders of the workspace, then of the user library, each by name.
+    pub widgets: Vec<WidgetInfo>,
+    /// What widgets stored with `useStored` (DMN-086): instance → key → value.
+    pub stored: BTreeMap<String, BTreeMap<String, Value>>,
+}
+
+/// A job's process state (DMN-080).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum JobStatus {
+    Running,
+    /// The shell exited and both outputs closed.
+    #[serde(rename_all = "camelCase")]
+    Exited {
+        /// Exit code; `null` when a signal ended it.
+        code: Option<i32>,
+        /// The signal that ended it, if any.
+        signal: Option<i32>,
+        ended_at: i64,
+    },
+}
+
+/// A shell command the daemon runs for a workspace (DMN-080).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct JobInfo {
+    pub id: String,
+    pub workspace_id: String,
+    /// Run as `sh -c <command>` in the workspace folder.
+    pub command: String,
+    pub started_at: i64,
+    pub status: JobStatus,
+}
+
+/// Which output of a job a line comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum JobStream {
+    Stdout,
+    Stderr,
+}
+
+/// One output line of a job, without its line break.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct JobLine {
+    pub stream: JobStream,
+    pub text: String,
+}
+
+/// State of a `job/<id>` topic (PRT-041).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct JobState {
+    pub job: JobInfo,
+    /// The newest lines, at most 1 MiB of text, oldest first.
+    pub lines: Vec<JobLine>,
+    /// How many older lines were left out.
+    pub dropped: u64,
 }

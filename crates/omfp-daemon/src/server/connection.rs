@@ -146,6 +146,7 @@ async fn hello(
             daemon: env!("CARGO_PKG_VERSION").to_owned(),
             omp: app.omp_version.clone(),
             warnings: app.warnings.clone(),
+            widget_base: app.widget_base.clone(),
         };
         send(out, Outbound::response(id, to_value(&result))).await;
         return Some(Principal::Owner {
@@ -266,6 +267,7 @@ impl Connection {
         }
     }
 
+    #[allow(clippy::too_many_lines)] // One arm per topic.
     async fn subscribe(&mut self, id: String, params: SubscribeParams) {
         let SubscribeParams { topic, since } = params;
         let since = since.map(|position| Position {
@@ -338,6 +340,42 @@ impl Connection {
                 Err(error) => Err((id, error)),
             },
             Topic::Terminal(_) => Err((id, bad_request("terminals are not available yet (M6)"))),
+            Topic::Views(workspace_id) => match services.views_log(workspace_id).await {
+                Ok(log) => {
+                    // Watched like `workspace/<id>`: the polls read its views every round (DMN-082).
+                    let guard = services.supervisor.watch_workspace(workspace_id);
+                    let subscription = log.subscribe(since.as_ref());
+                    let task = self
+                        .start(
+                            id.clone(),
+                            topic.clone(),
+                            since,
+                            subscription,
+                            TopicEvent::Views,
+                            generation,
+                        )
+                        .await;
+                    Ok((task, Some(Watch::Workspace { _guard: guard })))
+                }
+                Err(error) => Err((id, error)),
+            },
+            Topic::Job(job_id) => match services.jobs.log(job_id) {
+                Ok(log) => {
+                    let subscription = log.subscribe(since.as_ref());
+                    let task = self
+                        .start(
+                            id,
+                            topic.clone(),
+                            since,
+                            subscription,
+                            TopicEvent::Job,
+                            generation,
+                        )
+                        .await;
+                    Ok((task, None))
+                }
+                Err(error) => Err((id, error.into())),
+            },
         };
         match started {
             Ok((task, watch)) => {

@@ -12,6 +12,9 @@ import {
   type HelloResult,
   type IndexEvent,
   type IndexSnapshot,
+  type JobEvent,
+  type JobInfo,
+  type JobState,
   type ParsedTopic,
   parseTopic,
   type RepoStatus,
@@ -20,6 +23,9 @@ import {
   type SubscribeResult,
   type Theme,
   type TopicEvent,
+  type ViewsEvent,
+  type ViewsState,
+  type WidgetInfo,
   type WorkspaceEvent,
 } from "@omfp/protocol";
 import { isObject } from "./json.ts";
@@ -151,6 +157,40 @@ function checkKind(table: Record<string, (event: Record<string, unknown>) => boo
   return table[event.kind]?.(event) === true;
 }
 
+function isWidgetInfo(value: unknown): value is WidgetInfo {
+  return (
+    isObject(value) &&
+    typeof value.name === "string" &&
+    (value.source === "workspace" || value.source === "user") &&
+    typeof value.version === "string" &&
+    isOptionalString(value.entry)
+  );
+}
+
+function isWidgetList(value: unknown): value is WidgetInfo[] {
+  return Array.isArray(value) && value.every(isWidgetInfo);
+}
+
+const VIEWS_EVENTS: Record<ViewsEvent["kind"], (event: Record<string, unknown>) => boolean> = {
+  views_manifest: (event) => isOptionalString(event.error),
+  views_widgets: (event) => isWidgetList(event.widgets),
+  widget_stored: (event) => typeof event.instance === "string" && typeof event.key === "string" && "value" in event,
+};
+
+function isJobStream(value: unknown): boolean {
+  return value === "stdout" || value === "stderr";
+}
+
+function isOptionalNumber(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "number";
+}
+
+const JOB_EVENTS: Record<JobEvent["kind"], (event: Record<string, unknown>) => boolean> = {
+  job_output: (event) => isJobStream(event.stream) && typeof event.text === "string",
+  job_exited: (event) =>
+    typeof event.endedAt === "number" && isOptionalNumber(event.code) && isOptionalNumber(event.signal),
+};
+
 const EVENT_TABLES: Record<
   ParsedTopic["kind"],
   Record<string, (event: Record<string, unknown>) => boolean> | undefined
@@ -159,6 +199,8 @@ const EVENT_TABLES: Record<
   thread: THREAD_EVENTS,
   workspace: WORKSPACE_EVENTS,
   terminal: undefined,
+  views: VIEWS_EVENTS,
+  job: JOB_EVENTS,
 };
 
 /** Decodes the `event` of a frame on `topic`: its kind must belong to the topic's kind. */
@@ -226,13 +268,20 @@ export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
     typeof value.protocol !== "number" ||
     typeof value.daemon !== "string" ||
     typeof value.omp !== "string" ||
-    !isStringArray(value.warnings)
+    !isStringArray(value.warnings) ||
+    typeof value.widgetBase !== "string"
   ) {
-    return invalid("expected `protocol`, `daemon`, `omp` and `warnings`");
+    return invalid("expected `protocol`, `daemon`, `omp`, `warnings` and `widgetBase`");
   }
   return {
     ok: true,
-    value: { protocol: value.protocol, daemon: value.daemon, omp: value.omp, warnings: value.warnings },
+    value: {
+      protocol: value.protocol,
+      daemon: value.daemon,
+      omp: value.omp,
+      warnings: value.warnings,
+      widgetBase: value.widgetBase,
+    },
   };
 }
 
@@ -307,4 +356,65 @@ export function decodeRepoStatusList(value: unknown): Decoded<RepoStatus[]> {
   return isRepoStatusList(value)
     ? { ok: true, value }
     : invalid("expected a list of `{ name, status }` repository statuses");
+}
+
+function isStoredMap(value: unknown): value is Record<string, Record<string, unknown>> {
+  return isObject(value) && Object.values(value).every(isObject);
+}
+
+/** Decodes the state of a `views/<workspaceId>` snapshot (PRT-040); `manifest` and `error` default to `null`. */
+export function decodeViewsState(value: unknown): Decoded<ViewsState> {
+  if (
+    !isObject(value) ||
+    !isOptionalString(value.error) ||
+    !isWidgetList(value.widgets) ||
+    !isStoredMap(value.stored)
+  ) {
+    return invalid("expected `{ manifest, error, widgets: { source, name, version, entry }[], stored }`");
+  }
+  return {
+    ok: true,
+    value: {
+      manifest: value.manifest ?? null,
+      error: typeof value.error === "string" ? value.error : null,
+      widgets: value.widgets,
+      stored: value.stored,
+    },
+  };
+}
+
+function isJobInfo(value: unknown): value is JobInfo {
+  if (
+    !isObject(value) ||
+    typeof value.id !== "string" ||
+    typeof value.workspaceId !== "string" ||
+    typeof value.command !== "string" ||
+    typeof value.startedAt !== "number" ||
+    !isObject(value.status)
+  ) {
+    return false;
+  }
+  const { status } = value;
+  return (
+    status.state === "running" ||
+    (status.state === "exited" &&
+      typeof status.endedAt === "number" &&
+      isOptionalNumber(status.code) &&
+      isOptionalNumber(status.signal))
+  );
+}
+
+/** Decodes the state of a `job/<id>` snapshot (PRT-041). */
+export function decodeJobState(value: unknown): Decoded<JobState> {
+  if (
+    !isObject(value) ||
+    !isJobInfo(value.job) ||
+    !isSeq(value.dropped) ||
+    !Array.isArray(value.lines) ||
+    !value.lines.every((line) => isObject(line) && isJobStream(line.stream) && typeof line.text === "string")
+  ) {
+    return invalid("expected `{ job: { id, workspaceId, command, startedAt, status }, lines, dropped }`");
+  }
+  // Every field checked above.
+  return { ok: true, value: value as JobState };
 }

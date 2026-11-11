@@ -5,5 +5,6 @@
 
 import { chat } from "./chat.ts";
 import { shell } from "./shell.ts";
+import { widgets } from "./widgets.ts";
 
-export const strings = { chat, shell } as const;
+export const strings = { chat, shell, widgets } as const;

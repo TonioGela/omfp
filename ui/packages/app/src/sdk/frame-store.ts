@@ -4,7 +4,7 @@
  */
 
 import type { ConnectionStatus, Dirty, Index, ModelView, ThreadView, TopicState } from "@omfp/client";
-import type { RepoStatus } from "@omfp/protocol";
+import type { JobState, RepoStatus, ViewsState } from "@omfp/protocol";
 
 /** What the store reads from the client. */
 export interface ModelSource {
@@ -27,6 +27,10 @@ export interface Snapshot {
   readonly index: Index;
   readonly threads: ReadonlyMap<string, ThreadView>;
   readonly workspaces: ReadonlyMap<string, readonly RepoStatus[]>;
+  /** Views state of followed workspaces (PRT-040), by workspace id. */
+  readonly views: ReadonlyMap<string, ViewsState>;
+  /** Followed jobs (PRT-041), by job id. */
+  readonly jobs: ReadonlyMap<string, JobState>;
   readonly topics: readonly TopicState[];
 }
 
@@ -39,7 +43,15 @@ export const animationFrame: FrameScheduler = (commit) => {
 
 /** A dirty set with nothing in it. */
 export function emptyDirty(): Dirty {
-  return { connection: false, topics: false, index: false, threads: new Set(), workspaces: new Set() };
+  return {
+    connection: false,
+    topics: false,
+    index: false,
+    threads: new Set(),
+    workspaces: new Set(),
+    views: new Set(),
+    jobs: new Set(),
+  };
 }
 
 function capture(model: ModelView, dirty: Dirty, frame: number): Snapshot {
@@ -51,6 +63,8 @@ function capture(model: ModelView, dirty: Dirty, frame: number): Snapshot {
     index: model.index,
     threads: model.threads,
     workspaces: model.workspaces,
+    views: model.views,
+    jobs: model.jobs,
     topics: model.topics,
   };
 }

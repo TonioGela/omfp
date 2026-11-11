@@ -2,7 +2,8 @@
 
 One WebSocket per client at `/api/ws`. JSON text frames for requests, responses and events; binary frames only for
 terminal data ([05](05-terminal.md)). All types live in `omfp-protocol` (serde), shared by daemon and UI. Plain HTTP
-besides: the web bundle at `/` (DMN-008) and the user's theme at `/theme.css` (DMN-075), both without the token.
+besides: the web bundle at `/` (DMN-008) and the user's theme at `/theme.css` (DMN-075), both without the token, and
+widget modules under the `widgetBase` path a client gets in `system.hello` (DMN-084, PRT-042).
 
 ## Connection and authentication
 
@@ -12,7 +13,7 @@ sequenceDiagram
   participant D as daemon
   C->>D: WS upgrade /api/ws (Origin checked)
   C->>D: {"type":"request","id":"1","method":"system.hello","params":{"token":"…","protocol":1,"client":"omfp/web"}}
-  D-->>C: {"type":"response","id":"1","ok":true,"result":{"protocol":1,"daemon":"0.1.0","omp":"18.18.6","warnings":[]}}
+  D-->>C: {"type":"response","id":"1","ok":true,"result":{"protocol":1,"daemon":"0.1.0","omp":"18.18.6","warnings":[],"widgetBase":"/widgets/3f…"}}
   C->>D: subscribe index, thread/<id>, …
 ```
 
@@ -48,8 +49,9 @@ sequenceDiagram
 ## Topics, snapshots and catch-up
 
 Topics: `index` (workspaces with their discovered repositories, threads with their summaries, and the user's theme),
-`thread/<id>` (one thread), `workspace/<id>` (git status of each repository of one workspace), `terminal/<id>` (terminal
-output, [05](05-terminal.md)).
+`thread/<id>` (one thread), `workspace/<id>` (git status of each repository of one workspace), `views/<id>` (the views
+manifest, widget folders and widget state of one workspace, PRT-040), `job/<id>` (one job's output, PRT-041),
+`terminal/<id>` (terminal output, [05](05-terminal.md)).
 
 The `index` state is `{ workspaces, threads, theme, settings }`; its events are
 `workspace_upserted` / `workspace_removed`, `thread_upserted` / `thread_removed`,
@@ -131,6 +133,11 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `theme.set` | `css` (string, at most 1 MiB, else `bad_request`; `null` restores the built-in themes) | `{}`; every client gets `theme_changed` on `index` |
 | `settings.get` | — | `settings` (DMN-009, UI-097) |
 | `settings.set` | `ui?` (values to set; absent ones unchanged), `keymap?` (entries replacing the ones with the same `mode` and `keys`) | the new `settings`; merged into the config file, written back with its comments and other keys (`bad_request` for an invalid value or a config file that is not valid TOML); every client gets `settings_changed` |
+| `views.set` | `workspaceId`, `manifest` (AGT-010) | `{}`; writes `.omfp/views.json` (DMN-083) |
+| `widgets.copy` | `workspaceId`, `widget` (`omfp:<name>` \| `user:<name>`), `name?` | `{ name }`: the new folder `.omfp/widgets/<name>/` (DMN-087) |
+| `widgets.state_set` | `workspaceId`, `instance`, `key`, `value` (JSON; `null` deletes) | `{}`; `widget_stored` on `views/<id>` (DMN-086) |
+| `jobs.start` | `workspaceId`, `command` | the job: `{ id, workspaceId, command, startedAt, status }` (DMN-080) |
+| `jobs.kill` | `jobId` | `{}` (DMN-081) |
 
 Results of omp-forwarded methods are omp's response data (`data` of its `response` frame), the `omp-rpc` wire
 `*Result` type named in the method table, even where `omp-rpc` decodes the command's output to the bare list or
@@ -143,3 +150,11 @@ record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 | PRT-032 | `omfp-protocol` MUST version breaking changes by bumping `protocol`; the daemon supports the current and the previous version during a transition. |
 | PRT-033 | No method may assume a human UI is on the other end: every method is usable by scripts and, later, agents (D-12). The `client` field of `system.hello` and the resulting principal are recorded as provenance on created entities (ARC-009). |
 | PRT-034 | Authorization MUST be resolved once per connection into a `Principal` and checked in one place (a method → permission table), so scoped principals (per-thread agent tokens, [08](08-agent-control.md)) can be added without touching method handlers. Today there is one principal: the owner token. |
+
+## Views and jobs (M4)
+
+| ID | Requirement |
+| --- | --- |
+| PRT-040 | `views/<workspaceId>` (DMN-082): the state is `ViewsState { manifest, error, widgets: [{ source: "workspace" \| "user", name, version, entry }], stored: { <instance>: { <key>: value } } }`; its events are `views_manifest { manifest, error }` and `views_widgets { widgets }` (each replaces those fields) and `widget_stored { instance, key, value }` (`null` removes the key). Subscribing to an unknown workspace is `not_found`. |
+| PRT-041 | `job/<id>` (DMN-080): the state is `JobState { job, lines: [{ stream: "stdout" \| "stderr", text }], dropped }`; its events are `job_output { stream, text }` (appends a line) and `job_exited { code, signal, endedAt }` (the job's `status` becomes `{ state: "exited", code, signal, endedAt }`). Subscribing to an unknown job is `not_found`. |
+| PRT-042 | The `system.hello` result MUST carry `widgetBase`, the path under which this daemon serves widget modules to authenticated clients (DMN-084). |

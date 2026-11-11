@@ -1,10 +1,10 @@
 /**
- * The widget SDK's hooks (seed of the M4 `omfp/sdk`, docs/specs/08-agent-control.md): every widget, built-in or not,
+ * The widget SDK's hooks (`omfp/sdk`, docs/specs/08-agent-control.md): every widget, built-in or not,
  * reads daemon state and acts through these, never through the client directly.
  *
  * - Model: {@link useSnapshot} and its shorthands read the per-frame snapshot (UI-012); results are immutable
  *   references, stable while unchanged.
- * - Topics: {@link useThread}, {@link useWorkspace} and {@link useTopic} follow their topic while mounted
+ * - Topics: {@link useThread}, {@link useWorkspace}, {@link useViews} and {@link useTopic} follow their topic while mounted
  *   (reference-counted across widgets), with the protocol's replay/snapshot semantics.
  * - Calls: {@link useCall} is the full protocol (`call("thread.prompt", { threadId, text })`).
  * - Window: {@link useWindowState} for window-local state shared by key; {@link useCommand} registers a command for
@@ -17,6 +17,8 @@ import {
   type ThreadSummary,
   type Topic,
   threadTopic,
+  type ViewsState,
+  viewsTopic,
   type Workspace,
   workspaceTopic,
 } from "@omfp/protocol";
@@ -85,6 +87,13 @@ export function useWorkspace(workspaceId: string | undefined): WorkspaceData {
     workspaceId === undefined ? undefined : snapshot.workspaces.get(workspaceId),
   );
   return { workspace, status };
+}
+
+/** A workspace's views manifest, widget folders and widget state (PRT-040), following `views/<id>` while mounted;
+ * `undefined` until its snapshot. */
+export function useViews(workspaceId: string | undefined): ViewsState | undefined {
+  useTopic(workspaceId === undefined ? undefined : viewsTopic(workspaceId));
+  return useSnapshot((snapshot) => (workspaceId === undefined ? undefined : snapshot.views.get(workspaceId)));
 }
 
 /** The protocol: `call(method, params)` resolves to the typed result or rejects with `CallError`. */

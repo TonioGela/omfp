@@ -48,6 +48,12 @@ impl DataDir {
     pub fn thread_log(&self, thread_id: &str) -> PathBuf {
         self.thread(thread_id).join("omp.log")
     }
+
+    /// The user's widget library, `user:<name>` (AGT-023).
+    #[must_use]
+    pub fn widgets(&self) -> PathBuf {
+        self.root.join("widgets")
+    }
 }
 
 #[cfg(test)]
@@ -69,5 +75,6 @@ mod tests {
             data.thread_log("T1"),
             Path::new("/data/omfp/threads/T1/omp.log")
         );
+        assert_eq!(data.widgets(), Path::new("/data/omfp/widgets"));
     }
 }

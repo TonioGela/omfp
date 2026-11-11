@@ -1,3 +1,7 @@
-/** `omfp:workspace`: the workspace panel (UI-025). */
+/** `omfp:workspace`: the workspace panel (UI-025). Copyable (AGT-021): value imports only from `react`, `omfp/sdk`,
+ * `omfp/kit` and this folder. */
 
-export { WorkspaceWidget } from "./workspace.tsx";
+import { WorkspaceWidget } from "./workspace.tsx";
+
+export { WorkspaceWidget };
+export default WorkspaceWidget;

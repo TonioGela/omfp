@@ -11,8 +11,8 @@ only be reachable from the human UI.
 
 ## Read first
 
-- `docs/specs/README.md` — index, conventions, decision log (D-01…D-18), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M3 and M2b done; next: M4 widgets);
+- `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M4 and M2b done; next: M5 tools and changes);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -60,27 +60,34 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
                       workspaces/scan.rs, cheap change check in workspaces/fingerprint.rs, add/remove repo,
                       suggestions of seen repositories), path completion (fs_complete.rs), conversation search over
-                      session files (search.rs), threads, git port + FakeGit, host tools, WebSocket server (polling
-                      of watched workspaces: server/services/polls.rs); `omfp_daemon::{start, run, discover}` back
-                      `omfp daemon` (and later `omfp desktop`);
+                      session files (search.rs), threads, git port + FakeGit, host tools and the `omfp://` host URIs,
+                      jobs (jobs.rs: shell commands of a workspace, `job/<id>`), widgets (widgets.rs: views manifest
+                      check, widget folders and versions, oxc transpiling and the `/widgets/<key>/…` route, copies;
+                      widgets/docs.md is `omfp://docs/widgets`), WebSocket server (polling of watched workspaces:
+                      server/services/polls.rs; the `views/<id>` topic: server/services/views.rs);
+                      `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`);
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
 crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI)
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
-e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process) and the M2 journeys
+e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process), the journeys and the widget journeys
 ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + Biome (`just lint`), `bun run test`
 ui/packages/protocol  @omfp/protocol: generated protocol types + method table (generated.ts), envelope, topics
 ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked against fixtures/states/
 ui/packages/client    @omfp/client: WebSocket transport, session (hello, subscriptions, reconnect), model
 ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css, kit.css)
-ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK: host, frame store, hooks, commands), vm (view
-                      models), widgets, frame, view (layout tree + widget registry), keymap, theme, strings;
-                      build.ts → dist/ (`just build-web`)
+ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
+                      widget hooks useStored/useJob/useToolRun, module loading), vm (view models), widgets (built-ins,
+                      each folder copyable: value imports only from react, omfp/sdk, omfp/kit), frame (left column,
+                      view switcher, layout editing), view (layout tree, edits, reference resolution, widget slot),
+                      keymap, theme, strings; build.ts → dist/ (`just build-web`: import map, widget-exports.json,
+                      builtin-widgets/)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)
 fixtures/states/<ver>/   ThreadState JSONL, one line per fixture event: the Rust reducer's goldens for the TS port
+fixtures/views/         cases.json: views manifests with their expected errors, checked by the daemon and the app
 ```
 
 ## Version pinning

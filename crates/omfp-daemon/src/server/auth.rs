@@ -79,7 +79,10 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "threads.unarchive"
         | "threads.delete"
         | "theme.set"
-        | "settings.set" => Manage,
+        | "settings.set"
+        | "views.set"
+        | "widgets.copy"
+        | "widgets.state_set" => Manage,
         "thread.prompt"
         | "thread.steer"
         | "thread.follow_up"
@@ -99,7 +102,9 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.bash"
         | "thread.restart"
         | "thread.stop"
-        | "interaction.respond" => Drive,
+        | "interaction.respond"
+        | "jobs.start"
+        | "jobs.kill" => Drive,
         "terminal.open" | "terminal.resize" | "terminal.close" | "terminal.list" => Terminal,
         _ => return None,
     })

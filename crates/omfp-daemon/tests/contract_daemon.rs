@@ -166,7 +166,7 @@ async fn prompt(client: &mut Client, thread: &str, text: &str) -> String {
 
 const USER_APPEND: &str = "User append marker: quince-5";
 
-// spec: ARC-008, DMN-029, DMN-030, DMN-024, DMN-025, PRT-030, ARC-001, DMN-021, DMN-076
+// spec: ARC-008, DMN-029, DMN-030, DMN-024, DMN-025, PRT-030, ARC-001, DMN-021, DMN-076, AGT-024
 #[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::too_many_lines)] // One acceptance journey, step by step.
 async fn a_thread_in_a_workspace_folder_sees_its_repositories_the_conventions_and_the_users_append_file()
@@ -214,11 +214,16 @@ async fn a_thread_in_a_workspace_folder_sees_its_repositories_the_conventions_an
         "the link's AGENTS.md: {system}"
     );
     assert_eq!(workspace_roots(&system), [link.display().to_string()]);
-    let conventions = omfp_daemon::conventions::workspace_conventions("Full stack", &folder);
+    let daemon_text = omfp_daemon::conventions::daemon_text(
+        "Full stack",
+        &folder,
+        &daemon.data.path().join("widgets"),
+        None,
+    );
     assert!(
-        system.ends_with(&format!("{conventions}\n\n{USER_APPEND}")),
-        "the daemon's conventions, then the user's APPEND_SYSTEM.md, end the prompt: {}",
-        &system[system.len().saturating_sub(1200)..]
+        system.ends_with(&format!("{daemon_text}\n\n{USER_APPEND}")),
+        "the daemon's conventions and widgets note, then the user's APPEND_SYSTEM.md, end the prompt: {}",
+        &system[system.len().saturating_sub(2400)..]
     );
 
     let worktree = add_repo(

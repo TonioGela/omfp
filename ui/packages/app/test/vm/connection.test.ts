@@ -16,7 +16,7 @@ import { thread } from "../support/fixtures.ts";
 
 const connected: ConnectionStatus = {
   kind: "connected",
-  hello: { protocol: 1, daemon: "0.1.0", omp: "18.18.6", warnings: [] },
+  hello: { protocol: 1, daemon: "0.1.0", omp: "18.18.6", warnings: [], widgetBase: "/widgets/test" },
 };
 
 describe("connection", () => {

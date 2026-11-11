@@ -4,8 +4,9 @@ use std::path::Path;
 
 use omfp_core::{ProcessState, ThreadEvent};
 use omfp_protocol::{
-    ErrorBody, ErrorCode, EventFrame, IndexEvent, MAX_FRAME_BYTES, PROTOCOL_VERSION, Response,
-    ServerFrame, Topic, TopicEvent, WorkspaceEvent,
+    ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, JobStream, MAX_FRAME_BYTES,
+    PROTOCOL_VERSION, Response, ServerFrame, Topic, TopicEvent, ViewsEvent, WidgetInfo,
+    WidgetSource, WorkspaceEvent,
 };
 use serde_json::{Value, json};
 
@@ -179,6 +180,97 @@ fn workspace_event_frame() {
     });
     let golden = round_trip(&frame);
     insta::assert_json_snapshot!("event_workspace", golden);
+}
+
+fn event(topic: Topic, event: TopicEvent) -> ServerFrame {
+    ServerFrame::Event(EventFrame {
+        topic,
+        epoch: "e1".to_owned(),
+        seq: 1,
+        event,
+    })
+}
+
+// spec: PRT-040
+#[test]
+fn views_event_frames() {
+    let topic = Topic::Views(WORKSPACE_ID.to_owned());
+    let manifest = json!({ "views": { "work": { "layout": "omfp:chat" } } });
+    let changed = event(
+        topic.clone(),
+        TopicEvent::Views(ViewsEvent::ViewsManifest {
+            manifest: Some(manifest.clone()),
+            error: None,
+        }),
+    );
+    assert_eq!(
+        round_trip(&changed)["event"],
+        json!({ "kind": "views_manifest", "manifest": manifest, "error": null })
+    );
+    let invalid = event(
+        topic.clone(),
+        TopicEvent::Views(ViewsEvent::ViewsManifest {
+            manifest: None,
+            error: Some("views.work.layout: expected a widget name".to_owned()),
+        }),
+    );
+    assert_eq!(
+        round_trip(&invalid)["event"],
+        json!({ "kind": "views_manifest", "manifest": null, "error": "views.work.layout: expected a widget name" })
+    );
+    let widgets = event(
+        topic.clone(),
+        TopicEvent::Views(ViewsEvent::ViewsWidgets {
+            widgets: vec![WidgetInfo {
+                source: WidgetSource::Workspace,
+                name: "tests".to_owned(),
+                version: "1f2e3d4c5b6a".to_owned(),
+                entry: Some("index.tsx".to_owned()),
+            }],
+        }),
+    );
+    insta::assert_json_snapshot!("event_views_widgets", round_trip(&widgets));
+    let stored = event(
+        topic,
+        TopicEvent::Views(ViewsEvent::WidgetStored {
+            instance: "./widgets/tests".to_owned(),
+            key: "runs".to_owned(),
+            value: json!(3),
+        }),
+    );
+    assert_eq!(
+        round_trip(&stored)["event"],
+        json!({ "kind": "widget_stored", "instance": "./widgets/tests", "key": "runs", "value": 3 })
+    );
+}
+
+// spec: PRT-041
+#[test]
+fn job_event_frames() {
+    let topic = Topic::Job("01JOB".to_owned());
+    let line = event(
+        topic.clone(),
+        TopicEvent::Job(JobEvent::JobOutput {
+            stream: JobStream::Stderr,
+            text: "PASS a".to_owned(),
+        }),
+    );
+    assert_eq!(
+        round_trip(&line)["event"],
+        json!({ "kind": "job_output", "stream": "stderr", "text": "PASS a" })
+    );
+    let exited = event(
+        topic,
+        TopicEvent::Job(JobEvent::JobExited {
+            code: None,
+            signal: Some(15),
+            ended_at: 1_700_000_000_000,
+        }),
+    );
+    assert_eq!(
+        round_trip(&exited)["event"],
+        json!({ "kind": "job_exited", "code": null, "signal": 15, "endedAt": 1_700_000_000_000_i64 })
+    );
 }
 
 #[test]

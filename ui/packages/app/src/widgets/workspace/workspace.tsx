@@ -7,36 +7,30 @@
  * rescans on its own (DMN-023); `:rescan` forces it.
  */
 
-import { Badge, Button, ConfirmDialog, IconButton, PathField, Radio, RadioGroup, TextField } from "@omfp/kit";
 import type { Workspace } from "@omfp/protocol";
-import { type FormEvent, type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
-import {
-  DRAFT_THREAD,
-  reportError,
-  SELECTED_THREAD,
-  useAnnounce,
-  useCall,
-  useHost,
-  useThreadSummary,
-  useThreads,
-  useWindowState,
-  useWorkspace,
-  useWorkspaces,
-  type WidgetProps,
-} from "../../sdk/index.ts";
-import { usePathSources } from "../../sdk/paths.ts";
-import { strings } from "../../strings/index.ts";
-import type { RepoKind } from "../../vm/threads.ts";
+import { Badge, Button, ConfirmDialog, IconButton, PathField, Radio, RadioGroup, TextField } from "omfp/kit";
+import type { RepoKind } from "omfp/sdk";
 import {
   ADD_KINDS,
   type AddKind,
   addRepoSource,
-  currentWorkspaceId,
   type RepoRow,
   removalNeedsConfirmation,
+  reportError,
+  strings,
+  useAnnounce,
+  useCall,
+  useCurrentWorkspaceId,
+  useHost,
+  usePathSources,
+  useThreads,
+  useWorkspace,
+  useWorkspaces,
+  type WidgetProps,
   type WorkspaceRow,
   workspaceRow,
-} from "../../vm/workspaces.ts";
+} from "omfp/sdk";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
 
 const text = strings.shell.workspace;
 
@@ -58,9 +52,7 @@ function useAttempt(): (call: () => Promise<unknown>) => Promise<boolean> {
 }
 
 export function WorkspaceWidget(_props: WidgetProps): ReactNode {
-  const [selected] = useWindowState(SELECTED_THREAD);
-  const [draft] = useWindowState(DRAFT_THREAD);
-  const shown = currentWorkspaceId(useThreadSummary(selected), draft);
+  const shown = useCurrentWorkspaceId();
   return (
     <section
       className="omfp-workspace"

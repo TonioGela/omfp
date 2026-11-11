@@ -1,8 +1,8 @@
 /**
  * The global commands of the frame (UI-095), shared by the keymap and the `:` line: a draft thread in the current
  * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030), a rescan of the current
- * workspace (DMN-023), colour scheme (UI-091, window-local), density and `:set` (daemon settings, UI-094, UI-097), and
- * the view switch.
+ * workspace (DMN-023), colour scheme (UI-091, window-local), density and `:set` (daemon settings, UI-094, UI-097), the
+ * view switch (UI-101), layout editing (UI-103) and copying a widget into the workspace (UI-106).
  */
 
 import type { ReactNode } from "react";
@@ -22,6 +22,7 @@ import {
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { isArchived, nextNeedingAttention } from "../vm/threads.ts";
+import { LAYOUT_EDIT } from "./layout.tsx";
 import { DENSITIES, parseSet, SET_KEYS } from "./set.ts";
 
 const SCHEMES: readonly ColorScheme[] = ["system", "light", "dark"];
@@ -175,6 +176,42 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
     run: ([view]) => {
       if (view !== undefined && viewIds.includes(view)) {
         host.window.set(ACTIVE_VIEW, view);
+      } else if (view !== undefined) {
+        reportError(host, strings.shell.layout.noView(view));
+      }
+    },
+  });
+  useCommand({
+    id: "layout.edit",
+    title: titles.layout,
+    aliases: ["layout"],
+    enabled: () => currentWorkspaceId(host) !== undefined,
+    run: () => host.window.set(LAYOUT_EDIT, (editing) => !editing),
+  });
+  useCommand({
+    id: "widget.copy",
+    title: titles.widget,
+    aliases: ["widget"],
+    args: () => ["copy"],
+    run: async ([action, widget, name, ...rest]) => {
+      if (action !== "copy" || widget === undefined || rest.length > 0) {
+        reportError(host, strings.shell.widgetCopy.usage);
+        return;
+      }
+      const workspaceId = currentWorkspaceId(host);
+      if (workspaceId === undefined) {
+        reportError(host, strings.shell.layout.noWorkspace);
+        return;
+      }
+      try {
+        const copied = await host.client.call("widgets.copy", {
+          workspaceId,
+          widget,
+          ...(name === undefined ? {} : { name }),
+        });
+        host.announcer.announce(strings.shell.widgetCopy.copied(copied.name));
+      } catch (error) {
+        reportError(host, error);
       }
     },
   });

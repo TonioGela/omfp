@@ -1,23 +1,30 @@
 /**
  * Test host for app and widget tests: a fake protocol client over the real client `Model`, manual animation frames,
- * and helpers to feed index and thread state. Tests render widgets inside {@link renderWithHost}.
+ * and helpers to feed index, thread, views and job state. Tests render widgets inside {@link renderWithHost}.
  */
 
 import { type CallMethod, Model } from "@omfp/client";
 import { replay, type ThreadEvent } from "@omfp/core";
 import {
+  type ErrorBody,
   type EventFrame,
   INDEX_TOPIC,
   type IndexEvent,
   type IndexSnapshot,
+  type JobEvent,
+  type JobState,
+  jobTopic,
   type ParamsOf,
   type ResultOf,
   type Topic,
   threadTopic,
+  type ViewsEvent,
+  type ViewsState,
+  viewsTopic,
 } from "@omfp/protocol";
 import { act, type RenderResult, render } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { createHost, type OmfpHost, OmfpProvider, type SdkClient } from "../../src/sdk/index.ts";
+import { createHost, type HostOptions, type OmfpHost, OmfpProvider, type SdkClient } from "../../src/sdk/index.ts";
 
 /** One `call` the code under test made; answer it with {@link CallRecord.resolve} or {@link CallRecord.reject}. */
 export interface CallRecord {
@@ -87,7 +94,7 @@ export class FakeClient implements SdkClient {
   connected(): void {
     this.model.setConnection({
       kind: "connected",
-      hello: { protocol: 1, daemon: "0.1.0", omp: "18.18.6", warnings: [] },
+      hello: { protocol: 1, daemon: "0.1.0", omp: "18.18.6", warnings: [], widgetBase: "/widgets/test" },
     });
     this.notify();
   }
@@ -133,6 +140,46 @@ export class FakeClient implements SdkClient {
     for (const event of events) {
       this.#apply(threadTopic(threadId), event);
     }
+    this.notify();
+  }
+
+  /** Answers `views/<workspaceId>` with `state` (empty manifest, widgets and stored values by default). */
+  views(workspaceId: string, state: Partial<ViewsState> = {}): void {
+    this.#snapshot(viewsTopic(workspaceId), { manifest: null, error: null, widgets: [], stored: {}, ...state });
+  }
+
+  /** Applies live views events after {@link FakeClient.views}. */
+  viewsEvents(workspaceId: string, ...events: ViewsEvent[]): void {
+    for (const event of events) {
+      this.#apply(viewsTopic(workspaceId), event);
+    }
+    this.notify();
+  }
+
+  /** Answers `job/<id>` with `state`. */
+  job(state: JobState): void {
+    this.#snapshot(jobTopic(state.job.id), state);
+  }
+
+  /** Applies live job events after {@link FakeClient.job}. */
+  jobEvents(jobId: string, ...events: JobEvent[]): void {
+    for (const event of events) {
+      this.#apply(jobTopic(jobId), event);
+    }
+    this.notify();
+  }
+
+  /** The daemon refuses the subscription of `topic` (e.g. `not_found` for a forgotten job). */
+  failTopic(topic: Topic, error: ErrorBody): void {
+    this.model.track(topic);
+    this.model.failTopic(topic, error);
+    this.notify();
+  }
+
+  #snapshot(topic: Topic, state: unknown): void {
+    this.model.track(topic);
+    this.model.applySubscribed(topic, { mode: "snapshot", epoch: "e1", seq: 0, state });
+    this.#positions.set(topic, 0);
     this.notify();
   }
 
@@ -182,8 +229,8 @@ export interface TestHost {
 }
 
 /** A host over a {@link FakeClient}; frames commit only on {@link TestHost.flush}. */
-export function testHost(client = new FakeClient()): TestHost {
-  const host = createHost(client, { schedule: () => {} });
+export function testHost(client = new FakeClient(), options: Omit<HostOptions, "schedule"> = {}): TestHost {
+  const host = createHost(client, { ...options, schedule: () => {} });
   return {
     client,
     host,

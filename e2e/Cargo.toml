@@ -1,6 +1,6 @@
 [package]
 name = "e2e"
-description = "End-to-end tests (WebDriver) against the web build: scenarios E2E-01..05, 08, 09 (06-testing.md, L5)."
+description = "End-to-end tests (WebDriver) against the web build: scenarios E2E-01..05, 08..12 (06-testing.md, L5)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

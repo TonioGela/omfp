@@ -2,16 +2,16 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CallMethod } from "@omfp/client";
-import type { Settings, ThreadSummary } from "@omfp/protocol";
+import type { Settings, ThreadSummary, ViewsState } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Frame, type FrameProps } from "../../src/frame/frame.tsx";
+import { LAYOUT_EDIT } from "../../src/frame/layout.tsx";
 import type { NotificationPort, ThreadNotification } from "../../src/frame/notifications.ts";
-import { DRAFT_THREAD, ERRORS, SELECTED_THREAD, type WidgetComponent } from "../../src/sdk/index.ts";
-import type { WidgetRegistry } from "../../src/view/render.tsx";
-import { ThreadsWidget } from "../../src/widgets/threads/index.ts";
+import { ACTIVE_VIEW, DRAFT_THREAD, ERRORS, SELECTED_THREAD, type WidgetComponent } from "../../src/sdk/index.ts";
+import type { WidgetRegistry } from "../../src/view/resolve.ts";
 import { thread, workspace } from "../support/fixtures.ts";
-import { renderWithHost, testHost } from "../support/host.tsx";
+import { type FakeClient, renderWithHost, testHost } from "../support/host.tsx";
 
 afterEach(() => {
   cleanup();
@@ -26,16 +26,17 @@ const stub =
   () => <p data-testid={`stub-${name}`}>{name}</p>;
 
 const registry: WidgetRegistry = new Map<string, WidgetComponent>([
-  ["omfp:threads", ThreadsWidget],
   ["omfp:header", stub("header")],
   ["omfp:chat", stub("chat")],
   ["omfp:workspace", stub("workspace")],
+  ["omfp:transcript", stub("transcript")],
 ]);
 
 const threads: ThreadSummary[] = [thread("t1", "checkout", "w1"), thread("t2", "flaky", "w1")];
 
 function setup(props: FrameProps = {}, connect = true) {
-  const base = testHost();
+  // Module widgets (workspace overrides) stay loading: these tests are about the frame.
+  const base = testHost(undefined, { importer: () => new Promise<unknown>(() => {}) });
   for (const method of ["threads.archive", "threads.delete", "settings.set"] as const satisfies readonly CallMethod[]) {
     base.client.answers.set(method, () => ({}));
   }
@@ -43,7 +44,7 @@ function setup(props: FrameProps = {}, connect = true) {
   const test = renderWithHost(<Frame registry={registry} now={() => clock} {...props} />, base);
   if (connect) {
     test.client.connected();
-    test.client.index({ workspaces: [workspace("w1")], threads });
+    test.client.index({ workspaces: [workspace("w1"), workspace("w2")], threads });
   }
   test.flush();
   return {
@@ -61,32 +62,39 @@ function press(key: string, init: KeyboardEventInit = {}): void {
   });
 }
 
+function shownWidgets(): (string | undefined)[] {
+  return screen.getAllByTestId("widget").map((widget) => widget.dataset.widget);
+}
+
+/** Selects `t1` (workspace `w1`) and answers its views topic with `state`. */
+function inWorkspace(state: Partial<ViewsState> = {}, props: FrameProps = {}) {
+  const test = setup(props);
+  act(() => test.host.window.set(SELECTED_THREAD, "t1"));
+  test.client.views("w1", state);
+  test.flush();
+  return test;
+}
+
+const MANIFEST = {
+  default: "work",
+  views: {
+    work: { title: "Work", layout: ["row", {}, "omfp:chat", "omfp:workspace"] },
+    review: { title: "Review", layout: ["col", {}, "omfp:transcript", "omfp:chat"] },
+    lean: { title: "Lean", layout: "omfp:header" },
+  },
+};
+
 describe("frame", () => {
-  // spec: UI-024
-  test("the default view renders its widgets; there is a view switcher", () => {
+  // spec: UI-024, UI-100
+  test("the left column is the frame's; the default view renders its widgets; there is a view switcher", () => {
     setup();
+    const left = screen.getByTestId("left-column");
+    expect(within(left).getByTestId("sidebar")).toBeDefined();
+    expect(left.contains(screen.getByTestId("view"))).toBe(false);
     expect(screen.getByTestId("view").dataset.view).toBe("default");
-    expect(screen.getAllByTestId("widget").map((widget) => widget.dataset.widget)).toEqual([
-      "omfp:threads",
-      "omfp:header",
-      "omfp:chat",
-      "omfp:workspace",
-    ]);
+    expect(shownWidgets()).toEqual(["omfp:header", "omfp:chat", "omfp:workspace"]);
     expect(within(screen.getByTestId("view-switcher")).getByRole("button").textContent).toContain("Default");
     expect(screen.queryByTestId("safety-net")).toBeNull();
-  });
-
-  // spec: UI-024
-  test("an invalid view manifest shows the default view with the error", () => {
-    setup({ views: { views: { broken: { layout: ["row", {}] } } } });
-    expect(screen.getByTestId("view-error").textContent).toContain("views.broken.layout: row has no children");
-    expect(screen.getByTestId("view").dataset.view).toBe("default");
-  });
-
-  // spec: UI-024
-  test("a view without chat or interactions gets the frame's safety net", () => {
-    setup({ views: { views: { lean: { layout: "omfp:header" } } } });
-    expect(screen.getByTestId("safety-net")).toBeDefined();
   });
 
   // spec: UI-003
@@ -419,5 +427,277 @@ describe("daemon settings", () => {
     client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1", { needsAttention: true }) });
     flush();
     expect([shown, requested]).toEqual([["t1"], 0]);
+  });
+});
+
+describe("views of the current workspace", () => {
+  // spec: UI-100
+  test("the frame follows the current workspace's views topic; the default view until it answers", () => {
+    const { client, flush, host } = setup();
+    expect(client.subscribed.filter((topic) => topic.startsWith("views/"))).toEqual([]);
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    expect(client.subscribed).toContain("views/w1");
+    expect(screen.getByTestId("view").dataset.view).toBe("default");
+    client.views("w1", { manifest: MANIFEST });
+    flush();
+    expect(screen.getByTestId("view").dataset.view).toBe("work");
+    expect(shownWidgets()).toEqual(["omfp:chat", "omfp:workspace"]);
+    // The draft thread's workspace is current once no thread is selected.
+    act(() => {
+      host.window.set(SELECTED_THREAD, undefined);
+      host.window.set(DRAFT_THREAD, { workspaceId: "w2" });
+    });
+    expect(client.unsubscribed).toContain("views/w1");
+    expect(client.subscribed).toContain("views/w2");
+    expect(screen.getByTestId("view").dataset.view).toBe("default");
+    client.views("w2");
+    flush();
+    expect(screen.getByTestId("view").dataset.view).toBe("default");
+  });
+
+  // spec: UI-101
+  test("the switcher lists views by title in id order; the choice is window-local; `:view <id>` does the same", async () => {
+    const { client, flush, host, user } = inWorkspace({ manifest: MANIFEST });
+    const switcher = screen.getByTestId("view-switcher");
+    expect(within(switcher).getByRole("button").textContent).toContain("Work");
+    await user.click(within(switcher).getByRole("button"));
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Lean", "Review", "Work"]);
+    await user.click(options[1] ?? document.body);
+    expect(host.window.get(ACTIVE_VIEW)).toBe("review");
+    expect(screen.getByTestId("view").dataset.view).toBe("review");
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "view lean{Enter}");
+    expect(screen.getByTestId("view").dataset.view).toBe("lean");
+    // The chosen view goes away: the manifest's default shows.
+    client.viewsEvents("w1", {
+      kind: "views_manifest",
+      manifest: { ...MANIFEST, views: { work: MANIFEST.views.work, review: MANIFEST.views.review } },
+      error: null,
+    });
+    flush();
+    expect(screen.getByTestId("view").dataset.view).toBe("work");
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "view gone{Enter}");
+    expect(host.window.get(ERRORS)).toEqual(["No view gone"]);
+  });
+
+  // spec: UI-102, AGT-011
+  test("an invalid manifest shows the daemon's error above the default view, until a valid one arrives", () => {
+    const { client, flush } = inWorkspace({ manifest: null, error: "views.broken.layout: row has no children" });
+    expect(screen.getByTestId("view-error").textContent).toBe(
+      "The view is invalid, showing the default view: views.broken.layout: row has no children",
+    );
+    expect(screen.getByTestId("view").dataset.view).toBe("default");
+    client.viewsEvents("w1", { kind: "views_manifest", manifest: MANIFEST, error: null });
+    flush();
+    expect(screen.queryByTestId("view-error")).toBeNull();
+    expect(screen.getByTestId("view").dataset.view).toBe("work");
+  });
+
+  // spec: AGT-015, AGT-022
+  test("a view without built-in chat or interactions gets the safety net; a workspace override does not count", () => {
+    const { client, flush, host } = inWorkspace({ manifest: MANIFEST });
+    expect(screen.queryByTestId("safety-net")).toBeNull();
+    act(() => host.window.set(ACTIVE_VIEW, "lean"));
+    expect(screen.getByTestId("safety-net")).toBeDefined();
+    act(() => host.window.set(ACTIVE_VIEW, "work"));
+    expect(screen.queryByTestId("safety-net")).toBeNull();
+    client.viewsEvents("w1", {
+      kind: "views_widgets",
+      widgets: [{ name: "chat", source: "workspace", version: "v1", entry: "index.tsx" }],
+    });
+    flush();
+    expect(screen.getByTestId("safety-net")).toBeDefined();
+  });
+});
+
+describe("layout editing", () => {
+  /** The manifests written so far. */
+  function written({ client }: { client: FakeClient }): unknown[] {
+    return client.callsTo("views.set").map((call) => call.params);
+  }
+
+  /** In `w1` with `state`, in edit mode; `views.set` succeeds unless `answer` is false. */
+  function editing(state: Partial<ViewsState> = {}, answer = true) {
+    const test = inWorkspace(state);
+    if (answer) {
+      test.client.answers.set("views.set", () => ({}));
+    }
+    act(() => test.host.window.set(LAYOUT_EDIT, true));
+    return test;
+  }
+
+  // spec: UI-103
+  test("`Edit layout` toggles this window's edit mode (also `:layout`), only with a current workspace", async () => {
+    const { host, user } = setup();
+    const toggle = screen.getByTestId("layout-edit");
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    expect((toggle as HTMLButtonElement).disabled).toBe(false);
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryAllByTestId("widget-toolbar")).toEqual([]);
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(host.window.get(LAYOUT_EDIT)).toBe(true);
+    expect(screen.getAllByTestId("widget-toolbar").map((toolbar) => toolbar.dataset.widget)).toEqual([
+      "omfp:header",
+      "omfp:chat",
+      "omfp:workspace",
+    ]);
+    expect(screen.getAllByTestId("splitter").length).toBe(2);
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "layout{Enter}");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryAllByTestId("widget-toolbar")).toEqual([]);
+  });
+
+  // spec: UI-103
+  test("the first change without views.json writes the default view with it; the view follows the pushed manifest", async () => {
+    const test = editing();
+    const { client, flush, user } = test;
+    const workspaceToolbar = screen.getAllByTestId("widget-toolbar").find((toolbar) => toolbar.dataset.path === "0.1");
+    await user.click(within(workspaceToolbar ?? document.body).getByTestId("widget-move"));
+    await user.click(
+      screen
+        .getAllByTestId("move-target")
+        .find((target) => target.dataset.place === "before" && target.dataset.path === "0.0.0") ?? document.body,
+    );
+    const manifest = {
+      $schema: "omfp://schemas/views.json",
+      default: "default",
+      views: {
+        default: {
+          title: "Default",
+          layout: ["row", { sizes: [3] }, ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"]],
+        },
+      },
+    };
+    expect(written(test)).toEqual([{ workspaceId: "w1", manifest }]);
+    // Rendering follows the daemon's push, not the local edit.
+    expect(shownWidgets()).toEqual(["omfp:header", "omfp:chat", "omfp:workspace"]);
+    client.viewsEvents("w1", { kind: "views_manifest", manifest, error: null });
+    flush();
+    expect(shownWidgets()).toEqual(["omfp:workspace", "omfp:header", "omfp:chat"]);
+    await user.click(within(screen.getAllByTestId("widget-toolbar")[0] ?? document.body).getByTestId("widget-hide"));
+    expect(written(test)[1]).toEqual({
+      workspaceId: "w1",
+      manifest: {
+        ...manifest,
+        views: {
+          default: { title: "Default", layout: ["row", { sizes: [3] }, ["col", {}, "omfp:header", "omfp:chat"]] },
+        },
+      },
+    });
+  });
+
+  // spec: UI-103
+  test("a splitter writes the resized view of the manifest", () => {
+    const test = editing({ manifest: MANIFEST });
+    fireEvent.keyDown(screen.getByTestId("splitter"), { key: "ArrowLeft" });
+    expect(written(test)).toEqual([
+      {
+        workspaceId: "w1",
+        manifest: {
+          ...MANIFEST,
+          views: {
+            ...MANIFEST.views,
+            work: { title: "Work", layout: ["row", { sizes: [0.9, 1.1] }, "omfp:chat", "omfp:workspace"] },
+          },
+        },
+      },
+    ]);
+  });
+
+  // spec: UI-103
+  test("failed or refused writes land in the error list; an invalid views.json is never overwritten", async () => {
+    const failing = editing({ manifest: MANIFEST }, false);
+    await failing.user.click(
+      within(screen.getAllByTestId("widget-toolbar")[0] ?? document.body).getByTestId("widget-hide"),
+    );
+    const [pending] = failing.client.callsTo("views.set");
+    await act(async () => pending?.reject(new Error("views.json: permission denied")));
+    expect(failing.host.window.get(ERRORS)).toEqual(["views.json: permission denied"]);
+    cleanup();
+    const invalid = editing({ manifest: null, error: "views: no view" });
+    await invalid.user.click(
+      within(screen.getAllByTestId("widget-toolbar")[0] ?? document.body).getByTestId("widget-hide"),
+    );
+    expect(written(invalid)).toEqual([]);
+    expect(invalid.host.window.get(ERRORS)).toEqual([
+      "The layout cannot change while .omfp/views.json is invalid: fix the file first",
+    ]);
+  });
+
+  // spec: UI-104
+  test("`Add widget` lists built-ins, workspace and user widgets; picking one adds it at the end and writes", async () => {
+    const test = editing({
+      manifest: MANIFEST,
+      widgets: [
+        { name: "tests", source: "workspace", version: "a", entry: "index.tsx" },
+        { name: "clock", source: "user", version: "b", entry: "index.ts" },
+      ],
+    });
+    const { host, user } = test;
+    act(() => host.window.set(LAYOUT_EDIT, false));
+    expect(screen.queryByTestId("widget-add")).toBeNull();
+    act(() => host.window.set(LAYOUT_EDIT, true));
+    await user.click(screen.getByTestId("widget-add"));
+    const picker = screen.getByTestId("widget-picker");
+    expect(
+      within(picker)
+        .getAllByTestId("widget-option")
+        .map((option) => option.dataset.widget),
+    ).toEqual(["omfp:header", "omfp:chat", "omfp:workspace", "omfp:transcript", "./widgets/tests", "user:clock"]);
+    await user.click(
+      within(picker)
+        .getAllByTestId("widget-option")
+        .find((option) => option.dataset.widget === "user:clock") ?? document.body,
+    );
+    expect(written(test)).toEqual([
+      {
+        workspaceId: "w1",
+        manifest: {
+          ...MANIFEST,
+          views: {
+            ...MANIFEST.views,
+            work: { title: "Work", layout: ["row", {}, "omfp:chat", "omfp:workspace", "user:clock"] },
+          },
+        },
+      },
+    ]);
+    await waitFor(() => expect(screen.queryByTestId("widget-picker")).toBeNull());
+  });
+});
+
+describe("widget copy", () => {
+  // spec: UI-106
+  test("`:widget copy <reference> [<name>]` copies into the current workspace and announces ./widgets/<name>", async () => {
+    const { client, host, user } = setup();
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "widget copy omfp:workspace{Enter}");
+    expect(host.window.get(ERRORS)).toEqual(["No current workspace"]);
+    act(() => host.window.set(ERRORS, []));
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    client.answers.set("widgets.copy", () => ({ name: "board" }));
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "widget copy omfp:workspace board{Enter}");
+    expect(client.callsTo("widgets.copy").map((call) => call.params)).toEqual([
+      { workspaceId: "w1", widget: "omfp:workspace", name: "board" },
+    ]);
+    await waitFor(() => expect(screen.getByTestId("live-region").textContent).toBe("Copied to ./widgets/board"));
+    client.answers.delete("widgets.copy");
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "widget copy user:clock{Enter}");
+    const [, failing] = client.callsTo("widgets.copy");
+    expect(failing?.params).toEqual({ workspaceId: "w1", widget: "user:clock" });
+    await act(async () => failing?.reject(new Error("./widgets/clock already exists")));
+    expect(host.window.get(ERRORS)).toEqual(["./widgets/clock already exists"]);
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "widget paste{Enter}");
+    expect(host.window.get(ERRORS)).toEqual([
+      "./widgets/clock already exists",
+      "Usage: :widget copy <reference> [<name>]",
+    ]);
   });
 });

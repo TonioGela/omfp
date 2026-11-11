@@ -3,6 +3,8 @@
  * `@omfp/kit/tokens.css` (design tokens, `@layer omfp-tokens`) then `@omfp/kit/kit.css` (`@layer omfp-kit`).
  * Every component forwards `id`, `className`, `data-*` and `aria-*` to its root element.
  */
+/** React Aria's unstyled `Autocomplete` (filters a collection from a field; the composer's slash commands use it). */
+export { Autocomplete, type AutocompleteProps } from "react-aria-components";
 export { Badge, type BadgeProps, Chip, type ChipProps, Kbd, type KbdProps, type Tone } from "./badge.tsx";
 export {
   Button,

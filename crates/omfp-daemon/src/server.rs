@@ -1,5 +1,5 @@
-//! The WebSocket server (03-protocol): `/api/ws` for clients, the user's theme at `/theme.css` (DMN-075), and the
-//! web UI's static files at `/` when `--static-dir` is set.
+//! The WebSocket server (03-protocol): `/api/ws` for clients, the user's theme at `/theme.css` (DMN-075), widget
+//! modules under the secret `widgetBase` (DMN-084), and the web UI's static files at `/` when `--static-dir` is set.
 
 mod auth;
 mod connection;
@@ -12,16 +12,18 @@ use std::sync::Arc;
 
 use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Request, State};
+use axum::extract::{self, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use subtle::ConstantTimeEq;
 use tokio::sync::watch;
 
 pub use auth::{Permission, Principal, authorize, permission};
 pub(crate) use services::Services;
 
 use crate::token::Token;
+use crate::widgets::{Served, workspace_widgets};
 
 /// Protocol versions the daemon accepts in `system.hello`: the current one and, during a transition, the previous
 /// one (PRT-032). There is no previous version yet.
@@ -39,6 +41,8 @@ pub(crate) struct AppState {
     pub warnings: Vec<String>,
     pub allowed_origins: Vec<String>,
     pub static_dir: Option<PathBuf>,
+    /// `/widgets/<key>`: where authenticated clients load widget modules, the key random per start (DMN-084).
+    pub widget_base: String,
     pub services: Services,
     /// Becomes `true` when the daemon shuts down; connections then close.
     pub shutdown: watch::Receiver<bool>,
@@ -48,6 +52,7 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/ws", get(upgrade))
         .route("/theme.css", get(theme_css))
+        .route("/widgets/{*rest}", get(widget_file))
         .fallback(static_file)
         .with_state(state)
 }
@@ -64,6 +69,61 @@ async fn theme_css(State(state): State<Arc<AppState>>) -> Response {
         css,
     )
         .into_response()
+}
+
+/// `GET /widgets/<key>/<source>/<name>/<version>/<path>` (DMN-084, DMN-085): a file of a workspace's widget folder
+/// (`<source>` = its id) or of the user library (`user`), compiled when it is TypeScript or JSX. A wrong key, an
+/// unknown source, folder or file, or a path leaving the folder is `404`; nothing is cached.
+async fn widget_file(
+    State(state): State<Arc<AppState>>,
+    extract::Path(rest): extract::Path<String>,
+) -> Response {
+    const NO_STORE: (header::HeaderName, &str) = (header::CACHE_CONTROL, "no-store");
+    let not_found = || ([NO_STORE], StatusCode::NOT_FOUND).into_response();
+    let mut parts = rest.splitn(5, '/');
+    let (Some(key), Some(source), Some(name), Some(_version), Some(path)) = (
+        parts.next(),
+        parts.next(),
+        parts.next(),
+        parts.next(),
+        parts.next(),
+    ) else {
+        return not_found();
+    };
+    let expected = state
+        .widget_base
+        .strip_prefix("/widgets/")
+        .unwrap_or_default();
+    if !bool::from(expected.as_bytes().ct_eq(key.as_bytes())) {
+        return not_found();
+    }
+    let services = state.services.clone();
+    let (source, name, path) = (source.to_owned(), name.to_owned(), path.to_owned());
+    let served = tokio::task::spawn_blocking(move || {
+        let library = if source == "user" {
+            services.widgets.user_library().to_path_buf()
+        } else {
+            workspace_widgets(&services.store.workspace(&source).ok()?.path)
+        };
+        services.widgets.serve(&library, &name, &path)
+    })
+    .await;
+    match served {
+        Ok(Some(Served::Module(code))) => (
+            [
+                (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+                NO_STORE,
+            ],
+            code,
+        )
+            .into_response(),
+        Ok(Some(Served::File { path, bytes })) => (
+            [(header::CONTENT_TYPE, content_type(&path)), NO_STORE],
+            bytes,
+        )
+            .into_response(),
+        _ => not_found(),
+    }
 }
 
 /// Whether a WebSocket upgrade with this `Origin` may proceed (PRT-003): no `Origin` (not a browser), the daemon's

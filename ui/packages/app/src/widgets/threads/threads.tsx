@@ -1,10 +1,10 @@
 /**
- * `omfp:threads`, the left column (UI-020..023, UI-026): the full-text filter (`/`), the "+ workspace" field, then one
- * section per workspace — name (the current one highlighted), a menu with rename and remove, a delete button, its
- * threads (state badge, title, unread mark), its draft thread, a collapsed "Archived (N)" row and "+ thread". Sections
- * collapse (chevron, `za`); the collapsed set is window-local and survives reloads. Its `threads` scope answers
- * `nav.*` (j/k, gg/G, Ctrl-d/u, UI-095), which are also the global fallback, `dd` and `za` on the focused row or
- * section; it registers `nav.search` (`/`) and `workspace.new` (`Space w`).
+ * The left column the frame renders outside any view (UI-020..023, UI-026, UI-100): the full-text filter (`/`), the
+ * "+ workspace" field, then one section per workspace — name (the current one highlighted), a menu with rename and
+ * remove, a delete button, its threads (state badge, title, unread mark), its draft thread, a collapsed "Archived (N)"
+ * row and "+ thread". Sections collapse (chevron, `za`); the collapsed set is window-local and survives reloads. Its
+ * `threads` scope answers `nav.*` (j/k, gg/G, Ctrl-d/u, UI-095), which are also the global fallback, `dd` and `za` on
+ * the focused row or section; it registers `nav.search` (`/`) and `workspace.new` (`Space w`).
  */
 
 import { Button, IconButton, Menu, MenuItem, MenuTrigger, PathField, Popover, SearchField, TextField } from "@omfp/kit";

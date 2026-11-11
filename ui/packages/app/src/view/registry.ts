@@ -1,14 +1,13 @@
-/** The built-in `omfp:*` widgets by name (UI-024); M4 adds workspace and user widgets to the same map. */
+/** The built-in `omfp:*` widgets a view can hold, by reference (AGT-021); the frame renders the threads column itself
+ * (UI-100). */
 
 import type { WidgetComponent } from "../sdk/index.ts";
 import { ChatWidget, ComposerWidget, InteractionsWidget, TranscriptWidget } from "../widgets/chat/index.ts";
 import { HeaderWidget } from "../widgets/header/index.ts";
-import { ThreadsWidget } from "../widgets/threads/index.ts";
 import { WorkspaceWidget } from "../widgets/workspace/index.ts";
-import type { WidgetRegistry } from "./render.tsx";
+import type { WidgetRegistry } from "./resolve.ts";
 
 export const BUILTIN_WIDGETS: WidgetRegistry = new Map<string, WidgetComponent>([
-  ["omfp:threads", ThreadsWidget],
   ["omfp:header", HeaderWidget],
   ["omfp:workspace", WorkspaceWidget],
   ["omfp:chat", ChatWidget],
@@ -17,6 +16,6 @@ export const BUILTIN_WIDGETS: WidgetRegistry = new Map<string, WidgetComponent>(
   ["omfp:composer", ComposerWidget],
 ]);
 
-/** The widgets that render the selected thread's pending interactions; without one of them in the view, the frame's
- * safety net does (08-agent-control.md). */
+/** The built-ins that render the selected thread's pending interactions; without one of them in the view (a workspace
+ * override does not count), the frame's safety net does (AGT-015). */
 export const INTERACTION_WIDGETS: readonly string[] = ["omfp:chat", "omfp:interactions"];

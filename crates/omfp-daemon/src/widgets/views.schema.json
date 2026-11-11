@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "omfp://schemas/views.json",
+  "title": "omfp views manifest",
+  "description": "<workspace>/.omfp/views.json: the views of a workspace's window (AGT-010). Views are listed in id order; `default` (else the first id) is the one a window opens. Unknown keys are ignored.",
+  "type": "object",
+  "required": ["views"],
+  "properties": {
+    "$schema": { "type": "string", "description": "omfp://schemas/views.json" },
+    "default": { "type": "string", "description": "Id of the view a window opens; must be a key of `views`." },
+    "views": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/view" }
+    }
+  },
+  "$defs": {
+    "view": {
+      "type": "object",
+      "required": ["layout"],
+      "properties": {
+        "title": { "type": "string", "description": "Shown in the view switcher; default: the id." },
+        "layout": { "$ref": "#/$defs/node" }
+      }
+    },
+    "node": {
+      "description": "A widget reference, [reference, props], or [container, props, ...children].",
+      "oneOf": [
+        { "$ref": "#/$defs/reference" },
+        {
+          "type": "array",
+          "description": "[reference, props]",
+          "prefixItems": [{ "$ref": "#/$defs/reference" }, { "$ref": "#/$defs/props" }],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        {
+          "type": "array",
+          "description": "[container, props, ...children]: at least one child; `sizes` (flex weights) has one positive number per child.",
+          "prefixItems": [
+            { "enum": ["row", "col", "tabs", "stack"] },
+            {
+              "type": "object",
+              "properties": {
+                "sizes": { "type": "array", "items": { "type": "number", "exclusiveMinimum": 0 } }
+              }
+            }
+          ],
+          "items": { "$ref": "#/$defs/node" },
+          "minItems": 3
+        }
+      ]
+    },
+    "reference": {
+      "type": "string",
+      "pattern": "\\S",
+      "description": "`omfp:<name>` (built-in: omfp:header, omfp:chat, omfp:transcript, omfp:interactions, omfp:composer, omfp:workspace; a workspace widget of the same name replaces it), `./widgets/<name>` (<workspace>/.omfp/widgets/<name>/) or `user:<name>` (<data-dir>/widgets/<name>/). An unknown reference shows an error in place of the widget."
+    },
+    "props": {
+      "type": "object",
+      "description": "Passed to the widget as React props. `instance` (a string) identifies the widget instance for useStored and useJob; default: the reference. `title` labels a tab."
+    }
+  }
+}

@@ -69,6 +69,16 @@
     display: flex;
   }
 
+  /* The left column (UI-100): the frame's, outside any view. */
+  .omfp-frame__left {
+    flex: 0 0 clamp(14rem, 20%, 22rem);
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    overflow: auto;
+    border-inline-end: 1px solid var(--omfp-outline-variant);
+  }
+
   .omfp-safety-net {
     border-block-start: 1px solid var(--omfp-outline-variant);
     background: var(--omfp-surface-container);
@@ -172,7 +182,7 @@
     color: var(--omfp-error);
   }
 
-  /* Views (UI-024). */
+  /* Views (UI-024, UI-100). */
   .omfp-view {
     flex: 1 1 auto;
     display: flex;
@@ -212,7 +222,7 @@
     border-inline-start: 1px solid var(--omfp-outline-variant);
   }
 
-  .omfp-view__col > .omfp-view__cell:has(> .omfp-widget[data-widget="omfp:header"]) {
+  .omfp-view__col > .omfp-view__cell:has(> .omfp-view__item > .omfp-widget[data-widget="omfp:header"]) {
     flex: 0 0 auto;
   }
 
@@ -227,6 +237,15 @@
     flex: 1 1 auto;
     display: flex;
     min-block-size: 0;
+  }
+
+  /* One widget node: its edit-mode toolbar above the widget. */
+  .omfp-view__item {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    min-inline-size: 0;
   }
 
   .omfp-widget {
@@ -246,7 +265,98 @@
     color: var(--omfp-on-error-container);
   }
 
-  /* omfp:threads, the left column (UI-020..023, UI-026). */
+  /* `file:line:column` of a compile or load error (AGT-014). */
+  .omfp-widget__error > code {
+    display: block;
+    margin-block: var(--omfp-space-2);
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-font-size-sm);
+  }
+
+  /* A module widget while it loads (UI-105). */
+  .omfp-widget__loading {
+    margin: var(--omfp-space-3);
+    padding: var(--omfp-space-3);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  /* Layout editing (UI-103, UI-104). */
+  .omfp-view[data-editing="true"] .omfp-view__item {
+    outline: 1px dashed var(--omfp-outline);
+    outline-offset: -1px;
+  }
+
+  .omfp-widget-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-space-2);
+    padding: var(--omfp-space-1) var(--omfp-space-3);
+    border-block-end: 1px solid var(--omfp-outline-variant);
+    background: var(--omfp-surface-container-high);
+    color: var(--omfp-on-surface);
+    font-size: var(--omfp-font-size-sm);
+  }
+
+  .omfp-widget-toolbar__reference {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--omfp-font-code);
+  }
+
+  .omfp-splitter {
+    flex: 0 0 var(--omfp-space-3);
+    background: var(--omfp-surface-container-high);
+    touch-action: none;
+  }
+
+  .omfp-splitter[aria-orientation="vertical"] {
+    cursor: col-resize;
+  }
+
+  .omfp-splitter[aria-orientation="horizontal"] {
+    cursor: row-resize;
+  }
+
+  .omfp-splitter:hover,
+  .omfp-splitter:focus-visible {
+    background: var(--omfp-primary);
+    outline: none;
+  }
+
+  .omfp-widget-picker {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-space-4);
+  }
+
+  .omfp-widget-picker__title {
+    margin: 0 0 var(--omfp-space-2);
+    font-size: var(--omfp-font-size-md);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-widget-picker__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--omfp-space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .omfp-widget-picker__list .omfp-button {
+    font-family: var(--omfp-font-code);
+  }
+
+  .omfp-widget-picker__empty {
+    margin: 0;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  /* The threads widget, the frame's left column (UI-020..023, UI-026, UI-100). */
   .omfp-threads {
     display: flex;
     flex-direction: column;

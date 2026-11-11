@@ -1,8 +1,10 @@
 //! Polling of watched workspaces (DMN-023), with no filesystem watcher: every [`POLL`] the cheap check of each watched
 //! workspace (its [`fingerprint`]), a full scan (the rescan, then the git status of `workspace/<id>`) only when the
 //! fingerprint changed, and a full scan of each watched workspace every [`FULL_SCAN`] anyway (edits outside omfp that
-//! touch no git file). A workspace is watched while a client subscribes to `workspace/<id>` or to the `thread/<id>` of
-//! one of its threads, or while one of its threads runs omp.
+//! touch no git file). The fingerprint does not see `.omfp/`, so every round also reads the views and widget folders
+//! again (DMN-082; a full scan does it as part of the rescan). A workspace is watched while a client subscribes to
+//! `workspace/<id>` or `views/<id>` or to the `thread/<id>` of one of its threads, or while one of its threads runs
+//! omp.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -49,7 +51,7 @@ impl Services {
         })
     }
 
-    /// One round: a full scan of each watched workspace that has none yet, changed, or is due.
+    /// One round: a full scan of each watched workspace that has none yet, changed, or is due; the views of the others.
     async fn poll(&self, scanned: &mut HashMap<String, Scanned>) -> Result<(), ErrorBody> {
         let (store, supervisor) = (Arc::clone(&self.store), self.supervisor.clone());
         let watched = blocking(move || watched(&store, &supervisor)).await?;
@@ -64,6 +66,7 @@ impl Services {
                 _ => true,
             };
             if !due {
+                self.refresh_views(&id).await;
                 continue;
             }
             if let Err(error) = self.full_scan(&id).await {
@@ -154,6 +157,7 @@ mod tests {
         let statuses = Arc::new(Mutex::new(Vec::new()));
         let seen = Arc::clone(&statuses);
         git.on_status(move |dir| seen.lock().unwrap().push(dir.to_owned()));
+        let widgets = Arc::new(crate::widgets::Widgets::new(data.widgets(), None));
         let supervisor = Supervisor::new(
             Arc::new(FakeLauncher::new()),
             Arc::clone(&threads),
@@ -161,7 +165,7 @@ mod tests {
             data,
             SupervisorConfig::new("omp"),
         );
-        let services = Services::new(store, threads, workspaces, supervisor)
+        let services = Services::new(store, threads, workspaces, supervisor, widgets)
             .await
             .unwrap();
         Harness {
@@ -327,5 +331,45 @@ mod tests {
         let started = Instant::now();
         tokio::time::sleep_until(started + POLL).await;
         assert_eq!(h.full_scans(), 2);
+    }
+
+    // spec: DMN-082, AGT-013
+    #[tokio::test(start_paused = true)]
+    async fn every_poll_round_reads_the_views_of_a_watched_workspace_without_a_full_scan() {
+        let h = harness().await;
+        // The folder exists already: a new top-level entry is a change of the fingerprint.
+        let folder = h.app.parent().unwrap().join(".omfp");
+        std::fs::create_dir_all(folder.join("widgets")).unwrap();
+        let log = h.services.views_log(&h.workspace).await.unwrap();
+        let _watch = h.services.supervisor.watch_workspace(&h.workspace);
+        let start = Instant::now();
+        let _polls = AbortOnDrop(h.services.spawn_polls());
+        until(start, 1).await;
+        assert_eq!(h.full_scans(), 1);
+        assert_eq!(log.with_state(|views| views.widgets.len()), 0);
+
+        std::fs::create_dir(folder.join("widgets/tests")).unwrap();
+        std::fs::write(folder.join("widgets/tests/index.tsx"), "export default 1;").unwrap();
+        std::fs::write(
+            folder.join("views.json"),
+            r#"{ "views": { "a": { "layout": "./widgets/tests" } } }"#,
+        )
+        .unwrap();
+        until(start, 3).await;
+
+        assert_eq!(h.full_scans(), 1, "`.omfp/` is not in the fingerprint");
+        let (manifest, widgets) =
+            log.with_state(|views| (views.manifest.clone(), views.widgets.clone()));
+        assert!(manifest.is_some());
+        assert_eq!(widgets.len(), 1);
+        assert_eq!(widgets[0].entry.as_deref(), Some("index.tsx"));
+        let version = widgets[0].version.clone();
+
+        std::fs::write(folder.join("widgets/tests/index.tsx"), "export default 22;").unwrap();
+        until(start, 5).await;
+        assert_ne!(
+            log.with_state(|views| views.widgets[0].version.clone()),
+            version
+        );
     }
 }

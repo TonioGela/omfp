@@ -1126,6 +1126,212 @@ expression: type_schemas()
     "title": "IndexSnapshot",
     "type": "object"
   },
+  "JobEvent": {
+    "$defs": {
+      "JobStream": {
+        "description": "Which output of a job a line comes from.",
+        "enum": [
+          "stdout",
+          "stderr"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "Change on a `job/<id>` topic, whose state is a `JobState` (PRT-041).",
+    "oneOf": [
+      {
+        "description": "One more output line.",
+        "properties": {
+          "kind": {
+            "const": "job_output",
+            "type": "string"
+          },
+          "stream": {
+            "$ref": "#/$defs/JobStream"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "stream",
+          "text"
+        ],
+        "type": "object"
+      },
+      {
+        "description": "The shell exited and both outputs closed.",
+        "properties": {
+          "code": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "endedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "kind": {
+            "const": "job_exited",
+            "type": "string"
+          },
+          "signal": {
+            "format": "int32",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "endedAt"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "JobEvent"
+  },
+  "JobState": {
+    "$defs": {
+      "JobInfo": {
+        "description": "A shell command the daemon runs for a workspace (DMN-080).",
+        "properties": {
+          "command": {
+            "description": "Run as `sh -c <command>` in the workspace folder.",
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "$ref": "#/$defs/JobStatus"
+          },
+          "workspaceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "workspaceId",
+          "command",
+          "startedAt",
+          "status"
+        ],
+        "type": "object"
+      },
+      "JobLine": {
+        "description": "One output line of a job, without its line break.",
+        "properties": {
+          "stream": {
+            "$ref": "#/$defs/JobStream"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "stream",
+          "text"
+        ],
+        "type": "object"
+      },
+      "JobStatus": {
+        "description": "A job's process state (DMN-080).",
+        "oneOf": [
+          {
+            "properties": {
+              "state": {
+                "const": "running",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state"
+            ],
+            "type": "object"
+          },
+          {
+            "description": "The shell exited and both outputs closed.",
+            "properties": {
+              "code": {
+                "description": "Exit code; `null` when a signal ended it.",
+                "format": "int32",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "endedAt": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "signal": {
+                "description": "The signal that ended it, if any.",
+                "format": "int32",
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "state": {
+                "const": "exited",
+                "type": "string"
+              }
+            },
+            "required": [
+              "state",
+              "endedAt"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "JobStream": {
+        "description": "Which output of a job a line comes from.",
+        "enum": [
+          "stdout",
+          "stderr"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "State of a `job/<id>` topic (PRT-041).",
+    "properties": {
+      "dropped": {
+        "description": "How many older lines were left out.",
+        "format": "uint64",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "job": {
+        "$ref": "#/$defs/JobInfo"
+      },
+      "lines": {
+        "description": "The newest lines, at most 1 MiB of text, oldest first.",
+        "items": {
+          "$ref": "#/$defs/JobLine"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "job",
+      "lines",
+      "dropped"
+    ],
+    "title": "JobState",
+    "type": "object"
+  },
   "RepoStatus": {
     "$defs": {
       "FileChange": {
@@ -1244,10 +1450,209 @@ expression: type_schemas()
   },
   "Topic": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "description": "`index`, `thread/<id>`, `workspace/<id>` or `terminal/<id>`.",
-    "pattern": "^(index|(thread|workspace|terminal)/[A-Za-z0-9_-]+)$",
+    "description": "`index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`, `views/<id>` or `job/<id>`.",
+    "pattern": "^(index|(thread|workspace|terminal|views|job)/[A-Za-z0-9_-]+)$",
     "title": "Topic",
     "type": "string"
+  },
+  "ViewsEvent": {
+    "$defs": {
+      "WidgetInfo": {
+        "description": "A widget folder the daemon serves (DMN-082).",
+        "properties": {
+          "entry": {
+            "description": "The entry file (`index.tsx`, `index.ts`, `index.jsx` or `index.js`, the first present); `null` without one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The folder's name.",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/$defs/WidgetSource"
+          },
+          "version": {
+            "description": "Hash of the relative path, size and modification time of every file in the folder: changes with every save.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "WidgetSource": {
+        "description": "Where a widget folder lives (AGT-012, AGT-023).",
+        "oneOf": [
+          {
+            "const": "workspace",
+            "description": "`<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`.",
+            "type": "string"
+          },
+          {
+            "const": "user",
+            "description": "`<data-dir>/widgets/<name>/`, referenced as `user:<name>`.",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "Change on a `views/<workspaceId>` topic, whose state is a `ViewsState` (PRT-040).",
+    "oneOf": [
+      {
+        "description": "The manifest changed: replaces `manifest` and `error`.",
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "const": "views_manifest",
+            "type": "string"
+          },
+          "manifest": true
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      {
+        "description": "A widget folder appeared, changed or went away: replaces `widgets`.",
+        "properties": {
+          "kind": {
+            "const": "views_widgets",
+            "type": "string"
+          },
+          "widgets": {
+            "items": {
+              "$ref": "#/$defs/WidgetInfo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "widgets"
+        ],
+        "type": "object"
+      },
+      {
+        "description": "A widget stored a value (`null`: removed the key, DMN-086).",
+        "properties": {
+          "instance": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "const": "widget_stored",
+            "type": "string"
+          },
+          "value": true
+        },
+        "required": [
+          "kind",
+          "instance",
+          "key",
+          "value"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "ViewsEvent"
+  },
+  "ViewsState": {
+    "$defs": {
+      "WidgetInfo": {
+        "description": "A widget folder the daemon serves (DMN-082).",
+        "properties": {
+          "entry": {
+            "description": "The entry file (`index.tsx`, `index.ts`, `index.jsx` or `index.js`, the first present); `null` without one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The folder's name.",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/$defs/WidgetSource"
+          },
+          "version": {
+            "description": "Hash of the relative path, size and modification time of every file in the folder: changes with every save.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "name",
+          "version"
+        ],
+        "type": "object"
+      },
+      "WidgetSource": {
+        "description": "Where a widget folder lives (AGT-012, AGT-023).",
+        "oneOf": [
+          {
+            "const": "workspace",
+            "description": "`<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`.",
+            "type": "string"
+          },
+          {
+            "const": "user",
+            "description": "`<data-dir>/widgets/<name>/`, referenced as `user:<name>`.",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "State of a `views/<workspaceId>` topic (PRT-040, DMN-082).",
+    "properties": {
+      "error": {
+        "description": "Why the file is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or absent.",
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "manifest": {
+        "description": "The workspace's `.omfp/views.json` when it is a valid manifest (AGT-010); `null` without a file or when invalid."
+      },
+      "stored": {
+        "additionalProperties": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "description": "What widgets stored with `useStored` (DMN-086): instance → key → value.",
+        "type": "object"
+      },
+      "widgets": {
+        "description": "Widget folders of the workspace, then of the user library, each by name.",
+        "items": {
+          "$ref": "#/$defs/WidgetInfo"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "widgets",
+      "stored"
+    ],
+    "title": "ViewsState",
+    "type": "object"
   },
   "WorkspaceEvent": {
     "$defs": {

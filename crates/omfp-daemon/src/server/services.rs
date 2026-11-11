@@ -1,8 +1,10 @@
-//! What request handlers use: the store-backed services, the agent supervisor, and the logs of the `index` and
-//! `workspace/<id>` topics. Workspace folders are rescanned here (DMN-023), and a change reaches the index and the
-//! roots of the live threads in the workspace (DMN-029); watched workspaces are polled (`polls`).
+//! What request handlers use: the store-backed services, the agent supervisor, and the logs of the `index`,
+//! `workspace/<id>` and `views/<id>` topics. Workspace folders are rescanned here (DMN-023), and a change reaches the
+//! index, the roots of the live threads in the workspace (DMN-029) and its views (`views`, DMN-082); watched
+//! workspaces are polled (`polls`).
 
 mod polls;
+mod views;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,12 +21,15 @@ use tracing::{info, warn};
 use super::convert::{self, bad_request, internal, workspace_error};
 use crate::config_file::{ConfigFile, DaemonOptions, write_back};
 use crate::event_log::EventLog;
+use crate::jobs::Jobs;
 use crate::store::{Store, StoreError, new_id, now_ms};
 use crate::supervisor::Supervisor;
 use crate::theme;
 use crate::threads::Threads;
 use crate::watch::{self, WatchedFile};
+use crate::widgets::Widgets;
 use crate::workspaces::{WorkspaceView, Workspaces};
+use views::ViewsLog;
 
 /// Replaces `path` with `text` in one step (a temporary file renamed over it), so a reader never sees half a file;
 /// the parent directory is created when missing.
@@ -110,12 +115,19 @@ pub(crate) struct Services {
     pub workspaces: Arc<Workspaces>,
     pub supervisor: Supervisor,
     pub index: Arc<IndexLog>,
+    /// The workspaces' jobs (DMN-080, DMN-081).
+    pub jobs: Jobs,
     /// Serializes index refreshes so their events never interleave.
     refresh: Arc<tokio::sync::Mutex<()>>,
     workspace_logs: Arc<Mutex<HashMap<String, Arc<WorkspaceLog>>>>,
     settings: Arc<Mutex<SettingsState>>,
     /// Serializes `settings.set` writes to the config file.
     settings_writes: Arc<tokio::sync::Mutex<()>>,
+    /// The widget libraries and the compile cache (DMN-084).
+    pub widgets: Arc<Widgets>,
+    views_logs: Arc<Mutex<HashMap<String, Arc<ViewsLog>>>>,
+    /// Serializes views refreshes and widget state writes so their events never interleave.
+    views_refresh: Arc<tokio::sync::Mutex<()>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -135,6 +147,7 @@ impl Services {
         threads: Arc<Threads>,
         workspaces: Arc<Workspaces>,
         supervisor: Supervisor,
+        widgets: Arc<Widgets>,
     ) -> Result<Self, ErrorBody> {
         let services = Self {
             store,
@@ -153,10 +166,14 @@ impl Services {
                 INDEX_CAPACITY,
                 LIVE_BUFFER,
             )),
+            jobs: Jobs::default(),
             refresh: Arc::new(tokio::sync::Mutex::new(())),
             workspace_logs: Arc::new(Mutex::new(HashMap::new())),
             settings: Arc::new(Mutex::new(SettingsState::default())),
             settings_writes: Arc::new(tokio::sync::Mutex::new(())),
+            widgets,
+            views_logs: Arc::new(Mutex::new(HashMap::new())),
+            views_refresh: Arc::new(tokio::sync::Mutex::new(())),
         };
         let workspaces = Arc::clone(&services.workspaces);
         blocking(move || {
@@ -202,8 +219,8 @@ impl Services {
         })
     }
 
-    /// Rescans a workspace folder (DMN-023): a change updates the `index` topic, and the live threads in the
-    /// workspace get their roots synced (DMN-029).
+    /// Rescans a workspace folder (DMN-023): a change updates the `index` topic, the live threads in the workspace get
+    /// their roots synced (DMN-029), and its views are read again (DMN-082).
     pub async fn rescan(&self, id: &str) -> Result<WorkspaceView, ErrorBody> {
         let workspaces = Arc::clone(&self.workspaces);
         let workspace_id = id.to_owned();
@@ -213,6 +230,7 @@ impl Services {
             self.refresh_index_quietly().await;
         }
         self.sync_roots(id).await?;
+        self.refresh_views(id).await;
         Ok(view)
     }
 

@@ -118,6 +118,9 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 | E2E-07 | Open thread in `omp` terminal → `/exit` → back in app with history reloaded. |
 | E2E-08 | In a workspace, link two repositories from two different places with the path field's completion → `/` search by either repository's name finds the thread. |
 | E2E-09 | Workspace folders (D-11): link an external repo from the UI → it appears in the Workspace panel and the agent's next turn has its `AGENTS.md`; a scripted agent runs `git worktree add` and `ln -s` in the workspace → both appear live; remove the link → `/remove-dir` is sent and the repo disappears. |
+| E2E-10 | Agent widgets (M4): a scripted agent writes `.omfp/widgets/tests/index.tsx` charting a daemon job's output and adds it to `views.json` → it appears live and its progress moves as the job prints; a syntax error saved into it shows in place (file, line) and the next save recovers. |
+| E2E-11 | Views (M4): an invalid `views.json` shows the default view and the error banner, fixing the file recovers; with two views in the manifest, the frame's switcher shows one then the other. |
+| E2E-12 | Layout editing (M4): in edit mode the user moves a widget and hides another → `views.json` changes accordingly; the widget picker adds a widget; `:widget copy omfp:workspace`, then a change to the copy's source → the workspace shows the modified copy in place of the built-in. |
 
 ## Traceability
 

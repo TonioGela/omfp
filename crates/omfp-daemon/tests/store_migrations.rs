@@ -1,12 +1,13 @@
 //! L2: the SQLite store on a real file — migrations, pragmas, constraints.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use omfp_daemon::store::{
     Provenance, SeenRepository, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
 };
 use rusqlite::{Connection, params};
+use serde_json::{Value, json};
 use tempfile::TempDir;
 
 fn raw(path: &Path) -> Connection {
@@ -79,8 +80,9 @@ fn thread(workspace_id: &str) -> Thread {
     }
 }
 
-/// Turns a database back into a version-5 one: thread tags and `workspaces.owned` again.
-const BACK_TO_5: &str = "CREATE TABLE thread_tags (
+/// Turns a database back into a version-5 one: no widget state, thread tags and `workspaces.owned` again.
+const BACK_TO_5: &str = "DROP TABLE widget_state;
+    CREATE TABLE thread_tags (
     thread_id TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE, tag TEXT NOT NULL,
     PRIMARY KEY (thread_id, tag));
     ALTER TABLE workspaces ADD COLUMN owned INTEGER NOT NULL DEFAULT 1 CHECK (owned IN (0, 1));";
@@ -92,7 +94,7 @@ fn opening_an_empty_file_applies_every_migration() {
     let db = dir.path().join("omfp.db");
     drop(open(&dir));
 
-    assert_eq!(user_version(&db), 6);
+    assert_eq!(user_version(&db), 7);
     // Only metadata lives in the database: no transcript tables, no repositories of workspaces (DMN-022).
     assert_eq!(
         tables(&db),
@@ -101,6 +103,7 @@ fn opening_an_empty_file_applies_every_migration() {
             "settings",
             "thread_roots",
             "threads",
+            "widget_state",
             "workspaces"
         ]
     );
@@ -119,7 +122,7 @@ fn reopening_is_idempotent_and_keeps_data() {
         store.insert_thread(&t).unwrap();
     }
     let store = open(&dir);
-    assert_eq!(user_version(&db), 6);
+    assert_eq!(user_version(&db), 7);
     assert_eq!(store.workspaces().unwrap(), vec![ws]);
     assert_eq!(store.threads().unwrap(), vec![t]);
 }
@@ -146,7 +149,7 @@ fn migration_4_counts_existing_titles_as_set() {
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 6);
+    assert_eq!(user_version(&db), 7);
     assert_eq!(
         store.threads().unwrap(),
         vec![Thread {
@@ -178,7 +181,7 @@ fn migration_5_keeps_known_repositories_as_seen_ones_and_drops_the_registry() {
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 6);
+    assert_eq!(user_version(&db), 7);
     assert!(!tables(&db).contains(&"repositories".to_owned()));
     assert_eq!(
         store.seen_repositories().unwrap(),
@@ -208,7 +211,7 @@ fn a_database_from_a_newer_daemon_is_refused() {
             error,
             StoreError::UnknownSchemaVersion {
                 found: 99,
-                supported: 6
+                supported: 7
             }
         ),
         "{error:?}"
@@ -263,6 +266,84 @@ fn deleting_a_thread_cascades_to_its_roots() {
     assert_eq!(count(&db, "thread_roots"), 0);
     // The workspace itself is untouched.
     assert_eq!(store.workspace(&ws.id).unwrap(), ws);
+}
+
+// spec: DMN-010, DMN-086
+#[test]
+fn migration_7_adds_an_empty_widget_state_table_and_keeps_the_data() {
+    let dir = TempDir::new().unwrap();
+    let db = dir.path().join("omfp.db");
+    let ws = workspace("a");
+    {
+        let store = open(&dir);
+        store.insert_workspace(&ws).unwrap();
+    }
+    raw(&db)
+        .execute_batch("DROP TABLE widget_state; PRAGMA user_version = 6;")
+        .unwrap();
+
+    let store = open(&dir);
+
+    assert_eq!(user_version(&db), 7);
+    assert_eq!(count(&db, "widget_state"), 0);
+    assert_eq!(store.workspaces().unwrap(), vec![ws.clone()]);
+    assert_eq!(store.widget_state(&ws.id).unwrap(), BTreeMap::new());
+}
+
+// spec: DMN-086, AGT-018
+#[test]
+fn widget_state_is_kept_per_instance_and_key_null_deletes_and_it_goes_with_its_workspace() {
+    let dir = TempDir::new().unwrap();
+    let db = dir.path().join("omfp.db");
+    let (one, two) = (workspace("one"), workspace("two"));
+    {
+        let store = open(&dir);
+        store.insert_workspace(&one).unwrap();
+        store.insert_workspace(&two).unwrap();
+        store
+            .set_widget_state(&one.id, "tests", "job:make", &json!("J1"))
+            .unwrap();
+        store
+            .set_widget_state(&one.id, "tests", "open", &json!({ "rows": [1, 2] }))
+            .unwrap();
+        store
+            .set_widget_state(&one.id, "tests", "open", &json!(false))
+            .unwrap();
+        store
+            .set_widget_state(&one.id, "omfp:chat", "draft", &json!("hi"))
+            .unwrap();
+        store
+            .set_widget_state(&two.id, "tests", "x", &json!(1))
+            .unwrap();
+    }
+    // Reopened, as after a daemon restart.
+    let store = open(&dir);
+    assert_eq!(
+        serde_json::to_value(store.widget_state(&one.id).unwrap()).unwrap(),
+        json!({ "omfp:chat": { "draft": "hi" }, "tests": { "job:make": "J1", "open": false } })
+    );
+
+    store
+        .set_widget_state(&one.id, "omfp:chat", "draft", &Value::Null)
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(store.widget_state(&one.id).unwrap()).unwrap(),
+        json!({ "tests": { "job:make": "J1", "open": false } })
+    );
+    assert!(
+        store
+            .set_widget_state("missing", "tests", "x", &json!(1))
+            .is_err(),
+        "foreign key"
+    );
+
+    store.delete_workspace(&one.id).unwrap();
+    assert_eq!(store.widget_state(&one.id).unwrap(), BTreeMap::new());
+    assert_eq!(
+        count(&db, "widget_state"),
+        1,
+        "the other workspace keeps its state"
+    );
 }
 
 /// A database at `user_version = 2` (the old model) with its directories on disk.
@@ -499,7 +580,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
 
     let store = Store::open(&old.db, &old.root).unwrap();
 
-    assert_eq!(user_version(&old.db), 6);
+    assert_eq!(user_version(&old.db), 7);
     assert_eq!(
         tables(&old.db),
         [
@@ -507,6 +588,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
             "settings",
             "thread_roots",
             "threads",
+            "widget_state",
             "workspaces"
         ]
     );
@@ -523,7 +605,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
     // Reopening is a no-op: same records, no new folders.
     drop(store);
     let store = Store::open(&old.db, &old.root).unwrap();
-    assert_eq!(user_version(&old.db), 6);
+    assert_eq!(user_version(&old.db), 7);
     assert_eq!(
         assert_migrated_records(&store, &old),
         (one.clone(), two.clone())
@@ -544,7 +626,7 @@ fn columns(db: &Path, table: &str) -> Vec<String> {
 }
 
 fn assert_dropped_tags_and_owned(db: &Path) {
-    assert_eq!(user_version(db), 6);
+    assert_eq!(user_version(db), 7);
     assert!(!tables(db).contains(&"thread_tags".to_owned()));
     assert_eq!(
         columns(db, "workspaces"),

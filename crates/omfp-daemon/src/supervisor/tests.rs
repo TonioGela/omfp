@@ -160,7 +160,7 @@ async fn a_prompt_on_a_stopped_thread_starts_omp_and_reduces_the_recorded_turn()
     assert_eq!(seq, u64::try_from(recorded.len()).unwrap());
 }
 
-// spec: DMN-030, DMN-029, DMN-060, ARC-008
+// spec: DMN-030, DMN-029, DMN-060, ARC-008, AGT-024
 #[tokio::test]
 async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
     let agent_dir = tempfile::tempdir().unwrap();
@@ -169,9 +169,11 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
         "Answer in haiku.\n",
     )
     .unwrap();
+    let builtin = tempfile::tempdir().unwrap();
     let h = harness(|config| {
         config.omp_env = vec![("OMFP_TEST".into(), Some("1".into()))];
         config.agent_dir = Some(agent_dir.path().to_owned());
+        config.builtin_widgets = Some(builtin.path().to_owned());
     });
     let (ws, folder) = h.workspace();
     let external = h.external_repo("shop-frontend");
@@ -198,10 +200,16 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
         Some(
             format!(
                 "{}\n\nAnswer in haiku.",
-                conventions::workspace_conventions("workspace", &folder)
+                conventions::daemon_text(
+                    "workspace",
+                    &folder,
+                    &h.data.widgets(),
+                    Some(builtin.path())
+                )
             )
             .as_str()
-        )
+        ),
+        "the conventions, the widgets note (user library, built-in sources), then the user's file"
     );
     assert_eq!(
         launch.spec.session_dir,
@@ -216,6 +224,24 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
     assert!(h.threads.get(&id).unwrap().omp_session_id.is_some());
     assert_eq!(h.threads.roots(&id).unwrap(), launch.spec.add_dirs);
     assert_eq!(h.local_commands(), Vec::<String>::new());
+}
+
+// spec: DMN-062, AGT-025
+#[tokio::test]
+async fn every_launch_registers_the_omfp_host_uri_scheme_next_to_the_tools() {
+    let h = harness(|_| {});
+    let id = h.thread();
+
+    h.supervisor.start(&id).await.unwrap();
+    h.supervisor.stop(&id).await.unwrap();
+    h.supervisor.start(&id).await.unwrap();
+
+    let launches = h.launcher.launches();
+    assert_eq!(launches.len(), 2);
+    for launch in launches {
+        assert_eq!(launch.uris, ["omfp"]);
+        assert_eq!(launch.tools, [OPEN_IN_EDITOR, SET_THREAD_TITLE]);
+    }
 }
 
 // spec: DMN-060

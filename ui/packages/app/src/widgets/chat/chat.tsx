@@ -3,8 +3,7 @@
  * bottom (UI-070), then the queue chips and the composer; with no thread selected, the draft thread (UI-023).
  */
 
-import { DRAFT_THREAD, useWindowState } from "../../sdk/index.ts";
-import { strings } from "../../strings/index.ts";
+import { DRAFT_THREAD, strings, useWindowState } from "omfp/sdk";
 import { ComposerWidget } from "./composer.tsx";
 import { Interactions } from "./interactions.tsx";
 import type { WidgetProps } from "./props.ts";

@@ -5,7 +5,9 @@
 import type { Topic } from "./generated.ts";
 
 /** A topic name taken apart. */
-export type ParsedTopic = { kind: "index" } | { kind: "thread" | "workspace" | "terminal"; id: string };
+export type ParsedTopic =
+  | { kind: "index" }
+  | { kind: "thread" | "workspace" | "terminal" | "views" | "job"; id: string };
 
 /** The `index` topic: workspaces and thread summaries. */
 export const INDEX_TOPIC: Topic = "index";
@@ -13,7 +15,7 @@ export const INDEX_TOPIC: Topic = "index";
 /** Ids are ULIDs today; any non-empty `[A-Za-z0-9_-]` string is accepted. */
 const ID = /^[A-Za-z0-9_-]+$/;
 
-/** Parses a topic name; `undefined` unless it is `index` or `<thread|workspace|terminal>/<id>`. */
+/** Parses a topic name; `undefined` unless it is `index` or `<thread|workspace|terminal|views|job>/<id>`. */
 export function parseTopic(name: string): ParsedTopic | undefined {
   if (name === "index") {
     return { kind: "index" };
@@ -31,6 +33,8 @@ export function parseTopic(name: string): ParsedTopic | undefined {
     case "thread":
     case "workspace":
     case "terminal":
+    case "views":
+    case "job":
       return { kind, id };
     default:
       return undefined;
@@ -50,4 +54,14 @@ export function threadTopic(threadId: string): Topic {
 /** The topic of one workspace's git status. */
 export function workspaceTopic(workspaceId: string): Topic {
   return formatTopic({ kind: "workspace", id: workspaceId });
+}
+
+/** The topic of one workspace's views manifest, widget folders and widget state (PRT-040). */
+export function viewsTopic(workspaceId: string): Topic {
+  return formatTopic({ kind: "views", id: workspaceId });
+}
+
+/** The topic of one job's output (PRT-041). */
+export function jobTopic(jobId: string): Topic {
+  return formatTopic({ kind: "job", id: jobId });
 }

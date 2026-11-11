@@ -36,8 +36,8 @@ export const COLOR_SCHEME = windowKey<ColorScheme>("colorScheme", "system", (sto
   stored === "light" || stored === "dark" || stored === "system" ? stored : undefined,
 );
 
-/** Id of the view the window shows (one default view in M3). */
-export const ACTIVE_VIEW = windowKey<string>("activeView", "default");
+/** Id of the view this window chose (UI-101); `undefined`: the manifest's default. */
+export const ACTIVE_VIEW = windowKey<string | undefined>("activeView", undefined);
 
 /** A thread being started in a workspace (UI-023): shown while no thread is selected; the daemon thread is created
  * when its first message is sent. One per window. */

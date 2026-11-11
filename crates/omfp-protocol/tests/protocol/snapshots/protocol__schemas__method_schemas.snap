@@ -147,6 +147,134 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "jobs.kill": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one job.",
+      "properties": {
+        "jobId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "jobId"
+      ],
+      "title": "JobRef",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
+  "jobs.start": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`jobs.start` params (DMN-080).",
+      "properties": {
+        "command": {
+          "description": "Run as `sh -c <command>` in the workspace folder.",
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "command"
+      ],
+      "title": "StartJobParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "JobStatus": {
+          "description": "A job's process state (DMN-080).",
+          "oneOf": [
+            {
+              "properties": {
+                "state": {
+                  "const": "running",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "state"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "The shell exited and both outputs closed.",
+              "properties": {
+                "code": {
+                  "description": "Exit code; `null` when a signal ended it.",
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "endedAt": {
+                  "format": "int64",
+                  "type": "integer"
+                },
+                "signal": {
+                  "description": "The signal that ended it, if any.",
+                  "format": "int32",
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "const": "exited",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "state",
+                "endedAt"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A shell command the daemon runs for a workspace (DMN-080).",
+      "properties": {
+        "command": {
+          "description": "Run as `sh -c <command>` in the workspace folder.",
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "startedAt": {
+          "format": "int64",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/JobStatus"
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "workspaceId",
+        "command",
+        "startedAt",
+        "status"
+      ],
+      "title": "JobInfo",
+      "type": "object"
+    }
+  },
   "repos.suggest": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -711,8 +839,8 @@ expression: method_schemas()
           "type": "object"
         },
         "Topic": {
-          "description": "`index`, `thread/<id>`, `workspace/<id>` or `terminal/<id>`.",
-          "pattern": "^(index|(thread|workspace|terminal)/[A-Za-z0-9_-]+)$",
+          "description": "`index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`, `views/<id>` or `job/<id>`.",
+          "pattern": "^(index|(thread|workspace|terminal|views|job)/[A-Za-z0-9_-]+)$",
           "type": "string"
         }
       },
@@ -846,13 +974,18 @@ expression: method_schemas()
             "type": "string"
           },
           "type": "array"
+        },
+        "widgetBase": {
+          "description": "Path under which this daemon serves widget modules to this client (`/widgets/<key>`, DMN-084, PRT-042).",
+          "type": "string"
         }
       },
       "required": [
         "protocol",
         "daemon",
         "omp",
-        "warnings"
+        "warnings",
+        "widgetBase"
       ],
       "title": "HelloResult",
       "type": "object"
@@ -2548,8 +2681,8 @@ expression: method_schemas()
     "params": {
       "$defs": {
         "Topic": {
-          "description": "`index`, `thread/<id>`, `workspace/<id>` or `terminal/<id>`.",
-          "pattern": "^(index|(thread|workspace|terminal)/[A-Za-z0-9_-]+)$",
+          "description": "`index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`, `views/<id>` or `job/<id>`.",
+          "pattern": "^(index|(thread|workspace|terminal|views|job)/[A-Za-z0-9_-]+)$",
           "type": "string"
         }
       },
@@ -2564,6 +2697,109 @@ expression: method_schemas()
         "topic"
       ],
       "title": "TopicParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
+  "views.set": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`views.set` params (DMN-083).",
+      "properties": {
+        "manifest": {
+          "description": "The whole manifest (AGT-010), written to `<workspace>/.omfp/views.json`."
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "manifest"
+      ],
+      "title": "SetViewsParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
+  "widgets.copy": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.copy` params (DMN-087).",
+      "properties": {
+        "name": {
+          "description": "Folder name in `.omfp/widgets/`; default: the widget's own name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "widget": {
+          "description": "`omfp:<name>` (a built-in) or `user:<name>` (the user library).",
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "widget"
+      ],
+      "title": "CopyWidgetParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.copy` result: the new widget is `./widgets/<name>`.",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "WidgetCopied",
+      "type": "object"
+    }
+  },
+  "widgets.state_set": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.state_set` params (DMN-086).",
+      "properties": {
+        "instance": {
+          "description": "The widget instance: its `instance` prop, else its reference (AGT-010).",
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "description": "Any JSON value; `null` deletes the key."
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "instance",
+        "key",
+        "value"
+      ],
+      "title": "SetWidgetStateParams",
       "type": "object"
     },
     "result": {

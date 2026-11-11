@@ -1,10 +1,11 @@
-//! Topic names (`index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`).
+//! Topic names (`index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`, `views/<id>`, `job/<id>`).
 
 use omfp_protocol::Topic;
 use serde_json::json;
 
 use crate::samples::{TERMINAL_ID, THREAD_ID, WORKSPACE_ID};
 
+// spec: PRT-040, PRT-041
 #[test]
 fn topics_round_trip_through_their_names() {
     let cases = [
@@ -21,6 +22,11 @@ fn topics_round_trip_through_their_names() {
             Topic::Terminal(TERMINAL_ID.to_owned()),
             format!("terminal/{TERMINAL_ID}"),
         ),
+        (
+            Topic::Views(WORKSPACE_ID.to_owned()),
+            format!("views/{WORKSPACE_ID}"),
+        ),
+        (Topic::Job("01JOB".to_owned()), "job/01JOB".to_owned()),
     ];
     for (topic, name) in cases {
         assert_eq!(topic.to_string(), name);

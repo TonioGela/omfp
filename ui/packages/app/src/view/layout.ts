@@ -1,9 +1,8 @@
 /**
- * Views (UI-024, docs/specs/08-agent-control.md "Agent-made UI"): the window is a layout tree in the shape of the M4
- * `views.json` — a widget reference (`"omfp:threads"` or `["omfp:changes", { "repo": "x" }]`) or a container
- * (`["row" | "col" | "tabs" | "stack", { sizes?, … }, ...children]`). Layouts come from data (later written by
- * agents), so they are validated: an invalid one never breaks the window, the frame shows the default view and the
- * error instead.
+ * Layout trees (AGT-010): a view's layout is a widget reference (`"omfp:chat"` or `["./widgets/tests", { … }]`) or a
+ * container (`["row" | "col" | "tabs" | "stack", { sizes?, … }, ...children]`). Layouts come from data written by
+ * agents, so they are validated: an invalid one never breaks the window, the frame shows the default view and the
+ * error instead (AGT-011).
  */
 
 import type { WidgetProps } from "../sdk/index.ts";

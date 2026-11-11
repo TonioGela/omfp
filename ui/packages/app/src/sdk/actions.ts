@@ -4,6 +4,8 @@
  */
 
 import { useMemo } from "react";
+import { currentWorkspaceId as workspaceOf } from "../vm/workspaces.ts";
+import { useThreadSummary, useWindowState } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
 import {
   DELETE_THREAD,
@@ -50,6 +52,13 @@ export function reportError(host: OmfpHost, error: unknown): void {
 export function useReportError(): (error: unknown) => void {
   const host = useHost();
   return useMemo(() => (error: unknown) => reportError(host, error), [host]);
+}
+
+/** The workspace this window works in, live: the selected thread's, else the draft thread's. */
+export function useCurrentWorkspaceId(): string | undefined {
+  const [selected] = useWindowState(SELECTED_THREAD);
+  const [draft] = useWindowState(DRAFT_THREAD);
+  return workspaceOf(useThreadSummary(selected), draft);
 }
 
 /** The workspace this window works in: the selected thread's, else the draft thread's. */

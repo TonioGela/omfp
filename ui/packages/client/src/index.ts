@@ -36,6 +36,7 @@ export {
   type Index,
   type InteractionRequest,
   isDirtyEmpty,
+  JOB_TEXT_LIMIT,
   Model,
   type ModelView,
   type StartMode,

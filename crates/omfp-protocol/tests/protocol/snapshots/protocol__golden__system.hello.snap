@@ -22,7 +22,8 @@ expression: golden
       "protocol": 1,
       "warnings": [
         "omp version mismatch allowed (--allow-omp-mismatch)"
-      ]
+      ],
+      "widgetBase": "/widgets/8c1f…"
     },
     "type": "response"
   }

@@ -1,5 +1,5 @@
 //! SQLite persistence (02-daemon, "Persistence"): workspace folders, threads and their roots, the repositories seen in
-//! workspaces (DMN-021), settings.
+//! workspaces (DMN-021), settings, widget state (DMN-086).
 //!
 //! Transcripts are not stored here (DMN-012): omp's session files in each thread's `session_dir` are the source of
 //! truth, and the repositories inside a workspace are discovered from its folder (DMN-022). All calls are blocking;
@@ -7,7 +7,7 @@
 
 mod migrate;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -499,6 +499,59 @@ impl Store {
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?;
         Ok(clients)
+    }
+
+    // Widget state
+
+    /// Every stored widget value of a workspace (DMN-086): instance → key → value.
+    pub fn widget_state(
+        &self,
+        workspace_id: &str,
+    ) -> Result<BTreeMap<String, BTreeMap<String, serde_json::Value>>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT instance, key, value FROM widget_state WHERE workspace_id = ?1 ORDER BY instance, key",
+        )?;
+        let rows = stmt.query_map([workspace_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut state: BTreeMap<String, BTreeMap<String, serde_json::Value>> = BTreeMap::new();
+        for row in rows {
+            let (instance, key, value) = row?;
+            state
+                .entry(instance)
+                .or_default()
+                .insert(key, serde_json::from_str(&value)?);
+        }
+        Ok(state)
+    }
+
+    /// Stores one key of a widget instance's state; `null` deletes it (DMN-086).
+    pub fn set_widget_state(
+        &self,
+        workspace_id: &str,
+        instance: &str,
+        key: &str,
+        value: &serde_json::Value,
+    ) -> Result<()> {
+        let conn = self.conn();
+        if value.is_null() {
+            conn.execute(
+                "DELETE FROM widget_state WHERE workspace_id = ?1 AND instance = ?2 AND key = ?3",
+                params![workspace_id, instance, key],
+            )?;
+        } else {
+            conn.execute(
+                "INSERT INTO widget_state (workspace_id, instance, key, value) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (workspace_id, instance, key) DO UPDATE SET value = excluded.value",
+                params![workspace_id, instance, key, value.to_string()],
+            )?;
+        }
+        Ok(())
     }
 
     // Settings

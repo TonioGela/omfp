@@ -1,6 +1,6 @@
 //! What the daemon tells the agent about its workspace (DMN-030): a short text passed with
-//! `--append-system-prompt`, followed by the user's own `APPEND_SYSTEM.md`, which the flag would otherwise disable
-//! (S-10). Nothing is written into the workspace.
+//! `--append-system-prompt` — the workspace conventions, then a note on widgets (AGT-024) — followed by the user's own
+//! `APPEND_SYSTEM.md`, which the flag would otherwise disable (S-10). Nothing is written into the workspace.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -37,13 +37,70 @@ pub fn user_append(workspace: &Path, agent_dir: Option<&Path>) -> Option<String>
     (!text.is_empty()).then(|| text.to_owned())
 }
 
-/// The `--append-system-prompt` text: the conventions, then the user's append prompt when there is one.
+/// The widgets note (AGT-024): where the views manifest, the workspace's widgets and the user library (`user_library`)
+/// live, what a widget may import, an example, the built-in sources when the daemon serves a bundle (`builtin`), and
+/// where to read more.
 #[must_use]
-pub fn append_system_prompt(name: &str, path: &Path, agent_dir: Option<&Path>) -> String {
-    let conventions = workspace_conventions(name, path);
+pub fn widgets_note(path: &Path, user_library: &Path, builtin: Option<&Path>) -> String {
+    let (path, library) = (path.display(), user_library.display());
+    let builtin = builtin.map_or_else(String::new, |dir| {
+        format!(
+            "- Built-in widgets' sources (to copy and change): {}/<name>/.\n",
+            dir.display()
+        )
+    });
+    format!(
+        "# omfp widgets\n\
+         \n\
+         The user's omfp window shows this workspace through React widgets that you can write and arrange too.\n\
+         - Views: {path}/.omfp/views.json (schema omfp://schemas/views.json); absent means the default view.\n\
+         - Workspace widgets: {path}/.omfp/widgets/<name>/index.tsx, used as `./widgets/<name>`; a folder named like a \
+         built-in (`chat` for `omfp:chat`) replaces it here.\n\
+         - User library: {library}/<name>/, used as `user:<name>` in every workspace.\n\
+         {builtin}\
+         - Imports: only react, react/jsx-runtime, react-dom, omfp/sdk, omfp/kit and files of the widget's folder. A \
+         saved widget reloads at once; errors show in its place.\n\
+         \n\
+         ```tsx\n\
+         import {{ Card, Log, Progress }} from \"omfp/kit\";\n\
+         import {{ useJob }} from \"omfp/sdk\";\n\
+         export default function Tests({{ command = \"make test\" }}: {{ command?: string }}) {{\n\
+         \x20 const job = useJob(command); // runs in the workspace folder, kept across reloads\n\
+         \x20 return (\n\
+         \x20   <Card title={{job.running ? \"Tests running\" : `Exit ${{job.exitCode}}`}}>\n\
+         \x20     <Progress label=\"Tests\" value={{job.running ? undefined : 1}} max={{1}} />\n\
+         \x20     <Log lines={{job.lines}} />\n\
+         \x20   </Card>);\n\
+         }}\n\
+         ```\n\
+         \n\
+         Before writing widgets read omfp://docs/widgets; schema omfp://schemas/views.json."
+    )
+}
+
+/// What the daemon itself appends to the system prompt: the workspace conventions, then the widgets note.
+#[must_use]
+pub fn daemon_text(name: &str, path: &Path, user_library: &Path, builtin: Option<&Path>) -> String {
+    format!(
+        "{}\n\n{}",
+        workspace_conventions(name, path),
+        widgets_note(path, user_library, builtin)
+    )
+}
+
+/// The `--append-system-prompt` text: the daemon's text, then the user's append prompt when there is one.
+#[must_use]
+pub fn append_system_prompt(
+    name: &str,
+    path: &Path,
+    agent_dir: Option<&Path>,
+    user_library: &Path,
+    builtin: Option<&Path>,
+) -> String {
+    let text = daemon_text(name, path, user_library, builtin);
     match user_append(path, agent_dir) {
-        Some(user) => format!("{conventions}\n\n{user}"),
-        None => conventions,
+        Some(user) => format!("{text}\n\n{user}"),
+        None => text,
     }
 }
 
@@ -87,29 +144,71 @@ mod tests {
         assert!(!text.ends_with('\n'));
     }
 
-    // spec: DMN-030
+    // spec: AGT-024
     #[test]
-    fn the_users_append_file_follows_the_conventions_and_the_workspace_one_wins() {
+    fn the_widgets_note_says_where_widgets_live_what_they_import_and_where_to_read_more() {
+        let library = Path::new("/data/omfp/widgets");
+        let text = widgets_note(Path::new("/ws/checkout"), library, None);
+        assert!(text.starts_with("# omfp widgets\n"), "{text}");
+        for rule in [
+            "/ws/checkout/.omfp/views.json",
+            "/ws/checkout/.omfp/widgets/<name>/index.tsx",
+            "`./widgets/<name>`",
+            "/data/omfp/widgets/<name>/",
+            "`user:<name>`",
+            "react, react/jsx-runtime, react-dom, omfp/sdk, omfp/kit",
+            "import { Card, Log, Progress } from \"omfp/kit\";",
+            "useJob(command)",
+            "read omfp://docs/widgets; schema omfp://schemas/views.json",
+        ] {
+            assert!(text.contains(rule), "{rule:?} missing: {text}");
+        }
+        assert!(
+            !text.contains("builtin"),
+            "no bundle, no built-in sources: {text}"
+        );
+        let example = text.split("```").nth(1).unwrap();
+        assert!(
+            example.lines().count() <= 11,
+            "a ten-line example: {example}"
+        );
+        assert!(text.lines().count() <= 24, "short: {text}");
+        assert!(!text.ends_with('\n'));
+
+        let bundled = widgets_note(
+            Path::new("/ws/checkout"),
+            library,
+            Some(Path::new("/srv/web/builtin-widgets")),
+        );
+        assert!(
+            bundled.contains("/srv/web/builtin-widgets/<name>/"),
+            "{bundled}"
+        );
+    }
+
+    // spec: DMN-030, AGT-024
+    #[test]
+    fn the_users_append_file_follows_the_conventions_and_the_widgets_note_and_the_workspace_one_wins()
+     {
         let ws = tempfile::tempdir().unwrap();
         let agent = tempfile::tempdir().unwrap();
-        let conventions = workspace_conventions("w", ws.path());
-        assert_eq!(
-            append_system_prompt("w", ws.path(), Some(agent.path())),
-            conventions
+        let library = Path::new("/data/widgets");
+        let prompt =
+            |agent: &Path| append_system_prompt("w", ws.path(), Some(agent), library, None);
+        let daemon = format!(
+            "{}\n\n{}",
+            workspace_conventions("w", ws.path()),
+            widgets_note(ws.path(), library, None)
         );
+        assert_eq!(daemon_text("w", ws.path(), library, None), daemon);
+        assert_eq!(prompt(agent.path()), daemon);
 
         std::fs::write(agent.path().join("APPEND_SYSTEM.md"), "  user rule\n").unwrap();
-        assert_eq!(
-            append_system_prompt("w", ws.path(), Some(agent.path())),
-            format!("{conventions}\n\nuser rule")
-        );
+        assert_eq!(prompt(agent.path()), format!("{daemon}\n\nuser rule"));
 
         std::fs::create_dir(ws.path().join(".omp")).unwrap();
         std::fs::write(ws.path().join(".omp/APPEND_SYSTEM.md"), "project rule").unwrap();
-        assert_eq!(
-            append_system_prompt("w", ws.path(), Some(agent.path())),
-            format!("{conventions}\n\nproject rule")
-        );
+        assert_eq!(prompt(agent.path()), format!("{daemon}\n\nproject rule"));
     }
 
     #[test]

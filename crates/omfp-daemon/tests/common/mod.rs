@@ -122,7 +122,7 @@ pub fn workspace_roots(prompt: &str) -> Vec<String> {
 }
 
 pub fn start(spec: &LaunchSpec) -> (OmpProcess, Startup) {
-    OmpProcess::start(spec, Vec::new()).unwrap_or_else(|error| {
+    OmpProcess::start(spec, Vec::new(), Vec::new()).unwrap_or_else(|error| {
         let log = std::fs::read_to_string(&spec.stderr_log).unwrap_or_default();
         panic!("omp failed to start: {error}\nstderr:\n{log}")
     })

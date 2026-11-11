@@ -488,9 +488,8 @@ impl Journey {
         .await
     }
 
-    /// Switches the colour scheme with `:theme <scheme>` (`light`, `dark`, `system`) from normal mode and waits until
-    /// the page applies it.
-    pub async fn scheme(&self, scheme: &str) -> anyhow::Result<()> {
+    /// Runs `text` on the `:` command line from normal mode and waits until the line closes.
+    pub async fn command(&self, text: &str) -> anyhow::Result<()> {
         self.eval(
             "if (document.activeElement) { document.activeElement.blur(); }",
             Vec::new(),
@@ -498,10 +497,33 @@ impl Journey {
         .await?;
         self.keys(":").await?;
         self.until_focused("command-line-input").await?;
-        self.keys(format!("theme {scheme}")).await?;
+        self.keys(text).await?;
         self.keys(Key::Enter).await?;
-        self.gone("[data-testid=command-line]").await?;
+        self.gone("[data-testid=command-line]").await
+    }
+
+    /// Switches the colour scheme with `:theme <scheme>` (`light`, `dark`, `system`) from normal mode and waits until
+    /// the page applies it.
+    pub async fn scheme(&self, scheme: &str) -> anyhow::Result<()> {
+        self.command(&format!("theme {scheme}")).await?;
         self.until_scheme(scheme).await
+    }
+
+    /// The folder of thread `thread_id`'s workspace, asked from the daemon.
+    pub async fn workspace_folder(&self, thread_id: &str) -> anyhow::Result<PathBuf> {
+        let mut connection = self.connect().await?;
+        let git = connection
+            .call::<omfp_protocol::method::ThreadGit>(omfp_protocol::ThreadRef {
+                thread_id: thread_id.to_owned(),
+            })
+            .await?;
+        let workspace = connection
+            .call::<omfp_protocol::method::WorkspacesRescan>(omfp_protocol::WorkspaceRef {
+                workspace_id: git.workspace_id,
+            })
+            .await?;
+        connection.close().await?;
+        Ok(PathBuf::from(workspace.path))
     }
 
     /// Waits until `<html>` carries `data-color-scheme="<scheme>"`.

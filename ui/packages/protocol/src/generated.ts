@@ -48,6 +48,15 @@ export type CompletePathParams = {
   path: string;
 };
 
+/** `widgets.copy` params (DMN-087). */
+export type CopyWidgetParams = {
+  /** Folder name in `.omfp/widgets/`; default: the widget's own name. */
+  name?: string | null;
+  /** `omfp:<name>` (a built-in) or `user:<name>` (the user library). */
+  widget: string;
+  workspaceId: string;
+};
+
 /** `threads.create` params. */
 export type CreateThreadParams = {
   /** omp's `--approval-mode`; default `yolo` (DMN-074). */
@@ -186,6 +195,8 @@ export type HelloResult = {
   omp: string;
   protocol: number;
   warnings: string[];
+  /** Path under which this daemon serves widget modules to this client (`/widgets/<key>`, DMN-084, PRT-042). */
+  widgetBase: string;
 };
 
 /** Change on the `index` topic. */
@@ -239,6 +250,70 @@ export type InteractionResponse =
   | {
     answers: unknown[];
   };
+
+/** Change on a `job/<id>` topic, whose state is a `JobState` (PRT-041). */
+export type JobEvent =
+  /** One more output line. */
+  | {
+    kind: "job_output";
+    stream: JobStream;
+    text: string;
+  }
+  /** The shell exited and both outputs closed. */
+  | {
+    code?: number | null;
+    endedAt: number;
+    kind: "job_exited";
+    signal?: number | null;
+  };
+
+/** A shell command the daemon runs for a workspace (DMN-080). */
+export type JobInfo = {
+  /** Run as `sh -c <command>` in the workspace folder. */
+  command: string;
+  id: string;
+  startedAt: number;
+  status: JobStatus;
+  workspaceId: string;
+};
+
+/** One output line of a job, without its line break. */
+export type JobLine = {
+  stream: JobStream;
+  text: string;
+};
+
+/** Params naming one job. */
+export type JobRef = {
+  jobId: string;
+};
+
+/** State of a `job/<id>` topic (PRT-041). */
+export type JobState = {
+  /** How many older lines were left out. */
+  dropped: number;
+  job: JobInfo;
+  /** The newest lines, at most 1 MiB of text, oldest first. */
+  lines: JobLine[];
+};
+
+/** A job's process state (DMN-080). */
+export type JobStatus =
+  | {
+    state: "running";
+  }
+  /** The shell exited and both outputs closed. */
+  | {
+    /** Exit code; `null` when a signal ended it. */
+    code?: number | null;
+    endedAt: number;
+    /** The signal that ended it, if any. */
+    signal?: number | null;
+    state: "exited";
+  };
+
+/** Which output of a job a line comes from. */
+export type JobStream = "stdout" | "stderr";
 
 /** One key binding of the config file's `[keymap]` (UI-097). */
 export type KeymapEntry = {
@@ -477,6 +552,23 @@ export type SetThinkingParams = {
   threadId: string;
 };
 
+/** `views.set` params (DMN-083). */
+export type SetViewsParams = {
+  /** The whole manifest (AGT-010), written to `<workspace>/.omfp/views.json`. */
+  manifest: unknown;
+  workspaceId: string;
+};
+
+/** `widgets.state_set` params (DMN-086). */
+export type SetWidgetStateParams = {
+  /** The widget instance: its `instance` prop, else its reference (AGT-010). */
+  instance: string;
+  key: string;
+  /** Any JSON value; `null` deletes the key. */
+  value: unknown;
+  workspaceId: string;
+};
+
 /** UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097). */
 export type Settings = {
   /** Why the last reload of the config file failed (the previous settings stay); `null` when it is valid. */
@@ -484,6 +576,13 @@ export type Settings = {
   /** Bindings over the defaults, in file order; `command: ""` removes a default binding. */
   keymap: KeymapEntry[];
   ui: UiSettings;
+};
+
+/** `jobs.start` params (DMN-080). */
+export type StartJobParams = {
+  /** Run as `sh -c <command>` in the workspace folder. */
+  command: string;
+  workspaceId: string;
 };
 
 /** `thread.subagent_messages` params. */
@@ -639,7 +738,7 @@ export type TitleSource =
   /** Set by the user or an agent (`threads.create`, `threads.update`, host tool `set_thread_title`); never replaced. */
   | "set";
 
-/** `index`, `thread/<id>`, `workspace/<id>` or `terminal/<id>`. */
+/** `index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`, `views/<id>` or `job/<id>`. */
 export type Topic = string;
 
 /** Params naming one topic (`unsubscribe`). */
@@ -670,6 +769,62 @@ export type UpdateWorkspaceParams = {
   name: string;
   workspaceId: string;
 };
+
+/** Change on a `views/<workspaceId>` topic, whose state is a `ViewsState` (PRT-040). */
+export type ViewsEvent =
+  /** The manifest changed: replaces `manifest` and `error`. */
+  | {
+    error?: string | null;
+    kind: "views_manifest";
+    manifest?: unknown;
+  }
+  /** A widget folder appeared, changed or went away: replaces `widgets`. */
+  | {
+    kind: "views_widgets";
+    widgets: WidgetInfo[];
+  }
+  /** A widget stored a value (`null`: removed the key, DMN-086). */
+  | {
+    instance: string;
+    key: string;
+    kind: "widget_stored";
+    value: unknown;
+  };
+
+/** State of a `views/<workspaceId>` topic (PRT-040, DMN-082). */
+export type ViewsState = {
+  /** Why the file is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or absent. */
+  error?: string | null;
+  /** The workspace's `.omfp/views.json` when it is a valid manifest (AGT-010); `null` without a file or when invalid. */
+  manifest?: unknown;
+  /** What widgets stored with `useStored` (DMN-086): instance → key → value. */
+  stored: Record<string, Record<string, unknown>>;
+  /** Widget folders of the workspace, then of the user library, each by name. */
+  widgets: WidgetInfo[];
+};
+
+/** `widgets.copy` result: the new widget is `./widgets/<name>`. */
+export type WidgetCopied = {
+  name: string;
+};
+
+/** A widget folder the daemon serves (DMN-082). */
+export type WidgetInfo = {
+  /** The entry file (`index.tsx`, `index.ts`, `index.jsx` or `index.js`, the first present); `null` without one. */
+  entry?: string | null;
+  /** The folder's name. */
+  name: string;
+  source: WidgetSource;
+  /** Hash of the relative path, size and modification time of every file in the folder: changes with every save. */
+  version: string;
+};
+
+/** Where a widget folder lives (AGT-012, AGT-023). */
+export type WidgetSource =
+  /** `<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`. */
+  | "workspace"
+  /** `<data-dir>/widgets/<name>/`, referenced as `user:<name>`. */
+  | "user";
 
 /** A folder threads work in; its repositories are its top-level entries (D-11, DMN-020). */
 export type Workspace = {
@@ -804,6 +959,11 @@ export interface Methods {
   "theme.set": { params: Theme; result: Empty };
   "settings.get": { params: Empty; result: Settings };
   "settings.set": { params: SetSettingsParams; result: Settings };
+  "views.set": { params: SetViewsParams; result: Empty };
+  "widgets.copy": { params: CopyWidgetParams; result: WidgetCopied };
+  "widgets.state_set": { params: SetWidgetStateParams; result: Empty };
+  "jobs.start": { params: StartJobParams; result: JobInfo };
+  "jobs.kill": { params: JobRef; result: Empty };
 }
 
 export type MethodName = keyof Methods;
@@ -867,4 +1027,9 @@ export const METHODS: readonly MethodName[] = [
   "theme.set",
   "settings.get",
   "settings.set",
+  "views.set",
+  "widgets.copy",
+  "widgets.state_set",
+  "jobs.start",
+  "jobs.kill",
 ];

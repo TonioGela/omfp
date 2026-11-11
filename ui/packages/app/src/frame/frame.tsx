@@ -1,33 +1,47 @@
 /**
- * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), view switcher, the
- * keymap and `:` command line (UI-095), the safety net for pending interactions, notifications (UI-096), the live
- * region (UI-092), dialogs, and theme/density on `<html>` (UI-091, UI-094). Everything else is a widget of the view.
+ * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), the left column of
+ * workspaces and threads (UI-100), the view of the current workspace with its switcher, error banner and layout
+ * editing (UI-100..104, AGT-011), the keymap and `:` command line (UI-095), the safety net for pending interactions
+ * (AGT-015), notifications (UI-096), the live region (UI-092), dialogs, and theme/density on `<html>` (UI-091,
+ * UI-094). Everything else is a widget of the view.
  */
 
 import { Select } from "@omfp/kit";
+import type { ViewsState } from "@omfp/protocol";
 import { type ReactNode, useEffect, useMemo } from "react";
 import { createKeyHandler } from "../keymap/handler.ts";
 import { type Binding, DEFAULT_BINDINGS, mergeBindings } from "../keymap/keymap.ts";
-import { ACTIVE_VIEW, useHost, useSettings, useWindowState } from "../sdk/index.ts";
+import {
+  ACTIVE_VIEW,
+  DRAFT_THREAD,
+  SELECTED_THREAD,
+  useHost,
+  useSettings,
+  useThreadSummary,
+  useViews,
+  useWindowState,
+} from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { useAppearance, useUserTheme } from "../theme/theme.ts";
 import { containsWidget } from "../view/layout.ts";
 import { BUILTIN_WIDGETS, INTERACTION_WIDGETS } from "../view/registry.ts";
-import { ViewRenderer, WidgetBoundary, type WidgetRegistry } from "../view/render.tsx";
-import { type ResolvedView, resolveViews } from "../view/views.ts";
+import { ViewRenderer } from "../view/render.tsx";
+import { resolveWidget, type WidgetRegistry } from "../view/resolve.ts";
+import { WidgetBoundary } from "../view/slot.tsx";
+import { type ResolvedView, resolveViews, type Views } from "../view/views.ts";
 import { InteractionsWidget } from "../widgets/chat/index.ts";
+import { ThreadsWidget } from "../widgets/threads/index.ts";
 import { CommandLine } from "./command-line.tsx";
 import { GlobalCommands } from "./commands.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
+import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
 import { ConnectionBanner, Errors, StatusLiveRegion } from "./status.tsx";
 
 export interface FrameProps {
-  /** Widgets by name; the built-ins by default. */
+  /** Built-in widgets by reference; {@link BUILTIN_WIDGETS} by default. */
   readonly registry?: WidgetRegistry;
-  /** A `views.json`-shaped manifest; the default view when absent or invalid. */
-  readonly views?: unknown;
   /** The defaults the daemon's `[keymap]` entries apply to; {@link DEFAULT_BINDINGS} by default. */
   readonly bindings?: readonly Binding[];
   /** Clock of key sequences; `performance.now` by default. */
@@ -44,18 +58,24 @@ const focusThisWindow = () => window.focus();
 
 export function Frame({
   registry = BUILTIN_WIDGETS,
-  views: manifest,
   bindings: defaults = DEFAULT_BINDINGS,
   now = performanceNow,
   notifications,
   hasFocus = documentHasFocus,
   focusWindow = focusThisWindow,
 }: FrameProps): ReactNode {
-  const views = useMemo(() => resolveViews(manifest), [manifest]);
+  const workspaceId = useCurrentWorkspaceId();
+  const state = useViews(workspaceId);
+  const manifest = state?.manifest;
+  const manifestError = state?.error;
+  const views = useMemo(() => viewsOf(manifest, manifestError), [manifest, manifestError]);
   const [active, setActive] = useWindowState(ACTIVE_VIEW);
   const view =
     views.views.find((candidate) => candidate.id === active) ??
     views.views.find((candidate) => candidate.id === views.defaultId);
+  const [layoutEdit] = useWindowState(LAYOUT_EDIT);
+  const editing = layoutEdit && workspaceId !== undefined;
+  const write = useLayoutWriter(workspaceId, state, view?.id ?? views.defaultId);
   const settings = useSettings();
   // The daemon's `[keymap]` entries over the defaults, live (UI-097).
   const bindings = useMemo(() => mergeBindings(defaults, settings.keymap), [defaults, settings.keymap]);
@@ -77,6 +97,16 @@ export function Frame({
         </div>
       )}
       <div className="omfp-frame__bar">
+        {editing && (
+          <AddWidget
+            registry={registry}
+            views={state}
+            onAdd={(reference) => {
+              void write({ kind: "add", reference });
+            }}
+          />
+        )}
+        <LayoutEditToggle editing={editing} enabled={workspaceId !== undefined} />
         <Select
           label={strings.shell.frame.views}
           hideLabel
@@ -91,9 +121,22 @@ export function Frame({
         />
       </div>
       <main className="omfp-shell" data-testid="shell">
-        {view !== undefined && <ViewRenderer view={view} registry={registry} />}
+        <aside className="omfp-frame__left" data-testid="left-column">
+          <WidgetBoundary reference="omfp:threads">
+            <ThreadsWidget />
+          </WidgetBoundary>
+        </aside>
+        {view !== undefined && (
+          <ViewRenderer
+            view={view}
+            registry={registry}
+            workspaceId={workspaceId}
+            views={state}
+            onEdit={editing ? write : undefined}
+          />
+        )}
       </main>
-      {view !== undefined && <SafetyNet view={view} />}
+      {view !== undefined && <SafetyNet view={view} workspaceId={workspaceId} views={state} registry={registry} />}
       <CommandLine bindings={bindings} />
       <Errors />
       <StatusLiveRegion />
@@ -103,6 +146,23 @@ export function Frame({
       <Notifier port={notifications} hasFocus={hasFocus} focusWindow={focusWindow} />
     </div>
   );
+}
+
+/** The workspace this window works in, live: the selected thread's, else the draft thread's (UI-100). */
+function useCurrentWorkspaceId(): string | undefined {
+  const [selected] = useWindowState(SELECTED_THREAD);
+  const [draft] = useWindowState(DRAFT_THREAD);
+  const summary = useThreadSummary(selected);
+  return selected === undefined ? draft?.workspaceId : summary?.workspaceId;
+}
+
+/** The views of the workspace's manifest; the default view without one, before it arrives, or with the daemon's
+ * error (AGT-011). */
+function viewsOf(manifest: unknown, error: string | null | undefined): Views {
+  if (error !== undefined && error !== null) {
+    return { ...resolveViews(undefined), error };
+  }
+  return resolveViews(manifest);
 }
 
 /** One global key handler for the window (UI-095). */
@@ -115,14 +175,29 @@ function useKeymap(bindings: readonly Binding[], now: () => number): void {
   }, [bindings, commands, now]);
 }
 
-/** A view without `omfp:chat` or `omfp:interactions` can never hide an approval: the frame renders them itself. */
-function SafetyNet({ view }: { view: ResolvedView }): ReactNode {
-  if (containsWidget(view.tree, INTERACTION_WIDGETS)) {
+interface SafetyNetProps {
+  readonly view: ResolvedView;
+  readonly workspaceId: string | undefined;
+  readonly views: ViewsState | undefined;
+  readonly registry: WidgetRegistry;
+}
+
+/**
+ * A view without the built-in `omfp:chat` or `omfp:interactions` can never hide an approval: the frame renders the
+ * interactions itself (AGT-015). A workspace widget overriding them (AGT-022) does not count.
+ */
+function SafetyNet({ view, workspaceId, views, registry }: SafetyNetProps): ReactNode {
+  const covered = INTERACTION_WIDGETS.some(
+    (reference) =>
+      containsWidget(view.tree, [reference]) &&
+      resolveWidget(reference, workspaceId, views, registry).kind === "builtin",
+  );
+  if (covered) {
     return null;
   }
   return (
     <aside className="omfp-safety-net" data-testid="safety-net">
-      <WidgetBoundary name="omfp:interactions">
+      <WidgetBoundary reference="omfp:interactions">
         <InteractionsWidget />
       </WidgetBoundary>
     </aside>

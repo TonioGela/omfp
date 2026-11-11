@@ -2,8 +2,18 @@
 
 import { describe, expect, test } from "bun:test";
 import { replay, type ThreadEvent } from "@omfp/core";
-import { type EventFrame, INDEX_TOPIC, type SubscribeResult, threadTopic } from "@omfp/protocol";
-import { type Dirty, isDirtyEmpty, Model, type ThreadView } from "../src/index.ts";
+import {
+  type EventFrame,
+  INDEX_TOPIC,
+  type JobState,
+  jobTopic,
+  type SubscribeResult,
+  type TopicEvent,
+  threadTopic,
+  type ViewsState,
+  viewsTopic,
+} from "@omfp/protocol";
+import { type Dirty, isDirtyEmpty, JOB_TEXT_LIMIT, Model, type ThreadView } from "../src/index.ts";
 import { FIXTURES, fixture, indexFrame, indexState, summary, threadFrame, workspace } from "./support.ts";
 
 const THREAD = "01THREAD";
@@ -304,6 +314,127 @@ describe("model", () => {
     expect(repos.map((repo) => [repo.name, repo.status.ahead])).toEqual([["app", 1]]);
   });
 
+  // spec: PRT-040
+  test("views topics keep the manifest, the widget folders and the stored values", () => {
+    const model = new Model();
+    const topic = viewsTopic("01W");
+    model.track(topic);
+    const state: ViewsState = {
+      manifest: null,
+      error: null,
+      widgets: [{ source: "workspace", name: "tests", version: "v1", entry: "index.tsx" }],
+      stored: { tests: { "job:make": "01JOB" } },
+    };
+    expect(model.applySubscribed(topic, snapshot("v1", 0, state))).toEqual({ ok: true, mode: "snapshot" });
+    expect(model.views.get("01W")).toEqual(state);
+    model.takeDirty();
+
+    const manifest = { views: { main: { layout: "omfp:chat" } } };
+    const events: TopicEvent[] = [
+      { kind: "views_manifest", manifest, error: null },
+      { kind: "views_widgets", widgets: [{ source: "user", name: "clock", version: "u1", entry: null }] },
+      { kind: "widget_stored", instance: "tests", key: "count", value: 3 },
+      { kind: "widget_stored", instance: "tests", key: "job:make", value: null },
+      { kind: "widget_stored", instance: "other", key: "k", value: { a: [1] } },
+    ];
+    for (const [at, event] of events.entries()) {
+      expect(model.applyEvent({ type: "event", topic, epoch: "v1", seq: at + 1, event })).toBe("applied");
+    }
+
+    expect(model.views.get("01W")).toEqual({
+      manifest,
+      error: null,
+      widgets: [{ source: "user", name: "clock", version: "u1", entry: null }],
+      stored: { tests: { count: 3 }, other: { k: { a: [1] } } },
+    });
+    expect([...model.takeDirty().views]).toEqual(["01W"]);
+
+    const invalid = { kind: "views_manifest", error: "$.views: at least one view" } as const;
+    expect(model.applyEvent({ type: "event", topic, epoch: "v1", seq: 6, event: invalid })).toBe("applied");
+    expect(model.views.get("01W")?.manifest).toBeNull();
+    expect(model.views.get("01W")?.error).toBe("$.views: at least one view");
+    const last = { kind: "widget_stored", instance: "other", key: "k", value: null } as const;
+    expect(model.applyEvent({ type: "event", topic, epoch: "v1", seq: 7, event: last })).toBe("applied");
+    expect(model.views.get("01W")?.stored).toEqual({ tests: { count: 3 } });
+
+    expect(model.untrack(topic)).toBe(true);
+    expect(model.views.has("01W")).toBe(false);
+    expect([...model.takeDirty().views]).toEqual(["01W"]);
+  });
+
+  // spec: PRT-040
+  test("a views snapshot that is not a ViewsState fails the topic", () => {
+    const model = new Model();
+    const topic = viewsTopic("01W");
+    model.track(topic);
+    const result = model.applySubscribed(topic, snapshot("v1", 0, { widgets: [{ name: "x" }], stored: {} }));
+    expect(result.ok === false && result.error.kind).toBe("snapshot");
+  });
+
+  // spec: PRT-041
+  test("job topics append output lines and record the exit", () => {
+    const model = new Model();
+    const topic = jobTopic("01JOB");
+    model.track(topic);
+    const state: JobState = {
+      job: { id: "01JOB", workspaceId: "01W", command: "make", startedAt: 5, status: { state: "running" } },
+      lines: [{ stream: "stdout", text: "one" }],
+      dropped: 2,
+    };
+    expect(model.applySubscribed(topic, snapshot("j1", 1, state)).ok).toBe(true);
+    model.takeDirty();
+
+    const events: TopicEvent[] = [
+      { kind: "job_output", stream: "stderr", text: "two" },
+      { kind: "job_exited", code: 1, signal: null, endedAt: 9 },
+    ];
+    for (const [at, event] of events.entries()) {
+      expect(model.applyEvent({ type: "event", topic, epoch: "j1", seq: at + 2, event })).toBe("applied");
+    }
+
+    expect(model.jobs.get("01JOB")).toEqual({
+      job: {
+        id: "01JOB",
+        workspaceId: "01W",
+        command: "make",
+        startedAt: 5,
+        status: { state: "exited", code: 1, signal: null, endedAt: 9 },
+      },
+      lines: [
+        { stream: "stdout", text: "one" },
+        { stream: "stderr", text: "two" },
+      ],
+      dropped: 2,
+    });
+    expect([...model.takeDirty().jobs]).toEqual(["01JOB"]);
+    expect(model.untrack(topic)).toBe(true);
+    expect(model.jobs.has("01JOB")).toBe(false);
+    expect([...model.takeDirty().jobs]).toEqual(["01JOB"]);
+  });
+
+  // spec: DMN-080, PRT-041
+  test("a job topic keeps at most a mebibyte of text, counting the lines it drops", () => {
+    const model = new Model();
+    const topic = jobTopic("01JOB");
+    model.track(topic);
+    const half = "x".repeat(JOB_TEXT_LIMIT / 2);
+    const state: JobState = {
+      job: { id: "01JOB", workspaceId: "01W", command: "make", startedAt: 5, status: { state: "running" } },
+      lines: [
+        { stream: "stdout", text: half },
+        { stream: "stdout", text: half },
+      ],
+      dropped: 1,
+    };
+    expect(model.applySubscribed(topic, snapshot("j1", 1, state)).ok).toBe(true);
+    const event: TopicEvent = { kind: "job_output", stream: "stdout", text: "tail" };
+    expect(model.applyEvent({ type: "event", topic, epoch: "j1", seq: 2, event })).toBe("applied");
+
+    const kept = model.jobs.get("01JOB");
+    expect(kept?.lines.map((line) => line.text.length)).toEqual([half.length, 4]);
+    expect(kept?.dropped).toBe(2);
+  });
+
   // spec: UI-012
   test("changes accumulate in one dirty set until drained", () => {
     const events = fixture("text_reply");
@@ -323,6 +454,8 @@ describe("model", () => {
       index: true,
       threads: new Set([THREAD]),
       workspaces: new Set(),
+      views: new Set(),
+      jobs: new Set(),
     };
     expect(model.takeDirty()).toEqual(expected);
     expect(isDirtyEmpty(model.takeDirty())).toBe(true);

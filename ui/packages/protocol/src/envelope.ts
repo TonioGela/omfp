@@ -4,7 +4,16 @@
  */
 
 import type { ThreadEvent } from "@omfp/core";
-import type { ErrorBody, IndexEvent, MethodName, ParamsOf, Topic, WorkspaceEvent } from "./generated.ts";
+import type {
+  ErrorBody,
+  IndexEvent,
+  JobEvent,
+  MethodName,
+  ParamsOf,
+  Topic,
+  ViewsEvent,
+  WorkspaceEvent,
+} from "./generated.ts";
 
 /** A client request (PRT-010); `id` is chosen by the client, unique per connection, and echoed by the response. */
 export type Request<M extends MethodName = MethodName> = {
@@ -21,7 +30,7 @@ export type FailureResponse = { type: "response"; id: string; ok: false; error: 
 export type Response = SuccessResponse | FailureResponse;
 
 /** The `event` of an event frame; its kind follows from the topic. */
-export type TopicEvent = IndexEvent | ThreadEvent | WorkspaceEvent;
+export type TopicEvent = IndexEvent | ThreadEvent | WorkspaceEvent | ViewsEvent | JobEvent;
 
 /** One event of a topic (PRT-022): `seq` is strictly increasing, without gaps, within an `epoch`. */
 export type EventFrame = { type: "event"; topic: Topic; epoch: string; seq: number; event: TopicEvent };

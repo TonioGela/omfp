@@ -1,14 +1,16 @@
 /**
  * The host every widget runs in: the protocol client, the per-frame model snapshots, window-local state, the command
- * registry and the live region. The frame creates one per window and provides it with {@link OmfpProvider}; widgets
+ * registry, the live region and the widget modules. The frame creates one per window and provides it with {@link OmfpProvider}; widgets
  * reach it only through the hooks of `./hooks.ts`.
  */
 
 import type { CallMethod } from "@omfp/client";
 import type { ParamsOf, ResultOf, Topic } from "@omfp/protocol";
 import { createContext, type ReactNode, useContext } from "react";
+import { strings } from "../strings/index.ts";
 import { CommandRegistry } from "./commands.ts";
 import { type FrameScheduler, FrameStore, type ModelSource } from "./frame-store.ts";
+import { browserImporter, type Importer, WidgetModules } from "./modules.ts";
 import { type KeyValueStorage, WindowStore } from "./window-store.ts";
 
 /** What the SDK needs from `@omfp/client`'s `Client` (tests pass a fake over a real `Model`). */
@@ -86,6 +88,8 @@ export interface OmfpHost {
   readonly window: WindowStore;
   readonly commands: CommandRegistry;
   readonly announcer: Announcer;
+  /** Workspace and user widget modules, imported once per URL (UI-105). */
+  readonly modules: WidgetModules;
 }
 
 export interface HostOptions {
@@ -93,6 +97,8 @@ export interface HostOptions {
   readonly schedule?: FrameScheduler;
   /** Where persisted window state lives; default: none (tests), the frame passes `localStorage`. */
   readonly storage?: KeyValueStorage;
+  /** How widget modules are imported; default: the browser's `import()` (tests pass a fake). */
+  readonly importer?: Importer;
 }
 
 /** A host over `client`; call `host.frames.start()` to follow the model. */
@@ -104,6 +110,7 @@ export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHo
     window: new WindowStore(options.storage),
     commands: new CommandRegistry(),
     announcer: new Announcer(),
+    modules: new WidgetModules(options.importer ?? browserImporter, strings.widgets.noDefaultExport),
   };
 }
 

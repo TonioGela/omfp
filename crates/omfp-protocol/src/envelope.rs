@@ -9,7 +9,7 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 
-use crate::dto::{RepoStatus, Settings, Theme, ThreadSummary, Workspace};
+use crate::dto::{JobStream, RepoStatus, Settings, Theme, ThreadSummary, WidgetInfo, Workspace};
 use crate::method::Call;
 use crate::topic::Topic;
 
@@ -323,6 +323,8 @@ impl<'de> Deserialize<'de> for EventFrame {
             Topic::Index => serde_json::from_value(raw.event).map(TopicEvent::Index),
             Topic::Thread(_) => serde_json::from_value(raw.event).map(TopicEvent::Thread),
             Topic::Workspace(_) => serde_json::from_value(raw.event).map(TopicEvent::Workspace),
+            Topic::Views(_) => serde_json::from_value(raw.event).map(TopicEvent::Views),
+            Topic::Job(_) => serde_json::from_value(raw.event).map(TopicEvent::Job),
             Topic::Terminal(_) => {
                 return Err(D::Error::custom(
                     "terminal output travels in binary frames, not in event frames",
@@ -349,6 +351,8 @@ pub enum TopicEvent {
     Index(IndexEvent),
     Thread(ThreadEvent),
     Workspace(WorkspaceEvent),
+    Views(ViewsEvent),
+    Job(JobEvent),
 }
 
 /// Change on the `index` topic.
@@ -385,4 +389,38 @@ pub enum IndexEvent {
 pub enum WorkspaceEvent {
     /// The git status of the workspace's repositories changed; replaces the previous list.
     Status { repos: Vec<RepoStatus> },
+}
+
+/// Change on a `views/<workspaceId>` topic, whose state is a `ViewsState` (PRT-040).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ViewsEvent {
+    /// The manifest changed: replaces `manifest` and `error`.
+    ViewsManifest {
+        manifest: Option<Value>,
+        error: Option<String>,
+    },
+    /// A widget folder appeared, changed or went away: replaces `widgets`.
+    ViewsWidgets { widgets: Vec<WidgetInfo> },
+    /// A widget stored a value (`null`: removed the key, DMN-086).
+    WidgetStored {
+        instance: String,
+        key: String,
+        value: Value,
+    },
+}
+
+/// Change on a `job/<id>` topic, whose state is a `JobState` (PRT-041).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum JobEvent {
+    /// One more output line.
+    JobOutput { stream: JobStream, text: String },
+    /// The shell exited and both outputs closed.
+    JobExited {
+        code: Option<i32>,
+        signal: Option<i32>,
+        #[serde(rename = "endedAt")]
+        ended_at: i64,
+    },
 }

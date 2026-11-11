@@ -11,7 +11,7 @@ use std::sync::mpsc::Receiver;
 use omfp_core::{ProcessState, SessionInfo, ThreadEvent};
 use omp_rpc::{
     AgentMessage, Client, ClientOptions, Event, GetMessagesCommand, GetMessagesPageCommand,
-    HostTool, OpenSessionCommand, OpenSessionResult, ReadyEvent, SetAskDialogCommand,
+    HostTool, HostUri, OpenSessionCommand, OpenSessionResult, ReadyEvent, SetAskDialogCommand,
     SetEventFilterResult, SetSubagentSubscriptionCommand, SubagentSubscriptionLevel,
 };
 use serde::Serialize;
@@ -165,14 +165,20 @@ impl std::fmt::Debug for OmpProcess {
 const HISTORY_PAGE: i64 = 200;
 
 impl OmpProcess {
-    /// Spawns omp, waits for `ready`, and runs the session setup sequence (DMN-031, DMN-032).
-    pub fn start(spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<(Self, Startup), StartError> {
+    /// Spawns omp with the host tools (DMN-060) and host URI schemes (DMN-062), waits for `ready`, and runs the
+    /// session setup sequence (DMN-031, DMN-032).
+    pub fn start(
+        spec: &LaunchSpec,
+        tools: Vec<HostTool>,
+        uris: Vec<HostUri>,
+    ) -> Result<(Self, Startup), StartError> {
         // `omp-rpc` numbers requests `req_1`, `req_2`, … and does not expose the numbers; the daemon needs the id of
         // each prompt (the `id` of its `prompt_result`, PRT-030), so it counts every request made on the client:
-        // the protocol negotiation and the host tool registration happen at connect.
-        let mut requests: u64 = 1 + u64::from(!tools.is_empty());
+        // the protocol negotiation, the host tool registration and the host URI registration happen at connect.
+        let mut requests: u64 = 1 + u64::from(!tools.is_empty()) + u64::from(!uris.is_empty());
         let options = ClientOptions {
             tools,
+            uris,
             ..ClientOptions::default()
         };
         let (client, events) =

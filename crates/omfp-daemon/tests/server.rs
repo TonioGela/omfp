@@ -150,7 +150,7 @@ async fn upgrades_from_foreign_origins_are_rejected() {
     }
 }
 
-// spec: PRT-005, PRT-004, PRT-032
+// spec: PRT-005, PRT-004, PRT-032, PRT-042
 #[tokio::test(flavor = "multi_thread")]
 async fn hello_reports_versions_and_warnings_and_refuses_unknown_protocols() {
     let daemon = daemon(&[]).await;
@@ -159,13 +159,23 @@ async fn hello_reports_versions_and_warnings_and_refuses_unknown_protocols() {
     let mut client = Client::connect(daemon.handle.addr()).await;
     client.send_text(hello(&token, 1)).await;
     let accepted = client.frame().await;
+    let base = accepted["result"]["widgetBase"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    let key = base.strip_prefix("/widgets/").unwrap_or_default();
+    assert!(
+        key.len() == 32 && key.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "a 128-bit key: {base}"
+    );
     assert_eq!(
         accepted["result"],
         json!({
             "protocol": 1,
             "daemon": env!("CARGO_PKG_VERSION"),
             "omp": omfp_core::OMP_VERSION,
-            "warnings": ["running anyway (--allow-omp-mismatch)"]
+            "warnings": ["running anyway (--allow-omp-mismatch)"],
+            "widgetBase": base,
         })
     );
 

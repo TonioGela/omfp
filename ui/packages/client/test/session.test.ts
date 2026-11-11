@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { emptyThreadState, type ThreadState } from "@omfp/core";
-import { INDEX_TOPIC, PROTOCOL_VERSION, type Topic, threadTopic } from "@omfp/protocol";
+import { INDEX_TOPIC, jobTopic, PROTOCOL_VERSION, type Topic, threadTopic, viewsTopic } from "@omfp/protocol";
 import type { ConnectionStatus, TopicSync } from "../src/index.ts";
 import { type CallCell, type Frame, flush, hello, Rig, type ServerEnd, TOKEN } from "./fake.ts";
 import { summary } from "./support.ts";
@@ -349,6 +349,8 @@ describe("session", () => {
       index: false,
       threads: new Set(),
       workspaces: new Set(),
+      views: new Set(),
+      jobs: new Set(),
     });
   });
 
@@ -431,6 +433,47 @@ describe("session", () => {
 
     expect(subscribes(server.frames())).toEqual([{ topic: THREAD_TOPIC }]);
     expect(sync(rig, THREAD_TOPIC)).toEqual({ kind: "subscribing" });
+  });
+
+  // spec: PRT-040, PRT-041
+  test("views and job topics decode their snapshots and events from the wire", () => {
+    const rig = new Rig();
+    const views = viewsTopic("01W");
+    const job = jobTopic("01JOB");
+    rig.client.subscribe(views);
+    rig.client.subscribe(job);
+    const [server, frames] = rig.connect();
+    server.respond(find(frames, views).id, snapshot("v1", 0, { manifest: null, error: null, widgets: [], stored: {} }));
+    const info = { id: "01JOB", workspaceId: "01W", command: "make", startedAt: 1, status: { state: "running" } };
+    server.respond(find(frames, job).id, snapshot("j1", 0, { job: info, lines: [], dropped: 0 }));
+
+    server.send({
+      type: "event",
+      topic: views,
+      epoch: "v1",
+      seq: 1,
+      event: { kind: "widget_stored", instance: "w", key: "k", value: true },
+    });
+    server.send({
+      type: "event",
+      topic: job,
+      epoch: "j1",
+      seq: 1,
+      event: { kind: "job_output", stream: "stdout", text: "hi" },
+    });
+
+    expect(rig.client.model.views.get("01W")?.stored).toEqual({ w: { k: true } });
+    expect(rig.client.model.jobs.get("01JOB")?.lines).toEqual([{ stream: "stdout", text: "hi" }]);
+
+    // A job event on a views topic does not decode: the topic is resubscribed.
+    server.send({
+      type: "event",
+      topic: views,
+      epoch: "v1",
+      seq: 2,
+      event: { kind: "job_output", stream: "stdout", text: "x" },
+    });
+    expect(subscribes(server.frames())).toEqual([{ topic: views }]);
   });
 
   test("commands given during the hello are sent once after it", async () => {

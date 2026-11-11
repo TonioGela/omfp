@@ -12,6 +12,7 @@ pub mod event_log;
 pub mod fs_complete;
 pub mod git;
 pub mod host_tools;
+pub mod jobs;
 pub mod names;
 pub mod omp;
 pub mod omp_binary;
@@ -25,6 +26,7 @@ pub mod threads;
 pub mod titles;
 pub mod token;
 pub mod watch;
+pub mod widgets;
 pub mod workspaces;
 
 pub use daemon::{DaemonHandle, DaemonInfo, Ports, discover, run, start, start_with};

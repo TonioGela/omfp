@@ -39,6 +39,8 @@ pub struct HelloResult {
     /// omp version.
     pub omp: String,
     pub warnings: Vec<String>,
+    /// Path under which this daemon serves widget modules to this client (`/widgets/<key>`, DMN-084, PRT-042).
+    pub widget_base: String,
 }
 
 /// A position in a topic's event stream.
@@ -656,4 +658,60 @@ pub struct SetSettingsParams {
     /// Bindings replacing the ones with the same mode and keys (`command: ""` unbinds the default).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keymap: Option<Vec<KeymapEntry>>,
+}
+
+/// `views.set` params (DMN-083).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetViewsParams {
+    pub workspace_id: String,
+    /// The whole manifest (AGT-010), written to `<workspace>/.omfp/views.json`.
+    pub manifest: Value,
+}
+
+/// `widgets.copy` params (DMN-087).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CopyWidgetParams {
+    pub workspace_id: String,
+    /// `omfp:<name>` (a built-in) or `user:<name>` (the user library).
+    pub widget: String,
+    /// Folder name in `.omfp/widgets/`; default: the widget's own name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+/// `widgets.copy` result: the new widget is `./widgets/<name>`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetCopied {
+    pub name: String,
+}
+
+/// `widgets.state_set` params (DMN-086).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetWidgetStateParams {
+    pub workspace_id: String,
+    /// The widget instance: its `instance` prop, else its reference (AGT-010).
+    pub instance: String,
+    pub key: String,
+    /// Any JSON value; `null` deletes the key.
+    pub value: Value,
+}
+
+/// `jobs.start` params (DMN-080).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StartJobParams {
+    pub workspace_id: String,
+    /// Run as `sh -c <command>` in the workspace folder.
+    pub command: String,
+}
+
+/// Params naming one job.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct JobRef {
+    pub job_id: String,
 }

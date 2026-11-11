@@ -6,26 +6,28 @@
 
 import type { ThreadView } from "@omfp/client";
 import type { AskUiRequest, ConfirmUiRequest, EditorUiRequest, InputUiRequest, SelectUiRequest } from "@omfp/core";
-import { Button, Checkbox, IconButton, Radio, RadioGroup, TextArea, TextField } from "@omfp/kit";
 import type { InteractionResponse } from "@omfp/protocol";
-import { type FormEvent, useEffect, useRef, useState } from "react";
-import { useAnnounce, useCall, useWindowState } from "../../sdk/index.ts";
-import { strings } from "../../strings/index.ts";
+import { Button, Checkbox, IconButton, Radio, RadioGroup, TextArea, TextField } from "omfp/kit";
 import {
   type AskForm,
   cardKey,
   checkAsk,
   closedRows,
-  type Dialog,
+  type InteractionDialog as Dialog,
   emptyAskForm,
   formatCountdown,
   isDialog,
   remainingMs,
   setCustom,
+  strings,
   timeoutMs,
-  title,
+  interactionTitle as title,
   toggleOption,
-} from "../../vm/interaction.ts";
+  useAnnounce,
+  useCall,
+  useWindowState,
+} from "omfp/sdk";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { testId, type WidgetProps } from "./props.ts";
 import { ANSWERED_HERE, ASK_FORMS, DISMISSED, interactionKey, SHOWN_AT, useClock, useSelectedThread } from "./state.ts";
 

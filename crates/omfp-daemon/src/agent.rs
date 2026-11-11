@@ -15,9 +15,10 @@ use omp_rpc::{
     GetAvailableCommandsCommand, GetAvailableCommandsResult, GetAvailableModelsCommand,
     GetAvailableModelsResult, GetAvailableThinkingLevelsCommand, GetAvailableThinkingLevelsResult,
     GetStateCommand, GetSubagentMessagesCommand, GetSubagentsCommand, GetSubagentsResult,
-    GetTreeCommand, GoalCommand, HostTool, NavigateTreeCommand, PromoteQueuedMessageCommand,
-    PromptCommand, RemoveQueuedMessageCommand, RpcInbound, SetLabelCommand, SetModelCommand,
-    SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
+    GetTreeCommand, GoalCommand, HostTool, HostUri, NavigateTreeCommand,
+    PromoteQueuedMessageCommand, PromptCommand, RemoveQueuedMessageCommand, RpcInbound,
+    SetLabelCommand, SetModelCommand, SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand,
+    SteerSubagentCommand,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -136,8 +137,14 @@ pub enum Lease {
 
 /// Starts omp processes for threads.
 pub trait AgentLauncher: Send + Sync {
-    /// Starts omp for `spec` with the daemon's host tools for this thread (DMN-060).
-    fn launch(&self, spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<Launched, StartError>;
+    /// Starts omp for `spec` with the daemon's host tools for this thread (DMN-060) and its host URI schemes
+    /// (DMN-062).
+    fn launch(
+        &self,
+        spec: &LaunchSpec,
+        tools: Vec<HostTool>,
+        uris: Vec<HostUri>,
+    ) -> Result<Launched, StartError>;
     /// Probes the ownership lease of `session_id` without taking it (`omp session lease`, DMN-033).
     fn session_lease(&self, spec: &LaunchSpec, session_id: &str) -> Result<Lease, StartError>;
     /// Generates a thread title from its first message with one omp print-mode run (DMN-073).
@@ -149,8 +156,13 @@ pub trait AgentLauncher: Send + Sync {
 pub struct OmpLauncher;
 
 impl AgentLauncher for OmpLauncher {
-    fn launch(&self, spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<Launched, StartError> {
-        let (process, startup) = OmpProcess::start(spec, tools)?;
+    fn launch(
+        &self,
+        spec: &LaunchSpec,
+        tools: Vec<HostTool>,
+        uris: Vec<HostUri>,
+    ) -> Result<Launched, StartError> {
+        let (process, startup) = OmpProcess::start(spec, tools, uris)?;
         let next_request = process.next_request();
         let (client, events) = process.into_parts();
         let events = events.ok_or(StartError::Connect(omp_rpc::Error::Closed))?;

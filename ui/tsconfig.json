@@ -19,7 +19,11 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "jsx": "react-jsx"
+    "jsx": "react-jsx",
+    "paths": {
+      "omfp/sdk": ["./packages/app/src/sdk/index.ts"],
+      "omfp/kit": ["./packages/kit/src/index.ts"]
+    }
   },
   "include": [
     "packages/*/*.ts",

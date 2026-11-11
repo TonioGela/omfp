@@ -1,6 +1,7 @@
 /**
- * Pure client state kept from the daemon's frames: connection status, the `index` topic, per-thread `ThreadState` and
- * workspace git status, plus the position `{epoch, seq}` of every subscribed topic.
+ * Pure client state kept from the daemon's frames: connection status, the `index` topic, per-thread `ThreadState`,
+ * workspace git status, per-workspace views state (PRT-040) and per-job output (PRT-041), plus the position
+ * `{epoch, seq}` of every subscribed topic.
  *
  * Thread state comes only from the shared reducer (UI-010): snapshots are the daemon's reducer output, events are
  * applied with `reduce` from `@omfp/core` (PRT-021). Exposed data is immutable: a change replaces the objects on its
@@ -15,6 +16,8 @@ import {
   type HelloResult,
   type IndexEvent,
   type IndexSnapshot,
+  type JobEvent,
+  type JobState,
   type Position,
   parseTopic,
   type RepoStatus,
@@ -24,9 +27,19 @@ import {
   type Theme,
   type ThreadSummary,
   type Topic,
+  type ViewsEvent,
+  type ViewsState,
   type Workspace,
 } from "@omfp/protocol";
-import { decodeIndexSnapshot, decodeRepoStatusList, decodeThreadState, NO_SETTINGS, NO_THEME } from "./decode.ts";
+import {
+  decodeIndexSnapshot,
+  decodeJobState,
+  decodeRepoStatusList,
+  decodeThreadState,
+  decodeViewsState,
+  NO_SETTINGS,
+  NO_THEME,
+} from "./decode.ts";
 import { jsonEqual } from "./json.ts";
 
 /** Closed interactions kept per thread (newest last). */
@@ -106,15 +119,35 @@ export interface Dirty {
   threads: Set<string>;
   /** Workspace ids whose git status changed or went away. */
   workspaces: Set<string>;
+  /** Workspace ids whose views state changed or went away. */
+  views: Set<string>;
+  /** Job ids whose state changed or went away. */
+  jobs: Set<string>;
 }
 
 function emptyDirty(): Dirty {
-  return { connection: false, topics: false, index: false, threads: new Set(), workspaces: new Set() };
+  return {
+    connection: false,
+    topics: false,
+    index: false,
+    threads: new Set(),
+    workspaces: new Set(),
+    views: new Set(),
+    jobs: new Set(),
+  };
 }
 
 /** Whether nothing changed. */
 export function isDirtyEmpty(dirty: Dirty): boolean {
-  return !dirty.connection && !dirty.topics && !dirty.index && dirty.threads.size === 0 && dirty.workspaces.size === 0;
+  return (
+    !dirty.connection &&
+    !dirty.topics &&
+    !dirty.index &&
+    dirty.threads.size === 0 &&
+    dirty.workspaces.size === 0 &&
+    dirty.views.size === 0 &&
+    dirty.jobs.size === 0
+  );
 }
 
 /** Result of {@link Model.applyEvent}: applied; not for a live subscription or a duplicate; or a gap in the stream
@@ -142,6 +175,10 @@ export interface ModelView {
   thread(id: string): ThreadView | undefined;
   /** Git status of each repository of subscribed workspaces. */
   readonly workspaces: ReadonlyMap<string, readonly RepoStatus[]>;
+  /** Views state of subscribed `views/<workspaceId>` topics (PRT-040), by workspace id. */
+  readonly views: ReadonlyMap<string, ViewsState>;
+  /** State of subscribed `job/<id>` topics (PRT-041), by job id. */
+  readonly jobs: ReadonlyMap<string, JobState>;
   /** Subscribed topics in subscription order. */
   readonly topics: readonly TopicState[];
   topic(topic: Topic): TopicState | undefined;
@@ -216,6 +253,58 @@ function applyIndexEvent(index: Index, event: IndexEvent): Index {
   }
 }
 
+function applyViewsEvent(views: ViewsState, event: ViewsEvent): ViewsState {
+  switch (event.kind) {
+    case "views_manifest":
+      return { ...views, manifest: event.manifest ?? null, error: event.error ?? null };
+    case "views_widgets":
+      return { ...views, widgets: event.widgets };
+    case "widget_stored": {
+      const keys = { ...views.stored[event.instance] };
+      if (event.value === null) {
+        delete keys[event.key];
+      } else {
+        keys[event.key] = event.value;
+      }
+      const stored = { ...views.stored, [event.instance]: keys };
+      if (Object.keys(keys).length === 0) {
+        delete stored[event.instance];
+      }
+      return { ...views, stored };
+    }
+  }
+}
+
+/** Text a job topic keeps, like the daemon's state (DMN-080): older lines are dropped and counted in `dropped`. */
+export const JOB_TEXT_LIMIT = 1024 * 1024;
+
+/** `lines` with `line` appended, the oldest dropped while the text exceeds {@link JOB_TEXT_LIMIT}. */
+function appendJobLine(job: JobState, line: JobState["lines"][number]): JobState {
+  const lines = [...job.lines, line];
+  let size = lines.reduce((total, kept) => total + kept.text.length, 0);
+  let cut = 0;
+  while (size > JOB_TEXT_LIMIT && cut < lines.length - 1) {
+    size -= lines[cut]?.text.length ?? 0;
+    cut += 1;
+  }
+  return cut === 0 ? { ...job, lines } : { ...job, lines: lines.slice(cut), dropped: job.dropped + cut };
+}
+
+function applyJobEvent(job: JobState, event: JobEvent): JobState {
+  switch (event.kind) {
+    case "job_output":
+      return appendJobLine(job, { stream: event.stream, text: event.text });
+    case "job_exited":
+      return {
+        ...job,
+        job: {
+          ...job.job,
+          status: { state: "exited", code: event.code ?? null, signal: event.signal ?? null, endedAt: event.endedAt },
+        },
+      };
+  }
+}
+
 /** Applies one event with the shared reducer and records the interactions it closed. */
 function applyToView(view: ThreadView, event: ThreadEvent): ThreadView {
   const pending = view.state.interactions;
@@ -237,6 +326,8 @@ export class Model implements ModelView {
   #index: Index = EMPTY_INDEX;
   #threads: ReadonlyMap<string, ThreadView> = new Map();
   #workspaces: ReadonlyMap<string, readonly RepoStatus[]> = new Map();
+  #views: ReadonlyMap<string, ViewsState> = new Map();
+  #jobs: ReadonlyMap<string, JobState> = new Map();
   #topics: readonly TopicState[] = [];
   #dirty: Dirty = emptyDirty();
   #revision = 0;
@@ -259,6 +350,14 @@ export class Model implements ModelView {
 
   get workspaces(): ReadonlyMap<string, readonly RepoStatus[]> {
     return this.#workspaces;
+  }
+
+  get views(): ReadonlyMap<string, ViewsState> {
+    return this.#views;
+  }
+
+  get jobs(): ReadonlyMap<string, JobState> {
+    return this.#jobs;
   }
 
   get topics(): readonly TopicState[] {
@@ -335,6 +434,14 @@ export class Model implements ModelView {
       case "workspace":
         this.#workspaces = without(this.#workspaces, parsed.id);
         this.#dirty.workspaces.add(parsed.id);
+        break;
+      case "views":
+        this.#views = without(this.#views, parsed.id);
+        this.#dirty.views.add(parsed.id);
+        break;
+      case "job":
+        this.#jobs = without(this.#jobs, parsed.id);
+        this.#dirty.jobs.add(parsed.id);
         break;
       case "terminal":
       case undefined:
@@ -445,6 +552,24 @@ export class Model implements ModelView {
         this.#dirty.workspaces.add(parsed.id);
         return undefined;
       }
+      case "views": {
+        const views = decodeViewsState(state);
+        if (!views.ok) {
+          return views.error;
+        }
+        this.#views = upsert(this.#views, parsed.id, views.value);
+        this.#dirty.views.add(parsed.id);
+        return undefined;
+      }
+      case "job": {
+        const job = decodeJobState(state);
+        if (!job.ok) {
+          return job.error;
+        }
+        this.#jobs = upsert(this.#jobs, parsed.id, job.value);
+        this.#dirty.jobs.add(parsed.id);
+        return undefined;
+      }
       case "terminal":
         return "terminal topics have no snapshot state";
       case undefined:
@@ -496,6 +621,25 @@ export class Model implements ModelView {
           this.#dirty.workspaces.add(parsed.id);
         }
         break;
+      case "views_manifest":
+      case "views_widgets":
+      case "widget_stored": {
+        const views = parsed?.kind === "views" ? this.#views.get(parsed.id) : undefined;
+        if (parsed?.kind === "views" && views !== undefined) {
+          this.#views = upsert(this.#views, parsed.id, applyViewsEvent(views, event));
+          this.#dirty.views.add(parsed.id);
+        }
+        break;
+      }
+      case "job_output":
+      case "job_exited": {
+        const job = parsed?.kind === "job" ? this.#jobs.get(parsed.id) : undefined;
+        if (parsed?.kind === "job" && job !== undefined) {
+          this.#jobs = upsert(this.#jobs, parsed.id, applyJobEvent(job, event));
+          this.#dirty.jobs.add(parsed.id);
+        }
+        break;
+      }
       default:
         if (parsed?.kind === "thread") {
           const view = this.#threads.get(parsed.id) ?? { state: emptyThreadState(), closed: [] };

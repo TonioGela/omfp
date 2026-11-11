@@ -9,7 +9,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use omfp_core::ThreadEvent;
 use omp_rpc::{
-    Event, ExtensionUiResponse, HostTool, OpenSessionResult, PromptCommand, ReadyEvent,
+    Event, ExtensionUiResponse, HostTool, HostUri, OpenSessionResult, PromptCommand, ReadyEvent,
     RpcAgentEvent, RpcNotification,
 };
 use serde_json::{Value, json};
@@ -208,6 +208,8 @@ pub struct FakeLaunch {
     pub spec: LaunchSpec,
     /// Names of the host tools registered at launch (DMN-060).
     pub tools: Vec<String>,
+    /// Schemes of the host URIs registered at launch (DMN-062).
+    pub uris: Vec<String>,
     pub process: FakeProcess,
 }
 
@@ -293,7 +295,12 @@ const TITLE_GATE: &str = "<title>";
 const LAUNCH_GATE: &str = "<launch>";
 
 impl AgentLauncher for FakeLauncher {
-    fn launch(&self, spec: &LaunchSpec, tools: Vec<HostTool>) -> Result<Launched, StartError> {
+    fn launch(
+        &self,
+        spec: &LaunchSpec,
+        tools: Vec<HostTool>,
+        uris: Vec<HostUri>,
+    ) -> Result<Launched, StartError> {
         let gate = lock(&self.script).gates.get(LAUNCH_GATE).cloned();
         if let Some(gate) = gate {
             gate.pass();
@@ -321,6 +328,7 @@ impl AgentLauncher for FakeLauncher {
                 .iter()
                 .map(|tool| tool.definition().name.clone())
                 .collect(),
+            uris: uris.iter().map(|uri| uri.scheme().to_owned()).collect(),
             process: process.clone(),
         });
         Ok(Launched {
@@ -601,7 +609,7 @@ mod tests {
             env: Vec::new(),
         };
 
-        let launched = launcher.launch(&spec, Vec::new()).unwrap();
+        let launched = launcher.launch(&spec, Vec::new(), Vec::new()).unwrap();
         let admission = launched
             .process
             .prompt(PromptCommand {

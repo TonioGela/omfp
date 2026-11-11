@@ -232,3 +232,51 @@ requirements = [
   "E2E-08",
   "E2E-09",
 ]
+
+[M4]
+status = "done"
+requirements = [
+  # Views and widgets (08)
+  "AGT-010",
+  "AGT-011",
+  "AGT-012",
+  "AGT-013",
+  "AGT-014",
+  "AGT-015",
+  "AGT-016",
+  "AGT-017",
+  "AGT-018",
+  "AGT-019",
+  "AGT-020",
+  "AGT-021",
+  "AGT-022",
+  "AGT-023",
+  "AGT-024",
+  "AGT-025",
+  # Daemon: host URIs, jobs, views and widget serving
+  "DMN-062",
+  "DMN-080",
+  "DMN-081",
+  "DMN-082",
+  "DMN-083",
+  "DMN-084",
+  "DMN-085",
+  "DMN-086",
+  "DMN-087",
+  # Protocol
+  "PRT-040",
+  "PRT-041",
+  "PRT-042",
+  # UI: frame, views, layout editing, widget loader
+  "UI-100",
+  "UI-101",
+  "UI-102",
+  "UI-103",
+  "UI-104",
+  "UI-105",
+  "UI-106",
+  # End-to-end journeys
+  "E2E-10",
+  "E2E-11",
+  "E2E-12",
+]

@@ -18,8 +18,10 @@ An application for working with many omp agents in parallel:
 - the same interface (a TypeScript web app, D-18) runs **in the browser** and **as a desktop app** (Tauri webview, M7),
   connected to the same daemon;
 - anything the UI does not cover could later be reached from a **terminal panel** on the same session (deferred, D-06);
-- long term, **agents drive the interface**: they spawn threads, create workspaces and publish views. This is the last
-  milestone, but every earlier choice must keep it possible ([08](08-agent-control.md)).
+- agents **build UI**: the window shows a workspace's views manifest of React widgets that agents write as files and
+  the user rearranges, reloaded live (M4, [08](08-agent-control.md#agent-made-ui-views-and-widgets-m4));
+- long term, **agents drive the interface**: they spawn threads, create workspaces and publish dashboards. This is the
+  last milestone, but every earlier choice must keep it possible ([08](08-agent-control.md)).
 
 ## Non-goals (for now)
 
@@ -133,10 +135,11 @@ sequenceDiagram
 
 ```text
 $XDG_DATA_HOME/omfp/            (default ~/.local/share/omfp)
-  omfp.db                        SQLite: seen repositories, workspaces, threads, settings
+  omfp.db                        SQLite: seen repositories, workspaces, threads, settings, widget state
   token                         access token (mode 0600)
   threads/<thread-id>/sessions/ sessionDir passed to omp (open_session)
   threads/<thread-id>/omp.log   omp stderr
+  widgets/<name>/               the user's widget library (`user:<name>`, AGT-023)
 
 ~/omfp/workspaces/<slug>/        workspaces created by the daemon (--workspaces-root); repos are top-level entries
 ```

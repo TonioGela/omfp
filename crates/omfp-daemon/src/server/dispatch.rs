@@ -167,7 +167,37 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         }
         Call::SettingsGet(_) => ok(&services.settings()),
         Call::SettingsSet(params) => ok(&services.set_settings(params).await?),
+        Call::ViewsSet(params) => {
+            services.set_views(params).await?;
+            empty()
+        }
+        Call::WidgetsCopy(params) => ok(&services.copy_widget(params).await?),
+        Call::WidgetsStateSet(params) => {
+            services.set_widget_state(params).await?;
+            empty()
+        }
+        call @ (Call::JobsStart(_) | Call::JobsKill(_)) => jobs(services, call).await,
         call => thread(services, principal, call).await,
+    }
+}
+
+/// `jobs.start` and `jobs.kill` (DMN-080, DMN-081).
+async fn jobs(services: &Services, call: Call) -> Reply {
+    match call {
+        Call::JobsStart(params) => {
+            let workspaces = Arc::clone(&services.workspaces);
+            let workspace_id = params.workspace_id;
+            let workspace =
+                blocking(move || workspaces.get(&workspace_id).map_err(workspace_error)).await?;
+            ok(&services
+                .jobs
+                .start(&workspace.id, &workspace.path, &params.command)?)
+        }
+        Call::JobsKill(params) => {
+            services.jobs.kill(&params.job_id)?;
+            empty()
+        }
+        _ => Err(internal("not a jobs method")),
     }
 }
 
@@ -216,12 +246,20 @@ async fn workspaces(services: &Services, principal: &Principal, call: Call) -> R
             id
         }
         Call::WorkspacesRemove(params) => {
+            let (id, force) = (params.workspace_id, params.force);
+            let checker = Arc::clone(&workspaces);
+            let checked = id.clone();
             blocking(move || {
-                workspaces
-                    .remove(&params.workspace_id, params.force)
+                checker
+                    .check_removal(&checked, force)
                     .map_err(workspace_error)
             })
             .await?;
+            // The removal goes ahead: its jobs die before its folder is deleted (DMN-081).
+            services.jobs.kill_workspace(&id).await;
+            let removed = id.clone();
+            blocking(move || workspaces.remove(&removed, force).map_err(workspace_error)).await?;
+            services.jobs.forget_workspace(&id);
             services.refresh_index_quietly().await;
             return empty();
         }

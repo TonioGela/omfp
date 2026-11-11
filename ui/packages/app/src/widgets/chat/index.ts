@@ -1,4 +1,5 @@
-/** The conversation widgets (`omfp:chat`, `omfp:transcript`, `omfp:interactions`, `omfp:composer`). */
+/** The conversation widgets (`omfp:chat`, `omfp:transcript`, `omfp:interactions`, `omfp:composer`); the default export
+ * is `omfp:chat`. Copyable (AGT-021): value imports only from `react`, `omfp/sdk`, `omfp/kit` and this folder. */
 
 import type { ComponentType } from "react";
 import { ChatWidget as Chat } from "./chat.tsx";
@@ -15,3 +16,5 @@ export const TranscriptWidget: ComponentType<WidgetProps> = Transcript;
 export const InteractionsWidget: ComponentType<WidgetProps> = Interactions;
 /** `omfp:composer`: queue chips and the composer of the selected thread. */
 export const ComposerWidget: ComponentType<WidgetProps> = Composer;
+
+export default ChatWidget;

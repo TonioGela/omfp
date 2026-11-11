@@ -4,12 +4,18 @@
  */
 
 import type { ThreadView } from "@omfp/client";
-import type { VirtualItem } from "@tanstack/react-virtual";
+import type { AskForm, PendingQueueOp, VirtualItem } from "omfp/sdk";
+import {
+  type Draft,
+  INITIAL_PIN,
+  type PinState,
+  SELECTED_THREAD,
+  useThread,
+  useWindowState,
+  type WindowKey,
+  windowKey,
+} from "omfp/sdk";
 import { createContext, useCallback, useContext } from "react";
-import { type Draft, SELECTED_THREAD, useThread, useWindowState, type WindowKey, windowKey } from "../../sdk/index.ts";
-import type { AskForm } from "../../vm/interaction.ts";
-import type { PendingQueueOp } from "../../vm/queue.ts";
-import { INITIAL_PIN, type PinState } from "../../vm/virtual.ts";
 
 /** Queue actions sent and not yet answered (UI-062). */
 export const PENDING_QUEUE = windowKey<readonly PendingQueueOp[]>("chat/pendingQueue", []);

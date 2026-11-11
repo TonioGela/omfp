@@ -4,18 +4,19 @@
 use omfp_core::wire::{AskAnswer, GoalOp, ImageContent, QueuedMessageQueue, ThinkingLevel};
 use omfp_protocol::{
     AddRepoParams, BashParams, BtwParams, Call, CompactParams, CompletePathParams,
-    CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileDiff, ForkParams, GoalParams,
-    HelloParams, HelloResult, IndexSnapshot, InteractionResponse, LabelParams, ListTerminalsParams,
-    METHODS, MessageParams, Method, NavigateParams, OpenTerminalParams, OpenTerminalResult,
-    PROTOCOL_VERSION, PathCompletions, PathEntry, Position, PromptBehavior, PromptParams,
-    PromptResult, QueueMessageParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource,
-    RepoSuggestions, Request, ResizeTerminalParams, RespondParams, Response, SearchThreadsParams,
-    SeenRepository, ServerFrame, SetModelParams, SetSettingsParams, SetThinkingParams,
-    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
-    SuggestReposParams, TerminalInfo, TerminalKind, TerminalList, TerminalRef, Theme, ThreadGit,
-    ThreadRef, ThreadSearchResult, ThreadSearchResults, ThreadWorkspace, Topic, TopicParams,
-    UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef, decode_request,
-    method,
+    CopyWidgetParams, CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileDiff,
+    ForkParams, GoalParams, HelloParams, HelloResult, IndexSnapshot, InteractionResponse, JobInfo,
+    JobRef, JobStatus, LabelParams, ListTerminalsParams, METHODS, MessageParams, Method,
+    NavigateParams, OpenTerminalParams, OpenTerminalResult, PROTOCOL_VERSION, PathCompletions,
+    PathEntry, Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams,
+    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions, Request,
+    ResizeTerminalParams, RespondParams, Response, SearchThreadsParams, SeenRepository,
+    ServerFrame, SetModelParams, SetSettingsParams, SetThinkingParams, SetViewsParams,
+    SetWidgetStateParams, StartJobParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
+    SubscribeParams, SubscribeResult, SuggestReposParams, TerminalInfo, TerminalKind, TerminalList,
+    TerminalRef, Theme, ThreadGit, ThreadRef, ThreadSearchResult, ThreadSearchResults,
+    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied,
+    WorkspaceDiffParams, WorkspaceRef, decode_request, method,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -98,6 +99,7 @@ fn system_examples() -> Vec<(&'static str, Value)> {
                 daemon: "0.1.0".to_owned(),
                 omp: "18.18.6".to_owned(),
                 warnings: vec!["omp version mismatch allowed (--allow-omp-mismatch)".to_owned()],
+                widget_base: "/widgets/8c1f…".to_owned(),
             },
         ),
         example::<method::Subscribe>(
@@ -618,6 +620,92 @@ fn ui_settings_examples() -> Vec<(&'static str, Value)> {
     ]
 }
 
+fn widget_examples() -> Vec<(&'static str, Value)> {
+    vec![
+        example::<method::ViewsSet>(
+            SetViewsParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                manifest: json!({
+                    "default": "work",
+                    "views": { "work": { "title": "Work", "layout": ["row", {}, "omfp:chat", "./widgets/tests"] } }
+                }),
+            },
+            &Empty {},
+        ),
+        example::<method::WidgetsCopy>(
+            CopyWidgetParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                widget: "omfp:workspace".to_owned(),
+                name: None,
+            },
+            &WidgetCopied {
+                name: "workspace".to_owned(),
+            },
+        ),
+        example::<method::WidgetsStateSet>(
+            SetWidgetStateParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                instance: "./widgets/tests".to_owned(),
+                key: "job:cargo nextest run".to_owned(),
+                value: json!("01JOB"),
+            },
+            &Empty {},
+        ),
+        example::<method::JobsStart>(
+            StartJobParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                command: "cargo nextest run".to_owned(),
+            },
+            &JobInfo {
+                id: "01JOB".to_owned(),
+                workspace_id: WORKSPACE_ID.to_owned(),
+                command: "cargo nextest run".to_owned(),
+                started_at: 1_700_000_000_000,
+                status: JobStatus::Running,
+            },
+        ),
+        example::<method::JobsKill>(
+            JobRef {
+                job_id: "01JOB".to_owned(),
+            },
+            &Empty {},
+        ),
+    ]
+}
+
+// spec: PRT-042
+#[test]
+fn hello_names_where_widgets_are_served() {
+    let result = HelloResult {
+        protocol: PROTOCOL_VERSION,
+        daemon: "0.1.0".to_owned(),
+        omp: "18.18.6".to_owned(),
+        warnings: Vec::new(),
+        widget_base: "/widgets/abc".to_owned(),
+    };
+    assert_eq!(
+        serde_json::to_value(&result).unwrap()["widgetBase"],
+        json!("/widgets/abc")
+    );
+}
+
+#[test]
+fn a_finished_job_carries_its_exit() {
+    let status = JobStatus::Exited {
+        code: Some(1),
+        signal: None,
+        ended_at: 5,
+    };
+    assert_eq!(
+        serde_json::to_value(&status).unwrap(),
+        json!({ "state": "exited", "code": 1, "signal": null, "endedAt": 5 })
+    );
+    assert_eq!(
+        serde_json::to_value(JobStatus::Running).unwrap(),
+        json!({ "state": "running" })
+    );
+}
+
 // spec: PRT-031, PRT-010
 #[test]
 fn every_method_has_a_golden_request_and_response() {
@@ -634,6 +722,7 @@ fn every_method_has_a_golden_request_and_response() {
         terminal_examples(),
         theme_examples(),
         ui_settings_examples(),
+        widget_examples(),
     ]
     .concat();
 

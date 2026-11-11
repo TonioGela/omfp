@@ -36,6 +36,7 @@ use crate::paths::DataDir;
 use crate::store::{Thread, TitleSource, new_id};
 use crate::threads::{ThreadError, Threads};
 use crate::titles::{self, TitleRequest};
+use crate::widgets;
 use crate::workspaces::{WorkspaceError, Workspaces};
 
 /// The event log of one thread: omp frames and daemon events folded by the shared reducer (ARC-006).
@@ -67,6 +68,9 @@ pub struct SupervisorConfig {
     /// Generate thread titles with an omp print-mode run after the first message (DMN-073). Tests against the fake
     /// LLM turn it off so the extra model call does not take a scripted step.
     pub title_generation: bool,
+    /// `<static-dir>/builtin-widgets/` when the daemon serves a bundle with built-in widgets: the widgets note names
+    /// it (AGT-024).
+    pub builtin_widgets: Option<PathBuf>,
 }
 
 impl SupervisorConfig {
@@ -82,6 +86,7 @@ impl SupervisorConfig {
             live_buffer: 4096,
             agent_dir: None,
             title_generation: true,
+            builtin_widgets: None,
         }
     }
 }
@@ -921,6 +926,8 @@ impl Supervisor {
                 &ws.name,
                 &ws.path,
                 self.inner.config.agent_dir.as_deref(),
+                &data.widgets(),
+                self.inner.config.builtin_widgets.as_deref(),
             )),
             stderr_log: data.thread_log(&actor.id),
             env: self.inner.config.omp_env.clone(),
@@ -968,9 +975,16 @@ impl Supervisor {
             }),
             self.title_setter(&actor.id),
         );
+        let uris = match widgets::host_uris() {
+            Ok(uris) => uris,
+            Err(error) => {
+                self.fail(actor, error.to_string(), String::new());
+                return Err(SupervisorError::Start(error.to_string()));
+            }
+        };
         let launcher = Arc::clone(&self.inner.launcher);
         let launch_spec = spec.clone();
-        let launched = match blocking(move || launcher.launch(&launch_spec, tools)).await? {
+        let launched = match blocking(move || launcher.launch(&launch_spec, tools, uris)).await? {
             Ok(launched) => launched,
             Err(error) => {
                 let path = spec.stderr_log.clone();

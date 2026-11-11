@@ -9,7 +9,7 @@ use serde::ser::SerializeMap;
 use serde_json::{Map, Value, json};
 use std::fmt::Debug;
 
-use crate::dto::{DiffPage, GitStatus, Settings, Theme, ThreadSummary, Workspace};
+use crate::dto::{DiffPage, GitStatus, JobInfo, Settings, Theme, ThreadSummary, Workspace};
 use crate::params;
 use omfp_core::wire;
 
@@ -220,4 +220,14 @@ methods! {
     SettingsGet = "settings.get" (params::Empty) -> Settings;
     /// Merges UI settings into the config file, written back with its comments (DMN-009).
     SettingsSet = "settings.set" (params::SetSettingsParams) -> Settings;
+    /// Writes the workspace's views manifest, `.omfp/views.json` (DMN-083).
+    ViewsSet = "views.set" (params::SetViewsParams) -> params::Empty;
+    /// Copies a built-in or user widget into the workspace's `.omfp/widgets/` (DMN-087).
+    WidgetsCopy = "widgets.copy" (params::CopyWidgetParams) -> params::WidgetCopied;
+    /// Stores one key of a widget instance's state (DMN-086).
+    WidgetsStateSet = "widgets.state_set" (params::SetWidgetStateParams) -> params::Empty;
+    /// Runs a shell command in the workspace folder as a job (DMN-080).
+    JobsStart = "jobs.start" (params::StartJobParams) -> JobInfo;
+    /// Kills a job's process group (DMN-081).
+    JobsKill = "jobs.kill" (params::JobRef) -> params::Empty;
 }
