@@ -21,7 +21,8 @@ sequenceDiagram
 | --- | --- |
 | PRT-001 | The first client frame MUST be `system.hello`. Any other frame before a successful hello MUST close the connection with WebSocket close code 4401. |
 | PRT-002 | The token MUST travel in the `system.hello` payload, never in the URL (it would end up in logs and history). Comparison MUST be constant-time. |
-| PRT-003 | The daemon MUST reject upgrades whose `Origin` is neither the daemon's own origin nor in the configured allow-list (protection against cross-site WebSocket hijacking). |
+| PRT-003 | The daemon MUST reject upgrades whose `Origin` is neither the daemon's own origin nor in the configured allow-list (DMN-140; protection against cross-site WebSocket hijacking) with `403`. An upgrade without `Origin` (not a browser: the CLI, the desktop app's theme push, tests) passes; the token check of `system.hello` (PRT-002) applies to every connection alike. |
+| PRT-070 | The `Origin` match MUST be exact on scheme, host and port: the daemon's own origin is `http://<Host>` or `https://<Host>` of the upgrade request, an allow-list entry (normalized, DMN-141) matches only the identical serialized origin — no wildcard, no subdomain, no other scheme or port, not `null`. A window reached through a proxy that rewrites `Host` (e.g. `omfp desktop --connect https://omfp.example.ts.net` or a phone browser on that URL) therefore needs its origin listed; one that keeps `Host` does not. |
 | PRT-004 | `protocol` is an integer. If the client's version is not supported the daemon MUST answer with error `version_mismatch` listing the supported versions, then close. |
 | PRT-005 | The hello response MUST include daemon version, omp version, and warnings (e.g. `--allow-omp-mismatch` in effect). |
 

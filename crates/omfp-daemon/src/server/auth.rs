@@ -1,7 +1,10 @@
 //! Authorization (PRT-034): a connection's [`Principal`] is resolved once by `system.hello`, and every request is
 //! checked in one place against a method → [`Permission`] table, so scoped principals (per-thread agent tokens,
-//! 08-agent-control) only touch this module.
+//! 08-agent-control) only touch this module. Before that, the WebSocket upgrade checks the browser's `Origin`
+//! ([`origin_allowed`], PRT-003) against the daemon's own origin and the configured allow-list ([`parse_origin`],
+//! DMN-140, DMN-141).
 
+use axum::http::Uri;
 use omfp_protocol::{ErrorBody, ErrorCode};
 
 use crate::store::Provenance;
@@ -138,9 +141,163 @@ pub fn authorize(principal: &Principal, method: &str) -> Result<(), ErrorBody> {
     }
 }
 
+/// Whether a WebSocket upgrade with this `Origin` may proceed (PRT-003, PRT-070): no `Origin` (not a browser), the
+/// daemon's own origin (`http(s)://<Host>`), or exactly one of `allowed`, the entries of [`parse_origin`]. A browser
+/// serializes `Origin` as `scheme://host[:port]`, lowercase, without its scheme's default port, so the match is a
+/// string comparison: no wildcard, no subdomain, no other scheme or port.
+#[must_use]
+pub fn origin_allowed(origin: Option<&str>, host: Option<&str>, allowed: &[String]) -> bool {
+    let Some(origin) = origin else {
+        return true;
+    };
+    allowed.iter().any(|allowed| allowed == origin)
+        || host.is_some_and(|host| {
+            origin == format!("http://{host}") || origin == format!("https://{host}")
+        })
+}
+
+/// An entry of the `Origin` allow-list (DMN-141) in the form a browser sends: `http(s)://host[:port]` with the scheme
+/// and host lowercased, the scheme's default port dropped (`https://x:443` is `https://x`) and a trailing `/`
+/// allowed. `*`, other schemes, a path, a query, a fragment or user info are errors that say why.
+pub fn parse_origin(entry: &str) -> Result<String, String> {
+    let invalid = |why: &str| {
+        format!(
+            "`{entry}` is not an origin: {why}; write `http(s)://host[:port]`, e.g. `https://omfp.example.ts.net`"
+        )
+    };
+    if entry.contains('*') {
+        return Err(format!(
+            "`{entry}`: wildcards are not allowed: any web page matching it could open a WebSocket to the daemon \
+             (cross-site WebSocket hijacking); list every origin the UI is reached at, e.g. \
+             `https://omfp.example.ts.net`"
+        ));
+    }
+    if entry.contains(['?', '#']) {
+        return Err(invalid("an origin has no query or fragment"));
+    }
+    if entry.contains('@') {
+        return Err(invalid("an origin has no user info"));
+    }
+    let uri: Uri = entry.parse().map_err(|_| invalid("not a URL"))?;
+    let scheme = uri.scheme_str().map(str::to_ascii_lowercase);
+    let default_port = match scheme.as_deref() {
+        Some("http") => 80,
+        Some("https") => 443,
+        _ => return Err(invalid("the scheme must be http:// or https://")),
+    };
+    let Some(authority) = uri.authority() else {
+        return Err(invalid("no host"));
+    };
+    if !matches!(uri.path(), "" | "/") {
+        return Err(invalid("an origin has no path"));
+    }
+    let host = authority.host().to_ascii_lowercase();
+    if host.is_empty() {
+        return Err(invalid("no host"));
+    }
+    let port = authority
+        .as_str()
+        .strip_prefix(authority.host())
+        .and_then(|rest| rest.strip_prefix(':'))
+        .filter(|port| !port.is_empty());
+    let port = match port.map(str::parse::<u16>) {
+        Some(Err(_)) => return Err(invalid("the port must be a number up to 65535")),
+        Some(Ok(port)) if port != default_port => format!(":{port}"),
+        _ => String::new(),
+    };
+    Ok(format!("{}://{host}{port}", scheme.unwrap_or_default()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // spec: DMN-141
+    #[test]
+    fn allowed_origins_are_normalized_to_what_a_browser_sends() {
+        for (entry, expected) in [
+            ("https://omfp.example.ts.net", "https://omfp.example.ts.net"),
+            (
+                "https://omfp.example.ts.net/",
+                "https://omfp.example.ts.net",
+            ),
+            ("HTTPS://OMFP.Example.TS.net", "https://omfp.example.ts.net"),
+            ("https://omfp.example.com:443", "https://omfp.example.com"),
+            ("http://omfp.example.com:80", "http://omfp.example.com"),
+            (
+                "https://omfp.example.com:8443",
+                "https://omfp.example.com:8443",
+            ),
+            ("http://100.64.0.7:7420", "http://100.64.0.7:7420"),
+            ("http://[fd7a:115c::1]:7420", "http://[fd7a:115c::1]:7420"),
+        ] {
+            assert_eq!(parse_origin(entry).as_deref(), Ok(expected), "{entry}");
+        }
+    }
+
+    // spec: DMN-141
+    #[test]
+    fn wildcards_and_anything_but_an_origin_are_refused_with_the_reason() {
+        for (entry, reason) in [
+            ("*", "wildcards are not allowed"),
+            ("https://*.ts.net", "cross-site WebSocket hijacking"),
+            (
+                "omfp.example.ts.net",
+                "the scheme must be http:// or https://",
+            ),
+            (
+                "ws://omfp.example.ts.net",
+                "the scheme must be http:// or https://",
+            ),
+            ("null", "the scheme must be http:// or https://"),
+            ("https://omfp.example.ts.net/app", "no path"),
+            ("https://omfp.example.ts.net/?a=1", "no query or fragment"),
+            ("https://omfp.example.ts.net#x", "no query or fragment"),
+            ("https://user@omfp.example.ts.net", "no user info"),
+            (
+                "https://omfp.example.ts.net:99999",
+                "the port must be a number up to 65535",
+            ),
+            ("https://", "not a URL"),
+            ("", "not a URL"),
+        ] {
+            let error = parse_origin(entry).expect_err(entry);
+            assert!(error.contains(reason), "{entry}: {error}");
+            assert!(error.contains(&format!("`{entry}`")), "{entry}: {error}");
+        }
+    }
+
+    // spec: PRT-003, PRT-070
+    #[test]
+    fn only_the_own_origin_and_exactly_the_configured_origins_may_upgrade() {
+        let allowed = vec!["https://omfp.example.ts.net".to_owned()];
+        let host = Some("127.0.0.1:7420");
+
+        assert!(origin_allowed(None, host, &allowed));
+        for origin in [
+            "http://127.0.0.1:7420",
+            "https://127.0.0.1:7420",
+            "https://omfp.example.ts.net",
+        ] {
+            assert!(origin_allowed(Some(origin), host, &allowed), "{origin}");
+        }
+        for origin in [
+            "https://evil.example",
+            "http://127.0.0.1:7421",
+            "http://omfp.example.ts.net",
+            "https://omfp.example.ts.net:8443",
+            "https://evil.omfp.example.ts.net",
+            "https://omfp.example.ts.net.evil.example",
+            "null",
+        ] {
+            assert!(!origin_allowed(Some(origin), host, &allowed), "{origin}");
+        }
+        assert!(!origin_allowed(Some("http://127.0.0.1:7420"), None, &[]));
+        assert!(
+            origin_allowed(Some("http://127.0.0.1:7420"), host, &[]),
+            "without a list the own origin still upgrades"
+        );
+    }
 
     // spec: PRT-034
     #[test]

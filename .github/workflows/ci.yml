@@ -1,0 +1,132 @@
+# What `just ci` runs locally, split into parallel jobs (docs/specs/06-testing.md, TST-070..TST-074). Every check runs
+# inside the flake's dev shell, `nix develop -c just <recipe>`; `just check-workflow` keeps this file and `just ci` in
+# step.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  web:
+    name: web bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          rust: "false"
+      - run: nix develop -c just build-web
+      # Built once, served by the e2e and desktop jobs (OMFP_WEB_BUNDLE).
+      - uses: actions/upload-artifact@v7
+        with:
+          name: web-bundle
+          path: ui/packages/app/dist
+          if-no-files-found: error
+          retention-days: 7
+
+  check:
+    name: lint, versions, spec-trace, wasm, deny, workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just check
+
+  test:
+    name: Rust tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just test
+
+  test-ts:
+    name: TypeScript tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just test-ts
+
+  test-contract:
+    name: contract tests (pinned omp, fake LLM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just test-contract
+
+  test-e2e:
+    name: E2E (headless Chromium)
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OMFP_WEB_BUNDLE: ${{ github.workspace }}/../web-bundle
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: web-bundle
+          path: ${{ env.OMFP_WEB_BUNDLE }}
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just test-e2e
+
+  test-desktop:
+    name: desktop (WebKitGTK under xvfb)
+    needs: web
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OMFP_WEB_BUNDLE: ${{ github.workspace }}/../web-bundle
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: web-bundle
+          path: ${{ env.OMFP_WEB_BUNDLE }}
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just test-desktop
+
+  package:
+    name: Nix packages
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      # Nix builds the packages in its sandbox (no cargo cache); Cachix keeps them on master.
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          rust: "false"
+      - run: nix develop -c just package

@@ -1,0 +1,49 @@
+name: Dev shell
+description: >-
+  Nix with the omfp Cachix cache (pushed to by pushes to master only), the flake's dev shell, and for Rust jobs more
+  disk space and the cargo registry and target cache.
+inputs:
+  cachix-auth-token:
+    description: The `CACHIX_AUTH_TOKEN` secret; empty (forks) reads the cache only.
+    required: false
+    default: ""
+  rust:
+    description: Whether the job compiles Rust ("true"/"false"); then the cargo cache is restored (and saved on master).
+    required: false
+    default: "true"
+runs:
+  using: composite
+  steps:
+    - name: Free disk space
+      if: inputs.rust == 'true'
+      shell: bash
+      # The dev shell (Chromium, WebKitGTK, omp, the Rust toolchain) and a debug target dir with Tauri do not fit
+      # next to the preinstalled SDKs the jobs never use.
+      run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+
+    - uses: cachix/install-nix-action@v31
+      with:
+        github_access_token: ${{ github.token }}
+        extra_nix_config: accept-flake-config = true
+
+    - uses: cachix/cachix-action@v17
+      with:
+        name: omfp
+        authToken: ${{ inputs.cachix-auth-token }}
+        # Pull requests read the cache; only pushes to master fill it.
+        skipPush: ${{ !(github.event_name == 'push' && github.ref == 'refs/heads/master') }}
+
+    - name: Build the dev shell
+      shell: bash
+      # Also puts the shell's Rust toolchain on PATH for rust-cache, which keys on `rustc -vV` and reads
+      # `cargo metadata`; every other step still runs inside `nix develop`.
+      run: |
+        nix develop -c sh -c 'dirname "$(command -v cargo)" > "$RUNNER_TEMP/toolchain-bin"'
+        cat "$RUNNER_TEMP/toolchain-bin" >> "$GITHUB_PATH"
+
+    - uses: Swatinem/rust-cache@v2
+      if: inputs.rust == 'true'
+      with:
+        # Keyed on the job, Cargo.lock, the Cargo.toml files, rust-toolchain.toml and `rustc -vV`; pull requests
+        # restore master's cache without writing their own.
+        save-if: ${{ github.ref == 'refs/heads/master' }}

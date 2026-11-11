@@ -15,13 +15,26 @@ test-contract:
     cargo nextest run --workspace --exclude e2e -E 'binary(/^contract_/)'
 
 # End-to-end journeys (L5): headless Chromium on the web bundle, a daemon with the pinned omp and the fake LLM
-test-e2e: build-web
-    cargo nextest run -p e2e
+test-e2e: (with-web-bundle "cargo nextest run -p e2e")
 
 # spec: TST-033 — the desktop window (`--features desktop`, WebKitGTK) under `xvfb-run`: the smoke test and the
 # background daemon shared by two windows; one test at a time, as parallel `xvfb-run -a` can pick the same display
-test-desktop: build-web
-    cargo nextest run -p omfp --features desktop --test-threads 1
+test-desktop: (with-web-bundle "cargo nextest run -p omfp --features desktop --test-threads 1")
+
+# spec: TST-074 — `command` with a web bundle of its own in `OMFP_WEB_BUNDLE`: the one given (CI's `web` job builds it
+# once, TST-073), else a release bundle built into a temporary directory. Never `ui/packages/app/dist`: another `just
+# build-web` deletes and rebuilds it, and a test serving it meanwhile gets 404 pages.
+[private]
+with-web-bundle command:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -z "${OMFP_WEB_BUNDLE:-}" ]]; then
+        OMFP_WEB_BUNDLE=$(mktemp -d)
+        trap 'rm -rf "$OMFP_WEB_BUNDLE"' EXIT
+        export OMFP_WEB_BUNDLE
+        {{ quote(just_executable()) }} --justfile {{ quote(justfile()) }} build-web "$OMFP_WEB_BUNDLE"
+    fi
+    {{ command }}
 
 # Re-record omp fixtures under fixtures/omp/<version>/ (TST-012)
 record-fixtures:
@@ -66,9 +79,9 @@ gen-states:
     OMFP_UPDATE_STATES=1 cargo nextest run -p omfp-core --test golden_states
 
 # Release web bundle of the TypeScript UI (`bun run build` in ui/packages/app, see its build.ts) into
-# ui/packages/app/dist, which the daemon serves (DMN-008)
-build-web: ui-install
-    cd ui && bun run build
+# ui/packages/app/dist, which the daemon serves (DMN-008), or into the absolute path `out`
+build-web out="": ui-install
+    cd ui && OMFP_WEB_OUT={{ quote(out) }} bun run build
 
 # Try the app: the release web bundle on a daemon with your own HOME, omp config (~/.omp) and default data dir;
 # arguments go to the daemon, e.g. `just serve --bind 127.0.0.1:7421`
@@ -119,6 +132,19 @@ spec-trace:
 deny:
     cargo deny check
 
+# spec: TST-070, TST-071, TST-072, TST-073 — the GitHub workflow (.github/workflows/ci.yml) passes actionlint and runs
+# what `just ci` runs, in the dev shell, with its caches and the shared web bundle (.github/check-workflow.ts)
+check-workflow:
+    bun .github/check-workflow.ts {{ quote(just_executable()) }}
+
+# spec: ENV-030, ENV-031, ENV-032, ENV-033 — the Nix packages: `omfp` (web bundle included, the pinned omp on the
+# wrapper's PATH) and `omfp-headless` (without the desktop window)
+package:
+    nix build --no-link .#omfp .#omfp-headless
+
+# Static checks: formatting and lints, version pins, traceability, wasm, dependencies, the CI workflow
+check: lint check-versions spec-trace check-wasm deny check-workflow
+
 # Mutation testing of the pure crates (TST-005); pass `--in-diff <file>` to limit it to a change
 mutants *args:
     cargo mutants --test-tool nextest -p omfp-core -p omfp-protocol -p fake-llm -p xtask {{ args }}
@@ -127,5 +153,5 @@ mutants *args:
 cov:
     cargo llvm-cov nextest --workspace --exclude e2e --html -E 'not binary(/^contract_/)'
 
-# Everything a change must pass
-ci: lint check-versions spec-trace check-wasm test test-ts test-contract test-e2e test-desktop deny
+# Everything a change must pass (CI runs the same recipes as parallel jobs: .github/workflows/ci.yml)
+ci: check test test-ts test-contract test-e2e test-desktop package

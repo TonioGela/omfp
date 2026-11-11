@@ -1,5 +1,13 @@
 {
-  description = "omfp: web and desktop GUI for oh-my-pi (TypeScript UI, Rust daemon) — development environment only";
+  description = "omfp: web and desktop GUI for oh-my-pi (TypeScript UI, Rust daemon)";
+
+  # ENV-034: the project's binary cache (CI pushes the dev shell and the packages); Nix asks before using it.
+  nixConfig = {
+    extra-substituters = [ "https://omfp.cachix.org" ];
+    extra-trusted-public-keys = [
+      "omfp.cachix.org-1:WcxTiZMXSYmi9k6fxowUuIMmszu9aWymk2djl9kXjHc="
+    ];
+  };
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -86,8 +94,38 @@
               args: lib.filterAttrs (name: _: !lib.hasPrefix "@omfp/" name) (uiBunNix args)
             ) (lib.functionArgs uiBunNix);
           };
+
+          # ENV-030..033: the installable app (nix/package.nix) with the release web bundle (nix/web.nix). The
+          # toolchain's channel without its components: with `rust-src` installed, rustc writes the real path of the
+          # std sources into the binary's panic locations, which pulls the whole toolchain into the closure.
+          packageToolchain = pkgs.rust-bin.fromRustupToolchain {
+            inherit ((lib.importTOML ./rust-toolchain.toml).toolchain) channel;
+            profile = "minimal";
+          };
+          rustPlatform = pkgs.makeRustPlatform {
+            cargo = packageToolchain;
+            rustc = packageToolchain;
+          };
+          omfpWeb = pkgs.callPackage ./nix/web.nix {
+            inherit bun2nix;
+            bunDeps = uiBunDeps;
+            inherit ((lib.importTOML ./Cargo.toml).workspace.package) version;
+          };
+          omfpPackage =
+            desktop:
+            pkgs.callPackage ./nix/package.nix {
+              inherit rustPlatform omp desktop;
+              web = omfpWeb;
+            };
         in
         {
+          packages = {
+            omfp = omfpPackage pkgs.stdenv.hostPlatform.isLinux;
+            omfp-headless = omfpPackage false;
+            omfp-web = omfpWeb;
+            default = config.packages.omfp;
+          };
+
           formatter = pkgs.nixfmt;
 
           # Hooks run on commit (installed by the dev shell) and as `checks.<system>.pre-commit`.
@@ -165,6 +203,8 @@
               pkgs.jq
               pkgs.websocat
               pkgs.nixfmt
+              # GitHub Actions workflow lint (`just check`, .github/workflows)
+              pkgs.actionlint
             ]
             ++ config.pre-commit.settings.enabledPackages
             ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [

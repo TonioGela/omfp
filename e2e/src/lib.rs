@@ -34,7 +34,8 @@ use thirtyfour::prelude::*;
 pub const TIMEOUT: Duration = Duration::from_secs(60);
 const POLL: Duration = Duration::from_millis(50);
 
-/// The web bundle built by `just build-web` (`ui/packages/app/dist`), or `OMFP_WEB_BUNDLE`.
+/// The web bundle in `OMFP_WEB_BUNDLE` (`just test-e2e` sets it to a bundle no other build writes, TST-074), else the
+/// one built by `just build-web` (`ui/packages/app/dist`).
 #[must_use]
 pub fn web_bundle() -> PathBuf {
     std::env::var_os("OMFP_WEB_BUNDLE").map_or_else(
@@ -87,6 +88,12 @@ impl ChromeDriver {
     fn start_once() -> anyhow::Result<Result<Self, String>> {
         let mut child = Command::new("chromedriver")
             .arg("--port=0")
+            // Never the user's session bus: Chromium would move itself into a systemd scope of the user's session
+            // (`app-org.chromium.Chromium-<pid>.scope`), out of the memory limit the tests run under.
+            .env(
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=/nonexistent/omfp-e2e-no-session-bus",
+            )
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()

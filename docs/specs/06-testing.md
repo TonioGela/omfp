@@ -145,12 +145,31 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 | `just test-contract` | L3 against the pinned omp (needs the dev shell) |
 | `just test-ts` | `bun run test` in `ui/`: L0 TypeScript (the reducer against the golden states, client session/model tests), L4 (view models, kit and app component tests with the happy-dom preload), the client transport suite against the test daemon |
 | `just gen-ts` / `just gen-states` | regenerate the TypeScript protocol types (`ui/packages/protocol/src/generated.ts`) / the golden reducer states (`fixtures/states/<version>/`); `just test` fails while either is stale |
-| `just test-e2e` | L5 (builds the release web bundle first, `just build-web`) |
-| `just test-desktop` | the `omfp` crate with `--features desktop`: the desktop unit tests and the window tests of TST-033 under `xvfb-run`, one at a time (builds the release web bundle first) |
+| `just test-e2e` | L5 on a release web bundle of its own (TST-074): `OMFP_WEB_BUNDLE` when set, else one built into a temporary directory |
+| `just test-desktop` | the `omfp` crate with `--features desktop`: the desktop unit tests and the window tests of TST-033 under `xvfb-run`, one at a time (on its own web bundle, as `just test-e2e`) |
+| `just check` | `lint` (`fmt --check`, `clippy -D warnings`, Biome, `tsc`), `check-versions`, `spec-trace`, `check-wasm`, `deny` (`cargo deny check`), `check-workflow` (TST-070..TST-073) |
+| `just package` | `nix build` of the packages `omfp` and `omfp-headless` (ENV-030..ENV-033) |
 | `just mutants` | `cargo mutants` on `omfp-core`, `omfp-protocol`, `fake-llm`, `xtask` (`--in-diff` for changed code) |
 | `just cov` | `cargo llvm-cov` report |
-| `just ci` | everything above + `spec-trace`, `clippy -D warnings`, `fmt --check`, `cargo deny check` |
+| `just ci` | `check`, `test`, `test-ts`, `test-contract`, `test-e2e`, `test-desktop`, `package`: what CI runs, as one command |
 
 | ID | Requirement |
 | --- | --- |
 | TST-050 | Gates for `just ci`: no surviving mutants in `omfp-core` and `omfp-protocol` (exceptions listed with a reason in `mutants.toml`); line coverage ≥ 90% for `omfp-core`, `omfp-protocol` and the TypeScript view models (`ui/packages/app/src/vm/`, `bun test --coverage`), ≥ 75% for `omfp-daemon`. |
+
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `just ci` for every push to `master` and every pull request, split into
+parallel jobs: `web` (`just build-web`, uploaded as the `web-bundle` artifact), `check`, `test`, `test-ts`,
+`test-contract`, `test-e2e` and `test-desktop` (both after `web`, on its artifact), `package`. Each job sets up Nix with
+the local action `.github/actions/dev-shell` and runs one `nix develop -c just <recipe>`, so a job fails exactly where
+the same recipe fails locally. The setup and the secret it needs are described in
+[01 — Continuous integration](01-dev-environment.md#continuous-integration).
+
+| ID | Requirement |
+| --- | --- |
+| TST-070 | CI MUST run on pushes to `master` and on pull requests; each job sets up the dev shell and runs only `nix develop -c just <recipe>`; together the jobs run every recipe `just ci` depends on and none it does not (but `build-web`). `just check-workflow` (`.github/check-workflow.ts`) checks this against `just --dump`. |
+| TST-071 | The workflow and its local action MUST pass `actionlint` (in the dev shell, run by `just check-workflow`), and every action MUST be pinned by a major tag or a commit SHA, on a maintained release. |
+| TST-072 | Caches: the Nix store (the dev shell, with Bun's install cache `OMFP_BUN_CACHE`, and the packages) comes from the `omfp` Cachix cache (ENV-034), which only pushes to `master` fill (`skipPush` otherwise); `Swatinem/rust-cache` keeps the cargo registry and `target/` per job, keyed on `Cargo.lock`, the manifests, `rust-toolchain.toml` and `rustc -vV`, saved on `master` only. Every job hands the setup action the `CACHIX_AUTH_TOKEN` secret (empty on forks: read only). |
+| TST-073 | The web bundle MUST be built once per run: the `web` job uploads `ui/packages/app/dist`, and the e2e and desktop jobs need it and serve its artifact through `OMFP_WEB_BUNDLE`. |
+| TST-074 | `just test-e2e` and `just test-desktop` MUST serve a web bundle no other process writes: `OMFP_WEB_BUNDLE` when set, else a release bundle built into a temporary directory (`build-web <out>`, `OMFP_WEB_OUT` of `build.ts`), never `ui/packages/app/dist`, which another `just build-web` deletes and rebuilds (a journey then gets a 404 page). `build.ts` writes its generated entries per process (`.entries-<pid>`), so concurrent builds do not delete each other's. |

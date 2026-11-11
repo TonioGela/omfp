@@ -6,6 +6,9 @@
 //! [daemon]
 //! bind = "127.0.0.1:7420"
 //! title_generation = false
+//! # Origins besides the daemon's own allowed to open the WebSocket (DMN-140): the UI's URL behind a tunnel or a
+//! # reverse proxy, exactly `http(s)://host[:port]`; no `*`.
+//! allowed_origins = ["https://omfp.example.ts.net"]
 //!
 //! [ui]
 //! density = "normal"            # compact | normal
@@ -47,7 +50,8 @@ pub struct DaemonOptions {
     pub idle_timeout_minutes: Option<u64>,
     pub max_processes: Option<usize>,
     pub event_buffer: Option<usize>,
-    pub allow_origin: Option<Vec<String>>,
+    /// `--allowed-origin`, plural as it is a list (DMN-140).
+    pub allowed_origins: Option<Vec<String>>,
     pub theme_file: Option<PathBuf>,
     /// `false` is `--no-title-generation`.
     pub title_generation: Option<bool>,

@@ -32,7 +32,8 @@ only be reachable from the human UI.
 
 ```sh
 nix develop                      # or: nix develop -c sh -c '<command>'
-just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-ts, test-contract, test-e2e, test-desktop, deny
+just ci                          # check, test, test-ts, test-contract, test-e2e, test-desktop, package (CI: .github/workflows/ci.yml, same recipes)
+just check                       # lint, check-versions, spec-trace, check-wasm, deny, check-workflow (actionlint + workflow vs `just ci`)
 just test                        # fast Rust tests (no omp process)
 just test-ts                     # `bun run test` in ui/ (reducer goldens, client, kit + app component tests; transport suite against a fake-launcher daemon)
 just test-contract               # contract tests against the pinned omp + fake LLM
@@ -40,10 +41,12 @@ just record-fixtures             # re-record fixtures/ (review the diff!), then 
 just gen-states                  # golden reducer states fixtures/states/<ver>/ from the Rust reducer
 just gen-ts                      # ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas
 just gen-bun-nix                 # ui/bun.nix from ui/bun.lock (bun2nix), after every JS dependency change
-just test-e2e                    # L5 journeys: builds the web bundle, headless Chromium + daemon + omp + fake LLM
+just test-e2e                    # L5 journeys: builds a private web bundle, headless Chromium + daemon + omp + fake LLM
 just test-desktop                # `omfp --features desktop`: desktop unit tests + the Tauri window under xvfb-run (TST-033)
 just build-web                   # release bundle of the TypeScript UI into ui/packages/app/dist (`bun run build`)
 just serve [daemon args]         # try the app: release bundle + `omfp daemon` with your HOME, ~/.omp, default data dir
+nix build .#omfp                 # the install: omfp with the desktop window, the web bundle and the pinned omp (nix/);
+                                 # .#omfp-headless without WebKit
 just desktop [desktop args]      # try the desktop app: one more window on your local daemon (started in the background)
 just brand                       # regenerate the logo: docs/brand SVGs, kit outlines, favicon, desktop icon
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
@@ -166,6 +169,8 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   (RGBA). WebKitGTK has no `RTCPeerConnection` (the desktop's live voice uses omp's `live_start`, S-09) and keys
   `localStorage` by origin, port included. Parallel `xvfb-run -a` can pick the same display: `just test-desktop` runs
   one test at a time.
+- `bun run build` (`just build-web`) deletes `ui/packages/app/dist` first: a journey serving it while another build
+  runs gets 404 pages, so `just test-e2e`/`test-desktop` serve a private bundle (`OMFP_WEB_BUNDLE`, TST-074).
 - `convco` does not build from nixpkgs, so commitizen checks commit messages.
 - `typos` skips `fixtures/` (streamed deltas split words).
 - Component tests need a DOM: `bun run test` (in `ui/`) preloads `ui/test/dom.ts` (happy-dom) only for

@@ -551,4 +551,20 @@ requirements = [
   "UI-190",
   "UI-191",
   "UI-197",
+  # Origin allow-list (D-13)
+  "DMN-140",
+  "DMN-141",
+  "PRT-070",
+  # Continuous integration
+  "TST-070",
+  "TST-071",
+  "TST-072",
+  "TST-073",
+  "TST-074",
+  # Nix packages
+  "ENV-030",
+  "ENV-031",
+  "ENV-032",
+  "ENV-033",
+  "ENV-034",
 ]

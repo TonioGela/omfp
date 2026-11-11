@@ -8,6 +8,7 @@ use std::time::Duration;
 use clap::Parser;
 
 use crate::config_file::{ConfigFile, DaemonOptions};
+use crate::server::parse_origin;
 
 /// Default `--bind` (DMN-002).
 pub const DEFAULT_BIND: SocketAddr =
@@ -53,8 +54,10 @@ pub struct Cli {
     /// Events kept in memory per thread so reconnecting clients can catch up (DMN-041; default: 2000).
     #[arg(long)]
     pub event_buffer: Option<usize>,
-    /// Extra allowed `Origin` values for WebSocket upgrades (PRT-003), e.g. behind a reverse proxy.
-    #[arg(long = "allow-origin")]
+    /// An `Origin` allowed to open the WebSocket besides the daemon's own (PRT-003, DMN-140), exactly
+    /// `http(s)://host[:port]`, e.g. the UI's URL behind a tunnel or reverse proxy; repeat for more. Replaces the
+    /// config file's `allowed_origins`; `*` is refused.
+    #[arg(long = "allowed-origin", value_name = "ORIGIN")]
     pub allowed_origins: Vec<String>,
     /// Theme file followed by the daemon (DMN-075; default: `$XDG_CONFIG_HOME/omfp/theme.css`, else
     /// `~/.config/omfp/theme.css`).
@@ -78,6 +81,7 @@ pub struct Config {
     pub idle_timeout: Duration,
     pub max_processes: usize,
     pub event_buffer: usize,
+    /// Origins allowed to upgrade besides the daemon's own (DMN-140), normalized as a browser sends them (DMN-141).
     pub allowed_origins: Vec<String>,
     /// The theme file to follow (DMN-075); `None` follows none. [`Config::from_cli`] takes `--theme-file` or the
     /// config file's `theme_file`; `omfp daemon` ([`crate::run`]) adds the default location.
@@ -148,9 +152,16 @@ impl Config {
             .or(options.idle_timeout_minutes)
             .unwrap_or(15);
         let allowed_origins = if cli.allowed_origins.is_empty() {
-            options.allow_origin.unwrap_or_default()
+            let file = cli
+                .config
+                .as_deref()
+                .unwrap_or(Path::new("the config file"));
+            origins(
+                options.allowed_origins.as_deref().unwrap_or_default(),
+                &format!("`allowed_origins` in {}", file.display()),
+            )?
         } else {
-            cli.allowed_origins
+            origins(&cli.allowed_origins, "--allowed-origin")?
         };
         Ok(Self {
             bind: cli.bind.or(options.bind).unwrap_or(DEFAULT_BIND),
@@ -170,6 +181,14 @@ impl Config {
             file_options,
         })
     }
+}
+
+/// The allow-list entries normalized (DMN-141); the first invalid one fails startup, named with its `source`.
+fn origins(entries: &[String], source: &str) -> Result<Vec<String>, String> {
+    entries
+        .iter()
+        .map(|entry| parse_origin(entry).map_err(|error| format!("{source}: {error}")))
+        .collect()
 }
 
 /// Name of the web bundle directory shipped next to the `omfp` executable (packaging, DMN-008).
@@ -230,7 +249,7 @@ data_dir = "~/omfp-data"
 workspaces_root = "/srv/ws"
 idle_timeout_minutes = 30
 max_processes = 3
-allow_origin = ["https://omfp.example.com"]
+allowed_origins = ["https://omfp.example.com"]
 theme_file = "~/themes/mine.css"
 title_generation = false
 allow_omp_mismatch = true
@@ -259,7 +278,7 @@ allow_omp_mismatch = true
             "127.0.0.1:1",
             "--max-processes",
             "5",
-            "--allow-origin",
+            "--allowed-origin",
             "https://other.example",
             "--data-dir",
             "/d",
@@ -291,6 +310,68 @@ allow_omp_mismatch = true
         assert_eq!(
             default_config_file(None, Some("/home/u".into())),
             Some(PathBuf::from("/home/u/.config/omfp/config.toml"))
+        );
+    }
+
+    // spec: DMN-140, DMN-009
+    #[test]
+    fn allowed_origins_come_from_the_repeatable_flag_else_the_config_file() {
+        assert_eq!(config(&[]).unwrap().allowed_origins, Vec::<String>::new());
+        let (_dir, file) = with_file(
+            "[daemon]\nallowed_origins = [\"https://omfp.example.ts.net/\", \"HTTP://100.64.0.7:7420\"]\n",
+        );
+        assert_eq!(
+            config(&["--config", &file]).unwrap().allowed_origins,
+            ["https://omfp.example.ts.net", "http://100.64.0.7:7420"],
+            "normalized as a browser sends them"
+        );
+        assert_eq!(
+            config(&[
+                "--config",
+                &file,
+                "--allowed-origin",
+                "https://a.example",
+                "--allowed-origin",
+                "https://b.example:8443",
+            ])
+            .unwrap()
+            .allowed_origins,
+            ["https://a.example", "https://b.example:8443"],
+            "the flags replace the file's list"
+        );
+    }
+
+    // spec: DMN-141
+    #[test]
+    fn an_invalid_allowed_origin_fails_startup_naming_the_entry_and_where_it_is() {
+        let error = config(&[
+            "--allowed-origin",
+            "https://ok.example",
+            "--allowed-origin",
+            "*",
+        ])
+        .unwrap_err();
+        assert!(error.starts_with("--allowed-origin: `*`"), "{error}");
+        assert!(error.contains("wildcards are not allowed"), "{error}");
+
+        let (_dir, file) = with_file("[daemon]\nallowed_origins = [\"omfp.example.ts.net\"]\n");
+        let error = config(&["--config", &file]).unwrap_err();
+        assert!(
+            error.contains(&format!("`allowed_origins` in {file}")),
+            "{error}"
+        );
+        assert!(error.contains("`omfp.example.ts.net`"), "{error}");
+        assert!(error.contains("http:// or https://"), "{error}");
+        assert!(
+            config(&["--config", &file, "--allowed-origin", "https://ok.example"]).is_ok(),
+            "a list replaced by the flags is not checked"
+        );
+
+        let (_dir, file) = with_file("[daemon]\nallow_origin = [\"https://omfp.example.com\"]\n");
+        let error = config(&["--config", &file]).unwrap_err();
+        assert!(
+            error.contains("allow_origin"),
+            "the old key is unknown: {error}"
         );
     }
 

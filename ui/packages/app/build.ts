@@ -20,8 +20,11 @@ import { FAVICONS, indexHtml } from "./index-html.ts";
 
 const require = createRequire(import.meta.url);
 const root = import.meta.dir;
-const outdir = join(root, "dist");
-const entries = join(root, ".entries");
+// `OMFP_WEB_OUT` (an absolute path) builds elsewhere, e.g. the private bundle of `just test-e2e`: a rebuild of `dist/`
+// by another process (it is deleted first) would otherwise break a test serving it. The generated entries are per
+// process, so concurrent builds do not delete each other's.
+const outdir = process.env.OMFP_WEB_OUT || join(root, "dist");
+const entries = join(root, `.entries-${process.pid}`);
 
 /** An import-map module: its specifier, the name of its bundle entry, and how its entry is generated. */
 interface Shared {

@@ -19,7 +19,7 @@ use axum::routing::get;
 use subtle::ConstantTimeEq;
 use tokio::sync::watch;
 
-pub use auth::{Permission, Principal, authorize, permission};
+pub use auth::{Permission, Principal, authorize, origin_allowed, parse_origin, permission};
 pub(crate) use services::Services;
 
 use crate::token::Token;
@@ -126,30 +126,20 @@ async fn widget_file(
     }
 }
 
-/// Whether a WebSocket upgrade with this `Origin` may proceed (PRT-003): no `Origin` (not a browser), the daemon's
-/// own origin (`http(s)://<Host>`), or one of the configured origins.
-#[must_use]
-pub fn origin_allowed(origin: Option<&str>, host: Option<&str>, allowed: &[String]) -> bool {
-    let Some(origin) = origin else {
-        return true;
-    };
-    allowed.iter().any(|allowed| allowed == origin)
-        || host.is_some_and(|host| {
-            origin == format!("http://{host}") || origin == format!("https://{host}")
-        })
-}
-
 async fn upgrade(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     upgrade: WebSocketUpgrade,
 ) -> Response {
     let header = |name| headers.get(name).and_then(|value| value.to_str().ok());
-    if !origin_allowed(
-        header(header::ORIGIN),
-        header(header::HOST),
-        &state.allowed_origins,
-    ) {
+    let (origin, host) = (header(header::ORIGIN), header(header::HOST));
+    if !origin_allowed(origin, host, &state.allowed_origins) {
+        tracing::warn!(
+            origin,
+            host,
+            "refused a WebSocket upgrade from a foreign origin; if the UI is reached through a tunnel or a \
+             reverse proxy, add that origin to `allowed_origins` (DMN-140)"
+        );
         return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
     }
     upgrade
@@ -216,36 +206,6 @@ fn content_type(path: &Path) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // spec: PRT-003
-    #[test]
-    fn only_the_own_origin_and_configured_origins_may_upgrade() {
-        let allowed = vec!["https://omfp.example.com".to_owned()];
-        let host = Some("127.0.0.1:7420");
-
-        assert!(origin_allowed(None, host, &allowed));
-        assert!(origin_allowed(
-            Some("http://127.0.0.1:7420"),
-            host,
-            &allowed
-        ));
-        assert!(origin_allowed(
-            Some("https://omfp.example.com"),
-            host,
-            &allowed
-        ));
-        assert!(!origin_allowed(
-            Some("https://evil.example"),
-            host,
-            &allowed
-        ));
-        assert!(!origin_allowed(
-            Some("http://127.0.0.1:7421"),
-            host,
-            &allowed
-        ));
-        assert!(!origin_allowed(Some("http://127.0.0.1:7420"), None, &[]));
-    }
 
     #[test]
     fn static_paths_cannot_leave_the_root() {

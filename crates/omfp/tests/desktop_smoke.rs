@@ -12,8 +12,13 @@ use gio::glib::{self, ToVariant as _};
 
 use rustix::process::{Pid, Signal, kill_process};
 
+/// The web bundle built by `just build-web` (`ui/packages/app/dist`), or `OMFP_WEB_BUNDLE` (`just test-desktop` builds a
+/// private one, which no other build can replace while the tests run).
 fn web_bundle() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/packages/app/dist")
+    std::env::var_os("OMFP_WEB_BUNDLE").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/packages/app/dist"),
+        PathBuf::from,
+    )
 }
 
 /// `omfp desktop <args>` under `xvfb-run` with `OMFP_SMOKE=<smoke>` and a temporary home.

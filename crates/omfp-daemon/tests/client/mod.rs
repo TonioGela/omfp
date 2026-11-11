@@ -41,10 +41,20 @@ impl Client {
         addr: SocketAddr,
         origin: &str,
     ) -> Result<Self, tungstenite::Error> {
+        Self::connect_with_origin_and_host(addr, origin, &addr.to_string()).await
+    }
+
+    /// Opens a connection with an `Origin` and a `Host` header, as a browser behind a reverse proxy that passes its
+    /// `Host` on (or replaces it) does.
+    pub async fn connect_with_origin_and_host(
+        addr: SocketAddr,
+        origin: &str,
+        host: &str,
+    ) -> Result<Self, tungstenite::Error> {
         let mut request = url(addr).into_client_request().unwrap();
-        request
-            .headers_mut()
-            .insert("origin", origin.parse().unwrap());
+        let headers = request.headers_mut();
+        headers.insert("origin", origin.parse().unwrap());
+        headers.insert("host", host.parse().unwrap());
         connect_async(request).await.map(|(ws, _)| Self::from(ws))
     }
 

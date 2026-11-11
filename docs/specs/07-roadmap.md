@@ -428,6 +428,10 @@ Scope:
 
 Acceptance: all of the above documented and green in CI.
 
+Origin allow-list (done): `[daemon] allowed_origins` / `--allowed-origin` (replacing the unchecked
+`allow_origin`), exact `http(s)://host[:port]` entries normalised as browsers send them, invalid entries and wildcards
+refused at startup, a refused upgrade logged with the hint (DMN-140, DMN-141, PRT-070).
+
 Performance (done): measured on the React UI (headless Chromium 157, Ryzen 9 7900X), 10,000 messages keep 8–9 items
 (~180 elements) in the DOM, first open takes ~180 ms, and scrolling top to bottom in 600 frames and streaming 100
 events/s for 10 s and 60 s drop no frames (0.7 ms of script per event, from 5.6 ms). Fixed: a per-render `getItemKey`

@@ -127,26 +127,76 @@ async fn a_wrong_token_is_unauthorized_and_closes_the_connection() {
     assert_eq!(client.close_code().await, Some(4401));
 }
 
-// spec: PRT-003
-#[tokio::test(flavor = "multi_thread")]
-async fn upgrades_from_foreign_origins_are_rejected() {
-    let daemon = daemon(&["--allow-origin", "https://omfp.example.com"]).await;
-    let addr = daemon.handle.addr();
+/// Whether a browser at `origin` reaching the daemon with `host` upgrades and passes `system.hello`; a refused upgrade
+/// is `403`.
+async fn upgrades(daemon: &TestDaemon, origin: &str, host: &str) -> bool {
+    match Client::connect_with_origin_and_host(daemon.handle.addr(), origin, host).await {
+        Ok(mut client) => {
+            client
+                .send_text(hello(daemon.handle.token().expose(), 1))
+                .await;
+            assert_eq!(client.frame().await["ok"], true, "{origin}");
+            true
+        }
+        Err(tokio_tungstenite::tungstenite::Error::Http(response)) => {
+            assert_eq!(response.status(), 403, "{origin}");
+            false
+        }
+        Err(error) => panic!("{origin}: {error}"),
+    }
+}
 
+// spec: PRT-003, PRT-070
+#[tokio::test(flavor = "multi_thread")]
+async fn without_a_list_only_the_daemons_own_origin_upgrades() {
+    let daemon = daemon(&[]).await;
+    let own = daemon.handle.addr().to_string();
+
+    assert!(upgrades(&daemon, &format!("http://{own}"), &own).await);
+    assert!(!upgrades(&daemon, "https://evil.example", &own).await);
     assert!(
-        Client::connect_with_origin(addr, "https://evil.example")
-            .await
-            .is_err()
+        !upgrades(&daemon, "https://omfp.example.ts.net", &own).await,
+        "a proxy that rewrites Host to the daemon's address needs the list"
     );
+    assert!(
+        upgrades(
+            &daemon,
+            "https://omfp.example.ts.net",
+            "omfp.example.ts.net"
+        )
+        .await,
+        "a proxy that passes the browser's Host on needs no list"
+    );
+}
+
+// spec: PRT-003, PRT-070, DMN-140
+#[tokio::test(flavor = "multi_thread")]
+async fn upgrades_from_listed_origins_pass_and_others_are_rejected() {
+    let daemon = daemon(&[
+        "--allowed-origin",
+        "https://omfp.example.ts.net/",
+        "--allowed-origin",
+        "http://100.64.0.7:7420",
+    ])
+    .await;
+    let own = daemon.handle.addr().to_string();
+
     for origin in [
-        format!("http://{addr}"),
-        "https://omfp.example.com".to_owned(),
+        format!("http://{own}"),
+        "https://omfp.example.ts.net".to_owned(),
+        "http://100.64.0.7:7420".to_owned(),
     ] {
-        let mut client = Client::connect_with_origin(addr, &origin).await.unwrap();
-        client
-            .send_text(hello(daemon.handle.token().expose(), 1))
-            .await;
-        assert_eq!(client.frame().await["ok"], true, "{origin}");
+        assert!(upgrades(&daemon, &origin, &own).await, "{origin}");
+    }
+    for origin in [
+        "https://evil.example",
+        "http://omfp.example.ts.net",
+        "https://omfp.example.ts.net:8443",
+        "https://x.omfp.example.ts.net",
+        "http://100.64.0.7:7421",
+        "null",
+    ] {
+        assert!(!upgrades(&daemon, origin, &own).await, "{origin}");
     }
 }
 
