@@ -9,8 +9,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, bail};
+use omfp_protocol::ThreadSummary;
 use serde::{Deserialize, Serialize};
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 use tokio::task::JoinHandle;
 use tracing::{info, warn};
 
@@ -159,6 +160,18 @@ fn write_info(data_dir: &Path, info: &DaemonInfo) -> std::io::Result<()> {
     std::fs::rename(temporary, data_dir.join(INFO_FILE))
 }
 
+/// Asks a running daemon to stop as SIGTERM does (DMN-005); the tray's `Quit daemon` sends it (DMN-130). Cheap to
+/// clone, usable from any thread.
+#[derive(Debug, Clone)]
+pub struct StopRequest(Arc<Notify>);
+
+impl StopRequest {
+    /// Requests the stop; [`run_with`] then shuts the daemon down.
+    pub fn request(&self) {
+        self.0.notify_one();
+    }
+}
+
 /// A running daemon.
 #[derive(Debug)]
 pub struct DaemonHandle {
@@ -168,6 +181,8 @@ pub struct DaemonHandle {
     supervisor: Supervisor,
     jobs: Jobs,
     stop: watch::Sender<bool>,
+    stop_request: Arc<Notify>,
+    threads: watch::Receiver<Vec<ThreadSummary>>,
     server: JoinHandle<std::io::Result<()>>,
     background: Vec<JoinHandle<()>>,
     _lock: File,
@@ -200,6 +215,24 @@ impl DaemonHandle {
     #[must_use]
     pub fn supervisor(&self) -> &Supervisor {
         &self.supervisor
+    }
+
+    /// The absolute data directory.
+    #[must_use]
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
+    /// The thread summaries of the `index` topic, current and on every change (the tray's status, DMN-129).
+    #[must_use]
+    pub fn threads(&self) -> watch::Receiver<Vec<ThreadSummary>> {
+        self.threads.clone()
+    }
+
+    /// What stops this daemon from outside under [`run_with`].
+    #[must_use]
+    pub fn stop_request(&self) -> StopRequest {
+        StopRequest(Arc::clone(&self.stop_request))
     }
 
     /// Stops the daemon (DMN-005): connections close, every omp process and every job stops (at most 10 s),
@@ -284,11 +317,13 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         .await
         .map_err(|error| anyhow::anyhow!(error.message))?;
     let jobs = services.jobs.clone();
+    let (threads_list, follow_threads) = services.spawn_thread_list();
     let mut background = vec![
         supervisor.spawn_reaper(),
         services.spawn_index_updates(),
         services.spawn_rescans(),
         services.spawn_polls(),
+        follow_threads,
     ];
     if let Some(path) = config.theme_file.clone() {
         info!(theme = %path.display(), "following the theme file");
@@ -351,6 +386,8 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         supervisor,
         jobs,
         stop,
+        stop_request: Arc::new(Notify::new()),
+        threads: threads_list,
         server,
         background,
         _lock: lock,
@@ -358,7 +395,13 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
 }
 
 /// `omfp daemon`: starts the daemon, prints its URL, and stops on SIGINT/SIGTERM (DMN-005).
-pub fn run(mut cli: Cli) -> anyhow::Result<()> {
+pub fn run(cli: Cli) -> anyhow::Result<()> {
+    run_with(cli, |_| ())
+}
+
+/// [`run`] with `attach` called on the started daemon (`omfp daemon --tray`, DMN-128); what it returns lives until the
+/// daemon stops, which a [`StopRequest`] also triggers, and is dropped before the shutdown starts.
+pub fn run_with<A>(mut cli: Cli, attach: impl FnOnce(&DaemonHandle) -> A) -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -385,24 +428,36 @@ pub fn run(mut cli: Cli) -> anyhow::Result<()> {
         .build()?
         .block_on(async {
             let daemon = start(config).await?;
+            // Signals are caught before the URL is printed: whoever waits for it may stop the daemon at once.
+            let signal = signal_handler()?;
             println!("omfp daemon listening on {}", daemon.url());
-            wait_for_signal().await?;
+            let attached = attach(&daemon);
+            let requested = Arc::clone(&daemon.stop_request);
+            tokio::select! {
+                result = signal => result?,
+                () = requested.notified() => info!("stop requested"),
+            }
+            drop(attached);
             info!("shutting down");
             daemon.shutdown().await
         })
 }
 
-async fn wait_for_signal() -> anyhow::Result<()> {
+/// Installs the SIGINT/SIGTERM handlers now; the future ends at the first signal.
+fn signal_handler() -> anyhow::Result<impl Future<Output = anyhow::Result<()>>> {
     #[cfg(unix)]
     {
-        let mut terminate =
-            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
-        tokio::select! {
-            result = tokio::signal::ctrl_c() => result?,
-            _ = terminate.recv() => {}
-        }
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut terminate = signal(SignalKind::terminate())?;
+        let mut interrupt = signal(SignalKind::interrupt())?;
+        Ok(async move {
+            tokio::select! {
+                _ = terminate.recv() => {}
+                _ = interrupt.recv() => {}
+            }
+            Ok(())
+        })
     }
     #[cfg(not(unix))]
-    tokio::signal::ctrl_c().await?;
-    Ok(())
+    Ok(async { Ok(tokio::signal::ctrl_c().await?) })
 }

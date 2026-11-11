@@ -1,0 +1,70 @@
+<!doctype html>
+<!-- The daemon's tray icon (UI-219): the small brand mark, `π` of Commit Mono Bold (its outline from
+     ui/packages/kit/fonts/commit-mono-latin-700-normal.woff2, extracted with fontTools' SVGPathPen, y flipped) in the
+     fixed brand gradient #16b3cc → #6a5cf0 (62%) → #8a6cf0, left to right, on a transparent background.
+     `?tray=idle|running|attention` (the window size is the pixel size): idle is the π alone; running adds a cyan dot at the bottom right,
+     attention a warm dot at the top right, each cut out of the π so it reads at 22–32 px on light and dark panels.
+     build.rs turns tray-<state>-<px>.png into the ARGB pixmaps of the StatusNotifierItem. Rendered headlessly from
+     the repository root in the dev shell:
+     for state in idle running attention; do for size in 32 64; do
+       $CHROME_BIN --headless=new --hide-scrollbars --window-size=$size,$size --default-background-color=00000000 \
+         - -screenshot=crates/omfp/icons/tray-$state-$size.png \
+         "file://$PWD/crates/omfp/icons/tray.html?tray=$state"; done; done
+     (without the space in `- -screenshot`) -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+        overflow: hidden;
+      }
+      svg {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="5 -567.5 600 600">
+      <defs>
+        <linearGradient id="brand" gradientUnits="userSpaceOnUse" x1="25" y1="0" x2="585" y2="0">
+          <stop offset="0" stop-color="#16b3cc" />
+          <stop offset="0.62" stop-color="#6a5cf0" />
+          <stop offset="1" stop-color="#8a6cf0" />
+        </linearGradient>
+        <mask id="cut" maskUnits="userSpaceOnUse" x="5" y="-567.5" width="600" height="600">
+          <rect x="5" y="-567.5" width="600" height="600" fill="#fff" />
+          <circle id="gap" r="0" fill="#000" />
+        </mask>
+      </defs>
+      <path
+        mask="url(#cut)"
+        fill="url(#brand)"
+        d="M110 0H230V-430H360V-165C360 -53 416 5 524 5C548 5 569 2 585 -3V-103C573 -99 559 -97 546 -97C502 -97 480 -122 480 -172V-430H575V-540H25V-430H110Z"
+      />
+      <circle id="dot" r="0" />
+    </svg>
+    <script>
+      const query = new URLSearchParams(location.search);
+      const dots = {
+        running: { cy: -63.5, fill: "#16b3cc" },
+        attention: { cy: -479.5, fill: "#e08a00" },
+      };
+      const dot = dots[query.get("tray")];
+      if (dot !== undefined) {
+        // A dot of radius 84 in the corner, with a 40 wide gap cut out of the π around it.
+        for (const [id, r] of [["dot", 84], ["gap", 124]]) {
+          const circle = document.getElementById(id);
+          circle.setAttribute("cx", "517");
+          circle.setAttribute("cy", String(dot.cy));
+          circle.setAttribute("r", String(r));
+        }
+        document.getElementById("dot").setAttribute("fill", dot.fill);
+      }
+    </script>
+  </body>
+</html>

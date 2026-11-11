@@ -42,6 +42,9 @@ pub struct Args {
     /// `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`].
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
+    /// Selects this thread in the new window (the tray's waiting threads, UI-218).
+    #[arg(long, value_name = "ID")]
+    pub thread: Option<String>,
     /// Arguments for `omfp daemon` when the local daemon has to be started, e.g. `-- --static-dir ui/dist`.
     #[arg(last = true, value_name = "DAEMON ARGS")]
     pub daemon_args: Vec<String>,
@@ -120,8 +123,12 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
             ),
             ThemePush::NoThemeFile => {}
         }
-        let url = window_url(&base, args.token.as_deref(), false);
-        (url.clone(), url, data_dir)
+        let url = window_url(&base, args.token.as_deref(), false, None);
+        (
+            window_url(&base, args.token.as_deref(), false, args.thread.as_deref()),
+            url,
+            data_dir,
+        )
     } else {
         let plan = LocalDaemon::plan(&args.data_dir, &args.daemon_args, &env)?;
         let (addr, token) = if smoke == Some(Smoke::InProcess) {
@@ -139,8 +146,8 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
         };
         let base = local_base(addr)?;
         (
-            window_url(&base, Some(&token), true),
-            window_url(&base, Some(&token), false),
+            window_url(&base, Some(&token), true, args.thread.as_deref()),
+            window_url(&base, Some(&token), false, None),
             plan.data_dir,
         )
     };
@@ -179,14 +186,16 @@ fn local_base(addr: SocketAddr) -> anyhow::Result<Url> {
     Ok(Url::parse(&format!("http://{}/", reachable(addr)))?)
 }
 
-/// The URL a window opens: the token in the fragment (never sent to the server, PRT-002) and `local=1` when the
-/// window runs on the daemon's machine (the app then uses omp's `live_start` for live voice, S-09).
+/// The URL a window opens: the token in the fragment (never sent to the server, PRT-002), `local=1` when the window
+/// runs on the daemon's machine (the app then uses omp's `live_start` for live voice, S-09), and `thread=<id>` to
+/// select a thread (UI-218).
 #[must_use]
-pub fn window_url(base: &Url, token: Option<&str>, local: bool) -> Url {
+pub fn window_url(base: &Url, token: Option<&str>, local: bool, thread: Option<&str>) -> Url {
     let parameters: Vec<String> = token
         .map(|token| format!("token={token}"))
         .into_iter()
         .chain(local.then(|| "local=1".to_owned()))
+        .chain(thread.map(|thread| format!("thread={}", fragment_value(thread))))
         .collect();
     let mut url = base.clone();
     url.set_fragment(
@@ -195,6 +204,15 @@ pub fn window_url(base: &Url, token: Option<&str>, local: bool) -> Url {
             .as_deref(),
     );
     url
+}
+
+/// A fragment parameter's value with `%`, `&`, `#` and `=` escaped (thread ids are plain, but they come from argv).
+fn fragment_value(value: &str) -> String {
+    value
+        .replace('%', "%25")
+        .replace('&', "%26")
+        .replace('#', "%23")
+        .replace('=', "%3D")
 }
 
 /// Whether and what to push of the theme file of this machine (UI-091). A local daemon follows that file itself
@@ -327,10 +345,10 @@ impl LocalDaemon {
         Config::from_cli(cli, env.xdg_data_home, env.home).map_err(anyhow::Error::msg)
     }
 
-    /// The command line of the background daemon.
+    /// The command line of the background daemon: in the tray (DMN-128).
     #[must_use]
     pub fn command_line(&self, bind: Option<SocketAddr>) -> Vec<OsString> {
-        let mut line = vec![OsString::from("daemon")];
+        let mut line = vec![OsString::from("daemon"), OsString::from("--tray")];
         if let Some(bind) = bind {
             line.extend(["--bind".into(), bind.to_string().into()]);
         }
@@ -697,7 +715,7 @@ mod tests {
             .collect()
     }
 
-    // spec: ARC-003
+    // spec: ARC-003, DMN-128
     #[test]
     fn arguments_after_the_separator_go_to_the_daemon() {
         let args = parse(&[
@@ -726,6 +744,7 @@ mod tests {
             strings(&plan.command_line(None)),
             [
                 "daemon",
+                "--tray",
                 "--data-dir",
                 "/d",
                 "--static-dir",
@@ -765,7 +784,14 @@ mod tests {
         assert!(!plan.explicit_bind);
         assert_eq!(
             strings(&plan.command_line(Some("127.0.0.1:0".parse().unwrap()))),
-            ["daemon", "--bind", "127.0.0.1:0", "--data-dir", "/other"]
+            [
+                "daemon",
+                "--tray",
+                "--bind",
+                "127.0.0.1:0",
+                "--data-dir",
+                "/other"
+            ]
         );
 
         let twice = LocalDaemon::plan(
@@ -808,11 +834,11 @@ mod tests {
     fn window_urls_carry_the_token_and_the_local_flag_in_the_fragment() {
         let local = local_base("127.0.0.1:7420".parse().unwrap()).unwrap();
         assert_eq!(
-            window_url(&local, Some("t0k"), true).as_str(),
+            window_url(&local, Some("t0k"), true, None).as_str(),
             "http://127.0.0.1:7420/#token=t0k&local=1"
         );
         assert_eq!(
-            window_url(&local, Some("t0k"), false).as_str(),
+            window_url(&local, Some("t0k"), false, None).as_str(),
             "http://127.0.0.1:7420/#token=t0k"
         );
         assert_eq!(
@@ -835,15 +861,31 @@ mod tests {
         }
         let remote = connect_base("https://omfp.example.com").unwrap();
         assert_eq!(
-            window_url(&remote, Some("t0k"), false).as_str(),
+            window_url(&remote, Some("t0k"), false, None).as_str(),
             "https://omfp.example.com/#token=t0k"
         );
         assert_eq!(
-            window_url(&remote, None, false).as_str(),
+            window_url(&remote, None, false, None).as_str(),
             "https://omfp.example.com/"
         );
         assert!(connect_base("ws://host:7420").is_err());
         assert!(connect_base("http://").is_err());
+    }
+
+    // spec: UI-218
+    #[test]
+    fn a_window_on_a_thread_names_it_in_the_fragment() {
+        let local = local_base("127.0.0.1:7420".parse().unwrap()).unwrap();
+        assert_eq!(
+            window_url(&local, Some("t0k"), true, Some("th-1")).as_str(),
+            "http://127.0.0.1:7420/#token=t0k&local=1&thread=th-1"
+        );
+        assert_eq!(
+            window_url(&local, None, false, Some("a&b=c#d%")).as_str(),
+            "http://127.0.0.1:7420/#thread=a%26b%3Dc%23d%25"
+        );
+        let args = parse(&["--thread", "th-1", "--data-dir", "/d"]);
+        assert_eq!(args.thread.as_deref(), Some("th-1"));
     }
 
     // spec: UI-195

@@ -171,8 +171,9 @@
               # Web UI E2E over WebDriver (versions aligned in nixpkgs)
               pkgs.chromium
               pkgs.chromedriver
-              # Desktop smoke test under a virtual X server
+              # Desktop smoke test under a virtual X server; real wheel input there for WebKitGTK (e2e/tests/scroll.rs)
               pkgs.xvfb-run
+              pkgs.xdotool
               # Desktop (M7, S-04): Tauri 2 on WebKitGTK 4.1 (GTK3, GLib, cairo come through webkitgtk's .pc files)
               pkgs.pkg-config
               pkgs.webkitgtk_4_1

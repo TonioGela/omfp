@@ -68,6 +68,9 @@ tauri-build = { version = "2.7", default-features = false }
 # The desktop window's color scheme from the settings portal over D-Bus (UI-195): gtk-rs's gio, the version Tauri's
 # GTK3 stack already builds (no zbus).
 gio = "0.18"
+# The daemon's tray pixmaps (UI-219): build.rs decodes the PNGs rendered from icons/icon.html; the same png Tauri's
+# codegen already builds.
+png = "0.18"
 thiserror = "2"
 tokio = { version = "1", features = [
   "macros",

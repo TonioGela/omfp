@@ -17,6 +17,7 @@ import { BorderBox, BoxRule } from "./cards.tsx";
 import { cx, withClass } from "./class.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { Kbd } from "./kbd.tsx";
+import { LogoMark, Wordmark } from "./logo.tsx";
 import { StateMark, type ThreadState } from "./marks.tsx";
 
 /** The keymap modes (UI-098). */
@@ -196,11 +197,11 @@ export interface BrandProps extends HTMLAttributes<HTMLDivElement> {
   host?: string;
 }
 
-/** `◆ omfp` in flowing gradient text and `@host` (UI-170). */
+/** The wordmark `omfπ` (`π` in the theme's gradient, UI-221) and `@host` (UI-170). */
 export function Brand({ host, className, ...props }: BrandProps) {
   return (
     <div {...props} className={cx("omfp-brand", className)}>
-      <span className="omfp-brand__mark omfp-grad-text">◆ omfp</span>
+      <Wordmark className="omfp-brand__mark" />
       {host !== undefined && <span className="omfp-brand__host">@{host}</span>}
     </div>
   );
@@ -466,8 +467,8 @@ export interface ThreadStripProps extends Omit<HTMLAttributes<HTMLElement>, "onT
 }
 
 /**
- * The left column folded into a strip (UI-201, UI-208): the brand's `◆`, the toggle that opens the column over the
- * content, then one state mark per thread needing the user or running, each selecting its thread.
+ * The left column folded into a strip (UI-201, UI-208): the brand's mark `[π]`, the toggle that opens the column over
+ * the content, then one state mark per thread needing the user or running, each selecting its thread.
  */
 export function ThreadStrip({
   open,
@@ -482,9 +483,7 @@ export function ThreadStrip({
 }: ThreadStripProps) {
   return (
     <nav {...props} className={cx("omfp-strip", className)}>
-      <span className="omfp-strip__brand omfp-grad-text" aria-hidden="true">
-        ◆
-      </span>
+      <LogoMark className="omfp-strip__brand" aria-hidden="true" />
       <IconButton
         className={cx("omfp-strip__toggle", toggleClassName)}
         label={toggleLabel}

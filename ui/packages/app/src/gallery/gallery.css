@@ -176,6 +176,39 @@
     font-size: var(--omfp-fs-sm);
   }
 
+  /* The logo sheet (UI-220, UI-221): the light and dark tiles use the logo files' fixed text colours. */
+  .omfp-gallery__logo-tile {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--omfp-s4);
+    padding: var(--omfp-s3);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+  }
+
+  .omfp-gallery__logo-label {
+    flex-basis: 100%;
+    color: inherit;
+    opacity: 0.7;
+  }
+
+  .omfp-gallery__logo-tile[data-tile="light"] {
+    color: #1a1b23;
+    background: #faf8ff;
+  }
+
+  .omfp-gallery__logo-tile[data-tile="dark"] {
+    color: #e2e1ec;
+    background: #12131a;
+  }
+
+  .omfp-gallery__logo-sizes {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--omfp-s3);
+  }
+
   .omfp-gallery__meter {
     inline-size: 10rem;
   }

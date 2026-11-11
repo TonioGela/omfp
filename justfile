@@ -87,6 +87,17 @@ desktop *args: build-web
     esac
     cargo run --release -p omfp --features desktop -- desktop {{ args }} "${daemon[@]}"
 
+# The logo (UI-220, UI-222) from the bundled Commit Mono Bold (docs/brand/generate.py, fontTools from nixpkgs):
+# docs/brand/*.svg, the kit's outlines and the desktop icon's HTML, then the PNG images rendered headlessly: the desktop
+# icon (512 px RGBA, which Tauri needs) and the web bundle's 32 px favicon fallback
+brand:
+    nix shell --impure --expr 'with import <nixpkgs> {}; python3.withPackages (p: [p.fonttools p.brotli])' \
+        -c python3 docs/brand/generate.py
+    "${CHROME_BIN:?run inside the dev shell (nix develop)}" --headless=new --hide-scrollbars --window-size=512,512 \
+        --default-background-color=00000000 --screenshot=crates/omfp/icons/icon.png crates/omfp/icons/icon.html
+    "$CHROME_BIN" --headless=new --hide-scrollbars --window-size=32,32 --default-background-color=00000000 \
+        --screenshot=docs/brand/icon-32.png docs/brand/icon.svg
+
 # Formatting and lints (Rust; TypeScript: Biome format + lint, then `tsc` in strict mode)
 lint: ui-install
     cargo fmt --all --check

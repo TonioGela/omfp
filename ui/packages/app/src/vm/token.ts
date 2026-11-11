@@ -32,6 +32,32 @@ export function fragmentWithoutToken(fragment: string): string {
   return rest.length === 0 ? "" : `#${rest.join("&")}`;
 }
 
+/**
+ * The thread a window opens on (`#thread=<id>`, `omfp desktop --thread`, UI-218): read once, then removed from the
+ * address bar (`history.replaceState`) so a reload keeps the window's own selection.
+ */
+export function takeThread(page: Pick<TokenPage, "location" | "history">): string | undefined {
+  const { location } = page;
+  const all = parameters(location.hash);
+  const parameter = all.find((candidate) => candidate.startsWith("thread="));
+  if (parameter === undefined) {
+    return undefined;
+  }
+  const rest = all.filter((candidate) => !candidate.startsWith("thread="));
+  page.history.replaceState(
+    null,
+    "",
+    `${location.pathname}${location.search}${rest.length === 0 ? "" : `#${rest.join("&")}`}`,
+  );
+  let thread: string;
+  try {
+    thread = decodeURIComponent(parameter.slice("thread=".length)).trim();
+  } catch {
+    return undefined;
+  }
+  return thread === "" ? undefined : thread;
+}
+
 function parameters(fragment: string): string[] {
   return (fragment.startsWith("#") ? fragment.slice(1) : fragment).split("&").filter((parameter) => parameter !== "");
 }

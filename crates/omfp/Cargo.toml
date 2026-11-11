@@ -19,14 +19,15 @@ path = "src/main.rs"
 doc = false
 
 [features]
-# `omfp desktop` (M7): links WebKitGTK through Tauri; daemon-only builds leave it off.
-desktop = ["dep:tauri", "dep:tauri-build", "dep:gio"]
+# `omfp desktop` (M7): links WebKitGTK through Tauri; daemon-only builds leave it off. Also `omfp daemon --tray`.
+desktop = ["dep:tauri", "dep:tauri-build", "dep:gio", "dep:png"]
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 futures.workspace = true
 gio = { workspace = true, optional = true }
+omfp-core.workspace = true
 omfp-daemon.workspace = true
 omfp-protocol.workspace = true
 serde_json.workspace = true
@@ -35,10 +36,10 @@ tokio.workspace = true
 tokio-tungstenite.workspace = true
 
 [build-dependencies]
+png = { workspace = true, optional = true }
 tauri-build = { workspace = true, optional = true }
 
 [dev-dependencies]
-omfp-core.workspace = true
 rustix.workspace = true
 tempfile.workspace = true
 

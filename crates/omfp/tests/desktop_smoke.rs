@@ -28,6 +28,12 @@ fn desktop_with(home: &Path, env: &[(&str, &str)], args: &[&str]) -> Output {
         .arg(env!("CARGO_BIN_EXE_omfp"))
         .arg("desktop")
         .args(args)
+        // Never the user's session bus (the window reads the settings portal, the background daemon shows a tray
+        // icon): a bus that does not exist unless the test passes its own.
+        .env(
+            "DBUS_SESSION_BUS_ADDRESS",
+            format!("unix:path={}", home.join("no-bus").display()),
+        )
         .envs(env.iter().copied())
         .env("HOME", home)
         .env_remove("XDG_DATA_HOME")
@@ -82,7 +88,7 @@ impl Drop for Daemon {
     }
 }
 
-// spec: ARC-003, UI-004, UI-005
+// spec: ARC-003, UI-004, UI-005, DMN-128
 #[test]
 fn a_second_window_reuses_the_background_daemon_that_outlives_the_first() {
     let dir = tempfile::tempdir().unwrap();
@@ -113,11 +119,10 @@ fn a_second_window_reuses_the_background_daemon_that_outlives_the_first() {
         stderr.contains(&format!("started the daemon (pid {})", info.pid)),
         "{stderr}"
     );
-    assert!(
-        std::fs::read_to_string(data.join("daemon.log"))
-            .unwrap()
-            .contains("omfp daemon listening on")
-    );
+    let log = std::fs::read_to_string(data.join("daemon.log")).unwrap();
+    assert!(log.contains("omfp daemon listening on"), "{log}");
+    // DMN-128: started with `--tray`; the test's session bus does not exist.
+    assert!(log.contains("no tray icon: no session bus"), "{log}");
     // UI-004: the URL a browser opens on the same daemon, with its token.
     let token = std::fs::read_to_string(data.join("token")).unwrap();
     let url = format!("omfp desktop: http://{}/#token={}", info.addr, token.trim());

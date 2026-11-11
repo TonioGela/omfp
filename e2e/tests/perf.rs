@@ -26,12 +26,11 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use e2e::{Journey, row};
+use e2e::{Journey, WebKitDriver, row};
 use omfp_core::wire::{AgentMessage, RpcNotification};
 use omfp_daemon::agent::{FakeLauncher, FakeProcess, FakeRun};
 use omfp_protocol::method::ThreadsCreate;
@@ -1194,69 +1193,6 @@ fn probed_bundle(source: &Path, into: &Path) -> anyhow::Result<PathBuf> {
     Ok(into.to_path_buf())
 }
 
-/// `WebKitWebDriver` (`OMFP_WEBKIT_WEBDRIVER`, else from `PATH`) under its own X server: `xvfb-run`, never the
-/// user's display. The whole process group is killed on drop.
-struct WebKitDriver {
-    child: Child,
-    url: String,
-    /// The `MiniBrowser` next to the driver (`libexec/webkit2gtk-4.1/`).
-    browser: PathBuf,
-}
-
-impl WebKitDriver {
-    async fn start() -> anyhow::Result<Self> {
-        use std::os::unix::process::CommandExt;
-        let driver = std::env::var_os("OMFP_WEBKIT_WEBDRIVER")
-            .map(PathBuf::from)
-            .or_else(|| {
-                std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-                    .map(|dir| dir.join("WebKitWebDriver"))
-                    .find(|path| path.is_file())
-            })
-            .ok_or_else(|| anyhow::anyhow!("set OMFP_WEBKIT_WEBDRIVER to WebKitWebDriver"))?;
-        let browser = driver
-            .parent()
-            .and_then(Path::parent)
-            .map(|prefix| prefix.join("libexec/webkit2gtk-4.1/MiniBrowser"))
-            .filter(|path| path.is_file())
-            .ok_or_else(|| anyhow::anyhow!("no MiniBrowser next to {}", driver.display()))?;
-        let port = std::net::TcpListener::bind("127.0.0.1:0")?
-            .local_addr()?
-            .port();
-        let child = Command::new("xvfb-run")
-            .args(["-a", "-s", "-screen 0 1600x1200x24"])
-            .arg(&driver)
-            .arg(format!("--port={port}"))
-            .env_remove("DISPLAY")
-            .env_remove("WAYLAND_DISPLAY")
-            .env("GDK_BACKEND", "x11")
-            .process_group(0)
-            .spawn()?;
-        let started = Self {
-            child,
-            url: format!("http://127.0.0.1:{port}"),
-            browser,
-        };
-        for _ in 0..200 {
-            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-                return Ok(started);
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
-        anyhow::bail!("WebKitWebDriver did not start")
-    }
-}
-
-impl Drop for WebKitDriver {
-    fn drop(&mut self) {
-        let _ = Command::new("kill")
-            .arg("-TERM")
-            .arg(format!("-{}", self.child.id()))
-            .status();
-        let _ = self.child.wait();
-    }
-}
-
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "benchmark: prints timings, asserts nothing"]
 async fn benchmark_typing_webkit() -> anyhow::Result<()> {
@@ -1269,14 +1205,7 @@ async fn benchmark_typing_webkit() -> anyhow::Result<()> {
     journey.connected().await?;
     let thread = create_thread(&journey, "typing").await?;
     let webkit = WebKitDriver::start().await?;
-    let mut caps = thirtyfour::Capabilities::new();
-    caps.set("browserName", "MiniBrowser")?;
-    caps.set(
-        "webkitgtk:browserOptions",
-        json!({ "binary": webkit.browser, "args": ["--automation"] }),
-    )?;
-    let driver = WebDriver::new(&webkit.url, caps).await?;
-    driver.set_window_rect(0, 0, 1400, 1000).await?;
+    let driver = webkit.session().await?;
     driver.goto(journey.daemon().url()).await?;
     until_true(
         &driver,

@@ -11,6 +11,7 @@ import {
   transcriptItems as items,
   keyScrollTop,
   mountScrollTop,
+  movedUpByUser,
   type NavCommand,
   navTarget,
   type PinEvent,
@@ -140,21 +141,28 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
   const [current, setCurrent] = useState<number | undefined>(undefined);
   useSettledAnnouncements(state.settled);
 
-  /** Scrolls to the restore target or, while pinned, to the bottom. */
-  const follow = useCallback((container: HTMLElement) => {
-    const target = restoring.current;
-    if (target !== undefined) {
-      container.scrollTop = target;
-      if (container.scrollTop >= target - 1) {
-        restoring.current = undefined;
+  /** Scrolls to the restore target or, while pinned, to the bottom. A pinned view the user moved up since the last
+   * scroll or follow unpins instead, even before its scroll event arrives (WebKitGTK sends it at the next frame,
+   * after the render a streamed delta caused). */
+  const follow = useCallback(
+    (container: HTMLElement) => {
+      const target = restoring.current;
+      if (target !== undefined) {
+        container.scrollTop = target;
+        if (container.scrollTop >= target - 1) {
+          restoring.current = undefined;
+        }
+      } else if (pinned.current && movedUpByUser(lastScrollTop.current, container)) {
+        dispatch({ type: "userScrollUp" });
+      } else if (pinned.current) {
+        // Instant: a smooth follow keeps animating while the user scrolls up, and its scroll events near the bottom pin
+        // the view again.
+        container.scrollTop = container.scrollHeight;
       }
-    } else if (pinned.current) {
-      // Instant: a smooth follow keeps animating while the user scrolls up, and its scroll events near the bottom pin
-      // the view again.
-      container.scrollTop = container.scrollHeight;
-    }
-    lastScrollTop.current = container.scrollTop;
-  }, []);
+      lastScrollTop.current = container.scrollTop;
+    },
+    [dispatch],
+  );
   const userScrolls = () => {
     restoring.current = undefined;
   };
@@ -249,17 +257,8 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
         }
       }}
       onKeyDown={onKeyDown}
-      onPointerDown={() => {
-        userScrolls();
-        dispatch({ type: "drag", active: true });
-      }}
-      onPointerUp={() => dispatch({ type: "drag", active: false })}
-      onPointerCancel={() => dispatch({ type: "drag", active: false })}
-      onTouchStart={() => {
-        userScrolls();
-        dispatch({ type: "drag", active: true });
-      }}
-      onTouchEnd={() => dispatch({ type: "drag", active: false })}
+      onPointerDown={userScrolls}
+      onTouchStart={userScrolls}
     >
       {NAV.map(({ id, title }) => (
         <NavRegistration key={id} id={id} title={title} run={runNav} />

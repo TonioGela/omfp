@@ -229,7 +229,7 @@ describe("transcript", () => {
   });
 
   // spec: UI-042
-  test("only the user unpins: wheel up and scroll-up keys, not layout scrolls; the bottom pins again", () => {
+  test("only the user unpins: wheel up, scroll-up keys and moving the view up, not layout scrolls; the bottom pins again", () => {
     renderThread(<TranscriptWidget />, longHistory(50));
     const element = transcript();
     expect(element.dataset.pinned).toBe("true");
@@ -242,10 +242,26 @@ describe("transcript", () => {
     fireEvent.keyDown(element, { key: "ArrowUp" });
     expect(element.dataset.pinned).toBe("false");
     scrollTo(element, 4400, 5000);
-    fireEvent.pointerDown(element);
-    scrollTo(element, 1000, 5000);
+    expect(element.dataset.pinned).toBe("true");
+    // A move up with no input event (WebKitGTK's scrollbar), however small: unpinned.
+    scrollTo(element, 4390, 5000);
     expect(element.dataset.pinned).toBe("false");
-    fireEvent.pointerUp(element);
+  });
+
+  // spec: UI-042
+  test("a move up its scroll event has not reported yet unpins at the next render instead of being followed", () => {
+    const { client, flush } = renderThread(<TranscriptWidget />, longHistory(50));
+    const element = transcript();
+    scrollTo(element, 4400, 5000);
+    expect(element.dataset.pinned).toBe("true");
+    // WebKitGTK moved the view 5 px up from the end (4400: a smooth scroll's first frame) and sends the scroll event
+    // at the next frame; a streamed delta renders first.
+    element.scrollTop = 4395;
+    client.thread(THREAD, longHistory(51));
+    flush();
+    expect([element.scrollTop, element.dataset.pinned]).toEqual([4395, "false"]);
+    fireEvent.scroll(element);
+    expect([element.scrollTop, element.dataset.pinned]).toEqual([4395, "false"]);
   });
 
   // spec: UI-042

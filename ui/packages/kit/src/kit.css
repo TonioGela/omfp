@@ -2550,6 +2550,18 @@
     color: var(--omfp-on-surface);
   }
 
+  /* The logo (UI-220, UI-221): outlines sized by their height, the text in `on-surface` with the theme's gradient. */
+  .omfp-logo {
+    display: inline-block;
+    flex: none;
+    inline-size: auto;
+    overflow: visible;
+  }
+
+  .omfp-logo[data-gradient="theme"] {
+    color: var(--omfp-on-surface);
+  }
+
   /* Left column (UI-169, UI-170): brand, workspace sections, rows. */
   .omfp-brand {
     display: flex;
@@ -2558,9 +2570,9 @@
     padding: 0 var(--omfp-s2) var(--omfp-s1);
   }
 
+  /* The wordmark's ink is 0.76 em tall: its letters read like `fs-xl` text. */
   .omfp-brand__mark {
-    font-size: var(--omfp-fs-md);
-    font-weight: var(--omfp-fw-strong);
+    block-size: calc(0.76 * var(--omfp-fs-xl));
   }
 
   .omfp-brand__host {
@@ -2805,10 +2817,8 @@
   }
 
   .omfp-strip__brand {
-    font-family: var(--omfp-font-ui);
-    font-size: var(--omfp-fs-md);
-    font-weight: var(--omfp-fw-strong);
-    line-height: 1;
+    inline-size: calc(0.8 * var(--omfp-ctl-h));
+    block-size: auto;
   }
 
   .omfp-strip__toggle[aria-expanded="true"] {
@@ -3225,8 +3235,7 @@
   }
 
   /* Motion at `full` only (UI-146): flows, shimmer, breathe, slide-ins, stagger, glow, flash, bounce, pops. */
-  :root[data-motion="full"]
-    :is(.omfp-brand__mark, .omfp-chat-header__title, .omfp-wsection__name.omfp-grad-text, .omfp-grad-flow) {
+  :root[data-motion="full"] :is(.omfp-chat-header__title, .omfp-wsection__name.omfp-grad-text, .omfp-grad-flow) {
     animation: omfp-flow 6s ease-in-out infinite alternate;
   }
 

@@ -4,52 +4,72 @@
  * container, S-11), and where `nav.*` commands go.
  *
  * Pinned: while streaming, growth keeps the view at the bottom. Only the user unpins it — wheel up, a scroll-up key,
- * a pointer drag away from the bottom, or any scroll that moves the view up away from the bottom (dragging the
- * scrollbar in WebKitGTK, which sends no pointer events to the page) — never a scroll event caused by layout: while
- * pinned, layout only moves the view down (growing content) or clamps it to the bottom (shrinking content), since the
- * transcript turns off the virtualizer's scroll adjustments and the browser's scroll anchoring. Reaching the bottom
- * pins it again.
+ * or any move of the view up from where the last scroll or follow left it, unless the view sits at the very end
+ * (shrinking content clamps it there). Layout never moves a pinned view up otherwise: the transcript turns off the
+ * virtualizer's scroll adjustments and the browser's scroll anchoring while pinned. A move up unpins even within
+ * {@link PIN_THRESHOLD_PX} of the bottom: smooth scrolling (WebKitGTK's wheel) and touchpads scroll a few pixels per
+ * frame, and re-pinning on such a step lets the next streamed delta pull the view back to the bottom. Moving down to
+ * within the threshold, or being clamped to the very end, pins it again. A scroll event that did not move the view
+ * changes nothing: WebKitGTK dispatches the one a follow caused at the next frame, possibly after the user's wheel.
  */
 
 /** The view counts as at the bottom within this distance. */
 export const PIN_THRESHOLD_PX = 32;
+/** The view is at the very end of the content less than this far from it (rounded positions: WebKitGTK reports -1 at
+ * the end, and 1 after the first 2 px frame of a smooth scroll up). */
+const END_PX = 1;
 
 /** What one transcript knows about its scrolling, kept per thread so switching threads keeps the position. */
 export interface PinState {
   /** Follow the bottom as content grows. */
   readonly pinned: boolean;
-  /** The user holds the scrollbar or touches the list: scroll events reflect their intent. */
-  readonly dragging: boolean;
   /** Last scroll position while unpinned, restored when the list mounts again unpinned. Pinned, the list follows the
    * bottom and the position is not stored: a layout scroll while streaming then changes nothing (no render, UI-191). */
   readonly scrollTop: number;
 }
 
-export const INITIAL_PIN: PinState = { pinned: true, dragging: false, scrollTop: 0 };
+export const INITIAL_PIN: PinState = { pinned: true, scrollTop: 0 };
+
+/** Where the scroll container's view is. */
+export interface ScrollPosition {
+  readonly scrollTop: number;
+  readonly scrollHeight: number;
+  readonly clientHeight: number;
+}
 
 export type PinEvent =
-  | {
+  | ({
       readonly type: "scroll";
-      readonly scrollTop: number;
-      readonly scrollHeight: number;
-      readonly clientHeight: number;
       /** The position before this scroll (the last scroll event's, or where following the bottom put it). */
       readonly previousScrollTop: number | undefined;
-    }
+    } & ScrollPosition)
   /** Wheel up, a scroll-up key outside a form control, a navigation command moving up. */
   | { readonly type: "userScrollUp" }
   /** The user went to the end (`G`, `End`). */
-  | { readonly type: "pin" }
-  | { readonly type: "drag"; readonly active: boolean };
+  | { readonly type: "pin" };
+
+/**
+ * The view moved up from `previous` (where the last scroll or follow left it) to somewhere above the very end: the
+ * user scrolled, since layout only moves a pinned view down or clamps it to the end. Whatever reports it first — the
+ * scroll event, or a follow that runs before it (WebKitGTK dispatches scroll events at the next frame) — unpins.
+ */
+export function movedUpByUser(previous: number | undefined, position: ScrollPosition): boolean {
+  const { scrollTop, scrollHeight, clientHeight } = position;
+  return previous !== undefined && scrollTop < previous - 1 && scrollHeight - scrollTop - clientHeight >= END_PX;
+}
 
 /** The state after `event`; the same object when nothing changed. */
 export function pinReducer(state: PinState, event: PinEvent): PinState {
   let next: PinState;
   switch (event.type) {
     case "scroll": {
-      const atBottom = event.scrollHeight - event.scrollTop - event.clientHeight <= PIN_THRESHOLD_PX;
-      const movedUp = event.previousScrollTop !== undefined && event.scrollTop < event.previousScrollTop - 1;
-      const pinned = atBottom || (state.pinned && !state.dragging && !movedUp);
+      const below = event.scrollHeight - event.scrollTop - event.clientHeight;
+      const previous = event.previousScrollTop;
+      const movedDown = previous === undefined || event.scrollTop > previous + 1;
+      const movedUp = previous !== undefined && event.scrollTop < previous - 1;
+      const pinned =
+        !movedUpByUser(previous, event) &&
+        (state.pinned || (movedDown && below <= PIN_THRESHOLD_PX) || (movedUp && below < END_PX));
       next = { ...state, scrollTop: pinned ? state.scrollTop : event.scrollTop, pinned };
       break;
     }
@@ -57,13 +77,8 @@ export function pinReducer(state: PinState, event: PinEvent): PinState {
     case "pin":
       next = { ...state, pinned: event.type === "pin" };
       break;
-    case "drag":
-      next = { ...state, dragging: event.active };
-      break;
   }
-  return next.pinned === state.pinned && next.dragging === state.dragging && next.scrollTop === state.scrollTop
-    ? state
-    : next;
+  return next.pinned === state.pinned && next.scrollTop === state.scrollTop ? state : next;
 }
 
 /** Where a freshly mounted list scrolls to: the stored position when the user had scrolled up, `undefined` for the

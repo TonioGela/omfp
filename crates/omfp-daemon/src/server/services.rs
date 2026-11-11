@@ -286,6 +286,37 @@ impl Services {
         })
     }
 
+    /// The thread summaries of the `index` topic as a watch (DMN-129): current now, replaced on every thread event.
+    pub fn spawn_thread_list(
+        &self,
+    ) -> (
+        tokio::sync::watch::Receiver<Vec<ThreadSummary>>,
+        JoinHandle<()>,
+    ) {
+        use tokio::sync::broadcast::error::RecvError;
+        // Subscribed before reading, so no event between the read and the subscription is lost.
+        let mut live = self.index.subscribe(None).live;
+        let index = Arc::clone(&self.index);
+        let (sender, receiver) =
+            tokio::sync::watch::channel(index.with_state(|state| state.threads.clone()));
+        let task = tokio::spawn(async move {
+            loop {
+                match live.recv().await {
+                    Ok(event)
+                        if !matches!(
+                            event.event,
+                            IndexEvent::ThreadUpserted { .. } | IndexEvent::ThreadRemoved { .. }
+                        ) => {}
+                    Ok(_) | Err(RecvError::Lagged(_)) => {
+                        sender.send_replace(index.with_state(|state| state.threads.clone()));
+                    }
+                    Err(RecvError::Closed) => break,
+                }
+            }
+        });
+        (receiver, task)
+    }
+
     /// Reloads workspaces and threads and publishes what changed on the `index` topic.
     pub async fn refresh_index(&self) -> Result<(), ErrorBody> {
         let _serial = self.refresh.lock().await;

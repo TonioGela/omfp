@@ -146,6 +146,7 @@ export {
   Tap,
   VoiceMeter,
 } from "./live.tsx";
+export { type LogoGradient, LogoIcon, LogoMark, type LogoProps, Wordmark } from "./logo.tsx";
 export { Code, type CodeProps, Markdown, type MarkdownProps } from "./markdown.tsx";
 export {
   Count,

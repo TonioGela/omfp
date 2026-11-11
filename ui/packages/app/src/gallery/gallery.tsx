@@ -94,6 +94,7 @@ import { AA, type Adjustment, type ContrastPair, contrastRatio } from "../theme/
 import { applyContrastGuard, cssColorReader } from "../theme/guard.ts";
 import { applyAppearance, applyUserTheme } from "../theme/theme.ts";
 import duxTheme from "./dux-solarized.css" with { type: "text" };
+import { LogoSheet } from "./logo.tsx";
 import forestTheme from "./matugen-forest.css" with { type: "text" };
 import { type GalleryParams, type GalleryTheme, galleryParams } from "./params.ts";
 
@@ -1639,6 +1640,14 @@ const GLYPHS: readonly (readonly [glyph: string, meaning: string, className: str
   ["@", "daemon host", "omfp-gallery__glyph--muted"],
 ];
 
+function Logo() {
+  return (
+    <Section title="Logo" note="UI-220 · UI-221 · 48/32/22/16 px" wide>
+      <LogoSheet />
+    </Section>
+  );
+}
+
 function Glyphs() {
   return (
     <Section title="Glyphs" note="UI-122">
@@ -1970,6 +1979,7 @@ export function Gallery({ search }: { search: string }) {
       </header>
       <div className="omfp-gallery__sections">
         <Buttons />
+        <Logo />
         <Glyphs />
         <Fields />
         <PathFields />

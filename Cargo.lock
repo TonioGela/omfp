@@ -2834,6 +2834,7 @@ dependencies = [
  "omfp-core",
  "omfp-daemon",
  "omfp-protocol",
+ "png",
  "rustix",
  "serde_json",
  "tauri",

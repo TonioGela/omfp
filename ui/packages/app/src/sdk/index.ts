@@ -193,6 +193,7 @@ export {
   isScrollUpKey,
   keyScrollTop,
   mountScrollTop,
+  movedUpByUser,
   type NavCommand,
   navTarget,
   type PinEvent,

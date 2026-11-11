@@ -18,8 +18,8 @@ import { Frame } from "./frame/frame.tsx";
 import { browserNotifications } from "./frame/notifications.ts";
 import { Gallery } from "./gallery/gallery.tsx";
 import { isGalleryPath } from "./gallery/params.ts";
-import { createHost, type OmfpHost, OmfpProvider } from "./sdk/index.ts";
-import { fragmentLocal, TOKEN_KEY, takeToken } from "./vm/token.ts";
+import { createHost, type OmfpHost, OmfpProvider, SELECTED_THREAD } from "./sdk/index.ts";
+import { fragmentLocal, TOKEN_KEY, takeThread, takeToken } from "./vm/token.ts";
 
 /** The client name recorded as provenance (PRT-033). */
 const CLIENT_NAME = "omfp/web";
@@ -88,7 +88,13 @@ function openHost(token: string): { host: OmfpHost; client: Client } {
   const storage = pageStorage();
   // `#local=1`: this window runs on the daemon's machine (`omfp desktop`, UI-188).
   const local = fragmentLocal(window.location.hash);
-  return { host: createHost(client, storage === undefined ? { local } : { storage, local }), client };
+  const host = createHost(client, storage === undefined ? { local } : { storage, local });
+  // `#thread=<id>`: the window opens on that thread (the tray's waiting threads, UI-218).
+  const thread = takeThread({ location: window.location, history: window.history });
+  if (thread !== undefined) {
+    host.window.set(SELECTED_THREAD, thread);
+  }
+  return { host, client };
 }
 
 const container = document.getElementById("root");

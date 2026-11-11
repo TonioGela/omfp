@@ -16,7 +16,7 @@ struct Omfp {
 #[derive(Debug, Subcommand)]
 enum Command {
     /// Runs the daemon: owns threads, workspaces and omp processes, serves the UI.
-    Daemon(omfp_daemon::config::Cli),
+    Daemon(DaemonArgs),
     /// The UI theme of a daemon (UI-091).
     #[command(subcommand)]
     Theme(omfp::theme::Command),
@@ -26,13 +26,32 @@ enum Command {
     Desktop(omfp::desktop::Args),
 }
 
+#[derive(Debug, clap::Args)]
+struct DaemonArgs {
+    #[command(flatten)]
+    cli: omfp_daemon::config::Cli,
+    /// Shows the daemon in the system tray (a status notifier item) with its threads, a menu to open windows and to quit
+    /// it; `omfp desktop` passes it to the daemon it starts (DMN-128).
+    #[cfg(feature = "desktop")]
+    #[arg(long)]
+    tray: bool,
+}
+
+fn run_daemon(args: DaemonArgs) -> anyhow::Result<()> {
+    #[cfg(feature = "desktop")]
+    if args.tray {
+        return omfp_daemon::run_with(args.cli, omfp::tray::Tray::start);
+    }
+    omfp_daemon::run(args.cli)
+}
+
 fn main() -> ExitCode {
     let matches = Omfp::command()
         .version(omfp_daemon::version_string())
         .get_matches();
     let omfp = Omfp::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
     match omfp.command {
-        Command::Daemon(cli) => report("omfp daemon", omfp_daemon::run(cli).map(|()| None)),
+        Command::Daemon(args) => report("omfp daemon", run_daemon(args).map(|()| None)),
         Command::Theme(command) => {
             report("omfp theme", block_on(omfp::theme::run(command)).map(Some))
         }

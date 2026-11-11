@@ -45,6 +45,7 @@ just test-desktop                # `omfp --features desktop`: desktop unit tests
 just build-web                   # release bundle of the TypeScript UI into ui/packages/app/dist (`bun run build`)
 just serve [daemon args]         # try the app: release bundle + `omfp daemon` with your HOME, ~/.omp, default data dir
 just desktop [desktop args]      # try the desktop app: one more window on your local daemon (started in the background)
+just brand                       # regenerate the logo: docs/brand SVGs, kit outlines, favicon, desktop icon
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
 cargo xtask check-versions       # omp / omp-rpc pins agree
 ```
@@ -76,7 +77,9 @@ crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs
                       the `desktop` feature (Tauri 2, WebKitGTK) `desktop` (desktop.rs: find or start the background
                       daemon, the window on its own UI, the theme push of `--connect`, the color scheme of the
                       settings portal over gio's D-Bus API, the `OMFP_SMOKE` check;
-                      build.rs, tauri.conf.json, icons/ with the icon's HTML source; tests/desktop_smoke.rs, TST-033)
+                      tray.rs: `omfp daemon --tray`, the background daemon's StatusNotifierItem + dbusmenu over gio;
+                      build.rs (also the tray pixmaps), tauri.conf.json, icons/ with the icons' HTML sources (tray.html:
+                      the tray's π states); tests/desktop_smoke.rs, TST-033; tests/daemon_tray.rs, TST-061)
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
@@ -91,7 +94,8 @@ ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token 
                       kit.css: the Crush components and the motion catalogue; the bundled fonts and their licences
                       in fonts/, served at /fonts/ by the bundle); icons.tsx holds the Lucide icons as data
                       (lucide-LICENSE.txt), motion.ts the effective motion level; marks.tsx (state marks, badges,
-                      counts, meter), shell.tsx (mode line, command line and menu, brand, workspace sections, left
+                      counts, meter), logo.tsx (wordmark, mark and icon from the generated logo-paths.ts),
+                      shell.tsx (mode line, command line and menu, brand, workspace sections, left
                       column rows), cards.tsx (tool, approval and ask cards), transcript.tsx (chat header, messages,
                       composer), feedback.tsx (toasts, empty states), live.tsx (live voice: spectrum, voice meter,
                       live panel), editor/ (CodeMirror and its theme)
@@ -104,14 +108,16 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       file panel, toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
                       bar, the left column's splitter), view (layout tree, edits, reference resolution, widget slot,
                       the `main` slot's file tabs; sizes.ts and splitter.tsx: the window's splitter sizes), gallery
-                      (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme),
-                      keymap, theme, strings; build.ts → dist/ (`just build-web`:
-                      import map, widget-exports.json, builtin-widgets/)
+                      (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
+                      logo sheet), keymap, theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
+                      map, widget-exports.json, builtin-widgets/, the favicon from docs/brand)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)
 fixtures/states/<ver>/   ThreadState JSONL, one line per fixture event: the Rust reducer's goldens for the TS port
 fixtures/views/         cases.json: views manifests with their expected errors, checked by the daemon and the app
+docs/brand/             the logo (UI-220): generate.py (`just brand`, from the bundled Commit Mono Bold), wordmark,
+                        mark and icon SVGs, the 32 px favicon PNG, README screenshots
 ```
 
 ## Version pinning
@@ -151,6 +157,10 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 
 - Browsers in tests, spikes and smoke checks always run **headless** (Chromium `--headless=new`; WebKitGTK under
   `xvfb-run`), never on the user's display: a visible window can be disturbed by the mouse and changes results.
+- `WebKitWebDriver`'s wheel actions fire DOM `wheel` events in WebKitGTK but scroll nothing, so a test passes there
+  without exercising scrolling: click the wheel buttons on the `xvfb-run` display with `xdotool` instead
+  (`e2e::WebKitDriver::x_environment`, used by `e2e/tests/scroll.rs`). WebKitGTK then scrolls smoothly, a few pixels
+  per frame, and dispatches scroll events at the next frame, after the wheel event and any render in between.
 - The desktop window (`--features desktop`) is plain `cargo build`: no Tauri CLI, no JS, no IPC, no capabilities.
   `tauri-build` rewrites `crates/omfp/gen/schemas/` on every build (gitignored) and needs `crates/omfp/icons/icon.png`
   (RGBA). WebKitGTK has no `RTCPeerConnection` (the desktop's live voice uses omp's `live_start`, S-09) and keys

@@ -503,6 +503,14 @@ requirements = [
   "PRT-065",
   "UI-215",
   "AGT-032",
+  # Daemon tray icon
+  "UI-217",
+  "UI-218",
+  "UI-219",
+  "DMN-128",
+  "DMN-129",
+  "DMN-130",
+  "TST-061",
 ]
 
 [M8c]
@@ -529,6 +537,10 @@ requirements = [
   "PRT-060",
   "AGT-030",
   "AGT-031",
+  # Logo: wordmark, mark, icon; favicon and desktop icon
+  "UI-220",
+  "UI-221",
+  "UI-222",
 ]
 
 [M9]

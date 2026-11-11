@@ -1,14 +1,33 @@
-//! Transcript pinning while a tool runs (UI-042), in headless Chromium against a daemon on the fake launcher: a bash
+//! Transcript pinning (UI-042) against a daemon on the fake launcher. While a tool runs, in headless Chromium: a bash
 //! call streams its output into an expanded card, which grows the transcript, while the user scrolls up with the
-//! wheel (a real wheel event through CDP's `Input.dispatchMouseEvent`) and with `PageUp`. The view must stay where the
-//! user scrolled to and unpinned; `End` pins it again and the output then keeps the bottom in view.
+//! wheel (a real wheel event through CDP's `Input.dispatchMouseEvent`) and with `PageUp`. While a reply streams, in
+//! headless Chromium and (ignored by default) `WebKitGTK`, the engine of `omfp desktop`: text deltas at a model's rate
+//! grow a long last message while the user scrolls up with the wheel, `PageUp`, and a scrollbar drag. The view must
+//! stay where the user scrolled to and unpinned; `End` pins it again and the growth then keeps the bottom in view.
+//!
+//! Chromium gets a touchpad's many small wheel deltas and a mouse wheel's few notches from WebDriver's wheel input
+//! source. `WebKitGTK`'s `WebKitWebDriver` dispatches those wheel events without scrolling, so the `WebKitGTK` case
+//! clicks the wheel buttons on its X server with `xdotool`: `WebKitGTK` then scrolls smoothly, a few pixels per frame,
+//! as for the user. It drives nixpkgs' `MiniBrowser` through `WebKitWebDriver` under `xvfb-run`, never the user's
+//! display:
+//!
+//! ```sh
+//! just build-web
+//! OMFP_WEBKIT_WEBDRIVER=$(command -v WebKitWebDriver) cargo test -p e2e --test scroll -- --ignored
+//! ```
 
-use e2e::{Journey, row};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
+
+use anyhow::Context;
+use e2e::{Journey, WebKitDriver, row};
 use omfp_core::wire::{AgentMessage, RpcNotification};
 use omfp_daemon::agent::{FakeLauncher, FakeProcess, FakeRun};
 use omfp_protocol::method::ThreadsCreate;
 use omfp_protocol::{CreateThreadParams, CreateWorkspaceParams, ThreadWorkspace};
 use serde_json::{Value, json};
+use thirtyfour::common::command::{Actions, Command};
 use thirtyfour::prelude::*;
 
 const TRANSCRIPT: &str = "[data-testid=transcript]";
@@ -163,13 +182,8 @@ async fn stays_at(
     Ok(())
 }
 
-// spec: UI-042
-#[tokio::test(flavor = "multi_thread")]
-async fn scrolling_up_while_a_tool_streams_output_stays_where_the_user_scrolled()
--> anyhow::Result<()> {
-    let launcher = FakeLauncher::new();
-    launcher.push_run(FakeRun::fresh().with_history(history()));
-    let journey = Journey::start_fake(launcher.clone()).await?;
+/// Creates a thread in a new workspace through the protocol (the launcher's next run plays it); returns its id.
+async fn create_thread(journey: &Journey) -> anyhow::Result<String> {
     let mut connection = journey.connect().await?;
     let thread = connection
         .call::<ThreadsCreate>(CreateThreadParams {
@@ -186,6 +200,17 @@ async fn scrolling_up_while_a_tool_streams_output_stays_where_the_user_scrolled(
         .await?
         .id;
     connection.close().await?;
+    Ok(thread)
+}
+
+// spec: UI-042
+#[tokio::test(flavor = "multi_thread")]
+async fn scrolling_up_while_a_tool_streams_output_stays_where_the_user_scrolled()
+-> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(history()));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    let thread = create_thread(&journey).await?;
     journey.click(&row(&thread)).await?;
     journey.opened(&thread).await?;
 
@@ -276,4 +301,403 @@ async fn back_to_bottom(
         "pinned at the bottom while the output grows"
     );
     Ok(bottom)
+}
+
+// A streaming reply: text deltas at a model's rate grow the last message, rendered as Markdown, while the user
+// scrolls up — with a touchpad's many small wheel deltas, a mouse wheel's few notches, `PageUp`, and a scrollbar drag
+// (`scrollTop` set frame by frame, as WebKitGTK's scrollbars do without any pointer event in the page).
+
+const STREAMING: &str = "[data-testid=transcript-item][data-key=streaming]";
+const STREAM_ID: &str = "scroll-stream";
+/// Text deltas per second, a fast model's rate.
+const DELTAS_PER_SECOND: u64 = 60;
+/// Longest wait of the streaming reply's case for one condition.
+const WAIT: Duration = Duration::from_secs(20);
+
+/// Delta `index` of the streamed reply: a numbered word, with paragraph ends and a code block now and then, so the
+/// Markdown re-renders and changes its height as it streams.
+fn delta(index: usize) -> String {
+    match index % 60 {
+        0 => "\n\n```text\n".to_owned(),
+        8 => "\n```\n\n".to_owned(),
+        step if step % 12 == 0 => format!("n{index}n.\n\n"),
+        _ => format!("n{index}n "),
+    }
+}
+
+fn text_delta(delta: &str) -> RpcNotification {
+    frame(&json!({
+        "type": "message_update", "messageId": STREAM_ID, "message": { "role": "assistant" },
+        "assistantMessageEvent": { "type": "text_delta", "contentIndex": 0, "delta": delta },
+    }))
+}
+
+/// omp's frames that start the reply, with a first delta long enough to make it taller than the window.
+fn reply_start() -> Vec<RpcNotification> {
+    let opening: String = (0..600).map(|index| delta(index + 1_000_000)).collect();
+    vec![
+        frame(&json!({ "type": "agent_start" })),
+        frame(
+            &json!({ "type": "message_start", "messageId": STREAM_ID, "message": assistant(&json!([])) }),
+        ),
+        frame(&json!({
+            "type": "message_update", "messageId": STREAM_ID, "message": { "role": "assistant" },
+            "assistantMessageEvent": { "type": "text_start", "contentIndex": 0, "block": { "type": "text", "text": "" } },
+        })),
+        text_delta(&opening),
+    ]
+}
+
+/// The streaming reply: its deltas go out at [`DELTAS_PER_SECOND`] from a task of their own until it is dropped.
+struct Reply {
+    sent: Arc<AtomicUsize>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Reply {
+    fn start(process: FakeProcess) -> Self {
+        process.emit(reply_start());
+        let sent = Arc::new(AtomicUsize::new(0));
+        let counter = Arc::clone(&sent);
+        let task = tokio::spawn(async move {
+            let mut ticks = tokio::time::interval(Duration::from_millis(1000 / DELTAS_PER_SECOND));
+            let mut index = 0;
+            loop {
+                index += 1;
+                ticks.tick().await;
+                process.emit(vec![text_delta(&delta(index))]);
+                counter.store(index, Ordering::SeqCst);
+            }
+        });
+        Self { sent, task }
+    }
+
+    fn sent(&self) -> usize {
+        self.sent.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for Reply {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+async fn eval_on(driver: &WebDriver, script: &str, args: Vec<Value>) -> anyhow::Result<Value> {
+    Ok(driver.execute(script, args).await?.json().clone())
+}
+
+/// The transcript's scroll state.
+#[derive(Debug, Clone, Copy)]
+struct View {
+    top: f64,
+    /// Pixels between the bottom of the view and the bottom of the content.
+    below: f64,
+    height: f64,
+    pinned: bool,
+}
+
+async fn view(driver: &WebDriver) -> anyhow::Result<View> {
+    let value = eval_on(
+        driver,
+        "const t = document.querySelector(arguments[0]);
+         return [t.scrollTop, t.scrollHeight - t.scrollTop - t.clientHeight, t.scrollHeight, t.dataset.pinned === 'true'];",
+        vec![json!(TRANSCRIPT)],
+    )
+    .await?;
+    let (top, below, height, pinned) = serde_json::from_value(value)?;
+    Ok(View {
+        top,
+        below,
+        height,
+        pinned,
+    })
+}
+
+/// Polls `probe` until it returns `Some`, failing after [`WAIT`] with `what` and the transcript's scroll state (for a
+/// page without a [`Journey`]).
+async fn until_on<T>(
+    driver: &WebDriver,
+    what: &str,
+    mut probe: impl AsyncFnMut(&WebDriver) -> anyhow::Result<Option<T>>,
+) -> anyhow::Result<T> {
+    let deadline = std::time::Instant::now() + WAIT;
+    loop {
+        if let Some(value) = probe(driver).await? {
+            return Ok(value);
+        }
+        if std::time::Instant::now() > deadline {
+            let state = view(driver).await;
+            anyhow::bail!("timed out waiting for {what}; the transcript: {state:?}");
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+}
+
+/// Where the page's wheel input comes from.
+enum Wheel {
+    /// WebDriver's wheel input source, `delta_y` pixels a turn (Chromium; `WebKitGTK`'s dispatches wheel events but
+    /// scrolls nothing).
+    WebDriver,
+    /// Wheel buttons pressed on the X server in this environment (`DISPLAY`, `XAUTHORITY`) by `xdotool`, one notch a
+    /// turn: the platform's own wheel scrolling, smooth scrolling included (`WebKitGTK`).
+    X(Vec<(String, String)>),
+}
+
+/// A wheel gesture over the transcript: `steps` turns of `delta_y` pixels (< 0 scrolls up) a frame apart.
+async fn wheel_gesture(
+    driver: &WebDriver,
+    wheel: &Wheel,
+    steps: usize,
+    delta_y: i64,
+) -> anyhow::Result<()> {
+    let value = eval_on(
+        driver,
+        "const r = document.querySelector(arguments[0]).getBoundingClientRect();
+         const x = r.left + r.width / 2, y = r.top + r.height / 2;
+         return [Math.round(x), Math.round(y), Math.round(window.screenX + x),
+                 Math.round(window.screenY + window.outerHeight - window.innerHeight + y)];",
+        vec![json!(TRANSCRIPT)],
+    )
+    .await?;
+    let (x, y, screen_x, screen_y): (i64, i64, i64, i64) = serde_json::from_value(value)?;
+    match wheel {
+        Wheel::WebDriver => {
+            let actions: Vec<Value> = (0..steps)
+                .flat_map(|_| {
+                    [
+                        json!({ "type": "scroll", "x": x, "y": y, "deltaX": 0, "deltaY": delta_y, "origin": "viewport", "duration": 0 }),
+                        json!({ "type": "pause", "duration": 16 }),
+                    ]
+                })
+                .collect();
+            driver
+                .cmd(Command::PerformActions(Actions::from(json!([
+                    { "type": "wheel", "id": "wheel", "actions": actions },
+                ]))))
+                .await?;
+        }
+        Wheel::X(environment) => {
+            let button = if delta_y < 0 { "4" } else { "5" };
+            let status = std::process::Command::new("xdotool")
+                .envs(environment.iter().map(|(name, value)| (name, value)))
+                .args(["mousemove", &screen_x.to_string(), &screen_y.to_string()])
+                .args([
+                    "click",
+                    "--repeat",
+                    &steps.to_string(),
+                    "--delay",
+                    "16",
+                    button,
+                ])
+                .status()
+                .context("cannot run xdotool (run inside `nix develop`)")?;
+            anyhow::ensure!(status.success(), "xdotool failed: {status}");
+        }
+    }
+    Ok(())
+}
+
+/// Drags the scrollbar up `steps` × `step` pixels: `scrollTop` set from where the drag started, one step per frame.
+async fn drag_scrollbar(driver: &WebDriver, steps: u32, step: u32) -> anyhow::Result<()> {
+    driver
+        .execute_async(
+            "const [css, steps, step, done] = arguments;
+             const t = document.querySelector(css);
+             const start = t.scrollTop;
+             let moved = 0;
+             const next = () => {
+               if (moved === steps) { done(); return; }
+               moved += 1;
+               t.scrollTop = start - moved * step;
+               requestAnimationFrame(next);
+             };
+             requestAnimationFrame(next);",
+            vec![json!(TRANSCRIPT), json!(steps), json!(step)],
+        )
+        .await?;
+    Ok(())
+}
+
+/// Presses `key` on the focused transcript.
+async fn press(driver: &WebDriver, key: Key) -> anyhow::Result<()> {
+    eval_on(
+        driver,
+        "document.querySelector(arguments[0]).focus();",
+        vec![json!(TRANSCRIPT)],
+    )
+    .await?;
+    driver.action_chain().send_keys(key).perform().await?;
+    Ok(())
+}
+
+/// Waits until the view rests unpinned at least 100 px above the bottom (the same position for a few polls: smooth
+/// scrolling has ended); returns its state.
+async fn until_rests_up(driver: &WebDriver, how: &str) -> anyhow::Result<View> {
+    let mut last = None;
+    let mut same = 0;
+    until_on(
+        driver,
+        &format!("the view to rest above the bottom after {how}"),
+        async |page| {
+            let now = view(page).await?;
+            if now.pinned || now.below < 100.0 {
+                (last, same) = (None, 0);
+                return Ok(None);
+            }
+            if last == Some(now.top) {
+                same += 1;
+            } else {
+                (last, same) = (Some(now.top), 0);
+            }
+            Ok((same >= 4).then_some(now))
+        },
+    )
+    .await
+}
+
+/// Lets the reply stream on for a second and checks that the view stayed at `at`, unpinned, while the reply grew.
+async fn rests(driver: &WebDriver, reply: &Reply, at: View, how: &str) -> anyhow::Result<()> {
+    let until = reply.sent() + usize::try_from(DELTAS_PER_SECOND)?;
+    until_on(driver, "a second more of the reply", async |page| {
+        Ok((reply.sent() >= until && view(page).await?.height > at.height).then_some(()))
+    })
+    .await?;
+    let after = view(driver).await?;
+    assert!(
+        (after.top - at.top).abs() <= 1.0 && !after.pinned,
+        "after scrolling up with {how}, the streaming reply must not pull the view back: {at:?} -> {after:?}"
+    );
+    Ok(())
+}
+
+/// `End` pins the view again; it then follows the reply at the bottom.
+async fn to_bottom(driver: &WebDriver, reply: &Reply) -> anyhow::Result<()> {
+    press(driver, Key::End).await?;
+    let until = reply.sent() + 30;
+    until_on(driver, "the pinned bottom", async |page| {
+        let now = view(page).await?;
+        Ok((reply.sent() >= until && now.pinned && now.below <= 32.0).then_some(()))
+    })
+    .await
+}
+
+/// The streaming reply's case of UI-042 in `driver`'s page, which shows the thread `launcher`'s first omp runs.
+/// `gestures` are the wheel gestures to try: what they stand for, turns, pixels a turn.
+async fn scroll_up_while_a_reply_streams(
+    driver: &WebDriver,
+    launcher: &FakeLauncher,
+    wheel: &Wheel,
+    gestures: &[(&str, usize, i64)],
+) -> anyhow::Result<()> {
+    until_on(driver, "the thread's omp to start", async |_| {
+        Ok((!launcher.launches().is_empty()).then_some(()))
+    })
+    .await?;
+    let reply = Reply::start(launcher.process(0));
+    until_on(driver, "the streaming reply at the bottom", async |page| {
+        let shown = eval_on(
+            page,
+            "const r = document.querySelector(arguments[0]);
+             return r !== null && r.offsetHeight > 2 * document.querySelector(arguments[1]).clientHeight;",
+            vec![json!(STREAMING), json!(TRANSCRIPT)],
+        )
+        .await?
+            == json!(true);
+        let now = view(page).await?;
+        Ok((shown && reply.sent() >= 30 && now.pinned && now.below <= 32.0).then_some(()))
+    })
+    .await?;
+
+    for &(how, steps, delta_y) in gestures {
+        wheel_gesture(driver, wheel, steps, delta_y).await?;
+        let at = until_rests_up(driver, how).await?;
+        rests(driver, &reply, at, how).await?;
+        to_bottom(driver, &reply).await?;
+    }
+
+    let how = "PageUp";
+    press(driver, Key::PageUp).await?;
+    let at = until_rests_up(driver, how).await?;
+    rests(driver, &reply, at, how).await?;
+
+    to_bottom(driver, &reply).await?;
+    let how = "the scrollbar";
+    drag_scrollbar(driver, 20, 12).await?;
+    let at = until_rests_up(driver, how).await?;
+    rests(driver, &reply, at, how).await
+}
+
+// spec: UI-042
+#[tokio::test(flavor = "multi_thread")]
+async fn scrolling_up_while_a_reply_streams_stays_where_the_user_scrolled() -> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(history()));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    let thread = create_thread(&journey).await?;
+    journey.click(&row(&thread)).await?;
+    journey.opened(&thread).await?;
+    scroll_up_while_a_reply_streams(
+        &journey.driver,
+        &launcher,
+        &Wheel::WebDriver,
+        &[
+            ("a touchpad (many small wheel deltas)", 15, -16),
+            ("a mouse wheel", 3, -120),
+        ],
+    )
+    .await?;
+    journey.finish("scrolling while a reply streams").await
+}
+
+// spec: UI-042
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "WebKitGTK: needs OMFP_WEBKIT_WEBDRIVER (see the file header)"]
+async fn scrolling_up_while_a_reply_streams_stays_where_the_user_scrolled_in_webkitgtk()
+-> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(history()));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    journey.connected().await?;
+    let thread = create_thread(&journey).await?;
+    let webkit = WebKitDriver::start().await?;
+    let driver = webkit.session().await?;
+    driver.goto(journey.daemon().url()).await?;
+    let result = async {
+        let thread_row = row(&thread);
+        until_on(&driver, "the thread's row", async |page| {
+            Ok((eval_on(
+                page,
+                "return document.querySelector(arguments[0]) !== null;",
+                vec![json!(thread_row)],
+            )
+            .await?
+                == json!(true))
+            .then_some(()))
+        })
+        .await?;
+        eval_on(
+            &driver,
+            "document.querySelector(arguments[0]).click();",
+            vec![json!(thread_row)],
+        )
+        .await?;
+        let agent = eval_on(&driver, "return navigator.userAgent;", Vec::new()).await?;
+        eprintln!("streaming reply in {agent}");
+        let wheel = Wheel::X(webkit.x_environment()?);
+        scroll_up_while_a_reply_streams(
+            &driver,
+            &launcher,
+            &wheel,
+            &[("a wheel notch", 1, -1), ("three wheel notches", 3, -1)],
+        )
+        .await
+    }
+    .await;
+    driver.quit().await?;
+    drop(webkit);
+    result?;
+    journey
+        .finish("scrolling while a reply streams (webkitgtk)")
+        .await
 }

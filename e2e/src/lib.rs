@@ -134,6 +134,112 @@ impl Drop for ChromeDriver {
     }
 }
 
+/// `WebKitWebDriver` (`OMFP_WEBKIT_WEBDRIVER`, else from `PATH`; inside `cargo test` the dev shell's driver is not
+/// found on `PATH`, its store path contains `=`) under its own X server: `xvfb-run`, never the user's display. It
+/// drives nixpkgs' `MiniBrowser`, the `WebKitGTK` engine of `omfp desktop`. The whole process group is killed on drop.
+#[derive(Debug)]
+pub struct WebKitDriver {
+    child: Child,
+    url: String,
+    /// The `MiniBrowser` next to the driver (`libexec/webkit2gtk-4.1/`).
+    browser: PathBuf,
+}
+
+impl WebKitDriver {
+    /// Starts the driver and waits until it listens.
+    pub async fn start() -> anyhow::Result<Self> {
+        use std::os::unix::process::CommandExt;
+        let driver = std::env::var_os("OMFP_WEBKIT_WEBDRIVER")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+                    .map(|dir| dir.join("WebKitWebDriver"))
+                    .find(|path| path.is_file())
+            })
+            .context("set OMFP_WEBKIT_WEBDRIVER to WebKitWebDriver")?;
+        let browser = driver
+            .parent()
+            .and_then(Path::parent)
+            .map(|prefix| prefix.join("libexec/webkit2gtk-4.1/MiniBrowser"))
+            .filter(|path| path.is_file())
+            .with_context(|| format!("no MiniBrowser next to {}", driver.display()))?;
+        let port = std::net::TcpListener::bind("127.0.0.1:0")?
+            .local_addr()?
+            .port();
+        let child = Command::new("xvfb-run")
+            .args(["-a", "-s", "-screen 0 1600x1200x24"])
+            .arg(&driver)
+            .arg(format!("--port={port}"))
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .env("GDK_BACKEND", "x11")
+            .process_group(0)
+            .spawn()
+            .context("cannot start xvfb-run (run inside `nix develop`)")?;
+        let started = Self {
+            child,
+            url: format!("http://127.0.0.1:{port}"),
+            browser,
+        };
+        for _ in 0..200 {
+            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                return Ok(started);
+            }
+            tokio::time::sleep(POLL).await;
+        }
+        bail!("WebKitWebDriver did not start")
+    }
+
+    /// A new `MiniBrowser` session in a 1400×1000 window.
+    pub async fn session(&self) -> anyhow::Result<WebDriver> {
+        let mut caps = thirtyfour::Capabilities::new();
+        caps.set("browserName", "MiniBrowser")?;
+        caps.set(
+            "webkitgtk:browserOptions",
+            json!({ "binary": self.browser, "args": ["--automation"] }),
+        )?;
+        let driver = WebDriver::new(&self.url, caps).await?;
+        driver.set_window_rect(0, 0, 1400, 1000).await?;
+        Ok(driver)
+    }
+
+    /// `DISPLAY` and `XAUTHORITY` of the driver's X server, for real input events there (e.g. `xdotool`): the
+    /// environment `xvfb-run` gave `WebKitWebDriver`.
+    pub fn x_environment(&self) -> anyhow::Result<Vec<(String, String)>> {
+        let mut pending = vec![self.child.id().to_string()];
+        while let Some(pid) = pending.pop() {
+            let environ = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
+            let vars: Vec<(String, String)> = environ
+                .split(|byte| *byte == 0)
+                .filter_map(|entry| {
+                    let (name, value) = std::str::from_utf8(entry).ok()?.split_once('=')?;
+                    ["DISPLAY", "XAUTHORITY"]
+                        .contains(&name)
+                        .then(|| (name.to_owned(), value.to_owned()))
+                })
+                .collect();
+            if vars.iter().any(|(name, _)| name == "DISPLAY") {
+                return Ok(vars);
+            }
+            for task in std::fs::read_dir(format!("/proc/{pid}/task"))? {
+                let children = std::fs::read_to_string(task?.path().join("children"))?;
+                pending.extend(children.split_whitespace().map(str::to_owned));
+            }
+        }
+        bail!("no process under xvfb-run has a DISPLAY")
+    }
+}
+
+impl Drop for WebKitDriver {
+    fn drop(&mut self) {
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(format!("-{}", self.child.id()))
+            .status();
+        let _ = self.child.wait();
+    }
+}
+
 /// One journey: fake LLM, isolated omp, daemon serving the web bundle, and a headless browser on its URL.
 pub struct Journey {
     pub fake: FakeLlm,

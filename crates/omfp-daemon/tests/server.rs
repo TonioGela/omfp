@@ -849,6 +849,42 @@ async fn the_index_follows_thread_process_changes() {
     }
 }
 
+// spec: DMN-129
+#[tokio::test(flavor = "multi_thread")]
+async fn the_thread_list_watch_follows_the_index() {
+    let daemon = daemon(&[]).await;
+    let mut threads = daemon.handle.threads();
+    assert_eq!(threads.borrow_and_update().len(), 0);
+    let mut client = daemon.client("test").await;
+    let thread = create_thread(&mut client).await;
+    until(&mut threads, |list| list.iter().any(|t| t.id == thread)).await;
+
+    client
+        .ok("thread.state", json!({ "threadId": thread }))
+        .await;
+    until(&mut threads, |list| {
+        list.iter()
+            .any(|t| t.id == thread && t.process == omfp_core::ProcessState::Running)
+    })
+    .await;
+
+    client
+        .ok("threads.delete", json!({ "threadId": thread }))
+        .await;
+    until(&mut threads, |list| list.iter().all(|t| t.id != thread)).await;
+}
+
+/// Waits (at most 10 s) until the thread list satisfies `done`.
+async fn until(
+    threads: &mut tokio::sync::watch::Receiver<Vec<omfp_protocol::ThreadSummary>>,
+    done: impl FnMut(&Vec<omfp_protocol::ThreadSummary>) -> bool,
+) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), threads.wait_for(done))
+        .await
+        .unwrap()
+        .unwrap();
+}
+
 /// The next `thread_upserted` of `thread` on the index.
 async fn next_upsert(client: &mut Client, thread: &str) -> Value {
     loop {
