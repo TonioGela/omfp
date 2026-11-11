@@ -57,6 +57,8 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
          saved widget reloads at once; errors show in its place.\n\
          - After writing a widget call omfp_widget_check {{ name }} (compile errors, what open windows render); place it \
          with omfp_view_add {{ widget, where }} rather than rewriting views.json.\n\
+         - When something would read better as a visualization or controls (progress, a table, a chart, buttons), \
+         propose a widget in one sentence and build it only after the user agrees.\n\
          \n\
          ```tsx\n\
          import {{ Card, Log, Progress }} from \"omfp/kit\";\n\
@@ -156,6 +158,7 @@ mod tests {
             "react, react/jsx-runtime, react-dom, omfp/sdk, omfp/kit",
             "omfp_widget_check { name }",
             "omfp_view_add { widget, where }",
+            "propose a widget in one sentence and build it only after the user agrees",
             "import { Card, Log, Progress } from \"omfp/kit\";",
             "useJob(command)",
             "job.status",
@@ -173,7 +176,7 @@ mod tests {
             example.lines().count() <= 11,
             "a ten-line example: {example}"
         );
-        assert!(text.lines().count() <= 24, "short: {text}");
+        assert!(text.lines().count() <= 25, "short: {text}");
         assert!(!text.ends_with('\n'));
     }
 

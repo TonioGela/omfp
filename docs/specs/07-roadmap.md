@@ -304,8 +304,8 @@ the end; another window's session shows with an end button and no audio; failure
 scripted transcript, mute, end, another client's session and the login message in headless Chromium with a fake
 microphone against a fake-launcher daemon; its canned answer never connects the peer, so the connected states are
 covered by the component tests only (screenshots in `/tmp/omfp-live-*.png`, the panel states in the `/kit` gallery).
-The real call (audio both ways, `listening`/`speaking` on a connected peer, mute heard on the other side) is to be
-verified by the user by hand on an `openai-codex` login; S-09 already did it with the prototype. Since omp gives the
+The real call (audio both ways, `listening`/`speaking` on a connected peer, mute heard on the other side, answers about
+the thread) was verified by the user by hand on an `openai-codex` login. Since omp gives the
 realtime model only its live prompt, the daemon sends omp's bundled prompt followed by the thread's title and its most
 recent user and assistant turns as `instructions` on `live_connect`, so the voice knows the thread (DMN-105).
 
