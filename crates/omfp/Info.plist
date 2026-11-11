@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- macOS (ENV-041, UI-251): build.rs embeds it in the binary (`__TEXT,__info_plist`), nix/package.nix puts it in
+     `omfp.app`; both replace @VERSION@ with the workspace version. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>dev.omfp.desktop</string>
+	<key>CFBundleName</key>
+	<string>omfp</string>
+	<key>CFBundleDisplayName</key>
+	<string>omfp</string>
+	<key>CFBundleExecutable</key>
+	<string>omfp</string>
+	<key>CFBundleIconFile</key>
+	<string>omfp</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>omfp uses the microphone for live voice with the agent.</string>
+</dict>
+</plist>

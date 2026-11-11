@@ -36,29 +36,31 @@ pub enum StoreError {
 
 pub type Result<T, E = StoreError> = std::result::Result<T, E>;
 
-/// Who created an entity (ARC-009): the user, or the agent of a thread.
+/// Who created an entity (ARC-009): the user, the agent of a thread, or an MCP client outside omfp (AGT-051).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Provenance {
     User,
     Thread(String),
+    Mcp,
 }
 
 impl Provenance {
-    /// Stored form: `user` or the thread id.
+    /// Stored form: `user`, `mcp` or the thread id (a ULID, never one of the two).
     #[must_use]
     pub fn as_str(&self) -> &str {
         match self {
             Self::User => "user",
+            Self::Mcp => "mcp",
             Self::Thread(id) => id,
         }
     }
 
     #[must_use]
     pub fn parse(value: &str) -> Self {
-        if value == "user" {
-            Self::User
-        } else {
-            Self::Thread(value.to_owned())
+        match value {
+            "user" => Self::User,
+            "mcp" => Self::Mcp,
+            _ => Self::Thread(value.to_owned()),
         }
     }
 }
@@ -135,6 +137,39 @@ pub struct Thread {
     /// Unix milliseconds.
     pub created_at: i64,
     pub archived_at: Option<i64>,
+}
+
+/// One agent-originated action to log (AGT-072, DMN-160).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewActivity {
+    /// Unix milliseconds.
+    pub at: i64,
+    /// The calling agent's thread; `None` for the MCP principal (AGT-053).
+    pub thread_id: Option<String>,
+    /// The calling principal's client (PRT-033).
+    pub client: String,
+    pub method: String,
+    pub params: serde_json::Value,
+    /// `None` when the call succeeded.
+    pub error: Option<String>,
+}
+
+/// A logged action with its place in the log.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Activity {
+    pub seq: i64,
+    pub entry: NewActivity,
+}
+
+/// Which part of the activity log to read (PRT-086).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityQuery {
+    pub thread_id: Option<String>,
+    /// Only entries with a smaller `seq`.
+    pub before: Option<i64>,
+    /// Only entries with a greater `seq`.
+    pub after: Option<i64>,
+    pub limit: u32,
 }
 
 /// A new ULID as a string. IDs are monotonic within the process, so ordering by id is ordering by creation.
@@ -466,7 +501,7 @@ impl Store {
     /// Checks that a provenance names an existing thread, if it names one (ARC-009).
     pub fn check_provenance(&self, created_by: &Provenance) -> Result<()> {
         match created_by {
-            Provenance::User => Ok(()),
+            Provenance::User | Provenance::Mcp => Ok(()),
             Provenance::Thread(id) => ensure_thread(&self.conn(), id),
         }
     }
@@ -552,6 +587,94 @@ impl Store {
             )?;
         }
         Ok(())
+    }
+
+    // Spawned threads and the activity log (M10)
+
+    /// The threads `id` spawned, transitively (AGT-070): those whose provenance names it or one of them, archived
+    /// ones included, oldest first.
+    pub fn spawned_thread_ids(&self, id: &str) -> Result<Vec<String>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "WITH RECURSIVE spawned (id) AS (
+                 SELECT id FROM threads WHERE created_by = ?1
+                 UNION
+                 SELECT threads.id FROM threads JOIN spawned ON threads.created_by = spawned.id
+             )
+             SELECT id FROM spawned ORDER BY id",
+        )?;
+        let ids = stmt
+            .query_map([id], |row| row.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(ids)
+    }
+
+    /// Appends an entry to the activity log and deletes those older than the newest `keep` (DMN-160).
+    pub fn record_activity(&self, entry: &NewActivity, keep: u32) -> Result<Activity> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO activity (at, thread_id, client, method, params, error) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                entry.at,
+                entry.thread_id,
+                entry.client,
+                entry.method,
+                entry.params.to_string(),
+                entry.error
+            ],
+        )?;
+        let seq = tx.last_insert_rowid();
+        tx.execute(
+            "DELETE FROM activity WHERE seq <= ?1",
+            [seq - i64::from(keep)],
+        )?;
+        tx.commit()?;
+        Ok(Activity {
+            seq,
+            entry: entry.clone(),
+        })
+    }
+
+    /// The entries of the activity log `query` selects, newest first, and whether its limit left some out (PRT-086).
+    pub fn activity(&self, query: &ActivityQuery) -> Result<(Vec<Activity>, bool)> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT seq, at, thread_id, client, method, params, error FROM activity
+             WHERE (?1 IS NULL OR thread_id = ?1) AND (?2 IS NULL OR seq < ?2) AND (?3 IS NULL OR seq > ?3)
+             ORDER BY seq DESC LIMIT ?4",
+        )?;
+        let rows = stmt.query_map(
+            params![
+                query.thread_id,
+                query.before,
+                query.after,
+                i64::from(query.limit) + 1
+            ],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    NewActivity {
+                        at: row.get(1)?,
+                        thread_id: row.get(2)?,
+                        client: row.get(3)?,
+                        method: row.get(4)?,
+                        params: serde_json::Value::Null,
+                        error: row.get(6)?,
+                    },
+                    row.get::<_, String>(5)?,
+                ))
+            },
+        )?;
+        let mut entries = Vec::new();
+        for row in rows {
+            let (seq, mut entry, params) = row?;
+            entry.params = serde_json::from_str(&params)?;
+            entries.push(Activity { seq, entry });
+        }
+        let more = entries.len() > usize::try_from(query.limit).unwrap_or(usize::MAX);
+        entries.truncate(usize::try_from(query.limit).unwrap_or(usize::MAX));
+        Ok((entries, more))
     }
 
     // Settings
@@ -699,12 +822,14 @@ fn thread_from_row(row: &Row<'_>) -> rusqlite::Result<Thread> {
 mod tests {
     use super::*;
 
-    // spec: ARC-009
+    // spec: ARC-009, AGT-051
     #[test]
-    fn provenance_is_stored_as_user_or_a_thread_id() {
+    fn provenance_is_stored_as_user_mcp_or_a_thread_id() {
         assert_eq!(Provenance::User.as_str(), "user");
+        assert_eq!(Provenance::Mcp.as_str(), "mcp");
         assert_eq!(Provenance::Thread("01J".into()).as_str(), "01J");
         assert_eq!(Provenance::parse("user"), Provenance::User);
+        assert_eq!(Provenance::parse("mcp"), Provenance::Mcp);
         assert_eq!(Provenance::parse("01J"), Provenance::Thread("01J".into()));
     }
 }

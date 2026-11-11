@@ -5,13 +5,18 @@
 //! A client sends [`Request`]s (decode them with [`decode_request`]); the daemon answers with [`ServerFrame`]s. Each
 //! method has a marker type in [`method`] implementing [`Method`], which names its params and result types.
 
+mod activity;
 mod dto;
 mod envelope;
+mod lists;
 pub mod method;
 mod params;
 mod schema;
 mod topic;
 
+pub use activity::{
+    ActivityEntry, ActivityPage, ListActivityParams, StopThreadParams, ThreadsStopped,
+};
 pub use dto::{
     CreatedBy, Density, DiffPage, FileCandidate, FileCandidates, FileChange, FileContent, FileDiff,
     FileKind, FileMatch, FileStatus, FileWritten, FontSettings, GitStatus, IndexSnapshot, JobInfo,
@@ -24,7 +29,8 @@ pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, ProtocolError, Request, Response,
     ServerFrame, TopicEvent, TransientEvent, ViewsEvent, WorkspaceEvent, decode_request,
 };
-pub use method::{Call, METHODS, Method, method_schemas};
+pub use lists::{ListThreadsParams, ThreadList, WorkspaceList};
+pub use method::{Call, METHODS, Method, method_description, method_schemas};
 pub use params::{
     AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CopyWidgetParams,
     CreateThreadParams, CreateWorkspaceParams, Empty, FindFileParams, ForkParams, GoalParams,
@@ -40,6 +46,10 @@ pub use params::{
     ThreadSearchResults, ThreadWorkspace, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
     WidgetCopied, WidgetJobReport, WidgetReport, WidgetReportState, WorkspaceDiffParams,
     WorkspaceRef, WriteFileParams,
+};
+pub use params::{
+    LibraryComponent, MountParams, MountPlace, MountUpdateParams, Mounted, SaveWidgetParams,
+    UnmountParams, Unmounted, WidgetLibrary, WidgetSaved,
 };
 pub use schema::type_schemas;
 pub use topic::{Topic, TopicParseError};

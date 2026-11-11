@@ -2,6 +2,7 @@
 //! found with [`omfp_daemon::discover`] or started in the background (ARC-003), or with `--connect` on another
 //! daemon. The window loads the daemon's own UI over http: no bundled assets, no Tauri IPC, no capabilities.
 
+#[cfg(target_os = "linux")]
 use std::cell::Cell;
 use std::ffi::OsString;
 use std::fs::{File, TryLockError};
@@ -9,24 +10,29 @@ use std::net::{SocketAddr, TcpListener};
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+#[cfg(target_os = "linux")]
 use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, bail};
 use clap::Parser as _;
+#[cfg(target_os = "linux")]
 use gio::glib::{ToVariant as _, Variant};
-use omfp_daemon::config::{Cli, Config, default_config_file};
+use omfp_daemon::config::{Cli, Config, default_config_file, default_data_dir};
 use omfp_daemon::theme::default_theme_file;
 use omfp_daemon::watch::{self, WatchedFile};
 use omfp_protocol::Theme;
 use omfp_protocol::method::ThemeSet;
+#[cfg(target_os = "linux")]
+use tauri::Theme as WindowTheme;
 use tauri::webview::{PermissionKind, PermissionResponse};
-use tauri::{
-    Manager as _, Theme as WindowTheme, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-};
+use tauri::{Manager as _, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-use crate::remote::{Connection, Target, default_data_dir, reachable, read_token, websocket_url};
+use crate::remote::{Connection, Target, reachable, read_token, websocket_url};
+
+#[cfg(any(target_os = "macos", test))]
+mod macos;
 
 /// `omfp desktop`.
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
@@ -39,7 +45,7 @@ pub struct Args {
     #[arg(long)]
     pub token: Option<String>,
     /// Data directory of the local daemon; also holds the window's web storage (`webview/`) [default: the daemon's,
-    /// `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`].
+    /// `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`, on macOS `~/Library/Application Support/omfp`].
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
     /// Selects this thread in the new window (the tray's waiting threads, UI-218).
@@ -92,7 +98,12 @@ impl Smoke {
 }
 
 /// How long the smoke check waits for the shell.
+#[cfg(not(target_os = "macos"))]
 pub const SMOKE_DEADLINE: Duration = Duration::from_secs(60);
+/// How long the smoke check waits for the shell: longer on macOS (TST-090), where `WKWebView` throttles a window on a
+/// locked screen (about 30 s to get ready).
+#[cfg(target_os = "macos")]
+pub const SMOKE_DEADLINE: Duration = Duration::from_secs(180);
 /// How long a started daemon gets to write `daemon.json`.
 const START_DEADLINE: Duration = Duration::from_secs(30);
 
@@ -112,7 +123,7 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
         let data_dir = args
             .data_dir
             .clone()
-            .or_else(|| default_data_dir(env.xdg_data_home.clone(), env.home.clone()))
+            .or_else(|| default_data_dir(env.xdg_data_home.clone(), env.home.as_deref()))
             .context("cannot determine the data directory: pass --data-dir, or set XDG_DATA_HOME or HOME")?;
         match theme_push(&base, args.token.as_deref(), &env) {
             ThemePush::Push { target, file } => {
@@ -490,17 +501,24 @@ const PROBE: &str = r#"(() => {
     href: location.href,
     rtcPeerConnection: typeof RTCPeerConnection,
     notification: typeof Notification === "function" ? Notification.permission : "undefined",
+    mediaDevices: typeof navigator.mediaDevices,
   };
 })()"#;
 
+#[cfg(target_os = "linux")]
 const PORTAL: &str = "org.freedesktop.portal.Desktop";
+#[cfg(target_os = "linux")]
 const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
+#[cfg(target_os = "linux")]
 const PORTAL_SETTINGS: &str = "org.freedesktop.portal.Settings";
+#[cfg(target_os = "linux")]
 const APPEARANCE: &str = "org.freedesktop.appearance";
+#[cfg(target_os = "linux")]
 const COLOR_SCHEME: &str = "color-scheme";
 
 /// The window theme for the settings portal's `org.freedesktop.appearance color-scheme` (UI-195): 1 prefers dark,
 /// 2 prefers light, 0 (no preference) and unknown values leave the toolkit's default.
+#[cfg(target_os = "linux")]
 #[must_use]
 pub fn portal_theme(color_scheme: u32) -> Option<WindowTheme> {
     match color_scheme {
@@ -512,6 +530,7 @@ pub fn portal_theme(color_scheme: u32) -> Option<WindowTheme> {
 
 /// The `u` of a portal value however it is wrapped: `ReadOne` answers `(v)`, the older `Read` `(v)` holding a `v`,
 /// `SettingChanged` carries a `v`.
+#[cfg(target_os = "linux")]
 #[must_use]
 pub fn portal_value(value: &Variant) -> Option<u32> {
     if let Some(number) = value.get::<u32>() {
@@ -530,6 +549,7 @@ pub fn portal_value(value: &Variant) -> Option<u32> {
 /// `gtk-application-prefer-dark-theme`, which `WebKitGTK` maps to `prefers-color-scheme`) is set from the portal's value
 /// at startup and on every `SettingChanged`. Without a session bus or portal nothing changes. Runs on the GTK main
 /// thread, whose main loop delivers the replies and signals; the subscription lasts as long as the returned value.
+#[cfg(target_os = "linux")]
 fn follow_color_scheme(window: &WebviewWindow) -> Option<ColorScheme> {
     let connection = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>).ok()?;
     // Subscribed before reading, so no change between the read and the subscription is lost; a change that arrives
@@ -575,6 +595,7 @@ fn follow_color_scheme(window: &WebviewWindow) -> Option<ColorScheme> {
     })
 }
 
+#[cfg(target_os = "linux")]
 fn read_color_scheme(
     connection: &gio::DBusConnection,
     method: &str,
@@ -594,6 +615,7 @@ fn read_color_scheme(
     );
 }
 
+#[cfg(target_os = "linux")]
 fn apply_read(window: &WebviewWindow, changed: &Cell<bool>, value: &Variant) {
     if !changed.get()
         && let Some(theme) = portal_value(value).and_then(portal_theme)
@@ -603,11 +625,13 @@ fn apply_read(window: &WebviewWindow, changed: &Cell<bool>, value: &Variant) {
 }
 
 /// The portal subscription of [`follow_color_scheme`].
+#[cfg(target_os = "linux")]
 struct ColorScheme {
     connection: gio::DBusConnection,
     subscription: Option<gio::SignalSubscriptionId>,
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for ColorScheme {
     fn drop(&mut self) {
         if let Some(subscription) = self.subscription.take() {
@@ -619,17 +643,31 @@ impl Drop for ColorScheme {
 /// Opens the window and runs the event loop until it closes.
 fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::Result<i32> {
     let app = tauri::Builder::default().build(tauri::generate_context!())?;
-    let window = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(url))
+    let builder = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(url))
         .title("omfp")
         .inner_size(1280.0, 800.0)
-        // Per data directory: two daemons on the same port never share the window's storage.
-        .data_directory(webview_data.to_path_buf())
-        // WebKitGTK denies requests nobody handles: allow the UI's thread notifications.
+        // WebKitGTK denies requests nobody handles: allow the UI's thread notifications. WKWebView answers an unhandled
+        // media request with its own prompt on every page load: grant the microphone (live voice, UI-251); macOS still
+        // asks the user once per app through TCC (the embedded Info.plist's NSMicrophoneUsageDescription).
         .on_permission_request(|_, kind| match kind {
             PermissionKind::Notifications => PermissionResponse::Allow,
+            #[cfg(target_os = "macos")]
+            PermissionKind::Microphone => PermissionResponse::Allow,
             _ => PermissionResponse::Default,
-        })
-        .build()?;
+        });
+    // Per data directory: two daemons on the same port never share the window's storage (UI-005). WebKitGTK takes a
+    // directory; WKWebView ignores it and takes a data store identifier instead (UI-250, macOS 14+).
+    #[cfg(target_os = "linux")]
+    let builder = builder.data_directory(webview_data.to_path_buf());
+    // WKWebView has no web notifications: the page gets a `Notification` whose notifications the window posts to the
+    // system's notification center (UI-252).
+    #[cfg(target_os = "macos")]
+    let builder = builder
+        .data_store_identifier(macos::data_store_identifier(webview_data)?)
+        .initialization_script(macos::NOTIFICATION_SCRIPT)
+        .on_navigation(macos::on_navigation);
+    let window = builder.build()?;
+    #[cfg(target_os = "linux")]
     let _color_scheme = follow_color_scheme(&window);
     if smoke.is_some() {
         smoke_check(window, std::env::var("OMFP_SMOKE_SCHEME").ok());
@@ -761,7 +799,8 @@ mod tests {
     fn the_daemon_is_planned_like_omfp_daemon_resolves_it() {
         let home = tempfile::tempdir().unwrap();
         let plan = LocalDaemon::plan(&None, &[], &env(home.path())).unwrap();
-        assert_eq!(plan.data_dir, home.path().join(".local/share/omfp"));
+        let home_data = home.path().join(omfp_daemon::config::HOME_DATA);
+        assert_eq!(plan.data_dir, home_data.join("omfp"));
         assert_eq!(plan.bind, omfp_daemon::config::DEFAULT_BIND);
         assert!(!plan.explicit_bind);
 
@@ -889,6 +928,7 @@ mod tests {
     }
 
     // spec: UI-195
+    #[cfg(target_os = "linux")]
     #[test]
     fn the_portal_color_scheme_picks_the_window_theme() {
         assert_eq!(portal_theme(1), Some(WindowTheme::Dark));

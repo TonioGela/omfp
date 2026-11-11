@@ -4,7 +4,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 use omfp_daemon::store::{
-    Provenance, SeenRepository, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
+    ActivityQuery, NewActivity, Provenance, SeenRepository, Store, StoreError, Thread, TitleSource,
+    Workspace, new_id, now_ms,
 };
 use rusqlite::{Connection, params};
 use serde_json::{Value, json};
@@ -80,8 +81,9 @@ fn thread(workspace_id: &str) -> Thread {
     }
 }
 
-/// Turns a database back into a version-5 one: no widget state, thread tags and `workspaces.owned` again.
-const BACK_TO_5: &str = "DROP TABLE widget_state;
+/// Turns a database back into a version-5 one: no widget state, no activity log, thread tags and `workspaces.owned`
+/// again.
+const BACK_TO_5: &str = "DROP TABLE widget_state; DROP TABLE activity;
     CREATE TABLE thread_tags (
     thread_id TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE, tag TEXT NOT NULL,
     PRIMARY KEY (thread_id, tag));
@@ -94,11 +96,12 @@ fn opening_an_empty_file_applies_every_migration() {
     let db = dir.path().join("omfp.db");
     drop(open(&dir));
 
-    assert_eq!(user_version(&db), 7);
+    assert_eq!(user_version(&db), 9);
     // Only metadata lives in the database: no transcript tables, no repositories of workspaces (DMN-022).
     assert_eq!(
         tables(&db),
         [
+            "activity",
             "seen_repositories",
             "settings",
             "thread_roots",
@@ -122,7 +125,7 @@ fn reopening_is_idempotent_and_keeps_data() {
         store.insert_thread(&t).unwrap();
     }
     let store = open(&dir);
-    assert_eq!(user_version(&db), 7);
+    assert_eq!(user_version(&db), 9);
     assert_eq!(store.workspaces().unwrap(), vec![ws]);
     assert_eq!(store.threads().unwrap(), vec![t]);
 }
@@ -149,7 +152,7 @@ fn migration_4_counts_existing_titles_as_set() {
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 7);
+    assert_eq!(user_version(&db), 9);
     assert_eq!(
         store.threads().unwrap(),
         vec![Thread {
@@ -181,7 +184,7 @@ fn migration_5_keeps_known_repositories_as_seen_ones_and_drops_the_registry() {
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 7);
+    assert_eq!(user_version(&db), 9);
     assert!(!tables(&db).contains(&"repositories".to_owned()));
     assert_eq!(
         store.seen_repositories().unwrap(),
@@ -211,7 +214,7 @@ fn a_database_from_a_newer_daemon_is_refused() {
             error,
             StoreError::UnknownSchemaVersion {
                 found: 99,
-                supported: 7
+                supported: 9
             }
         ),
         "{error:?}"
@@ -279,12 +282,12 @@ fn migration_7_adds_an_empty_widget_state_table_and_keeps_the_data() {
         store.insert_workspace(&ws).unwrap();
     }
     raw(&db)
-        .execute_batch("DROP TABLE widget_state; PRAGMA user_version = 6;")
+        .execute_batch("DROP TABLE widget_state; DROP TABLE activity; PRAGMA user_version = 6;")
         .unwrap();
 
     let store = open(&dir);
 
-    assert_eq!(user_version(&db), 7);
+    assert_eq!(user_version(&db), 9);
     assert_eq!(count(&db, "widget_state"), 0);
     assert_eq!(store.workspaces().unwrap(), vec![ws.clone()]);
     assert_eq!(store.widget_state(&ws.id).unwrap(), BTreeMap::new());
@@ -580,10 +583,11 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
 
     let store = Store::open(&old.db, &old.root).unwrap();
 
-    assert_eq!(user_version(&old.db), 7);
+    assert_eq!(user_version(&old.db), 9);
     assert_eq!(
         tables(&old.db),
         [
+            "activity",
             "seen_repositories",
             "settings",
             "thread_roots",
@@ -605,7 +609,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
     // Reopening is a no-op: same records, no new folders.
     drop(store);
     let store = Store::open(&old.db, &old.root).unwrap();
-    assert_eq!(user_version(&old.db), 7);
+    assert_eq!(user_version(&old.db), 9);
     assert_eq!(
         assert_migrated_records(&store, &old),
         (one.clone(), two.clone())
@@ -626,7 +630,7 @@ fn columns(db: &Path, table: &str) -> Vec<String> {
 }
 
 fn assert_dropped_tags_and_owned(db: &Path) {
-    assert_eq!(user_version(db), 7);
+    assert_eq!(user_version(db), 9);
     assert!(!tables(db).contains(&"thread_tags".to_owned()));
     assert_eq!(
         columns(db, "workspaces"),
@@ -743,4 +747,93 @@ fn migration_6_moves_workspaces_outside_the_root_into_new_folders_and_drops_tags
     let store = Store::open(&db, &root).unwrap();
     assert_eq!(store.workspaces().unwrap(), expected);
     assert_folders();
+}
+
+// spec: DMN-010, DMN-160
+#[test]
+fn migration_8_adds_an_empty_activity_log_and_keeps_the_data() {
+    let dir = TempDir::new().unwrap();
+    let db = dir.path().join("omfp.db");
+    let ws = workspace("a");
+    {
+        let store = open(&dir);
+        store.insert_workspace(&ws).unwrap();
+    }
+    raw(&db)
+        .execute_batch("DROP TABLE activity; PRAGMA user_version = 7;")
+        .unwrap();
+
+    let store = open(&dir);
+
+    assert_eq!(user_version(&db), 9);
+    assert_eq!(count(&db, "activity"), 0);
+    assert_eq!(
+        columns(&db, "activity"),
+        [
+            "seq",
+            "at",
+            "thread_id",
+            "client",
+            "method",
+            "params",
+            "error"
+        ]
+    );
+    assert_eq!(store.workspaces().unwrap(), vec![ws]);
+}
+
+// spec: DMN-010, DMN-160, AGT-053
+#[test]
+fn migration_9_lets_an_activity_entry_have_no_thread_and_keeps_the_log() {
+    let dir = TempDir::new().unwrap();
+    let db = dir.path().join("omfp.db");
+    drop(open(&dir));
+    raw(&db)
+        .execute_batch(
+            "DROP TABLE activity;
+             CREATE TABLE activity (seq INTEGER PRIMARY KEY, at INTEGER NOT NULL, thread_id TEXT NOT NULL,
+                 client TEXT NOT NULL, method TEXT NOT NULL, params TEXT NOT NULL, error TEXT);
+             CREATE INDEX activity_by_thread ON activity (thread_id, seq);
+             INSERT INTO activity VALUES (41, 7, '01JA', 'omp', 'thread.stop', '{\"threadId\":\"01JB\"}', NULL);
+             PRAGMA user_version = 8;",
+        )
+        .unwrap();
+
+    let store = open(&dir);
+
+    assert_eq!(user_version(&db), 9);
+    let mcp = store
+        .record_activity(
+            &NewActivity {
+                at: 8,
+                thread_id: None,
+                client: "claude-code".to_owned(),
+                method: "threads.create".to_owned(),
+                params: serde_json::json!({}),
+                error: None,
+            },
+            100,
+        )
+        .unwrap();
+    assert_eq!(mcp.seq, 42, "seq keeps increasing after the rebuild");
+    let (entries, more) = store
+        .activity(&ActivityQuery {
+            thread_id: None,
+            before: None,
+            after: None,
+            limit: 10,
+        })
+        .unwrap();
+    assert!(!more);
+    assert_eq!(
+        entries
+            .iter()
+            .map(|entry| (entry.seq, entry.entry.thread_id.clone()))
+            .collect::<Vec<_>>(),
+        [(42, None), (41, Some("01JA".to_owned()))]
+    );
+    assert_eq!(
+        entries[1].entry.params,
+        serde_json::json!({ "threadId": "01JB" })
+    );
 }

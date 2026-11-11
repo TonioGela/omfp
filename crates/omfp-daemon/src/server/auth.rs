@@ -9,19 +9,26 @@ use omfp_protocol::{ErrorBody, ErrorCode};
 
 use crate::store::Provenance;
 
-/// Who is on the other end of a connection.
+/// Who makes a request: the other end of a connection, a thread's agent calling through the agent tool registry, or
+/// an MCP client outside omfp calling through the MCP server.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Principal {
     /// Holder of the daemon's token; `client` is the name sent in `system.hello` (PRT-033).
     Owner { client: String },
+    /// The agent of thread `thread_id` (DMN-150): full access except the connection-level methods; `client` names
+    /// the program calling for it (`omp` for the thread's host tools).
+    Agent { thread_id: String, client: String },
+    /// An MCP client of the MCP server (AGT-051): an agent without a thread, with the same access as a thread's
+    /// agent; `client` is its `clientInfo.name`.
+    Mcp { client: String },
 }
 
 impl Principal {
-    /// The `client` of `system.hello`, recorded as provenance (PRT-033).
+    /// The `client` of `system.hello`, the agent's client or the MCP client, recorded as provenance (PRT-033).
     #[must_use]
     pub fn client(&self) -> &str {
         match self {
-            Self::Owner { client } => client,
+            Self::Owner { client } | Self::Agent { client, .. } | Self::Mcp { client } => client,
         }
     }
 
@@ -30,6 +37,8 @@ impl Principal {
     pub fn created_by(&self) -> Provenance {
         match self {
             Self::Owner { .. } => Provenance::User,
+            Self::Agent { thread_id, .. } => Provenance::Thread(thread_id.clone()),
+            Self::Mcp { .. } => Provenance::Mcp,
         }
     }
 }
@@ -58,6 +67,9 @@ pub fn permission(method: &str) -> Option<Permission> {
         "repos.suggest"
         | "fs.complete"
         | "threads.search"
+        | "activity.list"
+        | "threads.list"
+        | "workspaces.list"
         | "workspaces.status"
         | "workspaces.diff"
         | "workspaces.read_file"
@@ -71,7 +83,8 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.git"
         | "thread.state"
         | "theme.get"
-        | "settings.get" => Read,
+        | "settings.get"
+        | "widgets.library" => Read,
         "workspaces.create"
         | "workspaces.update"
         | "workspaces.remove"
@@ -88,7 +101,11 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "settings.set"
         | "views.set"
         | "widgets.copy"
-        | "widgets.state_set" => Manage,
+        | "widgets.state_set"
+        | "views.mount"
+        | "views.mount_update"
+        | "views.unmount"
+        | "widgets.save" => Manage,
         "thread.prompt"
         | "thread.steer"
         | "thread.follow_up"
@@ -129,7 +146,8 @@ pub fn authorize(principal: &Principal, method: &str) -> Result<(), ErrorBody> {
         ));
     };
     match (principal, permission) {
-        // The owner token grants everything.
+        // The owner token grants everything; an agent, inside omfp or an MCP client outside, has full access (D-17,
+        // DMN-150, AGT-051), but no connection to hello, subscribe on or report from.
         (
             Principal::Owner { .. },
             Permission::Connect
@@ -137,7 +155,17 @@ pub fn authorize(principal: &Principal, method: &str) -> Result<(), ErrorBody> {
             | Permission::Manage
             | Permission::Drive
             | Permission::Terminal,
+        )
+        | (
+            Principal::Agent { .. } | Principal::Mcp { .. },
+            Permission::Read | Permission::Manage | Permission::Drive | Permission::Terminal,
         ) => Ok(()),
+        (Principal::Agent { .. } | Principal::Mcp { .. }, Permission::Connect) => {
+            Err(ErrorBody::new(
+                ErrorCode::Unauthorized,
+                format!("`{method}` needs a window's connection; an agent cannot call it"),
+            ))
+        }
     }
 }
 
@@ -339,5 +367,66 @@ mod tests {
 
         assert_eq!(owner.created_by(), Provenance::User);
         assert_eq!(owner.client(), "script/ci");
+    }
+
+    // spec: DMN-150, PRT-034, AGT-051
+    #[test]
+    fn an_agent_or_an_mcp_client_may_call_every_method_that_needs_no_connection() {
+        let agents = [
+            Principal::Agent {
+                thread_id: "01J".into(),
+                client: "omp".into(),
+            },
+            Principal::Mcp {
+                client: "claude-code".into(),
+            },
+        ];
+
+        for agent in &agents {
+            for method in omfp_protocol::METHODS {
+                let allowed = authorize(agent, method);
+                if permission(method) == Some(Permission::Connect) {
+                    let error = allowed.expect_err(method);
+                    assert_eq!(error.code, ErrorCode::Unauthorized, "{method}");
+                    assert!(error.message.contains("connection"), "{}", error.message);
+                } else {
+                    assert_eq!(allowed, Ok(()), "{method}");
+                }
+            }
+            assert_eq!(
+                authorize(agent, "no.such.method").unwrap_err().code,
+                ErrorCode::BadRequest
+            );
+        }
+    }
+
+    // spec: AGT-051, PRT-093, PRT-033
+    #[test]
+    fn an_mcp_client_creates_entities_as_mcp_and_names_its_client() {
+        let mcp = Principal::Mcp {
+            client: "claude-code".into(),
+        };
+
+        assert_eq!(mcp.created_by(), Provenance::Mcp);
+        assert_eq!(mcp.client(), "claude-code");
+    }
+
+    // spec: DMN-150, ARC-009, PRT-033
+    #[test]
+    fn an_agent_creates_entities_as_its_thread_and_names_its_client() {
+        let agent = Principal::Agent {
+            thread_id: "01J".into(),
+            client: "omp".into(),
+        };
+
+        assert_eq!(agent.created_by(), Provenance::Thread("01J".into()));
+        assert_eq!(agent.client(), "omp");
+    }
+
+    // spec: PRT-090, PRT-091
+    #[test]
+    fn the_lists_are_reads() {
+        assert_eq!(permission("threads.list"), Some(Permission::Read));
+        assert_eq!(permission("workspaces.list"), Some(Permission::Read));
     }
 }

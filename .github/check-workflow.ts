@@ -10,6 +10,10 @@
  *   saved on master only; every job hands the dev-shell action the Cachix token.
  * - TST-073: the web bundle is built once: the e2e and desktop jobs need the `build-web` job and serve its artifact
  *   through `OMFP_WEB_BUNDLE`.
+ * - TST-075: before installing Nix, the dev-shell action pools the runner's disk into a Btrfs /nix with
+ *   `wimpysworld/nothing-but-nix` (Linux runners), Nix builds in /nix/build, and the cachix daemon pushes every path as
+ *   it is built.
+ * - TST-092: one job on a macOS runner runs `just test-desktop` and `just package` on pushes to master only.
  */
 import { $ } from "bun";
 
@@ -20,6 +24,8 @@ interface Step {
   with?: Record<string, string>;
 }
 interface Job {
+  "runs-on"?: string;
+  if?: string;
   needs?: string | string[];
   env?: Record<string, string>;
   steps?: Step[];
@@ -132,6 +138,32 @@ for (const recipe of ["test-e2e", "test-desktop"]) {
   ) {
     problems.push(`job ${id} must serve the bundle of job ${webJob ?? "?"} through OMFP_WEB_BUNDLE`);
   }
+}
+
+// TST-075
+const setupIndex = (action: string) => setup.runs.steps.findIndex((step) => step.uses?.startsWith(`${action}@`));
+const pool = setupIndex("wimpysworld/nothing-but-nix");
+const install = setupIndex("cachix/install-nix-action");
+if (pool === -1 || install === -1 || pool > install) {
+  problems.push(`${SETUP} must run wimpysworld/nothing-but-nix before cachix/install-nix-action`);
+}
+if (!/^build-dir = \/nix\/build$/m.test(setup.runs.steps[install]?.with?.extra_nix_config ?? "")) {
+  problems.push(`${SETUP} must make Nix build in /nix/build (extra_nix_config: build-dir = /nix/build)`);
+}
+if (cachix?.with?.useDaemon === "false") {
+  problems.push(`${SETUP} must keep the cachix daemon, which pushes what a failing job built`);
+}
+
+// TST-092
+const MACOS_RECIPES = ["test-desktop", "package"];
+const macos = Object.entries(workflow.jobs).filter(([, job]) => /^macos-\d+$/.test(job["runs-on"] ?? ""));
+if (
+  !macos.some(([, job]) => {
+    const recipes = (job.steps ?? []).map((step) => RUN.exec(step.run?.trim() ?? "")?.[1]);
+    return job.if === "github.event_name == 'push'" && MACOS_RECIPES.every((recipe) => recipes.includes(recipe));
+  })
+) {
+  problems.push(`one job on a macOS runner must run ${MACOS_RECIPES.join(" and ")} on pushes to master only`);
 }
 
 if (problems.length > 0) {

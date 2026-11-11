@@ -40,7 +40,6 @@ use crate::paths::DataDir;
 use crate::store::{Thread, TitleSource, new_id};
 use crate::threads::{ThreadError, Threads};
 use crate::titles::{self, TitleRequest};
-use crate::widgets;
 use crate::workspaces::{WorkspaceError, Workspaces};
 
 /// The event log of one thread: omp frames and daemon events folded by the shared reducer (ARC-006).
@@ -286,6 +285,8 @@ struct Actor {
     voice: Mutex<Option<VoiceSlot>>,
     /// omp's `live_levels`, which bypass the log (DMN-110).
     levels: broadcast::Sender<LiveLevelsEvent>,
+    /// The id of the last prompt omp admitted with agent work, until the next process starts (DMN-152).
+    last_prompt: Mutex<Option<String>>,
 }
 
 impl Actor {
@@ -309,6 +310,7 @@ impl Actor {
             title_task: Mutex::new(None),
             voice: Mutex::new(None),
             levels: broadcast::channel(LEVELS_BUFFER).0,
+            last_prompt: Mutex::new(None),
         }
     }
 
@@ -376,6 +378,9 @@ struct Inner {
     /// Backs the widget host tools of every thread launched from now on (DMN-063, DMN-064); set by the server once
     /// its services exist, dropped at shutdown (the services hold the supervisor too).
     widget_host: Mutex<Option<Arc<dyn host_tools::WidgetHost>>>,
+    /// Backs the agent tools of every thread launched from now on (AGT-040, DMN-151); set and dropped like
+    /// `widget_host`.
+    agent_host: Mutex<Option<Arc<dyn host_tools::AgentHost>>>,
     shutting_down: AtomicBool,
 }
 
@@ -470,6 +475,7 @@ impl Supervisor {
                 tool_ends: broadcast::channel(256).0,
                 workspace_watchers: Mutex::new(HashMap::new()),
                 widget_host: Mutex::new(None),
+                agent_host: Mutex::new(None),
                 shutting_down: AtomicBool::new(false),
             }),
         }
@@ -478,6 +484,11 @@ impl Supervisor {
     /// Gives the threads launched from now on the widget host tools (DMN-063, DMN-064).
     pub fn set_widget_host(&self, host: Arc<dyn host_tools::WidgetHost>) {
         *lock(&self.inner.widget_host) = Some(host);
+    }
+
+    /// Gives the threads launched from now on the agent tools of the registry (AGT-040, DMN-151).
+    pub fn set_agent_host(&self, host: Arc<dyn host_tools::AgentHost>) {
+        *lock(&self.inner.agent_host) = Some(host);
     }
 
     /// Ids of threads whose agent finished a tool execution (`tool_execution_end`).
@@ -600,6 +611,13 @@ impl Supervisor {
             .map_or_else(ThreadStatus::default, |actor| actor.status())
     }
 
+    /// The id of the last prompt omp admitted with agent work in the thread's current process (DMN-152).
+    #[must_use]
+    pub fn last_prompt(&self, id: &str) -> Option<String> {
+        self.lookup(id)
+            .and_then(|actor| lock(&actor.last_prompt).clone())
+    }
+
     /// Starts omp for the thread if it is not running.
     pub async fn start(&self, id: &str) -> Result<()> {
         let actor = self.actor(id).await?;
@@ -611,6 +629,35 @@ impl Supervisor {
         let actor = self.actor(id).await?;
         let _lifecycle = actor.lifecycle.lock().await;
         self.stop_locked(&actor).await
+    }
+
+    /// Stops the thread, then every thread of its spawned tree (AGT-071, DMN-162) in creation order, reading the tree
+    /// again after each pass until a pass finds no member left, so threads spawned meanwhile stop too. Every member is
+    /// tried; the first error comes back after that. Returns the stopped threads in the order they were stopped.
+    pub async fn stop_tree(&self, id: &str) -> Result<Vec<String>> {
+        self.stop(id).await?;
+        let mut stopped = vec![id.to_owned()];
+        let mut failed = None;
+        loop {
+            let threads = Arc::clone(&self.inner.threads);
+            let root = id.to_owned();
+            let tree = blocking(move || threads.spawned(&root)).await??;
+            let pending: Vec<String> = tree
+                .into_iter()
+                .filter(|member| !stopped.contains(member))
+                .collect();
+            if pending.is_empty() {
+                break;
+            }
+            for member in pending {
+                if let Err(error) = self.stop(&member).await {
+                    warn!(thread = %member, %error, "cascade stop failed");
+                    failed.get_or_insert(error);
+                }
+                stopped.push(member);
+            }
+        }
+        failed.map_or(Ok(stopped), Err)
     }
 
     /// Stops and starts the thread's process; the history reloads from the session (DMN-032).
@@ -648,6 +695,7 @@ impl Supervisor {
         let admission = blocking(move || process.prompt(command)).await??;
         actor.touch();
         if admission.agent_invoked {
+            *lock(&actor.last_prompt) = Some(admission.prompt_id.clone());
             self.name_from_first_message(&actor, message).await;
         }
         Ok(admission)
@@ -1128,6 +1176,7 @@ impl Supervisor {
     pub async fn shutdown(&self) {
         self.inner.shutting_down.store(true, Ordering::SeqCst);
         lock(&self.inner.widget_host).take();
+        lock(&self.inner.agent_host).take();
         let actors: Vec<Arc<Actor>> = lock(&self.inner.actors).values().cloned().collect();
         let stops = actors.iter().map(|actor| async move {
             let _lifecycle = actor.lifecycle.lock().await;
@@ -1308,6 +1357,7 @@ impl Supervisor {
                 &ws.path,
                 self.inner.config.agent_dir.as_deref(),
                 &data.widgets(),
+                &actor.id,
             )),
             extension: Some(data.omp_extension()),
             stderr_log: data.thread_log(&actor.id),
@@ -1349,23 +1399,29 @@ impl Supervisor {
         }
 
         let widget_host = lock(&self.inner.widget_host).clone();
+        let agent_tools = lock(&self.inner.agent_host)
+            .clone()
+            .map(|host| host.tools(&actor.id, &thread.workspace_id))
+            .unwrap_or_default();
         let tools = host_tools::thread_tools(
             self.file_opener(&actor.id),
             self.notifier(&actor.id),
             self.title_setter(&actor.id),
             &thread.workspace_id,
             widget_host,
+            agent_tools,
         );
         let check_host = lock(&self.inner.widget_host)
             .clone()
             .map(|host| (thread.workspace_id.clone(), host));
-        let uris = match widgets::host_uris(self.inner.config.builtin_widgets.clone(), check_host) {
-            Ok(uris) => uris,
-            Err(error) => {
-                self.fail(actor, error.to_string(), String::new());
-                return Err(SupervisorError::Start(error.to_string()));
-            }
-        };
+        let uris =
+            match host_tools::host_uris(self.inner.config.builtin_widgets.clone(), check_host) {
+                Ok(uris) => uris,
+                Err(error) => {
+                    self.fail(actor, error.to_string(), String::new());
+                    return Err(SupervisorError::Start(error.to_string()));
+                }
+            };
         let launcher = Arc::clone(&self.inner.launcher);
         let launch_spec = spec.clone();
         let launched = match blocking(move || launcher.launch(&launch_spec, tools, uris)).await? {
@@ -1382,6 +1438,8 @@ impl Supervisor {
 
         // A new process starts a new epoch: positions of the old one cannot be replayed (PRT-022).
         actor.log.new_epoch(new_id());
+        // omp numbers prompts per process (PRT-030, DMN-152).
+        lock(&actor.last_prompt).take();
         for event in startup_events(&launched.startup) {
             self.push(actor, event);
         }

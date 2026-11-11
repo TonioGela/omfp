@@ -1,5 +1,6 @@
 //! The `omfp` binary (D-15): `omfp daemon` runs the daemon (02-daemon), `omfp theme set` sets the UI theme (UI-091),
-//! `omfp desktop` opens a desktop window (feature `desktop`, M7).
+//! `omfp mcp config` prints the MCP client configuration (DMN-159), `omfp desktop` opens a desktop window (feature
+//! `desktop`, M7).
 
 use std::process::ExitCode;
 
@@ -20,6 +21,9 @@ enum Command {
     /// The UI theme of a daemon (UI-091).
     #[command(subcommand)]
     Theme(omfp::theme::Command),
+    /// The daemon's MCP server, for agents outside omfp (DMN-155).
+    #[command(subcommand)]
+    Mcp(omfp::mcp::Command),
     /// Opens a desktop window on the local daemon, starting it in the background if needed (D-15, D-16), or with
     /// `--connect` on another daemon.
     #[cfg(feature = "desktop")]
@@ -38,9 +42,15 @@ struct DaemonArgs {
 }
 
 fn run_daemon(args: DaemonArgs) -> anyhow::Result<()> {
-    #[cfg(feature = "desktop")]
+    // Linux: the status notifier item on a GLib thread of the daemon (DMN-128).
+    #[cfg(all(feature = "desktop", target_os = "linux"))]
     if args.tray {
         return omfp_daemon::run_with(args.cli, omfp::tray::Tray::start);
+    }
+    // macOS: AppKit's status item needs the main thread; the daemon runs on another (DMN-171).
+    #[cfg(all(feature = "desktop", target_os = "macos"))]
+    if args.tray {
+        return omfp::tray::run_daemon(args.cli);
     }
     omfp_daemon::run(args.cli)
 }
@@ -55,6 +65,7 @@ fn main() -> ExitCode {
         Command::Theme(command) => {
             report("omfp theme", block_on(omfp::theme::run(command)).map(Some))
         }
+        Command::Mcp(command) => report("omfp mcp", omfp::mcp::run(&command).map(Some)),
         #[cfg(feature = "desktop")]
         Command::Desktop(args) => match omfp::desktop::run(&args) {
             Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),

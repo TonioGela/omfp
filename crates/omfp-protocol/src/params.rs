@@ -864,3 +864,145 @@ pub struct StartJobParams {
 pub struct JobRef {
     pub job_id: String,
 }
+
+/// Where `views.mount` puts a widget in a view (PRT-080, as `omfp_view_add` does, DMN-064).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum MountPlace {
+    /// A tab of the view's `tabs` container whose `id` prop is `side`.
+    #[default]
+    SideTab,
+    /// A tab of the view's `tabs` container whose `id` prop is `main`, after the conversation.
+    MainTab,
+    /// The end of the view's root container.
+    End,
+}
+
+/// `views.mount` params (PRT-080, AGT-061): exactly one of `widget` and `code`; `panel` excludes `view` and `place`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MountParams {
+    pub workspace_id: String,
+    /// The mount id, a widget name (letters, digits, `_`, `-`, `.` not first): the node's `instance` prop, the panel
+    /// id, and the folder `code` is written to.
+    pub id: String,
+    /// A widget reference (`./widgets/<name>`, `user:<name>`, `omfp:<name>`); a bare name means `./widgets/<name>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget: Option<String>,
+    /// The source of a component (TSX), written to `.omfp/widgets/<id>/index.tsx`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// The widget's props; `instance` is always the mount id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub props: Option<serde_json::Map<String, Value>>,
+    /// The view to mount into (default: the default view); a new id creates a view showing only the widget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<String>,
+    /// Where in the view (default: `side_tab`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<MountPlace>,
+    /// Mount as a floating panel over every view (`panels.<id>`) instead.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub panel: bool,
+}
+
+/// `views.mount_update` params (PRT-081, AGT-062).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MountUpdateParams {
+    pub workspace_id: String,
+    pub id: String,
+    /// Merged into the node's props; a `null` value deletes the prop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub props: Option<serde_json::Map<String, Value>>,
+    /// New source of `.omfp/widgets/<id>/index.tsx`, for a mount of `./widgets/<id>`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+}
+
+/// `views.mount` and `views.mount_update` result (PRT-080, PRT-081).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Mounted {
+    pub id: String,
+    /// The widget reference the node renders.
+    pub reference: String,
+    /// The view showing it; `null` for a floating panel.
+    pub view: Option<String>,
+    /// Whether it is the floating panel `id`.
+    pub panel: bool,
+    /// Whether a node of this mount id existed before.
+    pub replaced: bool,
+}
+
+/// `views.unmount` params (PRT-082, AGT-063).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UnmountParams {
+    pub workspace_id: String,
+    pub id: String,
+}
+
+/// `views.unmount` result (PRT-082).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Unmounted {
+    /// The views it removed nodes from (and kept), in id order.
+    pub views: Vec<String>,
+    /// The views it removed because they were left empty, in id order.
+    pub removed_views: Vec<String>,
+    /// Whether it removed the floating panel `id`.
+    pub panel: bool,
+}
+
+/// `widgets.save` params (PRT-083, AGT-064): exactly one of `widget` (with `workspaceId`) and `code`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveWidgetParams {
+    /// The component's name in the user library (a widget name).
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    /// A widget of that workspace: `./widgets/<name>` or a bare name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub widget: Option<String>,
+    /// The component's source (TSX), saved as its `index.tsx`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// Replace an existing component of that name.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replace: bool,
+}
+
+/// `widgets.save` result (PRT-083).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetSaved {
+    pub name: String,
+    /// `user:<name>`.
+    pub reference: String,
+}
+
+/// `widgets.library` result (PRT-084): the user library by name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetLibrary {
+    pub components: Vec<LibraryComponent>,
+}
+
+/// A component of the user library (PRT-084, AGT-065).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LibraryComponent {
+    pub name: String,
+    /// `user:<name>`.
+    pub reference: String,
+    /// The entry file; `null` when the folder has none.
+    pub entry: Option<String>,
+    /// The folder's files, relative, in path order.
+    pub files: Vec<String>,
+    /// The folder's version (DMN-084).
+    pub version: String,
+    /// The entry's leading comment, whitespace collapsed; empty without one.
+    pub description: String,
+}

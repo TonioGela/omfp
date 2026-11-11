@@ -121,6 +121,37 @@
       "name": "a default that is not a string",
       "manifest": { "default": 3, "views": { "work": { "layout": "omfp:chat" } } },
       "error": "default: no view 3"
+    },
+    {
+      "name": "floating panels (AGT-060)",
+      "manifest": {
+        "views": { "work": { "layout": "omfp:chat" } },
+        "panels": {
+          "clock": ["user:clock", { "instance": "clock", "title": "Clock" }],
+          "board": ["col", {}, "./widgets/board", "omfp:changes"],
+          "plain": "./widgets/plain"
+        }
+      },
+      "error": null
+    },
+    {
+      "name": "panels that are not an object",
+      "manifest": { "views": { "work": { "layout": "omfp:chat" } }, "panels": ["user:clock"] },
+      "error": "panels: expected an object of panels"
+    },
+    {
+      "name": "panels are checked like layouts, in id order, after the views and before the default",
+      "manifest": {
+        "default": "missing",
+        "views": { "work": { "layout": "omfp:chat" } },
+        "panels": { "zeta": 7, "alpha": ["row", {}] }
+      },
+      "error": "panels.alpha: row has no children"
+    },
+    {
+      "name": "a panel with an empty reference",
+      "manifest": { "views": { "work": { "layout": "omfp:chat" } }, "panels": { "clock": [" ", {}] } },
+      "error": "panels.clock: a widget name is empty"
     }
   ]
 }

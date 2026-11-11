@@ -6,7 +6,7 @@ import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "../../src/frame/dialogs.tsx";
 import { DELETE_THREAD, DELETE_WORKSPACE, DRAFT_MESSAGE, DRAFT_THREAD, SELECTED_THREAD } from "../../src/sdk/index.ts";
-import { COLLAPSED_WORKSPACES, ThreadsWidget } from "../../src/widgets/threads/index.ts";
+import { COLLAPSED_WORKSPACES, SPAWNED_BY, ThreadsWidget } from "../../src/widgets/threads/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { renderWithHost } from "../support/host.tsx";
 
@@ -389,5 +389,56 @@ describe("omfp:threads", () => {
     ]) {
       expect(reached).toContain(testid);
     }
+  });
+
+  // spec: UI-240, AGT-070
+  test("a thread that spawned threads filters the column to its spawned tree; the bar names it and clears it", async () => {
+    const by = (threadId: string) => ({ provenance: { createdBy: { kind: "thread" as const, threadId } } });
+    const workspaces = INDEX.workspaces ?? [];
+    const threads = [
+      thread("t1", "orchestrator", "w1"),
+      thread("t2", "fe#412", "w2", by("t1")),
+      thread("t3", "be#88", "w2", by("t2")),
+      thread("t4", "unrelated", "w2"),
+    ];
+    const { client, flush, host, user } = setup({ workspaces, threads });
+    const filter = (threadId: string) =>
+      screen.getAllByTestId("spawned-filter").find((button) => button.dataset.threadId === threadId) ?? document.body;
+    expect(screen.getAllByTestId("spawned-filter").map((button) => button.dataset.threadId)).toEqual(["t1", "t2"]);
+    expect(filter("t1").textContent).toBe("2");
+    expect(filter("t1").getAttribute("aria-label")).toBe("Show the 2 threads \u201corchestrator\u201d spawned");
+    expect(rows()).toEqual(["t1", "t2", "t3", "t4"]);
+
+    await user.click(filter("t1"));
+    expect(rows()).toEqual(["t1", "t2", "t3"]);
+    expect(host.window.get(SPAWNED_BY)).toBe("t1");
+    expect(screen.getByTestId("spawned-by").textContent).toContain("Spawned by orchestrator");
+    expect(filter("t1").getAttribute("aria-pressed")).toBe("true");
+    // Combined with a typed query.
+    await user.type(screen.getByTestId("thread-filter"), "be#");
+    expect(rows()).toEqual(["t3"]);
+    await user.clear(screen.getByTestId("thread-filter"));
+    await user.click(screen.getByTestId("clear-spawned-by"));
+    expect(rows()).toEqual(["t1", "t2", "t3", "t4"]);
+    expect(screen.queryAllByTestId("spawned-by").length).toBe(0);
+
+    // `:spawned` toggles the filter on the selected thread.
+    const spawned = () =>
+      act(() => {
+        host.commands.run("threads.spawnedBy", [], []);
+      });
+    act(() => host.window.set(SELECTED_THREAD, "t2"));
+    spawned();
+    expect(rows()).toEqual(["t2", "t3"]);
+    spawned();
+    expect(rows()).toEqual(["t1", "t2", "t3", "t4"]);
+
+    // Deleting the thread drops its filter.
+    spawned();
+    expect(host.window.get(SPAWNED_BY)).toBe("t2");
+    client.index({ workspaces, threads: threads.filter((candidate) => candidate.id !== "t2") });
+    flush();
+    expect(host.window.get(SPAWNED_BY)).toBeUndefined();
+    expect(rows()).toEqual(["t1", "t3", "t4"]);
   });
 });

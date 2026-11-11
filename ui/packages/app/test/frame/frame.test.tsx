@@ -980,7 +980,7 @@ describe("widget copy", () => {
     await user.type(screen.getByTestId("command-line-input"), "widget paste{Enter}");
     expect(host.window.get(ERRORS)).toEqual([
       "./widgets/clock already exists",
-      "Usage: :widget copy <reference> [<name>]",
+      "Usage: :widget copy <reference> [<name>] | :widget save[!] <widget> [<name>]",
     ]);
   });
 

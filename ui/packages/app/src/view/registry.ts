@@ -2,6 +2,7 @@
  * (UI-100). */
 
 import type { WidgetComponent } from "../sdk/index.ts";
+import { ActivityWidget } from "../widgets/activity/index.ts";
 import { ChangesWidget } from "../widgets/changes/index.ts";
 import { ChatWidget, ComposerWidget, InteractionsWidget, TranscriptWidget } from "../widgets/chat/index.ts";
 import { FileWidget } from "../widgets/file/index.ts";
@@ -19,6 +20,7 @@ export const BUILTIN_WIDGETS: WidgetRegistry = new Map<string, WidgetComponent>(
   ["omfp:subagents", SubagentsWidget],
   ["omfp:todos", TodosWidget],
   ["omfp:tree", TreeWidget],
+  ["omfp:activity", ActivityWidget],
   ["omfp:chat", ChatWidget],
   ["omfp:transcript", TranscriptWidget],
   ["omfp:interactions", InteractionsWidget],

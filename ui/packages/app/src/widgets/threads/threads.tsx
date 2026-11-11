@@ -1,6 +1,7 @@
 /**
- * The left column the frame renders outside any view (UI-020..023, UI-026, UI-100, UI-169, UI-170): the brand, the
- * full-text filter (`/`), the "+ workspace" field, then one section per workspace — `▾`/`▸`, name (the current one in
+ * The left column the frame renders outside any view (UI-020..023, UI-026, UI-100, UI-169, UI-170, UI-240): the
+ * brand, the full-text filter (`/`), the "+ workspace" field, the "spawned by" filter in force, then one section per
+ * workspace — `▾`/`▸`, name (the current one in
  * gradient text), path, count, a menu with rename and remove, a delete button, its threads (state mark, title, time;
  * unread titles bold), its draft thread, a collapsed "Archived (N)" row and "+ thread". Sections collapse (`za`); the
  * collapsed set is window-local and survives reloads. Its
@@ -71,6 +72,8 @@ import {
   type Section,
   type Seen,
   sidebarSections,
+  spawnedCounts,
+  spawnedTree,
   statusLabel,
   type ThreadFilter,
   threadStatus,
@@ -91,6 +94,8 @@ export const COLLAPSED_WORKSPACES = windowKey<readonly string[]>("threads/collap
 export const ARCHIVED_OPEN = windowKey<readonly string[]>("threads/archivedOpen", []);
 /** `updatedAt` of each thread when this window last showed it (UI-020). */
 export const SEEN = windowKey<Seen>("threads/seen", new Map());
+/** The thread whose spawned tree the column shows (UI-240); `undefined` shows every thread. */
+export const SPAWNED_BY = windowKey<string | undefined>("threads/spawnedBy", undefined);
 
 /** Rows moved by Ctrl-d / Ctrl-u. */
 const HALF_PAGE = 10;
@@ -103,8 +108,28 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
   const [query] = useWindowState(THREAD_QUERY);
   const [collapsed] = useWindowState(COLLAPSED_WORKSPACES);
   const [archivedOpen] = useWindowState(ARCHIVED_OPEN);
+  const [spawnedBy, setSpawnedBy] = useWindowState(SPAWNED_BY);
+  const loaded = useSnapshot((snapshot) =>
+    snapshot.topics.some((topic) => topic.topic === INDEX_TOPIC && topic.sync.kind === "live"),
+  );
+  const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+  const spawnedRoot = spawnedBy !== undefined && byId.has(spawnedBy) ? spawnedBy : undefined;
+  const spawned = useMemo(
+    () => (spawnedRoot === undefined ? undefined : spawnedTree(threads, spawnedRoot)),
+    [threads, spawnedRoot],
+  );
+  const counts = useMemo(() => spawnedCounts(threads), [threads]);
+  // The filter of a deleted thread goes with it.
+  useEffect(() => {
+    if (loaded && spawnedBy !== undefined && !byId.has(spawnedBy)) {
+      setSpawnedBy(undefined);
+    }
+  }, [loaded, spawnedBy, byId, setSpawnedBy]);
   const conversation = useConversationMatches(query);
-  const filter = useMemo<ThreadFilter>(() => ({ query, conversation }), [query, conversation]);
+  const filter = useMemo<ThreadFilter>(
+    () => ({ query, conversation, ...(spawned !== undefined && { spawned }) }),
+    [query, conversation, spawned],
+  );
   const seen = useSeen(threads, selected);
   const sections = useMemo(() => sidebarSections(threads, workspaces, filter), [threads, workspaces, filter]);
   const order = useMemo(
@@ -128,10 +153,13 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
     aliases: ["workspace"],
     run: () => newWorkspace.current?.focus(),
   });
-  const loaded = useSnapshot((snapshot) =>
-    snapshot.topics.some((topic) => topic.topic === INDEX_TOPIC && topic.sync.kind === "live"),
-  );
-  const byId = useMemo(() => new Map(threads.map((thread) => [thread.id, thread])), [threads]);
+  useCommand({
+    id: "threads.spawnedBy",
+    title: strings.shell.commands.spawnedBy,
+    aliases: ["spawned"],
+    enabled: () => spawnedRoot !== undefined || (selected !== undefined && counts.has(selected)),
+    run: () => setSpawnedBy((current) => (current !== undefined || selected === undefined ? undefined : selected)),
+  });
   if (workspaces.length === 0) {
     return (
       <nav ref={root} className="omfp-threads" aria-label={text.label} data-testid="sidebar" data-omfp-scope="threads">
@@ -150,6 +178,9 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
       <Brand host={location.hostname} />
       <ThreadFilterField search={search} />
       <NewWorkspace inputRef={newWorkspace} focus={false} />
+      {spawnedRoot !== undefined && (
+        <SpawnedByBar thread={byId.get(spawnedRoot)} clear={() => setSpawnedBy(undefined)} />
+      )}
       {sections.map((section) => (
         <WorkspaceSection
           key={section.workspace.id}
@@ -158,6 +189,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
           byId={byId}
           seen={seen}
           selected={selected}
+          counts={counts}
         />
       ))}
       {sections.length === 0 && <HintRow data-testid="no-threads">{text.noMatch}</HintRow>}
@@ -305,6 +337,19 @@ function ThreadFilterField({ search }: { search: RefObject<HTMLInputElement | nu
   );
 }
 
+/** The "spawned by" filter in force (UI-240): the thread it names and the clear button. */
+function SpawnedByBar({ thread, clear }: { thread: ThreadSummary | undefined; clear: () => void }): ReactNode {
+  return (
+    <div className="omfp-threads__spawned" data-testid="spawned-by">
+      <Icon name="git-fork" />
+      <span className="omfp-threads__spawned-title">
+        {text.spawnedBy(thread === undefined ? "" : displayTitle(thread))}
+      </span>
+      <IconButton label={text.clearSpawned} icon={<Icon name="x" />} data-testid="clear-spawned-by" onPress={clear} />
+    </div>
+  );
+}
+
 /** "+ workspace" (UI-023): one field taking a name (optional) or, when it starts with `/` or `~`, the path of a
  * repository to link (completed as in DMN-021); Enter creates the workspace and opens a draft thread in it. */
 function NewWorkspace({
@@ -376,12 +421,15 @@ function WorkspaceSection({
   byId,
   seen,
   selected,
+  counts,
 }: {
   section: Section;
   filter: ThreadFilter;
   byId: ReadonlyMap<string, ThreadSummary>;
   seen: Seen;
   selected: string | undefined;
+  /** How many threads each thread spawned (UI-240). */
+  counts: ReadonlyMap<string, number>;
 }): ReactNode {
   const host = useHost();
   const actions = useThreadActions();
@@ -481,6 +529,7 @@ function WorkspaceSection({
                   selected={selected === id}
                   unread={isUnread(thread, seen, selected)}
                   snippet={snippets.get(id)}
+                  spawned={counts.get(id)}
                 />
               );
             })}
@@ -535,6 +584,7 @@ function WorkspaceSection({
                         selected={selected === id}
                         unread={false}
                         snippet={snippets.get(id)}
+                        spawned={counts.get(id)}
                         archived
                       />
                     );
@@ -604,19 +654,24 @@ function ThreadRow({
   selected,
   unread,
   snippet,
+  spawned,
   archived = false,
 }: {
   thread: ThreadSummary;
   selected: boolean;
   unread: boolean;
   snippet: string | undefined;
+  /** How many threads it spawned, transitively; `undefined` for none (UI-240). */
+  spawned: number | undefined;
   archived?: boolean;
 }): ReactNode {
   const actions = useThreadActions();
+  const [spawnedBy, setSpawnedBy] = useWindowState(SPAWNED_BY);
   const status = threadStatus(thread);
   const title = displayTitle(thread);
   const state = threadMarkState(status, unread);
   const fresh = useFresh(status);
+  const filtering = spawnedBy === thread.id;
   return (
     <li
       className="omfp-row omfp-thread omfp-thread-item"
@@ -664,6 +719,21 @@ function ThreadRow({
           onPress={() => void actions.unarchive(thread.id)}
         >
           {text.unarchive}
+        </Button>
+      )}
+      {spawned !== undefined && (
+        <Button
+          size="sm"
+          variant="quiet"
+          className="omfp-thread-row__spawned"
+          icon={<Icon name="git-fork" />}
+          aria-label={text.spawnedFilter(spawned, title)}
+          aria-pressed={filtering}
+          data-testid="spawned-filter"
+          data-thread-id={thread.id}
+          onPress={() => setSpawnedBy(filtering ? undefined : thread.id)}
+        >
+          {spawned}
         </Button>
       )}
       <IconButton

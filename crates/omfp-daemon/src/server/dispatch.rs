@@ -8,8 +8,8 @@ use std::sync::Arc;
 use omfp_core::wire::{ImageContent, ThinkingLevel};
 use omfp_protocol::{
     Call, CreateWorkspaceParams, Empty, ErrorBody, LiveMuted, PathCompletions, PathEntry,
-    PromptBehavior, PromptResult, RepoSuggestions, SeenRepository, ThreadGit, ThreadSearchResult,
-    ThreadSearchResults, ThreadWorkspace,
+    PromptBehavior, PromptResult, RepoSuggestions, SeenRepository, ThreadGit, ThreadList,
+    ThreadSearchResult, ThreadSearchResults, ThreadWorkspace, ThreadsStopped, WorkspaceList,
 };
 use omp_rpc::{
     BashCommand, BtwCommand, CancelSubagentCommand, CompactCommand, FollowUpCommand, ForkCommand,
@@ -21,6 +21,7 @@ use omp_rpc::{
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use super::activity;
 use super::auth::Principal;
 use super::convert::{
     bad_request, diff_page, internal, supervisor_error, thread_error, workspace_error,
@@ -82,9 +83,19 @@ fn repo_source(source: omfp_protocol::RepoSource) -> Result<RepoSource, ErrorBod
     })
 }
 
-/// Runs a method for `principal`. Authorization already happened (PRT-034).
-#[allow(clippy::too_many_lines)] // One arm per method or group of methods.
+/// Runs a method for `principal`. Authorization already happened (PRT-034). An agent's call beyond reading goes into
+/// the activity log once it answered (DMN-161).
 pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: Call) -> Reply {
+    let logged = activity::pending(principal, &call);
+    let reply = run(services, principal, call).await;
+    if let Some(entry) = logged {
+        activity::record(services, entry, &reply).await;
+    }
+    reply
+}
+
+#[allow(clippy::too_many_lines)] // One arm per method or group of methods.
+async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
     match call {
         Call::SystemHello(_)
         | Call::Subscribe(_)
@@ -168,6 +179,29 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         | Call::TerminalResize(_)
         | Call::TerminalClose(_)
         | Call::TerminalList(_) => Err(bad_request("terminals are not available yet (M6)")),
+        Call::ThreadsList(params) => {
+            services.refresh_index().await?;
+            let threads = services.index.with_state(|index| {
+                index
+                    .threads
+                    .iter()
+                    .filter(|thread| params.include_archived || thread.archived_at.is_none())
+                    .filter(|thread| {
+                        params
+                            .workspace_id
+                            .as_ref()
+                            .is_none_or(|id| *id == thread.workspace_id)
+                    })
+                    .cloned()
+                    .collect()
+            });
+            ok(&ThreadList { threads })
+        }
+        Call::WorkspacesList(_) => {
+            services.refresh_index().await?;
+            let workspaces = services.index.with_state(|index| index.workspaces.clone());
+            ok(&WorkspaceList { workspaces })
+        }
         Call::ThemeGet(_) => ok(&services.theme()),
         Call::ThemeSet(params) => {
             services.set_theme(params.css).await?;
@@ -180,26 +214,41 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
             empty()
         }
         Call::WidgetsCopy(params) => ok(&services.copy_widget(params).await?),
+        Call::ViewsMount(params) => ok(&services.mount(params).await?),
+        Call::ViewsMountUpdate(params) => ok(&services.mount_update(params).await?),
+        Call::ViewsUnmount(params) => ok(&services.unmount(params).await?),
+        Call::WidgetsSave(params) => ok(&services.save_widget(params).await?),
+        Call::WidgetsLibrary(_) => ok(&omfp_protocol::WidgetLibrary {
+            components: services.widget_library().await?,
+        }),
         Call::WidgetsStateSet(params) => {
             services.set_widget_state(params).await?;
             empty()
         }
-        call @ (Call::JobsStart(_) | Call::JobsKill(_)) => jobs(services, call).await,
+        call @ (Call::JobsStart(_) | Call::JobsKill(_)) => jobs(services, principal, call).await,
+        Call::ActivityList(params) => ok(&activity::list(services, params).await?),
         call => thread(services, principal, call).await,
     }
 }
 
-/// `jobs.start` and `jobs.kill` (DMN-080, DMN-081).
-async fn jobs(services: &Services, call: Call) -> Reply {
+/// `jobs.start` and `jobs.kill` (DMN-080, DMN-081); an agent's job records its thread (DMN-162).
+async fn jobs(services: &Services, principal: &Principal, call: Call) -> Reply {
     match call {
         Call::JobsStart(params) => {
             let workspaces = Arc::clone(&services.workspaces);
             let workspace_id = params.workspace_id;
             let workspace =
                 blocking(move || workspaces.get(&workspace_id).map_err(workspace_error)).await?;
-            ok(&services
-                .jobs
-                .start(&workspace.id, &workspace.path, &params.command)?)
+            let started_by = match principal.created_by() {
+                Provenance::Thread(thread_id) => Some(thread_id),
+                Provenance::User | Provenance::Mcp => None,
+            };
+            ok(&services.jobs.start(
+                &workspace.id,
+                &workspace.path,
+                &params.command,
+                started_by.as_deref(),
+            )?)
         }
         Call::JobsKill(params) => {
             services.jobs.kill(&params.job_id)?;
@@ -716,11 +765,20 @@ async fn thread(services: &Services, principal: &Principal, call: Call) -> Reply
             empty()
         }
         Call::ThreadStop(params) => {
-            supervisor
-                .stop(&params.thread_id)
-                .await
-                .map_err(supervisor_error)?;
-            empty()
+            // The cascade also kills the jobs the stopped threads' agents started (AGT-071, DMN-162).
+            let thread_ids = if params.cascade {
+                let stopped = supervisor.stop_tree(&params.thread_id).await;
+                let stopped = stopped.map_err(supervisor_error)?;
+                services.jobs.kill_started_by(&stopped);
+                stopped
+            } else {
+                supervisor
+                    .stop(&params.thread_id)
+                    .await
+                    .map_err(supervisor_error)?;
+                vec![params.thread_id]
+            };
+            ok(&ThreadsStopped { thread_ids })
         }
         Call::ThreadLiveStop(params) => {
             supervisor

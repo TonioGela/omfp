@@ -26,9 +26,11 @@ const MIGRATION_4: &str = include_str!("0004_title_source.sql");
 const MIGRATION_5: &str = include_str!("0005_seen_repositories.sql");
 const MIGRATION_6: &str = include_str!("0006_workspaces_under_root.sql");
 const MIGRATION_7: &str = include_str!("0007_widget_state.sql");
+const MIGRATION_8: &str = include_str!("0008_activity.sql");
+const MIGRATION_9: &str = include_str!("0009_activity_mcp.sql");
 
 /// Number of migrations: the highest `user_version` this daemon knows.
-const LATEST: i64 = 7;
+const LATEST: i64 = 9;
 
 /// Applies pending migrations. Foreign keys are off while migrating (tables are rebuilt) and checked before each
 /// commit; the caller turns them on afterwards.
@@ -50,7 +52,9 @@ pub(super) fn run(conn: &mut Connection, workspaces_root: &Path) -> Result<()> {
             4 => tx.execute_batch(MIGRATION_4)?,
             5 => tx.execute_batch(MIGRATION_5)?,
             6 => to_workspaces_under_root(&tx, workspaces_root)?,
-            _ => tx.execute_batch(MIGRATION_7)?,
+            7 => tx.execute_batch(MIGRATION_7)?,
+            8 => tx.execute_batch(MIGRATION_8)?,
+            _ => tx.execute_batch(MIGRATION_9)?,
         }
         check_foreign_keys(&tx)?;
         tx.pragma_update(None, "user_version", version)?;

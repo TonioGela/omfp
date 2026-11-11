@@ -1,0 +1,27 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "views.unmount",
+    "params": {
+      "id": "checkout",
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "panel": false,
+      "removedViews": [
+        "dashboard"
+      ],
+      "views": []
+    },
+    "type": "response"
+  }
+}

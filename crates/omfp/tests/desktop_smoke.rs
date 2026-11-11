@@ -1,14 +1,11 @@
-//! Desktop tests (M7) of the real `omfp desktop` window under a virtual X server, never the user's display. They need
-//! the release web bundle (`just build-web`) and `xvfb-run`; `just test-desktop` runs them one at a time (each
-//! `xvfb-run -a` picks a free display, which races when two start at once).
+//! Desktop tests (M7, M11) of the real `omfp desktop` window. On Linux under a virtual X server, never the user's
+//! display: they need `xvfb-run`, and `just test-desktop` runs them one at a time (each `xvfb-run -a` picks a free
+//! display, which races when two start at once). On macOS (TST-090) the window opens on the logged-in user's screen,
+//! from an SSH session too, and closes itself once ready. Both need the release web bundle (`just build-web`).
 #![cfg(feature = "desktop")]
 
-use std::io::{BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
-use std::sync::mpsc;
-
-use gio::glib::{self, ToVariant as _};
+use std::process::{Command, Output};
 
 use rustix::process::{Pid, Signal, kill_process};
 
@@ -21,32 +18,41 @@ fn web_bundle() -> PathBuf {
     )
 }
 
-/// `omfp desktop <args>` under `xvfb-run` with `OMFP_SMOKE=<smoke>` and a temporary home.
+/// `omfp desktop <args>` with `OMFP_SMOKE=<smoke>` and a temporary home.
 fn desktop(home: &Path, smoke: &str, args: &[&str]) -> Output {
     desktop_with(home, &[("OMFP_SMOKE", smoke)], args)
 }
 
-/// `omfp desktop <args>` under `xvfb-run` with `env` and a temporary home; it must print `OMFP_SMOKE_READY`.
+/// `omfp desktop <args>` (under `xvfb-run` on Linux) with `env` and a temporary home; it must print
+/// `OMFP_SMOKE_READY`.
 fn desktop_with(home: &Path, env: &[(&str, &str)], args: &[&str]) -> Output {
-    let output = Command::new("xvfb-run")
-        .args(["-a", "-s", "-screen 0 1280x800x24"])
-        .arg(env!("CARGO_BIN_EXE_omfp"))
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = Command::new("xvfb-run");
+        command
+            .args(["-a", "-s", "-screen 0 1280x800x24"])
+            .arg(env!("CARGO_BIN_EXE_omfp"))
+            // Never the user's session bus (the window reads the settings portal, the background daemon shows a tray
+            // icon): a bus that does not exist unless the test passes its own.
+            .env(
+                "DBUS_SESSION_BUS_ADDRESS",
+                format!("unix:path={}", home.join("no-bus").display()),
+            )
+            // Never the user's display.
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .env("GDK_BACKEND", "x11");
+        command
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new(env!("CARGO_BIN_EXE_omfp"));
+    let output = command
         .arg("desktop")
         .args(args)
-        // Never the user's session bus (the window reads the settings portal, the background daemon shows a tray
-        // icon): a bus that does not exist unless the test passes its own.
-        .env(
-            "DBUS_SESSION_BUS_ADDRESS",
-            format!("unix:path={}", home.join("no-bus").display()),
-        )
         .envs(env.iter().copied())
         .env("HOME", home)
         .env_remove("XDG_DATA_HOME")
         .env_remove("XDG_CONFIG_HOME")
-        // Never the user's display.
-        .env_remove("DISPLAY")
-        .env_remove("WAYLAND_DISPLAY")
-        .env("GDK_BACKEND", "x11")
         .output()
         .unwrap();
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -59,9 +65,9 @@ fn desktop_with(home: &Path, env: &[(&str, &str)], args: &[&str]) -> Output {
     output
 }
 
-// spec: TST-033, DMN-004
+// spec: TST-033, TST-090, DMN-004
 #[test]
-fn the_desktop_window_renders_the_shell_under_a_virtual_x_server() {
+fn the_desktop_window_renders_the_shell() {
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().join("data");
     let workspaces = dir.path().join("workspaces");
@@ -80,6 +86,53 @@ fn the_desktop_window_renders_the_shell_under_a_virtual_x_server() {
     );
     // The in-process daemon stopped with the window.
     assert_eq!(omfp_daemon::discover(&data).unwrap(), None);
+}
+
+// spec: TST-090, UI-250, UI-251, UI-252, UI-253
+#[cfg(target_os = "macos")]
+#[test]
+fn the_macos_window_has_webrtc_the_microphone_and_notifications() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let workspaces = dir.path().join("workspaces");
+    let output = desktop(
+        dir.path(),
+        "1",
+        &[
+            "--data-dir",
+            data.to_str().unwrap(),
+            "--",
+            "--static-dir",
+            web_bundle().to_str().unwrap(),
+            "--workspaces-root",
+            workspaces.to_str().unwrap(),
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let state = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("OMFP_SMOKE_READY "))
+        .expect("the ready line");
+    let state: serde_json::Value = serde_json::from_str(state).unwrap();
+    // WKWebView's WebRTC (live voice, UI-251), `getUserMedia` thanks to the embedded Info.plist, the window's
+    // `Notification` (UI-252).
+    assert_eq!(state["rtcPeerConnection"], "function", "{state}");
+    assert_eq!(state["mediaDevices"], "object", "{state}");
+    assert_eq!(state["notification"], "granted", "{state}");
+    // UI-253: the page's color scheme is the system appearance's (`AppleInterfaceStyle` is set in Dark mode only).
+    let dark = Command::new("/usr/bin/defaults")
+        .args(["read", "-g", "AppleInterfaceStyle"])
+        .output()
+        .unwrap();
+    let system = if String::from_utf8_lossy(&dark.stdout).trim() == "Dark" {
+        "dark"
+    } else {
+        "light"
+    };
+    assert_eq!(state["scheme"], system, "{state}");
+    // UI-250: the web storage of the data directory.
+    let id = std::fs::read(data.join("webview/store-id")).unwrap();
+    assert_eq!(id.len(), 16);
 }
 
 /// Stops the background daemon of a test, also when the test fails.
@@ -126,8 +179,12 @@ fn a_second_window_reuses_the_background_daemon_that_outlives_the_first() {
     );
     let log = std::fs::read_to_string(data.join("daemon.log")).unwrap();
     assert!(log.contains("omfp daemon listening on"), "{log}");
-    // DMN-128: started with `--tray`; the test's session bus does not exist.
+    // DMN-128: started with `--tray`; on Linux the test's session bus does not exist, on macOS the item is in the
+    // menu bar (DMN-171).
+    #[cfg(target_os = "linux")]
     assert!(log.contains("no tray icon: no session bus"), "{log}");
+    #[cfg(target_os = "macos")]
+    assert!(!log.contains("no menu bar item"), "{log}");
     // UI-004: the URL a browser opens on the same daemon, with its token.
     let token = std::fs::read_to_string(data.join("token")).unwrap();
     let url = format!("omfp desktop: http://{}/#token={}", info.addr, token.trim());
@@ -155,9 +212,20 @@ fn a_second_window_reuses_the_background_daemon_that_outlives_the_first() {
     assert_eq!(omfp_daemon::discover(&data).unwrap(), None);
 }
 
-const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
-const PORTAL_SETTINGS: &str = "org.freedesktop.portal.Settings";
-const PORTAL_XML: &str = r#"<node>
+/// The settings portal's color scheme (UI-195, Linux only: on macOS the window follows `AppKit`'s appearance, UI-253).
+#[cfg(target_os = "linux")]
+mod portal {
+    use std::io::{BufRead as _, BufReader};
+    use std::process::{Child, Command, Stdio};
+    use std::sync::mpsc;
+
+    use gio::glib::{self, ToVariant as _};
+
+    use super::{desktop_with, web_bundle};
+
+    const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
+    const PORTAL_SETTINGS: &str = "org.freedesktop.portal.Settings";
+    const PORTAL_XML: &str = r#"<node>
   <interface name="org.freedesktop.portal.Settings">
     <method name="ReadOne">
       <arg type="s" name="namespace" direction="in"/>
@@ -172,146 +240,150 @@ const PORTAL_XML: &str = r#"<node>
   </interface>
 </node>"#;
 
-/// A private session bus (`dbus-daemon`, stopped on drop) holding a stub settings portal: it answers
-/// `org.freedesktop.appearance color-scheme` with `initial`, then, when `then` is given, announces that value with
-/// `SettingChanged` right after the answer, as a live switch on the desktop would.
-struct Portal {
-    bus: Child,
-    address: String,
-}
+    /// A private session bus (`dbus-daemon`, stopped on drop) holding a stub settings portal: it answers
+    /// `org.freedesktop.appearance color-scheme` with `initial`, then, when `then` is given, announces that value with
+    /// `SettingChanged` right after the answer, as a live switch on the desktop would.
+    struct Portal {
+        bus: Child,
+        address: String,
+    }
 
-impl Portal {
-    fn start(initial: u32, then: Option<u32>) -> Self {
-        let mut bus = Command::new("dbus-daemon")
-            .args(["--session", "--nofork", "--print-address=1"])
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
-        let mut address = String::new();
-        BufReader::new(bus.stdout.take().unwrap())
-            .read_line(&mut address)
-            .unwrap();
-        let address = address.trim().to_owned();
-        let (ready, registered) = mpsc::channel();
-        let bus_address = address.clone();
-        std::thread::spawn(move || {
-            let context = glib::MainContext::new();
-            context
-                .with_thread_default(|| {
-                    let connection = gio::DBusConnection::for_address_sync(
-                        &bus_address,
-                        gio::DBusConnectionFlags::AUTHENTICATION_CLIENT
-                            | gio::DBusConnectionFlags::MESSAGE_BUS_CONNECTION,
-                        None,
-                        None::<&gio::Cancellable>,
-                    )
-                    .unwrap();
-                    let interface = gio::DBusNodeInfo::for_xml(PORTAL_XML)
-                        .unwrap()
-                        .lookup_interface(PORTAL_SETTINGS)
-                        .unwrap();
-                    let _registration = connection
-                        .register_object(
-                            PORTAL_PATH,
-                            &interface,
-                            move |connection, _, _, _, _, parameters, invocation| {
-                                let (namespace, key) =
-                                    parameters.get::<(String, String)>().unwrap_or_default();
-                                if namespace != "org.freedesktop.appearance"
-                                    || key != "color-scheme"
-                                {
-                                    invocation.return_dbus_error(
-                                        "org.freedesktop.portal.Error.NotFound",
-                                        "no such setting",
-                                    );
-                                    return;
-                                }
-                                invocation
-                                    .return_value(Some(&(initial.to_variant(),).to_variant()));
-                                if let Some(then) = then {
-                                    connection
-                                        .emit_signal(
-                                            None,
-                                            PORTAL_PATH,
-                                            PORTAL_SETTINGS,
-                                            "SettingChanged",
-                                            Some(&(namespace, key, then.to_variant()).to_variant()),
-                                        )
-                                        .unwrap();
-                                }
-                            },
-                            |_, _, _, _, _| "".to_variant(),
-                            |_, _, _, _, _, _| false,
-                        )
-                        .unwrap();
-                    // Owned after the object is registered, so the window never sees the name without it.
-                    connection
-                        .call_sync(
-                            Some("org.freedesktop.DBus"),
-                            "/org/freedesktop/DBus",
-                            "org.freedesktop.DBus",
-                            "RequestName",
-                            Some(&("org.freedesktop.portal.Desktop", 4u32).to_variant()),
+    impl Portal {
+        fn start(initial: u32, then: Option<u32>) -> Self {
+            let mut bus = Command::new("dbus-daemon")
+                .args(["--session", "--nofork", "--print-address=1"])
+                .stdout(Stdio::piped())
+                .spawn()
+                .unwrap();
+            let mut address = String::new();
+            BufReader::new(bus.stdout.take().unwrap())
+                .read_line(&mut address)
+                .unwrap();
+            let address = address.trim().to_owned();
+            let (ready, registered) = mpsc::channel();
+            let bus_address = address.clone();
+            std::thread::spawn(move || {
+                let context = glib::MainContext::new();
+                context
+                    .with_thread_default(|| {
+                        let connection = gio::DBusConnection::for_address_sync(
+                            &bus_address,
+                            gio::DBusConnectionFlags::AUTHENTICATION_CLIENT
+                                | gio::DBusConnectionFlags::MESSAGE_BUS_CONNECTION,
                             None,
-                            gio::DBusCallFlags::NONE,
-                            -1,
                             None::<&gio::Cancellable>,
                         )
                         .unwrap();
-                    ready.send(()).unwrap();
-                    glib::MainLoop::new(Some(&context), false).run();
-                })
-                .unwrap();
-        });
-        registered.recv().unwrap();
-        Self { bus, address }
+                        let interface = gio::DBusNodeInfo::for_xml(PORTAL_XML)
+                            .unwrap()
+                            .lookup_interface(PORTAL_SETTINGS)
+                            .unwrap();
+                        let _registration = connection
+                            .register_object(
+                                PORTAL_PATH,
+                                &interface,
+                                move |connection, _, _, _, _, parameters, invocation| {
+                                    let (namespace, key) =
+                                        parameters.get::<(String, String)>().unwrap_or_default();
+                                    if namespace != "org.freedesktop.appearance"
+                                        || key != "color-scheme"
+                                    {
+                                        invocation.return_dbus_error(
+                                            "org.freedesktop.portal.Error.NotFound",
+                                            "no such setting",
+                                        );
+                                        return;
+                                    }
+                                    invocation
+                                        .return_value(Some(&(initial.to_variant(),).to_variant()));
+                                    if let Some(then) = then {
+                                        connection
+                                            .emit_signal(
+                                                None,
+                                                PORTAL_PATH,
+                                                PORTAL_SETTINGS,
+                                                "SettingChanged",
+                                                Some(
+                                                    &(namespace, key, then.to_variant())
+                                                        .to_variant(),
+                                                ),
+                                            )
+                                            .unwrap();
+                                    }
+                                },
+                                |_, _, _, _, _| "".to_variant(),
+                                |_, _, _, _, _, _| false,
+                            )
+                            .unwrap();
+                        // Owned after the object is registered, so the window never sees the name without it.
+                        connection
+                            .call_sync(
+                                Some("org.freedesktop.DBus"),
+                                "/org/freedesktop/DBus",
+                                "org.freedesktop.DBus",
+                                "RequestName",
+                                Some(&("org.freedesktop.portal.Desktop", 4u32).to_variant()),
+                                None,
+                                gio::DBusCallFlags::NONE,
+                                -1,
+                                None::<&gio::Cancellable>,
+                            )
+                            .unwrap();
+                        ready.send(()).unwrap();
+                        glib::MainLoop::new(Some(&context), false).run();
+                    })
+                    .unwrap();
+            });
+            registered.recv().unwrap();
+            Self { bus, address }
+        }
     }
-}
 
-impl Drop for Portal {
-    fn drop(&mut self) {
-        let _ = self.bus.kill();
-        let _ = self.bus.wait();
+    impl Drop for Portal {
+        fn drop(&mut self) {
+            let _ = self.bus.kill();
+            let _ = self.bus.wait();
+        }
     }
-}
 
-/// The page's color scheme in a smoke window on `portal`'s session bus (`OMFP_SMOKE_SCHEME=<expected>` waits for it).
-fn scheme_on(portal: &Portal, expected: &str) -> String {
-    let dir = tempfile::tempdir().unwrap();
-    let data = dir.path().join("data");
-    let workspaces = dir.path().join("workspaces");
-    let web = web_bundle();
-    let output = desktop_with(
-        dir.path(),
-        &[
-            ("OMFP_SMOKE", "1"),
-            ("OMFP_SMOKE_SCHEME", expected),
-            ("DBUS_SESSION_BUS_ADDRESS", &portal.address),
-        ],
-        &[
-            "--data-dir",
-            data.to_str().unwrap(),
-            "--",
-            "--static-dir",
-            web.to_str().unwrap(),
-            "--workspaces-root",
-            workspaces.to_str().unwrap(),
-        ],
-    );
-    String::from_utf8_lossy(&output.stdout).into_owned()
-}
+    /// The page's color scheme in a smoke window on `portal`'s session bus (`OMFP_SMOKE_SCHEME=<expected>` waits for it).
+    fn scheme_on(portal: &Portal, expected: &str) -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        let workspaces = dir.path().join("workspaces");
+        let web = web_bundle();
+        let output = desktop_with(
+            dir.path(),
+            &[
+                ("OMFP_SMOKE", "1"),
+                ("OMFP_SMOKE_SCHEME", expected),
+                ("DBUS_SESSION_BUS_ADDRESS", &portal.address),
+            ],
+            &[
+                "--data-dir",
+                data.to_str().unwrap(),
+                "--",
+                "--static-dir",
+                web.to_str().unwrap(),
+                "--workspaces-root",
+                workspaces.to_str().unwrap(),
+            ],
+        );
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    }
 
-// spec: UI-195
-#[test]
-fn the_window_takes_the_dark_color_scheme_of_the_settings_portal() {
-    let portal = Portal::start(1, None);
-    assert!(scheme_on(&portal, "dark").contains(r#""scheme":"dark""#));
-}
+    // spec: UI-195
+    #[test]
+    fn the_window_takes_the_dark_color_scheme_of_the_settings_portal() {
+        let portal = Portal::start(1, None);
+        assert!(scheme_on(&portal, "dark").contains(r#""scheme":"dark""#));
+    }
 
-// spec: UI-195
-#[test]
-fn the_window_follows_a_color_scheme_change_of_the_settings_portal() {
-    // Dark at startup, then switched to light while the window is open.
-    let portal = Portal::start(1, Some(2));
-    assert!(scheme_on(&portal, "light").contains(r#""scheme":"light""#));
+    // spec: UI-195
+    #[test]
+    fn the_window_follows_a_color_scheme_change_of_the_settings_portal() {
+        // Dark at startup, then switched to light while the window is open.
+        let portal = Portal::start(1, Some(2));
+        assert!(scheme_on(&portal, "light").contains(r#""scheme":"light""#));
+    }
 }

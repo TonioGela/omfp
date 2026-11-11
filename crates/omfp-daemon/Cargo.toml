@@ -45,6 +45,8 @@ ulid.workspace = true
 fake-llm.workspace = true
 insta.workspace = true
 omfp-testkit.workspace = true
+# The MCP server's L2 tests speak HTTP to it (DMN-155); already in the tree through fake-llm.
+reqwest.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 tokio-tungstenite.workspace = true

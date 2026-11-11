@@ -36,6 +36,15 @@ export const shell = {
     renameLabel: "Workspace name",
     deleteWorkspace: (name: string) => `Delete workspace ${name}…`,
     current: "current workspace",
+    /** The "spawned by" filter (UI-240). */
+    spawnedFilter: (count: number, title: string) =>
+      count === 1
+        ? `Show the thread \u201c${title}\u201d spawned`
+        : `Show the ${count} threads \u201c${title}\u201d spawned`,
+    spawnedBy: (title: string) => `Spawned by ${title}`,
+    clearSpawned: "Show every thread",
+    /** The notice of a stop with the spawned threads (UI-242). */
+    stoppedSpawned: (count: number) => (count === 1 ? "Stopped 1 thread" : `Stopped ${count} threads`),
   },
   newWorkspace: {
     label: "+ workspace",
@@ -248,6 +257,19 @@ export const shell = {
       cancelled: "Nothing moved",
     },
   },
+  /** `omfp:activity` (UI-241). */
+  activity: {
+    label: "Activity",
+    empty: "No agent activity yet",
+    emptyHint: "What agents do through omfp (threads, workspaces, files, jobs) shows here.",
+    thisThread: "This thread",
+    older: "Load older",
+    loading: "Reading the activity log…",
+    failed: (message: string) => `failed: ${message}`,
+    selectThread: (title: string) => `Select ${title}`,
+    /** Who made an entry of an MCP client outside omfp (AGT-053). */
+    mcpClient: (client: string) => `mcp: ${client}`,
+  },
   /** The file viewer and editor (`omfp:file`, UI-110..114). */
   file: {
     noPath: "No file: give this widget a path prop.",
@@ -306,6 +328,14 @@ export const shell = {
     basename: "same name",
     mentioned: "in the conversation",
   },
+  /** Floating widget panels (UI-230). */
+  panels: {
+    move: (title: string) => `Move ${title} (arrow keys)`,
+    resize: (title: string) => `Resize ${title} (arrow keys)`,
+    minimise: (title: string) => `Minimise ${title}`,
+    restore: (title: string) => `Show ${title}`,
+    close: (title: string) => `Close ${title}`,
+  },
   /** The mode line (UI-098); vim's modes while a file editor has the focus (UI-112). */
   mode: {
     names: { normal: "NORMAL", insert: "INSERT", cmdline: "COMMAND" },
@@ -336,6 +366,7 @@ export const shell = {
       "omfp:subagents": "Subagents",
       "omfp:todos": "Todos",
       "omfp:tree": "Tree",
+      "omfp:activity": "Activity",
     } as Readonly<Record<string, string>>,
   },
   /** The narrow and mobile frame (UI-200..UI-205). */
@@ -380,8 +411,9 @@ export const shell = {
     reset: ".omfp/views.json reset to the default view",
   },
   widgetCopy: {
-    usage: "Usage: :widget copy <reference> [<name>]",
+    usage: "Usage: :widget copy <reference> [<name>] | :widget save[!] <widget> [<name>]",
     copied: (name: string) => `Copied to ./widgets/${name}`,
+    saved: (reference: string) => `Saved to the user library as ${reference}`,
   },
   settings: {
     setUsage: "Usage: :set <key>=<value> (density, notifications, fonts.prose|ui|code, keymap[.<mode>].<keys>)",
@@ -406,6 +438,8 @@ export const shell = {
     delete: "Delete the thread…",
     rename: "Rename the thread (:rename <title>, or in place without one)",
     stop: "Stop the thread's process",
+    stopSpawned: "Stop the thread and every thread it spawned",
+    spawnedBy: "Show only the threads the selected one spawned (again: every thread)",
     restart: "Restart the thread's process",
     nextAttention: "Next thread needing attention",
     theme: "Colour scheme (system, light, dark)",
@@ -417,7 +451,7 @@ export const shell = {
     toggleSection: "Collapse or expand the focused workspace",
     view: "Switch view (:view <id>), or :view reset to restore the default views.json",
     layout: "Edit the layout of the view (toggle)",
-    widget: "Copy a widget into the workspace (:widget copy <reference> [<name>])",
+    widget: "Copy a widget into the workspace or save one to the user library (:widget copy|save[!] <widget> [<name>])",
     open: "Open a file (:open <path>[:<line>]), or the focused path (g f)",
     next: "Next thread",
     prev: "Previous thread",

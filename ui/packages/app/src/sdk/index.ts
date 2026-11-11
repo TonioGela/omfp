@@ -40,7 +40,8 @@
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
  * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,
- * `RENAMING_THREAD`, `ERRORS`, `OPEN_FILES` and `FLOATING_FILES` (persisted), `FILE_PICKER`, `EDITOR_MODE`, `NOTICES`.
+ * `RENAMING_THREAD`, `ERRORS`, `OPEN_FILES`, `FLOATING_FILES` and `floatingWidgetKey(workspaceId, panelId)`
+ * (persisted), `FILE_PICKER`, `EDITOR_MODE`, `NOTICES`.
  * A widget is a {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own
  * scoped commands.
  */
@@ -236,6 +237,7 @@ export {
   type FileTabsState,
   FLOATING_FILES,
   findMissingFile,
+  floatingWidgetKey,
   intervalPoll,
   type MissingOutcome,
   OPEN_FILES,

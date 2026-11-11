@@ -134,7 +134,7 @@ sequenceDiagram
 ## On-disk data
 
 ```text
-$XDG_DATA_HOME/omfp/            (default ~/.local/share/omfp)
+$XDG_DATA_HOME/omfp/            (default ~/.local/share/omfp; macOS ~/Library/Application Support/omfp, DMN-170)
   omfp.db                        SQLite: seen repositories, workspaces, threads, settings, widget state
   token                         access token (mode 0600)
   threads/<thread-id>/sessions/ sessionDir passed to omp (open_session)

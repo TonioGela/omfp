@@ -1,12 +1,15 @@
 //! Tools the daemon provides to omp (DMN-060..064), registered at launch through `omp-rpc`'s
-//! `ClientOptions::tools`.
+//! `ClientOptions::tools`, and the `omfp://` host URI scheme next to them (DMN-062).
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use omp_rpc::{HostTool, HostToolError, HostToolOutput, ToolLoadMode};
+use omp_rpc::{HostTool, HostToolError, HostToolOutput, HostUri, ToolLoadMode};
 use serde_json::{Map, Value, json};
 
+use crate::agent_tools::catalog;
 use crate::widgets::layout::{Addition, Place};
+use crate::widgets::{self, BUILTIN_URL, CHECK_URL, DOCS_URL, SCHEMA_URL, SCHEME, keymap};
 
 /// Name of the tool that opens a file in omfp for the user (DMN-060).
 pub const OPEN_FILE: &str = "omfp_open_file";
@@ -60,9 +63,17 @@ pub trait WidgetHost: Send + Sync {
     fn add_to_view(&self, workspace_id: &str, addition: &Addition<'_>) -> Result<String, String>;
 }
 
+/// Builds the host tools of a thread's agent from the agent tool registry (AGT-040, DMN-151); the server implements
+/// it over its services.
+pub trait AgentHost: Send + Sync {
+    /// The registry's tools for the agent of thread `thread_id`, which lives in workspace `workspace_id`.
+    fn tools(&self, thread_id: &str, workspace_id: &str) -> Vec<HostTool>;
+}
+
 /// The host tools of one thread: `opener` opens files and `notifier` notifies the user in their window, `set_title`
-/// renames the thread, and `widgets` (absent in tests that need no widget tools) backs the widget tools of workspace
-/// `workspace_id`. Every tool is `essential`: a direct tool of the agent, not only an `xd://` device (DMN-106).
+/// renames the thread, `widgets` (absent in tests that need no widget tools) backs the widget tools of workspace
+/// `workspace_id`, and `agent_tools` are the registry's tools for this thread (AGT-040). Every tool is `essential`: a
+/// direct tool of the agent, not only an `xd://` device (DMN-106).
 #[must_use]
 pub fn thread_tools(
     opener: OpenFile,
@@ -70,6 +81,7 @@ pub fn thread_tools(
     set_title: SetTitle,
     workspace_id: &str,
     widgets: Option<Arc<dyn WidgetHost>>,
+    agent_tools: Vec<HostTool>,
 ) -> Vec<HostTool> {
     let mut tools = vec![
         open_file(opener),
@@ -80,10 +92,42 @@ pub fn thread_tools(
         tools.push(widget_check(workspace_id.to_owned(), Arc::clone(&host)));
         tools.push(view_add(workspace_id.to_owned(), host));
     }
+    tools.extend(agent_tools);
     tools
         .into_iter()
         .map(|tool| tool.load_mode(ToolLoadMode::Essential))
         .collect()
+}
+
+/// The host URI schemes of every thread (DMN-062): `omfp://`, read-only — the method catalogue (AGT-042), the widget
+/// docs and schemas, the built-in widgets' sources from `builtin` (`<static-dir>/builtin-widgets/` when the daemon
+/// serves a bundle) and, with `widgets` (the thread's workspace id and the widget host), `omfp://widgets/check/<name>`
+/// (DMN-108).
+pub fn host_uris(
+    builtin: Option<PathBuf>,
+    widgets: Option<(String, Arc<dyn WidgetHost>)>,
+) -> Result<Vec<HostUri>, omp_rpc::Error> {
+    let omfp = HostUri::new(SCHEME, move |url, context| {
+        let (workspace_id, host) = widgets
+            .as_ref()
+            .map_or(("", None), |(id, host)| (id.as_str(), Some(&**host)));
+        catalog::read_uri(url)
+            .or_else(|| widgets::read_check(url, || context.is_cancelled(), workspace_id, host))
+            .unwrap_or_else(|| widgets::read_uri(url, builtin.as_deref()))
+            .map_err(Into::into)
+    })?
+    .description(format!(
+        "omfp, the window the user works in: {} lists the protocol methods omfp_call accepts and {}/<name> gives \
+         one's params and result schemas; {DOCS_URL} documents widgets (SDK, kit, views); {SCHEMA_URL} is the JSON \
+         Schema of .omfp/views.json and {} of .omfp/keymap.json; {BUILTIN_URL} lists the built-in widgets and \
+         {BUILTIN_URL}/<name> shows one's source; {CHECK_URL}/<name> checks a widget (compile errors, what open \
+         windows render)",
+        catalog::METHODS_URL,
+        catalog::METHODS_URL,
+        keymap::SCHEMA_URL
+    ))
+    .immutable(true);
+    Ok(vec![omfp])
 }
 
 fn schema(value: &Value) -> Map<String, Value> {
@@ -519,6 +563,7 @@ mod tests {
             Arc::new(|_| Ok(())),
             "01WS",
             None,
+            Vec::new(),
         );
         let definitions: Vec<_> = tools.iter().map(HostTool::definition).collect();
 
@@ -692,6 +737,7 @@ mod tests {
             Arc::new(|_| Ok(())),
             "01WS",
             Some(Arc::clone(&host) as Arc<dyn WidgetHost>),
+            Vec::new(),
         );
         let names: Vec<&str> = tools
             .iter()
@@ -841,5 +887,22 @@ mod tests {
             Err("thread 01X not found".into())
         });
         assert_eq!(failed.unwrap_err().to_string(), "thread 01X not found");
+    }
+
+    // spec: DMN-062, AGT-042
+    #[test]
+    fn the_omfp_scheme_is_read_only_and_describes_the_method_catalogue() {
+        let uris = host_uris(None, None).unwrap();
+        assert_eq!(uris.len(), 1);
+        assert_eq!(uris[0].scheme(), "omfp");
+        assert!(!uris[0].writable());
+        let definition = uris[0].definition();
+        assert_eq!(definition.immutable, Some(true));
+        let description = definition.description.clone().unwrap_or_default();
+        assert!(
+            description
+                .contains("omfp://protocol/methods lists the protocol methods omfp_call accepts"),
+            "{description}"
+        );
     }
 }

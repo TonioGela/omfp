@@ -118,6 +118,29 @@ jobs:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop -c just test-desktop
 
+  # TST-092: the macOS desktop (WKWebView, the menu bar item; TST-090, TST-091) and the darwin packages (ENV-041) on
+  # GitHub's arm64 macOS runner, whose GUI session is logged in. On pushes to master only: macOS minutes cost ten
+  # Linux minutes; its cachix daemon pushes the darwin closure (omp built from source) for the next run and for Macs.
+  macos:
+    name: macOS desktop and packages
+    if: github.event_name == 'push'
+    needs: web
+    runs-on: macos-15
+    timeout-minutes: 120
+    env:
+      OMFP_WEB_BUNDLE: ${{ github.workspace }}/../web-bundle
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: web-bundle
+          path: ${{ env.OMFP_WEB_BUNDLE }}
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just test-desktop
+      - run: nix develop -c just package
+
   package:
     name: Nix packages
     runs-on: ubuntu-latest
@@ -130,3 +153,25 @@ jobs:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
           rust: "false"
       - run: nix develop -c just package
+
+  mutants:
+    name: mutation gate (omfp-core, omfp-protocol)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just mutants-gate
+
+  cov:
+    name: coverage gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix develop -c just cov

@@ -16,6 +16,9 @@ import {
   SEARCH_DELAY_MS,
   type SearchHit,
   sidebarSections,
+  spawnedCounts,
+  spawnedTree,
+  spawnerOf,
   type ThreadFilter,
   threadStatus,
   toggled,
@@ -297,5 +300,44 @@ describe("thread list", () => {
       ["t1", 9],
       ["t2", 7],
     ]);
+  });
+});
+
+describe("spawned tree (UI-240)", () => {
+  const by = (threadId: string) => ({ provenance: { createdBy: { kind: "thread" as const, threadId } } });
+  const root = thread("root", "orchestrator", "w1");
+  const child = thread("a", "fe", "w1", by("root"));
+  const threads = [
+    root,
+    child,
+    thread("b", "be", "w1", { ...by("a"), archivedAt: 4 }),
+    thread("c", "docs", "w1", by("root")),
+    thread("other", "other", "w1"),
+  ];
+
+  // spec: AGT-070, UI-240
+  test("a thread's spawned tree follows provenance transitively, archived threads included", () => {
+    expect(spawnerOf(child)).toBe("root");
+    expect(spawnerOf(root)).toBeUndefined();
+    expect([...spawnedTree(threads, "root")].sort()).toEqual(["a", "b", "c", "root"]);
+    expect([...spawnedTree(threads, "a")].sort()).toEqual(["a", "b"]);
+    expect([...spawnedTree(threads, "other")]).toEqual(["other"]);
+    expect(spawnedCounts(threads)).toEqual(
+      new Map([
+        ["root", 3],
+        ["a", 1],
+      ]),
+    );
+  });
+
+  // spec: UI-240, UI-022
+  test("the spawned filter keeps its tree, opens collapsed sections and combines with the query", () => {
+    const workspaces = [workspace("w1"), workspace("w2")];
+    const filter: ThreadFilter = { ...NO_FILTER, spawned: spawnedTree(threads, "a") };
+    const sections = sidebarSections(threads, workspaces, filter);
+    expect(sections.map((section) => [section.threadIds, section.archivedIds])).toEqual([[["a"], ["b"]]]);
+    expect(visibleOrder(sections, ["w1"], [], filter)).toEqual(["a"]);
+    const typed: ThreadFilter = { ...filter, query: "be" };
+    expect(sidebarSections(threads, workspaces, typed).map((section) => section.archivedIds)).toEqual([["b"]]);
   });
 });

@@ -120,7 +120,7 @@
         in
         {
           packages = {
-            omfp = omfpPackage pkgs.stdenv.hostPlatform.isLinux;
+            omfp = omfpPackage true;
             omfp-headless = omfpPackage false;
             omfp-web = omfpWeb;
             default = config.packages.omfp;
@@ -130,6 +130,18 @@
 
           # Hooks run on commit (installed by the dev shell) and as `checks.<system>.pre-commit`.
           pre-commit.settings = {
+            # ENV-040: nixpkgs' pre-commit sets DOTNET_ROOT and checks against a source-built .NET SDK, which
+            # cache.nixos.org does not have for aarch64-darwin (hours of building): skip its tests and that env there.
+            package =
+              if pkgs.stdenv.hostPlatform.isDarwin then
+                (pkgs.pre-commit.overridePythonAttrs { env = { }; }).overrideAttrs {
+                  doCheck = false;
+                  doInstallCheck = false;
+                  # nixpkgs' pytest hook runs as a pre-dist phase whatever doCheck says.
+                  dontUsePytestCheck = true;
+                }
+              else
+                pkgs.pre-commit;
             hooks = {
               # Nix
               nixfmt.enable = true;

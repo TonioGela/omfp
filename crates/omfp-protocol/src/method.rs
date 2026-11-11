@@ -13,7 +13,7 @@ use crate::dto::{
     DiffPage, FileCandidates, FileContent, FileWritten, GitStatus, JobInfo, Settings, Theme,
     ThreadSummary, Workspace,
 };
-use crate::params;
+use crate::{activity, lists, params};
 use omfp_core::wire;
 
 /// A protocol method: its wire name and the types of its params and result.
@@ -39,11 +39,11 @@ macro_rules! result_schema {
 
 macro_rules! methods {
     ($(
-        $(#[$doc:meta])*
+        $(#[doc = $doc:literal])*
         $variant:ident = $name:literal ($params:ty) -> $result:ty $(as $schema:ty)?;
     )*) => {
         $(
-            $(#[$doc])*
+            $(#[doc = $doc])*
             #[derive(Debug, Clone, Copy)]
             pub struct $variant;
 
@@ -62,7 +62,7 @@ macro_rules! methods {
         #[derive(Debug, Clone, PartialEq)]
         pub enum Call {
             $(
-                $(#[$doc])*
+                $(#[doc = $doc])*
                 $variant($params),
             )*
         }
@@ -108,6 +108,17 @@ macro_rules! methods {
                 );
             )*
             Value::Object(schemas)
+        }
+
+        /// The description of `method`, its doc comment in the method table, on one line; `None` for an unknown
+        /// method (PRT-092).
+        #[must_use]
+        pub fn method_description(method: &str) -> Option<String> {
+            let lines: &[&str] = match method {
+                $($name => &[$($doc),*],)*
+                _ => return None,
+            };
+            Some(lines.iter().copied().map(str::trim).collect::<Vec<_>>().join(" "))
         }
     };
 }
@@ -209,8 +220,8 @@ methods! {
     ThreadState = "thread.state" (params::ThreadRef) -> wire::SessionState as Value;
     /// Restarts the omp process.
     ThreadRestart = "thread.restart" (params::ThreadRef) -> params::Empty;
-    /// Stops the omp process.
-    ThreadStop = "thread.stop" (params::ThreadRef) -> params::Empty;
+    /// Stops the omp process; with `cascade`, those of every thread it spawned too (PRT-085, AGT-071).
+    ThreadStop = "thread.stop" (activity::StopThreadParams) -> activity::ThreadsStopped;
     /// Starts a live voice session on the client's WebRTC peer (omp `live_connect`, DMN-100).
     ThreadLiveConnect = "thread.live_connect" (params::LiveConnectParams) -> params::LiveConnected;
     /// Starts a live voice session on the daemon machine's microphone and speakers (omp `live_start`, DMN-109): the
@@ -250,4 +261,45 @@ methods! {
     JobsStart = "jobs.start" (params::StartJobParams) -> JobInfo;
     /// Kills a job's process group (DMN-081).
     JobsKill = "jobs.kill" (params::JobRef) -> params::Empty;
+    /// Mounts a widget (a reference or inline code) into a view or as a floating panel; replaces an earlier mount of
+    /// the same id (PRT-080, AGT-061).
+    ViewsMount = "views.mount" (params::MountParams) -> params::Mounted;
+    /// Merges props into a mounted widget, or rewrites its inline code (PRT-081, AGT-062).
+    ViewsMountUpdate = "views.mount_update" (params::MountUpdateParams) -> params::Mounted;
+    /// Removes a mounted widget or floating panel from the views (PRT-082, AGT-063).
+    ViewsUnmount = "views.unmount" (params::UnmountParams) -> params::Unmounted;
+    /// Saves a workspace widget or inline code as a component of the user library (PRT-083, AGT-064).
+    WidgetsSave = "widgets.save" (params::SaveWidgetParams) -> params::WidgetSaved;
+    /// Lists the user library's components (PRT-084, AGT-065).
+    WidgetsLibrary = "widgets.library" (params::Empty) -> params::WidgetLibrary;
+    /// The activity log of agent-originated actions, newest first (PRT-086, AGT-072).
+    ActivityList = "activity.list" (activity::ListActivityParams) -> activity::ActivityPage;
+    /// Thread summaries as on the `index` topic, without archived threads unless asked (PRT-090).
+    ThreadsList = "threads.list" (lists::ListThreadsParams) -> lists::ThreadList;
+    /// Every workspace as on the `index` topic (PRT-091).
+    WorkspacesList = "workspaces.list" (params::Empty) -> lists::WorkspaceList;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // spec: PRT-092
+    #[test]
+    fn every_method_has_a_one_line_description_from_its_doc_comment() {
+        for name in METHODS {
+            let description = method_description(name).unwrap_or_default();
+            assert!(!description.is_empty(), "{name} has no description");
+            assert!(!description.contains('\n'), "{name}: {description}");
+            assert_eq!(description.trim(), description, "{name}");
+        }
+        assert_eq!(
+            method_description("thread.live_start").as_deref(),
+            Some(
+                "Starts a live voice session on the daemon machine's microphone and speakers (omp `live_start`, \
+                 DMN-109): the desktop webview has no WebRTC (S-09)."
+            )
+        );
+        assert_eq!(method_description("threads.nothing"), None);
+    }
 }

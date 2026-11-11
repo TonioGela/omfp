@@ -119,6 +119,7 @@ fn provenance(created_by: &store::Provenance, client: Option<&String>) -> Proven
     Provenance {
         created_by: match created_by {
             store::Provenance::User => CreatedBy::User,
+            store::Provenance::Mcp => CreatedBy::Mcp,
             store::Provenance::Thread(thread_id) => CreatedBy::Thread {
                 thread_id: thread_id.clone(),
             },

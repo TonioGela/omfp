@@ -17,8 +17,10 @@ test-contract:
 # End-to-end journeys (L5): headless Chromium on the web bundle, a daemon with the pinned omp and the fake LLM
 test-e2e: (with-web-bundle "cargo nextest run -p e2e")
 
-# spec: TST-033 — the desktop window (`--features desktop`, WebKitGTK) under `xvfb-run`: the smoke test and the
-# background daemon shared by two windows; one test at a time, as parallel `xvfb-run -a` can pick the same display
+# spec: TST-033, TST-090, TST-091, ENV-040 — the desktop window (`--features desktop`): on Linux (WebKitGTK) under
+# `xvfb-run`, on macOS (WKWebView, the menu bar item; the darwin dev shell) on the logged-in user's screen; the smoke
+# test and the background daemon shared by two windows; one test at a time, as parallel `xvfb-run -a` can pick the same
+# display
 test-desktop: (with-web-bundle "cargo nextest run -p omfp --features desktop --test-threads 1")
 
 # spec: TST-074 — `command` with a web bundle of its own in `OMFP_WEB_BUNDLE`: the one given (CI's `web` job builds it
@@ -132,13 +134,14 @@ spec-trace:
 deny:
     cargo deny check
 
-# spec: TST-070, TST-071, TST-072, TST-073 — the GitHub workflow (.github/workflows/ci.yml) passes actionlint and runs
-# what `just ci` runs, in the dev shell, with its caches and the shared web bundle (.github/check-workflow.ts)
+# spec: TST-070, TST-071, TST-072, TST-073, TST-075, TST-092, ENV-042 — the GitHub workflow (.github/workflows/ci.yml)
+# passes actionlint and runs what `just ci` runs, in the dev shell, with its caches, the shared web bundle, the
+# runner's disk pooled for Nix and a macOS job (.github/check-workflow.ts)
 check-workflow:
     bun .github/check-workflow.ts {{ quote(just_executable()) }}
 
-# spec: ENV-030, ENV-031, ENV-032, ENV-033 — the Nix packages: `omfp` (web bundle included, the pinned omp on the
-# wrapper's PATH) and `omfp-headless` (without the desktop window)
+# spec: ENV-030, ENV-031, ENV-032, ENV-033, ENV-041 — the Nix packages: `omfp` (web bundle included, the pinned omp on
+# the wrapper's PATH; on macOS also `Applications/omfp.app`) and `omfp-headless` (without the desktop window)
 package:
     nix build --no-link .#omfp .#omfp-headless
 
@@ -149,9 +152,32 @@ check: lint check-versions spec-trace check-wasm deny check-workflow
 mutants *args:
     cargo mutants --test-tool nextest -p omfp-core -p omfp-protocol -p fake-llm -p xtask {{ args }}
 
-# Coverage report (HTML in target/llvm-cov/html)
-cov:
-    cargo llvm-cov nextest --workspace --exclude e2e --html -E 'not binary(/^contract_/)'
+# spec: TST-050 — no surviving mutant in omfp-core and omfp-protocol (exceptions, with a reason: .cargo/mutants.toml);
+# the report goes to target/mutants.out
+mutants-gate:
+    cargo mutants --test-tool nextest -p omfp-core -p omfp-protocol --jobs 2 --output target
+
+# spec: TST-050 — line coverage of the fast tests (no omp): ≥ 90% for omfp-core and omfp-protocol, ≥ 75% for
+# omfp-daemon, ≥ 90% for the TypeScript view models (ui/packages/app/src/vm/); HTML report in target/llvm-cov/html
+cov: ui-install
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cargo llvm-cov nextest --no-report -p omfp-core -p omfp-protocol -p omfp-daemon -E 'not binary(/^contract_/)'
+    cargo llvm-cov report --html
+    cargo llvm-cov report --json --summary-only --output-path target/llvm-cov/summary.json
+    jq -r --argjson min '{"omfp-core": 90, "omfp-protocol": 90, "omfp-daemon": 75}' '
+      [.data[0].files[] | (.filename | capture("/crates/(?<c>[^/]+)/src/")?.c) as $c | select($min[$c] != null)
+        | {c: $c, n: .summary.lines.count, h: .summary.lines.covered}]
+      | group_by(.c)[] | {c: .[0].c, p: ((map(.h) | add) * 100 / (map(.n) | add))}
+      | "\(.c): \(.p * 100 | floor / 100)% of lines (min \($min[.c])%)\(if .p < $min[.c] then " FAIL" else "" end)"
+    ' target/llvm-cov/summary.json > target/llvm-cov/gate.txt
+    out="$PWD/target/bun-coverage"
+    (cd ui && bun test --preload ./test/dom.ts --coverage --coverage-reporter=lcov --coverage-dir="$out" packages/app)
+    awk -F: '/^SF:/ { vm = index($2, "packages/app/src/vm/") > 0 } vm && /^LF:/ { n += $2 } vm && /^LH:/ { h += $2 }
+      END { p = h * 100 / n; printf "ui view models: %.2f%% of lines (min 90%%)%s\n", p, (p < 90 ? " FAIL" : "") }' \
+      "$out/lcov.info" >> target/llvm-cov/gate.txt
+    cat target/llvm-cov/gate.txt
+    ! grep -q FAIL target/llvm-cov/gate.txt
 
 # Everything a change must pass (CI runs the same recipes as parallel jobs: .github/workflows/ci.yml)
-ci: check test test-ts test-contract test-e2e test-desktop package
+ci: check test test-ts test-contract test-e2e test-desktop package mutants-gate cov

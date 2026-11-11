@@ -109,6 +109,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `subscribe` / `unsubscribe` | `topic`, `since?` | see above |
 | `repos.suggest` | `query?` | `{ repos: [{ path, name, lastSeenAt }] }`: repositories seen in any workspace (DMN-021) |
 | `fs.complete` | `path` | `{ entries: [{ name, path, isGitRoot }] }`: child directories on the daemon host (DMN-021) |
+| `workspaces.list` | — | `{ workspaces }`: every workspace, as on `index` (PRT-091) |
 | `workspaces.create` | `name?`, `link?` (a repository path: the new folder gets a link to it, DMN-020) | workspace; always a new folder under the workspaces root |
 | `workspaces.update` | `workspaceId`, `name` | workspace |
 | `workspaces.remove` | `workspaceId`, `force?` | `{}`; removes the repositories and deletes the folder (DMN-028) |
@@ -123,6 +124,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `threads.update` | `threadId`, `title?` (a `set` title, DMN-073), `approvalMode?` (from the next start of the thread's omp) | thread |
 | `threads.archive` / `.unarchive` / `.delete` | `threadId` | `{}`; archive stops the thread's omp process and sets `archivedAt`, unarchive clears it, delete removes the thread's records and directory (workspaces are never removed implicitly) |
 | `threads.search` | `query` | `{ results: [{ threadId, snippet }] }`: threads whose conversation text contains `query`, most recently updated first (DMN-076) |
+| `threads.list` | `workspaceId?`, `includeArchived?` | `{ threads }`: thread summaries, as on `index` (PRT-090) |
 | `thread.prompt` | `threadId`, `text`, `images?`, `behavior?: "steer" \| "followUp"` | `{ promptId }`; completion arrives as `prompt_result` |
 | `thread.steer` / `thread.follow_up` | `threadId`, `text`, `images?` | `{}` |
 | `thread.abort` | `threadId` | `{ steering[], followUp[] }` (to restore into the composer) |
@@ -134,7 +136,8 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `thread.subagents` / `.subagent_messages` / `.subagent_steer` / `.subagent_cancel` | `threadId`, `subagentId`, … | `{ subagents }` / transcript page / `{}` |
 | `thread.goal` / `thread.btw` / `thread.bash` | per 02 | `{ goal, state }` / `{ record }` / bash result |
 | `thread.git` | `threadId` | `{ workspaceId, repos }`: the status of every repository of the thread's workspace (convenience over `workspaces.status`) |
-| `thread.restart` / `thread.stop` | `threadId` | `{}` |
+| `thread.restart` | `threadId` | `{}` |
+| `thread.stop` | `threadId`, `cascade?` (default `false`: also the threads it spawned, AGT-071) | `{ threadIds }`: the threads whose omp process is now stopped (PRT-085) |
 | `thread.live_connect` | `threadId`, `sdpOffer` (the browser peer's SDP offer: one sendrecv Opus track plus an `oai-events` data channel) | `{ sdpAnswer, voice }` once omp signaled the call (DMN-100); `conflict` while the thread has a live session (DMN-101) |
 | `thread.live_start` | `threadId` | `{ voice }` once omp's own session on the daemon's machine records (M7, DMN-109); `conflict` while the thread has a live session (DMN-101) |
 | `thread.live_stop` | `threadId` | `{}`; succeeds without a session and never starts omp (DMN-102) |
@@ -151,6 +154,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `widgets.report` | `workspaceId`, `views` (the `{ epoch, seq }` of `views/<workspaceId>` the window rendered, `null` before it arrived), `widgets` (per instance: `reference`, `instance`, `source`, `name`, `version`, `state`, `errors`, `console`, `text`, `jobs`) | `{}`; replaces this connection's report (PRT-043, AGT-026) |
 | `jobs.start` | `workspaceId`, `command` | the job: `{ id, workspaceId, command, startedAt, status }` (DMN-080) |
 | `jobs.kill` | `jobId` | `{}` (DMN-081) |
+| `activity.list` | `threadId?`, `before?`, `after?`, `limit?` | `{ entries: [{ seq, at, threadId, client, method, params, error }], more }`: the activity log, newest first (PRT-086) |
 
 Results of omp-forwarded methods are omp's response data (`data` of its `response` frame), the `omp-rpc` wire
 `*Result` type named in the method table, even where `omp-rpc` decodes the command's output to the bare list or
@@ -162,7 +166,7 @@ record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 | PRT-031 | Every method MUST be covered by a golden-JSON test (insta snapshot of request and response) in `omfp-protocol`, so changes to the wire format are always explicit in review. |
 | PRT-032 | `omfp-protocol` MUST version breaking changes by bumping `protocol`; the daemon supports the current and the previous version during a transition. |
 | PRT-033 | No method may assume a human UI is on the other end: every method is usable by scripts and, later, agents (D-12). The `client` field of `system.hello` and the resulting principal are recorded as provenance on created entities (ARC-009). |
-| PRT-034 | Authorization MUST be resolved once per connection into a `Principal` and checked in one place (a method → permission table), so scoped principals (per-thread agent tokens, [08](08-agent-control.md)) can be added without touching method handlers. Today there is one principal: the owner token. |
+| PRT-034 | Authorization MUST be resolved once per connection into a `Principal` and checked in one place (a method → permission table), so scoped principals (per-thread agent tokens, [08](08-agent-control.md)) can be added without touching method handlers. Principals: the owner token, the agent principal of a thread's agent tools (DMN-150) and the MCP principal of the MCP server (AGT-051). |
 | PRT-050 | The live voice methods (M6) MUST have exactly these shapes: `thread.live_connect { threadId, sdpOffer }` → `{ sdpAnswer, voice }`, `thread.live_stop { threadId }` → `{}`, `thread.live_mute { threadId, muted }` → `{ muted }`; they need the `Drive` permission. |
 | PRT-051 | The `system.hello` result MUST carry `connection`, a number naming this connection, unique while the daemon runs: a window compares it with a live session's `owner.connection` to know whether the session (and its audio peer) is its own. |
 | PRT-052 | The thread state MUST carry the live session (`live`, `null` when none) and the readable message of the last live failure (`live_error`): a `live_session` event with an owner starts a session `{ owner, phase: null, transcript: [] }` and clears `live_error`; `live_phase` sets `phase` while a session exists (the `error` phase omp repeats after `live_end` is ignored); `live_transcript` keeps one line `{ role, turn, text, final }` per role and turn in order of first appearance, a later frame replacing the line's text until a `final` one (later frames of a final line are ignored); `live_levels` changes nothing (the daemon sends them as transient frames, DMN-110, PRT-054); `live_end` and `live_session { owner: null }` clear the session, `live_end` setting `live_error` to the readable message of its `error` (DMN-104) or `null`; a process leaving `starting`/`running` clears the session. |
@@ -171,6 +175,23 @@ record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 | PRT-055 | The thread state MUST carry `subagents`: per subagent id, the last `subagent_lifecycle` payload (`lifecycle`) and the last `subagent_progress` payload (`progress`, its id read from the raw `AgentProgress` record), each `null` until omp sent one; finished subagents stay (omp's `thread.subagents` lists only running ones, so the UI merges both, UI-081). |
 | PRT-056 | The thread state MUST carry `goal`: the `goal` of the last `goal_updated` frame (`null` when omp reported none, or never did); a `history` event keeps it, since the goal belongs to the omp session, not to the transcript. A `goal_updated` without a `goal` key does not decode (an `unknown` notice). |
 | PRT-057 | The thread state MUST carry `todo_phases`: the phases of the transcript's last `todo` tool result that committed some (omp's `committedTodoPhases`: not an error, not a `view`, phases that decode), `[]` without one; a `message_end` of such a result replaces them, and a `history` event recomputes them from its messages (omp's `getLatestTodoSnapshotIdentity`). |
+
+## Agent tools (M10)
+
+| ID | Requirement |
+| --- | --- |
+| PRT-090 | `threads.list { workspaceId?, includeArchived? }` (permission `Read`) MUST answer `{ threads }`: the thread summaries of the `index` topic after a refresh, in its order, without archived threads unless `includeArchived` is `true`, only those of workspace `workspaceId` when given (an unknown workspace lists none). It is how a client without a subscription, e.g. an agent's `omfp_call` (AGT-041), lists threads. |
+| PRT-091 | `workspaces.list {}` (permission `Read`) MUST answer `{ workspaces }`: the workspaces of the `index` topic after a refresh, in its order. |
+| PRT-092 | Every method of the method table MUST carry a description, its doc comment, exposed by `omfp_protocol::method_description(name)` next to `method_schemas()` (AGT-007), so the method catalogue (AGT-042) describes each method without a second list. |
+| PRT-093 | A provenance's `createdBy` (ARC-009) MUST be `{ kind: "user" }`, `{ kind: "thread", threadId }` or `{ kind: "mcp" }`: the last for what the MCP principal created (AGT-051), whose MCP client is the provenance's `client`. |
+| PRT-094 | An activity entry's `threadId` (PRT-086) MUST be `null` for a call of the MCP principal (AGT-053); its `client` then names the MCP client. |
+
+## Cascade stop and activity log (M10)
+
+| ID | Requirement |
+| --- | --- |
+| PRT-085 | `thread.stop { threadId, cascade? }` MUST answer `{ threadIds }`: the stopped threads, the thread first, then, with `cascade: true`, the other members of its spawned tree (AGT-070) in the order the daemon stopped them (DMN-162); `cascade` defaults to `false`. Stopping a thread that runs no process succeeds; an unknown thread is `not_found`. |
+| PRT-086 | `activity.list { threadId?, before?, after?, limit? }` (permission `Read`) MUST answer `{ entries, more }` from the activity log (DMN-160), newest first: each entry `{ seq, at, threadId, client, method, params, error }` (`error` `null` for a success); `threadId` keeps the entries of that calling thread, `before` those with a smaller `seq`, `after` those with a greater one; `limit` defaults to 50 and is capped at 500; `more` tells whether entries matching the query were left out by the limit. |
 
 ## Views and jobs (M4)
 
@@ -182,3 +203,8 @@ record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 | PRT-043 | `widgets.report` (AGT-026) is a window's report on the workspace and user widgets of the view it shows (built-ins are not reported): each call replaces the connection's previous report (a window shows one workspace), the daemon forgets it when the connection closes, and `omfp_widget_check` reads it (DMN-063). An instance's `state` is `loading`, `rendered`, `compile_error`, `load_error` or `render_error`; `errors` are the import's, compile stand-in's or error boundary's messages (`file:line:column: message` when known), `console` the console errors and uncaught errors whose stack names the widget's module, `text` the rendered text, `jobs` its `useJob` jobs (`command`, `status`, `exitCode`, `signal`, `runs`, `startedAt`, `tail`: the last output lines). The daemon keeps at most 4,000 characters of `text`, 20 `errors`, 20 `console` entries and 10 `tail` lines per instance, each entry at most 2,000 characters. |
 | PRT-060 | `ViewsState` (PRT-040) carries `keymap: [{ mode, keys, command, args? }]` and `keymapError: string \| null`, the workspace's `.omfp/keymap.json` (DMN-121); the event `views_keymap { keymap, error }` replaces both. A state without them (an older daemon) reads as no bindings and no error. |
 | PRT-065 | The thread state MUST carry `notify`, the last `notify` event's request `{ id, connection, title, body }` (`null` before one; a process change keeps it), like `open_file`; an event missing a field or with a negative `connection` does not decode and changes nothing. A window acts only on requests naming its own connection, once per `id`, so a snapshot after a resync never shows one twice. |
+| PRT-080 | `views.mount { workspaceId, id, widget?, code?, props?, view?, place?: "side_tab" \| "main_tab" \| "end", panel? }` → `Mounted { id, reference, view: string \| null, panel, replaced }` (AGT-061): writes `views.json` as `views.set` does (DMN-083) and publishes it on `views/<workspaceId>` before answering. Breaking a rule of AGT-061 (both or neither of `widget` and `code`, an `id` that is no widget name, `view` or `place` with `panel`) is a `bad_request`, and so is a current `views.json` that is invalid (naming its error). |
+| PRT-081 | `views.mount_update { workspaceId, id, props?, code? }` → `Mounted` (`replaced: true`) (AGT-062), written and published like PRT-080; `not_found` when no node or panel has that id. |
+| PRT-082 | `views.unmount { workspaceId, id }` → `Unmounted { views, removedViews, panel }` (AGT-063): the ids of the views it changed and of those it removed, and whether it removed the panel `id`; written and published like PRT-080. |
+| PRT-083 | `widgets.save { name, workspaceId?, widget?, code?, replace? }` → `WidgetSaved { name, reference }` (AGT-064): `workspaceId` is required with `widget`; `bad_request` for a bad name or both or neither of `widget` and `code`, `not_found` for a missing widget, `conflict` for an existing component without `replace`. |
+| PRT-084 | `widgets.library {}` → `WidgetLibrary { components: [{ name, reference, entry, files, version, description }] }` (AGT-065), by name; `entry` is `null` for a folder without one. |

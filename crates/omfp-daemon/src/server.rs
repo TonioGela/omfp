@@ -1,10 +1,13 @@
-//! The WebSocket server (03-protocol): `/api/ws` for clients, the user's theme at `/theme.css` (DMN-075), widget
-//! modules under the secret `widgetBase` (DMN-084), and the web UI's static files at `/` when `--static-dir` is set.
+//! The WebSocket server (03-protocol): `/api/ws` for clients, the MCP server at `/mcp` for agents outside omfp
+//! (DMN-155), the user's theme at `/theme.css` (DMN-075), widget modules under the secret `widgetBase` (DMN-084), and
+//! the web UI's static files at `/` when `--static-dir` is set.
 
+mod activity;
 mod auth;
 mod connection;
-mod convert;
-mod dispatch;
+pub(crate) mod convert;
+pub(crate) mod dispatch;
+mod mcp;
 mod services;
 
 use std::path::{Component, Path, PathBuf};
@@ -15,11 +18,12 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{self, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use subtle::ConstantTimeEq;
 use tokio::sync::watch;
 
 pub use auth::{Permission, Principal, authorize, origin_allowed, parse_origin, permission};
+pub(crate) use mcp::Sessions as McpSessions;
 pub(crate) use services::Services;
 
 use crate::token::Token;
@@ -44,6 +48,8 @@ pub(crate) struct AppState {
     /// `/widgets/<key>`: where authenticated clients load widget modules, the key random per start (DMN-084).
     pub widget_base: String,
     pub services: Services,
+    /// The MCP server's legacy sessions (DMN-157).
+    pub mcp_sessions: McpSessions,
     /// Becomes `true` when the daemon shuts down; connections then close.
     pub shutdown: watch::Receiver<bool>,
 }
@@ -51,6 +57,7 @@ pub(crate) struct AppState {
 pub(crate) fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/api/ws", get(upgrade))
+        .route(mcp::PATH, post(mcp::post).delete(mcp::delete))
         .route("/theme.css", get(theme_css))
         .route("/widgets/{*rest}", get(widget_file))
         .fallback(static_file)

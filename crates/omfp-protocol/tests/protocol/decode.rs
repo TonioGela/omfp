@@ -1,6 +1,8 @@
 //! Rules for decoding client frames (`decode_request`).
 
-use omfp_protocol::{Call, Empty, ErrorCode, ProtocolError, Request, ThreadRef, decode_request};
+use omfp_protocol::{
+    Call, Empty, ErrorCode, ProtocolError, Request, StopThreadParams, decode_request,
+};
 use serde_json::json;
 
 use crate::samples::THREAD_ID;
@@ -20,8 +22,9 @@ fn a_request_keeps_its_client_chosen_id() {
         request,
         Request::new(
             "c42",
-            Call::ThreadStop(ThreadRef {
-                thread_id: THREAD_ID.to_owned()
+            Call::ThreadStop(StopThreadParams {
+                thread_id: THREAD_ID.to_owned(),
+                cascade: false,
             })
         )
     );
@@ -67,8 +70,9 @@ fn unknown_params_fields_are_ignored() {
     .unwrap();
     assert_eq!(
         request.call,
-        Call::ThreadStop(ThreadRef {
-            thread_id: THREAD_ID.to_owned()
+        Call::ThreadStop(StopThreadParams {
+            thread_id: THREAD_ID.to_owned(),
+            cascade: false,
         })
     );
 }
@@ -109,7 +113,7 @@ fn invalid_params_are_a_bad_request_for_that_id() {
     }
 }
 
-// spec: PRT-011
+// spec: PRT-011, TST-050
 #[test]
 fn malformed_frames_are_bad_requests() {
     let cases = [
@@ -123,6 +127,9 @@ fn malformed_frames_are_bad_requests() {
     for text in cases {
         let error = decode_request(&text).unwrap_err();
         assert_eq!(error.code(), ErrorCode::BadRequest, "{text}");
+        assert_ne!(error.message, "", "{text}");
+        assert_eq!(error.to_string(), error.message, "{text}");
+        assert_eq!(error.to_error_body().message, error.message, "{text}");
     }
 }
 

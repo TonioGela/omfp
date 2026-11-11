@@ -3,6 +3,121 @@ source: crates/omfp-protocol/tests/protocol/schemas.rs
 expression: method_schemas()
 ---
 {
+  "activity.list": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`activity.list` params (PRT-086).",
+      "properties": {
+        "after": {
+          "description": "Only entries with a greater `seq` (newer ones).",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "before": {
+          "description": "Only entries with a smaller `seq` (older ones).",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "At most this many entries; default 50, capped at 500.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "threadId": {
+          "description": "Only the actions of this calling thread.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ListActivityParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "ActivityEntry": {
+          "description": "One agent-originated action (AGT-072, DMN-160).",
+          "properties": {
+            "at": {
+              "description": "Unix milliseconds.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "client": {
+              "description": "The `client` of the calling principal (PRT-033): the MCP client's name when `thread_id` is `null`.",
+              "type": "string"
+            },
+            "error": {
+              "description": "`null` when the call succeeded, else the error's message.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "method": {
+              "description": "The protocol method called.",
+              "type": "string"
+            },
+            "params": {
+              "description": "Its params, long strings cut to 200 characters (DMN-161)."
+            },
+            "seq": {
+              "description": "Increasing with every entry.",
+              "format": "int64",
+              "type": "integer"
+            },
+            "threadId": {
+              "description": "The thread whose agent made the call; `null` for a call of an MCP client outside omfp (PRT-094).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "seq",
+            "at",
+            "client",
+            "method",
+            "params"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`activity.list` result (PRT-086).",
+      "properties": {
+        "entries": {
+          "description": "Newest first.",
+          "items": {
+            "$ref": "#/$defs/ActivityEntry"
+          },
+          "type": "array"
+        },
+        "more": {
+          "description": "Entries matching the query were left out by the limit.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "entries",
+        "more"
+      ],
+      "title": "ActivityPage",
+      "type": "object"
+    }
+  },
   "fs.complete": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2214,8 +2329,12 @@ expression: method_schemas()
   "thread.stop": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "Params naming one thread.",
+      "description": "`thread.stop` params (PRT-085).",
       "properties": {
+        "cascade": {
+          "description": "Also stop every thread of its spawned tree: the threads it spawned, transitively (AGT-070, AGT-071).",
+          "type": "boolean"
+        },
         "threadId": {
           "type": "string"
         }
@@ -2223,13 +2342,25 @@ expression: method_schemas()
       "required": [
         "threadId"
       ],
-      "title": "ThreadRef",
+      "title": "StopThreadParams",
       "type": "object"
     },
     "result": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "No params, or the `{}` result.",
-      "title": "Empty",
+      "description": "`thread.stop` result (PRT-085).",
+      "properties": {
+        "threadIds": {
+          "description": "The threads whose omp process is now stopped: the thread first, then the rest of its spawned tree in the\norder they were stopped.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "threadIds"
+      ],
+      "title": "ThreadsStopped",
       "type": "object"
     }
   },
@@ -2504,7 +2635,7 @@ expression: method_schemas()
     "result": {
       "$defs": {
         "CreatedBy": {
-          "description": "The principal behind a created entity: the user, or the agent of a thread.",
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
           "oneOf": [
             {
               "properties": {
@@ -2531,6 +2662,18 @@ expression: method_schemas()
               "required": [
                 "kind",
                 "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
               ],
               "type": "object"
             }
@@ -2661,6 +2804,192 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "threads.list": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`threads.list` params (PRT-090).",
+      "properties": {
+        "includeArchived": {
+          "description": "Archived threads too (default `false`).",
+          "type": "boolean"
+        },
+        "workspaceId": {
+          "description": "Only the threads of this workspace (an unknown one lists none).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ListThreadsParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "CreatedBy": {
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "user",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "thread",
+                  "type": "string"
+                },
+                "threadId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "Provenance": {
+          "description": "Who created an entity (ARC-009).",
+          "properties": {
+            "client": {
+              "description": "`client` of the creating connection's `system.hello` (PRT-033).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "createdBy": {
+              "$ref": "#/$defs/CreatedBy"
+            }
+          },
+          "required": [
+            "createdBy"
+          ],
+          "type": "object"
+        },
+        "ThreadSummary": {
+          "description": "What the thread list shows about a thread.",
+          "properties": {
+            "archivedAt": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "createdAt": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "needsAttention": {
+              "description": "Interactive requests are waiting for an answer.",
+              "type": "boolean"
+            },
+            "process": {
+              "description": "`omfp_core::ProcessState`."
+            },
+            "provenance": {
+              "$ref": "#/$defs/Provenance"
+            },
+            "settled": {
+              "description": "Idle with nothing queued or pending (omp's `session_settled`).",
+              "type": "boolean"
+            },
+            "title": {
+              "description": "`\"\"` until the first message (DMN-073).",
+              "type": "string"
+            },
+            "titleSource": {
+              "$ref": "#/$defs/TitleSource"
+            },
+            "updatedAt": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "workspaceId": {
+              "description": "The workspace the thread lives in: its omp cwd (ARC-008, DMN-029).",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "titleSource",
+            "workspaceId",
+            "process",
+            "settled",
+            "needsAttention",
+            "provenance",
+            "createdAt",
+            "updatedAt"
+          ],
+          "type": "object"
+        },
+        "TitleSource": {
+          "description": "Where a thread's title comes from (DMN-073).",
+          "oneOf": [
+            {
+              "const": "placeholder",
+              "description": "The first words of the first message (or `\"\"` before it), until a title is generated or set.",
+              "type": "string"
+            },
+            {
+              "const": "generated",
+              "description": "Generated from the conversation by the daemon.",
+              "type": "string"
+            },
+            {
+              "const": "set",
+              "description": "Set by the user or an agent (`threads.create`, `threads.update`, host tool `set_thread_title`); never replaced.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`threads.list` result (PRT-090).",
+      "properties": {
+        "threads": {
+          "description": "In the order of the `index` topic.",
+          "items": {
+            "$ref": "#/$defs/ThreadSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "threads"
+      ],
+      "title": "ThreadList",
+      "type": "object"
+    }
+  },
   "threads.search": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2767,7 +3096,7 @@ expression: method_schemas()
     "result": {
       "$defs": {
         "CreatedBy": {
-          "description": "The principal behind a created entity: the user, or the agent of a thread.",
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
           "oneOf": [
             {
               "properties": {
@@ -2794,6 +3123,18 @@ expression: method_schemas()
               "required": [
                 "kind",
                 "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
               ],
               "type": "object"
             }
@@ -2931,6 +3272,200 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "views.mount": {
+    "params": {
+      "$defs": {
+        "MountPlace": {
+          "description": "Where `views.mount` puts a widget in a view (PRT-080, as `omfp_view_add` does, DMN-064).",
+          "oneOf": [
+            {
+              "const": "side_tab",
+              "description": "A tab of the view's `tabs` container whose `id` prop is `side`.",
+              "type": "string"
+            },
+            {
+              "const": "main_tab",
+              "description": "A tab of the view's `tabs` container whose `id` prop is `main`, after the conversation.",
+              "type": "string"
+            },
+            {
+              "const": "end",
+              "description": "The end of the view's root container.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`views.mount` params (PRT-080, AGT-061): exactly one of `widget` and `code`; `panel` excludes `view` and `place`.",
+      "properties": {
+        "code": {
+          "description": "The source of a component (TSX), written to `.omfp/widgets/<id>/index.tsx`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "description": "The mount id, a widget name (letters, digits, `_`, `-`, `.` not first): the node's `instance` prop, the panel\nid, and the folder `code` is written to.",
+          "type": "string"
+        },
+        "panel": {
+          "description": "Mount as a floating panel over every view (`panels.<id>`) instead.",
+          "type": "boolean"
+        },
+        "place": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MountPlace"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Where in the view (default: `side_tab`)."
+        },
+        "props": {
+          "additionalProperties": true,
+          "description": "The widget's props; `instance` is always the mount id.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "view": {
+          "description": "The view to mount into (default: the default view); a new id creates a view showing only the widget.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "widget": {
+          "description": "A widget reference (`./widgets/<name>`, `user:<name>`, `omfp:<name>`); a bare name means `./widgets/<name>`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "id"
+      ],
+      "title": "MountParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`views.mount` and `views.mount_update` result (PRT-080, PRT-081).",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "panel": {
+          "description": "Whether it is the floating panel `id`.",
+          "type": "boolean"
+        },
+        "reference": {
+          "description": "The widget reference the node renders.",
+          "type": "string"
+        },
+        "replaced": {
+          "description": "Whether a node of this mount id existed before.",
+          "type": "boolean"
+        },
+        "view": {
+          "description": "The view showing it; `null` for a floating panel.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "reference",
+        "panel",
+        "replaced"
+      ],
+      "title": "Mounted",
+      "type": "object"
+    }
+  },
+  "views.mount_update": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`views.mount_update` params (PRT-081, AGT-062).",
+      "properties": {
+        "code": {
+          "description": "New source of `.omfp/widgets/<id>/index.tsx`, for a mount of `./widgets/<id>`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "props": {
+          "additionalProperties": true,
+          "description": "Merged into the node's props; a `null` value deletes the prop.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "id"
+      ],
+      "title": "MountUpdateParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`views.mount` and `views.mount_update` result (PRT-080, PRT-081).",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "panel": {
+          "description": "Whether it is the floating panel `id`.",
+          "type": "boolean"
+        },
+        "reference": {
+          "description": "The widget reference the node renders.",
+          "type": "string"
+        },
+        "replaced": {
+          "description": "Whether a node of this mount id existed before.",
+          "type": "boolean"
+        },
+        "view": {
+          "description": "The view showing it; `null` for a floating panel.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "reference",
+        "panel",
+        "replaced"
+      ],
+      "title": "Mounted",
+      "type": "object"
+    }
+  },
   "views.set": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2954,6 +3489,57 @@ expression: method_schemas()
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "No params, or the `{}` result.",
       "title": "Empty",
+      "type": "object"
+    }
+  },
+  "views.unmount": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`views.unmount` params (PRT-082, AGT-063).",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "id"
+      ],
+      "title": "UnmountParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`views.unmount` result (PRT-082).",
+      "properties": {
+        "panel": {
+          "description": "Whether it removed the floating panel `id`.",
+          "type": "boolean"
+        },
+        "removedViews": {
+          "description": "The views it removed because they were left empty, in id order.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "views": {
+          "description": "The views it removed nodes from (and kept), in id order.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "views",
+        "removedViews",
+        "panel"
+      ],
+      "title": "Unmounted",
       "type": "object"
     }
   },
@@ -2996,6 +3582,75 @@ expression: method_schemas()
         "name"
       ],
       "title": "WidgetCopied",
+      "type": "object"
+    }
+  },
+  "widgets.library": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "LibraryComponent": {
+          "description": "A component of the user library (PRT-084, AGT-065).",
+          "properties": {
+            "description": {
+              "description": "The entry's leading comment, whitespace collapsed; empty without one.",
+              "type": "string"
+            },
+            "entry": {
+              "description": "The entry file; `null` when the folder has none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "files": {
+              "description": "The folder's files, relative, in path order.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "name": {
+              "type": "string"
+            },
+            "reference": {
+              "description": "`user:<name>`.",
+              "type": "string"
+            },
+            "version": {
+              "description": "The folder's version (DMN-084).",
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "reference",
+            "files",
+            "version",
+            "description"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.library` result (PRT-084): the user library by name.",
+      "properties": {
+        "components": {
+          "items": {
+            "$ref": "#/$defs/LibraryComponent"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "components"
+      ],
+      "title": "WidgetLibrary",
       "type": "object"
     }
   },
@@ -3209,6 +3864,66 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "widgets.save": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.save` params (PRT-083, AGT-064): exactly one of `widget` (with `workspaceId`) and `code`.",
+      "properties": {
+        "code": {
+          "description": "The component's source (TSX), saved as its `index.tsx`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The component's name in the user library (a widget name).",
+          "type": "string"
+        },
+        "replace": {
+          "description": "Replace an existing component of that name.",
+          "type": "boolean"
+        },
+        "widget": {
+          "description": "A widget of that workspace: `./widgets/<name>` or a bare name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SaveWidgetParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.save` result (PRT-083).",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "reference": {
+          "description": "`user:<name>`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "reference"
+      ],
+      "title": "WidgetSaved",
+      "type": "object"
+    }
+  },
   "widgets.state_set": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3364,7 +4079,7 @@ expression: method_schemas()
     "result": {
       "$defs": {
         "CreatedBy": {
-          "description": "The principal behind a created entity: the user, or the agent of a thread.",
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
           "oneOf": [
             {
               "properties": {
@@ -3391,6 +4106,18 @@ expression: method_schemas()
               "required": [
                 "kind",
                 "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
               ],
               "type": "object"
             }
@@ -3592,7 +4319,7 @@ expression: method_schemas()
     "result": {
       "$defs": {
         "CreatedBy": {
-          "description": "The principal behind a created entity: the user, or the agent of a thread.",
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
           "oneOf": [
             {
               "properties": {
@@ -3619,6 +4346,18 @@ expression: method_schemas()
               "required": [
                 "kind",
                 "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
               ],
               "type": "object"
             }
@@ -3978,6 +4717,246 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "workspaces.list": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "CreatedBy": {
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "user",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "thread",
+                  "type": "string"
+                },
+                "threadId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "Provenance": {
+          "description": "Who created an entity (ARC-009).",
+          "properties": {
+            "client": {
+              "description": "`client` of the creating connection's `system.hello` (PRT-033).",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "createdBy": {
+              "$ref": "#/$defs/CreatedBy"
+            }
+          },
+          "required": [
+            "createdBy"
+          ],
+          "type": "object"
+        },
+        "Workspace": {
+          "description": "A folder threads work in; its repositories are its top-level entries (D-11, DMN-020).",
+          "properties": {
+            "createdAt": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "description": "Unique among workspaces.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Absolute path of the folder (under the daemon's workspaces root), unique among workspaces.",
+              "type": "string"
+            },
+            "provenance": {
+              "$ref": "#/$defs/Provenance"
+            },
+            "repos": {
+              "description": "Repositories discovered in the folder (DMN-022): the folder itself first when it is a git root, then the\nentries by name.",
+              "items": {
+                "$ref": "#/$defs/WorkspaceRepo"
+              },
+              "type": "array"
+            },
+            "threadIds": {
+              "description": "Threads living in the workspace, archived ones included, oldest first (DMN-027).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "path",
+            "repos",
+            "threadIds",
+            "provenance",
+            "createdAt"
+          ],
+          "type": "object"
+        },
+        "WorkspaceRepo": {
+          "description": "A repository discovered in a workspace folder (DMN-022).",
+          "oneOf": [
+            {
+              "description": "A symlink to a repository elsewhere.",
+              "properties": {
+                "kind": {
+                  "const": "link",
+                  "type": "string"
+                },
+                "target": {
+                  "description": "The symlink's target, as written in the link.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "A linked git worktree.",
+              "properties": {
+                "kind": {
+                  "const": "worktree",
+                  "type": "string"
+                },
+                "main": {
+                  "description": "Root of the main working tree (`git rev-parse --git-common-dir`).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "main"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "A repository of its own (a clone, or a folder initialized in place).",
+              "properties": {
+                "kind": {
+                  "const": "clone",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            }
+          ],
+          "properties": {
+            "branch": {
+              "description": "`None` on a detached HEAD.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "canonicalPath": {
+              "description": "The checkout with symlinks resolved: entries with the same canonical path are the same files (DMN-027).",
+              "type": "string"
+            },
+            "head": {
+              "description": "Commit id of HEAD; `None` before the first commit.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "isRoot": {
+              "description": "The workspace folder itself is this repository.",
+              "type": "boolean"
+            },
+            "name": {
+              "description": "Entry name in the folder; the folder's own name for the root.",
+              "type": "string"
+            },
+            "path": {
+              "description": "Path inside the workspace (the symlink path for a link, never its target).",
+              "type": "string"
+            },
+            "sharedWith": {
+              "description": "Other workspaces holding the same checkout (same canonical path), so clients can warn (DMN-027).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "name",
+            "path",
+            "isRoot",
+            "canonicalPath",
+            "sharedWith"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`workspaces.list` result (PRT-091).",
+      "properties": {
+        "workspaces": {
+          "description": "In the order of the `index` topic.",
+          "items": {
+            "$ref": "#/$defs/Workspace"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "workspaces"
+      ],
+      "title": "WorkspaceList",
+      "type": "object"
+    }
+  },
   "workspaces.read_file": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4157,7 +5136,7 @@ expression: method_schemas()
     "result": {
       "$defs": {
         "CreatedBy": {
-          "description": "The principal behind a created entity: the user, or the agent of a thread.",
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
           "oneOf": [
             {
               "properties": {
@@ -4184,6 +5163,18 @@ expression: method_schemas()
               "required": [
                 "kind",
                 "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
               ],
               "type": "object"
             }
@@ -4377,7 +5368,7 @@ expression: method_schemas()
     "result": {
       "$defs": {
         "CreatedBy": {
-          "description": "The principal behind a created entity: the user, or the agent of a thread.",
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
           "oneOf": [
             {
               "properties": {
@@ -4404,6 +5395,18 @@ expression: method_schemas()
               "required": [
                 "kind",
                 "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
               ],
               "type": "object"
             }
@@ -4722,7 +5725,7 @@ expression: method_schemas()
     "result": {
       "$defs": {
         "CreatedBy": {
-          "description": "The principal behind a created entity: the user, or the agent of a thread.",
+          "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
           "oneOf": [
             {
               "properties": {
@@ -4749,6 +5752,18 @@ expression: method_schemas()
               "required": [
                 "kind",
                 "threadId"
+              ],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "mcp",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
               ],
               "type": "object"
             }

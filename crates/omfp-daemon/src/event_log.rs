@@ -155,6 +155,13 @@ impl<E: Clone, S: Clone> EventLog<E, S> {
         read(&self.lock().state)
     }
 
+    /// The live events from now on, without a replay or a snapshot: for readers that look at the state with
+    /// [`Self::with_state`] after each event (e.g. `omfp_thread_wait`, AGT-043).
+    #[must_use]
+    pub fn listen(&self) -> broadcast::Receiver<Arc<Sequenced<E>>> {
+        self.sender.subscribe()
+    }
+
     /// Current position.
     #[must_use]
     pub fn position(&self) -> Position {

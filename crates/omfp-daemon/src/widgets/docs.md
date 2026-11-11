@@ -36,11 +36,32 @@ container is `row`, `col`, `tabs` or `stack` and `props.sizes` (optional) gives 
 Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue and composer), `omfp:transcript`,
 `omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes` (changed files and diffs of the workspace's
 repositories), `omfp:subagents` (the selected thread's subagents, their transcripts, steer and cancel), `omfp:todos`
-(its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:file`
+(its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:activity`
+(`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
 `HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Props every widget accepts: `instance` (a string naming the instance for `useStored` and `useJob`;
 default: the reference) and `title` (a tab's label; default: the built-in's name, else the reference).
+
+## Mounts, panels and the library
+
+An agent shows UI to the user without editing `views.json` by hand:
+
+- `omfp_ui_mount { id, code | widget, props?, view?, where?, panel? }` mounts a widget: `code` (a component's source,
+  written to `.omfp/widgets/<id>/index.tsx`) or `widget` (a reference: `user:<name>`, `./widgets/<name>`). It goes
+  into the view `view` (default: the default view; a new id creates a view showing only it, a dashboard) at `where`
+  (`side-tab`, `main-tab`, `end`), or with `panel: true` floats over every view. The node gets `instance: <id>`, so
+  `useStored` state follows the mount; mounting the same id again replaces it.
+- `omfp_ui_update { id, props?, code? }` merges `props` into the mounted widget (`null` deletes one) or replaces its
+  inline code; windows re-render it in place, its state kept. Drive a mounted widget (a progress, a status) this way.
+- `omfp_ui_remove { id }` removes it (a view it filled goes too); its folder stays.
+- Floating panels are `"panels": { "<id>": <node> }` in `views.json`: the `title` prop labels the panel, the user moves,
+  resizes, minimises and closes it (closing removes it from the file).
+- The component library is the user library: `omfp_component_save { name, widget | code, replace? }` saves a
+  workspace widget or code as `user:<name>`, `omfp_component_list` lists it. Start a component's entry with a comment
+  saying what it shows and which props it takes: the list shows it.
+- Widgets reach the same through `useCall()`: `views.mount`, `views.mount_update`, `views.unmount`, `widgets.save`,
+  `widgets.library`.
 
 ## Keys
 

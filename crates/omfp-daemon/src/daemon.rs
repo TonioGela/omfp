@@ -368,6 +368,7 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         static_dir: config.static_dir,
         widget_base: format!("/widgets/{}", hex::encode(widget_key)),
         services,
+        mcp_sessions: server::McpSessions::default(),
         shutdown: stopping.clone(),
     });
     let mut stopped = stopping;

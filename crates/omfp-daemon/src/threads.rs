@@ -109,6 +109,11 @@ impl Threads {
         Ok(self.store.threads()?)
     }
 
+    /// The threads `id` spawned, transitively (AGT-070), oldest first; archived ones included.
+    pub fn spawned(&self, id: &str) -> Result<Vec<String>> {
+        Ok(self.store.spawned_thread_ids(id)?)
+    }
+
     /// Sets the title (DMN-073); a [`TitleSource::Set`] title is never replaced by a generated one.
     pub fn rename(&self, id: &str, title: &str, source: TitleSource) -> Result<Thread> {
         self.store.set_thread_title(id, title, source)?;

@@ -1,0 +1,37 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "views.mount",
+    "params": {
+      "code": "export default function Checkout() { return <p>v2</p>; }\n",
+      "id": "checkout",
+      "place": "end",
+      "props": {
+        "threads": [
+          "01T1",
+          "01T2"
+        ],
+        "title": "Checkout"
+      },
+      "view": "dashboard",
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "id": "checkout",
+      "panel": false,
+      "reference": "./widgets/checkout",
+      "replaced": false,
+      "view": "dashboard"
+    },
+    "type": "response"
+  }
+}

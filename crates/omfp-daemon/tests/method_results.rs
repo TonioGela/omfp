@@ -13,6 +13,7 @@ use omfp_daemon::agent::{FakeLauncher, FakeRun};
 use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
 use omfp_daemon::{DaemonHandle, Ports, start_with};
+use omfp_protocol::method::ActivityList;
 use omfp_protocol::method::{
     FsComplete, InteractionRespond, ReposSuggest, Subscribe, SystemHello, ThemeGet, ThemeSet,
     ThreadAbort, ThreadBash, ThreadBtw, ThreadCommands, ThreadCompact, ThreadFollowUp, ThreadFork,
@@ -35,6 +36,7 @@ use omfp_protocol::{
     SuggestReposParams, Theme, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
     UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
 };
+use omfp_protocol::{ListActivityParams, StopThreadParams};
 use tempfile::TempDir;
 
 struct TestDaemon {
@@ -401,7 +403,16 @@ async fn agent_methods_the_daemon_answers_itself_return_their_declared_results()
         .await;
     client.typed::<ThreadSubagentCancel>(subagent).await;
     client.typed::<ThreadRestart>(thread_ref(&thread)).await;
-    client.typed::<ThreadStop>(thread_ref(&thread)).await;
+    let stopped = client
+        .typed::<ThreadStop>(StopThreadParams {
+            thread_id: thread.clone(),
+            cascade: true,
+        })
+        .await;
+    assert_eq!(stopped.thread_ids, vec![thread.clone()]);
+    client
+        .typed::<ActivityList>(ListActivityParams::default())
+        .await;
 }
 
 /// Forwarded methods pass omp's response data through; the fake answers like omp, so these decode as well.

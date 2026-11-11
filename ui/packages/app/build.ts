@@ -51,6 +51,7 @@ const BUILTINS: readonly { name: string; folder: string; part?: { file: string; 
   { name: "subagents", folder: "subagents" },
   { name: "todos", folder: "todos" },
   { name: "tree", folder: "tree" },
+  { name: "activity", folder: "activity" },
   { name: "file", folder: "file" },
   { name: "chat", folder: "chat" },
   { name: "transcript", folder: "chat", part: { file: "transcript.tsx", exportName: "TranscriptWidget" } },

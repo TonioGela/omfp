@@ -2,9 +2,9 @@
  * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), the left column of
  * workspaces and threads (UI-100), the view of the current workspace with its switcher, error banner and layout
  * editing (UI-100..104, AGT-011), the keymap, `:` command line (UI-095) and help panel (UI-198), the safety net for
- * pending interactions (AGT-015), notices and notifications (UI-096, UI-192), the live region (UI-092), dialogs, the
- * files the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything else is a widget of the
- * view.
+ * pending interactions (AGT-015), floating panels (UI-230), notices and notifications (UI-096, UI-192), the live region
+ * (UI-092), dialogs, the files the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything
+ * else is a widget of the view.
  */
 
 import { Select, useWidthClass } from "@omfp/kit";
@@ -42,6 +42,7 @@ import { GlobalCommands } from "./commands.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
 import { FilePickerLine } from "./file-picker.tsx";
 import { FloatingFile } from "./floating-file.tsx";
+import { FloatingWidgets } from "./floating-widgets.tsx";
 import { Help } from "./help.tsx";
 import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
 import { ModeLine, useMode } from "./mode-line.tsx";
@@ -181,6 +182,7 @@ export function Frame({
           {view !== undefined && !hasMainSlot(view.tree) && (
             <FloatingFile workspaceId={workspaceId} views={state} registry={registry} />
           )}
+          <FloatingWidgets panels={views.panels} workspaceId={workspaceId} views={state} registry={registry} />
           <FrameModeLine appRef={appRef} bindings={bindings} />
         </div>
       </main>

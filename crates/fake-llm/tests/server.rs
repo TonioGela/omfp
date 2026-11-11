@@ -367,6 +367,38 @@ async fn a_gated_step_holds_its_reply_until_released() {
 }
 
 // spec: TST-020
+#[tokio::test]
+async fn a_gated_step_may_be_released_with_another_reply() {
+    let server = FakeLlm::start(Script::new(
+        MODEL,
+        vec![Step::reply(Reply::text("scripted")).gated()],
+    ))
+    .await
+    .unwrap();
+    let url = format!("{}/chat/completions", server.base_url());
+    let pending = tokio::spawn(async move {
+        reqwest::Client::new()
+            .post(url)
+            .json(&chat_request("wait for it", false))
+            .send()
+            .await
+            .unwrap()
+            .json::<Value>()
+            .await
+            .unwrap()
+    });
+
+    server.wait_for_gate(0).await;
+    server.release_gate_with(0, Reply::text("learned meanwhile"));
+    let body = pending.await.unwrap();
+    assert_eq!(
+        body["choices"][0]["message"]["content"],
+        "learned meanwhile"
+    );
+    assert!(server.is_exhausted_cleanly());
+}
+
+// spec: TST-020
 #[test]
 fn gated_steps_load_from_json() {
     let script: Script = serde_json::from_value(json!({

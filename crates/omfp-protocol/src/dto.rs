@@ -19,7 +19,8 @@ pub struct Provenance {
     pub client: Option<String>,
 }
 
-/// The principal behind a created entity: the user, or the agent of a thread.
+/// The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),
+/// named by the provenance's `client`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CreatedBy {
@@ -28,6 +29,7 @@ pub enum CreatedBy {
         #[serde(rename = "threadId")]
         thread_id: String,
     },
+    Mcp,
 }
 
 /// A repository the daemon has seen in a workspace, suggested when adding repositories (DMN-021).

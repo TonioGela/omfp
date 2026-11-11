@@ -9,16 +9,18 @@ pub mod compile;
 pub mod folders;
 pub mod keymap;
 pub mod layout;
+pub mod library;
 pub mod manifest;
+pub mod mounts;
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Mutex, PoisonError};
 use std::time::SystemTime;
 
 use omfp_protocol::{WidgetInfo, WidgetSource};
-use omp_rpc::{HostUri, HostUriRead, HostUriResultContentType};
+use omp_rpc::{HostUriRead, HostUriResultContentType};
 use serde_json::Value;
 use tracing::warn;
 
@@ -123,10 +125,12 @@ pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String
         {
             Some(rest) => read_builtin(builtin_folder(builtin)?, rest),
             None => Err(format!(
-                "unknown omfp URL {url}: omfp serves {DOCS_URL} (the widget SDK and kit reference), {SCHEMA_URL} \
-                 (the views manifest schema), {} (the workspace keymap schema), {BUILTIN_URL} (the built-in \
-                 widgets), {BUILTIN_URL}/<name>[/<path>] (their sources) and {CHECK_URL}/<name> (a widget's check \
-                 report)",
+                "unknown omfp URL {url}: omfp serves {} (the protocol methods omfp_call accepts) and {}/<name> \
+                 (one's schemas), {DOCS_URL} (the widget SDK and kit reference), {SCHEMA_URL} (the views manifest \
+                 schema), {} (the workspace keymap schema), {BUILTIN_URL} (the built-in widgets), \
+                 {BUILTIN_URL}/<name>[/<path>] (their sources) and {CHECK_URL}/<name> (a widget's check report)",
+                crate::agent_tools::catalog::METHODS_URL,
+                crate::agent_tools::catalog::METHODS_URL,
                 keymap::SCHEMA_URL
             )),
         },
@@ -253,32 +257,6 @@ pub fn read_check(
             Err(error) => Err(error.to_string()),
         },
     )
-}
-
-/// The host URI schemes of every thread (DMN-062): `omfp://`, read-only; `builtin` is
-/// `<static-dir>/builtin-widgets/` when the daemon serves a bundle; `widgets` (the thread's workspace id and the
-/// widget host) backs `omfp://widgets/check/<name>` (DMN-108).
-pub fn host_uris(
-    builtin: Option<PathBuf>,
-    widgets: Option<(String, Arc<dyn WidgetHost>)>,
-) -> Result<Vec<HostUri>, omp_rpc::Error> {
-    let omfp = HostUri::new(SCHEME, move |url, context| {
-        let (workspace_id, host) = widgets
-            .as_ref()
-            .map_or(("", None), |(id, host)| (id.as_str(), Some(&**host)));
-        read_check(url, || context.is_cancelled(), workspace_id, host)
-            .unwrap_or_else(|| read_uri(url, builtin.as_deref()))
-            .map_err(Into::into)
-    })?
-    .description(format!(
-        "omfp, the window the user works in: {DOCS_URL} documents widgets (SDK, kit, views); {SCHEMA_URL} is the \
-         JSON Schema of .omfp/views.json and {} of .omfp/keymap.json; {BUILTIN_URL} lists the built-in widgets and \
-         {BUILTIN_URL}/<name> shows one's source; {CHECK_URL}/<name> checks a widget (compile errors, what open \
-         windows render)",
-        keymap::SCHEMA_URL
-    ))
-    .immutable(true);
-    Ok(vec![omfp])
 }
 
 /// A file served from a widget folder (DMN-084).
@@ -741,16 +719,6 @@ mod tests {
         }
         let error = read_uri("omfp://widgets/builtin/header", None).unwrap_err();
         assert!(error.contains("serves no web bundle"), "{error}");
-    }
-
-    // spec: DMN-062
-    #[test]
-    fn the_omfp_scheme_is_read_only() {
-        let uris = host_uris(None, None).unwrap();
-        assert_eq!(uris.len(), 1);
-        assert_eq!(uris[0].scheme(), "omfp");
-        assert!(!uris[0].writable());
-        assert_eq!(uris[0].definition().immutable, Some(true));
     }
 
     /// A widget host answering checks with the workspace and name it was asked for.

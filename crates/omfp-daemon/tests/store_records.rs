@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use omfp_daemon::store::{
-    Provenance, SeenRepository, Store, StoreError, Thread, TitleSource, Workspace, new_id, now_ms,
+    ActivityQuery, NewActivity, Provenance, SeenRepository, Store, StoreError, Thread, TitleSource,
+    Workspace, new_id, now_ms,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -356,4 +357,148 @@ fn the_theme_is_a_setting_that_can_be_cleared() {
     );
     store.set_theme(None).unwrap();
     assert_eq!(store.theme().unwrap(), None);
+}
+
+// spec: AGT-070, ARC-009
+#[test]
+fn the_spawned_tree_follows_provenance_transitively_archived_threads_included() {
+    let (_dir, store, ws) = with_workspace();
+    let root = thread(Provenance::User, &ws.id);
+    store.insert_thread(&root).unwrap();
+    let child = thread(Provenance::Thread(root.id.clone()), &ws.id);
+    store.insert_thread(&child).unwrap();
+    let grandchild = Thread {
+        archived_at: Some(now_ms()),
+        ..thread(Provenance::Thread(child.id.clone()), &ws.id)
+    };
+    store.insert_thread(&grandchild).unwrap();
+    let second = thread(Provenance::Thread(root.id.clone()), &ws.id);
+    store.insert_thread(&second).unwrap();
+    let unrelated = thread(Provenance::User, &ws.id);
+    store.insert_thread(&unrelated).unwrap();
+
+    assert_eq!(
+        store.spawned_thread_ids(&root.id).unwrap(),
+        vec![child.id.clone(), grandchild.id.clone(), second.id]
+    );
+    assert_eq!(
+        store.spawned_thread_ids(&child.id).unwrap(),
+        vec![grandchild.id.clone()]
+    );
+    assert_eq!(
+        store.spawned_thread_ids(&grandchild.id).unwrap(),
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        store.spawned_thread_ids(&unrelated.id).unwrap(),
+        Vec::<String>::new()
+    );
+}
+
+fn action(thread_id: &str, method: &str, error: Option<&str>) -> NewActivity {
+    NewActivity {
+        at: 1_731_000_000_000,
+        thread_id: Some(thread_id.to_owned()),
+        client: "omfp-agent".to_owned(),
+        method: method.to_owned(),
+        params: json!({ "threadId": thread_id, "nested": { "n": [1, 2] } }),
+        error: error.map(str::to_owned),
+    }
+}
+
+fn query(
+    thread_id: Option<&str>,
+    before: Option<i64>,
+    after: Option<i64>,
+    limit: u32,
+) -> ActivityQuery {
+    ActivityQuery {
+        thread_id: thread_id.map(str::to_owned),
+        before,
+        after,
+        limit,
+    }
+}
+
+// spec: DMN-160, PRT-086
+#[test]
+fn the_activity_log_pages_newest_first_and_filters_by_thread() {
+    let (_dir, store) = open();
+    let first = store
+        .record_activity(&action("01JA", "threads.create", None), 100)
+        .unwrap();
+    let second = store
+        .record_activity(
+            &action("01JB", "thread.prompt", Some("thread 01JX not found")),
+            100,
+        )
+        .unwrap();
+    let third = store
+        .record_activity(&action("01JA", "thread.stop", None), 100)
+        .unwrap();
+    assert!(first.seq < second.seq && second.seq < third.seq);
+    assert_eq!(third.entry, action("01JA", "thread.stop", None));
+
+    let seqs = |(entries, more): (Vec<omfp_daemon::store::Activity>, bool)| {
+        (entries.iter().map(|a| a.seq).collect::<Vec<_>>(), more)
+    };
+    let (all, more) = store.activity(&query(None, None, None, 50)).unwrap();
+    assert_eq!(all, vec![third.clone(), second.clone(), first.clone()]);
+    assert!(!more);
+    assert_eq!(
+        seqs(store.activity(&query(None, None, None, 2)).unwrap()),
+        (vec![third.seq, second.seq], true)
+    );
+    assert_eq!(
+        seqs(
+            store
+                .activity(&query(None, Some(second.seq), None, 2))
+                .unwrap()
+        ),
+        (vec![first.seq], false)
+    );
+    assert_eq!(
+        seqs(
+            store
+                .activity(&query(None, None, Some(first.seq), 50))
+                .unwrap()
+        ),
+        (vec![third.seq, second.seq], false)
+    );
+    assert_eq!(
+        seqs(
+            store
+                .activity(&query(Some("01JA"), None, None, 50))
+                .unwrap()
+        ),
+        (vec![third.seq, first.seq], false)
+    );
+    assert_eq!(
+        store.activity(&query(None, None, None, 50)).unwrap().0[1]
+            .entry
+            .error
+            .as_deref(),
+        Some("thread 01JX not found")
+    );
+}
+
+// spec: DMN-160
+#[test]
+fn the_activity_log_keeps_the_newest_entries_and_outlives_its_thread() {
+    let (_dir, store, ws) = with_workspace();
+    let agent = thread(Provenance::User, &ws.id);
+    store.insert_thread(&agent).unwrap();
+    let mut recorded = Vec::new();
+    for method in ["a", "b", "c", "d"] {
+        recorded.push(
+            store
+                .record_activity(&action(&agent.id, method, None), 2)
+                .unwrap(),
+        );
+    }
+    store.delete_thread(&agent.id).unwrap();
+
+    let (kept, more) = store.activity(&query(None, None, None, 50)).unwrap();
+    assert_eq!(kept, vec![recorded[3].clone(), recorded[2].clone()]);
+    assert!(!more);
 }

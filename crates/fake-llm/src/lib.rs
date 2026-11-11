@@ -38,6 +38,8 @@ struct Inner {
 struct Gate {
     arrived: watch::Sender<bool>,
     released: watch::Sender<bool>,
+    /// A reply given at release, replacing the script's (for answers the script cannot know, e.g. ids).
+    reply: Mutex<Option<Reply>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -67,6 +69,7 @@ impl FakeLlm {
                 step.gated.then(|| Gate {
                     arrived: watch::channel(false).0,
                     released: watch::channel(false).0,
+                    reply: Mutex::new(None),
                 })
             })
             .collect();
@@ -142,6 +145,17 @@ impl FakeLlm {
         self.gate(step).released.send_replace(true);
     }
 
+    /// Lets gated step `step` (0-based) send `reply` instead of the script's: for a reply that depends on what the
+    /// test learns while the step is held (an id the daemon made).
+    ///
+    /// # Panics
+    /// If `step` is not a gated step of the script.
+    pub fn release_gate_with(&self, step: usize, reply: Reply) {
+        let gate = self.gate(step);
+        *lock(&gate.reply) = Some(reply);
+        gate.released.send_replace(true);
+    }
+
     fn gate(&self, step: usize) -> &Gate {
         self.inner
             .gates
@@ -215,21 +229,20 @@ async fn chat_completions(
         }
     };
 
+    let mut reply = step.reply;
     if let Some(gate) = inner.gates.get(index).and_then(Option::as_ref) {
         gate.arrived.send_replace(true);
         let mut released = gate.released.subscribe();
         // An error means the server is shutting down; reply anyway.
         let _ = released.wait_for(|released| *released).await;
+        if let Some(given) = lock(&gate.reply).take() {
+            reply = given;
+        }
     }
 
     let id = format!("chatcmpl-fake-{}", index + 1);
     if request["stream"] == Value::Bool(true) {
-        let body = chunks::sse_body(&chunks::stream_chunks(
-            &id,
-            &inner.model,
-            &request,
-            &step.reply,
-        ));
+        let body = chunks::sse_body(&chunks::stream_chunks(&id, &inner.model, &request, &reply));
         (
             [
                 (header::CONTENT_TYPE, "text/event-stream"),
@@ -239,6 +252,6 @@ async fn chat_completions(
         )
             .into_response()
     } else {
-        axum::Json(chunks::completion(&id, &inner.model, &request, &step.reply)).into_response()
+        axum::Json(chunks::completion(&id, &inner.model, &request, &reply)).into_response()
     }
 }

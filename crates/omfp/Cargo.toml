@@ -19,14 +19,20 @@ path = "src/main.rs"
 doc = false
 
 [features]
-# `omfp desktop` (M7): links WebKitGTK through Tauri; daemon-only builds leave it off. Also `omfp daemon --tray`.
-desktop = ["dep:tauri", "dep:tauri-build", "dep:gio", "dep:png"]
+# `omfp desktop` (M7): links WebKitGTK (Linux) or WKWebView (macOS, M11) through Tauri; daemon-only builds leave it
+# off. Also `omfp daemon --tray`.
+desktop = [
+  "dep:tauri",
+  "dep:tauri-build",
+  "dep:gio",
+  "dep:objc2-foundation",
+  "dep:png",
+]
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 futures.workspace = true
-gio = { workspace = true, optional = true }
 omfp-core.workspace = true
 omfp-daemon.workspace = true
 omfp-protocol.workspace = true
@@ -34,6 +40,16 @@ serde_json.workspace = true
 tauri = { workspace = true, optional = true }
 tokio.workspace = true
 tokio-tungstenite.workspace = true
+
+# Linux: the settings portal's colour scheme and the status notifier tray over gio's D-Bus API.
+[target.'cfg(target_os = "linux")'.dependencies]
+gio = { workspace = true, optional = true }
+
+# macOS (M11, S-15): the menu bar item through Tauri's tray (tray-icon, AppKit's NSStatusItem); the page's
+# notifications through Foundation's user notification center (UI-252).
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { workspace = true, optional = true, features = ["tray-icon"] }
+objc2-foundation = { workspace = true, optional = true }
 
 [build-dependencies]
 png = { workspace = true, optional = true }

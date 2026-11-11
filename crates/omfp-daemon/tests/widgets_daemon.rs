@@ -1,5 +1,7 @@
 //! L2: views and widgets over the real daemon (`start_with`, real router, fake launcher and git) — the `views/<id>`
-//! topic, `views.set`, `widgets.copy`, `widgets.state_set`, and widget files served under `widgetBase`.
+//! topic, `views.set`, `widgets.copy`, `widgets.state_set`, the mounts and the component library (`views.mount`,
+//! `views.mount_update`, `views.unmount`, `widgets.save`, `widgets.library`), and widget files served under
+//! `widgetBase`.
 
 mod client;
 
@@ -751,4 +753,126 @@ async fn user_library_widgets_are_served_under_the_user_source() {
             .0,
         404
     );
+}
+
+// spec: PRT-080, PRT-081, PRT-082, PRT-083, PRT-084, AGT-060, AGT-061, AGT-064
+#[tokio::test(flavor = "multi_thread")]
+async fn mounts_publish_the_manifest_before_answering_and_saved_components_reach_every_window() {
+    let daemon = Daemon::new().await;
+    let mut client = daemon.client().await;
+    let (id, folder) = workspace(&mut client).await;
+    views(&mut client, &id).await;
+
+    let mounted = client
+        .ok(
+            "views.mount",
+            json!({
+                "workspaceId": id,
+                "id": "note",
+                "code": "// A note.\nexport default function Note() { return <p>note</p>; }\n",
+                "panel": true,
+                "props": { "title": "Note" }
+            }),
+        )
+        .await;
+    assert_eq!(
+        mounted,
+        json!({ "id": "note", "reference": "./widgets/note", "view": null, "panel": true, "replaced": false })
+    );
+    // Published before the answer: the manifest and the new widget folder (a poll round may publish the folder
+    // first).
+    let mut events = [
+        views_event(&mut client, &id).await,
+        views_event(&mut client, &id).await,
+    ];
+    events.sort_by_key(|event| event["kind"].as_str().unwrap_or_default().to_owned());
+    assert_eq!(events[0]["kind"], "views_manifest");
+    assert_eq!(
+        events[0]["manifest"]["panels"],
+        json!({ "note": ["./widgets/note", { "instance": "note", "title": "Note" }] })
+    );
+    assert_eq!(events[1]["kind"], "views_widgets");
+    assert_eq!(
+        names(&events[1]["widgets"]),
+        vec![("workspace".to_owned(), "note".to_owned())]
+    );
+
+    let updated = client
+        .ok(
+            "views.mount_update",
+            json!({ "workspaceId": id, "id": "note", "props": { "title": "Notes" } }),
+        )
+        .await;
+    assert_eq!(updated["replaced"], true);
+    let event = views_event(&mut client, &id).await;
+    assert_eq!(event["manifest"]["panels"]["note"][1]["title"], "Notes");
+
+    saves_the_mounted_widget_to_the_user_library(&daemon, &mut client, &id).await;
+
+    let removed = client
+        .ok("views.unmount", json!({ "workspaceId": id, "id": "note" }))
+        .await;
+    assert_eq!(
+        removed,
+        json!({ "views": [], "removedViews": [], "panel": true })
+    );
+    let event = views_event(&mut client, &id).await;
+    assert_eq!(event["manifest"].get("panels"), None);
+    let error = client
+        .call("views.unmount", json!({ "workspaceId": id, "id": "note" }))
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "not_found");
+
+    write(&folder.join(".omfp/views.json"), "{");
+    let error = client
+        .call(
+            "views.mount",
+            json!({ "workspaceId": id, "id": "x", "widget": "user:note" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "bad_request");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .starts_with(".omfp/views.json is invalid ("),
+        "{error}"
+    );
+}
+
+/// Saves `./widgets/note` to the user library: every followed views topic lists it, and the library describes it.
+async fn saves_the_mounted_widget_to_the_user_library(
+    daemon: &Daemon,
+    client: &mut Client,
+    id: &str,
+) {
+    let saved = client
+        .ok(
+            "widgets.save",
+            json!({ "name": "note", "workspaceId": id, "widget": "./widgets/note" }),
+        )
+        .await;
+    assert_eq!(saved, json!({ "name": "note", "reference": "user:note" }));
+    let event = views_event(client, id).await;
+    assert_eq!(
+        names(&event["widgets"]),
+        vec![
+            ("workspace".to_owned(), "note".to_owned()),
+            ("user".to_owned(), "note".to_owned())
+        ]
+    );
+    let library = client.ok("widgets.library", json!({})).await;
+    assert_eq!(library["components"][0]["reference"], "user:note");
+    assert_eq!(library["components"][0]["description"], "A note.");
+    assert!(daemon.user_library().join("note/index.tsx").is_file());
+    let error = client
+        .call(
+            "widgets.save",
+            json!({ "name": "note", "code": "export default () => null;\n" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "conflict");
 }

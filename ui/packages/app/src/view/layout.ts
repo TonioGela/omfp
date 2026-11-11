@@ -52,12 +52,15 @@ export function parseLayout(node: unknown, path = "layout"): Parsed<LayoutTree> 
     return { ok: false, error: `${path}: expected a widget name, [widget, props] or [container, props, ...children]` };
   }
   const [head, props, ...children] = node as [string, unknown, ...unknown[]];
+  if (head.trim() === "") {
+    return { ok: false, error: `${path}: a widget name is empty` };
+  }
   if (!isObject(props)) {
     return { ok: false, error: `${path}: ${head} needs a props object` };
   }
   const kind = CONTAINER_KINDS.find((candidate) => candidate === head);
   if (kind === undefined) {
-    return children.length > 0 || head.trim() === ""
+    return children.length > 0
       ? { ok: false, error: `${path}: a widget reference is [name, props]` }
       : { ok: true, value: { kind: "widget", name: head, props } };
   }

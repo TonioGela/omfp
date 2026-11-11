@@ -646,6 +646,44 @@ fn cancel_closes_the_target_request() {
     assert_eq!(interaction_ids(&state), ["s1"]);
 }
 
+// spec: TST-010, DMN-051, DMN-052, TST-050
+#[test]
+fn every_dialog_kind_is_closed_by_its_id() {
+    let dialogs = [
+        select("s"),
+        ui_request(
+            json!({ "id": "c", "method": "confirm", "title": "Sure?", "message": "Really" }),
+        ),
+        ui_request(json!({ "id": "i", "method": "input", "title": "Name" })),
+        ui_request(json!({ "id": "e", "method": "editor", "title": "Edit", "promptStyle": true })),
+        ui_request(json!({
+            "id": "a",
+            "method": "ask",
+            "questions": [{ "id": "q", "question": "Which?", "options": [{ "label": "x" }] }],
+        })),
+    ];
+    for (index, id) in ["s", "c", "i", "e", "a"].into_iter().enumerate() {
+        let others: Vec<_> = ["s", "c", "i", "e", "a"]
+            .into_iter()
+            .filter(|other| *other != id)
+            .collect();
+        let mut resolved = dialogs.to_vec();
+        resolved.push(event(
+            json!({ "kind": "interaction_resolved", "id": id, "resolution": { "by": "client", "client": "ui" } }),
+        ));
+        assert_eq!(interaction_ids(&replay(&resolved)), others, "resolved {id}");
+        let mut cancelled = dialogs.to_vec();
+        cancelled.push(ui_request(
+            json!({ "id": format!("x{index}"), "method": "cancel", "targetId": id }),
+        ));
+        assert_eq!(
+            interaction_ids(&replay(&cancelled)),
+            others,
+            "cancelled {id}"
+        );
+    }
+}
+
 // spec: TST-010, DMN-053
 #[test]
 fn presentation_requests_update_presentation_state() {

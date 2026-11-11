@@ -1,6 +1,7 @@
 //! What the daemon tells the agent about its workspace (DMN-030): a short text passed with
-//! `--append-system-prompt` — the workspace conventions, then a note on widgets (AGT-024) — followed by the user's own
-//! `APPEND_SYSTEM.md`, which the flag would otherwise disable (S-10). Nothing is written into the workspace for it.
+//! `--append-system-prompt` — the workspace conventions, then a note on widgets (AGT-024) and one on driving omfp
+//! (AGT-045) — followed by the user's own `APPEND_SYSTEM.md`, which the flag would otherwise disable (S-10). Nothing
+//! is written into the workspace for it.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -149,25 +150,53 @@ pub fn write_widget_builder(data: &DataDir) -> std::io::Result<bool> {
     Ok(true)
 }
 
-/// What the daemon itself appends to the system prompt: the workspace conventions, then the widgets note.
+/// The control note (AGT-045): the thread's own id, `omfp_call` over every protocol method and its catalogue,
+/// `omfp_thread_wait`, and the UI mount and component tools (AGT-061..065).
 #[must_use]
-pub fn daemon_text(name: &str, path: &Path, user_library: &Path) -> String {
+pub fn control_note(thread_id: &str) -> String {
+    use crate::agent_tools::mounts::{
+        COMPONENT_LIST, COMPONENT_SAVE, UI_MOUNT, UI_REMOVE, UI_UPDATE,
+    };
     format!(
-        "{}\n\n{}",
-        workspace_conventions(name, path),
-        widgets_note(path, user_library)
+        "# omfp control\n\
+         \n\
+         You can drive omfp as the user's windows do, through every protocol method; your thread id is {thread_id}.\n\
+         - {call} {{ method, params }} calls one, e.g. threads.list, threads.create {{ workspace, title, prompt }}, \
+         thread.prompt; {methods} lists them all, {methods}/<name> gives one's params and result schemas.\n\
+         - {wait} {{ threadId, promptId? }} waits until another thread is done or needs the user and answers its \
+         last reply: use it instead of polling.\n\
+         - Show UI to the user with {UI_MOUNT} {{ id, code | widget, props?, view?, panel? }} (a view, a new \
+         dashboard view, or a floating panel), drive it with {UI_UPDATE} {{ id, props }}, remove it with \
+         {UI_REMOVE}; reuse components with {COMPONENT_LIST} / {COMPONENT_SAVE} (`user:<name>`).",
+        call = crate::agent_tools::CALL,
+        wait = crate::agent_tools::THREAD_WAIT,
+        methods = crate::agent_tools::catalog::METHODS_URL,
     )
 }
 
-/// The `--append-system-prompt` text: the daemon's text, then the user's append prompt when there is one.
+/// What the daemon itself appends to the system prompt of thread `thread_id`: the workspace conventions, the widgets
+/// note, then the control note.
+#[must_use]
+pub fn daemon_text(name: &str, path: &Path, user_library: &Path, thread_id: &str) -> String {
+    format!(
+        "{}\n\n{}\n\n{}",
+        workspace_conventions(name, path),
+        widgets_note(path, user_library),
+        control_note(thread_id)
+    )
+}
+
+/// The `--append-system-prompt` text of thread `thread_id`: the daemon's text, then the user's append prompt when
+/// there is one.
 #[must_use]
 pub fn append_system_prompt(
     name: &str,
     path: &Path,
     agent_dir: Option<&Path>,
     user_library: &Path,
+    thread_id: &str,
 ) -> String {
-    let text = daemon_text(name, path, user_library);
+    let text = daemon_text(name, path, user_library, thread_id);
     match user_append(path, agent_dir) {
         Some(user) => format!("{text}\n\n{user}"),
         None => text,
@@ -258,20 +287,21 @@ mod tests {
         assert!(!text.ends_with('\n'));
     }
 
-    // spec: DMN-030, AGT-024
+    // spec: DMN-030, AGT-024, AGT-045
     #[test]
-    fn the_users_append_file_follows_the_conventions_and_the_widgets_note_and_the_workspace_one_wins()
-     {
+    fn the_users_append_file_follows_the_conventions_and_the_notes_and_the_workspace_one_wins() {
         let ws = tempfile::tempdir().unwrap();
         let agent = tempfile::tempdir().unwrap();
         let library = Path::new("/data/widgets");
-        let prompt = |agent: &Path| append_system_prompt("w", ws.path(), Some(agent), library);
+        let prompt =
+            |agent: &Path| append_system_prompt("w", ws.path(), Some(agent), library, "01THREAD");
         let daemon = format!(
-            "{}\n\n{}",
+            "{}\n\n{}\n\n{}",
             workspace_conventions("w", ws.path()),
-            widgets_note(ws.path(), library)
+            widgets_note(ws.path(), library),
+            control_note("01THREAD")
         );
-        assert_eq!(daemon_text("w", ws.path(), library), daemon);
+        assert_eq!(daemon_text("w", ws.path(), library, "01THREAD"), daemon);
         assert_eq!(prompt(agent.path()), daemon);
 
         std::fs::write(agent.path().join("APPEND_SYSTEM.md"), "  user rule\n").unwrap();
@@ -280,6 +310,32 @@ mod tests {
         std::fs::create_dir(ws.path().join(".omp")).unwrap();
         std::fs::write(ws.path().join(".omp/APPEND_SYSTEM.md"), "project rule").unwrap();
         assert_eq!(prompt(agent.path()), format!("{daemon}\n\nproject rule"));
+    }
+
+    // spec: AGT-045
+    #[test]
+    fn the_control_note_names_the_thread_omfp_call_its_catalogue_and_the_wait() {
+        let text = control_note("01THREAD");
+        assert!(text.starts_with("# omfp control\n"), "{text}");
+        for rule in [
+            "your thread id is 01THREAD",
+            "omfp_call { method, params }",
+            "threads.list",
+            "threads.create",
+            "thread.prompt",
+            "omfp://protocol/methods lists them all",
+            "omfp://protocol/methods/<name>",
+            "omfp_thread_wait { threadId, promptId? }",
+            "instead of polling",
+            "omfp_ui_mount { id, code | widget, props?, view?, panel? }",
+            "omfp_ui_update { id, props }",
+            "omfp_ui_remove",
+            "omfp_component_list / omfp_component_save",
+        ] {
+            assert!(text.contains(rule), "{rule:?} missing: {text}");
+        }
+        assert!(text.lines().count() <= 7, "short: {text}");
+        assert!(!text.ends_with('\n'));
     }
 
     // spec: AGT-029

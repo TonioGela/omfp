@@ -198,11 +198,11 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
         Some(
             format!(
                 "{}\n\nAnswer in haiku.",
-                conventions::daemon_text("workspace", &folder, &h.data.widgets())
+                conventions::daemon_text("workspace", &folder, &h.data.widgets(), &id)
             )
             .as_str()
         ),
-        "the conventions, the widgets note (user library), then the user's file"
+        "the conventions, the widgets note (user library), the control note (thread id), then the user's file"
     );
     assert_eq!(
         launch.spec.session_dir,
@@ -1541,4 +1541,58 @@ async fn live_levels_reach_the_levels_stream_and_never_the_log() {
         .filter(|kind| kind.starts_with("live_"))
         .collect();
     assert_eq!(frames, ["live_phase", "live_phase", "live_phase"]);
+}
+
+// spec: AGT-070, AGT-071, DMN-162
+#[tokio::test]
+async fn a_cascade_stop_stops_the_whole_spawned_tree_and_nothing_else() {
+    let h = harness(|_| {});
+    let (ws, _) = h.workspace();
+    let spawn = |title: &str, created_by: crate::store::Provenance| {
+        h.threads
+            .create(NewThread {
+                created_by,
+                ..NewThread::new(title, ws.clone())
+            })
+            .unwrap()
+            .id
+    };
+    let root = spawn("root", crate::store::Provenance::User);
+    let child = spawn("child", crate::store::Provenance::Thread(root.clone()));
+    let grandchild = spawn(
+        "grandchild",
+        crate::store::Provenance::Thread(child.clone()),
+    );
+    let idle = spawn("idle", crate::store::Provenance::Thread(root.clone()));
+    let unrelated = spawn("unrelated", crate::store::Provenance::User);
+    for id in [&root, &child, &grandchild, &unrelated] {
+        h.supervisor.start(id).await.unwrap();
+    }
+
+    let stopped = h.supervisor.stop_tree(&root).await.unwrap();
+
+    // The thread first, then its tree in creation order; one that ran no process counts as stopped.
+    assert_eq!(
+        stopped,
+        [
+            root.clone(),
+            child.clone(),
+            grandchild.clone(),
+            idle.clone()
+        ]
+    );
+    for id in &stopped {
+        assert!(!h.supervisor.is_running(id), "{id} still runs");
+    }
+    assert!(h.supervisor.is_running(&unrelated));
+    assert_eq!(
+        h.supervisor.stop_tree(&grandchild).await.unwrap(),
+        [grandchild]
+    );
+    assert!(
+        h.supervisor
+            .stop_tree("01JUNKNOWN0000000000000000")
+            .await
+            .is_err()
+    );
 }

@@ -107,6 +107,31 @@ export function ViewRenderer({ view, registry, workspaceId, views, onEdit, area 
   );
 }
 
+export interface PanelLayoutProps {
+  /** The panel's id (AGT-060): its nodes' paths start at `panel:<id>`. */
+  readonly id: string;
+  readonly tree: LayoutTree;
+  readonly registry: WidgetRegistry;
+  readonly workspaceId: string | undefined;
+  readonly views: ViewsState | undefined;
+}
+
+/** A floating panel's node (UI-230), rendered like a view's nodes, outside edit mode. */
+export function PanelLayout({ id, tree, registry, workspaceId, views }: PanelLayoutProps): ReactNode {
+  const path = `panel:${id}`;
+  const scope: Scope = {
+    registry,
+    workspaceId,
+    views,
+    onEdit: undefined,
+    targets: [],
+    single: true,
+    viewId: path,
+    area: undefined,
+  };
+  return <Node tree={tree} path={path} scope={scope} />;
+}
+
 function moveTargets(tree: LayoutTree, path: string): MoveTarget[] {
   if (tree.kind === "widget") {
     return (["before", "after"] as const).map((place) => ({

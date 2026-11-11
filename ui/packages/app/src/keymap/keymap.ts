@@ -52,6 +52,7 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { mode: "normal", keys: "Space u", command: "thread.unarchive" },
   { mode: "normal", keys: "Space d", command: "thread.delete" },
   { mode: "normal", keys: "Space s", command: "thread.stop" },
+  { mode: "normal", keys: "Space S", command: "thread.stopSpawned" },
   { mode: "normal", keys: "Space R", command: "thread.restart" },
   // The left column of the narrow layout, shown over the view or hidden again.
   { mode: "normal", keys: "Space t", command: "threads.toggle" },

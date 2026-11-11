@@ -3,6 +3,9 @@
 
 use omfp_core::wire::{AskAnswer, GoalOp, ImageContent, QueuedMessageQueue, ThinkingLevel};
 use omfp_protocol::{
+    ActivityEntry, ActivityPage, ListActivityParams, StopThreadParams, ThreadsStopped,
+};
+use omfp_protocol::{
     AddRepoParams, BashParams, BtwParams, Call, CompactParams, CompletePathParams,
     CopyWidgetParams, CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileCandidate,
     FileCandidates, FileContent, FileDiff, FileKind, FileMatch, FileWritten, FindFileParams,
@@ -21,6 +24,11 @@ use omfp_protocol::{
     UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied, WidgetJobReport, WidgetReport,
     WidgetReportState, WidgetSource, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
     decode_request, method,
+};
+use omfp_protocol::{CreatedBy, ListThreadsParams, Provenance, ThreadList, WorkspaceList};
+use omfp_protocol::{
+    LibraryComponent, MountParams, MountPlace, MountUpdateParams, Mounted, SaveWidgetParams,
+    UnmountParams, Unmounted, WidgetLibrary, WidgetSaved,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -643,7 +651,18 @@ fn tool_examples() -> Vec<(&'static str, Value)> {
             ),
         ),
         example::<method::ThreadRestart>(thread_ref(), &Empty {}),
-        example::<method::ThreadStop>(thread_ref(), &Empty {}),
+        example::<method::ThreadStop>(
+            StopThreadParams {
+                thread_id: THREAD_ID.to_owned(),
+                cascade: true,
+            },
+            &ThreadsStopped {
+                thread_ids: vec![
+                    THREAD_ID.to_owned(),
+                    "01JD8X3Q4T9V2W6Y5Z7A1B3C4E".to_owned(),
+                ],
+            },
+        ),
     ]
 }
 
@@ -799,6 +818,208 @@ fn widget_examples() -> Vec<(&'static str, Value)> {
     ]
 }
 
+fn mount_examples() -> Vec<(&'static str, Value)> {
+    let props = json!({ "title": "Checkout", "threads": ["01T1", "01T2"] });
+    vec![
+        example::<method::ViewsMount>(
+            MountParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                id: "checkout".to_owned(),
+                widget: None,
+                code: Some("export default function Checkout() { return <p>v2</p>; }\n".to_owned()),
+                props: props.as_object().cloned(),
+                view: Some("dashboard".to_owned()),
+                place: Some(MountPlace::End),
+                panel: false,
+            },
+            &Mounted {
+                id: "checkout".to_owned(),
+                reference: "./widgets/checkout".to_owned(),
+                view: Some("dashboard".to_owned()),
+                panel: false,
+                replaced: false,
+            },
+        ),
+        example::<method::ViewsMountUpdate>(
+            MountUpdateParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                id: "checkout".to_owned(),
+                props: json!({ "progress": 0.5, "title": null })
+                    .as_object()
+                    .cloned(),
+                code: None,
+            },
+            &Mounted {
+                id: "checkout".to_owned(),
+                reference: "./widgets/checkout".to_owned(),
+                view: Some("dashboard".to_owned()),
+                panel: false,
+                replaced: true,
+            },
+        ),
+        example::<method::ViewsUnmount>(
+            UnmountParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                id: "checkout".to_owned(),
+            },
+            &Unmounted {
+                views: Vec::new(),
+                removed_views: vec!["dashboard".to_owned()],
+                panel: false,
+            },
+        ),
+        example::<method::WidgetsSave>(
+            SaveWidgetParams {
+                name: "checkout".to_owned(),
+                workspace_id: Some(WORKSPACE_ID.to_owned()),
+                widget: Some("./widgets/checkout".to_owned()),
+                code: None,
+                replace: true,
+            },
+            &WidgetSaved {
+                name: "checkout".to_owned(),
+                reference: "user:checkout".to_owned(),
+            },
+        ),
+        example::<method::WidgetsLibrary>(
+            Empty {},
+            &WidgetLibrary {
+                components: vec![LibraryComponent {
+                    name: "checkout".to_owned(),
+                    reference: "user:checkout".to_owned(),
+                    entry: Some("index.tsx".to_owned()),
+                    files: vec!["index.tsx".to_owned()],
+                    version: "3f2a".to_owned(),
+                    description: "Threads of a feature with their live state; props: threads."
+                        .to_owned(),
+                }],
+            },
+        ),
+    ]
+}
+
+/// The activity log of agent-originated actions (PRT-086, AGT-072).
+fn activity_examples() -> Vec<(&'static str, Value)> {
+    vec![example::<method::ActivityList>(
+        ListActivityParams {
+            thread_id: Some(THREAD_ID.to_owned()),
+            before: Some(42),
+            after: None,
+            limit: Some(1),
+        },
+        &ActivityPage {
+            entries: vec![ActivityEntry {
+                seq: 41,
+                at: 1_731_000_000_000,
+                thread_id: Some(THREAD_ID.to_owned()),
+                client: "omfp-agent".to_owned(),
+                method: "threads.create".to_owned(),
+                params: json!({ "workspace": { "id": WORKSPACE_ID }, "prompt": "Fix the flaky test" }),
+                error: None,
+            }],
+            more: true,
+        },
+    )]
+}
+
+/// The `index` topic's entities without a subscription (PRT-090, PRT-091).
+fn list_examples() -> Vec<(&'static str, Value)> {
+    vec![
+        example::<method::ThreadsList>(
+            ListThreadsParams {
+                workspace_id: Some(WORKSPACE_ID.to_owned()),
+                include_archived: true,
+            },
+            &ThreadList {
+                threads: vec![thread()],
+            },
+        ),
+        example::<method::WorkspacesList>(
+            Empty {},
+            &WorkspaceList {
+                workspaces: vec![workspace()],
+            },
+        ),
+    ]
+}
+
+// spec: PRT-085
+#[test]
+fn stop_cascades_only_when_asked() {
+    let plain: StopThreadParams =
+        serde_json::from_value(json!({ "threadId": THREAD_ID })).expect("decodes");
+    assert!(!plain.cascade);
+    assert_eq!(
+        serde_json::to_value(&plain).unwrap(),
+        json!({ "threadId": THREAD_ID })
+    );
+}
+
+// spec: PRT-086
+#[test]
+fn activity_entries_carry_their_outcome() {
+    let failed = ActivityEntry {
+        seq: 7,
+        at: 1,
+        thread_id: Some(THREAD_ID.to_owned()),
+        client: "omfp-agent".to_owned(),
+        method: "thread.prompt".to_owned(),
+        params: json!({ "threadId": THREAD_ID, "text": "hi" }),
+        error: Some("thread 01J not found".to_owned()),
+    };
+    let value = serde_json::to_value(&failed).unwrap();
+    assert_eq!(value["error"], json!("thread 01J not found"));
+    let succeeded = ActivityEntry {
+        error: None,
+        ..failed
+    };
+    assert_eq!(
+        serde_json::to_value(&succeeded).unwrap()["error"],
+        Value::Null
+    );
+    let params: ListActivityParams = serde_json::from_value(json!({})).expect("decodes");
+    assert_eq!(params, ListActivityParams::default());
+}
+
+// spec: PRT-094, AGT-053
+#[test]
+fn an_mcp_entry_has_a_null_thread_and_names_its_client() {
+    let entry = ActivityEntry {
+        seq: 8,
+        at: 1,
+        thread_id: None,
+        client: "omp".to_owned(),
+        method: "threads.create".to_owned(),
+        params: json!({}),
+        error: None,
+    };
+    let value = serde_json::to_value(&entry).unwrap();
+    assert_eq!(value["threadId"], Value::Null);
+    assert_eq!(value["client"], json!("omp"));
+    assert_eq!(
+        serde_json::from_value::<ActivityEntry>(value).unwrap(),
+        entry
+    );
+}
+
+// spec: PRT-093, AGT-051
+#[test]
+fn what_an_mcp_client_created_says_so() {
+    let provenance = Provenance {
+        created_by: CreatedBy::Mcp,
+        client: Some("claude-code".to_owned()),
+    };
+    let value = serde_json::to_value(&provenance).unwrap();
+    assert_eq!(
+        value,
+        json!({ "createdBy": { "kind": "mcp" }, "client": "claude-code" })
+    );
+    assert_eq!(
+        serde_json::from_value::<Provenance>(value).unwrap(),
+        provenance
+    );
+}
+
 // spec: PRT-042
 #[test]
 fn hello_names_where_widgets_are_served() {
@@ -931,6 +1152,9 @@ fn every_method_has_a_golden_request_and_response() {
         theme_examples(),
         ui_settings_examples(),
         widget_examples(),
+        mount_examples(),
+        activity_examples(),
+        list_examples(),
     ]
     .concat();
 

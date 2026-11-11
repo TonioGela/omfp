@@ -77,7 +77,7 @@ fn workspace_keymap(
     }
 }
 
-fn copy_error(error: CopyError) -> ErrorBody {
+pub(super) fn copy_error(error: CopyError) -> ErrorBody {
     let (code, message) = match error {
         CopyError::BadRequest(message) => (ErrorCode::BadRequest, message),
         CopyError::NotFound(message) => (ErrorCode::NotFound, message),
@@ -201,6 +201,8 @@ impl Services {
     /// `views.set` (DMN-083): checks the manifest, writes `.omfp/views.json` with sorted keys, then publishes it.
     pub async fn set_views(&self, params: SetViewsParams) -> Result<(), ErrorBody> {
         manifest::check(&params.manifest).map_err(bad_request)?;
+        // Never between a mount's read and write (PRT-080..082).
+        let _edit = self.manifest_edits.lock().await;
         let store = Arc::clone(&self.store);
         let id = params.workspace_id.clone();
         blocking(move || {

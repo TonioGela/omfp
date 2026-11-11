@@ -218,10 +218,11 @@ async fn a_thread_in_a_workspace_folder_sees_its_repositories_the_conventions_an
         "Full stack",
         &folder,
         &daemon.data.path().join("widgets"),
+        &thread,
     );
     assert!(
         system.ends_with(&format!("{daemon_text}\n\n{USER_APPEND}")),
-        "the daemon's conventions and widgets note, then the user's APPEND_SYSTEM.md, end the prompt: {}",
+        "the daemon's conventions, widgets and control notes, then the user's APPEND_SYSTEM.md, end the prompt: {}",
         &system[system.len().saturating_sub(2400)..]
     );
 

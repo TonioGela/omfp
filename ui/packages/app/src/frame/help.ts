@@ -65,6 +65,8 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "thread.unarchive": commandTitles.unarchive,
   "thread.delete": commandTitles.delete,
   "thread.stop": commandTitles.stop,
+  "thread.stopSpawned": commandTitles.stopSpawned,
+  "threads.spawnedBy": commandTitles.spawnedBy,
   "thread.restart": commandTitles.restart,
   "threads.toggle": commandTitles.toggleThreads,
   "theme.set": commandTitles.theme,

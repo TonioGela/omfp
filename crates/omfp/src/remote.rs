@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context as _, bail};
 use futures::{SinkExt as _, StreamExt as _};
+use omfp_daemon::config::default_data_dir;
 use omfp_daemon::paths::DataDir;
 use omfp_protocol::method::SystemHello;
 use omfp_protocol::{ErrorBody, HelloParams, Method, PROTOCOL_VERSION, Request, ServerFrame};
@@ -26,7 +27,8 @@ pub struct DaemonArgs {
     /// Access token (DMN-003) [default: the data directory's token file].
     #[arg(long)]
     pub token: Option<String>,
-    /// Data directory of the local daemon [default: `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`].
+    /// Data directory of the local daemon [default: the daemon's, `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`,
+    /// on macOS `~/Library/Application Support/omfp`].
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
 }
@@ -43,37 +45,36 @@ impl DaemonArgs {
     /// file of the data directory. The data directory is only needed (and its default only looked up) when one of the
     /// two is missing.
     pub fn target(&self) -> anyhow::Result<Target> {
-        let data_dir = || {
-            self.data_dir
-                .clone()
-                .or_else(|| {
-                    default_data_dir(
-                        std::env::var_os("XDG_DATA_HOME").map(PathBuf::from),
-                        std::env::var_os("HOME").map(PathBuf::from),
-                    )
-                })
-                .context("cannot determine the data directory: pass --data-dir, or set XDG_DATA_HOME or HOME")
-        };
         let url = match &self.daemon {
             Some(daemon) => websocket_url(daemon),
-            None => local_url(&data_dir()?)?,
+            None => format!("ws://{}/api/ws", local_addr(&self.data_dir()?)?),
         };
-        let token = match &self.token {
-            Some(token) => token.clone(),
-            None => read_token(&data_dir()?)?,
-        };
-        Ok(Target { url, token })
+        Ok(Target {
+            url,
+            token: self.token()?,
+        })
     }
-}
 
-/// The daemon's default data directory (as `omfp daemon` resolves it): `$XDG_DATA_HOME/omfp` when absolute, else
-/// `$HOME/.local/share/omfp`.
-#[must_use]
-pub fn default_data_dir(xdg_data_home: Option<PathBuf>, home: Option<PathBuf>) -> Option<PathBuf> {
-    xdg_data_home
-        .filter(|dir| dir.is_absolute())
-        .or_else(|| home.map(|home| home.join(".local/share")))
-        .map(|base| base.join("omfp"))
+    /// `--data-dir`, else the daemon's default data directory.
+    pub fn data_dir(&self) -> anyhow::Result<PathBuf> {
+        self.data_dir
+            .clone()
+            .or_else(|| {
+                default_data_dir(
+                    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from),
+                    std::env::var_os("HOME").map(PathBuf::from).as_deref(),
+                )
+            })
+            .context("cannot determine the data directory: pass --data-dir, or set XDG_DATA_HOME or HOME")
+    }
+
+    /// `--token`, else the token file of the data directory.
+    pub fn token(&self) -> anyhow::Result<String> {
+        match &self.token {
+            Some(token) => Ok(token.clone()),
+            None => read_token(&self.data_dir()?),
+        }
+    }
 }
 
 /// The WebSocket URL of `--daemon`: `http(s)://` becomes `ws(s)://`, a missing scheme means `ws://`, and a URL
@@ -92,8 +93,9 @@ pub fn websocket_url(daemon: &str) -> String {
     }
 }
 
-/// The URL of the daemon running for `data_dir` (DMN-007); a daemon bound to every interface is reached on loopback.
-fn local_url(data_dir: &Path) -> anyhow::Result<String> {
+/// Where the daemon running for `data_dir` listens (DMN-007); a daemon bound to every interface is reached on
+/// loopback.
+pub fn local_addr(data_dir: &Path) -> anyhow::Result<SocketAddr> {
     let info = omfp_daemon::discover(data_dir)
         .with_context(|| format!("cannot read daemon.json in {}", data_dir.display()))?
         .with_context(|| {
@@ -102,7 +104,7 @@ fn local_url(data_dir: &Path) -> anyhow::Result<String> {
                 data_dir.display()
             )
         })?;
-    Ok(format!("ws://{}/api/ws", reachable(info.addr)))
+    Ok(reachable(info.addr))
 }
 
 pub(crate) fn reachable(addr: SocketAddr) -> SocketAddr {
@@ -251,20 +253,6 @@ mod tests {
             reachable("192.168.1.2:7420".parse().unwrap()),
             "192.168.1.2:7420".parse().unwrap()
         );
-    }
-
-    #[test]
-    fn the_default_data_dir_is_the_daemons() {
-        let home = Some(PathBuf::from("/home/u"));
-        assert_eq!(
-            default_data_dir(Some("/xdg".into()), home.clone()),
-            Some(PathBuf::from("/xdg/omfp"))
-        );
-        assert_eq!(
-            default_data_dir(Some("relative".into()), home.clone()),
-            Some(PathBuf::from("/home/u/.local/share/omfp"))
-        );
-        assert_eq!(default_data_dir(None, None), None);
     }
 
     // spec: UI-091, DMN-003

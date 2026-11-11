@@ -1,7 +1,7 @@
 //! The daemon's tray icon (TST-061): `omfp daemon --tray` on a private session bus (`dbus-daemon`, never the user's)
 //! with a stub `org.kde.StatusNotifierWatcher`: the item registers, its menu is read over dbusmenu `GetLayout`, and
 //! `Event clicked` on `Quit daemon` stops the daemon. No display is needed.
-#![cfg(feature = "desktop")]
+#![cfg(all(feature = "desktop", target_os = "linux"))]
 
 use std::collections::HashMap;
 use std::io::{BufRead as _, BufReader, Read};

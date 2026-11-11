@@ -30,7 +30,8 @@ pub struct Cli {
     /// deployer's job (D-13).
     #[arg(long)]
     pub bind: Option<SocketAddr>,
-    /// Data directory (default: `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`).
+    /// Data directory (default: `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`; macOS: `~/Library/Application
+    /// Support/omfp`).
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
     /// Where new workspace folders are made (DMN-020; default: `~/.omfp`).
@@ -104,6 +105,23 @@ pub fn config_dir(xdg_config_home: Option<PathBuf>, home: Option<PathBuf>) -> Op
         .map(|base| base.join("omfp"))
 }
 
+/// Where the default data directory lives under `HOME` without `XDG_DATA_HOME` (DMN-170).
+#[cfg(target_os = "macos")]
+pub const HOME_DATA: &str = "Library/Application Support";
+/// Where the default data directory lives under `HOME` without `XDG_DATA_HOME`.
+#[cfg(not(target_os = "macos"))]
+pub const HOME_DATA: &str = ".local/share";
+
+/// The default data directory: `$XDG_DATA_HOME/omfp` when absolute, else `$HOME/`[`HOME_DATA`]`/omfp`
+/// (DMN-170: `~/Library/Application Support/omfp` on macOS, `~/.local/share/omfp` elsewhere).
+#[must_use]
+pub fn default_data_dir(xdg_data_home: Option<PathBuf>, home: Option<&Path>) -> Option<PathBuf> {
+    xdg_data_home
+        .filter(|dir| dir.is_absolute())
+        .or_else(|| home.map(|home| home.join(HOME_DATA)))
+        .map(|base| base.join("omfp"))
+}
+
 /// The config file's default location (DMN-009).
 #[must_use]
 pub fn default_config_file(
@@ -129,13 +147,9 @@ impl Config {
         let options = file.daemon.expanded(home.as_deref());
         let data_dir = match cli.data_dir.or(options.data_dir) {
             Some(dir) => dir,
-            None => xdg_data_home
-                .filter(|dir| dir.is_absolute())
-                .or_else(|| home.as_ref().map(|home| home.join(".local/share")))
-                .map(|base| base.join("omfp"))
-                .ok_or(
-                    "cannot determine a data directory: set --data-dir, XDG_DATA_HOME or HOME",
-                )?,
+            None => default_data_dir(xdg_data_home, home.as_deref()).ok_or(
+                "cannot determine a data directory: set --data-dir, XDG_DATA_HOME or HOME",
+            )?,
         };
         let workspaces_root = match cli.workspaces_root.or(options.workspaces_root) {
             Some(dir) => dir,
@@ -375,6 +389,7 @@ allow_omp_mismatch = true
         );
     }
 
+    // spec: DMN-170
     #[test]
     fn data_dir_defaults_to_xdg_then_home() {
         let config = |xdg: Option<&str>, home: Option<&str>| {
@@ -384,9 +399,18 @@ allow_omp_mismatch = true
             config(Some("/xdg"), Some("/home/u")).unwrap().data_dir,
             PathBuf::from("/xdg/omfp")
         );
+        let home_data = if cfg!(target_os = "macos") {
+            "/home/u/Library/Application Support/omfp"
+        } else {
+            "/home/u/.local/share/omfp"
+        };
         assert_eq!(
             config(Some("relative"), Some("/home/u")).unwrap().data_dir,
-            PathBuf::from("/home/u/.local/share/omfp")
+            PathBuf::from(home_data)
+        );
+        assert_eq!(
+            config(None, Some("/home/u")).unwrap().data_dir,
+            PathBuf::from(home_data)
         );
         assert!(config(None, None).is_err());
         let explicit = Config::from_cli(

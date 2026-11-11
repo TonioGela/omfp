@@ -7,3 +7,6 @@ node_modules/
 ui/packages/app/dist/
 # Capability schemas tauri-build writes on every desktop build (M7)
 /crates/omfp/gen/
+
+# TypeScript incremental build state
+*.tsbuildinfo

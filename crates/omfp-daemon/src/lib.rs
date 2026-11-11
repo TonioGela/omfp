@@ -4,6 +4,7 @@
 //! daemon running for a data directory (DMN-007).
 
 pub mod agent;
+pub mod agent_tools;
 pub mod config;
 pub mod config_file;
 pub mod conventions;

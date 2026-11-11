@@ -2,8 +2,8 @@
  * The global commands of the frame (UI-095), shared by the keymap and the `:` line: a draft thread in the current
  * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030), a rescan of the current
  * workspace (DMN-023), colour scheme (UI-091, window-local), density and `:set` (daemon settings, UI-094, UI-097), the
- * view switch (UI-101) and `:view reset` (UI-107), layout editing (UI-103) and copying a widget into the workspace
- * (UI-106).
+ * view switch (UI-101) and `:view reset` (UI-107), layout editing (UI-103), copying a widget into the workspace
+ * (UI-106) and saving a workspace widget to the user library (UI-233).
  */
 
 import { pathReference } from "@omfp/kit";
@@ -26,7 +26,7 @@ import {
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { DEFAULT_MANIFEST } from "../view/views.ts";
-import { isArchived, nextNeedingAttention } from "../vm/threads.ts";
+import { displayTitle, isArchived, nextNeedingAttention, spawnerOf } from "../vm/threads.ts";
 import { LAYOUT_EDIT } from "./layout.tsx";
 import { DENSITIES, parseSet, SET_KEYS } from "./set.ts";
 
@@ -152,6 +152,27 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
     run: onSelected(actions.stop),
   });
   useCommand({
+    id: "thread.stopSpawned",
+    title: titles.stopSpawned,
+    aliases: ["stop!"],
+    // Offered when the selected thread spawned threads (UI-242).
+    enabled: () =>
+      selected !== undefined &&
+      [...host.frames.getSnapshot().index.threads.values()].some((thread) => spawnerOf(thread) === selected),
+    run: onSelected(async (threadId) => {
+      try {
+        const { threadIds } = await host.client.call("thread.stop", { threadId, cascade: true });
+        const thread = summary();
+        const title = thread === undefined ? "" : displayTitle(thread);
+        host.notices.notify({ title, body: strings.shell.threads.stoppedSpawned(threadIds.length), threadId }, "info", {
+          onThread: true,
+        });
+      } catch (error) {
+        reportError(host, error);
+      }
+    }),
+  });
+  useCommand({
     id: "thread.restart",
     title: titles.restart,
     aliases: ["restart"],
@@ -245,9 +266,10 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
     id: "widget.copy",
     title: titles.widget,
     aliases: ["widget"],
-    args: () => ["copy"],
+    args: () => ["copy", "save", "save!"],
     run: async ([action, widget, name, ...rest]) => {
-      if (action !== "copy" || widget === undefined || rest.length > 0) {
+      const known = action === "copy" || action === "save" || action === "save!";
+      if (!known || widget === undefined || rest.length > 0) {
         reportError(host, strings.shell.widgetCopy.usage);
         return;
       }
@@ -257,12 +279,22 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
         return;
       }
       try {
-        const copied = await host.client.call("widgets.copy", {
-          workspaceId,
-          widget,
-          ...(name === undefined ? {} : { name }),
-        });
-        host.announcer.announce(strings.shell.widgetCopy.copied(copied.name));
+        if (action === "copy") {
+          const copied = await host.client.call("widgets.copy", {
+            workspaceId,
+            widget,
+            ...(name === undefined ? {} : { name }),
+          });
+          host.announcer.announce(strings.shell.widgetCopy.copied(copied.name));
+        } else {
+          const saved = await host.client.call("widgets.save", {
+            workspaceId,
+            widget,
+            name: name ?? widget.replace(/^\.\/widgets\//, ""),
+            replace: action === "save!",
+          });
+          host.announcer.announce(strings.shell.widgetCopy.saved(saved.reference));
+        }
       } catch (error) {
         reportError(host, error);
       }

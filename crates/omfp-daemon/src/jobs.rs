@@ -259,6 +259,8 @@ impl Control {
 #[derive(Debug)]
 struct Entry {
     workspace_id: String,
+    /// The thread whose agent started the job, if an agent did (DMN-162).
+    started_by: Option<String>,
     log: Arc<JobLog>,
     control: Arc<Control>,
 }
@@ -284,12 +286,14 @@ impl Jobs {
     }
 
     /// Runs `sh -c <command>` in `folder` for the workspace (DMN-080): the daemon's environment, stdin from
-    /// `/dev/null`, a new process group. Must run inside a Tokio runtime.
+    /// `/dev/null`, a new process group. `started_by` is the thread whose agent asked, if one did: a cascade stop
+    /// kills its jobs (DMN-162). Must run inside a Tokio runtime.
     pub fn start(
         &self,
         workspace_id: &str,
         folder: &Path,
         command: &str,
+        started_by: Option<&str>,
     ) -> Result<JobInfo, JobError> {
         if command.trim().is_empty() {
             return Err(JobError::EmptyCommand);
@@ -339,6 +343,7 @@ impl Jobs {
             job.id.clone(),
             Entry {
                 workspace_id: job.workspace_id.clone(),
+                started_by: started_by.map(str::to_owned),
                 log: Arc::clone(&log),
                 control: Arc::clone(&control),
             },
@@ -441,6 +446,25 @@ impl Jobs {
             .filter_map(|entry| entry.control.terminate())
             .collect();
         futures::future::join_all(escalations).await;
+    }
+
+    /// Kills the running jobs the agents of `threads` started (DMN-162), as [`Jobs::kill`] does.
+    pub fn kill_started_by(&self, threads: &[String]) {
+        let escalations: Vec<_> = self
+            .lock()
+            .jobs
+            .values()
+            .filter(|entry| {
+                entry
+                    .started_by
+                    .as_ref()
+                    .is_some_and(|thread| threads.contains(thread))
+            })
+            .filter_map(|entry| entry.control.terminate())
+            .collect();
+        for escalation in escalations {
+            tokio::spawn(escalation);
+        }
     }
 
     /// Forgets the jobs of a removed workspace; one that started meanwhile is killed.
@@ -670,13 +694,14 @@ mod tests {
                 "w1",
                 dir.path(),
                 &format!("while [ ! -e '{}' ]; do sleep 0.01; done", gate.display()),
+                None,
             )
             .unwrap();
-        let other = jobs.start("w2", dir.path(), "true").unwrap();
+        let other = jobs.start("w2", dir.path(), "true", None).unwrap();
         finished(&jobs.log(&other.id).unwrap()).await;
         let mut ids = Vec::new();
         for _ in 0..=FINISHED_KEPT {
-            let job = jobs.start("w1", dir.path(), "true").unwrap();
+            let job = jobs.start("w1", dir.path(), "true", None).unwrap();
             finished(&jobs.log(&job.id).unwrap()).await;
             ids.push(job.id);
         }
@@ -697,8 +722,54 @@ mod tests {
         let jobs = Jobs::default();
         jobs.shutdown().await;
         assert!(matches!(
-            jobs.start("w1", dir.path(), "true"),
+            jobs.start("w1", dir.path(), "true", None),
             Err(JobError::ShuttingDown)
         ));
+    }
+
+    // spec: DMN-162, AGT-071
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_cascade_kills_only_the_jobs_the_stopped_threads_agents_started() {
+        let dir = tempfile::tempdir().unwrap();
+        let gate = dir.path().join("gate");
+        let wait = format!("while [ ! -e '{}' ]; do sleep 0.01; done", gate.display());
+        let jobs = Jobs::default();
+        let child = jobs
+            .start("w1", dir.path(), &wait, Some("01JCHILD"))
+            .unwrap();
+        let other = jobs
+            .start("w1", dir.path(), &wait, Some("01JOTHER"))
+            .unwrap();
+        let user = jobs.start("w1", dir.path(), &wait, None).unwrap();
+
+        jobs.kill_started_by(&["01JROOT".to_owned(), "01JCHILD".to_owned()]);
+
+        let killed = finished(&jobs.log(&child.id).unwrap()).await;
+        assert!(
+            matches!(
+                killed.job.status,
+                JobStatus::Exited {
+                    signal: Some(15),
+                    ..
+                }
+            ),
+            "{:?}",
+            killed.job.status
+        );
+        for id in [&other.id, &user.id] {
+            assert!(
+                jobs.log(id)
+                    .unwrap()
+                    .with_state(|topic| topic.job.status == JobStatus::Running)
+            );
+        }
+        std::fs::write(&gate, "").unwrap();
+        for id in [&other.id, &user.id] {
+            let done = finished(&jobs.log(id).unwrap()).await;
+            assert!(matches!(
+                done.job.status,
+                JobStatus::Exited { code: Some(0), .. }
+            ));
+        }
     }
 }

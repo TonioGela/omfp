@@ -9,6 +9,32 @@ export const PROTOCOL_VERSION = 1;
 /** Largest text frame either side may send (PRT-013). */
 export const MAX_FRAME_BYTES = 16777216;
 
+/** One agent-originated action (AGT-072, DMN-160). */
+export type ActivityEntry = {
+  /** Unix milliseconds. */
+  at: number;
+  /** The `client` of the calling principal (PRT-033): the MCP client's name when `thread_id` is `null`. */
+  client: string;
+  /** `null` when the call succeeded, else the error's message. */
+  error?: string | null;
+  /** The protocol method called. */
+  method: string;
+  /** Its params, long strings cut to 200 characters (DMN-161). */
+  params: unknown;
+  /** Increasing with every entry. */
+  seq: number;
+  /** The thread whose agent made the call; `null` for a call of an MCP client outside omfp (PRT-094). */
+  threadId?: string | null;
+};
+
+/** `activity.list` result (PRT-086). */
+export type ActivityPage = {
+  /** Newest first. */
+  entries: ActivityEntry[];
+  /** Entries matching the query were left out by the limit. */
+  more: boolean;
+};
+
 /** `workspaces.add_repo` params (DMN-024). */
 export type AddRepoParams = {
   /** Entry name in the folder; default: derived from the source (made unique). */
@@ -80,7 +106,10 @@ export type CreateWorkspaceParams = {
   name?: string | null;
 };
 
-/** The principal behind a created entity: the user, or the agent of a thread. */
+/**
+ * The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),
+ * named by the provenance's `client`.
+ */
 export type CreatedBy =
   | {
     kind: "user";
@@ -88,6 +117,9 @@ export type CreatedBy =
   | {
     kind: "thread";
     threadId: string;
+  }
+  | {
+    kind: "mcp";
   };
 
 /** Row height and spacing of the UI. */
@@ -424,9 +456,44 @@ export type LabelParams = {
   threadId: string;
 };
 
+/** A component of the user library (PRT-084, AGT-065). */
+export type LibraryComponent = {
+  /** The entry's leading comment, whitespace collapsed; empty without one. */
+  description: string;
+  /** The entry file; `null` when the folder has none. */
+  entry?: string | null;
+  /** The folder's files, relative, in path order. */
+  files: string[];
+  name: string;
+  /** `user:<name>`. */
+  reference: string;
+  /** The folder's version (DMN-084). */
+  version: string;
+};
+
+/** `activity.list` params (PRT-086). */
+export type ListActivityParams = {
+  /** Only entries with a greater `seq` (newer ones). */
+  after?: number | null;
+  /** Only entries with a smaller `seq` (older ones). */
+  before?: number | null;
+  /** At most this many entries; default 50, capped at 500. */
+  limit?: number | null;
+  /** Only the actions of this calling thread. */
+  threadId?: string | null;
+};
+
 /** `terminal.list` params; filters combine. */
 export type ListTerminalsParams = {
   threadId?: string | null;
+  workspaceId?: string | null;
+};
+
+/** `threads.list` params (PRT-090). */
+export type ListThreadsParams = {
+  /** Archived threads too (default `false`). */
+  includeArchived?: boolean;
+  /** Only the threads of this workspace (an unknown one lists none). */
   workspaceId?: string | null;
 };
 
@@ -477,6 +544,60 @@ export type Motion =
   | "reduced"
   /** No animation or transition. */
   | "none";
+
+/** `views.mount` params (PRT-080, AGT-061): exactly one of `widget` and `code`; `panel` excludes `view` and `place`. */
+export type MountParams = {
+  /** The source of a component (TSX), written to `.omfp/widgets/<id>/index.tsx`. */
+  code?: string | null;
+  /**
+   * The mount id, a widget name (letters, digits, `_`, `-`, `.` not first): the node's `instance` prop, the panel
+   * id, and the folder `code` is written to.
+   */
+  id: string;
+  /** Mount as a floating panel over every view (`panels.<id>`) instead. */
+  panel?: boolean;
+  /** Where in the view (default: `side_tab`). */
+  place?: MountPlace | null;
+  /** The widget's props; `instance` is always the mount id. */
+  props?: Record<string, unknown> | null;
+  /** The view to mount into (default: the default view); a new id creates a view showing only the widget. */
+  view?: string | null;
+  /** A widget reference (`./widgets/<name>`, `user:<name>`, `omfp:<name>`); a bare name means `./widgets/<name>`. */
+  widget?: string | null;
+  workspaceId: string;
+};
+
+/** Where `views.mount` puts a widget in a view (PRT-080, as `omfp_view_add` does, DMN-064). */
+export type MountPlace =
+  /** A tab of the view's `tabs` container whose `id` prop is `side`. */
+  | "side_tab"
+  /** A tab of the view's `tabs` container whose `id` prop is `main`, after the conversation. */
+  | "main_tab"
+  /** The end of the view's root container. */
+  | "end";
+
+/** `views.mount_update` params (PRT-081, AGT-062). */
+export type MountUpdateParams = {
+  /** New source of `.omfp/widgets/<id>/index.tsx`, for a mount of `./widgets/<id>`. */
+  code?: string | null;
+  id: string;
+  /** Merged into the node's props; a `null` value deletes the prop. */
+  props?: Record<string, unknown> | null;
+  workspaceId: string;
+};
+
+/** `views.mount` and `views.mount_update` result (PRT-080, PRT-081). */
+export type Mounted = {
+  id: string;
+  /** Whether it is the floating panel `id`. */
+  panel: boolean;
+  /** The widget reference the node renders. */
+  reference: string;
+  /** Whether a node of this mount id existed before. */
+  replaced: boolean;
+  /** The view showing it; `null` for a floating panel. */
+  view?: string | null;
+};
 
 /** `thread.navigate` params. */
 export type NavigateParams = {
@@ -668,6 +789,19 @@ export type RespondParams = {
   threadId: string;
 };
 
+/** `widgets.save` params (PRT-083, AGT-064): exactly one of `widget` (with `workspaceId`) and `code`. */
+export type SaveWidgetParams = {
+  /** The component's source (TSX), saved as its `index.tsx`. */
+  code?: string | null;
+  /** The component's name in the user library (a widget name). */
+  name: string;
+  /** Replace an existing component of that name. */
+  replace?: boolean;
+  /** A widget of that workspace: `./widgets/<name>` or a bare name. */
+  widget?: string | null;
+  workspaceId?: string | null;
+};
+
 /** `threads.search` params (DMN-076). */
 export type SearchThreadsParams = {
   /** Case-insensitive substring of the conversation text; shorter than 2 characters finds nothing. */
@@ -735,6 +869,13 @@ export type StartJobParams = {
   /** Run as `sh -c <command>` in the workspace folder. */
   command: string;
   workspaceId: string;
+};
+
+/** `thread.stop` params (PRT-085). */
+export type StopThreadParams = {
+  /** Also stop every thread of its spawned tree: the threads it spawned, transitively (AGT-070, AGT-071). */
+  cascade?: boolean;
+  threadId: string;
 };
 
 /** `thread.subagent_messages` params. */
@@ -830,6 +971,12 @@ export type ThreadGit = {
   workspaceId: string;
 };
 
+/** `threads.list` result (PRT-090). */
+export type ThreadList = {
+  /** In the order of the `index` topic. */
+  threads: ThreadSummary[];
+};
+
 /** Params naming one thread. */
 export type ThreadRef = {
   threadId: string;
@@ -881,6 +1028,15 @@ export type ThreadWorkspace =
     new: CreateWorkspaceParams;
   };
 
+/** `thread.stop` result (PRT-085). */
+export type ThreadsStopped = {
+  /**
+   * The threads whose omp process is now stopped: the thread first, then the rest of its spawned tree in the
+   * order they were stopped.
+   */
+  threadIds: string[];
+};
+
 /** Where a thread's title comes from (DMN-073). */
 export type TitleSource =
   /** The first words of the first message (or `""` before it), until a title is generated or set. */
@@ -918,6 +1074,22 @@ export type UiSettings = {
   fonts?: FontSettings | null;
   motion?: Motion | null;
   notifications?: NotificationMode | null;
+};
+
+/** `views.unmount` params (PRT-082, AGT-063). */
+export type UnmountParams = {
+  id: string;
+  workspaceId: string;
+};
+
+/** `views.unmount` result (PRT-082). */
+export type Unmounted = {
+  /** Whether it removed the floating panel `id`. */
+  panel: boolean;
+  /** The views it removed because they were left empty, in id order. */
+  removedViews: string[];
+  /** The views it removed nodes from (and kept), in id order. */
+  views: string[];
 };
 
 /** `threads.update` params; absent fields are unchanged. */
@@ -1017,6 +1189,11 @@ export type WidgetJobReport = {
   tail: string[];
 };
 
+/** `widgets.library` result (PRT-084): the user library by name. */
+export type WidgetLibrary = {
+  components: LibraryComponent[];
+};
+
 /** One widget instance as a window shows it (PRT-043). */
 export type WidgetReport = {
   /** Console errors and uncaught errors whose stack names the widget's module, oldest first. */
@@ -1041,6 +1218,13 @@ export type WidgetReport = {
 
 /** Where a widget instance stands in a window (PRT-043). */
 export type WidgetReportState = "loading" | "rendered" | "compile_error" | "load_error" | "render_error";
+
+/** `widgets.save` result (PRT-083). */
+export type WidgetSaved = {
+  name: string;
+  /** `user:<name>`. */
+  reference: string;
+};
 
 /** Where a widget folder lives (AGT-012, AGT-023). */
 export type WidgetSource =
@@ -1100,6 +1284,12 @@ export type WorkspaceEvent =
     kind: "status";
     repos: RepoStatus[];
   };
+
+/** `workspaces.list` result (PRT-091). */
+export type WorkspaceList = {
+  /** In the order of the `index` topic. */
+  workspaces: Workspace[];
+};
 
 /** Params naming one workspace. */
 export type WorkspaceRef = {
@@ -1204,7 +1394,7 @@ export interface Methods {
   "thread.git": { params: ThreadRef; result: ThreadGit };
   "thread.state": { params: ThreadRef; result: unknown };
   "thread.restart": { params: ThreadRef; result: Empty };
-  "thread.stop": { params: ThreadRef; result: Empty };
+  "thread.stop": { params: StopThreadParams; result: ThreadsStopped };
   "thread.live_connect": { params: LiveConnectParams; result: LiveConnected };
   "thread.live_start": { params: ThreadRef; result: LiveStarted };
   "thread.live_stop": { params: ThreadRef; result: Empty };
@@ -1224,6 +1414,14 @@ export interface Methods {
   "widgets.report": { params: ReportWidgetsParams; result: Empty };
   "jobs.start": { params: StartJobParams; result: JobInfo };
   "jobs.kill": { params: JobRef; result: Empty };
+  "views.mount": { params: MountParams; result: Mounted };
+  "views.mount_update": { params: MountUpdateParams; result: Mounted };
+  "views.unmount": { params: UnmountParams; result: Unmounted };
+  "widgets.save": { params: SaveWidgetParams; result: WidgetSaved };
+  "widgets.library": { params: Empty; result: WidgetLibrary };
+  "activity.list": { params: ListActivityParams; result: ActivityPage };
+  "threads.list": { params: ListThreadsParams; result: ThreadList };
+  "workspaces.list": { params: Empty; result: WorkspaceList };
 }
 
 export type MethodName = keyof Methods;
@@ -1300,4 +1498,12 @@ export const METHODS: readonly MethodName[] = [
   "widgets.report",
   "jobs.start",
   "jobs.kill",
+  "views.mount",
+  "views.mount_update",
+  "views.unmount",
+  "widgets.save",
+  "widgets.library",
+  "activity.list",
+  "threads.list",
+  "workspaces.list",
 ];

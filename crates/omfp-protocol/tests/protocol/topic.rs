@@ -5,7 +5,7 @@ use serde_json::json;
 
 use crate::samples::{TERMINAL_ID, THREAD_ID, WORKSPACE_ID};
 
-// spec: PRT-040, PRT-041
+// spec: PRT-040, PRT-041, TST-050
 #[test]
 fn topics_round_trip_through_their_names() {
     let cases = [
@@ -27,6 +27,8 @@ fn topics_round_trip_through_their_names() {
             format!("views/{WORKSPACE_ID}"),
         ),
         (Topic::Job("01JOB".to_owned()), "job/01JOB".to_owned()),
+        // Ids are any non-empty `[A-Za-z0-9_-]` string.
+        (Topic::Job("a-b_C9".to_owned()), "job/a-b_C9".to_owned()),
     ];
     for (topic, name) in cases {
         assert_eq!(topic.to_string(), name);

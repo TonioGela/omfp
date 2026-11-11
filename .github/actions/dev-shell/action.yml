@@ -1,7 +1,7 @@
 name: Dev shell
 description: >-
-  Nix with the omfp Cachix cache (pushed to by pushes to master only), the flake's dev shell, and for Rust jobs more
-  disk space and the cargo registry and target cache.
+  The runner's disk pooled into a Btrfs /nix, Nix with the omfp Cachix cache (pushed to by pushes to master only), the
+  flake's dev shell, and for Rust jobs the cargo registry and target cache.
 inputs:
   cachix-auth-token:
     description: The `CACHIX_AUTH_TOKEN` secret; empty (forks) reads the cache only.
@@ -14,17 +14,35 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Free disk space
-      if: inputs.rust == 'true'
+    # TST-075: the dev shell (omp built from source on a cold cache, Chromium, WebKitGTK, the Rust toolchain) and a debug
+    # target dir with Tauri do not fit on the runner's free disk. nothing-but-nix pools the free space and, in the
+    # background, what deleting the preinstalled SDKs, browsers and Docker frees into a compressed Btrfs volume on /nix
+    # (with /var/tmp/nothing-but-nix and TMPDIR on it); it must run before Nix is installed. Linux runners only: the
+    # macOS runner (TST-092) has the disk.
+    - uses: wimpysworld/nothing-but-nix@v12
+      if: runner.os == 'Linux'
+      with:
+        hatchet-protocol: rampage
+
+    - name: Put target/ on the Nix volume
+      if: inputs.rust == 'true' && runner.os == 'Linux'
       shell: bash
-      # The dev shell (Chromium, WebKitGTK, omp, the Rust toolchain) and a debug target dir with Tauri do not fit
-      # next to the preinstalled SDKs the jobs never use.
-      run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      run: |
+        mkdir -p /var/tmp/nothing-but-nix/cargo-target target
+        sudo mount --bind /var/tmp/nothing-but-nix/cargo-target target
 
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ github.token }}
-        extra_nix_config: accept-flake-config = true
+        # Builds go to the Btrfs volume, not to /tmp on the small root disk.
+        extra_nix_config: |
+          accept-flake-config = true
+          build-dir = /nix/build
+
+    - name: Make the build directory (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: sudo mkdir -p /nix/build
 
     - uses: cachix/cachix-action@v17
       with:
@@ -40,6 +58,7 @@ runs:
       run: |
         nix develop -c sh -c 'dirname "$(command -v cargo)" > "$RUNNER_TEMP/toolchain-bin"'
         cat "$RUNNER_TEMP/toolchain-bin" >> "$GITHUB_PATH"
+        df -h / /nix
 
     - uses: Swatinem/rust-cache@v2
       if: inputs.rust == 'true'

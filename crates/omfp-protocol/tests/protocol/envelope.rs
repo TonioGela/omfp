@@ -80,6 +80,7 @@ fn version_mismatch_lists_the_supported_versions() {
     insta::assert_json_snapshot!("error_response_version_mismatch", golden);
 }
 
+// spec: TST-050
 #[test]
 fn a_response_is_either_a_result_or_an_error() {
     let ok: ServerFrame =
@@ -91,9 +92,13 @@ fn a_response_is_either_a_result_or_an_error() {
     );
     for invalid in [
         json!({ "type": "response", "id": "c1", "ok": false, "result": {} }),
+        json!({ "type": "response", "id": "c1", "ok": false, "result": {}, "error": { "code": "internal", "message": "x" } }),
         json!({ "type": "response", "id": "c1", "ok": true, "error": { "code": "internal", "message": "x" } }),
     ] {
-        assert!(serde_json::from_value::<ServerFrame>(invalid).is_err());
+        assert!(
+            serde_json::from_value::<ServerFrame>(invalid.clone()).is_err(),
+            "{invalid}"
+        );
     }
 }
 

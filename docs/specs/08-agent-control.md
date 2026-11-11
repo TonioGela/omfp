@@ -45,7 +45,7 @@ One tool registry in the daemon, several adapters:
 | Adapter | Reaches | Notes |
 | --- | --- | --- |
 | **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for `omfp_open_file`, `omfp_notify`, `set_thread_title` and the widget tools (DMN-060, DMN-125). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
-| **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside omfp, other MCP-capable agents | Only needed for omp sessions not run by the daemon (RPC threads get host tools); configured in the user's own `mcp.json`, since the daemon writes nothing into workspaces (D-11). S-07 verified that a project `.omp/mcp.json` is honored and its headers are sent. |
+| **MCP server** (Streamable HTTP at `/mcp`, the daemon's token as bearer, AGT-050..054) | omp sessions outside omfp, other MCP-capable agents | Only needed for agents not run by the daemon (RPC threads get host tools); configured in the user's own `mcp.json` (`omfp mcp config` prints the entry), since the daemon writes nothing into workspaces (D-11). Per-thread tokens wait for threads in terminal mode (05, deferred). |
 | **Host URI scheme** `omfp://` (`set_host_uri_schemes`) | RPC threads | State for the agent's `read` tool: `omfp://threads`, `omfp://threads/<id>`, `omfp://ui/…`. |
 | **SDK** | widgets | The same API from inside a widget, as React hooks (below). |
 
@@ -162,9 +162,8 @@ the widget (AGT-026: errors, console errors, the rendered text, its jobs), and `
 widget in a view without rewriting `views.json` by hand.
 
 **Later (not in M4)**: `useAgent(threadId?)` (messages or events to a thread), the host tools `omfp_widget_state`, `omfp_job_start` and `omfp_job_output` (the agent reads
-and writes widget state and starts jobs), `jobs.list`, job `cwd`/`env` options, `:widget save` and saving a widget to
-the user library from the UI, widgets in dashboards or windows outside the workspace view, and dragging widgets with
-the pointer.
+and writes widget state and starts jobs), `jobs.list`, job `cwd`/`env` options, and dragging widgets with the pointer.
+Widgets in dashboards and floating panels, and saving widgets to the user library, came with M10 (AGT-060..066).
 
 ### Views and widgets (M4)
 
@@ -194,6 +193,52 @@ the pointer.
 | AGT-031 | The widgets note (AGT-024) MUST give one line to `.omfp/keymap.json` (its path and schema, commands built-in or a widget's `useCommand`), and `omfp://docs/widgets` (AGT-025) documents the file: its shape, the precedence, the modes and key tokens, and an example. |
 | AGT-032 | The widgets note (AGT-024) MUST give one line to `omfp_notify { title, body }` (DMN-125): use it when a long task finished or the agent needs the user, once per occasion, never for progress. |
 
+### Agent tools (M10)
+
+One registry in the daemon defines the agent tools; the RPC host tools and the MCP server are adapters over it. Its
+core is `omfp_call`, any protocol method by name, discoverable through the method catalogue, plus `omfp_thread_wait`
+to wait for a thread instead of polling it.
+
+| ID | Requirement |
+| --- | --- |
+| AGT-040 | **Agent tool registry** (AGT-006): every M10 agent tool is defined once, in `agent_tools::registry()`: its name, label, description, the JSON Schema of its arguments and an async body over the daemon's services, run with a `ToolContext` naming the principal it acts as (DMN-150) and the calling thread's workspace (none when no thread calls, e.g. MCP with a user token). Adapters only translate: every thread gets each registry tool as an essential host tool (DMN-151), the MCP server the same tools. `agent_tools::call` runs a protocol method as the context's principal through the single authorization check (PRT-034) and the window's handlers, so a tool that adapts a method behaves exactly like that method. |
+| AGT-041 | **`omfp_call { method, params? }`**: calls any protocol method by its wire name with `params` (an object; absent or `null` means `{}`) as the calling thread's agent principal (DMN-150) and answers the method's JSON result as text. A failed method is a tool error `<code>: <message>`, followed by its `details` JSON when it has some; an unknown method or params that do not decode is a tool error that names `omfp://protocol/methods`; the methods that need a window's connection (`system.hello`, `subscribe`, `unsubscribe`, `widgets.report`, `thread.live_connect`, `thread.live_start`) are refused with a tool error saying so. |
+| AGT-042 | **Method catalogue**: `omfp://protocol/methods` (Markdown) lists every method `omfp_call` accepts, in method-table order, one line each: `` `<name>` — <description> `` (PRT-092), and says where the schemas are; `omfp://protocol/methods/<name>` (JSON) is `{ method, description, params, result }` with the method's params and result JSON Schemas (AGT-007). An unknown or connection-only name is an error naming the list. Both are immutable reads of the `omfp` host URI scheme of every thread (DMN-062). |
+| AGT-043 | **`omfp_thread_wait { threadId, promptId?, timeoutSeconds? }`** waits until thread `threadId` is done and answers the JSON `{ threadId, status, prompt?, lastAssistantText }`. With `promptId` (from `thread.prompt`) the thread is done once that prompt's `prompt_result` arrived; without it, once the thread's last prompt (whoever sent it, `threads.create`'s first message included, DMN-152) has its `prompt_result` and the session settled. `status` is `done`; `needs_attention` as soon as the thread has a pending interaction (an approval or a question: the caller may answer with `interaction.respond`); `stopped` or `failed` when the thread has no process or its process failed, before it is done; `timeout` after `timeoutSeconds` (default 600, from 1 to 3600). `prompt` is the awaited `prompt_result`'s `{ id, status, error? }` when it arrived; `lastAssistantText` the text blocks of the transcript's last assistant message (`""` without one). An already done thread answers at once. |
+| AGT-044 | `omfp_thread_wait` MUST refuse, as tool errors, a missing or blank `threadId`, a `promptId` that is not a non-blank string, a `timeoutSeconds` outside 1..=3600, the calling thread itself (it can never settle while its own tool runs) and an unknown thread (`not_found`); cancelling the tool call stops the wait. |
+| AGT-045 | **Agent note**: the daemon's `--append-system-prompt` text (DMN-030) MUST end with a short `# omfp control` note (at most 7 lines): the thread's own id, `omfp_call { method, params }` reaching every protocol method as the user's windows do (e.g. `threads.list`, `threads.create`, `thread.prompt`), the catalogue `omfp://protocol/methods` and `omfp://protocol/methods/<name>`, `omfp_thread_wait { threadId, promptId? }` to wait for a thread instead of polling it, and one line on the UI mount and component tools (AGT-061..065). |
+
+### MCP server (M10)
+
+Agents the daemon does not run (an omp session outside omfp, any MCP client) reach the same registry through the MCP
+server at `/mcp` (DMN-155..159). Such a session has no thread: it acts as the **MCP principal**, with the user's full
+access (D-17), and what it does is logged and attributed to it.
+
+| ID | Requirement |
+| --- | --- |
+| AGT-050 | **MCP tools**: `tools/list` MUST list every tool of the agent tool registry (AGT-040), in registry order, as `{ name, title: <label>, description, inputSchema: <parameters> }`, and `tools/call { name, arguments }` MUST run it as the MCP principal (AGT-051) without a workspace and answer `{ content: [{ type: "text", text }], isError }`: the tool's text, `isError: false`, or its error text, `isError: true`. An unknown tool or `arguments` that are not an object (absent means `{}`) is the JSON-RPC error `-32602`. `omfp_notify` and `omfp_open_file` are not MCP tools: both act on the calling thread (its attention flag, the windows showing its workspace) and an MCP session has none; `omfp_call` reaches every method they would need. |
+| AGT-051 | **MCP principal**: an MCP request runs as `Principal::Mcp { client }`, `client` being the MCP client's `clientInfo.name` (from `initialize` for a legacy session, from the request's `io.modelcontextprotocol/clientInfo` otherwise; `mcp` when it names none). It passes `authorize` like an agent principal (DMN-150): every permission but `Connect`. What it creates records the provenance `mcp` (PRT-093) and `created_client` = `client`. Without a calling thread, `omfp_thread_wait` waits for any thread and the mount and library tools need `workspaceId` (AGT-066). |
+| AGT-052 | **MCP resources**: `resources/list` MUST list the method catalogue `omfp://protocol/methods` (`text/markdown`) and `resources/templates/list` the template `omfp://protocol/methods/{name}` (`application/json`); `resources/read { uri }` answers the catalogue's text for these URIs exactly as the host URIs do (AGT-042), and any other URI or an unknown method is the JSON-RPC error `-32602`. |
+| AGT-053 | **MCP calls are logged**: the activity log (AGT-072) MUST record the calls of the MCP principal the way it records an agent's, with `threadId` `null` and the MCP client as `client` (PRT-094), so `omfp:activity` shows them as `mcp: <client>` (UI-241). |
+| AGT-054 | **Configuring a client**: `omfp mcp config` (DMN-159) prints the `mcp.json` entry for the local daemon. For omp, put it in `~/.omp/agent/mcp.json` (every session) or a project's `.omp/mcp.json`: omp 18.18.6 then mounts the tools as `xd://` devices (`xd://mcp__omfp_call`, `xd://mcp__omfp_thread_wait`, `xd://mcp__omfp_ui_mount`…, called with `write`, its `content` the JSON arguments) and puts the server's instructions in the system prompt. Instead of the literal token the header may read the token file, `"Authorization": "!printf 'Bearer %s' \"$(cat ~/.local/share/omfp/token)\""` (omp runs a header value starting with `!`), and `"timeout": 0` lets `omfp_thread_wait` outlast omp's 30 s request timeout. Other MCP clients take the same URL and `Authorization` header in their own format. |
+
+### UI mounts and the component library (M10)
+
+Agents put UI in front of the user with **mounts**: a mount is a widget node of the workspace's `views.json` whose
+`instance` prop is the mount id, in a view (a dashboard is a view) or in a **floating panel** over every view. The
+**component library** is the user library (AGT-023). The tools are adapters over protocol methods (PRT-080..084), so a
+widget (`useCall`) or an MCP client reaches the same.
+
+| ID | Requirement |
+| --- | --- |
+| AGT-060 | **Floating panels**: `views.json` MAY carry `"panels": { <id>: <node> }`, widgets floating over every view of the workspace, in id order. Each node is checked like a view's layout (AGT-010; errors at `panels.<id>`), and `panels` that is not an object is the error `panels: expected an object of panels`; a node's instance is its `instance` prop, else its reference. The schema `omfp://schemas/views.json` documents it. |
+| AGT-061 | **`omfp_ui_mount { id, widget? \| code?, props?, view?, where?, panel?, workspaceId? }`** (`views.mount`, PRT-080): `id` is a widget name (AGT-012); exactly one of `widget`, a reference (a bare name means `./widgets/<name>`; `user:<name>` is a library component), and `code`, the source of a component written to `.omfp/widgets/<id>/index.tsx` (the reference is then `./widgets/<id>`). The node carries `props` with `instance: id`. With `panel: true` it becomes `panels.<id>`; else it goes into the view `view` (default: the default view; a new id creates a view showing only it, a dashboard) at `where` (`side-tab` by default, `main-tab` or `end`, placed as `omfp_view_add` does, DMN-064). A node of mount `id` already in that target is replaced in place and any other one (another view, a panel) is removed, so an id is mounted once. The answer says where it went and that open windows show it at once. |
+| AGT-062 | **`omfp_ui_update { id, props?, code?, workspaceId? }`** (`views.mount_update`, PRT-081): merges `props` into the node of mount `id` (a `null` value deletes the prop; `instance` stays `id`) and, with `code`, rewrites `.omfp/widgets/<id>/index.tsx` (only for a mount of `./widgets/<id>`); `not_found` when nothing is mounted with that id. Windows re-render the widget with the new props in place, keeping its state (UI-232), so an agent drives a mounted widget (a value, a status) by updating its props. |
+| AGT-063 | **`omfp_ui_remove { id, workspaceId? }`** (`views.unmount`, PRT-082): removes the panel `id` and every node of mount `id` from the views; a container left without children goes too (its parent's `sizes` lose its weight), a view left empty is removed (`default` dropped when it named it), and emptying the last view is a `bad_request`. The widget folder stays (save it with `omfp_component_save`); `not_found` when nothing has that id. |
+| AGT-064 | **`omfp_component_save { name, widget? \| code?, replace?, workspaceId? }`** (`widgets.save`, PRT-083): saves a component to the user library, `<data-dir>/widgets/<name>/`: a copy of the workspace widget `widget` (`./widgets/<x>` or a bare name), or `code` as its `index.tsx`. An existing component is replaced only with `replace: true` (else `conflict`); the new folder appears whole (staged, then renamed). Every followed `views/<id>` topic then lists it as `user:<name>`, and windows showing it reload it. |
+| AGT-065 | **`omfp_component_list {}`** (`widgets.library`, PRT-084): the user library by name, each with its reference `user:<name>`, entry, files, version and description: the entry's leading comment (its `//` lines or first `/* … */` block, whitespace collapsed, at most 200 characters; empty without one). The `omfp_component_save` description asks the agent to start a component with such a comment saying what it shows and which props it takes. |
+| AGT-066 | The mount and library tools are tools of the agent tool registry (an adapter over the methods above, called as the thread's agent principal) with the calling thread's workspace; without one (the MCP principal, AGT-051) `workspaceId` is required. `omfp://docs/widgets` (AGT-025) documents panels, mounts and the library. |
+
 ## Permissions and limits
 
 Agents run in **full-access mode by default** (D-17): an agent principal may call every method, and so may the UI pieces
@@ -201,6 +246,14 @@ it mounts; pieces run with the same access as the window they are in. Limits are
 scoped principals (PRT-034), caps on spawned threads and chain depth, the global process limit (DMN-038), cost caps
 (omp `session.maxCost`). What stays on regardless: provenance (ARC-009) shown in the UI with filters such as "spawned
 by X", a cascade stop for everything a thread spawned, and an activity log of agent-originated actions.
+
+### Provenance, cascade stop and activity log (M10)
+
+| ID | Requirement |
+| --- | --- |
+| AGT-070 | **Spawned tree**: the threads a thread spawned are those whose provenance names it (`created_by`, ARC-009, AGT-002), and, transitively, the threads they spawned; a thread's spawned tree is the thread with all of them, archived ones included. It is what the "spawned by" filter shows (UI-240) and what the cascade stop reaches (AGT-071). |
+| AGT-071 | **Cascade stop**: `thread.stop { threadId, cascade: true }` (PRT-085) MUST stop the omp process of every thread of the spawned tree (AGT-070) and kill the jobs their agents started (DMN-162), whoever asks (the user, a script, an agent); it archives, deletes and removes nothing, and a stopped thread starts again on its next command (DMN-070). Without `cascade` only the thread's process stops, as before. |
+| AGT-072 | **Activity log**: every protocol method an agent principal calls (a principal whose provenance is a thread, ARC-009, or the MCP principal, AGT-053) that needs more than the `Connect` or `Read` permission (PRT-034) MUST be appended to the activity log (DMN-160, DMN-161) with its time, the calling thread (`null` for the MCP principal), its client, the method, its params and its outcome, whether it succeeded or failed; reads and the user's own calls are not logged. The log is readable with `activity.list` (PRT-086) and shown by the built-in widget `omfp:activity` (UI-241). |
 
 ## Constraints that apply from day one
 

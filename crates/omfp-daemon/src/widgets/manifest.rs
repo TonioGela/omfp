@@ -9,8 +9,8 @@ use serde_json::{Map, Value};
 /// Layout containers (AGT-010).
 pub const CONTAINERS: [&str; 4] = ["row", "col", "tabs", "stack"];
 
-/// Checks `manifest` against AGT-010; the error is the first rule it breaks, as `<JSON path>: <reason>`. Views are
-/// checked in id order, `default` last.
+/// Checks `manifest` against AGT-010 and AGT-060; the error is the first rule it breaks, as `<JSON path>: <reason>`.
+/// Views are checked in id order, then panels in id order, `default` last.
 pub fn check(manifest: &Value) -> Result<(), String> {
     let Some(views) = manifest.get("views").and_then(Value::as_object) else {
         return Err("views: expected an object of views".to_owned());
@@ -27,6 +27,16 @@ pub fn check(manifest: &Value) -> Result<(), String> {
             return Err(format!("{path}: expected {{ title, layout }}"));
         };
         check_node(view.get("layout"), &format!("{path}.layout"))?;
+    }
+    if let Some(panels) = manifest.get("panels") {
+        let Some(panels) = panels.as_object() else {
+            return Err("panels: expected an object of panels".to_owned());
+        };
+        let mut ids: Vec<&String> = panels.keys().collect();
+        ids.sort();
+        for id in ids {
+            check_node(panels.get(id), &format!("panels.{id}"))?;
+        }
     }
     if let Some(default) = manifest.get("default")
         && !default.as_str().is_some_and(|id| views.contains_key(id))
@@ -173,7 +183,7 @@ mod tests {
             .collect()
     }
 
-    // spec: AGT-010, AGT-011
+    // spec: AGT-010, AGT-011, AGT-060
     #[test]
     fn every_shared_case_gets_its_error() {
         let cases = cases();

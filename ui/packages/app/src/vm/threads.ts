@@ -86,18 +86,21 @@ export function repoLabel(repo: Pick<WorkspaceRepo, "name" | "branch">): string 
   return repo.branch === undefined || repo.branch === null ? repo.name : `${repo.name}:${repo.branch}`;
 }
 
-/** The text filter of the column (UI-022): the query and what `threads.search` found for it. */
+/** The filter of the column (UI-022, UI-240): the query, what `threads.search` found for it, and a spawned tree. */
 export interface ThreadFilter {
   readonly query: string;
   /** Snippet by thread id of the conversation matches of `query` (DMN-076); empty while unknown. */
   readonly conversation: ReadonlyMap<string, string>;
+  /** Only these threads: the spawned tree of the "spawned by" filter (UI-240). */
+  readonly spawned?: ReadonlySet<string>;
 }
 
 export const NO_FILTER: ThreadFilter = { query: "", conversation: new Map() };
 
-/** A query is typed: sections without matching threads are hidden and collapsed ones are shown. */
+/** A query is typed or a spawned tree is chosen: sections without matching threads are hidden and collapsed ones are
+ * shown. */
 export function isFiltering(filter: ThreadFilter): boolean {
-  return filter.query.trim() !== "";
+  return filter.query.trim() !== "" || filter.spawned !== undefined;
 }
 
 /** `query` (case-insensitive) is in the title, the workspace's name or one of its repositories' names. */
@@ -115,9 +118,60 @@ export function matchesLocally(thread: ThreadSummary, workspace: Workspace | und
   return fields.some((field) => field.toLowerCase().includes(needle));
 }
 
-/** The thread passes `filter`: locally or through its conversation. */
+/** The thread passes `filter`: in its spawned tree, if any, and matching the query locally or through its
+ * conversation. */
 export function matchesFilter(thread: ThreadSummary, workspace: Workspace | undefined, filter: ThreadFilter): boolean {
-  return matchesLocally(thread, workspace, filter.query) || (isFiltering(filter) && filter.conversation.has(thread.id));
+  if (filter.spawned !== undefined && !filter.spawned.has(thread.id)) {
+    return false;
+  }
+  return (
+    matchesLocally(thread, workspace, filter.query) ||
+    (filter.query.trim() !== "" && filter.conversation.has(thread.id))
+  );
+}
+
+/** The thread whose agent created `thread` (ARC-009), if an agent did. */
+export function spawnerOf(thread: ThreadSummary): string | undefined {
+  const { createdBy } = thread.provenance;
+  return createdBy.kind === "thread" ? createdBy.threadId : undefined;
+}
+
+/** The spawned tree of `rootId` (AGT-070): the thread and every thread it spawned, directly or through threads it
+ * spawned, archived ones included. */
+export function spawnedTree(threads: readonly ThreadSummary[], rootId: string): ReadonlySet<string> {
+  return treeOf(spawnedChildren(threads), rootId);
+}
+
+/** How many threads each thread spawned, transitively (its spawned tree without itself); threads that spawned none
+ * are left out. */
+export function spawnedCounts(threads: readonly ThreadSummary[]): ReadonlyMap<string, number> {
+  const children = spawnedChildren(threads);
+  return new Map([...children.keys()].map((id) => [id, treeOf(children, id).size - 1]));
+}
+
+function spawnedChildren(threads: readonly ThreadSummary[]): ReadonlyMap<string, readonly string[]> {
+  const children = new Map<string, string[]>();
+  for (const thread of threads) {
+    const spawner = spawnerOf(thread);
+    if (spawner !== undefined) {
+      children.set(spawner, [...(children.get(spawner) ?? []), thread.id]);
+    }
+  }
+  return children;
+}
+
+function treeOf(children: ReadonlyMap<string, readonly string[]>, rootId: string): ReadonlySet<string> {
+  const tree = new Set([rootId]);
+  const pending = [rootId];
+  for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+    for (const child of children.get(id) ?? []) {
+      if (!tree.has(child)) {
+        tree.add(child);
+        pending.push(child);
+      }
+    }
+  }
+  return tree;
 }
 
 /** "+ workspace" input starting with `/` or `~` is a repository path, anything else a name (UI-023). */

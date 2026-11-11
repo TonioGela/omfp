@@ -39,9 +39,20 @@ export interface ResolvedView {
   readonly tree: LayoutTree;
 }
 
+/** A floating panel (AGT-060): its node as written and as a tree, with its title (the node's `title` prop, else the
+ * id). */
+export interface ResolvedPanel {
+  readonly id: string;
+  readonly title: string;
+  readonly node: LayoutNode;
+  readonly tree: LayoutTree;
+}
+
 export interface Views {
   readonly views: readonly ResolvedView[];
   readonly defaultId: string;
+  /** The manifest's floating panels in id order (AGT-060); none for the default view. */
+  readonly panels: readonly ResolvedPanel[];
   /** Why the manifest was refused; the default view is shown instead. */
   readonly error: string | undefined;
 }
@@ -54,11 +65,11 @@ function resolveDefault(): ResolvedView {
   return { id: DEFAULT_VIEW.id, title: DEFAULT_VIEW.title, layout: DEFAULT_VIEW.layout, tree: parsed.value };
 }
 
-const DEFAULT_VIEWS: Views = { views: [resolveDefault()], defaultId: DEFAULT_VIEW.id, error: undefined };
+const DEFAULT_VIEWS: Views = { views: [resolveDefault()], defaultId: DEFAULT_VIEW.id, panels: [], error: undefined };
 
 /**
- * The views of `manifest` (`{ default?, views: { <id>: { title, layout } } }`) in id order, or the default view when
- * there is none or it is invalid (with the error, which the frame shows in a banner).
+ * The views of `manifest` (`{ default?, views: { <id>: { title, layout } }, panels? }`) in id order, or the default
+ * view when there is none or it is invalid (with the error, which the frame shows in a banner).
  */
 export function resolveViews(manifest: unknown): Views {
   if (manifest === undefined || manifest === null) {
@@ -68,7 +79,8 @@ export function resolveViews(manifest: unknown): Views {
   return parsed.ok ? parsed.value : { ...DEFAULT_VIEWS, error: parsed.error };
 }
 
-/** Checks a manifest (AGT-010); the error names the JSON path and the reason, as the daemon's does. */
+/** Checks a manifest (AGT-010, AGT-060): views, then panels, then the default; the error names the JSON path and the
+ * reason, as the daemon's does. */
 export function parseManifest(manifest: unknown): Parsed<Views> {
   if (!isObject(manifest) || !isObject(manifest.views)) {
     return { ok: false, error: "views: expected an object of views" };
@@ -94,11 +106,44 @@ export function parseManifest(manifest: unknown): Parsed<Views> {
   if (first === undefined) {
     return { ok: false, error: "views: no view" };
   }
+  const panels = parsePanels(manifest.panels);
+  if (!panels.ok) {
+    return panels;
+  }
   const wanted = manifest.default;
   if (wanted !== undefined && !views.some((view) => view.id === wanted)) {
     return { ok: false, error: `default: no view ${String(wanted)}` };
   }
-  return { ok: true, value: { views, defaultId: typeof wanted === "string" ? wanted : first.id, error: undefined } };
+  return {
+    ok: true,
+    value: {
+      views,
+      defaultId: typeof wanted === "string" ? wanted : first.id,
+      panels: panels.value,
+      error: undefined,
+    },
+  };
+}
+
+/** The `panels` of a manifest (AGT-060), each node checked like a layout at `panels.<id>`, in id order. */
+function parsePanels(panels: unknown): Parsed<ResolvedPanel[]> {
+  if (panels === undefined) {
+    return { ok: true, value: [] };
+  }
+  if (!isObject(panels)) {
+    return { ok: false, error: "panels: expected an object of panels" };
+  }
+  const parsed: ResolvedPanel[] = [];
+  for (const [id, node] of Object.entries(panels).sort(([a], [b]) => compareIds(a, b))) {
+    const tree = parseLayout(node, `panels.${id}`);
+    if (!tree.ok) {
+      return tree;
+    }
+    const { title } = tree.value.props;
+    // Checked by `parseLayout` just above.
+    parsed.push({ id, title: typeof title === "string" ? title : id, node: node as LayoutNode, tree: tree.value });
+  }
+  return { ok: true, value: parsed };
 }
 
 /** View ids in code unit order (the order the daemon lists them in). */

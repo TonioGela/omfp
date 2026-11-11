@@ -444,6 +444,8 @@ impl Services {
         workspace_id: &str,
         addition: &Addition<'_>,
     ) -> Result<String, String> {
+        // A read, a change and a write, like the mounts (PRT-080..082).
+        let _edit = self.manifest_edits.lock().await;
         let store = Arc::clone(&self.store);
         let id = workspace_id.to_owned();
         let path = blocking(move || Ok(store.workspace(&id)?.path))

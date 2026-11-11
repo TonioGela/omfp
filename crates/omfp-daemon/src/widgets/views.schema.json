@@ -12,6 +12,11 @@
       "type": "object",
       "minProperties": 1,
       "additionalProperties": { "$ref": "#/$defs/view" }
+    },
+    "panels": {
+      "type": "object",
+      "description": "Floating panels over every view of the workspace, by id, in id order (AGT-060): each a node like a view's layout; the `title` prop labels the panel. omfp_ui_mount { panel: true } writes them, closing one removes it.",
+      "additionalProperties": { "$ref": "#/$defs/node" }
     }
   },
   "$defs": {
@@ -54,7 +59,7 @@
     "reference": {
       "type": "string",
       "pattern": "\\S",
-      "description": "`omfp:<name>` (built-in: omfp:header, omfp:chat, omfp:transcript, omfp:interactions, omfp:composer, omfp:workspace, omfp:changes, omfp:subagents, omfp:todos, omfp:tree; a workspace widget of the same name replaces it), `./widgets/<name>` (<workspace>/.omfp/widgets/<name>/) or `user:<name>` (<data-dir>/widgets/<name>/). An unknown reference shows an error in place of the widget."
+      "description": "`omfp:<name>` (built-in: omfp:header, omfp:chat, omfp:transcript, omfp:interactions, omfp:composer, omfp:workspace, omfp:changes, omfp:subagents, omfp:todos, omfp:tree, omfp:activity; a workspace widget of the same name replaces it), `./widgets/<name>` (<workspace>/.omfp/widgets/<name>/) or `user:<name>` (<data-dir>/widgets/<name>/). An unknown reference shows an error in place of the widget."
     },
     "props": {
       "type": "object",

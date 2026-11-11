@@ -32,7 +32,9 @@ only be reachable from the human UI.
 
 ```sh
 nix develop                      # or: nix develop -c sh -c '<command>'
-just ci                          # check, test, test-ts, test-contract, test-e2e, test-desktop, package (CI: .github/workflows/ci.yml, same recipes)
+just ci                          # check, test, test-ts, test-contract, test-e2e, test-desktop, package, mutants-gate, cov (CI: .github/workflows/ci.yml, same recipes)
+just mutants-gate                # TST-050: no surviving mutant in omfp-core, omfp-protocol (`just mutants` explores more crates)
+just cov                         # TST-050: line coverage gates (Rust pure crates ≥ 90%, daemon ≥ 75%, TS view models ≥ 90%) + HTML report
 just check                       # lint, check-versions, spec-trace, check-wasm, deny, check-workflow (actionlint + workflow vs `just ci`)
 just test                        # fast Rust tests (no omp process)
 just test-ts                     # `bun run test` in ui/ (reducer goldens, client, kit + app component tests; transport suite against a fake-launcher daemon)
@@ -69,20 +71,32 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       workspaces/scan.rs, cheap change check in workspaces/fingerprint.rs, reading and writing
                       workspace files with a hash check in workspaces/files.rs, add/remove repo,
                       suggestions of seen repositories), path completion (fs_complete.rs), conversation search over
-                      session files (search.rs), threads, git port + FakeGit, host tools and the `omfp://` host URIs,
+                      session files (search.rs), threads, git port + FakeGit, host tools and the `omfp://` host URIs
+                      (host_tools.rs), the agent tool registry (agent_tools/: `omfp_call`, `omfp_thread_wait`, the
+                      method catalogue `omfp://protocol/methods`, the RPC host tool adapter, the mount tools),
                       jobs (jobs.rs: shell commands of a workspace, `job/<id>`), widgets (widgets.rs: views manifest
                       check, widget folders and versions, oxc transpiling and the `/widgets/<key>/…` route, copies;
-                      widgets/docs.md is `omfp://docs/widgets`; widgets/keymap.rs: the workspace `.omfp/keymap.json`), WebSocket server (polling of watched workspaces:
-                      server/services/polls.rs; the `views/<id>` topic: server/services/views.rs);
+                      widgets/docs.md is `omfp://docs/widgets`; widgets/keymap.rs: the workspace `.omfp/keymap.json`;
+                      widgets/mounts.rs: mounts and floating panels as `views.json` edits; widgets/library.rs: the
+                      component library), WebSocket server (polling of watched workspaces:
+                      server/services/polls.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
+                      and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs),
+                      the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
+                      token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue as resources);
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` and `omfp desktop`;
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
-crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI), and with
-                      the `desktop` feature (Tauri 2, WebKitGTK) `desktop` (desktop.rs: find or start the background
-                      daemon, the window on its own UI, the theme push of `--connect`, the color scheme of the
-                      settings portal over gio's D-Bus API, the `OMFP_SMOKE` check;
-                      tray.rs: `omfp daemon --tray`, the background daemon's StatusNotifierItem + dbusmenu over gio;
-                      build.rs (also the tray pixmaps), tauri.conf.json, icons/ with the icons' HTML sources (tray.html:
-                      the tray's π states); tests/desktop_smoke.rs, TST-033; tests/daemon_tray.rs, TST-061)
+crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI),
+                      `mcp config` (mcp.rs: the `mcp.json` entry of a daemon's MCP server), and with
+                      the `desktop` feature (Tauri 2: WebKitGTK on Linux, WKWebView on macOS, M11) `desktop`
+                      (desktop.rs: find or start the background daemon, the window on its own UI, the theme push of
+                      `--connect`, the color scheme of the settings portal over gio's D-Bus API (Linux), the
+                      `OMFP_SMOKE` check; desktop/macos.rs: the data store id and the page's `Notification` posted to
+                      the notification center); tray.rs: `omfp daemon --tray`, the shared tray model, tray/sni.rs the
+                      Linux StatusNotifierItem + dbusmenu over gio, tray/macos.rs the macOS menu bar item (AppKit on
+                      the main thread, the daemon on another); build.rs (also the tray pixmaps and, on macOS, the
+                      embedded Info.plist), Info.plist, tauri.conf.json, icons/ with the icons' HTML sources
+                      (tray.html: the tray's π states); tests/desktop_smoke.rs, TST-033, TST-090; tests/daemon_tray.rs,
+                      TST-061 (Linux); tests/menu_bar.rs, TST-091 (macOS))
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
@@ -108,7 +122,8 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
                       column, mode line with the `:` line and file picker, view switcher, layout editing, floating
-                      file panel, toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
+                      file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
+                      state), toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
                       bar, the left column's splitter), view (layout tree, edits, reference resolution, widget slot,
                       the `main` slot's file tabs; sizes.ts and splitter.tsx: the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
@@ -169,6 +184,11 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   (RGBA). WebKitGTK has no `RTCPeerConnection` (the desktop's live voice uses omp's `live_start`, S-09) and keys
   `localStorage` by origin, port included. Parallel `xvfb-run -a` can pick the same display: `just test-desktop` runs
   one test at a time.
+- macOS (M11): the Mac's login shell may not be POSIX, so run remote commands as `sh -s < script`; Nix there may need
+  `--option builders ''`; a flake build sees git-tracked files only (`git add -A` in a scratch copy). The desktop tests
+  open windows on the logged-in user's screen (from SSH too); microphone requests from an SSH session are denied
+  without a dialog (TCC attributes them to sshd), so the microphone dialog is checked by hand through `omfp.app`.
+  AppKit objects (the menu bar item) must be created and dropped on the main thread (`run_on_main_thread`).
 - `bun run build` (`just build-web`) deletes `ui/packages/app/dist` first: a journey serving it while another build
   runs gets 404 pages, so `just test-e2e`/`test-desktop` serve a private bundle (`OMFP_WEB_BUNDLE`, TST-074).
 - `convco` does not build from nixpkgs, so commitizen checks commit messages.

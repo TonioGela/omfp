@@ -546,6 +546,8 @@ requirements = [
 [M9]
 status = "in-progress"
 requirements = [
+  # Coverage and mutation gates
+  "TST-050",
   # Performance (S-06 on the React UI)
   "TST-052",
   "UI-190",
@@ -561,10 +563,97 @@ requirements = [
   "TST-072",
   "TST-073",
   "TST-074",
+  "TST-075",
   # Nix packages
   "ENV-030",
   "ENV-031",
   "ENV-032",
   "ENV-033",
   "ENV-034",
+]
+
+[M10]
+status = "done"
+requirements = [
+  # Agent tools: omfp_call, omfp_thread_wait, the method catalogue
+  "AGT-040",
+  "AGT-041",
+  "AGT-042",
+  "AGT-043",
+  "AGT-044",
+  "AGT-045",
+  "DMN-150",
+  "DMN-151",
+  "DMN-152",
+  "PRT-090",
+  "PRT-091",
+  "PRT-092",
+  # Mounts, floating widget panels, the component library
+  "AGT-060",
+  "AGT-061",
+  "AGT-062",
+  "AGT-063",
+  "AGT-064",
+  "AGT-065",
+  "AGT-066",
+  "PRT-080",
+  "PRT-081",
+  "PRT-082",
+  "PRT-083",
+  "PRT-084",
+  "UI-230",
+  "UI-231",
+  "UI-232",
+  "UI-233",
+  # Provenance, stop cascade, activity log
+  "AGT-070",
+  "AGT-071",
+  "AGT-072",
+  "DMN-160",
+  "DMN-161",
+  "DMN-162",
+  "PRT-085",
+  "PRT-086",
+  "UI-240",
+  "UI-241",
+  "UI-242",
+  # MCP server
+  "AGT-050",
+  "AGT-051",
+  "AGT-052",
+  "AGT-053",
+  "AGT-054",
+  "DMN-155",
+  "DMN-156",
+  "DMN-157",
+  "DMN-158",
+  "DMN-159",
+  "PRT-093",
+  "PRT-094",
+  # Acceptance
+  "E2E-20",
+  "TST-080",
+]
+
+[M11]
+status = "in-progress"
+requirements = [
+  # The flake on aarch64-darwin, the macOS package and app bundle, CI on a macOS runner
+  "ENV-040",
+  "ENV-041",
+  "ENV-042",
+  # The window on WKWebView: storage per data directory, microphone, notifications, color scheme
+  "UI-250",
+  "UI-251",
+  "UI-252",
+  "UI-253",
+  # The menu bar item
+  "UI-254",
+  "DMN-171",
+  # The macOS data directory
+  "DMN-170",
+  # Tests on macOS
+  "TST-090",
+  "TST-091",
+  "TST-092",
 ]

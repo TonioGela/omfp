@@ -86,7 +86,7 @@ expression: type_schemas()
   "IndexEvent": {
     "$defs": {
       "CreatedBy": {
-        "description": "The principal behind a created entity: the user, or the agent of a thread.",
+        "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
         "oneOf": [
           {
             "properties": {
@@ -113,6 +113,18 @@ expression: type_schemas()
             "required": [
               "kind",
               "threadId"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "mcp",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
             ],
             "type": "object"
           }
@@ -674,7 +686,7 @@ expression: type_schemas()
   "IndexSnapshot": {
     "$defs": {
       "CreatedBy": {
-        "description": "The principal behind a created entity: the user, or the agent of a thread.",
+        "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
         "oneOf": [
           {
             "properties": {
@@ -701,6 +713,18 @@ expression: type_schemas()
             "required": [
               "kind",
               "threadId"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "kind": {
+                "const": "mcp",
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind"
             ],
             "type": "object"
           }

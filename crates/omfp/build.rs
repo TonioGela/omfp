@@ -1,12 +1,33 @@
-//! Tauri's build step (context, ACL manifests) for the `desktop` feature only (M7), and the daemon's tray pixmaps
+//! Tauri's build step (context, ACL manifests) for the `desktop` feature only (M7), the daemon's tray pixmaps
 //! (UI-219): `icons/tray-<state>-<size>.png` (rendered from `icons/tray.html`) as the big-endian ARGB32 rows of a
-//! `StatusNotifierItem` `IconPixmap`, in `$OUT_DIR/tray-<state>-<size>.argb`.
+//! `StatusNotifierItem` `IconPixmap`, in `$OUT_DIR/tray-<state>-<size>.argb`, and on macOS the embedded Info.plist.
 fn main() {
     #[cfg(feature = "desktop")]
     {
         tauri_build::build();
         tray::pixmaps();
+        if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+            info_plist();
+        }
     }
+}
+
+/// macOS (UI-251, ENV-041): a plain executable has no bundle, so macOS reads the Info.plist embedded in
+/// `__TEXT,__info_plist`: the bundle id of the notifications (UI-252) and `NSMicrophoneUsageDescription`, without
+/// which `WKWebView` hides `navigator.mediaDevices`. Tauri embeds one only in dev builds (`custom-protocol` off).
+#[cfg(feature = "desktop")]
+fn info_plist() {
+    let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
+    println!("cargo::rerun-if-changed=Info.plist");
+    let template = std::fs::read_to_string("Info.plist").expect("cannot read Info.plist");
+    let version = std::env::var("CARGO_PKG_VERSION").expect("cargo sets CARGO_PKG_VERSION");
+    let plist = out.join("Info.plist");
+    std::fs::write(&plist, template.replace("@VERSION@", &version))
+        .expect("cannot write Info.plist");
+    println!(
+        "cargo::rustc-link-arg-bin=omfp=-Wl,-sectcreate,__TEXT,__info_plist,{}",
+        plist.display()
+    );
 }
 
 #[cfg(feature = "desktop")]

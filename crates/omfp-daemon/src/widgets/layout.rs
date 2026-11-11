@@ -53,7 +53,7 @@ pub struct Addition<'a> {
 const CONTAINERS: [&str; 4] = ["row", "col", "tabs", "stack"];
 
 /// Whether `node` is a container (`[kind, props, ...children]`) rather than a widget.
-fn is_container(node: &Value) -> bool {
+pub(super) fn is_container(node: &Value) -> bool {
     node.as_array()
         .and_then(|items| items.first())
         .and_then(Value::as_str)
@@ -61,7 +61,7 @@ fn is_container(node: &Value) -> bool {
 }
 
 /// The instance of a widget node (AGT-010): its `instance` prop when it is a string, else its reference.
-fn instance_of(node: &Value) -> Option<String> {
+pub(super) fn instance_of(node: &Value) -> Option<String> {
     match node {
         Value::String(reference) => Some(reference.clone()),
         Value::Array(items) => {
@@ -194,7 +194,7 @@ pub fn add(manifest: Option<&Value>, addition: &Addition<'_>) -> Result<(Value, 
 }
 
 /// The manifest's `default` view id when it names one of its views.
-fn manifest_default(manifest: &Value) -> Option<String> {
+pub(super) fn manifest_default(manifest: &Value) -> Option<String> {
     let default = manifest.get("default")?.as_str()?;
     manifest
         .get("views")?

@@ -13,7 +13,7 @@ import tree from "../../src/widgets/tree/index.ts";
 import workspace from "../../src/widgets/workspace/index.ts";
 
 const WIDGETS = join(import.meta.dir, "../../src/widgets");
-const COPYABLE = ["chat", "header", "workspace", "changes", "file", "subagents", "todos", "tree"];
+const COPYABLE = ["chat", "header", "workspace", "changes", "file", "subagents", "todos", "tree", "activity"];
 /** What an agent widget may import (AGT-012), besides files of its own folder. */
 const ALLOWED = new Set(["react", "react/jsx-runtime", "react-dom", "omfp/sdk", "omfp/kit"]);
 

@@ -27,13 +27,27 @@ import { currentWorkspaceId, errorMessage, reportError, useCurrentWorkspaceId } 
 import { useCall, useWindowState, useWorkspace } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
 import { SELECTED_THREAD } from "./keys.ts";
-import { windowKey } from "./window-store.ts";
+import { type WindowKey, windowKey } from "./window-store.ts";
 
 /** The open file tabs of every workspace in this window, kept in `localStorage` (UI-115). */
 export const OPEN_FILES = windowKey<OpenFiles>("openFiles", {}, decodeOpenFiles);
 
 /** Where the floating file panel sits and whether it is minimised, kept in `localStorage` (UI-115). */
 export const FLOATING_FILES = windowKey<FloatingPanel>("floatingFiles", FLOATING_PANEL_DEFAULT, decodeFloatingPanel);
+
+/** Where a floating widget panel (UI-230) of a workspace sits and whether it is minimised, kept in `localStorage`. */
+export function floatingWidgetKey(workspaceId: string, panelId: string): WindowKey<FloatingPanel> {
+  const name = `floatingWidget/${workspaceId}/${panelId}`;
+  let key = FLOATING_WIDGET_KEYS.get(name);
+  if (key === undefined) {
+    key = windowKey<FloatingPanel>(name, FLOATING_PANEL_DEFAULT, decodeFloatingPanel);
+    FLOATING_WIDGET_KEYS.set(name, key);
+  }
+  return key;
+}
+
+/** One key object per panel, so hooks see a stable key. */
+const FLOATING_WIDGET_KEYS = new Map<string, WindowKey<FloatingPanel>>();
 
 /** A path that does not exist, with the files it may name, for the frame's file picker (UI-117). */
 export interface FilePicker {

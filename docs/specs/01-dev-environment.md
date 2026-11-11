@@ -54,17 +54,33 @@ links nixpkgs' sqlite where the dev build compiles rusqlite's bundled copy. Inst
 
 | Path | Content |
 | --- | --- |
-| `bin/omfp` | wrapper (wrapGAppsHook3 for `omfp`, makeWrapper for `omfp-headless`) around `bin/.omfp-wrapped`, the real binary; a daemon `omfp desktop` starts in the background is `.omfp-wrapped` and inherits the wrapper's environment |
+| `bin/omfp` | wrapper (wrapGAppsHook3 for `omfp` on Linux, makeWrapper for `omfp-headless`, a compiled makeBinaryWrapper on macOS) around `bin/.omfp-wrapped`, the real binary; a daemon `omfp desktop` starts in the background is `.omfp-wrapped` and inherits the wrapper's environment |
 | `bin/web` → `share/omfp/web` | the web bundle (`packages.omfp-web`), found next to the executable (DMN-008) |
-| `share/applications/omfp.desktop`, `share/icons/hicolor/512x512/apps/omfp.png` | desktop entry running `omfp desktop` (`omfp` only) |
+| `share/applications/omfp.desktop`, `share/icons/hicolor/512x512/apps/omfp.png` | desktop entry running `omfp desktop` (`omfp` on Linux only) |
+| `Applications/omfp.app` | macOS (`omfp` only, ENV-041): `Contents/Info.plist`, `Contents/Resources/omfp.icns`, `Contents/MacOS/omfp` (a binary wrapper running `bin/.omfp-wrapped desktop` with the same `PATH`), ad-hoc signed |
 
 | ID | Requirement |
 | --- | --- |
-| ENV-030 | `nix build .#omfp` (also `packages.default`) MUST build the `omfp` binary with the `desktop` feature on Linux (on macOS without it), wrapped by `wrapGAppsHook3` with `webkitgtk_4_1`, `libsoup_3`, `glib-networking` (`GIO_EXTRA_MODULES`, TLS for `--connect https://…`) and `gsettings-desktop-schemas` (`XDG_DATA_DIRS`), so `omfp desktop` runs outside the dev shell. The `omp-rpc` git dependency is vendored by `cargoLock.outputHashes` in `nix/package.nix`, which changes with every omp upgrade (ENV-020). |
+| ENV-030 | `nix build .#omfp` (also `packages.default`) MUST build the `omfp` binary with the `desktop` feature, on Linux wrapped by `wrapGAppsHook3` with `webkitgtk_4_1`, `libsoup_3`, `glib-networking` (`GIO_EXTRA_MODULES`, TLS for `--connect https://…`) and `gsettings-desktop-schemas` (`XDG_DATA_DIRS`), so `omfp desktop` runs outside the dev shell (macOS: ENV-041). The `omp-rpc` git dependency is vendored by `cargoLock.outputHashes` in `nix/package.nix`, which changes with every omp upgrade (ENV-020). |
 | ENV-031 | The package MUST ship the release web bundle built by Nix from `ui/` with bun2nix (`ui/bun.nix`, offline, `--frozen-lockfile`) where the daemon finds it without `--static-dir` (`bin/web`, DMN-008): `omfp daemon` serves the UI at `/` and `/theme.css`. |
 | ENV-032 | The wrapper MUST put the pinned omp (the `oh-my-pi` input's `omp`) first on `PATH` (DMN-006, DMN-001) and `gitMinimal` last, so the user's own git wins; no `omp` is installed into `bin/`, so the package does not shadow another omp in a profile. |
 | ENV-033 | `nix build .#omfp-headless` MUST build the daemon-only binary (no `desktop` feature, no WebKitGTK in its closure) with the same web bundle and `PATH`, for servers. |
 | ENV-034 | The flake's `nixConfig` MUST name the project's binary cache (`https://omfp.cachix.org`, key `omfp.cachix.org-1:WcxTiZMXSYmi9k6fxowUuIMmszu9aWymk2djl9kXjHc=`) as `extra-substituters`/`extra-trusted-public-keys`; Nix asks the user to accept it (or `--accept-flake-config`). |
+
+### macOS (M11)
+
+The flake builds on `aarch64-darwin` (S-15): the dev shell, omp (from source when Cachix has no darwin build), the
+desktop window (Tauri on the system's WKWebView: AppKit, WebKit and Security come from the darwin stdenv's SDK; no
+pkg-config, WebKitGTK, glib-networking or D-Bus) and the packages. The Linux-only shell packages (Chromium,
+chromedriver, `xvfb-run`, `xdotool`, WebKitGTK, D-Bus) stay out of the darwin shell, so `just test-e2e` and the
+Linux-only checks run on Linux; `just test-desktop` runs on both (TST-090, TST-091). A Mac whose Nix crashes in the
+remote-build hook builds with `--option builders ''`.
+
+| ID | Requirement |
+| --- | --- |
+| ENV-040 | (M11) `nix develop` MUST work on `aarch64-darwin`: there nixpkgs' `pre-commit` is used without its tests and its `DOTNET_ROOT` (which pull a source-built .NET SDK cache.nixos.org does not have for darwin). The binary links for macOS 11 (rustc's default; `darwinMinVersionHook "14.0"` raised the objects but not the link, so it is left out), and the Info.plist's `LSMinimumSystemVersion` 14.0 states the real floor (WKWebView's data store identifiers, UI-250); the linker warns about C objects built for 14.0. |
+| ENV-041 | (M11) On macOS `nix build .#omfp` MUST give `bin/omfp` (the desktop build, a compiled wrapper as on Linux, ENV-032) and `Applications/omfp.app`: `Info.plist` from `crates/omfp/Info.plist` with the workspace version (the one build.rs embeds in the binary, UI-251), `Resources/omfp.icns` from `crates/omfp/icons/icon.png` (`png2icns`), `MacOS/omfp` a binary wrapper of `bin/.omfp-wrapped desktop` (DMN-008 finds `web/` next to the real binary), and an ad-hoc signature of the whole bundle as the last step (`rcodesign`), so macOS knows the app as `dev.omfp.desktop`. Installed with nix-darwin or home-manager, the app is linked into `/Applications/Nix Apps` or `~/Applications/Home Manager Apps`. Ad-hoc means a new microphone permission after every rebuild and no Gatekeeper approval for a download; Developer ID signing and notarization are later work (07, M11). |
+| ENV-042 | (M11) CI MUST build and test the macOS desktop on GitHub's arm64 macOS runner on pushes to `master` (TST-092), whose Cachix daemon pushes the darwin closure (omp, the dev shell, the packages) to the `omfp` cache. |
 
 ## Continuous integration
 
@@ -79,16 +95,22 @@ Its jobs run in parallel on `ubuntu-latest`, each `nix develop -c just <recipe>`
 | `check` | `just check`: lints, version pins, spec-trace, wasm, `cargo deny`, the workflow itself (`actionlint`) |
 | `test`, `test-ts`, `test-contract` | `just test`, `just test-ts`, `just test-contract` (the pinned omp of the dev shell, the fake LLM) |
 | `test-e2e`, `test-desktop` | after `web`, on its artifact (`OMFP_WEB_BUNDLE`): `just test-e2e` (headless Chromium), `just test-desktop` (`xvfb-run`) |
+| `macos` | pushes to `master` only, `macos-15`, after `web`: `just test-desktop` (WKWebView, the menu bar item) and `just package` (the darwin packages and `omfp.app`) (TST-092, ENV-042) |
 | `package` | `just package`: `nix build .#omfp .#omfp-headless` (ENV-030..ENV-033) |
+| `mutants`, `cov` | `just mutants-gate`, `just cov`: the mutation and coverage gates of TST-050 |
 
-Every job starts with the local action `.github/actions/dev-shell`: `cachix/install-nix-action` (with
+Every job starts with the local action `.github/actions/dev-shell`: `wimpysworld/nothing-but-nix` (TST-075: the
+runner's free disk, then what deleting its preinstalled SDKs, browsers and Docker frees, pooled into a compressed Btrfs
+`/nix`, where Nix also builds; the Rust jobs bind-mount `target/` from it), `cachix/install-nix-action` (with
 `accept-flake-config`), `cachix/cachix-action` on the `omfp` cache of ENV-034, `nix develop` once to build or fetch the
-shell; the jobs that compile Rust also delete the runner's unused SDKs (disk space) and restore `Swatinem/rust-cache`
-(the shell's toolchain is put on `PATH` for it). Caching (TST-072):
+shell; the jobs that compile Rust also restore `Swatinem/rust-cache` (the shell's toolchain is put on `PATH` for it).
+Caching (TST-072):
 
 - **Nix store**: Cachix `omfp`. Every run reads it; only pushes to `master` push what they built (the dev shell, Bun's
-  install cache `OMFP_BUN_CACHE`, which is a store path, and the packages); pull requests only read. A change of
-  `flake.lock` or `ui/bun.nix` builds the new paths in every job of that run, then `master` caches them.
+  install cache `OMFP_BUN_CACHE`, which is a store path, and the packages); pull requests only read. The Cachix daemon
+  pushes each path as soon as it is built, so a job that fails (or runs out of time) still caches its work for the
+  rerun. A change of `flake.lock` or `ui/bun.nix` builds the new paths in every job of that run, then `master` caches
+  them.
 - **Cargo**: registry and `target/` per job, keyed on `Cargo.lock`, the manifests, `rust-toolchain.toml` and `rustc
   -vV`; saved on `master` only, restored by pull requests.
 - **Web bundle**: built once by `web`, shared as an artifact (7 days).
