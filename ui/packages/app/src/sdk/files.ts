@@ -1,30 +1,51 @@
 /**
- * Files in the SDK (AGT-027, UI-110..116): `useFile` reads a workspace file through the daemon and follows its changes,
- * `useOpenFile` opens one in a file tab of the view's `main` slot (or the frame's floating panel), and the window keys
- * the file tabs and the mode line read.
+ * Files in the SDK (AGT-027, UI-110..117): `useFile` reads a workspace file through the daemon and follows its changes,
+ * `useOpenFile` opens one in a file tab of the view's `main` slot (or the frame's floating panel), `useMissingFile`
+ * finds the file a path that does not exist names (`workspaces.find_file`, DMN-092), and the window keys the file
+ * tabs, the floating panel, the file picker and the mode line read.
  */
 
 import { CallError } from "@omfp/client";
 import type { VimMode } from "@omfp/kit";
-import type { FileContent } from "@omfp/protocol";
+import type { FileCandidate, FileContent } from "@omfp/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { strings } from "../strings/index.ts";
 import {
   closeTab,
+  decodeFloatingPanel,
   decodeOpenFiles,
   type FileTabs,
+  FLOATING_PANEL_DEFAULT,
+  type FloatingPanel,
   NO_FILE_TABS,
   type OpenFileOptions,
   type OpenFiles,
   openTab,
+  retargetTab,
 } from "../vm/files.ts";
 import { currentWorkspaceId, errorMessage, reportError, useCurrentWorkspaceId } from "./actions.ts";
 import { useCall, useWindowState, useWorkspace } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
+import { SELECTED_THREAD } from "./keys.ts";
 import { windowKey } from "./window-store.ts";
 
 /** The open file tabs of every workspace in this window, kept in `localStorage` (UI-115). */
 export const OPEN_FILES = windowKey<OpenFiles>("openFiles", {}, decodeOpenFiles);
+
+/** Where the floating file panel sits and whether it is minimised, kept in `localStorage` (UI-115). */
+export const FLOATING_FILES = windowKey<FloatingPanel>("floatingFiles", FLOATING_PANEL_DEFAULT, decodeFloatingPanel);
+
+/** A path that does not exist, with the files it may name, for the frame's file picker (UI-117). */
+export interface FilePicker {
+  readonly workspaceId: string;
+  /** The path as it was opened. */
+  readonly path: string;
+  readonly options: OpenFileOptions;
+  readonly candidates: readonly FileCandidate[];
+}
+
+/** The file picker the frame shows; `undefined` when none is open (UI-117). */
+export const FILE_PICKER = windowKey<FilePicker | undefined>("filePicker", undefined);
 
 /** vim's mode while a file editor has the focus, for the mode line (UI-112); `undefined` otherwise. */
 export const EDITOR_MODE = windowKey<VimMode | undefined>("editorMode", undefined);
@@ -57,6 +78,109 @@ export function openFile(host: OmfpHost, path: string, options: OpenFileOptions 
 export function useOpenFile(): (path: string, options?: OpenFileOptions) => void {
   const host = useHost();
   return useMemo(() => (path: string, options?: OpenFileOptions) => openFile(host, path, options), [host]);
+}
+
+/** What became of a path that does not exist (UI-117): `opened` its only candidate, `choosing` among several in the
+ * frame's picker, `none` found. */
+export type MissingOutcome = "opened" | "choosing" | "none";
+
+/**
+ * Looks for the file `path` names in the current workspace (`workspaces.find_file`, DMN-092; the selected thread's tool
+ * cards rank first): one candidate takes the place of `path`'s tab (or opens), several open the frame's picker.
+ */
+export async function findMissingFile(
+  host: OmfpHost,
+  path: string,
+  options: OpenFileOptions = {},
+): Promise<MissingOutcome> {
+  const workspaceId = currentWorkspaceId(host);
+  if (workspaceId === undefined) {
+    return "none";
+  }
+  const threadId = host.window.get(SELECTED_THREAD);
+  const found = await host.client.call("workspaces.find_file", {
+    workspaceId,
+    query: path,
+    ...(threadId === undefined ? {} : { threadId }),
+  });
+  const [only] = found.candidates;
+  if (only === undefined) {
+    return "none";
+  }
+  if (found.candidates.length === 1) {
+    chooseFile(host, workspaceId, path, only.path, options);
+    return "opened";
+  }
+  host.window.set(FILE_PICKER, { workspaceId, path, options, candidates: found.candidates });
+  return "choosing";
+}
+
+/** Opens `chosen` in place of the tab of `path` (UI-117), closing the picker. */
+export function chooseFile(
+  host: OmfpHost,
+  workspaceId: string,
+  path: string,
+  chosen: string,
+  options: OpenFileOptions = {},
+): void {
+  host.window.set(FILE_PICKER, undefined);
+  host.window.set(OPEN_FILES, (files) => ({
+    ...files,
+    [workspaceId]: retargetTab(files[workspaceId] ?? NO_FILE_TABS, path, chosen, options),
+  }));
+}
+
+/** Closes the picker without a choice: the opening is cancelled, so the tab of the missing `path` closes (UI-117). */
+export function cancelFilePicker(host: OmfpHost): void {
+  const picker = host.window.get(FILE_PICKER);
+  if (picker === undefined) {
+    return;
+  }
+  host.window.set(FILE_PICKER, undefined);
+  host.window.set(OPEN_FILES, (files) => {
+    const tabs = files[picker.workspaceId];
+    return tabs === undefined ? files : { ...files, [picker.workspaceId]: closeTab(tabs, picker.path) };
+  });
+}
+
+/**
+ * While `missing` (the file `path` does not exist as given), looks for the file it names once (UI-117): `undefined`
+ * until it is missing, then `finding`, then the {@link MissingOutcome}.
+ */
+export function useMissingFile(
+  path: string,
+  missing: boolean,
+  options: OpenFileOptions = {},
+): "finding" | MissingOutcome | undefined {
+  const host = useHost();
+  const [outcome, setOutcome] = useState<{ readonly path: string; readonly found: MissingOutcome }>();
+  const { line, diff } = options;
+  useEffect(() => {
+    if (!missing) {
+      return;
+    }
+    let live = true;
+    findMissingFile(host, path, { line, diff }).then(
+      (found) => {
+        if (live) {
+          setOutcome({ path, found });
+        }
+      },
+      (error: unknown) => {
+        if (live) {
+          setOutcome({ path, found: "none" });
+          reportError(host, error);
+        }
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [host, path, missing, line, diff]);
+  if (!missing) {
+    return undefined;
+  }
+  return outcome?.path === path ? outcome.found : "finding";
 }
 
 /** A workspace's file tabs in this window, with what changes them. */

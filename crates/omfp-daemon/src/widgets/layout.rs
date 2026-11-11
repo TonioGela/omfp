@@ -202,6 +202,31 @@ fn manifest_default(manifest: &Value) -> Option<String> {
         .map(|_| default.to_owned())
 }
 
+/// Whether `node` holds the `tabs` container whose `id` prop is `id`.
+fn has_slot(node: &Value, id: &str) -> bool {
+    is_container(node)
+        && ((node[0] == "tabs" && node[1].get("id").and_then(Value::as_str) == Some(id))
+            || node
+                .as_array()
+                .into_iter()
+                .flatten()
+                .skip(2)
+                .any(|child| has_slot(child, id)))
+}
+
+/// Whether a view of `manifest` has the `main` slot, the `tabs` container with `"id": "main"` where files open
+/// (UI-115); without one they open in a floating panel.
+#[must_use]
+pub fn has_main_slot(manifest: &Value) -> bool {
+    manifest
+        .get("views")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flat_map(|views| views.values())
+        .filter_map(|view| view.get("layout"))
+        .any(|layout| has_slot(layout, "main"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,6 +315,24 @@ mod tests {
         let error = add(Some(&plain), &addition("./widgets/tests", Place::SideTab)).unwrap_err();
         assert!(error.contains("\"id\": \"side\""), "{error}");
         assert!(error.contains("where: \"end\""), "{error}");
+    }
+
+    // spec: AGT-028
+    #[test]
+    fn a_manifest_keeps_the_main_slot_when_a_view_has_it() {
+        assert!(has_main_slot(&default_manifest()));
+        let (with_dashboard, _) = add(None, &{
+            let mut dashboard = addition("./widgets/tests", Place::End);
+            dashboard.view = Some("dash");
+            dashboard
+        })
+        .unwrap();
+        assert!(has_main_slot(&with_dashboard));
+        let without = json!({ "views": {
+            "a": { "layout": ["row", {}, "omfp:chat", ["tabs", { "id": "side" }, "omfp:changes"]] },
+            "b": { "layout": "./widgets/tests" },
+        } });
+        assert!(!has_main_slot(&without));
     }
 
     #[test]

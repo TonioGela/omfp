@@ -58,6 +58,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "workspaces.status"
         | "workspaces.diff"
         | "workspaces.read_file"
+        | "workspaces.find_file"
         | "thread.models"
         | "thread.thinking_levels"
         | "thread.commands"

@@ -1,19 +1,24 @@
 //! L1: the workspace service against the in-memory `FakeGit`, with real folders, files and symlinks in a temp dir
 //! and a real SQLite file.
 
+use std::collections::BTreeSet;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use omfp_core::{ThreadState, ToolRun, ToolStatus};
 use omfp_daemon::git::{FakeGit, Git, WorktreeBranch};
 use omfp_daemon::paths::DataDir;
 use omfp_daemon::store::{Provenance, Store, StoreError};
 use omfp_daemon::threads::{NewThread, Threads};
 use omfp_daemon::workspaces::{
-    Discovered, NewWorkspace, RepoKind, RepoSource, WorkspaceError, WorkspaceView, Workspaces, scan,
+    Discovered, MAX_CANDIDATES, NewWorkspace, RepoKind, RepoSource, WorkspaceError, WorkspaceView,
+    Workspaces, named_files, scan,
 };
+use omfp_protocol::FileMatch;
+use serde_json::json;
 use tempfile::TempDir;
 
 struct Env {
@@ -1125,4 +1130,200 @@ fn nothing_outside_the_folder_is_deleted() {
     assert_eq!(entries(&notes), vec!["lib", "todo.txt"]);
     assert!(env.repo.is_dir());
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "x");
+}
+
+/// Writes `contents` to `path`, creating its folders.
+fn put(path: &Path, contents: &str) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, contents).unwrap();
+}
+
+fn found(
+    env: &Env,
+    id: &str,
+    query: &str,
+    mentioned: &[&str],
+) -> Vec<(String, Option<String>, FileMatch, bool)> {
+    let mentioned = mentioned.iter().map(|&path| path.to_owned()).collect();
+    env.workspaces
+        .find_file(id, query, &mentioned)
+        .unwrap()
+        .candidates
+        .into_iter()
+        .map(|candidate| {
+            (
+                candidate.path,
+                candidate.repo,
+                candidate.matched,
+                candidate.mentioned,
+            )
+        })
+        .collect()
+}
+
+fn candidate(
+    path: &str,
+    repo: Option<&str>,
+    matched: FileMatch,
+    mentioned: bool,
+) -> (String, Option<String>, FileMatch, bool) {
+    (path.into(), repo.map(Into::into), matched, mentioned)
+}
+
+/// A workspace linking `app` (the env's repository) and `lib` (another one), with files of its own.
+fn find_env() -> (Env, String, PathBuf) {
+    let env = env();
+    let ws = env.create("find").workspace;
+    let lib = fake_repo(&env.git, &env.root.join("repos").join("lib"), "main");
+    put(&env.repo.join("src/theme.ts"), "app\n");
+    put(&env.repo.join("src/app.ts"), "app\n");
+    put(&lib.join("ui/theme.ts"), "lib\n");
+    put(&lib.join("build/theme.ts"), "ignored\n");
+    env.git.ignore(&lib, "build");
+    put(&ws.path.join("notes/theme.ts"), "notes\n");
+    put(&ws.path.join(".hidden/theme.ts"), "hidden\n");
+    env.workspaces
+        .add_repo(&ws.id, Some("app"), link(&env.repo))
+        .unwrap();
+    env.workspaces
+        .add_repo(&ws.id, Some("lib"), link(&lib))
+        .unwrap();
+    (env, ws.id, ws.path)
+}
+
+// spec: DMN-092
+#[test]
+fn bare_and_partial_names_find_files_of_the_repositories_and_the_folder() {
+    let (env, id, _) = find_env();
+
+    // A bare name: every file of that name (git-ignored and hidden ones left out), shorter paths first.
+    assert_eq!(
+        found(&env, &id, "theme.ts", &[]),
+        [
+            candidate("notes/theme.ts", None, FileMatch::Basename, false),
+            candidate("app/src/theme.ts", Some("app"), FileMatch::Basename, false),
+            candidate("lib/ui/theme.ts", Some("lib"), FileMatch::Basename, false),
+        ]
+    );
+    // A path relative to a repository is exact.
+    assert_eq!(
+        found(&env, &id, "ui/theme.ts", &[])[0],
+        candidate("lib/ui/theme.ts", Some("lib"), FileMatch::Exact, false)
+    );
+    // A path relative to a repository is exact; the other files of that name follow.
+    assert_eq!(
+        found(&env, &id, "src/theme.ts", &[])[0],
+        candidate("app/src/theme.ts", Some("app"), FileMatch::Exact, false)
+    );
+    // The end of a path matches at a component boundary.
+    assert_eq!(
+        found(&env, &id, "pp/src/app.ts", &[]),
+        [candidate(
+            "app/src/app.ts",
+            Some("app"),
+            FileMatch::Basename,
+            false
+        )]
+    );
+    assert_eq!(
+        found(&env, &id, "./app/src/../src/app.ts", &[]),
+        [candidate(
+            "app/src/app.ts",
+            Some("app"),
+            FileMatch::Exact,
+            false
+        )]
+    );
+    assert_eq!(found(&env, &id, "missing.ts", &[]), []);
+    let outside = env.workspaces.find_file(&id, "../x.ts", &BTreeSet::new());
+    assert!(
+        matches!(outside, Err(WorkspaceError::OutsideFolder(_))),
+        "{outside:?}"
+    );
+}
+
+// spec: DMN-092
+#[test]
+fn a_suffix_match_ranks_before_name_matches() {
+    let (env, id, _) = find_env();
+    put(&env.repo.join("deep/src/theme.ts"), "deep\n");
+    assert_eq!(
+        found(&env, &id, "deep/src/theme.ts", &[])[0].2,
+        FileMatch::Exact
+    );
+    let ranked = found(&env, &id, "x/src/theme.ts", &[]);
+    assert_eq!(ranked.len(), 4);
+    let suffixed = found(&env, &id, "src/theme.ts", &[]);
+    assert_eq!(
+        suffixed[..2],
+        [
+            candidate("app/src/theme.ts", Some("app"), FileMatch::Exact, false),
+            candidate(
+                "app/deep/src/theme.ts",
+                Some("app"),
+                FileMatch::Suffix,
+                false
+            ),
+        ]
+    );
+}
+
+// spec: DMN-092
+#[test]
+fn files_the_thread_names_rank_first_among_equal_matches() {
+    let (env, id, folder) = find_env();
+    // Relative to the folder, to a repository, or absolute through the link's target.
+    for mentioned in [
+        "app/src/theme.ts".to_owned(),
+        "src/theme.ts".to_owned(),
+        env.repo.join("src/theme.ts").to_string_lossy().into_owned(),
+        folder
+            .join("app/src/theme.ts")
+            .to_string_lossy()
+            .into_owned(),
+    ] {
+        assert_eq!(
+            found(&env, &id, "theme.ts", &[&mentioned])[0],
+            candidate("app/src/theme.ts", Some("app"), FileMatch::Basename, true),
+            "{mentioned}"
+        );
+    }
+
+    let mut state = ThreadState::default();
+    state.tools.push(ToolRun {
+        tool_call_id: "c1".into(),
+        tool_name: "read".into(),
+        args: Some(json!({ "path": "app/src/theme.ts:3-9" })),
+        intent: None,
+        status: ToolStatus::Succeeded,
+        partial_result: None,
+        preview: None,
+        result: None,
+    });
+    let named = named_files(&state);
+    assert_eq!(
+        env.workspaces
+            .find_file(&id, "theme.ts", &named)
+            .unwrap()
+            .candidates[0]
+            .path,
+        "app/src/theme.ts"
+    );
+}
+
+// spec: DMN-092
+#[test]
+fn at_most_fifty_candidates_are_returned() {
+    let (env, id, _) = find_env();
+    for index in 0..60 {
+        put(&env.repo.join(format!("many/{index:02}/x.ts")), "x\n");
+    }
+    let result = env
+        .workspaces
+        .find_file(&id, "x.ts", &BTreeSet::new())
+        .unwrap();
+    assert_eq!(result.candidates.len(), MAX_CANDIDATES);
+    assert_eq!(MAX_CANDIDATES, 50);
+    assert!(result.truncated);
+    assert_eq!(result.candidates[0].path, "app/many/00/x.ts");
 }

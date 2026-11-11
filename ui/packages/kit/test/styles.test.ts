@@ -144,9 +144,12 @@ describe("kit styles", () => {
         .filter(([property]) => property === "font-family" || property === "font")
         .map(([, value]) => ({ selector: rule.selector, value })),
     );
+    // Code (UI-121): code blocks, inline code, logs, key chips, diffs, mono fields (paths, commands), the command
+    // line, tool arguments, ask option labels and completed paths.
     const misplaced = usages.filter(({ selector, value }) => {
       if (value.includes("--omfp-font-prose")) return !selector.includes(".omfp-prose");
-      if (value.includes("--omfp-font-code")) return !/code|log|kbd|pre/.test(selector);
+      if (value.includes("--omfp-font-code"))
+        return !/code|log|kbd|pre|diff|mono|cmd|__arg|option-text__label|path-field__name/.test(selector);
       return !(value.includes("--omfp-font-ui") || value === "inherit");
     });
     expect(misplaced).toEqual([]);
@@ -159,5 +162,52 @@ describe("kit styles", () => {
     const css = stripComments(readFileSync(join(KIT_SRC, "kit.css"), "utf8"));
     expect(css).toContain("@layer omfp-tokens, omfp-kit;");
     expect(kitRules.filter((rule) => rule.at[0] !== "@layer omfp-kit")).toEqual([]);
+  });
+
+  // spec: UI-123
+  test("gradients only where listed", () => {
+    const GRADIENT = /var\(--omfp-grad(?:-loop)?\)/;
+    const ALLOWED =
+      /grad-text|grad-flow|data-variant="primary"|tabs__tab\[data-selected\]::after|mode-pill|cmd__prompt|omfp-caret|progress__fill|gauge__fill|compose\[data-mode="insert"\]|tool\[data-status="running"\]|@keyframes/;
+    const misplaced = kitRules
+      .filter((rule) => [...rule.declarations.values()].some((value) => GRADIENT.test(value)))
+      .map((rule) => rule.selector)
+      .filter((selector) => !ALLOWED.test(selector));
+    expect(misplaced).toEqual([]);
+  });
+
+  // spec: UI-138
+  test("diff lines tint with ok and error; syntax strings are ok, numbers warn, comments muted italic", () => {
+    expect(Object.fromEntries(findRule(kitRules, [LAYER], '.omfp-diff__line[data-kind="add"]').declarations)).toEqual({
+      color: "color-mix(in oklab, var(--omfp-ok) 70%, var(--omfp-on-surface))",
+      background: "color-mix(in oklab, var(--omfp-ok) 12%, transparent)",
+    });
+    expect(Object.fromEntries(findRule(kitRules, [LAYER], '.omfp-diff__line[data-kind="del"]').declarations)).toEqual({
+      color: "color-mix(in oklab, var(--omfp-error) 70%, var(--omfp-on-surface))",
+      background: "color-mix(in oklab, var(--omfp-error) 11%, transparent)",
+    });
+    const color = (selector: string) => findRule(kitRules, [LAYER], selector).declarations.get("color");
+    expect(
+      color(".omfp-code :is(.hljs-string, .hljs-regexp, .hljs-subst, .hljs-template-variable, .hljs-addition)"),
+    ).toBe("var(--omfp-ok)");
+    expect(
+      color(
+        ".omfp-code :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet, .hljs-variable.constant_, .hljs-meta)",
+      ),
+    ).toBe("var(--omfp-warn)");
+    expect(color(".omfp-code :is(.hljs-comment, .hljs-quote)")).toBe("var(--omfp-on-surface-variant)");
+    expect(findRule(kitRules, [LAYER], "::selection").declarations.get("background")).toBe(
+      "color-mix(in oklab, var(--omfp-primary) 28%, transparent)",
+    );
+  });
+
+  // spec: UI-147, UI-146
+  test("the stream caret blinks at motion full only; elsewhere it is steady", () => {
+    const blinking = kitRules.filter(
+      (rule) => rule.selector.includes(".omfp-caret") && rule.declarations.has("animation"),
+    );
+    expect(blinking.map((rule) => [rule.selector, rule.declarations.get("animation")])).toEqual([
+      [':root[data-motion="full"] .omfp-caret', "omfp-blink 0.9s steps(1) infinite"],
+    ]);
   });
 });

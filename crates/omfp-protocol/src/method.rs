@@ -10,8 +10,8 @@ use serde_json::{Map, Value, json};
 use std::fmt::Debug;
 
 use crate::dto::{
-    DiffPage, FileContent, FileWritten, GitStatus, JobInfo, Settings, Theme, ThreadSummary,
-    Workspace,
+    DiffPage, FileCandidates, FileContent, FileWritten, GitStatus, JobInfo, Settings, Theme,
+    ThreadSummary, Workspace,
 };
 use crate::params;
 use omfp_core::wire;
@@ -141,6 +141,8 @@ methods! {
     WorkspacesDiff = "workspaces.diff" (params::WorkspaceDiffParams) -> DiffPage;
     /// A file of a workspace with its hash and `HEAD` text (DMN-089).
     WorkspacesReadFile = "workspaces.read_file" (params::ReadFileParams) -> FileContent;
+    /// Files of a workspace matching a bare or partial name, best first (DMN-092).
+    WorkspacesFindFile = "workspaces.find_file" (params::FindFileParams) -> FileCandidates;
     /// Writes a file of a workspace unless it changed since it was read (DMN-090).
     WorkspacesWriteFile = "workspaces.write_file" (params::WriteFileParams) -> FileWritten;
     /// Creates a thread in an existing or a new workspace.

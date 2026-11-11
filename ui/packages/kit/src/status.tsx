@@ -17,7 +17,7 @@ export interface ProgressProps
   hideLabel?: boolean;
 }
 
-/** A progress bar, indeterminate when it has no `value`. */
+/** A progress bar (UI-158): a pill track with a flowing gradient fill, indeterminate when it has no `value`. */
 export function Progress({ value, max = 100, label, hideLabel = false, className, ...props }: ProgressProps) {
   const indeterminate = value === undefined;
   return (
@@ -47,15 +47,24 @@ export function Progress({ value, max = 100, label, hideLabel = false, className
 /** Distance in pixels from the end under which the log counts as following it. */
 const FOLLOW_SLACK = 4;
 
+/** A structured log line: time, level and message (UI-159). */
+export interface LogEntry {
+  readonly time?: string;
+  readonly level?: "info" | "warn" | "err";
+  readonly text: string;
+}
+
 export interface LogProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
-  lines: readonly string[];
+  lines: readonly (string | LogEntry)[];
+  /** The one muted line of an empty log (`no output` by default). */
+  emptyText?: string;
 }
 
 /**
- * Monospace output (`role="log"`, focusable so it scrolls from the keyboard). New lines keep it scrolled to the end
- * unless the user scrolled up.
+ * Monospace output (UI-159; `role="log"`, focusable so it scrolls from the keyboard): one non-wrapping line per entry,
+ * with a muted time and a level column. New lines keep it scrolled to the end unless the user scrolled up.
  */
-export function Log({ lines, className, onScroll, ...props }: LogProps) {
+export function Log({ lines, emptyText = "no output", className, onScroll, ...props }: LogProps) {
   const ref = useRef<HTMLDivElement>(null);
   const following = useRef(true);
   // biome-ignore lint/correctness/useExhaustiveDependencies: scrolls again whenever the lines change
@@ -79,10 +88,23 @@ export function Log({ lines, className, onScroll, ...props }: LogProps) {
         onScroll?.(event);
       }}
     >
+      {lines.length === 0 && <div className="omfp-log__line omfp-log__empty">{emptyText}</div>}
       {lines.map((line, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: log lines are append-only, the index is their identity
         <div key={index} className="omfp-log__line">
-          {line}
+          {typeof line === "string" ? (
+            line
+          ) : (
+            <>
+              {line.time !== undefined && <span className="omfp-log__time">{line.time} </span>}
+              {line.level !== undefined && (
+                <span className="omfp-log__level" data-level={line.level}>
+                  {line.level}{" "}
+                </span>
+              )}
+              {line.text}
+            </>
+          )}
         </div>
       ))}
     </div>

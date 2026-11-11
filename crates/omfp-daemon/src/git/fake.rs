@@ -21,6 +21,8 @@ struct FakeRepo {
     worktrees: BTreeMap<PathBuf, String>,
     /// The files of `HEAD`, by path relative to the root; shared by the linked worktrees.
     committed: BTreeMap<PathBuf, Vec<u8>>,
+    /// Paths relative to the root that `list_files` leaves out, like a `.gitignore` would.
+    ignored: BTreeSet<PathBuf>,
 }
 
 #[derive(Debug, Default)]
@@ -128,6 +130,14 @@ impl FakeGit {
         if let Some(repo) = self.state().repos.get_mut(&canonical(root)) {
             repo.committed
                 .insert(PathBuf::from(path), contents.to_vec());
+        }
+    }
+
+    /// Makes `list_files` leave out `path` (relative to `root`; a folder hides everything below it), as an entry of
+    /// `.gitignore` would.
+    pub fn ignore(&self, root: &Path, path: &str) {
+        if let Some(repo) = self.state().repos.get_mut(&canonical(root)) {
+            repo.ignored.insert(PathBuf::from(path));
         }
     }
 
@@ -361,5 +371,44 @@ impl Git for FakeGit {
             .map(Path::to_owned)
             .unwrap_or_default();
         Ok(state.repos[root].committed.get(&inside.join(path)).cloned())
+    }
+
+    fn list_files(&self, dir: &Path) -> Result<Vec<String>> {
+        let state = self.state();
+        let (root, worktree) = state
+            .locate(dir)
+            .ok_or_else(|| GitError::NotARepository(dir.to_owned()))?;
+        let checkout = worktree.unwrap_or(root).clone();
+        let ignored = &state.repos[root].ignored;
+        // Other repositories and worktrees inside this checkout are theirs, as git sees them.
+        let others: BTreeSet<PathBuf> = state
+            .repos
+            .iter()
+            .flat_map(|(other, repo)| std::iter::once(other).chain(repo.worktrees.keys()))
+            .filter(|other| **other != checkout)
+            .cloned()
+            .collect();
+        let start = canonical(dir);
+        let mut files = Vec::new();
+        let mut pending = vec![start.clone()];
+        while let Some(folder) = pending.pop() {
+            for entry in std::fs::read_dir(&folder)? {
+                let path = entry?.path();
+                let inside = path.strip_prefix(&checkout).unwrap_or(&path);
+                if path.file_name().is_some_and(|name| name == ".git")
+                    || ignored.iter().any(|hidden| inside.starts_with(hidden))
+                    || others.contains(&canonical(&path))
+                {
+                    continue;
+                }
+                if path.is_dir() {
+                    pending.push(path);
+                } else if let Ok(relative) = path.strip_prefix(&start) {
+                    files.push(relative.to_string_lossy().into_owned());
+                }
+            }
+        }
+        files.sort_unstable();
+        Ok(files)
     }
 }

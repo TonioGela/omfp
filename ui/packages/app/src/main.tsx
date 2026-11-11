@@ -1,6 +1,6 @@
 /**
  * The web app's entry: the access token (UI-002), one client over the page's own origin, the host with per-frame
- * snapshots (UI-012), and the frame. Styles: the kit's tokens and components, then the app's and the widgets' own
+ * snapshots (UI-012), and the frame; or, at `/kit`, the component gallery (UI-173). Styles: the kit's tokens and components, then the app's and the widgets' own
  * (all token-driven, UI-091); the daemon's user theme comes last (`/theme.css`, see `theme/theme.ts`).
  */
 
@@ -16,6 +16,8 @@ import { createRoot } from "react-dom/client";
 import { TokenScreen } from "./frame/dialogs.tsx";
 import { Frame } from "./frame/frame.tsx";
 import { browserNotifications } from "./frame/notifications.ts";
+import { Gallery } from "./gallery/gallery.tsx";
+import { isGalleryPath } from "./gallery/params.ts";
 import { createHost, type OmfpHost, OmfpProvider } from "./sdk/index.ts";
 import { TOKEN_KEY, takeToken } from "./vm/token.ts";
 
@@ -91,4 +93,7 @@ const container = document.getElementById("root");
 if (container === null) {
   throw new Error("index.html has no #root");
 }
-createRoot(container).render(<Root />);
+// `/kit`: the component gallery (UI-173), without a connection.
+createRoot(container).render(
+  isGalleryPath(window.location.pathname) ? <Gallery search={window.location.search} /> : <Root />,
+);

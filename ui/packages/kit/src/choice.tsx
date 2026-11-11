@@ -11,17 +11,21 @@ import {
   Text,
 } from "react-aria-components";
 import { cx, withClass } from "./class.ts";
+import { Icon } from "./icons.tsx";
 
 export interface CheckboxProps extends Omit<AriaCheckboxProps, "children"> {
   /** Visible label next to the box. */
   children?: ReactNode;
 }
 
-/** A checkbox with its label; Space toggles it. */
+/** A checkbox with its label (UI-153); Space toggles it. Checked shows a check, mixed a dash. */
 export function Checkbox({ className, children, ...props }: CheckboxProps) {
   return (
     <AriaCheckbox {...props} className={withClass("omfp-checkbox", className)}>
-      <span className="omfp-checkbox__box" aria-hidden="true" />
+      <span className="omfp-checkbox__box" aria-hidden="true">
+        <Icon name="check" className="omfp-checkbox__check" />
+        <span className="omfp-checkbox__dash" />
+      </span>
       {children}
     </AriaCheckbox>
   );

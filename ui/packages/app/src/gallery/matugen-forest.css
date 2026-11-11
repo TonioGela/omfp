@@ -1,0 +1,117 @@
+/*
+ * Fixture theme of the `/kit` gallery (UI-173): what matugen 4.2.0 writes from contrib/matugen/omfp.css for a
+ * scheme-tonal-spot scheme of source #30c05a ("forest"), generated without the custom status colors, so success and
+ * warning keep omfp's values (UI-136). Do not edit by hand; regenerate it with matugen instead.
+ */
+:root {
+  --omfp-primary: #36693d;
+  --omfp-on-primary: #ffffff;
+  --omfp-primary-container: #b8f1b9;
+  --omfp-on-primary-container: #002108;
+  --omfp-secondary: #516351;
+  --omfp-on-secondary: #ffffff;
+  --omfp-secondary-container: #d4e8d1;
+  --omfp-on-secondary-container: #0f1f11;
+  --omfp-tertiary: #39656c;
+  --omfp-on-tertiary: #ffffff;
+  --omfp-tertiary-container: #bdeaf3;
+  --omfp-on-tertiary-container: #001f24;
+  --omfp-error: #ba1a1a;
+  --omfp-on-error: #ffffff;
+  --omfp-error-container: #ffdad6;
+  --omfp-on-error-container: #410002;
+  --omfp-surface: #f7fbf2;
+  --omfp-on-surface: #181d18;
+  --omfp-surface-variant: #dde5d9;
+  --omfp-on-surface-variant: #424940;
+  --omfp-surface-container-lowest: #ffffff;
+  --omfp-surface-container-low: #f1f5ec;
+  --omfp-surface-container: #ebefe7;
+  --omfp-surface-container-high: #e5e9e1;
+  --omfp-surface-container-highest: #e0e4db;
+  --omfp-surface-dim: #d7dbd3;
+  --omfp-surface-bright: #f7fbf2;
+  --omfp-inverse-surface: #2d322c;
+  --omfp-inverse-on-surface: #eef2e9;
+  --omfp-inverse-primary: #9cd49f;
+  --omfp-outline: #727970;
+  --omfp-outline-variant: #c1c9be;
+  --omfp-shadow: #000000;
+  --omfp-scrim: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-color-scheme="light"]) {
+    --omfp-primary: #9cd49f;
+    --omfp-on-primary: #013913;
+    --omfp-primary-container: #1d5128;
+    --omfp-on-primary-container: #b8f1b9;
+    --omfp-secondary: #b8ccb5;
+    --omfp-on-secondary: #243424;
+    --omfp-secondary-container: #3a4b3a;
+    --omfp-on-secondary-container: #d4e8d1;
+    --omfp-tertiary: #a1ced6;
+    --omfp-on-tertiary: #00363d;
+    --omfp-tertiary-container: #1f4d54;
+    --omfp-on-tertiary-container: #bdeaf3;
+    --omfp-error: #ffb4ab;
+    --omfp-on-error: #690005;
+    --omfp-error-container: #93000a;
+    --omfp-on-error-container: #ffdad6;
+    --omfp-surface: #101510;
+    --omfp-on-surface: #e0e4db;
+    --omfp-surface-variant: #424940;
+    --omfp-on-surface-variant: #c1c9be;
+    --omfp-surface-container-lowest: #0b0f0b;
+    --omfp-surface-container-low: #181d18;
+    --omfp-surface-container: #1c211c;
+    --omfp-surface-container-high: #272b26;
+    --omfp-surface-container-highest: #313630;
+    --omfp-surface-dim: #101510;
+    --omfp-surface-bright: #363a35;
+    --omfp-inverse-surface: #e0e4db;
+    --omfp-inverse-on-surface: #2d322c;
+    --omfp-inverse-primary: #36693d;
+    --omfp-outline: #8b9389;
+    --omfp-outline-variant: #424940;
+    --omfp-shadow: #000000;
+    --omfp-scrim: #000000;
+  }
+}
+
+:root[data-color-scheme="dark"] {
+  --omfp-primary: #9cd49f;
+  --omfp-on-primary: #013913;
+  --omfp-primary-container: #1d5128;
+  --omfp-on-primary-container: #b8f1b9;
+  --omfp-secondary: #b8ccb5;
+  --omfp-on-secondary: #243424;
+  --omfp-secondary-container: #3a4b3a;
+  --omfp-on-secondary-container: #d4e8d1;
+  --omfp-tertiary: #a1ced6;
+  --omfp-on-tertiary: #00363d;
+  --omfp-tertiary-container: #1f4d54;
+  --omfp-on-tertiary-container: #bdeaf3;
+  --omfp-error: #ffb4ab;
+  --omfp-on-error: #690005;
+  --omfp-error-container: #93000a;
+  --omfp-on-error-container: #ffdad6;
+  --omfp-surface: #101510;
+  --omfp-on-surface: #e0e4db;
+  --omfp-surface-variant: #424940;
+  --omfp-on-surface-variant: #c1c9be;
+  --omfp-surface-container-lowest: #0b0f0b;
+  --omfp-surface-container-low: #181d18;
+  --omfp-surface-container: #1c211c;
+  --omfp-surface-container-high: #272b26;
+  --omfp-surface-container-highest: #313630;
+  --omfp-surface-dim: #101510;
+  --omfp-surface-bright: #363a35;
+  --omfp-inverse-surface: #e0e4db;
+  --omfp-inverse-on-surface: #2d322c;
+  --omfp-inverse-primary: #36693d;
+  --omfp-outline: #8b9389;
+  --omfp-outline-variant: #424940;
+  --omfp-shadow: #000000;
+  --omfp-scrim: #000000;
+}

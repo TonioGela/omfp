@@ -33,12 +33,14 @@
  * | `useSetSettings()` | `settings.set(patch)`: merges `ui`/`keymap` into the config file; failures go to `ERRORS` |
  * | `useFile(path, { follow? })` | a workspace file (`workspaces.read_file`), followed, with `reload` and `save(content, expectedHash?)` (AGT-027) |
  * | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file tab (UI-115) |
+ * | `useMissingFile(path, missing, options)` | finds the file a path that does not exist names (`workspaces.find_file`): one opens in its place, several open the frame's picker (UI-117) |
  * | `useFileTabs(workspaceId)` | this window's file tabs of a workspace, `select` and `close` |
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
  * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,
- * `RENAMING_THREAD`, `ERRORS`, `OPEN_FILES` (persisted), `EDITOR_MODE`. A widget is a
- * {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own scoped commands.
+ * `RENAMING_THREAD`, `ERRORS`, `OPEN_FILES` and `FLOATING_FILES` (persisted), `FILE_PICKER`, `EDITOR_MODE`. A widget
+ * is a {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own scoped
+ * commands.
  */
 
 // View models, strings and helpers the built-in widgets use (AGT-016, AGT-021): a copied built-in imports them from
@@ -74,13 +76,19 @@ export {
   closeTab,
   type FileTab,
   type FileTabs,
+  FLOATING_MIN,
+  FLOATING_PANEL_DEFAULT,
+  type FloatingPanel,
   fileName,
   fileTabId,
+  movePanel,
   NO_FILE_TABS,
   type OpenFileOptions,
   type OpenFiles,
   openTab,
   originalFromPatch,
+  resizePanel,
+  retargetTab,
   workspaceFilePath,
 } from "../vm/files.ts";
 export {
@@ -178,19 +186,27 @@ export {
 } from "./actions.ts";
 export { type Command, CommandRegistry, SCOPE_ATTRIBUTE, scopesAt } from "./commands.ts";
 export {
+  cancelFilePicker,
+  chooseFile,
   EDITOR_MODE,
   errorCode,
+  FILE_PICKER,
   FILE_POLL_MS,
   type FileLoadStatus,
+  type FilePicker,
   type FilePoll,
   type FileState,
   type FileTabsState,
+  FLOATING_FILES,
+  findMissingFile,
   intervalPoll,
+  type MissingOutcome,
   OPEN_FILES,
   openFile,
   type SaveResult,
   useFile,
   useFileTabs,
+  useMissingFile,
   useOpenFile,
 } from "./files.ts";
 export {

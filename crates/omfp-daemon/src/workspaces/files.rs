@@ -74,7 +74,7 @@ fn normalize(path: &Path) -> Option<PathBuf> {
 
 /// The file `path` of the workspace `folder`, relative to it (DMN-089): `bad_request` when it leaves the folder or is
 /// the folder itself.
-fn resolve(folder: &Path, path: &str) -> Result<PathBuf> {
+pub(super) fn resolve(folder: &Path, path: &str) -> Result<PathBuf> {
     let outside = || WorkspaceError::OutsideFolder(path.to_owned());
     let requested = Path::new(path);
     let normalized = normalize(requested).ok_or_else(outside)?;

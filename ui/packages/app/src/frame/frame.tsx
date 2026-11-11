@@ -36,6 +36,7 @@ import { ThreadsWidget } from "../widgets/threads/index.ts";
 import { CommandLine } from "./command-line.tsx";
 import { GlobalCommands } from "./commands.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
+import { FilePickerLine } from "./file-picker.tsx";
 import { FloatingFile } from "./floating-file.tsx";
 import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
 import { ModeLine, useMode } from "./mode-line.tsx";
@@ -151,6 +152,7 @@ export function Frame({
       </main>
       {view !== undefined && <SafetyNet view={view} workspaceId={workspaceId} views={state} registry={registry} />}
       <CommandLine bindings={bindings} />
+      <FilePickerLine />
       <Errors />
       <StatusLiveRegion />
       <DeleteThreadDialog />

@@ -1,6 +1,7 @@
 //! Request handlers: every protocol method mapped to the daemon's services (ARC-007), except the connection-level
 //! ones (`system.hello`, `subscribe`, `unsubscribe`).
 
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -28,7 +29,7 @@ use super::services::Services;
 use crate::agent::OmpCall;
 use crate::store::{Provenance, TitleSource};
 use crate::threads::NewThread;
-use crate::workspaces::{NewWorkspace, RepoSource, WorkspaceError};
+use crate::workspaces::{NewWorkspace, RepoSource, WorkspaceError, named_files};
 use crate::{fs_complete, search, titles};
 
 type Reply = Result<Value, ErrorBody>;
@@ -153,6 +154,7 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         | Call::WorkspacesStatus(_)
         | Call::WorkspacesDiff(_)
         | Call::WorkspacesReadFile(_)
+        | Call::WorkspacesFindFile(_)
         | Call::WorkspacesWriteFile(_)) => workspaces(services, principal, call).await,
         call @ (Call::ThreadsCreate(_)
         | Call::ThreadsUpdate(_)
@@ -329,6 +331,23 @@ async fn workspaces(services: &Services, principal: &Principal, call: Call) -> R
                         &params.path,
                         params.known_hash.as_deref(),
                     )
+                    .map_err(workspace_error)
+            })
+            .await?);
+        }
+        Call::WorkspacesFindFile(params) => {
+            let mentioned = match &params.thread_id {
+                Some(thread_id) => services
+                    .supervisor
+                    .thread_log(thread_id)
+                    .await
+                    .map_err(supervisor_error)?
+                    .with_state(named_files),
+                None => BTreeSet::new(),
+            };
+            return ok(&blocking(move || {
+                workspaces
+                    .find_file(&params.workspace_id, &params.query, &mentioned)
                     .map_err(workspace_error)
             })
             .await?);

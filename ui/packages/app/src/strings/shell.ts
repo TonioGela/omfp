@@ -166,6 +166,8 @@ export const shell = {
     loading: "Reading the file…",
     loadingEditor: "Loading the editor…",
     missing: (path: string) => `${path} does not exist.`,
+    finding: (path: string) => `Looking for ${path} in the workspace…`,
+    choosing: (path: string) => `Several files match ${path}: choose one below.`,
     failed: (error: string) => `Cannot read the file: ${error}`,
     label: (path: string) => `File ${path}`,
     editorLabel: (path: string) => `Text of ${path}`,
@@ -199,12 +201,22 @@ export const shell = {
           ? `${(bytes / 1024).toFixed(1)} KiB`
           : `${(bytes / 1024 / 1024).toFixed(1)} MiB`,
   },
-  /** File tabs of the `main` slot and the floating file panel (UI-115). */
+  /** File tabs of the `main` slot, the floating file panel (UI-115) and the file picker (UI-117). */
   files: {
     tabs: "Files",
     close: (name: string) => `Close ${name}`,
-    panel: (path: string) => `File ${path}`,
+    panel: (count: number) => `Open files (${count})`,
+    move: "Move the panel (arrow keys)",
+    resize: "Resize the panel (arrow keys)",
+    minimise: "Minimise the files",
+    restore: "Show the files",
     noWorkspace: (path: string) => `No workspace to open ${path} in`,
+    picker: (path: string) => `Files matching ${path}`,
+    pickerPrompt: "open",
+    exact: "exact path",
+    suffix: "path ends so",
+    basename: "same name",
+    mentioned: "in the conversation",
   },
   /** The mode line (UI-098); vim's modes while a file editor has the focus (UI-112). */
   mode: {

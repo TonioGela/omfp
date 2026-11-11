@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { Frame } from "../../src/frame/frame.tsx";
 import {
   EDITOR_MODE,
+  FILE_PICKER,
   type KeyValueStorage,
   OPEN_FILES,
   openFile,
@@ -144,19 +145,120 @@ describe("file tabs in the main slot", () => {
   });
 
   // spec: UI-115
-  test("a view without a main slot opens the file in a floating panel, closed by its button or Esc", async () => {
+  test("a view without a main slot opens the files as tabs of a floating panel, closed by its button or Esc", async () => {
     const test = setup({
       manifest: { default: "plain", views: { plain: { layout: ["row", {}, "omfp:chat", "omfp:workspace"] } } },
     });
     act(() => openFile(test.host, "fe/src/lib.rs"));
+    act(() => openFile(test.host, "fe/src/main.rs", { line: 2 }));
     const panel = screen.getByTestId("floating-file");
-    expect(within(panel).getByTestId("stub-file")).toBeDefined();
+    expect(panel.getAttribute("aria-label")).toBe("Open files (2)");
+    expect(
+      within(panel)
+        .getAllByTestId("floating-file-tab")
+        .map((tab) => tab.dataset.file),
+    ).toEqual(["fe/src/lib.rs", "fe/src/main.rs"]);
+    expect(JSON.parse(within(panel).getByTestId("stub-file").textContent ?? "")).toEqual({
+      path: "fe/src/main.rs",
+      line: 2,
+      jump: 1,
+    });
+    // Selecting a tab shows its file; the selection is window-local like the main slot's.
+    await test.user.click(within(panel).getAllByTestId("floating-file-tab")[0] as HTMLElement);
+    expect(JSON.parse(within(panel).getByTestId("stub-file").textContent ?? "").path).toBe("fe/src/lib.rs");
+    expect(test.host.window.get(OPEN_FILES).w1?.active).toBe(fileTabId("fe/src/lib.rs"));
+    // Closing the selected file selects its neighbour.
     await test.user.click(within(panel).getByTestId("floating-file-close"));
-    expect(screen.queryByTestId("floating-file")).toBeNull();
-    act(() => openFile(test.host, "fe/src/main.rs"));
+    expect(
+      within(panel)
+        .getAllByTestId("floating-file-tab")
+        .map((tab) => tab.dataset.file),
+    ).toEqual(["fe/src/main.rs"]);
     act(() => screen.getByTestId("floating-file-close").focus());
     press("Escape");
     expect(screen.queryByTestId("floating-file")).toBeNull();
+  });
+
+  // spec: UI-115
+  test("the floating panel moves, resizes and minimises, and keeps that in this window", async () => {
+    const test = setup({
+      manifest: { default: "plain", views: { plain: { layout: ["row", {}, "omfp:chat"] } } },
+    });
+    act(() => openFile(test.host, "a.rs"));
+    act(() => screen.getByTestId("floating-file-move").focus());
+    press("ArrowRight");
+    press("ArrowDown");
+    act(() => screen.getByTestId("floating-file-resize").focus());
+    press("ArrowRight");
+    const panel = screen.getByTestId("floating-file");
+    // happy-dom lays nothing out: the panel starts as a 0×0 box at 0,0, and a resize keeps the minimum size.
+    expect([panel.style.left, panel.style.top, panel.style.width, panel.style.height]).toEqual([
+      "16px",
+      "16px",
+      "240px",
+      "120px",
+    ]);
+    await test.user.click(screen.getByTestId("floating-file-minimise"));
+    expect(screen.getByTestId("floating-file").dataset.minimised).toBe("");
+    expect(screen.queryByTestId("stub-file")).toBeNull();
+    expect(JSON.parse(test.storage.getItem("omfp.floatingFiles") ?? "{}")).toEqual({
+      box: { left: 16, top: 16, width: 240, height: 120 },
+      minimised: true,
+    });
+    await test.user.click(screen.getByTestId("floating-file-minimise"));
+    expect(screen.getByTestId("stub-file")).toBeDefined();
+  });
+});
+
+describe("the file picker", () => {
+  const candidates = [
+    { path: "app/src/theme.ts", repo: "app", match: "basename", mentioned: true },
+    { path: "lib/theme.ts", repo: "lib", match: "basename", mentioned: false },
+    { path: "notes/theme.ts", match: "basename", mentioned: false },
+  ] as const;
+
+  function pick() {
+    const test = setup();
+    act(() => openFile(test.host, "theme.ts", { line: 3 }));
+    act(() =>
+      test.host.window.set(FILE_PICKER, { workspaceId: "w1", path: "theme.ts", options: { line: 3 }, candidates }),
+    );
+    return test;
+  }
+
+  function options(): string[] {
+    return screen.getAllByTestId("file-picker-option").map((option) => option.dataset.path ?? "");
+  }
+
+  function highlighted(): string | undefined {
+    return screen.getAllByTestId("file-picker-option").find((option) => option.getAttribute("aria-selected") === "true")
+      ?.dataset.path;
+  }
+
+  // spec: UI-117
+  test("arrows move through the candidates, Enter opens the highlighted one in the missing path's tab", async () => {
+    const test = pick();
+    expect(document.activeElement).toBe(screen.getByTestId("file-picker-input"));
+    expect(options()).toEqual(["app/src/theme.ts", "lib/theme.ts", "notes/theme.ts"]);
+    expect(screen.getAllByTestId("file-picker-option")[0]?.textContent).toContain("in the conversation");
+    expect(highlighted()).toBe("app/src/theme.ts");
+    await test.user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowUp}");
+    expect(highlighted()).toBe("notes/theme.ts");
+    await test.user.keyboard("li");
+    expect(options()).toEqual(["lib/theme.ts"]);
+    await test.user.keyboard("{Enter}");
+    expect(screen.queryByTestId("file-picker")).toBeNull();
+    expect(test.host.window.get(OPEN_FILES).w1?.tabs.map((tab) => [tab.path, tab.line])).toEqual([["lib/theme.ts", 3]]);
+    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "").path).toBe("lib/theme.ts");
+  });
+
+  // spec: UI-117
+  test("Escape cancels the opening: the missing path's tab closes", async () => {
+    const test = pick();
+    await test.user.keyboard("{Escape}");
+    expect(screen.queryByTestId("file-picker")).toBeNull();
+    expect(test.host.window.get(OPEN_FILES).w1?.tabs).toEqual([]);
+    expect(tabs()).toEqual([]);
   });
 });
 

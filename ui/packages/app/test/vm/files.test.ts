@@ -3,13 +3,19 @@
 import { describe, expect, test } from "bun:test";
 import {
   closeTab,
+  decodeFloatingPanel,
   decodeOpenFiles,
   type FileTabs,
+  FLOATING_MIN,
+  FLOATING_PANEL_DEFAULT,
   fileName,
   fileTabId,
+  movePanel,
   NO_FILE_TABS,
   openTab,
   originalFromPatch,
+  resizePanel,
+  retargetTab,
   workspaceFilePath,
 } from "../../src/vm/files.ts";
 
@@ -57,6 +63,56 @@ describe("file tabs", () => {
     expect(fileName("Makefile")).toBe("Makefile");
     expect(workspaceFilePath({ name: "fe", isRoot: false }, "src/lib.rs")).toBe("fe/src/lib.rs");
     expect(workspaceFilePath({ name: "ws", isRoot: true }, "src/lib.rs")).toBe("src/lib.rs");
+  });
+});
+
+describe("a missing path's tab", () => {
+  // spec: UI-117
+  test("shows the chosen file in its place with its line, or gives way to the tab already showing it", () => {
+    let tabs = openTab(NO_FILE_TABS, "a.rs");
+    tabs = openTab(tabs, "theme.ts", { line: 7 });
+    tabs = openTab(tabs, "z.rs");
+    tabs = { ...tabs, active: fileTabId("theme.ts") };
+    const moved = retargetTab(tabs, "theme.ts", "ui/theme.ts");
+    expect(moved.tabs.map((tab) => [tab.path, tab.line])).toEqual([
+      ["a.rs", undefined],
+      ["ui/theme.ts", 7],
+      ["z.rs", undefined],
+    ]);
+    expect(moved.active).toBe(fileTabId("ui/theme.ts"));
+
+    const merged = retargetTab(tabs, "theme.ts", "z.rs");
+    expect(merged.tabs.map((tab) => [tab.path, tab.line])).toEqual([
+      ["a.rs", undefined],
+      ["z.rs", 7],
+    ]);
+    expect(merged.active).toBe(fileTabId("z.rs"));
+
+    // Without a tab of the missing path (an `omfp:file` placed in the view), the file opens.
+    expect(retargetTab(NO_FILE_TABS, "theme.ts", "ui/theme.ts", { diff: true }).tabs).toEqual([
+      { path: "ui/theme.ts", line: undefined, diff: true, seq: 1 },
+    ]);
+  });
+});
+
+describe("the floating panel", () => {
+  const box = { left: 10, top: 20, width: 400, height: 300 };
+
+  // spec: UI-115
+  test("moves within the view and resizes down to its minimum", () => {
+    expect(movePanel(FLOATING_PANEL_DEFAULT, box, 15.4, -50).box).toEqual({ ...box, left: 25, top: 0 });
+    expect(resizePanel(FLOATING_PANEL_DEFAULT, box, 16, 16).box).toEqual({ ...box, width: 416, height: 316 });
+    expect(resizePanel({ box, minimised: true }, box, -1000, -1000)).toEqual({
+      box: { ...box, ...FLOATING_MIN },
+      minimised: true,
+    });
+  });
+
+  // spec: UI-115
+  test("its persisted state decodes leniently", () => {
+    expect(decodeFloatingPanel({ box, minimised: true })).toEqual({ box, minimised: true });
+    expect(decodeFloatingPanel({ box: { left: "x" } })).toEqual(FLOATING_PANEL_DEFAULT);
+    expect(decodeFloatingPanel("nope")).toBeUndefined();
   });
 });
 

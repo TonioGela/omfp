@@ -132,6 +132,8 @@ struct Target {
     entry: Option<&'static str>,
     compile: Vec<CompileError>,
     manifest_error: Option<String>,
+    /// A valid `views.json` exists and none of its views has the `main` slot (AGT-028).
+    main_missing: bool,
 }
 
 impl Target {
@@ -252,6 +254,13 @@ fn describe(target: &Target, windows: &[(Window, Option<String>)], waited: Durat
             "views.json is invalid ({error}): windows show the default view until it is fixed."
         );
     }
+    if target.main_missing {
+        text.push_str(
+            "Warning: no view of views.json has the main slot [\"tabs\", {\"id\": \"main\"}, …\"omfp:chat\"], so files \
+             the user opens float over the view instead of opening as tabs next to the conversation. Keep that slot: \
+             put it back around omfp:chat, and place widgets with omfp_view_add.\n",
+        );
+    }
     text.push('\n');
     if windows.is_empty() {
         text.push_str(
@@ -368,7 +377,7 @@ impl Services {
         let id = workspace_id.to_owned();
         let target = blocking(move || {
             let workspace = store.workspace(&id)?.path;
-            let (_, manifest_error) = Widgets::manifest(&workspace);
+            let (manifest, manifest_error) = Widgets::manifest(&workspace);
             Ok(Target {
                 source,
                 name,
@@ -376,6 +385,9 @@ impl Services {
                 entry: folders::entry(&folder),
                 compile: widgets.check(&folder),
                 manifest_error,
+                main_missing: manifest
+                    .as_ref()
+                    .is_some_and(|manifest| !layout::has_main_slot(manifest)),
                 folder,
             })
         })
@@ -653,6 +665,24 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.contains("no widget nothing"), "{error}");
+    }
+
+    // spec: AGT-028
+    #[tokio::test]
+    async fn the_check_warns_when_views_json_lost_the_main_slot() {
+        let h = harness().await;
+        let warning = "Warning: no view of views.json has the main slot";
+        let text = h.check(Duration::ZERO).await;
+        assert!(!text.contains(warning), "the default views keep it: {text}");
+
+        write(
+            &h.folder,
+            ".omfp/views.json",
+            r#"{ "views": { "default": { "layout": ["row", {}, "omfp:chat", "./widgets/tests"] } } }"#,
+        );
+        let text = h.check(Duration::ZERO).await;
+        assert!(text.contains(warning), "{text}");
+        assert!(text.contains("Keep that slot"), "{text}");
     }
 
     // spec: DMN-063, PRT-043, AGT-026

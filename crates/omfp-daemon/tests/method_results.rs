@@ -21,19 +21,19 @@ use omfp_protocol::method::{
     ThreadState, ThreadSteer, ThreadStop, ThreadSubagentCancel, ThreadSubagentMessages,
     ThreadSubagentSteer, ThreadSubagents, ThreadThinkingLevels, ThreadTree, ThreadsArchive,
     ThreadsCreate, ThreadsDelete, ThreadsSearch, ThreadsUnarchive, ThreadsUpdate, Unsubscribe,
-    WorkspacesAddRepo, WorkspacesCreate, WorkspacesDiff, WorkspacesReadFile, WorkspacesRemove,
-    WorkspacesRemoveRepo, WorkspacesRescan, WorkspacesStatus, WorkspacesUpdate,
+    WorkspacesAddRepo, WorkspacesCreate, WorkspacesDiff, WorkspacesFindFile, WorkspacesReadFile,
+    WorkspacesRemove, WorkspacesRemoveRepo, WorkspacesRescan, WorkspacesStatus, WorkspacesUpdate,
     WorkspacesWriteFile,
 };
 use omfp_protocol::{
     AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CreateThreadParams,
-    CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams, InteractionResponse,
-    LabelParams, MessageParams, NavigateParams, PromptParams, QueueMessageParams, ReadFileParams,
-    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RespondParams,
-    SearchThreadsParams, SetModelParams, SetThinkingParams, SubagentMessagesParams, SubagentRef,
-    SubagentSteerParams, SubscribeParams, SubscribeResult, SuggestReposParams, Theme, ThreadRef,
-    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
-    WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
+    CreateWorkspaceParams, Empty, FileMatch, FindFileParams, ForkParams, GoalParams, HelloParams,
+    InteractionResponse, LabelParams, MessageParams, NavigateParams, PromptParams,
+    QueueMessageParams, ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef,
+    RepoSource, RespondParams, SearchThreadsParams, SetModelParams, SetThinkingParams,
+    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
+    SuggestReposParams, Theme, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
+    UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
 };
 use tempfile::TempDir;
 
@@ -275,6 +275,29 @@ async fn thread_management_methods_return_their_declared_results() {
     let git = client.typed::<ThreadGit>(thread_ref(&thread.id)).await;
     assert_eq!(git.workspace_id, thread.workspace_id);
     assert_eq!(git.repos, Vec::new());
+    client
+        .typed::<WorkspacesWriteFile>(WriteFileParams {
+            workspace_id: thread.workspace_id.clone(),
+            path: "plan.md".into(),
+            content: "plan\n".into(),
+            expected_hash: None,
+        })
+        .await;
+    let candidates = client
+        .typed::<WorkspacesFindFile>(FindFileParams {
+            workspace_id: thread.workspace_id.clone(),
+            query: "docs/plan.md".into(),
+            thread_id: Some(thread.id.clone()),
+        })
+        .await;
+    assert_eq!(
+        candidates
+            .candidates
+            .iter()
+            .map(|candidate| (candidate.path.as_str(), candidate.matched))
+            .collect::<Vec<_>>(),
+        [("plan.md", FileMatch::Basename)]
+    );
 
     client.typed::<ThreadsArchive>(thread_ref(&thread.id)).await;
     client

@@ -13,11 +13,12 @@ mod schema;
 mod topic;
 
 pub use dto::{
-    CreatedBy, Density, DiffPage, FileChange, FileContent, FileDiff, FileKind, FileStatus,
-    FileWritten, FontSettings, GitStatus, IndexSnapshot, JobInfo, JobLine, JobState, JobStatus,
-    JobStream, KeymapEntry, KeymapMode, Motion, NotificationMode, PathEntry, Provenance, RepoKind,
-    RepoStatus, SeenRepository, Settings, TerminalInfo, TerminalKind, Theme, ThreadSummary,
-    TitleSource, UiSettings, ViewsState, WidgetInfo, WidgetSource, Workspace, WorkspaceRepo,
+    CreatedBy, Density, DiffPage, FileCandidate, FileCandidates, FileChange, FileContent, FileDiff,
+    FileKind, FileMatch, FileStatus, FileWritten, FontSettings, GitStatus, IndexSnapshot, JobInfo,
+    JobLine, JobState, JobStatus, JobStream, KeymapEntry, KeymapMode, Motion, NotificationMode,
+    PathEntry, Provenance, RepoKind, RepoStatus, SeenRepository, Settings, TerminalInfo,
+    TerminalKind, Theme, ThreadSummary, TitleSource, UiSettings, ViewsState, WidgetInfo,
+    WidgetSource, Workspace, WorkspaceRepo,
 };
 pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, ProtocolError, Request, Response,
@@ -26,10 +27,10 @@ pub use envelope::{
 pub use method::{Call, METHODS, Method, method_schemas};
 pub use params::{
     AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CopyWidgetParams,
-    CreateThreadParams, CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams,
-    HelloResult, InteractionResponse, JobRef, LabelParams, ListTerminalsParams, MessageParams,
-    NavigateParams, OpenTerminalParams, OpenTerminalResult, PathCompletions, Position,
-    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, ReadFileParams,
+    CreateThreadParams, CreateWorkspaceParams, Empty, FindFileParams, ForkParams, GoalParams,
+    HelloParams, HelloResult, InteractionResponse, JobRef, LabelParams, ListTerminalsParams,
+    MessageParams, NavigateParams, OpenTerminalParams, OpenTerminalResult, PathCompletions,
+    Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams, ReadFileParams,
     RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
     ReportWidgetsParams, ResizeTerminalParams, RespondParams, SearchThreadsParams, SetModelParams,
     SetSettingsParams, SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,

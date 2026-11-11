@@ -14,9 +14,31 @@ import {
   Text,
 } from "react-aria-components";
 import { cx, withClass } from "./class.ts";
+import { Icon } from "./icons.tsx";
+import { Kbd } from "./kbd.tsx";
 
 /** `data-*` attributes in an object literal (JSX accepts them anyway; spread objects need the index signature). */
 export type DataAttributes = { readonly [name: `data-${string}`]: string | number | boolean | undefined };
+
+/** The box around an input (UI-150): an optional leading icon and trailing key chip. */
+export interface FieldDecoration {
+  /** A leading icon (an `Icon`), in on-surface-variant. */
+  icon?: ReactNode;
+  /** A trailing key chip, e.g. `/` or `tab`. */
+  kbd?: string | undefined;
+  /** The code family at fs-xs, for paths and commands. */
+  mono?: boolean | undefined;
+}
+
+function InputBox({ icon, kbd, mono, children }: FieldDecoration & { children: ReactNode }) {
+  return (
+    <div className="omfp-input-box" data-mono={mono === true || undefined}>
+      {icon}
+      {children}
+      {kbd !== undefined && <Kbd aria-hidden="true">{kbd}</Kbd>}
+    </div>
+  );
+}
 
 /** Label and help texts shared by the text inputs. */
 export interface FieldTexts {
@@ -41,12 +63,19 @@ function FieldHelp({ description, errorMessage }: Pick<FieldTexts, "description"
           {description}
         </Text>
       )}
-      <FieldError className="omfp-field__error">{errorMessage}</FieldError>
+      <FieldError className="omfp-field__error">
+        {errorMessage === undefined ? undefined : (
+          <>
+            <Icon name="circle-alert" />
+            {errorMessage}
+          </>
+        )}
+      </FieldError>
     </>
   );
 }
 
-export interface TextFieldProps extends Omit<AriaTextFieldProps, "children">, FieldTexts {
+export interface TextFieldProps extends Omit<AriaTextFieldProps, "children">, FieldTexts, FieldDecoration {
   placeholder?: string;
   /** Ref to the `<input>` (for focusing it programmatically). */
   inputRef?: Ref<HTMLInputElement>;
@@ -54,8 +83,11 @@ export interface TextFieldProps extends Omit<AriaTextFieldProps, "children">, Fi
   inputProps?: Omit<InputProps, "className"> & DataAttributes;
 }
 
-/** A labelled single-line text input. */
+/** A labelled single-line text input (UI-150). */
 export function TextField({
+  icon,
+  kbd,
+  mono,
   label,
   hideLabel,
   description,
@@ -74,12 +106,14 @@ export function TextField({
       className={withClass("omfp-field", className)}
     >
       <FieldLabel label={label} hideLabel={hideLabel === true} />
-      <Input
-        {...inputProps}
-        {...(placeholder === undefined ? {} : { placeholder })}
-        ref={inputRef}
-        className="omfp-input"
-      />
+      <InputBox icon={icon} kbd={kbd} mono={mono === true}>
+        <Input
+          {...inputProps}
+          {...(placeholder === undefined ? {} : { placeholder })}
+          ref={inputRef}
+          className="omfp-input"
+        />
+      </InputBox>
       <FieldHelp description={description} errorMessage={errorMessage} />
     </AriaTextField>
   );
@@ -116,13 +150,15 @@ export function TextArea({
       className={withClass("omfp-field", className)}
     >
       <FieldLabel label={label} hideLabel={hideLabel === true} />
-      <AriaTextArea
-        {...inputProps}
-        {...(placeholder === undefined ? {} : { placeholder })}
-        {...(rows === undefined ? {} : { rows })}
-        ref={inputRef}
-        className="omfp-input omfp-textarea"
-      />
+      <InputBox>
+        <AriaTextArea
+          {...inputProps}
+          {...(placeholder === undefined ? {} : { placeholder })}
+          {...(rows === undefined ? {} : { rows })}
+          ref={inputRef}
+          className="omfp-input omfp-textarea"
+        />
+      </InputBox>
       <FieldHelp description={description} errorMessage={errorMessage} />
     </AriaTextField>
   );
@@ -138,7 +174,7 @@ export interface SearchFieldProps extends Omit<AriaSearchFieldProps, "children">
   inputProps?: Omit<InputProps, "className"> & DataAttributes;
 }
 
-/** A search input: Escape clears it, a clear button appears when it has text. */
+/** A search input (UI-150) with a search icon: Escape clears it, a clear button appears when it has text. */
 export function SearchField({
   label,
   hideLabel,
@@ -160,7 +196,7 @@ export function SearchField({
       className={withClass("omfp-field omfp-search", className)}
     >
       <FieldLabel label={label} hideLabel={hideLabel === true} />
-      <div className="omfp-search__box">
+      <InputBox icon={<Icon name="search" />}>
         <Input
           {...inputProps}
           {...(placeholder === undefined ? {} : { placeholder })}
@@ -168,9 +204,9 @@ export function SearchField({
           className="omfp-input"
         />
         <AriaButton className="omfp-search__clear" aria-label={clearLabel} data-testid={clearTestId}>
-          <span aria-hidden="true">×</span>
+          <Icon name="x" />
         </AriaButton>
-      </div>
+      </InputBox>
       <FieldHelp description={description} errorMessage={errorMessage} />
     </AriaSearchField>
   );

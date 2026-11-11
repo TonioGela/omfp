@@ -23,6 +23,8 @@ import {
 } from "react-aria-components";
 import { cx, withClass } from "./class.ts";
 import { Popover } from "./dialog.tsx";
+import { Icon } from "./icons.tsx";
+import { Kbd } from "./kbd.tsx";
 
 export { type Key, MenuTrigger, SubmenuTrigger } from "react-aria-components";
 
@@ -46,10 +48,45 @@ export function Menu<T extends object>({ className, ...props }: MenuProps<T>) {
   return <AriaMenu {...props} className={withClass("omfp-menu", className)} />;
 }
 
-export type MenuItemProps<T extends object> = AriaMenuItemProps<T>;
+export interface MenuItemProps<T extends object> extends AriaMenuItemProps<T> {
+  /** A leading icon (an `Icon`). */
+  icon?: ReactNode;
+  /** A trailing key chip (UI-148). */
+  kbd?: string | undefined;
+  /** A destructive action: error text and icon (UI-155). */
+  danger?: boolean;
+}
 
-export function MenuItem<T extends object>({ className, ...props }: MenuItemProps<T>) {
-  return <AriaMenuItem {...props} className={withClass("omfp-menu__item", className)} />;
+/** A menu row (UI-155): icon, label, key chip. */
+export function MenuItem<T extends object>({
+  icon,
+  kbd,
+  danger = false,
+  className,
+  children,
+  textValue,
+  ...props
+}: MenuItemProps<T>) {
+  const decorated = icon !== undefined || kbd !== undefined;
+  const text = textValue ?? (typeof children === "string" ? children : undefined);
+  return (
+    <AriaMenuItem
+      {...props}
+      {...(text === undefined ? {} : { textValue: text })}
+      className={withClass("omfp-menu__item", className)}
+      data-danger={danger || undefined}
+    >
+      {decorated && typeof children !== "function" ? (
+        <>
+          {icon}
+          <span className="omfp-menu__label">{children}</span>
+          {kbd !== undefined && <Kbd aria-hidden="true">{kbd}</Kbd>}
+        </>
+      ) : (
+        children
+      )}
+    </AriaMenuItem>
+  );
 }
 
 export interface MenuSectionProps<T extends object> extends AriaMenuSectionProps<T> {
@@ -80,6 +117,9 @@ export function Separator({ className, ...props }: SeparatorProps) {
 export interface SelectItem {
   id: Key;
   label: string;
+  /** Metadata at the option's end (fs-2xs). */
+  meta?: string;
+  isDisabled?: boolean;
 }
 
 export interface SelectProps
@@ -89,10 +129,19 @@ export interface SelectProps
   items: readonly SelectItem[];
   selectedKey: Key | null;
   onSelectionChange: (key: Key | null) => void;
+  /** A leading icon (an `Icon`) in the control. */
+  icon?: ReactNode;
+  /** A visible word before the value, inside the control (e.g. `thinking`). */
+  prefix?: string;
 }
 
-/** A labelled single-choice picker: a button showing the value, a listbox in a popover. */
+/**
+ * A labelled single-choice picker (UI-152): a small control showing an optional prefix, the value and a chevron; a
+ * listbox in a popover with a check on the selected option.
+ */
 export function Select({
+  icon,
+  prefix,
   label,
   hideLabel = false,
   items,
@@ -110,18 +159,50 @@ export function Select({
     >
       <Label className={cx("omfp-field__label", hideLabel && "omfp-visually-hidden")}>{label}</Label>
       <AriaButton className="omfp-select__button">
-        <SelectValue className="omfp-select__value" />
-        <span className="omfp-select__chevron" aria-hidden="true" />
+        {icon}
+        {prefix !== undefined && <span className="omfp-select__prefix">{prefix}</span>}
+        <SelectValue<SelectItem> className="omfp-select__value">
+          {({ isPlaceholder, selectedText, defaultChildren }) => (isPlaceholder ? defaultChildren : selectedText)}
+        </SelectValue>
+        <Icon name="chevron-down" className="omfp-select__chevron" />
       </AriaButton>
-      <Popover>
+      <Popover className="omfp-select__popover">
         <ListBox<SelectItem> items={items}>
           {(item) => (
-            <ListBoxItem textValue={item.label} data-testid="select-option" data-key={String(item.id)}>
+            <SelectOption
+              id={item.id}
+              textValue={item.label}
+              {...(item.isDisabled === undefined ? {} : { isDisabled: item.isDisabled })}
+              data-testid="select-option"
+              data-key={String(item.id)}
+              meta={item.meta}
+            >
               {item.label}
-            </ListBoxItem>
+            </SelectOption>
           )}
         </ListBox>
       </Popover>
     </AriaSelect>
+  );
+}
+
+export interface SelectOptionProps<T extends object> extends Omit<ListBoxItemProps<T>, "children"> {
+  /** Metadata at the end (fs-2xs, on-surface-variant). */
+  meta?: string | undefined;
+  children: ReactNode;
+}
+
+/** A listbox option with a check column (primary check when selected), label and metadata (UI-152). */
+export function SelectOption<T extends object>({ meta, children, className, ...props }: SelectOptionProps<T>) {
+  return (
+    <AriaListBoxItem {...props} className={withClass("omfp-listbox__item omfp-option", className)}>
+      {({ isSelected }) => (
+        <>
+          <span className="omfp-option__check">{isSelected && <Icon name="check" />}</span>
+          <span className="omfp-option__label">{children}</span>
+          {meta !== undefined && <span className="omfp-option__meta">{meta}</span>}
+        </>
+      )}
+    </AriaListBoxItem>
   );
 }

@@ -1,6 +1,7 @@
-//! The files journey of M5c (06-testing.md, E2E-13): a workspace file opened from a tool card, edited with vim keys and
+//! The files journeys of M5c (06-testing.md, E2E-13): a workspace file opened from a tool card, edited with vim keys and
 //! saved, reloaded when the agent rewrites it, a stale save shown as a conflict, and a changed file opened against
-//! `HEAD` from `omfp:changes`. It also takes the M5c screenshots (`omfp-m5c-*.png` in `/tmp` or
+//! `HEAD` from `omfp:changes`; bare file names opened directly or through the picker, and the open files as tabs of
+//! the floating panel in a view without `main`. They also take the M5c screenshots (`omfp-m5c-*.png` in `/tmp` or
 //! `OMFP_SCREENSHOT_DIR`). Run with `just test-e2e`.
 
 use e2e::Journey;
@@ -277,4 +278,102 @@ async fn a_file_opened_from_a_tool_card_is_edited_reloaded_conflicted_and_diffed
 
     opens_against_head_from_changes(&journey).await?;
     journey.finish("E2E-13").await
+}
+
+/// The `data-file` of the file tabs in `css` (the `main` slot's or the floating panel's).
+async fn file_tabs(journey: &Journey, css: &str) -> anyhow::Result<Vec<String>> {
+    Ok(journey
+        .attrs(css, "data-file")
+        .await?
+        .into_iter()
+        .flatten()
+        .collect())
+}
+
+// spec: E2E-13, UI-115, UI-117, DMN-092
+#[tokio::test(flavor = "multi_thread")]
+async fn bare_names_open_their_file_or_a_picker_and_files_float_as_tabs_without_main()
+-> anyhow::Result<()> {
+    let repo = TempRepo::new()?;
+    repo.commit_file("src/theme.ts", "export const theme = 1;\n", "theme")?;
+    repo.commit_file("api/config.ts", "export const api = 1;\n", "api config")?;
+    repo.commit_file("web/config.ts", "export const web = 1;\n", "web config")?;
+    let journey = Journey::start(Vec::new()).await?;
+    journey.connected().await?;
+    let thread = journey.create_thread("bare names").await?;
+    let folder = journey.workspace_folder(&thread).await?;
+    std::os::unix::fs::symlink(repo.path(), folder.join("app"))?;
+    // Rescans the workspace: `app` is one of its repositories now.
+    journey.workspace_folder(&thread).await?;
+
+    // One file has that name: it opens directly, in place of the bare name.
+    journey.command("open theme.ts").await?;
+    journey
+        .element("[data-slot=main] [data-testid=file-tab][data-file=\"app/src/theme.ts\"][aria-selected=true]")
+        .await?;
+    until_editor_text(&journey, "export const theme = 1;\n").await?;
+
+    // Two have it: the picker offers both, the arrows and Enter choose one.
+    journey.command("open config.ts").await?;
+    journey.until_focused("file-picker-input").await?;
+    assert_eq!(
+        journey
+            .attrs("[data-testid=file-picker-option]", "data-path")
+            .await?,
+        vec![
+            Some("app/api/config.ts".to_owned()),
+            Some("app/web/config.ts".to_owned())
+        ]
+    );
+    journey.screenshot("m5c-file-picker").await?;
+    journey.keys(Key::Down).await?;
+    journey.keys(Key::Enter).await?;
+    journey.gone("[data-testid=file-picker]").await?;
+    journey
+        .element("[data-slot=main] [data-testid=file-tab][data-file=\"app/web/config.ts\"][aria-selected=true]")
+        .await?;
+    until_editor_text(&journey, "export const web = 1;\n").await?;
+    assert_eq!(
+        file_tabs(&journey, "[data-slot=main] [data-testid=file-tab]").await?,
+        ["app/src/theme.ts", "app/web/config.ts"],
+        "the chosen file took the bare name's tab"
+    );
+
+    // A view without `main`: both files are tabs of the floating panel.
+    let manifest = json!({
+        "default": "main",
+        "views": {
+            "main": { "layout": ["row", {}, ["tabs", { "id": "main" }, "omfp:chat"], "omfp:workspace"] },
+            "plain": { "title": "Plain", "layout": ["row", {}, "omfp:chat", "omfp:workspace"] }
+        }
+    });
+    std::fs::write(
+        folder.join(".omfp/views.json"),
+        serde_json::to_string_pretty(&manifest)?,
+    )?;
+    journey
+        .element("[data-testid=view][data-view=main]")
+        .await?;
+    journey.command("view plain").await?;
+    journey
+        .element("[data-testid=view][data-view=plain]")
+        .await?;
+    let panel = "[data-testid=floating-file]";
+    assert_eq!(
+        file_tabs(
+            &journey,
+            &format!("{panel} [data-testid=floating-file-tab]")
+        )
+        .await?,
+        ["app/src/theme.ts", "app/web/config.ts"]
+    );
+    until_editor_text(&journey, "export const web = 1;\n").await?;
+    journey
+        .click(&format!(
+            "{panel} [data-testid=floating-file-tab][data-file=\"app/src/theme.ts\"]"
+        ))
+        .await?;
+    until_editor_text(&journey, "export const theme = 1;\n").await?;
+    journey.screenshot("m5c-floating-files").await?;
+    journey.finish("E2E-13-names").await
 }

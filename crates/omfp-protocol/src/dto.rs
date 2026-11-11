@@ -389,6 +389,47 @@ pub struct FileWritten {
     pub size: u64,
 }
 
+/// How a candidate of `workspaces.find_file` matches the query (DMN-092), best first.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum FileMatch {
+    /// The query is the file's path relative to the workspace folder or to its repository.
+    Exact,
+    /// The file's path ends with the query, which has a `/`.
+    Suffix,
+    /// The file's name is the query's last component.
+    Basename,
+}
+
+/// A file found by `workspaces.find_file` (DMN-092).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCandidate {
+    /// Relative to the workspace folder (what `workspaces.read_file` takes).
+    pub path: String,
+    /// The workspace repository holding the file; absent outside every repository.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    #[serde(rename = "match")]
+    pub matched: FileMatch,
+    /// A tool card of the given thread names the file.
+    #[serde(default)]
+    pub mentioned: bool,
+}
+
+/// The result of `workspaces.find_file` (DMN-092): the candidates, best first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FileCandidates {
+    /// At most 50.
+    pub candidates: Vec<FileCandidate>,
+    /// More files matched than were returned.
+    #[serde(default)]
+    pub truncated: bool,
+}
+
 /// What runs in a terminal (05-terminal).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

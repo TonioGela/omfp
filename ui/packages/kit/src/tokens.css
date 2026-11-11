@@ -143,22 +143,11 @@
     --omfp-label-case: none;
     --omfp-label-track: 0;
 
-    /* Spacing (UI-127) */
+    /* Spacing (UI-127): the steps and the density-scaled sizes are in the rule below. */
     --omfp-unit: 0.25rem;
     --omfp-density: 1;
-    --omfp-s1: calc(var(--omfp-unit) * 1 * var(--omfp-density));
-    --omfp-s2: calc(var(--omfp-unit) * 2 * var(--omfp-density));
-    --omfp-s3: calc(var(--omfp-unit) * 3 * var(--omfp-density));
-    --omfp-s4: calc(var(--omfp-unit) * 4 * var(--omfp-density));
-    --omfp-s5: calc(var(--omfp-unit) * 5 * var(--omfp-density));
-    --omfp-s6: calc(var(--omfp-unit) * 6 * var(--omfp-density));
-    --omfp-s8: calc(var(--omfp-unit) * 8 * var(--omfp-density));
 
-    /* Layout sizes (UI-128) */
-    --omfp-row-h: calc(1.5rem * var(--omfp-density));
-    --omfp-ctl-h: calc(1.75rem * var(--omfp-density));
-    --omfp-ctl-h-sm: calc(1.4375rem * var(--omfp-density));
-    --omfp-msg-gap: calc(1.25rem * var(--omfp-density));
+    /* Layout sizes (UI-128) that do not scale with density */
     --omfp-side-w: 17rem;
     --omfp-panel-w: 22rem;
     --omfp-bar-h: 2.125rem;
@@ -234,7 +223,28 @@
     --omfp-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   }
 
-  :root[data-density="normal"] {
+  /* Spacing steps (UI-127) and the sizes that scale with density (UI-128), recomputed on every element that sets a
+     density, so a subtree (e.g. the gallery's density strip, UI-173) can be normal inside a compact page. */
+  :root,
+  [data-density] {
+    --omfp-s1: calc(var(--omfp-unit) * 1 * var(--omfp-density));
+    --omfp-s2: calc(var(--omfp-unit) * 2 * var(--omfp-density));
+    --omfp-s3: calc(var(--omfp-unit) * 3 * var(--omfp-density));
+    --omfp-s4: calc(var(--omfp-unit) * 4 * var(--omfp-density));
+    --omfp-s5: calc(var(--omfp-unit) * 5 * var(--omfp-density));
+    --omfp-s6: calc(var(--omfp-unit) * 6 * var(--omfp-density));
+    --omfp-s8: calc(var(--omfp-unit) * 8 * var(--omfp-density));
+    --omfp-row-h: calc(1.5rem * var(--omfp-density));
+    --omfp-ctl-h: calc(1.75rem * var(--omfp-density));
+    --omfp-ctl-h-sm: calc(1.4375rem * var(--omfp-density));
+    --omfp-msg-gap: calc(1.25rem * var(--omfp-density));
+  }
+
+  [data-density="compact"] {
+    --omfp-density: 1;
+  }
+
+  [data-density="normal"] {
     --omfp-density: 1.3;
   }
 

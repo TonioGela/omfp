@@ -61,6 +61,89 @@ export function closeTab(tabs: FileTabs, path: string): FileTabs {
   return { tabs: rest, active: neighbour === undefined ? undefined : fileTabId(neighbour.path) };
 }
 
+/**
+ * `tabs` with the tab of `from` (a path that does not exist as given) showing `to` instead (DMN-092), selected and
+ * keeping its `line` and `diff`; when `to` is already open, that tab takes them and `from`'s goes. Without a tab of
+ * `from`, `to` opens as {@link openTab} does with `options`.
+ */
+export function retargetTab(tabs: FileTabs, from: string, to: string, options: OpenFileOptions = {}): FileTabs {
+  const old = tabs.tabs.find((tab) => tab.path === from);
+  if (old === undefined) {
+    return openTab(tabs, to, options);
+  }
+  const open = tabs.tabs.find((tab) => tab.path === to);
+  const moved: FileTab = { path: to, line: old.line, diff: old.diff, seq: Math.max(old.seq, open?.seq ?? 0) + 1 };
+  return {
+    tabs: tabs.tabs.flatMap((tab) =>
+      tab === old ? (open === undefined ? [moved] : []) : tab === open ? [moved] : [tab],
+    ),
+    active: fileTabId(to),
+  };
+}
+
+/** Where the floating file panel sits over the view and whether it is minimised (UI-115), in CSS pixels. */
+export interface FloatingPanel {
+  /** `undefined` until the user moves or resizes the panel: it then fills the view with a margin. */
+  readonly box:
+    | { readonly left: number; readonly top: number; readonly width: number; readonly height: number }
+    | undefined;
+  readonly minimised: boolean;
+}
+
+export const FLOATING_PANEL_DEFAULT: FloatingPanel = { box: undefined, minimised: false };
+
+/** The smallest panel a resize leaves. */
+export const FLOATING_MIN = { width: 240, height: 120 } as const;
+
+/** `panel` moved by `dx`, `dy` (from `from`, its box when the move started), never above or left of the view. */
+export function movePanel(
+  panel: FloatingPanel,
+  from: NonNullable<FloatingPanel["box"]>,
+  dx: number,
+  dy: number,
+): FloatingPanel {
+  return {
+    ...panel,
+    box: { ...from, left: Math.max(0, Math.round(from.left + dx)), top: Math.max(0, Math.round(from.top + dy)) },
+  };
+}
+
+/** `panel` resized by `dx`, `dy` from `from` (its box when the resize started), never below {@link FLOATING_MIN}. */
+export function resizePanel(
+  panel: FloatingPanel,
+  from: NonNullable<FloatingPanel["box"]>,
+  dx: number,
+  dy: number,
+): FloatingPanel {
+  return {
+    ...panel,
+    box: {
+      ...from,
+      width: Math.max(FLOATING_MIN.width, Math.round(from.width + dx)),
+      height: Math.max(FLOATING_MIN.height, Math.round(from.height + dy)),
+    },
+  };
+}
+
+/** Reads a persisted {@link FloatingPanel}; `undefined` when it is not one. */
+export function decodeFloatingPanel(stored: unknown): FloatingPanel | undefined {
+  if (typeof stored !== "object" || stored === null) {
+    return undefined;
+  }
+  const { box, minimised } = stored as { box?: unknown; minimised?: unknown };
+  const numbers =
+    typeof box === "object" && box !== null
+      ? (["left", "top", "width", "height"] as const).map((key) => (box as Record<string, unknown>)[key])
+      : [];
+  const [left, top, width, height] = numbers;
+  const valid =
+    typeof left === "number" && typeof top === "number" && typeof width === "number" && typeof height === "number";
+  return {
+    box: valid ? { left, top, width, height } : undefined,
+    minimised: minimised === true,
+  };
+}
+
 /** Reads a persisted {@link OpenFiles}; `undefined` when it is not one. */
 export function decodeOpenFiles(stored: unknown): OpenFiles | undefined {
   if (typeof stored !== "object" || stored === null || Array.isArray(stored)) {

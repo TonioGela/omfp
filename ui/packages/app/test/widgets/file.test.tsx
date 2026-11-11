@@ -2,11 +2,19 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { CallError } from "@omfp/client";
-import type { FileContent, GitStatus } from "@omfp/protocol";
+import type { FileCandidate, FileContent, GitStatus } from "@omfp/protocol";
 import { workspaceTopic } from "@omfp/protocol";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type FilePoll, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import {
+  FILE_PICKER,
+  type FilePoll,
+  fileTabId,
+  NO_FILE_TABS,
+  OPEN_FILES,
+  openTab,
+  SELECTED_THREAD,
+} from "../../src/sdk/index.ts";
 import { FileWidget } from "../../src/widgets/file/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { FakeClient, renderWithHost, testHost } from "../support/host.tsx";
@@ -240,6 +248,7 @@ describe("omfp:file", () => {
     cleanup();
     const base = testHost(new FakeClient(), { filePoll: new ManualPoll().poll });
     base.host.window.set(SELECTED_THREAD, "t1");
+    base.client.answers.set("workspaces.find_file", () => ({ candidates: [], truncated: false }));
     const test = renderWithHost(<FileWidget path="gone.rs" />, base);
     test.client.connected();
     test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "one", "w1")] });
@@ -250,5 +259,58 @@ describe("omfp:file", () => {
         ?.reject(new CallError({ kind: "daemon", error: { code: "not_found", message: "no such file" } })),
     );
     expect((await screen.findByTestId("file-missing")).textContent).toBe("gone.rs does not exist.");
+  });
+});
+
+describe("a path that does not exist", () => {
+  function missing(path: string, candidates: readonly FileCandidate[]) {
+    const base = testHost(new FakeClient(), { filePoll: new ManualPoll().poll });
+    base.host.window.set(SELECTED_THREAD, "t1");
+    base.host.window.set(OPEN_FILES, { w1: openTab(NO_FILE_TABS, path, { line: 4 }) });
+    base.client.answers.set("workspaces.find_file", () => ({ candidates, truncated: false }));
+    const test = renderWithHost(<FileWidget path={path} line={4} />, base);
+    test.client.connected();
+    test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "one", "w1")] });
+    test.flush();
+    act(() =>
+      test.client
+        .callsTo("workspaces.read_file")[0]
+        ?.reject(new CallError({ kind: "daemon", error: { code: "not_found", message: "no such file" } })),
+    );
+    return test;
+  }
+
+  const candidate = (path: string, match: FileCandidate["match"] = "basename"): FileCandidate => ({
+    path,
+    match,
+    mentioned: false,
+  });
+
+  // spec: UI-117, DMN-092
+  test("with one candidate, the candidate takes the tab's place with its line", async () => {
+    const test = missing("theme.ts", [candidate("ui/src/theme.ts")]);
+    await waitFor(() =>
+      expect(test.host.window.get(OPEN_FILES).w1?.tabs.map((tab) => tab.path)).toEqual(["ui/src/theme.ts"]),
+    );
+    expect(test.client.callsTo("workspaces.find_file").map((call) => call.params)).toEqual([
+      { workspaceId: "w1", query: "theme.ts", threadId: "t1" },
+    ]);
+    expect(test.host.window.get(OPEN_FILES).w1?.tabs[0]?.line).toBe(4);
+    expect(test.host.window.get(OPEN_FILES).w1?.active).toBe(fileTabId("ui/src/theme.ts"));
+    expect(test.host.window.get(FILE_PICKER)).toBeUndefined();
+  });
+
+  // spec: UI-117
+  test("with several, the frame's picker gets them and the tab says so", async () => {
+    const candidates = [candidate("app/theme.ts"), candidate("lib/theme.ts")];
+    const test = missing("theme.ts", candidates);
+    expect((await screen.findByTestId("file-choosing")).textContent).toContain("Several files match theme.ts");
+    expect(test.host.window.get(FILE_PICKER)).toEqual({
+      workspaceId: "w1",
+      path: "theme.ts",
+      options: { line: 4, diff: false },
+      candidates,
+    });
+    expect(test.host.window.get(OPEN_FILES).w1?.tabs.map((tab) => tab.path)).toEqual(["theme.ts"]);
   });
 });

@@ -7,7 +7,6 @@
 //! threads keep the placeholder title of their first message.
 
 use std::io::{BufRead, BufReader};
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -47,37 +46,81 @@ pub fn row(id: &str) -> String {
     format!("[data-testid=thread-row][data-thread-id=\"{id}\"]")
 }
 
-/// `chromedriver` on a free port; killed on drop.
+/// `chromedriver` on the port it picks itself; killed on drop.
 struct ChromeDriver {
     child: Child,
     url: String,
 }
 
+/// The port of chromedriver's ready line (`ChromeDriver was started successfully on port 43063.`).
+fn ready_port(line: &str) -> Option<u16> {
+    let (_, rest) = line.split_once("started successfully on port ")?;
+    rest.trim_end().trim_end_matches('.').parse().ok()
+}
+
+/// How many times a chromedriver that could not bind its port is started again.
+const CHROMEDRIVER_ATTEMPTS: usize = 5;
+
 impl ChromeDriver {
+    /// Starts chromedriver on a port it picks itself (`--port=0`), so parallel journeys never race for a port probed
+    /// free beforehand. Its picked port is free on IPv4 but may already be taken on IPv6 (`bind() failed: Address
+    /// already in use`); such a start is retried with a fresh pick.
     fn start() -> anyhow::Result<Self> {
-        let port = TcpListener::bind("127.0.0.1:0")?.local_addr()?.port();
+        let mut failure = None;
+        for _ in 0..CHROMEDRIVER_ATTEMPTS {
+            match Self::start_once()? {
+                Ok(driver) => return Ok(driver),
+                Err(error) if error.contains("Address already in use") => failure = Some(error),
+                Err(error) => bail!("{error}"),
+            }
+        }
+        bail!(
+            "{}",
+            failure.unwrap_or_else(|| "chromedriver did not start".to_owned())
+        )
+    }
+
+    /// One start: the driver, or why chromedriver exited before it was ready.
+    fn start_once() -> anyhow::Result<Result<Self, String>> {
         let mut child = Command::new("chromedriver")
-            .arg(format!("--port={port}"))
+            .arg("--port=0")
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .context("cannot start chromedriver (run inside `nix develop`)")?;
         let stdout = child.stdout.take().context("chromedriver stdout")?;
+        let stderr = child.stderr.take().context("chromedriver stderr")?;
+        // Keep draining its error output so it never blocks on a full pipe; it explains a failed start.
+        let errors = std::thread::spawn(move || {
+            BufReader::new(stderr)
+                .lines()
+                .map_while(Result::ok)
+                .collect::<Vec<_>>()
+        });
         let mut lines = BufReader::new(stdout).lines();
-        loop {
+        let port = loop {
             match lines.next() {
-                Some(Ok(line)) if line.contains("started successfully") => break,
-                Some(Ok(_)) => {}
+                Some(Ok(line)) => {
+                    if let Some(port) = ready_port(&line) {
+                        break port;
+                    }
+                }
                 Some(Err(error)) => return Err(error.into()),
-                None => bail!("chromedriver exited before it was ready"),
+                None => {
+                    let status = child.wait()?;
+                    let errors = errors.join().unwrap_or_default().join("\n");
+                    return Ok(Err(format!(
+                        "chromedriver exited before it was ready ({status}): {errors}"
+                    )));
+                }
             }
-        }
+        };
         // Keep draining its output so it never blocks on a full pipe.
         std::thread::spawn(move || lines.for_each(drop));
-        Ok(Self {
+        Ok(Ok(Self {
             child,
             url: format!("http://127.0.0.1:{port}"),
-        })
+        }))
     }
 }
 
@@ -690,4 +733,19 @@ fn chrome(profile: &Path) -> anyhow::Result<ChromeCapabilities> {
     }
     caps.add_arg(&format!("--user-data-dir={}", profile.display()))?;
     Ok(caps)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ready_port;
+
+    #[test]
+    fn chromedriver_reports_the_port_it_picked() {
+        assert_eq!(
+            ready_port("ChromeDriver was started successfully on port 43063."),
+            Some(43063)
+        );
+        assert_eq!(ready_port("Starting ChromeDriver 157.0 on port 0"), None);
+        assert_eq!(ready_port("Only local connections are allowed."), None);
+    }
 }

@@ -118,6 +118,25 @@ export type ErrorCode =
   /** omp refused the command; its own code is in `ompCode` (DMN-071). */
   | "omp_error";
 
+/** A file found by `workspaces.find_file` (DMN-092). */
+export type FileCandidate = {
+  match: FileMatch;
+  /** A tool card of the given thread names the file. */
+  mentioned?: boolean;
+  /** Relative to the workspace folder (what `workspaces.read_file` takes). */
+  path: string;
+  /** The workspace repository holding the file; absent outside every repository. */
+  repo?: string | null;
+};
+
+/** The result of `workspaces.find_file` (DMN-092): the candidates, best first. */
+export type FileCandidates = {
+  /** At most 50. */
+  candidates: FileCandidate[];
+  /** More files matched than were returned. */
+  truncated?: boolean;
+};
+
 /** One changed file with its line counts. */
 export type FileChange = {
   additions: number;
@@ -174,6 +193,15 @@ export type FileKind =
   /** Anything else: named, never shown. */
   | "binary";
 
+/** How a candidate of `workspaces.find_file` matches the query (DMN-092), best first. */
+export type FileMatch =
+  /** The query is the file's path relative to the workspace folder or to its repository. */
+  | "exact"
+  /** The file's path ends with the query, which has a `/`. */
+  | "suffix"
+  /** The file's name is the query's last component. */
+  | "basename";
+
 /** Kind of change to a file. */
 export type FileStatus = "added" | "modified" | "deleted" | "renamed" | "untracked";
 
@@ -184,6 +212,15 @@ export type FileWritten = {
   /** Relative to the workspace folder. */
   path: string;
   size: number;
+};
+
+/** `workspaces.find_file` params (DMN-092). */
+export type FindFileParams = {
+  /** A bare file name (`theme.ts`) or the end of a path (`src/theme.ts`). */
+  query: string;
+  /** A thread of the workspace: files its tool cards name rank first among candidates of the same match. */
+  threadId?: string | null;
+  workspaceId: string;
 };
 
 /** CSS `font-family` values overriding the font tokens; absent ones keep the theme's. */
@@ -1050,6 +1087,7 @@ export interface Methods {
   "workspaces.status": { params: RepoRef; result: GitStatus };
   "workspaces.diff": { params: WorkspaceDiffParams; result: DiffPage };
   "workspaces.read_file": { params: ReadFileParams; result: FileContent };
+  "workspaces.find_file": { params: FindFileParams; result: FileCandidates };
   "workspaces.write_file": { params: WriteFileParams; result: FileWritten };
   "threads.create": { params: CreateThreadParams; result: ThreadSummary };
   "threads.update": { params: UpdateThreadParams; result: ThreadSummary };
@@ -1121,6 +1159,7 @@ export const METHODS: readonly MethodName[] = [
   "workspaces.status",
   "workspaces.diff",
   "workspaces.read_file",
+  "workspaces.find_file",
   "workspaces.write_file",
   "threads.create",
   "threads.update",

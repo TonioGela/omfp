@@ -5,7 +5,7 @@
  */
 /** React Aria's unstyled `Autocomplete` (filters a collection from a field; the composer's slash commands use it). */
 export { Autocomplete, type AutocompleteProps } from "react-aria-components";
-export { Badge, type BadgeProps, Chip, type ChipProps, Kbd, type KbdProps, type Tone } from "./badge.tsx";
+export { Badge, type BadgeProps, Chip, type ChipProps, type Tone } from "./badge.tsx";
 export {
   Button,
   type ButtonProps,
@@ -15,6 +15,24 @@ export {
   type IconButtonProps,
 } from "./button.tsx";
 export { Card, type CardCollapsible, type CardProps, type CardTone } from "./card.tsx";
+export {
+  ApprovalCommand,
+  type ApprovalCommandProps,
+  InteractionActions,
+  type InteractionActionsProps,
+  InteractionCard,
+  type InteractionCardProps,
+  OptionText,
+  type OptionTextProps,
+  ResolvedLine,
+  type ResolvedLineProps,
+  type TodoItem,
+  TodoList,
+  type TodoListProps,
+  ToolCard,
+  type ToolCardProps,
+  type ToolStatus,
+} from "./cards.tsx";
 export {
   Checkbox,
   type CheckboxProps,
@@ -39,6 +57,8 @@ export {
   MenuTrigger,
   Select,
   type SelectItem,
+  SelectOption,
+  type SelectOptionProps,
   type SelectProps,
   Separator,
   type SeparatorProps,
@@ -64,7 +84,18 @@ export {
   type VimMode,
 } from "./editor.tsx";
 export {
+  EmptyState,
+  type EmptyStateProps,
+  TOAST_MS,
+  Toast,
+  type ToastProps,
+  ToastRegion,
+  type ToastRegionProps,
+  type ToastTone,
+} from "./feedback.tsx";
+export {
   type DataAttributes,
+  type FieldDecoration,
   type FieldTexts,
   SearchField,
   type SearchFieldProps,
@@ -74,6 +105,8 @@ export {
   type TextFieldProps,
 } from "./field.tsx";
 export { Highlighted, languageOfPath, loadLanguage } from "./highlight.tsx";
+export { Icon, type IconName, type IconProps } from "./icons.tsx";
+export { Kbd, type KbdProps } from "./kbd.tsx";
 export {
   Disclosure,
   type DisclosureProps,
@@ -84,6 +117,28 @@ export {
   TooltipTrigger,
 } from "./layout.tsx";
 export { Code, type CodeProps, Markdown, type MarkdownProps } from "./markdown.tsx";
+export {
+  Count,
+  type CountProps,
+  compactNumber,
+  DiffStat,
+  type DiffStatProps,
+  ExitCode,
+  type ExitCodeProps,
+  KindMark,
+  type KindMarkProps,
+  type MarkState,
+  Meter,
+  type MeterProps,
+  type RepoKind,
+  StateBadge,
+  type StateBadgeProps,
+  StateMark,
+  type StateMarkProps,
+  type ThreadState,
+  useCountUp,
+} from "./marks.tsx";
+export { type MotionLevel, motionLevel } from "./motion.ts";
 export { type PathCompletion, PathField, type PathFieldProps, type PathSuggestion } from "./path-field.tsx";
 export {
   linkReference,
@@ -93,7 +148,40 @@ export {
   type PathReference,
   pathReference,
 } from "./paths.tsx";
-export { LiveRegion, type LiveRegionProps, Log, type LogProps, Progress, type ProgressProps } from "./status.tsx";
+export {
+  ActionRow,
+  type ActionRowProps,
+  Brand,
+  type BrandProps,
+  CommandItem,
+  type CommandItemProps,
+  CommandLine,
+  type CommandLineProps,
+  CommandMenu,
+  type CommandMenuProps,
+  HintRow,
+  type HintRowProps,
+  type Mode,
+  ModeLine,
+  type ModeLineProps,
+  ModePill,
+  type ModePillProps,
+  ModeSegment,
+  type ModeSegmentProps,
+  ThreadRow,
+  type ThreadRowProps,
+  WorkspaceSection,
+  type WorkspaceSectionProps,
+} from "./shell.tsx";
+export {
+  LiveRegion,
+  type LiveRegionProps,
+  Log,
+  type LogEntry,
+  type LogProps,
+  Progress,
+  type ProgressProps,
+} from "./status.tsx";
 export {
   Tab,
   TabList,
@@ -104,3 +192,21 @@ export {
   Tabs,
   type TabsProps,
 } from "./tabs.tsx";
+export {
+  ChatHeader,
+  type ChatHeaderProps,
+  Composer,
+  ComposerBar,
+  type ComposerBarProps,
+  ComposerHint,
+  type ComposerHintProps,
+  type ComposerProps,
+  Message,
+  type MessageProps,
+  QueueChip,
+  type QueueChipProps,
+  StreamCaret,
+  type StreamCaretProps,
+  Thinking,
+  type ThinkingProps,
+} from "./transcript.tsx";

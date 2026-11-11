@@ -248,6 +248,18 @@ pub struct ReadFileParams {
     pub known_hash: Option<String>,
 }
 
+/// `workspaces.find_file` params (DMN-092).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FindFileParams {
+    pub workspace_id: String,
+    /// A bare file name (`theme.ts`) or the end of a path (`src/theme.ts`).
+    pub query: String,
+    /// A thread of the workspace: files its tool cards name rank first among candidates of the same match.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+}
+
 /// `workspaces.write_file` params (DMN-090).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

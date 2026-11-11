@@ -12,6 +12,7 @@ import {
 } from "react-aria-components";
 import { Button } from "./button.tsx";
 import { cx, withClass } from "./class.ts";
+import { Icon } from "./icons.tsx";
 
 export { DialogTrigger } from "react-aria-components";
 
@@ -25,6 +26,8 @@ export interface DialogProps extends Omit<AriaDialogProps, "children"> {
   onOpenChange?: (isOpen: boolean) => void;
   /** Closes on a click outside (Escape always closes). */
   isDismissable?: boolean;
+  /** Renders the dialog surface in place, without the modal overlay (previews such as the `/kit` gallery). */
+  inline?: boolean;
 }
 
 function overlayProps(
@@ -38,32 +41,38 @@ function overlayProps(
   return props;
 }
 
-/** A modal dialog: focus moves into it, stays trapped while open and returns to the trigger on close. */
+/**
+ * A modal dialog (UI-156): centred on the scrim, focus moves into it, stays trapped while open and returns to the
+ * trigger on close.
+ */
 export function Dialog({
   title,
   children,
   isOpen,
   onOpenChange,
   isDismissable = false,
+  inline = false,
   className,
   ...props
 }: DialogProps) {
+  const dialog = (
+    <AriaDialog {...props} className={cx("omfp-dialog", className)}>
+      {(renderProps) => (
+        <>
+          <Heading slot="title" className="omfp-dialog__title">
+            {title}
+          </Heading>
+          <div className="omfp-dialog__body">{typeof children === "function" ? children(renderProps) : children}</div>
+        </>
+      )}
+    </AriaDialog>
+  );
+  if (inline) {
+    return <div className="omfp-modal">{dialog}</div>;
+  }
   return (
     <ModalOverlay {...overlayProps(isOpen, onOpenChange, isDismissable)}>
-      <Modal className="omfp-modal">
-        <AriaDialog {...props} className={cx("omfp-dialog", className)}>
-          {(renderProps) => (
-            <>
-              <Heading slot="title" className="omfp-dialog__title">
-                {title}
-              </Heading>
-              <div className="omfp-dialog__body">
-                {typeof children === "function" ? children(renderProps) : children}
-              </div>
-            </>
-          )}
-        </AriaDialog>
-      </Modal>
+      <Modal className="omfp-modal">{dialog}</Modal>
     </ModalOverlay>
   );
 }
@@ -78,13 +87,29 @@ export interface ConfirmDialogProps {
   /** `danger` styles the confirm button as destructive and focuses Cancel first. */
   tone?: "danger";
   onConfirm: () => void;
+  /** Key chips of the actions (UI-148, e.g. `esc` and `enter`): the keymap's labels, so a rebinding updates them. */
+  cancelKbd?: string;
+  confirmKbd?: string;
+  /** A leading icon of the confirm button (an `Icon`). */
+  confirmIcon?: ReactNode;
+  /** Confirming: the confirm button is busy, and the dialog stays open until the caller closes it. */
+  busy?: boolean;
+  /** Why confirming failed, shown above the actions. */
+  error?: ReactNode;
+  /** In place, without the overlay (see {@link DialogProps.inline}). */
+  inline?: boolean;
+  /** Content between the message and the actions (e.g. an option checkbox). */
+  children?: ReactNode;
   /** Test ids of the dialog and its buttons (`confirm-dialog`, `confirm`, `cancel` by default). */
   testId?: string;
   confirmTestId?: string;
   cancelTestId?: string;
 }
 
-/** An alert dialog asking to confirm an action; confirming calls `onConfirm` and closes it. */
+/**
+ * An alert dialog asking to confirm an action (UI-156); confirming calls `onConfirm` and closes it, unless the
+ * dialog is `busy`-driven: then the caller closes it when the action settles.
+ */
 export function ConfirmDialog({
   isOpen,
   onOpenChange,
@@ -97,24 +122,50 @@ export function ConfirmDialog({
   testId = "confirm-dialog",
   confirmTestId = "confirm",
   cancelTestId = "cancel",
+  cancelKbd,
+  confirmKbd,
+  confirmIcon,
+  busy,
+  error,
+  inline = false,
+  children,
 }: ConfirmDialogProps) {
   const danger = tone === "danger";
   return (
-    <Dialog isOpen={isOpen} onOpenChange={onOpenChange} title={title} role="alertdialog" data-testid={testId}>
+    <Dialog
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      title={title}
+      role="alertdialog"
+      data-testid={testId}
+      inline={inline}
+    >
       {({ close }) => (
         <>
           <div className="omfp-dialog__message">{message}</div>
+          {children}
+          {error !== undefined && (
+            <p className="omfp-dialog__error" role="alert">
+              <Icon name="circle-alert" />
+              {error}
+            </p>
+          )}
           <div className="omfp-dialog__actions">
-            <Button variant="quiet" onPress={close} autoFocus={danger} data-testid={cancelTestId}>
+            <Button variant="quiet" onPress={close} autoFocus={danger} kbd={cancelKbd} data-testid={cancelTestId}>
               {cancelLabel}
             </Button>
             <Button
               variant={danger ? "danger" : "primary"}
               autoFocus={!danger}
+              icon={confirmIcon}
+              kbd={confirmKbd}
+              isPending={busy === true}
               data-testid={confirmTestId}
               onPress={() => {
                 onConfirm();
-                close();
+                if (busy === undefined) {
+                  close();
+                }
               }}
             >
               {confirmLabel}

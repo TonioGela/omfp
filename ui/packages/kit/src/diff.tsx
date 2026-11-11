@@ -62,6 +62,12 @@ export interface DiffProps extends Omit<HTMLAttributes<HTMLTableElement>, "child
   lines?: readonly DiffLine[];
   /** Highlights the lines as this language (a name, alias or file extension, UI-090); plain text when unknown. */
   language?: string | undefined;
+  /** The file is binary: shows `binaryText` instead of lines. */
+  binary?: boolean;
+  /** Shown for a binary file (`binary file` by default). */
+  binaryText?: string;
+  /** Shown when there is no line (`no changes` by default). */
+  emptyText?: string;
 }
 
 /** The old (`del`) or new (`add`) side of a patch, its context lines included: what is highlighted together. */
@@ -77,7 +83,16 @@ function side(lines: readonly DiffLine[], kind: "add" | "del"): string {
  * (`data-kind`) and colored by the theme's success and error tokens; file headers other than mode, rename and binary
  * notes are left out. With a `language`, each side is highlighted as a whole, so tokens spanning lines stay right.
  */
-export function Diff({ patch = "", lines, language, className, ...props }: DiffProps) {
+export function Diff({
+  patch = "",
+  lines,
+  language,
+  binary = false,
+  binaryText = "binary file",
+  emptyText = "no changes",
+  className,
+  ...props
+}: DiffProps) {
   const parsed = useMemo(() => lines ?? parsePatch(patch), [lines, patch]);
   const oldTokens = useHighlight(
     useMemo(() => side(parsed, "del"), [parsed]),
@@ -101,31 +116,38 @@ export function Diff({ patch = "", lines, language, className, ...props }: DiffP
     }
     return { line, tokens };
   });
+  const shown = rows.filter(
+    ({ line }) => line.kind !== "meta" || !PLAIN_HEADERS.some((prefix) => line.text.startsWith(prefix)),
+  );
+  const notice = binary ? binaryText : shown.length === 0 ? emptyText : undefined;
   return (
     <table {...props} className={cx("omfp-code omfp-diff", className)}>
       <tbody>
-        {rows
-          .filter(({ line }) => line.kind !== "meta" || !PLAIN_HEADERS.some((prefix) => line.text.startsWith(prefix)))
-          .map(({ line, tokens }, index) => (
-            // The patch is static for one render: positions are stable keys.
-            // biome-ignore lint/suspicious/noArrayIndexKey: see above
-            <tr key={index} className="omfp-diff__line" data-kind={line.kind}>
-              {line.kind === "hunk" || line.kind === "meta" || line.kind === "note" ? (
-                <td className="omfp-diff__header" colSpan={4}>
-                  {line.text}
-                </td>
-              ) : (
-                <>
-                  <td className="omfp-diff__number">{line.oldLine}</td>
-                  <td className="omfp-diff__number">{line.newLine}</td>
-                  <td className="omfp-diff__sign">{SIGN[line.kind]}</td>
-                  <td className="omfp-diff__code">
-                    {tokens === undefined ? line.text : <TokenLine tokens={tokens} />}
-                  </td>
-                </>
-              )}
-            </tr>
-          ))}
+        {notice !== undefined && (
+          <tr className="omfp-diff__line" data-kind={binary ? "binary" : "empty"}>
+            <td className="omfp-diff__header omfp-diff__notice" colSpan={4}>
+              {notice}
+            </td>
+          </tr>
+        )}
+        {(binary ? [] : shown).map(({ line, tokens }, index) => (
+          // The patch is static for one render: positions are stable keys.
+          // biome-ignore lint/suspicious/noArrayIndexKey: see above
+          <tr key={index} className="omfp-diff__line" data-kind={line.kind}>
+            {line.kind === "hunk" || line.kind === "meta" || line.kind === "note" ? (
+              <td className="omfp-diff__header" colSpan={4}>
+                {line.text}
+              </td>
+            ) : (
+              <>
+                <td className="omfp-diff__number">{line.oldLine}</td>
+                <td className="omfp-diff__number">{line.newLine}</td>
+                <td className="omfp-diff__sign">{SIGN[line.kind]}</td>
+                <td className="omfp-diff__code">{tokens === undefined ? line.text : <TokenLine tokens={tokens} />}</td>
+              </>
+            )}
+          </tr>
+        ))}
       </tbody>
     </table>
   );

@@ -13,6 +13,7 @@ import {
   strings,
   useAnnounce,
   useFile,
+  useMissingFile,
   useReportError,
   useWindowState,
   type WidgetProps,
@@ -57,6 +58,8 @@ interface FileViewProps {
 
 function FileView({ path, line, jump, diff }: FileViewProps): ReactNode {
   const file = useFile(path);
+  // A path that does not exist as given may name a file of the workspace (`theme.ts`, `src/theme.ts`, UI-117).
+  const finding = useMissingFile(path, file.status === "missing", { line, diff });
   const root = useRef<HTMLElement>(null);
   return (
     <section
@@ -71,9 +74,19 @@ function FileView({ path, line, jump, diff }: FileViewProps): ReactNode {
       {file.status === "loading" ? (
         <p className="omfp-file__notice">{text.loading}</p>
       ) : file.status === "missing" ? (
-        <p className="omfp-file__notice" data-testid="file-missing">
-          {text.missing(path)}
-        </p>
+        finding === "finding" || finding === "opened" ? (
+          <p className="omfp-file__notice" data-testid="file-finding">
+            {text.finding(path)}
+          </p>
+        ) : finding === "choosing" ? (
+          <p className="omfp-file__notice" data-testid="file-choosing">
+            {text.choosing(path)}
+          </p>
+        ) : (
+          <p className="omfp-file__notice" data-testid="file-missing">
+            {text.missing(path)}
+          </p>
+        )
       ) : file.file === undefined ? (
         <p className="omfp-file__notice" data-tone="error" data-testid="file-error">
           {text.failed(file.error ?? "")}

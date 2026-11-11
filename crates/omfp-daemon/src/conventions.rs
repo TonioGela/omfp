@@ -47,7 +47,8 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
         "# omfp widgets\n\
          \n\
          The user's omfp window shows this workspace through React widgets that you can write and arrange too.\n\
-         - Views: {path}/.omfp/views.json (schema omfp://schemas/views.json), the user's and yours to change.\n\
+         - Views: {path}/.omfp/views.json (schema omfp://schemas/views.json), the user's and yours to change. Keep the \
+         `[\"tabs\", {{\"id\":\"main\"}}, …\"omfp:chat\"]` slot in every view you change: the user's files open as its tabs.\n\
          - Workspace widgets: {path}/.omfp/widgets/<name>/index.tsx, used as `./widgets/<name>`; a folder named like a \
          built-in (`chat` for `omfp:chat`) replaces it here.\n\
          - User library: {library}/<name>/, used as `user:<name>` in every workspace.\n\
@@ -139,7 +140,7 @@ mod tests {
         assert!(!text.ends_with('\n'));
     }
 
-    // spec: AGT-024
+    // spec: AGT-024, AGT-028
     #[test]
     fn the_widgets_note_says_where_widgets_live_what_they_import_and_how_to_check_and_place_them() {
         let library = Path::new("/data/omfp/widgets");
@@ -159,6 +160,7 @@ mod tests {
             "useJob(command)",
             "job.status",
             "read omfp://docs/widgets; schema omfp://schemas/views.json",
+            "Keep the `[\"tabs\", {\"id\":\"main\"}, …\"omfp:chat\"]` slot",
         ] {
             assert!(text.contains(rule), "{rule:?} missing: {text}");
         }

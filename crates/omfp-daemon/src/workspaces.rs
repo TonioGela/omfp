@@ -1,11 +1,12 @@
 //! Workspace folders (02-daemon, "Workspaces and their repositories"): creating and removing workspaces, discovering
 //! their repositories (DMN-022) and suggesting the ones seen before (DMN-021), adding and removing repositories
 //! (DMN-024, DMN-025), their git status (DMN-026), the cheap check that polls watched workspaces (DMN-023), and
-//! reading and writing their files (`files`, DMN-089, DMN-090).
+//! reading and writing their files (`files`, DMN-089, DMN-090) and finding them by a partial name (`find`, DMN-092).
 //!
 //! Calls are blocking; the server layer runs them on blocking tasks.
 
 mod files;
+mod find;
 mod fingerprint;
 mod scan;
 
@@ -14,6 +15,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
 pub use files::{IMAGE_CAP, TEXT_CAP};
+pub use find::{MAX_CANDIDATES, named_files};
 pub use fingerprint::{Fingerprint, fingerprint};
 pub use scan::{Discovered, RepoKind, scan};
 

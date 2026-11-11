@@ -6,8 +6,8 @@
  */
 
 import { type KeyboardEvent, type Ref, useEffect, useId, useRef, useState } from "react";
-import { Badge } from "./badge.tsx";
 import { type FieldTexts, TextField } from "./field.tsx";
+import { Icon } from "./icons.tsx";
 
 /** A repository the daemon has seen (`repos.suggest`). */
 export interface PathSuggestion {
@@ -38,8 +38,13 @@ export interface PathFieldProps extends FieldTexts {
   suggestionsLabel?: string;
   /** Heading of the directories section. */
   directoriesLabel?: string;
-  /** Badge of directories that are git repositories. */
+  /** Metadata of directories that are git repositories. */
   gitRootLabel?: string;
+  /** Metadata of the other directories. */
+  folderLabel?: string;
+  /** The key chip at the field's end (the key that completes, `tab` by default; UI-148). */
+  kbd?: string | undefined;
+  isDisabled?: boolean;
   /** On the <input>. */
   "data-testid"?: string;
 }
@@ -114,6 +119,9 @@ export function PathField({
   suggestionsLabel = "Recent repositories",
   directoriesLabel = "Folders",
   gitRootLabel = "git",
+  folderLabel = "folder",
+  kbd = "tab",
+  isDisabled,
   "data-testid": testId,
 }: PathFieldProps) {
   const listId = useId();
@@ -251,8 +259,13 @@ export function PathField({
     }
   };
 
+  // The typed directory part and the segment being typed: an option shows the first muted and the match bold.
+  const typedDirectory = value.slice(0, value.lastIndexOf("/") + 1);
+  const typedSegment = value.slice(typedDirectory.length);
+
   const renderOption = (option: PathOption, index: number) => {
     const gitRoot = option.kind === "directory" && option.isGitRoot;
+    const matched = option.kind === "directory" && option.name.startsWith(typedSegment) ? typedSegment.length : 0;
     return (
       // biome-ignore lint/a11y/useFocusableInteractive: options of a combobox stay unfocusable (aria-activedescendant)
       // biome-ignore lint/a11y/useKeyWithClickEvents: the combobox input handles the keys of its options
@@ -271,16 +284,20 @@ export function PathField({
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => pick(option)}
       >
-        <span className="omfp-path-field__name">
-          {option.name}
-          {option.kind === "directory" && !gitRoot && "/"}
-        </span>
-        {gitRoot && (
-          <Badge tone="primary" className="omfp-path-field__git">
-            {gitRootLabel}
-          </Badge>
+        <Icon name={gitRoot || option.kind === "suggestion" ? "folder-git-2" : "folder"} />
+        {option.kind === "directory" ? (
+          <span className="omfp-path-field__name">
+            <span className="omfp-path-field__dir">{typedDirectory}</span>
+            {matched > 0 && <b>{option.name.slice(0, matched)}</b>}
+            {option.name.slice(matched)}
+            {!gitRoot && "/"}
+          </span>
+        ) : (
+          <span className="omfp-path-field__name">{option.name}</span>
         )}
-        {option.kind === "suggestion" && <span className="omfp-path-field__path">{option.path}</span>}
+        <span className="omfp-path-field__meta">
+          {option.kind === "suggestion" ? option.path : gitRoot ? gitRootLabel : folderLabel}
+        </span>
       </div>
     );
   };
@@ -295,6 +312,10 @@ export function PathField({
         {...(placeholder === undefined ? {} : { placeholder })}
         {...(autoFocus === undefined ? {} : { autoFocus })}
         {...(inputRef === undefined ? {} : { inputRef })}
+        {...(isDisabled === undefined ? {} : { isDisabled })}
+        icon={<Icon name="folder-open" />}
+        kbd={kbd}
+        mono
         value={value}
         onChange={change}
         inputProps={{
@@ -316,7 +337,13 @@ export function PathField({
         }}
       />
       {expanded && (
-        <div role="listbox" id={listId} aria-label={label} className="omfp-path-field__list" data-testid="path-options">
+        <div
+          role="listbox"
+          id={listId}
+          aria-label={label}
+          className="omfp-popover omfp-path-field__list"
+          data-testid="path-options"
+        >
           {[
             { kind: "suggestion", title: suggestionsLabel, items: suggested, first: 0 },
             { kind: "directory", title: directoriesLabel, items: directories, first: suggested.length },

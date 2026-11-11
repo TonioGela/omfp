@@ -105,6 +105,11 @@ pub trait Git: Send + Sync + std::fmt::Debug {
     /// The bytes of the file `path` (relative to `dir`, inside a working tree) at `HEAD` (DMN-089); `None` when
     /// `HEAD` does not have it as a file or there is no `HEAD` yet.
     fn show_head(&self, dir: &Path, path: &str) -> Result<Option<Vec<u8>>>;
+
+    /// The files of the working tree at `dir` (relative to `dir`): tracked ones and untracked ones that are not
+    /// ignored, as `git ls-files --cached --others --exclude-standard` lists them (DMN-092). Tracked files deleted from
+    /// the working tree may be listed.
+    fn list_files(&self, dir: &Path) -> Result<Vec<String>>;
 }
 
 /// [`Git`] over the `git` executable. Output is parsed in machine formats, so user configuration (colors, pagers,
@@ -398,6 +403,28 @@ impl Git for GitCli {
             return Ok(None);
         }
         self.run(dir, &["cat-file", "blob", id.as_str()]).map(Some)
+    }
+
+    fn list_files(&self, dir: &Path) -> Result<Vec<String>> {
+        let stdout = self.run(
+            dir,
+            &[
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+        )?;
+        let mut files: Vec<String> = split_nul(&stdout)
+            // An untracked nested repository shows as its folder (`name/`).
+            .filter(|path| !path.ends_with(b"/"))
+            .map(|path| String::from_utf8_lossy(path).into_owned())
+            .collect();
+        // A conflicted file is listed once per stage.
+        files.sort_unstable();
+        files.dedup();
+        Ok(files)
     }
 }
 

@@ -4,21 +4,22 @@
 use omfp_core::wire::{AskAnswer, GoalOp, ImageContent, QueuedMessageQueue, ThinkingLevel};
 use omfp_protocol::{
     AddRepoParams, BashParams, BtwParams, Call, CompactParams, CompletePathParams,
-    CopyWidgetParams, CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileContent,
-    FileDiff, FileKind, FileWritten, ForkParams, GoalParams, HelloParams, HelloResult,
-    IndexSnapshot, InteractionResponse, JobInfo, JobRef, JobStatus, LabelParams,
-    ListTerminalsParams, METHODS, MessageParams, Method, NavigateParams, OpenTerminalParams,
-    OpenTerminalResult, PROTOCOL_VERSION, PathCompletions, PathEntry, Position, PromptBehavior,
-    PromptParams, PromptResult, QueueMessageParams, ReadFileParams, RemoveRepoParams,
-    RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions, ReportWidgetsParams, Request,
-    ResizeTerminalParams, RespondParams, Response, SearchThreadsParams, SeenRepository,
-    ServerFrame, SetModelParams, SetSettingsParams, SetThinkingParams, SetViewsParams,
-    SetWidgetStateParams, StartJobParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
-    SubscribeParams, SubscribeResult, SuggestReposParams, TerminalInfo, TerminalKind, TerminalList,
-    TerminalRef, Theme, ThreadGit, ThreadRef, ThreadSearchResult, ThreadSearchResults,
-    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied,
-    WidgetJobReport, WidgetReport, WidgetReportState, WidgetSource, WorkspaceDiffParams,
-    WorkspaceRef, WriteFileParams, decode_request, method,
+    CopyWidgetParams, CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileCandidate,
+    FileCandidates, FileContent, FileDiff, FileKind, FileMatch, FileWritten, FindFileParams,
+    ForkParams, GoalParams, HelloParams, HelloResult, IndexSnapshot, InteractionResponse, JobInfo,
+    JobRef, JobStatus, LabelParams, ListTerminalsParams, METHODS, MessageParams, Method,
+    NavigateParams, OpenTerminalParams, OpenTerminalResult, PROTOCOL_VERSION, PathCompletions,
+    PathEntry, Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams,
+    ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
+    ReportWidgetsParams, Request, ResizeTerminalParams, RespondParams, Response,
+    SearchThreadsParams, SeenRepository, ServerFrame, SetModelParams, SetSettingsParams,
+    SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
+    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
+    SuggestReposParams, TerminalInfo, TerminalKind, TerminalList, TerminalRef, Theme, ThreadGit,
+    ThreadRef, ThreadSearchResult, ThreadSearchResults, ThreadWorkspace, Topic, TopicParams,
+    UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied, WidgetJobReport, WidgetReport,
+    WidgetReportState, WidgetSource, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
+    decode_request, method,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -237,6 +238,12 @@ fn workspace_examples() -> Vec<(&'static str, Value)> {
                 next_cursor: Some("p3".to_owned()),
             },
         ),
+    ]
+}
+
+/// The files of a workspace (DMN-089, DMN-090, DMN-092).
+fn file_examples() -> Vec<(&'static str, Value)> {
+    vec![
         example::<method::WorkspacesReadFile>(
             ReadFileParams {
                 workspace_id: WORKSPACE_ID.to_owned(),
@@ -254,6 +261,30 @@ fn workspace_examples() -> Vec<(&'static str, Value)> {
                 mime: None,
                 repo: Some("shop-frontend".to_owned()),
                 head: Some("use std::fmt;\n".to_owned()),
+            },
+        ),
+        example::<method::WorkspacesFindFile>(
+            FindFileParams {
+                workspace_id: WORKSPACE_ID.to_owned(),
+                query: "checkout.rs".to_owned(),
+                thread_id: Some(THREAD_ID.to_owned()),
+            },
+            &FileCandidates {
+                candidates: vec![
+                    FileCandidate {
+                        path: "shop-frontend/src/checkout.rs".to_owned(),
+                        repo: Some("shop-frontend".to_owned()),
+                        matched: FileMatch::Basename,
+                        mentioned: true,
+                    },
+                    FileCandidate {
+                        path: "shop-backend/src/checkout.rs".to_owned(),
+                        repo: Some("shop-backend".to_owned()),
+                        matched: FileMatch::Basename,
+                        mentioned: false,
+                    },
+                ],
+                truncated: false,
             },
         ),
         example::<method::WorkspacesWriteFile>(
@@ -777,6 +808,7 @@ fn every_method_has_a_golden_request_and_response() {
         system_examples(),
         repository_examples(),
         workspace_examples(),
+        file_examples(),
         threads_examples(),
         conversation_examples(),
         settings_examples(),

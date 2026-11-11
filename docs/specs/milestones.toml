@@ -339,6 +339,9 @@ requirements = [
   "AGT-027",
   # End-to-end journey
   "E2E-13",
+  "DMN-092",
+  "UI-117",
+  "AGT-028",
 ]
 
 [M5d]

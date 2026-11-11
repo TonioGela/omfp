@@ -1,0 +1,386 @@
+/* The `/kit` gallery's layout (UI-173); the components bring their own styles from the kit. */
+@layer omfp-tokens, omfp-kit, omfp-gallery;
+
+@layer omfp-gallery {
+  .omfp-gallery {
+    box-sizing: border-box;
+    min-block-size: 100vh;
+    padding: var(--omfp-s6) var(--omfp-s8) var(--omfp-s8);
+    color: var(--omfp-on-surface);
+    background: var(--omfp-app-bg);
+  }
+
+  .omfp-gallery *,
+  .omfp-gallery *::before,
+  .omfp-gallery *::after {
+    box-sizing: border-box;
+  }
+
+  .omfp-gallery__top {
+    display: flex;
+    align-items: baseline;
+    gap: var(--omfp-s4);
+    margin-block-end: var(--omfp-s5);
+  }
+
+  .omfp-gallery__page-title {
+    margin: 0;
+    font-size: var(--omfp-fs-xl);
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-gallery__sections {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-flow: row dense;
+    gap: var(--omfp-s5);
+    align-items: start;
+  }
+
+  .omfp-gallery__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s3);
+    min-inline-size: 0;
+    padding: var(--omfp-s4);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+  }
+
+  .omfp-gallery__section[data-wide] {
+    grid-column: span 2;
+  }
+
+  .omfp-gallery__section[data-full] {
+    grid-column: 1 / -1;
+  }
+
+  .omfp-gallery__head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--omfp-s3);
+  }
+
+  .omfp-gallery__title {
+    margin: 0;
+    font-size: var(--omfp-fs-sm);
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-gallery__note,
+  .omfp-gallery__label {
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-gallery__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s3);
+    min-inline-size: 0;
+  }
+
+  .omfp-gallery__grid {
+    display: grid;
+    align-items: center;
+    gap: var(--omfp-s3) var(--omfp-s4);
+  }
+
+  .omfp-gallery__cell .omfp-field {
+    inline-size: 9rem;
+  }
+
+  .omfp-gallery__line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s3);
+    min-inline-size: 0;
+  }
+
+  .omfp-gallery__line > .omfp-gallery__label:first-child {
+    flex: none;
+    inline-size: 6rem;
+  }
+
+  .omfp-gallery__line > .omfp-path-field,
+  .omfp-gallery__line > .omfp-field:not(.omfp-select),
+  .omfp-gallery__grow {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .omfp-gallery__line > .omfp-field.omfp-gallery__field {
+    flex: none;
+    inline-size: 16rem;
+  }
+
+  .omfp-gallery__divider {
+    border-block-start: var(--omfp-bw) dashed var(--omfp-rule);
+  }
+
+  .omfp-gallery__static.omfp-path-field__list,
+  .omfp-gallery__static {
+    position: static;
+    margin-block-start: var(--omfp-s1);
+    animation: none;
+  }
+
+  .omfp-gallery__open {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .omfp-gallery__options {
+    min-inline-size: 11rem;
+  }
+
+  .omfp-gallery__menu {
+    inline-size: max-content;
+  }
+
+  .omfp-gallery__radios {
+    flex-direction: row;
+    flex-wrap: wrap;
+    column-gap: var(--omfp-s3);
+  }
+
+  .omfp-gallery__stages {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--omfp-s3);
+  }
+
+  .omfp-gallery__stage {
+    display: grid;
+    place-items: center;
+    padding: var(--omfp-s5) var(--omfp-s3);
+    border-radius: var(--omfp-r-card);
+    background: color-mix(in oklab, var(--omfp-scrim) 36%, transparent);
+  }
+
+  .omfp-gallery__stage .omfp-modal {
+    inline-size: 100%;
+  }
+
+  .omfp-gallery__mark {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--omfp-s1);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-gallery__text {
+    margin: 0;
+    font-size: var(--omfp-fs-sm);
+  }
+
+  .omfp-gallery__short-log {
+    max-block-size: 4.5rem;
+  }
+
+  .omfp-gallery__pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--omfp-s3);
+    align-items: start;
+  }
+
+  .omfp-gallery__stack,
+  .omfp-gallery__command {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+  }
+
+  .omfp-gallery__command .omfp-cmdmenu {
+    inline-size: 100%;
+  }
+
+  .omfp-gallery__bare {
+    margin-block-start: 0;
+  }
+
+  .omfp-gallery .omfp-modeline {
+    overflow: hidden;
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-ctl);
+  }
+
+  .omfp-gallery__narrow {
+    inline-size: 22rem;
+  }
+
+  .omfp-gallery__side {
+    padding: var(--omfp-s3) var(--omfp-s2);
+    border-radius: var(--omfp-r-card);
+    background: var(--omfp-side-bg);
+  }
+
+  .omfp-gallery__transcript {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-msg-gap);
+    max-inline-size: var(--omfp-measure);
+    padding-block-start: var(--omfp-s3);
+  }
+
+  .omfp-gallery__transcript .omfp-prose,
+  .omfp-gallery__prose {
+    margin: 0;
+  }
+
+  .omfp-gallery__density {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s3);
+  }
+
+  .omfp-gallery__density > .omfp-gallery__label {
+    inline-size: 6rem;
+  }
+
+  .omfp-gallery__density .omfp-field:not(.omfp-select) {
+    inline-size: 10rem;
+  }
+
+  .omfp-gallery__row {
+    inline-size: 14rem;
+  }
+
+  .omfp-gallery__glyphs {
+    display: grid;
+    gap: var(--omfp-s1);
+    margin: 0;
+  }
+
+  .omfp-gallery__glyph-row {
+    display: grid;
+    grid-template-columns: 8rem 1fr;
+    align-items: baseline;
+    gap: var(--omfp-s3);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-gallery__glyph-row dt {
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-lg);
+    line-height: 1.2;
+  }
+
+  .omfp-gallery__glyph-row dd {
+    margin: 0;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-gallery__glyph--primary {
+    color: var(--omfp-primary);
+  }
+
+  .omfp-gallery__glyph--warn {
+    color: var(--omfp-warn);
+  }
+
+  .omfp-gallery__glyph--ok {
+    color: var(--omfp-ok);
+  }
+
+  .omfp-gallery__glyph--outline {
+    color: var(--omfp-outline);
+  }
+
+  .omfp-gallery__glyph--rule {
+    color: var(--omfp-rule-strong);
+  }
+
+  .omfp-gallery__glyph--muted {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-gallery__type {
+    display: flex;
+    align-items: baseline;
+    gap: var(--omfp-s3);
+  }
+
+  .omfp-gallery__type > .omfp-gallery__label {
+    flex: none;
+    inline-size: 5rem;
+  }
+
+  .omfp-gallery__weights {
+    font-size: var(--omfp-fs-sm);
+  }
+
+  .omfp-gallery__space {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s3);
+  }
+
+  .omfp-gallery__space > .omfp-gallery__label {
+    inline-size: 3rem;
+  }
+
+  .omfp-gallery__bar {
+    block-size: var(--omfp-s2);
+    background: var(--omfp-grad);
+  }
+
+  .omfp-gallery__radius {
+    padding: var(--omfp-s2) var(--omfp-s3);
+    border: var(--omfp-bw) solid var(--omfp-rule-strong);
+    font-size: var(--omfp-fs-2xs);
+  }
+
+  .omfp-gallery__swatches {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--omfp-s1) var(--omfp-s3);
+  }
+
+  .omfp-gallery__swatch {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+    font-size: var(--omfp-fs-2xs);
+  }
+
+  .omfp-gallery__chip {
+    flex: none;
+    inline-size: 2rem;
+    block-size: var(--omfp-row-h);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-chip);
+  }
+
+  .omfp-gallery__contrast {
+    border-collapse: collapse;
+    font-size: var(--omfp-fs-2xs);
+  }
+
+  .omfp-gallery__contrast td {
+    padding: 1px var(--omfp-s2) 1px 0;
+  }
+
+  .omfp-gallery__sample {
+    display: inline-block;
+    padding: 0 var(--omfp-s1);
+    border-radius: var(--omfp-r-chip);
+    font-size: var(--omfp-fs-sm);
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-gallery__ratio {
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+  }
+
+  .omfp-gallery__contrast tr[data-pass="false"][data-checked="true"] .omfp-gallery__ratio {
+    color: var(--omfp-error);
+  }
+}

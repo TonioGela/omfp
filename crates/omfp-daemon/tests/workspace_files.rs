@@ -458,3 +458,32 @@ fn a_write_creates_no_folder() {
         Err(WorkspaceError::NoSuchFolder(_))
     ));
 }
+
+// spec: DMN-092
+#[test]
+fn find_file_lists_tracked_and_untracked_files_but_not_ignored_or_deleted_ones() {
+    let env = env();
+    env.app
+        .commit_file(".gitignore", "target/\n", "ignore")
+        .unwrap();
+    env.app.commit_file("src/gone.rs", "x\n", "gone").unwrap();
+    std::fs::remove_file(env.app_file("src/gone.rs")).unwrap();
+    std::fs::create_dir_all(env.app_file("target")).unwrap();
+    std::fs::write(env.app_file("target/lib.rs"), "built\n").unwrap();
+    std::fs::write(env.app_file("src/new.rs"), "new\n").unwrap();
+    // A file of the workspace folder itself, outside every repository.
+    std::fs::write(env.folder.join("lib.rs"), "notes\n").unwrap();
+    let find = |query: &str| -> Vec<String> {
+        env.workspaces
+            .find_file(&env.id, query, &std::collections::BTreeSet::new())
+            .unwrap()
+            .candidates
+            .into_iter()
+            .map(|candidate| candidate.path)
+            .collect()
+    };
+
+    assert_eq!(find("lib.rs"), ["lib.rs", "app/src/lib.rs"]);
+    assert_eq!(find("src/new.rs"), ["app/src/new.rs"]);
+    assert_eq!(find("gone.rs"), Vec::<String>::new());
+}

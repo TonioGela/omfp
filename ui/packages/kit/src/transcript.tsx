@@ -1,0 +1,168 @@
+/**
+ * The chat's pieces (UI-171, UI-172): the chat header, messages with their name line, thinking blocks, the stream
+ * caret (UI-147), the composer box and queued-message chips. Presentational: the app supplies text and behaviour.
+ */
+import { type HTMLAttributes, type ReactNode, useId } from "react";
+import { Button as AriaButton } from "react-aria-components";
+import { IconButton } from "./button.tsx";
+import { cx } from "./class.ts";
+import { Icon } from "./icons.tsx";
+
+export interface ChatHeaderProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
+  /** The thread title, after `◆`, in flowing gradient text. */
+  title: ReactNode;
+  /** Controls under the title (selects, chips). */
+  children?: ReactNode;
+}
+
+/** The chat's head over a primary → tertiary → transparent hairline (UI-171). */
+export function ChatHeader({ title, className, children, ...props }: ChatHeaderProps) {
+  return (
+    <header {...props} className={cx("omfp-chat-header", className)}>
+      <h2 className="omfp-chat-header__title omfp-grad-text">◆ {title}</h2>
+      {children !== undefined && <div className="omfp-chat-header__bar">{children}</div>}
+    </header>
+  );
+}
+
+export interface MessageProps extends HTMLAttributes<HTMLElement> {
+  author: "user" | "assistant";
+  /** The name on the name line (after `◆` for the assistant, `▸` for the user). */
+  name: ReactNode;
+  /** Why the message failed, shown under its body in error. */
+  error?: ReactNode;
+  children?: ReactNode;
+}
+
+/** A transcript message (UI-171): name line, then the body (prose, a 2 px tertiary bar for the user). */
+export function Message({ author, name, error, className, children, ...props }: MessageProps) {
+  return (
+    <article {...props} className={cx("omfp-msg", className)} data-author={author}>
+      <div className={cx("omfp-msg__name", author === "assistant" && "omfp-grad-text")}>
+        {author === "assistant" ? "◆ " : "▸ "}
+        {name}
+      </div>
+      <div className="omfp-msg__body">{children}</div>
+      {error !== undefined && (
+        <p className="omfp-msg__error" role="alert">
+          <Icon name="circle-alert" />
+          {error}
+        </p>
+      )}
+    </article>
+  );
+}
+
+export type StreamCaretProps = Omit<HTMLAttributes<HTMLSpanElement>, "children">;
+
+/** The block caret after the last streamed character (UI-147): blinks at motion `full`, steady otherwise. */
+export function StreamCaret({ className, ...props }: StreamCaretProps) {
+  return <span aria-hidden="true" {...props} className={cx("omfp-caret", className)} />;
+}
+
+export interface ThinkingProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
+  /** The italic label of the head (e.g. "Thinking"). */
+  label: ReactNode;
+  /** Metadata after the label (duration, length). */
+  meta?: ReactNode;
+  expanded: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+  /** Class names of the head (forced states in the gallery). */
+  headClassName?: string;
+  /** The thinking text. */
+  children?: ReactNode;
+}
+
+/** A thinking block (UI-171): a `▸`/`▾` head expanding to italic prose with a rule bar. */
+export function Thinking({
+  label,
+  meta,
+  expanded,
+  onExpandedChange,
+  headClassName,
+  className,
+  children,
+  ...props
+}: ThinkingProps) {
+  const textId = useId();
+  return (
+    <div {...props} className={cx("omfp-reasoning", className)} data-expanded={expanded}>
+      <AriaButton
+        className={cx("omfp-reasoning__head", headClassName)}
+        aria-expanded={expanded}
+        aria-controls={textId}
+        onPress={() => onExpandedChange?.(!expanded)}
+        data-testid="thinking-head"
+      >
+        <span className="omfp-reasoning__glyph" aria-hidden="true">
+          {expanded ? "▾" : "▸"}
+        </span>
+        <span className="omfp-reasoning__label">{label}</span>
+        {meta !== undefined && <span className="omfp-reasoning__meta">{meta}</span>}
+      </AriaButton>
+      <div id={textId} className="omfp-prose omfp-reasoning__text" hidden={!expanded}>
+        {expanded && children}
+      </div>
+    </div>
+  );
+}
+
+export interface ComposerProps extends HTMLAttributes<HTMLDivElement> {
+  /** `insert` draws the gradient border and the focus glow (UI-172). */
+  mode?: "normal" | "insert";
+  disabled?: boolean;
+  /** The input (give a `<textarea>` the `omfp-compose__input` class), then a {@link ComposerBar}. */
+  children?: ReactNode;
+}
+
+/** The message box (UI-172). */
+export function Composer({ mode = "normal", disabled = false, className, ...props }: ComposerProps) {
+  return (
+    <div {...props} className={cx("omfp-compose", className)} data-mode={mode} data-disabled={disabled || undefined} />
+  );
+}
+
+export type ComposerBarProps = HTMLAttributes<HTMLDivElement>;
+
+/** The row under the composer's input: attachment chips, key hints, the send button. */
+export function ComposerBar({ className, ...props }: ComposerBarProps) {
+  return <div {...props} className={cx("omfp-compose__bar", className)} />;
+}
+
+export type ComposerHintProps = HTMLAttributes<HTMLSpanElement>;
+
+/** A key hint in the composer's bar (key chips with a word). */
+export function ComposerHint({ className, ...props }: ComposerHintProps) {
+  return <span {...props} className={cx("omfp-compose__hint", className)} />;
+}
+
+export interface QueueChipProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+  kind: "follow-up" | "steer";
+  /** The kind's word (`follow-up` / `steer` by default). */
+  label?: ReactNode;
+  /** The queued text, cut with an ellipsis. */
+  children: ReactNode;
+  onRemove?: () => void;
+  removeLabel?: string;
+}
+
+/** A queued follow-up or steering message above the composer: a dashed chip (UI-172). */
+export function QueueChip({
+  kind,
+  label,
+  children,
+  onRemove,
+  removeLabel = "Remove",
+  className,
+  ...props
+}: QueueChipProps) {
+  return (
+    <span {...props} className={cx("omfp-queue-chip", className)} data-kind={kind}>
+      <span className="omfp-queue-chip__kind">{label ?? kind}</span>
+      <span className="omfp-queue-chip__text">{children}</span>
+      {onRemove !== undefined && (
+        <IconButton label={removeLabel} icon={<Icon name="x" />} onPress={onRemove} data-testid="queue-remove" />
+      )}
+    </span>
+  );
+}

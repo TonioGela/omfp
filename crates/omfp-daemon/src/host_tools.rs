@@ -146,7 +146,8 @@ pub fn view_add(workspace_id: String, host: Arc<dyn WidgetHost>) -> HostTool {
     HostTool::new(
         VIEW_ADD,
         "Adds a widget to a view of this workspace's .omfp/views.json (open windows show it at once), without \
-         rewriting the file by hand.",
+         rewriting the file by hand. Keep the main slot, the [\"tabs\", {\"id\": \"main\"}, …\"omfp:chat\"] container: \
+         files the user opens become its tabs (without it they float over the view), so never remove or replace it.",
         parameters,
         move |arguments, context| {
             run_view_add(&arguments, || context.is_cancelled(), &workspace_id, &*host)

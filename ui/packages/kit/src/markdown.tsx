@@ -9,12 +9,25 @@ const REMARK_PLUGINS = [remarkGfm];
 
 const FENCE_LANGUAGE = /(?:^|\s)language-(\S+)/;
 
+/** The fence language of a `<pre>`'s `<code>` child (its `language-*` class), if any. */
+function fenceLanguage(node: { children?: readonly unknown[] } | undefined): string | undefined {
+  const code = node?.children?.[0];
+  if (typeof code !== "object" || code === null || !("properties" in code)) {
+    return undefined;
+  }
+  const names = (code.properties as { className?: unknown }).className;
+  const name = Array.isArray(names)
+    ? names.find((value) => typeof value === "string" && value.startsWith("language-"))
+    : undefined;
+  return typeof name === "string" ? name.slice("language-".length) : undefined;
+}
+
 /** Links open in a new tab without leaking the referrer; fenced code with a language is highlighted (UI-090);
  * everything else keeps react-markdown's elements. */
 const COMPONENTS = {
   a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
-  pre: ({ node: _node, className, ...props }) => (
-    <pre {...props} className={cx("omfp-code omfp-code--block", className)} />
+  pre: ({ node, className, ...props }) => (
+    <pre {...props} className={cx("omfp-code omfp-code--block", className)} data-lang={fenceLanguage(node)} />
   ),
   code: ({ node: _node, className, children, ...props }) => {
     const language = FENCE_LANGUAGE.exec(className ?? "")?.[1];
@@ -95,11 +108,12 @@ export interface CodeProps extends Omit<HTMLAttributes<HTMLElement>, "children">
   language?: string | undefined;
 }
 
-/** Monospace code, inline or as a block. */
+/** Monospace code (UI-166), inline or as a block; a block names its language in its top-right corner
+ * (`data-lang`, drawn by kit.css). */
 export function Code({ code, block = false, language, className, ...props }: CodeProps) {
   if (block) {
     return (
-      <pre {...props} className={cx("omfp-code omfp-code--block", className)}>
+      <pre {...props} className={cx("omfp-code omfp-code--block", className)} data-lang={language}>
         <code>
           <Highlighted code={code} language={language} />
         </code>

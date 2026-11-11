@@ -26,7 +26,9 @@ const rules = parseCss(readFileSync(TOKENS_CSS, "utf8"));
 const light = findRule(rules, [LAYER], ":root");
 const darkBySystem = findRule(rules, [LAYER, DARK_MEDIA], ':root:not([data-color-scheme="light"])');
 const darkForced = findRule(rules, [LAYER], ':root[data-color-scheme="dark"]');
-const normal = findRule(rules, [LAYER], ':root[data-density="normal"]');
+const scaled = findRule(rules, [LAYER], ":root, [data-density]");
+const compact = findRule(rules, [LAYER], '[data-density="compact"]');
+const normal = findRule(rules, [LAYER], '[data-density="normal"]');
 const fontFaces = rules.filter((rule) => rule.selector === "@font-face");
 
 function missing(rule: CssRule, tokens: readonly string[]): string[] {
@@ -150,15 +152,17 @@ describe("tokens.css", () => {
     expect(differing(light, TYPE_SCALE)).toEqual({});
   });
 
-  // spec: UI-127, UI-094
-  test("spacing steps are unit × n × density, compact by default and normal on data-density", () => {
+  // spec: UI-127, UI-094, UI-173
+  test("spacing steps are unit × n × density, compact by default and normal on data-density, also in a subtree", () => {
     expect(value(light, "unit")).toBe("0.25rem");
     expect(value(light, "density")).toBe("1");
     expect(value(normal, "density")).toBe("1.3");
     expect([...normal.declarations.keys()]).toEqual([prop("density")]);
+    expect(value(compact, "density")).toBe("1");
+    expect([...compact.declarations.keys()]).toEqual([prop("density")]);
     expect(
       differing(
-        light,
+        scaled,
         Object.fromEntries(
           SPACE_STEPS.map((n) => [`s${n}`, `calc(var(--omfp-unit) * ${n} * var(--omfp-density))`] as const),
         ),
@@ -170,7 +174,7 @@ describe("tokens.css", () => {
   test("row, control and message-gap sizes scale with density; the frame sizes do not", () => {
     expect(
       differing(
-        light,
+        scaled,
         Object.fromEntries(
           Object.entries(DENSITY_SIZES).map(([token, size]) => [token, `calc(${size} * var(--omfp-density))`]),
         ),
