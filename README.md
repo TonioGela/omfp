@@ -22,4 +22,5 @@
   <img alt="omfp with a running thread" src="docs/brand/screenshot-light.png">
 </picture>
 
-<sub>This README is for humans. The slop lives in [docs/overview.md](docs/overview.md).</sub>
+<sub>This README is for humans. The slop lives in [docs/overview.md](docs/overview.md). Anything else: ask your agent how
+omfp works.</sub>
