@@ -31,36 +31,57 @@
   }
 
   /* Frame. */
+  /* The app fills the window and never scrolls it: an entrance that starts below the window (the mode pill's) would
+   * otherwise flash a window scrollbar that shifts every column while it plays. */
   .omfp-app {
     display: flex;
     flex-direction: column;
     block-size: 100%;
     min-block-size: 0;
+    overflow: hidden;
   }
 
+  /* Banners (UI-003, AGT-011): a tinted row above the shell in the tone's color. */
   .omfp-banner {
-    padding: var(--omfp-s1) var(--omfp-s2);
-    background: var(--omfp-secondary-container);
-    color: var(--omfp-on-secondary-container);
+    padding: var(--omfp-s1) var(--omfp-s3);
+    border-block-end: var(--omfp-bw) solid color-mix(in oklab, var(--omfp-primary) 45%, transparent);
+    background: color-mix(in oklab, var(--omfp-primary) 12%, var(--omfp-surface));
+    color: var(--omfp-on-surface);
+    font-size: var(--omfp-fs-xs);
   }
 
   .omfp-banner[data-tone="warning"] {
-    background: var(--omfp-warning);
-    color: var(--omfp-on-warning);
+    border-block-end-color: color-mix(in oklab, var(--omfp-warn) 45%, transparent);
+    background: color-mix(in oklab, var(--omfp-warn) 12%, var(--omfp-surface));
   }
 
   .omfp-banner[data-tone="error"] {
-    background: var(--omfp-error-container);
-    color: var(--omfp-on-error-container);
+    border-block-end-color: color-mix(in oklab, var(--omfp-error) 45%, transparent);
+    background: color-mix(in oklab, var(--omfp-error) 12%, var(--omfp-surface));
   }
 
+  .omfp-banner::before {
+    content: "◆ ";
+    color: var(--omfp-primary);
+  }
+
+  .omfp-banner[data-tone="warning"]::before {
+    color: var(--omfp-warn);
+  }
+
+  .omfp-banner[data-tone="error"]::before {
+    color: var(--omfp-error);
+  }
+
+  /* The view switcher and layout editing, over the view area. */
   .omfp-frame__bar {
     display: flex;
     justify-content: flex-end;
-    gap: calc(var(--omfp-s1) * 1.5);
-    padding: calc(var(--omfp-s1) / 2) calc(var(--omfp-s1) * 1.5);
-    border-block-end: 1px solid var(--omfp-outline-variant);
-    background: var(--omfp-surface-container-low);
+    align-items: center;
+    gap: var(--omfp-s2);
+    padding: var(--omfp-s1) var(--omfp-s3);
+    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
+    background: var(--omfp-bar-bg);
   }
 
   .omfp-shell {
@@ -71,12 +92,13 @@
 
   /* The left column (UI-100): the frame's, outside any view. */
   .omfp-frame__left {
-    flex: 0 0 clamp(14rem, 20%, 22rem);
+    flex: 0 0 var(--omfp-side-w);
     display: flex;
     flex-direction: column;
     min-block-size: 0;
     overflow: auto;
-    border-inline-end: 1px solid var(--omfp-outline-variant);
+    border-inline-end: var(--omfp-bw) solid var(--omfp-rule);
+    background: var(--omfp-side-bg);
   }
 
   /* The view area right of the left column, with the mode line at its bottom (UI-098). */
@@ -89,31 +111,9 @@
     min-inline-size: 0;
   }
 
-  .omfp-mode-line {
+  /* The mode line (UI-167): kit `omfp-modeline`; the `:` line and the file picker sit in its segments (UI-168). */
+  .omfp-frame__mode {
     flex: 0 0 auto;
-    padding: 0 calc(var(--omfp-s1) * 1.5);
-    border-block-start: 1px solid var(--omfp-outline-variant);
-    background: var(--omfp-surface-container-low);
-    color: var(--omfp-on-surface-variant);
-    font-family: var(--omfp-font-code);
-    font-size: var(--omfp-fs-sm);
-    font-weight: 600;
-  }
-
-  .omfp-mode-line[data-mode="insert"] {
-    background: var(--omfp-primary-container);
-    color: var(--omfp-on-primary-container);
-  }
-
-  .omfp-mode-line[data-mode="cmdline"] {
-    background: var(--omfp-tertiary-container);
-    color: var(--omfp-on-tertiary-container);
-  }
-
-  /* The composer in insert mode (UI-098). */
-  .omfp-app[data-mode="insert"] .omfp-composer:focus-within .omfp-textarea {
-    border-color: var(--omfp-primary);
-    box-shadow: inset 0 0 0 1px var(--omfp-primary);
   }
 
   .omfp-safety-net {
@@ -123,100 +123,62 @@
     overflow: auto;
   }
 
-  .omfp-errors {
-    position: fixed;
-    inset-inline-end: var(--omfp-s2);
-    inset-block-end: var(--omfp-s4);
-    display: flex;
-    flex-direction: column;
-    gap: var(--omfp-s1);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .omfp-errors__item {
-    display: flex;
-    align-items: center;
-    gap: calc(var(--omfp-s1) * 1.5);
-    padding: calc(var(--omfp-s1) * 1.5) var(--omfp-s2);
-    border-radius: var(--omfp-r-ctl);
-    background: var(--omfp-error-container);
-    color: var(--omfp-on-error-container);
-    box-shadow: 0 2px 6px var(--omfp-shadow);
-  }
-
   .omfp-form-error {
-    color: var(--omfp-error);
-  }
-
-  /* Command line (`:`), docked at the bottom like vim's. */
-  .omfp-cmdline {
-    position: fixed;
-    inset-inline: 0;
-    inset-block-end: 0;
-    display: flex;
-    flex-direction: column-reverse;
-    background: var(--omfp-surface-container-high);
-    color: var(--omfp-on-surface);
-    border-block-start: 1px solid var(--omfp-outline);
-    box-shadow: 0 -2px 6px var(--omfp-shadow);
-  }
-
-  .omfp-cmdline__line {
-    display: flex;
-    align-items: center;
-    gap: var(--omfp-s1);
-    padding: var(--omfp-s1) var(--omfp-s2);
-    font-family: var(--omfp-font-code);
-  }
-
-  .omfp-cmdline__input {
-    flex: 1 1 auto;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-  }
-
-  .omfp-cmdline__options {
     margin: 0;
-    padding: 0;
-    list-style: none;
+    color: var(--omfp-error);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  /* The `:` line and the file picker (UI-168): the kit prompt in the mode line's segments, the completion menu a
+   * popover above the mode line, positioned against it. */
+  .omfp-cmdline {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--omfp-s3);
+    min-inline-size: 0;
+    block-size: var(--omfp-status-h);
+  }
+
+  .omfp-cmdline__menu {
+    position: absolute;
+    inset-block-end: calc(100% + var(--omfp-s1));
+    inset-inline-start: var(--omfp-s1);
+    z-index: 10;
     max-block-size: 40vh;
     overflow: auto;
+    white-space: normal;
   }
 
-  .omfp-cmdline__option {
+  .omfp-cmdline__menu[hidden] {
+    display: none;
+  }
+
+  .omfp-cmdline__menu .omfp-cmdmenu__item:hover:not([data-selected]) {
+    background: var(--omfp-hover);
+  }
+
+  .omfp-cmdline__menu .omfp-cmdmenu__description {
     display: flex;
+    flex: 1 1 auto;
     align-items: center;
-    gap: var(--omfp-s2);
-    min-block-size: var(--omfp-row-h);
-    padding-inline: var(--omfp-s2);
-    cursor: pointer;
-  }
-
-  .omfp-cmdline__option[aria-selected="true"],
-  .omfp-cmdline__option:hover {
-    background: var(--omfp-secondary-container);
-    color: var(--omfp-on-secondary-container);
-  }
-
-  .omfp-cmdline__name {
-    font-family: var(--omfp-font-code);
-    min-inline-size: 12ch;
+    gap: var(--omfp-s1);
   }
 
   .omfp-cmdline__title {
     flex: 1 1 auto;
-    color: var(--omfp-on-surface-variant);
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .omfp-cmdline__error {
-    margin: 0;
-    padding: var(--omfp-s1) var(--omfp-s2);
-    color: var(--omfp-error);
+  .omfp-cmdline__menu .omfp-cmdmenu__description .omfp-kbd {
+    flex: none;
+  }
+
+  .omfp-file-picker__prompt {
+    margin-inline-end: var(--omfp-s2);
+    color: var(--omfp-on-surface-variant);
   }
 
   /* Views (UI-024, UI-100). */
@@ -256,7 +218,7 @@
   }
 
   .omfp-view__row > .omfp-view__cell + .omfp-view__cell {
-    border-inline-start: 1px solid var(--omfp-outline-variant);
+    border-inline-start: var(--omfp-bw) solid var(--omfp-rule);
   }
 
   .omfp-view__col > .omfp-view__cell:has(> .omfp-view__item > .omfp-widget[data-widget="omfp:header"]) {
@@ -268,26 +230,43 @@
     flex-direction: column;
     flex: 1 1 auto;
     min-block-size: 0;
+    min-inline-size: 0;
   }
 
   .omfp-view__panel {
     flex: 1 1 auto;
     display: flex;
     min-block-size: 0;
+    min-inline-size: 0;
   }
 
-  /* The `main` slot's tab bar: its tabs, then the close button of the selected file tab (UI-115). */
+  /* Tab bars of the `main` and `side` slots (UI-154): `bar-h` tall over a rule, the selected tab's gradient indicator
+   * on the rule; the `main` bar ends with the close button of the selected file tab (UI-115). */
+  .omfp-view__tabs > .omfp-tabs__list,
+  .omfp-view__tabbar {
+    flex: none;
+    min-block-size: var(--omfp-bar-h);
+    padding-inline: var(--omfp-s2);
+  }
+
   .omfp-view__tabbar {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: var(--omfp-s1);
     min-inline-size: 0;
+    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
   }
 
   .omfp-view__tabbar > .omfp-tabs__list {
     flex: 0 1 auto;
     min-inline-size: 0;
+    padding-inline: 0;
+    border-block-end: 0;
     overflow-x: auto;
+  }
+
+  .omfp-view__tabbar > .omfp-icon-button {
+    align-self: center;
   }
 
   /* Files in a view without a `main` slot float over the view as tabs, moved, resized and minimised (UI-115). */
@@ -298,10 +277,10 @@
     display: flex;
     flex-direction: column;
     min-inline-size: 15rem;
-    border: 1px solid var(--omfp-outline-variant);
+    border: var(--omfp-bw) solid var(--omfp-pop-border);
     border-radius: var(--omfp-r-card);
-    background: var(--omfp-surface);
-    box-shadow: 0 2px 6px var(--omfp-shadow);
+    background: var(--omfp-pop-bg);
+    box-shadow: var(--omfp-pop-shadow);
   }
 
   .omfp-floating-file[data-minimised] {
@@ -319,8 +298,9 @@
     display: flex;
     align-items: center;
     gap: var(--omfp-s1);
-    padding: calc(var(--omfp-s1) / 2) calc(var(--omfp-s1) * 1.5);
-    border-block-end: 1px solid var(--omfp-outline-variant);
+    min-block-size: var(--omfp-bar-h);
+    padding: 0 var(--omfp-s2);
+    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
   }
 
   .omfp-floating-file[data-minimised] .omfp-floating-file__bar {
@@ -336,11 +316,17 @@
 
   .omfp-floating-file__grip {
     border: none;
+    border-radius: var(--omfp-r-ctl);
     background: transparent;
     color: var(--omfp-on-surface-variant);
     font: inherit;
     cursor: move;
     touch-action: none;
+  }
+
+  .omfp-floating-file__grip:hover {
+    color: var(--omfp-on-surface);
+    background: var(--omfp-hover);
   }
 
   .omfp-floating-file__body {
@@ -367,7 +353,9 @@
 
   .omfp-floating-file__grip:focus-visible,
   .omfp-floating-file__resize:focus-visible {
-    outline: 2px solid var(--omfp-primary);
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: var(--omfp-focus-off);
+    box-shadow: var(--omfp-focus-glow);
   }
 
   /* One widget node: its edit-mode toolbar above the widget. */
@@ -388,44 +376,73 @@
     overflow: auto;
   }
 
+  /* A widget that failed to compile, load or render, or is missing (AGT-014): an error card in its place. */
   .omfp-widget__error {
-    margin: calc(var(--omfp-s1) * 1.5);
-    padding: calc(var(--omfp-s1) * 1.5);
-    border-radius: var(--omfp-r-ctl);
-    background: var(--omfp-error-container);
-    color: var(--omfp-on-error-container);
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s1);
+    margin: var(--omfp-s3);
+    padding: var(--omfp-s3) var(--omfp-s4);
+    border: var(--omfp-bw) solid color-mix(in oklab, var(--omfp-error) 45%, transparent);
+    border-radius: var(--omfp-r-card);
+    background: color-mix(in oklab, var(--omfp-error) 8%, transparent);
+    color: var(--omfp-on-surface);
+    font-size: var(--omfp-fs-sm);
   }
 
-  /* `file:line:column` of a compile or load error (AGT-014). */
-  .omfp-widget__error > code {
-    display: block;
-    margin-block: var(--omfp-s1);
+  .omfp-widget__error > strong {
+    color: var(--omfp-error);
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-widget__error > strong::before {
+    content: "◆ ";
+  }
+
+  /* `file:line:column` of a compile or load error (AGT-014), then the message. */
+  .omfp-widget__error > code,
+  .omfp-widget__error > pre {
+    margin: 0;
     font-family: var(--omfp-font-code);
-    font-size: var(--omfp-fs-sm);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .omfp-widget__error > pre {
+    padding: var(--omfp-s2) var(--omfp-s3);
+    border-radius: var(--omfp-r-ctl);
+    background: var(--omfp-code-bg);
+    color: var(--omfp-on-surface);
   }
 
   /* A module widget while it loads (UI-105). */
   .omfp-widget__loading {
-    margin: calc(var(--omfp-s1) * 1.5);
-    padding: calc(var(--omfp-s1) * 1.5);
+    margin: var(--omfp-s3);
+    font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
   }
 
-  /* Layout editing (UI-103, UI-104). */
+  /* Layout editing (UI-103, UI-104): each widget in a dashed frame (provisional) under its toolbar. */
   .omfp-view[data-editing="true"] .omfp-view__item {
-    outline: 1px dashed var(--omfp-outline);
-    outline-offset: -1px;
+    margin: var(--omfp-s1);
+    border: var(--omfp-bw) dashed var(--omfp-rule-strong);
+    border-radius: var(--omfp-r-card);
+    overflow: hidden;
   }
 
   .omfp-widget-toolbar {
     display: flex;
     align-items: center;
     gap: var(--omfp-s1);
-    padding: calc(var(--omfp-s1) / 2) calc(var(--omfp-s1) * 1.5);
-    border-block-end: 1px solid var(--omfp-outline-variant);
-    background: var(--omfp-surface-container-high);
-    color: var(--omfp-on-surface);
-    font-size: var(--omfp-fs-sm);
+    min-block-size: var(--omfp-row-h);
+    padding: 0 var(--omfp-s1) 0 var(--omfp-s3);
+    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
+    background: var(--omfp-surface-container-low);
+    color: var(--omfp-on-surface-variant);
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-xs);
   }
 
   .omfp-widget-toolbar__reference {
@@ -434,74 +451,120 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--omfp-font-code);
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
   }
 
+  .omfp-widget-toolbar__reference::before {
+    content: "◆ ";
+  }
+
+  /* A splitter: a hairline that thickens into the primary color on hover and focus. */
   .omfp-splitter {
-    flex: 0 0 calc(var(--omfp-s1) * 1.5);
-    background: var(--omfp-surface-container-high);
+    position: relative;
+    flex: 0 0 var(--omfp-s1);
+    background: transparent;
     touch-action: none;
+  }
+
+  .omfp-splitter::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    background: var(--omfp-rule-strong);
+    transition: background var(--omfp-dur-1) var(--omfp-ease);
   }
 
   .omfp-splitter[aria-orientation="vertical"] {
     cursor: col-resize;
   }
 
+  .omfp-splitter[aria-orientation="vertical"]::after {
+    inline-size: 1px;
+  }
+
   .omfp-splitter[aria-orientation="horizontal"] {
     cursor: row-resize;
   }
 
+  .omfp-splitter[aria-orientation="horizontal"]::after {
+    block-size: 1px;
+  }
+
   .omfp-splitter:hover,
   .omfp-splitter:focus-visible {
-    background: var(--omfp-primary);
     outline: none;
   }
 
+  .omfp-splitter:hover::after,
+  .omfp-splitter:focus-visible::after {
+    inline-size: auto;
+    block-size: auto;
+    background: var(--omfp-grad);
+  }
+
+  /* The widget picker (UI-104): groups titled `╭─ <group>`, references as rows. */
   .omfp-widget-picker {
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-s2);
+    gap: var(--omfp-s3);
   }
 
   .omfp-widget-picker__title {
     margin: 0 0 var(--omfp-s1);
-    font-size: var(--omfp-fs-md);
-    color: var(--omfp-on-surface-variant);
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-regular);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-widget-picker__title::before {
+    content: "╭─ ";
   }
 
   .omfp-widget-picker__list {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--omfp-s1);
+    flex-direction: column;
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
   .omfp-widget-picker__list .omfp-button {
+    inline-size: 100%;
+    justify-content: flex-start;
     font-family: var(--omfp-font-code);
   }
 
   .omfp-widget-picker__empty {
     margin: 0;
+    padding-inline: var(--omfp-s2);
+    font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
   }
 
-  /* The threads widget, the frame's left column (UI-020..023, UI-026, UI-100). */
+  /* The threads widget, the frame's left column (UI-020..023, UI-026, UI-100, UI-169, UI-170): the kit's brand, rows
+   * and section classes; a row is an `li` (kit `omfp-row omfp-thread`) holding the select button and its actions. */
   .omfp-threads {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) * 1.5);
-    padding: calc(var(--omfp-s1) * 1.5);
-    background: var(--omfp-surface-container-low);
-    min-block-size: 100%;
+    gap: var(--omfp-s1);
     box-sizing: border-box;
+    min-block-size: 100%;
+    padding: var(--omfp-s3) var(--omfp-s2);
   }
 
+  .omfp-threads__filter,
   .omfp-threads__new-workspace {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) / 2);
+    gap: var(--omfp-s1);
+  }
+
+  /* The kit sizes a path field along a row (flex-basis); here it sits in a column. */
+  .omfp-threads__new-workspace > .omfp-path-field {
+    flex: none;
   }
 
   .omfp-threads__list {
@@ -510,48 +573,51 @@
     list-style: none;
   }
 
-  /* One workspace section: header (chevron, name, menu, delete), threads, archived, "+ thread". */
-  .omfp-ws {
-    display: flex;
-    flex-direction: column;
-    gap: calc(var(--omfp-s1) / 2);
+  .omfp-threads > .omfp-wsection:first-of-type {
+    margin-block-start: var(--omfp-s2);
   }
 
-  .omfp-ws__header {
+  /* A section's head: disclosure glyph, name, path, count, then the menu and delete shown on hover and focus. */
+  .omfp-ws__head {
     display: flex;
     align-items: center;
-    gap: calc(var(--omfp-s1) / 2);
-    border-radius: var(--omfp-r-chip);
+    gap: var(--omfp-s1);
+    block-size: var(--omfp-row-h);
+    padding: 0 0 0 var(--omfp-s1);
+    border-radius: var(--omfp-r-row);
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
   }
 
-  .omfp-ws[data-current="true"] > .omfp-ws__header {
-    background: var(--omfp-secondary-container);
-    color: var(--omfp-on-secondary-container);
+  .omfp-ws__head:hover {
+    background: var(--omfp-hover);
   }
 
-  .omfp-ws__chevron,
-  .omfp-ws__archived-toggle {
-    border: none;
+  .omfp-ws__chevron {
+    flex: none;
+    padding: 0;
+    border: 0;
     border-radius: var(--omfp-r-chip);
     background: transparent;
-    color: inherit;
+    color: var(--omfp-primary);
     font: inherit;
     cursor: pointer;
+    outline: none;
   }
 
   .omfp-ws__chevron:focus-visible,
-  .omfp-ws__archived-toggle:focus-visible {
-    outline: 2px solid var(--omfp-primary);
-    outline-offset: -2px;
+  .omfp-thread:has(> .omfp-thread-row:focus-visible) {
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: var(--omfp-focus-off);
+    box-shadow: var(--omfp-focus-glow);
   }
 
   .omfp-ws__name {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-inline-size: 0;
     margin: 0;
     overflow: hidden;
-    font-size: var(--omfp-fs-sm);
-    font-weight: 600;
+    font-size: inherit;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
@@ -560,207 +626,191 @@
     flex: 1 1 auto;
   }
 
-  .omfp-ws__archived-toggle {
-    padding: calc(var(--omfp-s1) / 2) calc(var(--omfp-s1) * 1.5);
-    color: var(--omfp-on-surface-variant);
-    font-size: var(--omfp-fs-sm);
-    text-align: start;
-  }
-
-  .omfp-ws__add {
-    align-self: flex-start;
-  }
-
-  /* A row and its buttons; delete buttons show on hover and on keyboard focus, and stay in the Tab order. */
-  .omfp-thread-item {
-    display: flex;
-    align-items: center;
-    gap: calc(var(--omfp-s1) / 2);
+  .omfp-ws__count {
+    margin-inline-end: var(--omfp-s1);
   }
 
   .omfp-reveal {
     opacity: 0;
   }
 
-  .omfp-thread-item:hover .omfp-reveal,
-  .omfp-ws__header:hover .omfp-reveal,
-  .omfp-reveal:focus-visible,
-  .omfp-thread-item:focus-within .omfp-reveal,
-  .omfp-ws__header:focus-within .omfp-reveal {
+  .omfp-ws__head:is(:hover, :focus-within) .omfp-reveal {
     opacity: 1;
   }
 
+  /* A thread row (kit `omfp-row`): the select button fills it; unread titles are bold; archived rows are small,
+   * muted and indented; a filter match adds its snippet on a second line. */
   .omfp-thread-row {
     display: flex;
     flex: 1 1 auto;
-    flex-wrap: wrap;
     align-items: center;
-    gap: var(--omfp-s1);
+    align-self: stretch;
+    gap: var(--omfp-s2);
     min-inline-size: 0;
-    min-block-size: var(--omfp-row-h);
-    padding: calc(var(--omfp-s1) / 2) calc(var(--omfp-s1) * 1.5);
-    border: none;
-    border-radius: var(--omfp-r-chip);
+    padding: 0;
+    border: 0;
     background: transparent;
     color: inherit;
     font: inherit;
     text-align: start;
     cursor: pointer;
+    outline: none;
   }
 
-  .omfp-thread-row:hover {
-    background: var(--omfp-surface-container-high);
+  .omfp-thread[data-unread] .omfp-row__title {
+    font-weight: var(--omfp-fw-strong);
   }
 
-  .omfp-thread-row:focus-visible {
-    outline: 2px solid var(--omfp-primary);
-    outline-offset: -2px;
-  }
-
-  .omfp-thread-row[aria-current="true"] {
-    background: var(--omfp-secondary-container);
-    color: var(--omfp-on-secondary-container);
-  }
-
-  .omfp-thread-row__title {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .omfp-thread-row[data-title-source="placeholder"] .omfp-thread-row__title,
-  .omfp-thread-row__title[data-placeholder="true"] {
+  .omfp-thread-row[data-title-source="placeholder"] .omfp-row__title,
+  .omfp-row__title[data-placeholder="true"] {
     font-style: italic;
   }
 
-  .omfp-thread-row[data-archived="true"] {
+  .omfp-thread[data-archived] {
+    padding-inline-start: calc(var(--omfp-s2) * 2 + var(--omfp-ic-sm));
+    font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
   }
 
-  .omfp-thread-row__unread {
-    color: var(--omfp-primary);
+  .omfp-thread[data-snippet] {
+    block-size: auto;
+    min-block-size: var(--omfp-row-h);
+    padding-block: var(--omfp-s1);
+  }
+
+  .omfp-thread[data-snippet] .omfp-thread-row {
+    flex-wrap: wrap;
   }
 
   .omfp-thread-row__snippet {
     inline-size: 100%;
     overflow: hidden;
     color: var(--omfp-on-surface-variant);
-    font-size: var(--omfp-fs-sm);
+    font-size: var(--omfp-fs-2xs);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  /* omfp:header (UI-030). */
-  .omfp-header {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--omfp-s1) var(--omfp-s3);
-    padding: calc(var(--omfp-s1) * 1.5) var(--omfp-s2);
-    border-block-end: 1px solid var(--omfp-outline-variant);
-    background: var(--omfp-surface-container-low);
-  }
-
-  .omfp-header__title,
-  .omfp-header__chips,
-  .omfp-header__session,
-  .omfp-header__process,
-  .omfp-header__lifecycle,
-  .omfp-header__editor {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--omfp-s1);
-  }
-
-  .omfp-header__title h1 {
-    margin: 0;
-    font-size: var(--omfp-fs-lg);
-  }
-
-  .omfp-header__title h1[data-placeholder="true"] {
-    font-style: italic;
-    color: var(--omfp-on-surface-variant);
-  }
-
-  .omfp-meter {
-    color: var(--omfp-on-surface-variant);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .omfp-header__failure {
-    color: var(--omfp-error);
-  }
-
-  .omfp-header__lifecycle {
-    margin-inline-start: auto;
-  }
-
-  /* omfp:changes (UI-080). */
+  /* omfp:changes (UI-080): per repository a head (name, branch, ahead/behind, summary), then file rows (status letter,
+   * path, `+n −m`) that expand to the file's diff card (UI-165). */
   .omfp-changes {
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-s2);
-    padding: calc(var(--omfp-s1) * 1.5);
+    gap: var(--omfp-s3);
+    padding: var(--omfp-s2) var(--omfp-s3) var(--omfp-s3);
+    font-family: var(--omfp-font-code);
   }
 
   .omfp-changes__bar {
     display: flex;
     justify-content: flex-end;
+    margin-block-end: calc(-1 * var(--omfp-s2));
+  }
+
+  .omfp-changes__none {
+    margin: var(--omfp-s3);
   }
 
   .omfp-changes__repo {
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-s1);
   }
 
   .omfp-changes__repo-head {
     display: flex;
     flex-wrap: wrap;
-    align-items: baseline;
-    gap: calc(var(--omfp-s1) * 1.5);
+    align-items: center;
+    gap: var(--omfp-s2);
     margin: 0;
-    font-size: var(--omfp-fs-md);
+    padding: 0 var(--omfp-s1) var(--omfp-s1);
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-regular);
+    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-changes__repo-name {
-    font-weight: 600;
+    font-size: var(--omfp-fs-sm);
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-changes__branch,
+  .omfp-workspace__branch {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-changes__branch .omfp-ic,
+  .omfp-workspace__branch .omfp-ic {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-changes__meta,
   .omfp-changes__empty {
     margin: 0;
-    font-size: var(--omfp-fs-sm);
-    font-weight: normal;
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-regular);
+    font-variant-numeric: tabular-nums;
     color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-changes__empty {
+    padding: 0 var(--omfp-s1);
+  }
+
+  .omfp-changes__repo-head > [data-testid="changes-summary"] {
+    margin-inline-start: auto;
   }
 
   .omfp-changes__files {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) / 2);
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
   .omfp-changes__file .omfp-disclosure__trigger {
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     inline-size: 100%;
+    padding-inline: var(--omfp-s1);
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-changes__file .omfp-disclosure__chevron {
+    display: none;
+  }
+
+  .omfp-changes__file[data-expanded] .omfp-disclosure__trigger {
+    background: var(--omfp-sel-bg);
+    color: var(--omfp-sel-fg);
+  }
+
+  .omfp-changes__file .omfp-disclosure__panel {
+    padding: 0;
+  }
+
+  .omfp-changes__file[data-expanded] .omfp-disclosure__panel {
+    padding: var(--omfp-s1) 0 var(--omfp-s2);
   }
 
   .omfp-changes__status {
-    inline-size: 1.25em;
+    flex: none;
+    inline-size: 1em;
     text-align: center;
-    font-weight: 600;
-    color: var(--omfp-warning);
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-warn);
   }
 
   .omfp-changes__status:is([data-status="added"], [data-status="untracked"]) {
-    color: var(--omfp-success);
+    color: var(--omfp-ok);
   }
 
   .omfp-changes__status[data-status="deleted"] {
@@ -768,40 +818,65 @@
   }
 
   .omfp-changes__path {
+    flex: 0 1 auto;
     min-inline-size: 0;
-    overflow-wrap: anywhere;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     text-align: start;
+    color: inherit;
+  }
+
+  .omfp-changes__path:hover {
+    color: var(--omfp-primary);
+    text-decoration: underline;
   }
 
   .omfp-changes__counts {
+    flex: none;
     margin-inline-start: auto;
-    font-size: var(--omfp-fs-sm);
-    font-variant-numeric: tabular-nums;
-    color: var(--omfp-on-surface-variant);
   }
 
-  /* omfp:workspace (UI-025). */
+  /* The expanded file's diff: a card of `fs-2xs` code (UI-165). */
+  .omfp-changes__file .omfp-code-diff,
+  .omfp-changes__file .omfp-diff {
+    --omfp-fs-code: var(--omfp-fs-2xs);
+  }
+
+  /* omfp:workspace (UI-025): the folder, the repositories (name, kind, branch, git status, origin), add a repository. */
   .omfp-workspace {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) * 1.5);
-    padding: calc(var(--omfp-s1) * 1.5);
+    gap: var(--omfp-s3);
+    padding: var(--omfp-s3);
+    font-family: var(--omfp-font-code);
   }
 
   .omfp-workspace h2,
   .omfp-workspace h3 {
     margin: 0;
+  }
+
+  .omfp-workspace h2 {
     font-size: var(--omfp-fs-md);
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
   }
 
   .omfp-workspace h3 {
-    color: var(--omfp-on-surface-variant);
+    padding-inline: var(--omfp-s1);
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-regular);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-workspace h3::before {
+    content: "╭─ ";
   }
 
   .omfp-workspace ul {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) / 2);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -817,102 +892,175 @@
   }
 
   .omfp-workspace__current {
-    gap: var(--omfp-s2);
-  }
-
-  .omfp-workspace__header {
-    gap: calc(var(--omfp-s1) / 2);
+    gap: var(--omfp-s4);
   }
 
   .omfp-workspace__title,
   .omfp-workspace__folder,
   .omfp-workspace__meta,
-  .omfp-workspace__repo,
   .omfp-workspace__add-fields {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
+  }
+
+  .omfp-workspace__folder {
+    flex-wrap: nowrap;
+    padding-inline: var(--omfp-s1);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-workspace__folder-icon {
+    flex: none;
+    inline-size: var(--omfp-ic-sm);
+    block-size: var(--omfp-ic-sm);
   }
 
   .omfp-workspace__path {
     min-inline-size: 0;
-    font-size: var(--omfp-fs-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-2xs);
     color: var(--omfp-on-surface-variant);
-    overflow-wrap: anywhere;
   }
 
-  /* One repository per row: kind, name, branch, status, badge, remove; the origin wraps below the name. */
+  /* One repository in two lines: name, kind, git status, remove; then branch and origin. */
   .omfp-workspace__repo {
-    column-gap: var(--omfp-s1);
-    row-gap: 0;
-    padding-block: calc(var(--omfp-s1) / 2);
-    border-block-end: 1px solid var(--omfp-outline-variant);
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "name kind git remove"
+      "branch branch origin origin"
+      "shared shared shared shared";
+    align-items: center;
+    column-gap: var(--omfp-s2);
+    row-gap: var(--omfp-s1);
+    padding: var(--omfp-s2) var(--omfp-s1);
+    border-block-start: var(--omfp-bw) solid var(--omfp-rule);
+  }
+
+  .omfp-workspace__repo:first-child {
+    border-block-start: 0;
+  }
+
+  .omfp-workspace__repo-name {
+    grid-area: name;
+    font-size: var(--omfp-fs-sm);
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
   }
 
   .omfp-workspace__kind {
-    inline-size: 1.25em;
-    text-align: center;
-    color: var(--omfp-on-surface-variant);
+    grid-area: kind;
   }
 
   .omfp-workspace__branch {
-    font-family: var(--omfp-font-code);
-    font-size: var(--omfp-fs-sm);
+    grid-area: branch;
+  }
+
+  .omfp-workspace__git {
+    grid-area: git;
+    justify-self: end;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--omfp-fs-2xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  /* A dirty repository is `--omfp-warn` (UI-137). */
+  .omfp-workspace__repo[data-dirty="true"] .omfp-workspace__git {
+    color: var(--omfp-warn);
+  }
+
+  .omfp-workspace__repo [data-testid="shared-repo"] {
+    grid-area: shared;
+    justify-self: start;
   }
 
   .omfp-workspace__remove {
-    margin-inline-start: auto;
+    grid-area: remove;
   }
 
   .omfp-workspace__origin {
-    flex-basis: 100%;
-    padding-inline-start: calc(1.25em + var(--omfp-s1));
-    font-size: var(--omfp-fs-sm);
-    overflow-wrap: anywhere;
+    grid-area: origin;
+    justify-self: end;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
   }
 
-  .omfp-workspace__repo[data-dirty="true"] .omfp-workspace__repo-name::after {
-    content: " *";
-    color: var(--omfp-warning);
-  }
-
-  /* The kind switch of "add repository" as a segmented control. */
+  /* The Link/Clone switch of "add repository": a segmented control, the chosen kind in the soft gradient. */
   .omfp-workspace__kind-options {
     display: inline-flex;
     align-self: flex-start;
-    border: 1px solid var(--omfp-outline-variant);
+    border: var(--omfp-bw) solid var(--omfp-rule-strong);
     border-radius: var(--omfp-r-ctl);
     overflow: hidden;
   }
 
   .omfp-workspace__kind-options .omfp-radio {
-    min-block-size: 0;
-    padding: calc(var(--omfp-s1) / 2) calc(var(--omfp-s1) * 1.5);
-    font-size: var(--omfp-fs-sm);
+    display: inline-flex;
+    align-items: center;
+    gap: var(--omfp-s1);
+    min-block-size: var(--omfp-ctl-h-sm);
+    padding: 0 var(--omfp-s3);
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
     cursor: pointer;
+    transition:
+      color var(--omfp-dur-1) var(--omfp-ease),
+      background var(--omfp-dur-1) var(--omfp-ease);
+  }
+
+  .omfp-workspace__kind-options .omfp-radio .omfp-ic {
+    inline-size: var(--omfp-ic-sm);
+    block-size: var(--omfp-ic-sm);
   }
 
   .omfp-workspace__kind-options .omfp-radio + .omfp-radio {
-    border-inline-start: 1px solid var(--omfp-outline-variant);
+    border-inline-start: var(--omfp-bw) solid var(--omfp-rule-strong);
   }
 
   .omfp-workspace__kind-options .omfp-radio__dot {
     display: none;
   }
 
+  .omfp-workspace__kind-options .omfp-radio[data-hovered] {
+    color: var(--omfp-on-surface);
+    background: var(--omfp-hover);
+  }
+
   .omfp-workspace__kind-options .omfp-radio[data-selected] {
-    background: var(--omfp-secondary-container);
-    color: var(--omfp-on-secondary-container);
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
+    background: var(--omfp-sel-bg);
   }
 
   .omfp-workspace__kind-options .omfp-radio[data-focus-visible] {
-    outline: 2px solid var(--omfp-primary);
-    outline-offset: -2px;
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: calc(-1 * var(--omfp-focus-w));
+  }
+
+  /* The Add button stays beside the field: the path completion list opens below the field and must not cover it. */
+  .omfp-workspace__add-fields {
+    flex-wrap: nowrap;
   }
 
   .omfp-workspace__add-fields > .omfp-field {
     flex: 1 1 12rem;
+    min-inline-size: 0;
   }
 
   /* Token screen (UI-002). */
@@ -937,32 +1085,42 @@
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     min-block-size: 0;
-    padding: var(--omfp-s1) calc(var(--omfp-s1) * 1.5);
+    padding: var(--omfp-s1) var(--omfp-s3) var(--omfp-s3);
+    font-family: var(--omfp-font-code);
   }
 
   .omfp-file:focus-visible {
-    outline: 2px solid var(--omfp-primary);
-    outline-offset: -2px;
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: calc(-1 * var(--omfp-focus-w));
   }
 
   .omfp-file__bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     flex-wrap: wrap;
+    min-block-size: var(--omfp-row-h);
   }
 
   .omfp-file__path {
     display: flex;
     align-items: center;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     min-inline-size: 0;
     font-family: var(--omfp-font-code);
-    font-size: var(--omfp-fs-sm);
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface);
     overflow-wrap: anywhere;
+  }
+
+  .omfp-file__icon {
+    flex: none;
+    inline-size: var(--omfp-ic-sm);
+    block-size: var(--omfp-ic-sm);
+    color: var(--omfp-primary);
   }
 
   .omfp-file__actions {
@@ -971,17 +1129,31 @@
     gap: var(--omfp-s1);
   }
 
+  .omfp-file__actions [aria-pressed="true"] {
+    color: var(--omfp-primary);
+    background: var(--omfp-sel-bg);
+  }
+
   .omfp-file__notice {
     margin: 0;
+    font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
   }
 
   .omfp-file__notice[data-tone="warning"] {
-    color: var(--omfp-on-surface);
+    color: var(--omfp-warn);
   }
 
   .omfp-file__notice[data-tone="error"] {
     color: var(--omfp-error);
+  }
+
+  .omfp-file__notice[data-tone]::before {
+    content: "◆ ";
+  }
+
+  .omfp-file__empty {
+    margin: var(--omfp-s3);
   }
 
   .omfp-file__editor,
@@ -993,16 +1165,32 @@
     display: none;
   }
 
+  /* A refused save (UI-113): the choice over the disk-vs-mine diff, in a dashed (pending) error frame. */
   .omfp-file__conflict {
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     flex: 1 1 auto;
     min-block-size: 0;
+    padding: var(--omfp-s3);
+    border: var(--omfp-bw) dashed color-mix(in oklab, var(--omfp-error) 70%, transparent);
+    border-radius: var(--omfp-r-card);
+  }
+
+  .omfp-file__conflict > .omfp-file__notice {
+    font-weight: var(--omfp-fw-strong);
   }
 
   .omfp-file__image {
+    display: grid;
+    place-items: center;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    padding: var(--omfp-s3);
     overflow: auto;
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+    background: var(--omfp-code-bg);
   }
 
   .omfp-file__image img {

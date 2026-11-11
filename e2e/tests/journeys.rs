@@ -1262,7 +1262,13 @@ async fn a_file_the_agent_edits_shows_its_diff_in_the_changes_widget() -> anyhow
     );
     journey.screenshot("m5-transcript").await?;
 
-    // The Changes tab next to the workspace widget lists the edited file; it expands to its diff.
+    changes_widget_shows_the_diff(&journey).await?;
+    code_follows_the_theme(&journey).await?;
+    journey.finish("E2E-06").await
+}
+
+/// The Changes tab next to the workspace widget lists the edited file; it expands to its diff.
+async fn changes_widget_shows_the_diff(journey: &Journey) -> anyhow::Result<()> {
     let clicked = journey
         .eval(
             "const tab = [...document.querySelectorAll('[data-testid=view-tab]')]
@@ -1275,12 +1281,16 @@ async fn a_file_the_agent_edits_shows_its_diff_in_the_changes_widget() -> anyhow
     assert_eq!(clicked, json!(true), "the default view has a Changes tab");
     let entry = "[data-testid=changes-file][data-path=\"AGENTS.md\"]";
     journey.element(entry).await?;
-    assert_eq!(
-        journey
-            .text(&format!("{entry} [data-testid=changes-counts]"))
-            .await?,
-        "+1 −0"
-    );
+    // The counts count up from 0 at motion `full` (UI-146): wait for their final value. They are two flex items, so
+    // `innerText` puts a line break between them.
+    let counts = format!("{entry} [data-testid=changes-counts]");
+    journey
+        .until("the file's +/− counts", async |page| {
+            let text = page.texts(&counts).await?.into_iter().next();
+            let words = text.map(|text| text.split_whitespace().collect::<Vec<_>>().join(" "));
+            Ok((words.as_deref() == Some("+1 −0")).then_some(()))
+        })
+        .await?;
     journey
         .click(&format!("{entry} [data-testid=changes-file-toggle]"))
         .await?;
@@ -1298,7 +1308,5 @@ async fn a_file_the_agent_edits_shows_its_diff_in_the_changes_widget() -> anyhow
         "{added:?}"
     );
     journey.screenshot("m5-changes").await?;
-
-    code_follows_the_theme(&journey).await?;
-    journey.finish("E2E-06").await
+    Ok(())
 }

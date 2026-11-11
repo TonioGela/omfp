@@ -147,12 +147,13 @@ export function Frame({
           {view !== undefined && !hasMainSlot(view.tree) && (
             <FloatingFile workspaceId={workspaceId} views={state} registry={registry} />
           )}
-          <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} />
+          <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined}>
+            <CommandLine bindings={bindings} />
+            <FilePickerLine />
+          </ModeLine>
         </div>
       </main>
       {view !== undefined && <SafetyNet view={view} workspaceId={workspaceId} views={state} registry={registry} />}
-      <CommandLine bindings={bindings} />
-      <FilePickerLine />
       <Errors />
       <StatusLiveRegion />
       <DeleteThreadDialog />

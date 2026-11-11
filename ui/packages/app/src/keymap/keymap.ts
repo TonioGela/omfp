@@ -166,7 +166,7 @@ export function keysFor(bindings: readonly Binding[], command: string, mode: Mod
 }
 
 const MODIFIER = /^(Ctrl|Alt|Meta|Shift)-(?=.)/;
-const CHIP_NAMES: Readonly<Record<string, string>> = { Space: "spc" };
+const CHIP_NAMES: Readonly<Record<string, string>> = { Space: "spc", Escape: "esc" };
 
 /**
  * The key chip label of a key sequence (UI-148): lowercase words (`spc`, `esc`, `enter`, `alt+enter`, `ctrl+c`),

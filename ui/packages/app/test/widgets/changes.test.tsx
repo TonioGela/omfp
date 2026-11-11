@@ -11,7 +11,10 @@ import { repo, thread, workspace } from "../support/fixtures.ts";
 import { renderWithHost, type TestHost, testHost } from "../support/host.tsx";
 import { eventsUntil, fixtureEvents, isFrame } from "./chat/fixtures.ts";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  delete document.documentElement.dataset.motion;
+});
 
 const PATCH = `diff --git a/src/lib.rs b/src/lib.rs
 --- a/src/lib.rs
@@ -84,6 +87,7 @@ function repoSection(name: string): HTMLElement {
 describe("omfp:changes", () => {
   // spec: UI-080, DMN-026
   test("each repository of the current workspace lists its changed files with +/− counts from the workspace topic", () => {
+    document.documentElement.dataset.motion = "none";
     const test = setup();
     expect(test.client.subscribed).toContain(workspaceTopic("w1"));
     expect(screen.getAllByTestId("changes-repo").map((element) => element.dataset.repo)).toEqual(["fe", "be"]);
@@ -95,6 +99,19 @@ describe("omfp:changes", () => {
     expect(within(file).getByTestId("changes-counts").textContent).toBe("+1 −1");
     expect(within(repoSection("be")).getByTestId("changes-summary").textContent).toBe("clean");
     expect(within(repoSection("be")).queryByTestId("changes-file")).toBeNull();
+  });
+
+  // spec: UI-146, UI-165
+  test("the +/− counts count up from 0 at motion full and show at once below it", async () => {
+    document.documentElement.dataset.motion = "full";
+    pushStatus(setup(), STATUS);
+    const counts = () => within(repoSection("fe")).getByTestId("changes-counts").textContent;
+    expect(counts()).toBe("+0 −0");
+    await waitFor(() => expect(counts()).toBe("+1 −1"));
+    cleanup();
+    document.documentElement.dataset.motion = "reduced";
+    pushStatus(setup(), STATUS);
+    expect(counts()).toBe("+1 −1");
   });
 
   // spec: UI-080

@@ -1,6 +1,6 @@
 /** The frame's status surfaces: connection banner (UI-003), errors of failed actions, and the live region (UI-092). */
 
-import { IconButton, LiveRegion } from "@omfp/kit";
+import { LiveRegion, Toast, ToastRegion } from "@omfp/kit";
 import { type ReactNode, useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   ERRORS,
@@ -27,27 +27,27 @@ export function ConnectionBanner(): ReactNode {
   );
 }
 
-/** Errors of failed actions, each dismissible. */
+/** Errors of failed actions as error toasts (UI-160), each staying until dismissed. */
 export function Errors(): ReactNode {
   const [errors, setErrors] = useWindowState(ERRORS);
   if (errors.length === 0) {
     return null;
   }
   return (
-    <ul className="omfp-errors" role="alert" data-testid="errors">
+    <ToastRegion data-testid="errors">
       {errors.map((error, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: the same message may repeat; its place is its identity
-        <li key={index} className="omfp-errors__item" data-testid="error">
-          <span>{error}</span>
-          <IconButton
-            label={strings.shell.frame.dismiss}
-            icon="×"
-            data-testid="dismiss-error"
-            onPress={() => setErrors((all) => all.filter((_, at) => at !== index))}
-          />
-        </li>
+        <Toast
+          // biome-ignore lint/suspicious/noArrayIndexKey: the same message may repeat; its place is its identity
+          key={index}
+          tone="error"
+          data-testid="error"
+          dismissLabel={strings.shell.frame.dismiss}
+          onDismiss={() => setErrors((all) => all.filter((_, at) => at !== index))}
+        >
+          {error}
+        </Toast>
       ))}
-    </ul>
+    </ToastRegion>
   );
 }
 

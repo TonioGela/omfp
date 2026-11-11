@@ -1,6 +1,7 @@
 /*
- * Styles of the conversation widgets (`omfp:chat`, transcript, interactions, composer). Only `var(--omfp-*)` tokens,
- * no color literals (UI-091); serif only for message prose (`.omfp-prose`, UI-094), monospace only for code.
+ * Styles of the conversation widgets (`omfp:chat`, transcript, interactions, composer) and the thread header, in the
+ * Crush look (09-design.md). The kit draws the pieces (`omfp-msg`, `omfp-tool`, `omfp-request`, `omfp-compose`, …);
+ * these rules lay them out and style what is the app's own. Only `--omfp-*` tokens (UI-125, UI-134).
  * Layered after the kit so user themes (unlayered) still win.
  */
 @layer omfp-tokens, omfp-kit, omfp-widgets;
@@ -11,188 +12,311 @@
     flex-direction: column;
     block-size: 100%;
     min-block-size: 0;
+    background: var(--omfp-app-bg);
   }
 
+  /* The empty chat (UI-161): no border, 20vh from the top. */
   .omfp-chat__empty {
-    padding: var(--omfp-s2);
+    flex: 1 1 auto;
+    padding: 20vh var(--omfp-gutter) 0;
+    font-size: var(--omfp-fs-sm);
+    text-align: center;
     color: var(--omfp-on-surface-variant);
   }
 
-  /* The scroll container of the virtualized transcript (UI-042). */
+  /* Thread header (UI-030, UI-171): `◆` title in flowing gradient text over the gradient hairline. */
+  .omfp-thread-header {
+    flex: none;
+    padding-inline: var(--omfp-gutter);
+    background: var(--omfp-app-bg);
+  }
+
+  .omfp-thread-header__top {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+  }
+
+  .omfp-thread-header__title {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+  }
+
+  .omfp-thread-header__title::before {
+    content: "◆ ";
+  }
+
+  .omfp-thread-header__title[data-placeholder="true"] {
+    font-style: italic;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-thread-header__title[data-placeholder="true"]::before {
+    font-style: normal;
+    color: var(--omfp-primary);
+  }
+
+  .omfp-thread-header__empty {
+    margin: 0;
+    font-size: var(--omfp-fs-sm);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-thread-header__chips,
+  .omfp-thread-header__session,
+  .omfp-thread-header__process,
+  .omfp-thread-header__lifecycle,
+  .omfp-thread-header__editor {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s2);
+  }
+
+  .omfp-thread-header__editor {
+    flex: 1 1 auto;
+  }
+
+  .omfp-thread-header__editor .omfp-field {
+    flex: 1 1 auto;
+  }
+
+  .omfp-thread-header__session {
+    margin-inline-start: auto;
+  }
+
+  .omfp-thread-header__lifecycle {
+    margin-inline-start: auto;
+  }
+
+  .omfp-thread-header__failure {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-error);
+  }
+
+  .omfp-thread-header__meter {
+    display: inline-flex;
+  }
+
+  .omfp-thread-header__cost {
+    font-size: var(--omfp-fs-2xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--omfp-on-surface-variant);
+  }
+  /* The scroll container of the virtualized transcript (UI-042); items within the reading measure (UI-128). */
   .omfp-transcript {
     flex: 1 1 auto;
     min-block-size: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding-inline: calc(var(--omfp-s1) * 1.5);
+    padding-inline: var(--omfp-gutter);
+  }
+
+  .omfp-transcript__content {
+    max-inline-size: var(--omfp-measure);
+    margin-inline: auto;
+    padding-block: var(--omfp-s4);
   }
 
   .omfp-transcript:focus-visible,
   .omfp-transcript__item:focus-visible {
-    outline: 2px solid var(--omfp-primary);
-    outline-offset: -2px;
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: calc(-1 * var(--omfp-focus-w));
   }
 
   .omfp-transcript__item {
-    padding-block: var(--omfp-s1);
+    padding-block: calc(var(--omfp-msg-gap) / 2);
   }
 
   .omfp-transcript__item[aria-current="true"] {
-    background: var(--omfp-surface-container-low);
+    border-radius: var(--omfp-r-row);
+    background: var(--omfp-sel-bg);
   }
 
-  .omfp-message__label {
+  /* Messages (UI-171): the kit draws the name line and the bars; prose at 70ch (UI-144). */
+  .omfp-message {
+    font-size: var(--omfp-fs-md);
+  }
+
+  .omfp-message .omfp-msg__body {
     display: flex;
-    gap: var(--omfp-s1);
-    align-items: baseline;
-    font-size: var(--omfp-fs-sm);
-    font-weight: 600;
-    color: var(--omfp-on-surface-variant);
+    flex-direction: column;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
   }
 
-  .omfp-message[data-role="user"] .omfp-message__plain {
+  .omfp-message__plain {
+    max-inline-size: 70ch;
     white-space: pre-wrap;
-  }
-
-  .omfp-message[data-role="record"] {
-    font-size: var(--omfp-fs-sm);
-    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-message__tag,
   .omfp-ask__tag {
-    padding-inline: calc(var(--omfp-s1) / 2);
-    border-radius: var(--omfp-r-chip);
-    background: var(--omfp-secondary-container);
+    margin-inline-start: var(--omfp-s1);
+    padding: 0 var(--omfp-s1);
+    border-radius: 999px;
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-regular);
     color: var(--omfp-on-secondary-container);
-    font-weight: 400;
+    background: var(--omfp-secondary-container);
   }
 
-  .omfp-message__error {
-    color: var(--omfp-error);
+  .omfp-message[data-role="record"] {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s1);
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-message__image {
     max-inline-size: min(100%, 32rem);
-    border-radius: var(--omfp-r-ctl);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
   }
 
-  .omfp-thinking__text {
-    white-space: pre-wrap;
-    color: var(--omfp-on-surface-variant);
+  /* The stream caret follows the last streamed character (UI-147); no tail effect on the text. */
+  .omfp-message[data-streaming="true"] .omfp-msg__body > .omfp-markdown:last-child > :last-child:not(ul, ol)::after,
+  .omfp-message[data-streaming="true"]
+    .omfp-msg__body
+    > .omfp-markdown:last-child
+    > :is(ul, ol):last-child
+    > li:last-child::after {
+    content: "";
+    display: inline-block;
+    inline-size: 0.5em;
+    block-size: 1.05em;
+    margin-inline-start: 0.1em;
+    vertical-align: -0.15em;
+    background: var(--omfp-grad);
+    box-shadow: 0 0 0.5rem color-mix(in oklab, var(--omfp-primary) 60%, transparent);
   }
 
-  .omfp-tool-card {
-    margin-block: calc(var(--omfp-s1) / 2);
+  :root[data-motion="full"]
+    .omfp-message[data-streaming="true"]
+    .omfp-msg__body
+    > .omfp-markdown:last-child
+    > :last-child:not(ul, ol)::after,
+  :root[data-motion="full"]
+    .omfp-message[data-streaming="true"]
+    .omfp-msg__body
+    > .omfp-markdown:last-child
+    > :is(ul, ol):last-child
+    > li:last-child::after {
+    animation: omfp-blink 0.9s steps(1) infinite;
   }
 
-  .omfp-tool-card .omfp-card__title {
-    display: flex;
-    gap: var(--omfp-s1);
-    align-items: baseline;
-    min-inline-size: 0;
-  }
-
-  .omfp-tool-card__name {
-    font-family: var(--omfp-font-code);
-    font-weight: 600;
+  /* Tool cards (UI-163): the kit's card; the app's bodies sit in padded sections. */
+  .omfp-tool__arg {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--omfp-s2);
   }
 
   .omfp-tool-card__summary {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-family: var(--omfp-font-code);
-    color: var(--omfp-on-surface-variant);
+    opacity: 0.8;
   }
 
-  .omfp-tool-card__status,
-  .omfp-tool-card__duration {
-    font-size: var(--omfp-fs-sm);
-    color: var(--omfp-on-surface-variant);
+  .omfp-tool-card__subject:not(:empty) + .omfp-tool-card__summary:empty {
+    display: none;
   }
 
-  .omfp-tool-card[data-status="failed"] .omfp-tool-card__status {
-    color: var(--omfp-error);
-  }
-
-  .omfp-tool-card__section h4 {
-    margin-block: var(--omfp-s1) calc(var(--omfp-s1) / 2);
-    font-size: var(--omfp-fs-sm);
-  }
-
-  /* Specialized cards (UI-050): the call's subject in the header, then the tool's own body. */
   .omfp-tool-card__path {
     display: inline-flex;
     gap: var(--omfp-s1);
-    align-items: baseline;
+    align-items: center;
     min-inline-size: 0;
   }
 
   .omfp-tool-card__subject {
     flex: 0 1 auto;
     min-inline-size: 0;
-    max-inline-size: 60%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-family: var(--omfp-font-code);
-  }
-
-  .omfp-tool-card__path .omfp-tool-card__subject {
-    max-inline-size: none;
+    color: var(--omfp-on-surface);
   }
 
   .omfp-tool-card__section {
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
+    padding: var(--omfp-s2) var(--omfp-s3);
+    font-size: var(--omfp-fs-xs);
   }
 
-  .omfp-tool-card__section > .omfp-badge {
-    align-self: flex-start;
+  .omfp-tool-card__section + .omfp-tool-card__section {
+    border-block-start: var(--omfp-bw) dashed var(--omfp-rule);
+  }
+
+  .omfp-tool-card__section h4 {
+    margin: 0;
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-medium);
+    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-tool-card__meta {
     display: flex;
-    gap: calc(var(--omfp-s1) * 1.5);
+    flex-wrap: wrap;
+    gap: var(--omfp-s3);
     margin: 0;
-    font-size: var(--omfp-fs-sm);
+    font-size: var(--omfp-fs-2xs);
+    font-variant-numeric: tabular-nums;
     color: var(--omfp-on-surface-variant);
   }
 
   .omfp-tool-card__error {
-    padding: var(--omfp-s1) calc(var(--omfp-s1) * 1.5);
-    border-radius: var(--omfp-r-chip);
-    color: var(--omfp-on-error-container);
-    background: var(--omfp-error-container);
+    padding: var(--omfp-s2) var(--omfp-s3);
+    border-inline-start: 2px solid var(--omfp-error);
+    border-radius: var(--omfp-r-ctl);
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-code);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    color: color-mix(in oklab, var(--omfp-error) 70%, var(--omfp-on-surface));
+    background: color-mix(in oklab, var(--omfp-error) 11%, transparent);
   }
 
   .omfp-tool-card__output {
     max-block-size: 24em;
   }
 
+  /* A collapsed `write` shows its first lines fading out (UI-053). */
+  .omfp-tool-card__preview[data-cut="true"] .omfp-code--block {
+    mask-image: linear-gradient(to bottom, var(--omfp-on-surface) 55%, transparent);
+  }
+
+  .omfp-tool-card__section > .omfp-button {
+    align-self: flex-start;
+  }
+
   .omfp-tool-card__files,
   .omfp-tool-card__links,
-  .omfp-tool-card__todo,
   .omfp-tool-card__agents {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) / 2);
+    gap: var(--omfp-s1);
     margin: 0;
     padding: 0;
     list-style: none;
   }
 
-  .omfp-tool-card__files li,
-  .omfp-tool-card__todo li {
+  .omfp-tool-card__files li {
     display: flex;
-    gap: var(--omfp-s1);
-    align-items: baseline;
+    gap: var(--omfp-s2);
+    align-items: center;
   }
 
   .omfp-tool-card__links li {
@@ -206,41 +330,64 @@
     overflow-wrap: anywhere;
   }
 
-  .omfp-tool-card__todo li[data-status="completed"] {
-    color: var(--omfp-on-surface-variant);
-    text-decoration: line-through;
+  /* The app's todo statuses on the kit's list (UI-163). */
+  .omfp-tool-card__todo {
+    padding: 0;
   }
 
-  .omfp-tool-card__todo li[data-status="in_progress"] {
-    font-weight: 600;
+  .omfp-todo__item[data-status="completed"] {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-todo__item[data-status="completed"] .omfp-todo__mark {
+    color: var(--omfp-ok);
+  }
+
+  .omfp-todo__item[data-status="completed"] .omfp-todo__text {
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in oklab, currentColor 45%, transparent);
+  }
+
+  .omfp-todo__item[data-status="in_progress"],
+  .omfp-todo__item[data-status="in_progress"] .omfp-todo__mark {
+    color: var(--omfp-primary);
   }
 
   .omfp-tool-card__answers {
     display: grid;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     margin: 0;
   }
 
   .omfp-tool-card__answers dt {
-    font-weight: 600;
+    font-weight: var(--omfp-fw-strong);
   }
 
   .omfp-tool-card__answers dd {
     margin: 0;
+    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-tool-card__agent {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) / 2);
-    padding-block: var(--omfp-s1);
-    border-block-end: 1px solid var(--omfp-outline-variant);
+    gap: var(--omfp-s1);
+    padding-block: var(--omfp-s2);
+    border-block-end: var(--omfp-bw) dashed var(--omfp-rule);
+  }
+
+  .omfp-tool-card__agent:last-child {
+    border-block-end: 0;
   }
 
   .omfp-tool-card__agent-head {
     display: flex;
-    gap: var(--omfp-s1);
-    align-items: baseline;
+    gap: var(--omfp-s2);
+    align-items: center;
+  }
+
+  .omfp-tool-card__agent-head strong {
+    color: var(--omfp-primary);
   }
 
   .omfp-tool-card__task,
@@ -249,13 +396,13 @@
     white-space: pre-wrap;
   }
 
-  /* ANSI colors of command output, from the theme's roles. */
+  /* ANSI colors of command output (UI-138). */
   .omfp-ansi-bold {
-    font-weight: 600;
+    font-weight: var(--omfp-fw-strong);
   }
 
   .omfp-ansi-dim {
-    opacity: 0.7;
+    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-ansi-italic {
@@ -271,11 +418,11 @@
   }
 
   :is(.omfp-ansi-fg-green, .omfp-ansi-fg-bright-green) {
-    color: var(--omfp-success);
+    color: var(--omfp-ok);
   }
 
   :is(.omfp-ansi-fg-yellow, .omfp-ansi-fg-bright-yellow) {
-    color: var(--omfp-warning);
+    color: var(--omfp-warn);
   }
 
   :is(.omfp-ansi-fg-blue, .omfp-ansi-fg-bright-blue) {
@@ -287,7 +434,7 @@
   }
 
   :is(.omfp-ansi-fg-cyan, .omfp-ansi-fg-bright-cyan) {
-    color: var(--omfp-secondary);
+    color: color-mix(in oklab, var(--omfp-primary) 55%, var(--omfp-ok));
   }
 
   :is(.omfp-ansi-fg-black, .omfp-ansi-fg-bright-black) {
@@ -299,50 +446,51 @@
   }
 
   :is(.omfp-ansi-bg-red, .omfp-ansi-bg-bright-red) {
-    background: var(--omfp-error-container);
+    background: color-mix(in oklab, var(--omfp-error) 18%, transparent);
   }
 
   :is(.omfp-ansi-bg-green, .omfp-ansi-bg-bright-green) {
-    background: color-mix(in srgb, var(--omfp-success) 25%, transparent);
+    background: color-mix(in oklab, var(--omfp-ok) 18%, transparent);
   }
 
   :is(.omfp-ansi-bg-yellow, .omfp-ansi-bg-bright-yellow) {
-    background: color-mix(in srgb, var(--omfp-warning) 25%, transparent);
+    background: color-mix(in oklab, var(--omfp-warn) 18%, transparent);
   }
 
   :is(.omfp-ansi-bg-blue, .omfp-ansi-bg-bright-blue) {
-    background: var(--omfp-primary-container);
+    background: color-mix(in oklab, var(--omfp-primary) 18%, transparent);
   }
 
   :is(.omfp-ansi-bg-magenta, .omfp-ansi-bg-bright-magenta) {
-    background: var(--omfp-tertiary-container);
+    background: color-mix(in oklab, var(--omfp-tertiary) 18%, transparent);
   }
 
   :is(.omfp-ansi-bg-cyan, .omfp-ansi-bg-bright-cyan) {
-    background: var(--omfp-secondary-container);
+    background: color-mix(in oklab, color-mix(in oklab, var(--omfp-primary) 55%, var(--omfp-ok)) 18%, transparent);
   }
 
   :is(.omfp-ansi-bg-black, .omfp-ansi-bg-bright-black) {
-    background: var(--omfp-inverse-surface);
-  }
-
-  :is(.omfp-ansi-bg-white, .omfp-ansi-bg-bright-white) {
     background: var(--omfp-surface-container-highest);
   }
 
+  :is(.omfp-ansi-bg-white, .omfp-ansi-bg-bright-white) {
+    background: var(--omfp-surface-container);
+  }
+
+  /* Notices (UI-043): one code-family line with a 2 px bar in the level's color. */
   .omfp-notice {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     align-items: baseline;
-    padding: calc(var(--omfp-s1) / 2) var(--omfp-s1);
-    border-inline-start: 3px solid var(--omfp-outline-variant);
-    font-size: var(--omfp-fs-sm);
+    padding: var(--omfp-s1) var(--omfp-s3);
+    border-inline-start: 2px solid var(--omfp-rule-strong);
+    font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
   }
 
   .omfp-notice[data-level="warning"] {
-    border-inline-start-color: var(--omfp-warning);
+    border-inline-start-color: var(--omfp-warn);
   }
 
   .omfp-notice[data-level="error"] {
@@ -350,19 +498,26 @@
     color: var(--omfp-error);
   }
 
+  .omfp-notice > .omfp-disclosure {
+    flex-basis: 100%;
+  }
+
   /* omp's own bookkeeping (UI-043): one muted line, expandable to the whole text. */
   .omfp-system {
     display: flex;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     align-items: baseline;
     min-inline-size: 0;
-    font-size: var(--omfp-fs-sm);
+    font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
   }
 
   .omfp-system__label {
     flex: none;
-    font-weight: 600;
+    padding: 0 var(--omfp-s1);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-chip);
+    font-size: var(--omfp-fs-2xs);
   }
 
   .omfp-system > .omfp-disclosure {
@@ -384,49 +539,43 @@
   }
 
   .omfp-system__text {
-    padding-block: calc(var(--omfp-s1) / 2);
+    padding: var(--omfp-s1) 0 var(--omfp-s1) var(--omfp-s3);
+    border-inline-start: 2px solid var(--omfp-rule);
+    font-size: var(--omfp-fs-2xs);
     white-space: pre-wrap;
   }
 
-  /* Pending interactions, inline at the bottom of the transcript (UI-070). */
+  /* Pending interactions, inline at the bottom of the transcript (UI-070, UI-164). */
   .omfp-interactions {
     display: flex;
     flex-direction: column;
-    gap: var(--omfp-s1);
-    padding-block: var(--omfp-s1);
-  }
-
-  .omfp-interaction {
-    padding: calc(var(--omfp-s1) * 1.5);
-    border: 1px solid var(--omfp-primary);
-    border-radius: var(--omfp-r-ctl);
-    background: var(--omfp-surface-container);
+    gap: var(--omfp-s3);
+    padding-block: calc(var(--omfp-msg-gap) / 2);
   }
 
   .omfp-interaction[aria-busy="true"] {
-    opacity: 0.7;
-  }
-
-  .omfp-interaction__heading {
-    display: flex;
-    gap: var(--omfp-s1);
-    align-items: baseline;
-    justify-content: space-between;
+    opacity: var(--omfp-disabled);
   }
 
   .omfp-interaction__title {
-    margin: 0;
-    font-size: var(--omfp-fs-md);
     white-space: pre-wrap;
   }
 
-  .omfp-interaction__options,
+  .omfp-interaction__message {
+    margin: 0;
+    font-size: var(--omfp-fs-sm);
+    white-space: pre-wrap;
+  }
+
   .omfp-interaction__form {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     align-items: flex-end;
-    margin-block-start: var(--omfp-s1);
+  }
+
+  .omfp-interaction__form .omfp-field {
+    flex: 1 1 16rem;
   }
 
   .omfp-interaction__form.omfp-ask {
@@ -434,14 +583,16 @@
     align-items: stretch;
   }
 
-  .omfp-interaction__description {
-    display: block;
-    font-size: var(--omfp-fs-sm);
-    color: var(--omfp-on-surface-variant);
+  .omfp-interaction__form.omfp-ask > .omfp-button {
+    align-self: flex-start;
   }
 
-  .omfp-countdown {
-    font-variant-numeric: tabular-nums;
+  .omfp-interaction__description {
+    display: block;
+    font-family: var(--omfp-font-prose);
+    font-size: var(--omfp-fs-sm);
+    font-style: italic;
+    font-weight: var(--omfp-fw-regular);
     color: var(--omfp-on-surface-variant);
   }
 
@@ -452,25 +603,32 @@
   .omfp-ask__question {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) / 2);
+    gap: var(--omfp-s2);
     margin: 0;
-    padding: var(--omfp-s1);
-    border: 1px solid var(--omfp-outline-variant);
-    border-radius: var(--omfp-r-chip);
+    padding: 0;
+    border: 0;
+  }
+
+  .omfp-ask__question legend {
+    padding: 0 0 var(--omfp-s2);
+    font-size: var(--omfp-fs-sm);
+    font-weight: var(--omfp-fw-medium);
   }
 
   .omfp-ask__options {
     display: flex;
     flex-direction: column;
-    gap: calc(var(--omfp-s1) / 2);
+    gap: var(--omfp-s1);
   }
 
   .omfp-ask__rule {
+    font-weight: var(--omfp-fw-regular);
     color: var(--omfp-on-surface-variant);
   }
 
   .omfp-ask__error {
     margin: 0;
+    font-size: var(--omfp-fs-xs);
     color: var(--omfp-error);
   }
 
@@ -478,70 +636,79 @@
     display: flex;
     gap: var(--omfp-s1);
     align-items: center;
-    font-size: var(--omfp-fs-sm);
-    color: var(--omfp-on-surface-variant);
+    min-inline-size: 0;
   }
 
-  /* Queue chips (UI-062) and the composer (UI-060..064). */
+  .omfp-interaction-closed > .omfp-resolved {
+    flex: 0 1 auto;
+  }
+
+  /* Queue chips (UI-062, UI-172) and the composer (UI-060..064, UI-172). */
   .omfp-composer-area {
-    flex: 0 0 auto;
-    border-block-start: 1px solid var(--omfp-outline-variant);
-    padding: var(--omfp-s1) calc(var(--omfp-s1) * 1.5);
+    flex: none;
+    padding: var(--omfp-s2) var(--omfp-gutter) var(--omfp-s3);
+  }
+
+  .omfp-composer-area > * {
+    max-inline-size: var(--omfp-measure);
+    margin-inline: auto;
   }
 
   .omfp-queue {
     display: flex;
     flex-wrap: wrap;
-    gap: calc(var(--omfp-s1) / 2);
-    margin: 0 0 var(--omfp-s1);
+    gap: var(--omfp-s2);
+    margin-block: 0 var(--omfp-s2);
     padding: 0;
     list-style: none;
   }
 
-  .omfp-queue__chip {
-    display: flex;
-    gap: calc(var(--omfp-s1) / 2);
-    align-items: center;
-    padding-inline: var(--omfp-s1);
-    border-radius: var(--omfp-r-card);
-    background: var(--omfp-secondary-container);
-    color: var(--omfp-on-secondary-container);
-  }
-
   .omfp-queue__chip[aria-busy="true"] {
-    opacity: 0.6;
+    opacity: var(--omfp-disabled);
   }
 
-  .omfp-queue__kind {
-    font-size: var(--omfp-fs-sm);
-    font-weight: 600;
+  .omfp-queue__chip .omfp-button:not(.omfp-icon-button) {
+    block-size: calc(var(--omfp-ctl-h-sm) - var(--omfp-s1));
   }
 
-  .omfp-composer {
-    display: flex;
-    flex-direction: column;
-    gap: var(--omfp-s1);
+  /* The kit's text area inside the composer box: no box of its own, prose input (UI-172). */
+  .omfp-compose__field .omfp-input-box,
+  .omfp-compose__field .omfp-input-box:focus-within {
+    border: 0;
+    outline: none;
+    box-shadow: none;
+    animation: none;
+    background: none;
   }
 
-  .omfp-composer .omfp-textarea {
-    inline-size: 100%;
-    resize: vertical;
-    field-sizing: content;
-    max-block-size: 40vh;
+  .omfp-compose__field .omfp-textarea {
+    padding: var(--omfp-s3) var(--omfp-s3) var(--omfp-s1);
+    font-family: var(--omfp-font-prose);
+    font-size: var(--omfp-fs-prose);
+    line-height: var(--omfp-lh-prose);
+    resize: none;
+    caret-color: var(--omfp-primary);
   }
 
-  .omfp-composer__actions {
-    display: flex;
-    gap: var(--omfp-s1);
-    justify-content: flex-end;
+  .omfp-composer__spacer {
+    flex: 1 1 auto;
+  }
+
+  /* The app's bar pushes its buttons right with the spacer; scoped so the kit composer elsewhere keeps its layout. */
+  .omfp-composer .omfp-compose__bar > .omfp-button:last-child {
+    margin-inline-start: 0;
+  }
+
+  .omfp-composer__interrupt {
+    color: var(--omfp-warn);
   }
 
   .omfp-composer__attachments {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--omfp-s1);
+    gap: var(--omfp-s2);
     margin: 0;
-    padding: 0;
+    padding: var(--omfp-s2) var(--omfp-s3) 0;
     list-style: none;
   }
 
@@ -550,7 +717,9 @@
   }
 
   .omfp-composer__attachment img {
+    display: block;
     block-size: 4rem;
+    border: var(--omfp-bw) solid color-mix(in oklab, var(--omfp-primary) 30%, var(--omfp-rule));
     border-radius: var(--omfp-r-chip);
   }
 
@@ -558,10 +727,13 @@
     position: absolute;
     inset-block-start: 0;
     inset-inline-end: 0;
+    background: var(--omfp-pop-bg);
   }
 
   .omfp-composer__command {
     font-family: var(--omfp-font-code);
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-tertiary);
   }
 
   .omfp-composer__hint,

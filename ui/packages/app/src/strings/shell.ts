@@ -145,8 +145,6 @@ export const shell = {
     loadingDiff: "Reading the diff…",
     clean: "No changes",
     truncated: "The diff is too large and was cut.",
-    branch: (branch: string) => `on ${branch}`,
-    counts: (additions: number, deletions: number) => `+${additions} −${deletions}`,
     renamedFrom: (path: string) => `from ${path}`,
     /** One letter per kind of change, as `git status --short` writes them. */
     status: { added: "A", modified: "M", deleted: "D", renamed: "R", untracked: "U" },
@@ -229,6 +227,10 @@ export const shell = {
     invalidView: (error: string) => `The view is invalid, showing the default view: ${error}`,
     dismiss: "Dismiss",
     commandLine: "Command line",
+    /** The completion menu's `╭─` title and its key row (UI-168). */
+    commandMenu: "commands",
+    commandKeys: { complete: "complete", run: "run", cancel: "cancel" },
+    filesMenu: "files",
     unknownCommand: (name: string) => `Unknown command: ${name}`,
     defaultView: "Default",
     /** Tab labels of the built-in widgets without a `title` prop (AGT-010). */

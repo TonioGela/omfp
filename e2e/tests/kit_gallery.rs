@@ -1,6 +1,7 @@
 //! Screenshot test of the `/kit` gallery (UI-173, UI-174): the whole page at motion `none`, 17 px, compact, in light and
 //! dark for the built-in Synth palette and the matugen fixture theme, compared with the baselines checked in next to
-//! this file (`kit-baselines/`), and the WCAG AA contrast the page measured for its text roles and gradient stops.
+//! this file (`kit-baselines/`), and the WCAG AA contrast the page measured for its text roles, status colors and
+//! gradient stops.
 //! The screenshots land in `/tmp/omfp-kit-<theme>-<scheme>.png` (or `OMFP_SCREENSHOT_DIR`). After an intended visual
 //! change, `OMFP_UPDATE_BASELINES=1 just test-e2e` rewrites the baselines: look at them before committing.
 
@@ -124,15 +125,13 @@ async fn differing_pixels(
     Ok((field("width")?, field("height")?, field("differing")?))
 }
 
-/// The contrast rows of the checked pairs (text roles, gradient stops) under AA: `text on background ratio`.
+/// The contrast rows (text roles, status colors, gradient stops) under AA: `text on background ratio`.
 async fn contrast_failures(journey: &Journey) -> anyhow::Result<Vec<String>> {
-    let checked = journey
-        .count("[data-testid=contrast][data-checked=true]")
-        .await?;
-    anyhow::ensure!(checked > 0, "the gallery measured no contrast");
+    let measured = journey.count("[data-testid=contrast]").await?;
+    anyhow::ensure!(measured > 0, "the gallery measured no contrast");
     let value = journey
         .eval(
-            "return [...document.querySelectorAll('[data-testid=contrast][data-checked=true][data-pass=false]')]
+            "return [...document.querySelectorAll('[data-testid=contrast][data-pass=false]')]
                .map((row) => `${row.dataset.text} on ${row.dataset.background} ${row.dataset.ratio}`);",
             Vec::new(),
         )

@@ -6,7 +6,7 @@
  */
 
 import type { FileContent, FileDiff } from "@omfp/protocol";
-import { CodeDiff, Diff, Disclosure, IconButton, languageOfPath } from "omfp/kit";
+import { CodeDiff, Diff, Disclosure, EmptyState, Icon, IconButton, languageOfPath, useCountUp } from "omfp/kit";
 import {
   type ChangedFile,
   type ChangesRepo,
@@ -34,9 +34,7 @@ export function ChangesWidget(_props: WidgetProps): ReactNode {
   const workspaceId = useCurrentWorkspaceId();
   if (workspaceId === undefined) {
     return (
-      <p className="omfp-changes__empty" data-testid="changes-none">
-        {text.none}
-      </p>
+      <EmptyState icon="folder-open" title={text.none} className="omfp-changes__none" data-testid="changes-none" />
     );
   }
   return <Changes workspaceId={workspaceId} />;
@@ -70,12 +68,15 @@ function Changes({ workspaceId }: { workspaceId: string }): ReactNode {
   return (
     <section className="omfp-changes" data-testid="changes" aria-label={text.label}>
       <div className="omfp-changes__bar">
-        <IconButton label={text.refresh} icon="↻" onPress={refresh} data-testid="changes-refresh" />
+        <IconButton
+          label={text.refresh}
+          icon={<Icon name="refresh-cw" />}
+          onPress={refresh}
+          data-testid="changes-refresh"
+        />
       </div>
       {repos.length === 0 ? (
-        <p className="omfp-changes__empty" data-testid="changes-no-repo">
-          {text.noRepos}
-        </p>
+        <EmptyState icon="folder-git-2" title={text.noRepos} data-testid="changes-no-repo" />
       ) : (
         repos.map((repo) => (
           <RepoChanges
@@ -104,7 +105,10 @@ function RepoChanges({ workspaceId, repo, isRoot, runs }: RepoChangesProps): Rea
     <section className="omfp-changes__repo" data-testid="changes-repo" data-repo={repo.name} aria-label={repo.name}>
       <h3 className="omfp-changes__repo-head">
         <span className="omfp-changes__repo-name">{repo.name}</span>
-        <span className="omfp-changes__meta">{text.branch(repo.branch)}</span>
+        <span className="omfp-changes__branch">
+          <Icon name="git-branch" />
+          {repo.branch}
+        </span>
         {repo.aheadBehind !== undefined && <span className="omfp-changes__meta">{repo.aheadBehind}</span>}
         {repo.summary !== undefined && (
           <span className="omfp-changes__meta" data-testid="changes-summary">
@@ -182,14 +186,23 @@ function FileChanges({ workspaceId, repo, filePath, file, runs }: FileChangesPro
             {file.path}
           </span>
           {file.from !== undefined && <span className="omfp-changes__meta">{text.renamedFrom(file.from)}</span>}
-          <span className="omfp-changes__counts" data-testid="changes-counts">
-            {text.counts(file.additions, file.deletions)}
-          </span>
+          <Counts additions={file.additions} deletions={file.deletions} />
         </>
       }
     >
       {expanded && <FileDiffView workspaceId={workspaceId} repo={repo} filePath={filePath} file={file} runs={runs} />}
     </Disclosure>
+  );
+}
+
+/** `+n −m` in ok and error, counting up from 0 when first shown at motion `full` (UI-146, UI-165). */
+function Counts({ additions, deletions }: { additions: number; deletions: number }): ReactNode {
+  const added = useCountUp(additions);
+  const removed = useCountUp(deletions);
+  return (
+    <span className="omfp-changes__counts omfp-diffstat" data-testid="changes-counts">
+      <span className="omfp-diffstat__add">+{added}</span> <span className="omfp-diffstat__del">−{removed}</span>
+    </span>
   );
 }
 

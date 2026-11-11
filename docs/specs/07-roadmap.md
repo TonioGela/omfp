@@ -244,7 +244,7 @@ config polls apply a change only once the file settled, so a non-atomic writer s
 Acceptance: E2E-13; headless screenshots of a read-only file tab, editing in vim insert mode, the unified diff and the
 conflict view.
 
-## M5d — Crush
+## M5d — Crush (done)
 
 Scope (D-20): the visual design of [09](09-design.md) (UI-120..UI-174) applied to the shell and the kit, in slices.
 Foundation: every design token in the one `--omfp-*` namespace (the kit's earlier size, radius, line-height and spacing
@@ -258,6 +258,15 @@ the chat (transcript, tool, approval and ask cards, composer); the side widgets 
 
 Acceptance: every UI-120..UI-174 cited by a test or the screenshot test; headless screenshots of the real app at the
 defaults (Synth light and dark, a matugen theme, motion `none`) compared by eye with `docs/specs/design/crush-default-*`.
+
+Result: the foundation, the kit with the `/kit` gallery (Synth and matugen forest, light and dark, compared to pixel
+baselines in `e2e/tests/kit-baselines/` with every text pair at AA), and the frame, chat and side slices were applied in
+parallel and checked by the 23 E2E journeys. Merging the slices broke 8 journeys, all fixed: the side panel's Add button
+under the path-field completion, interaction cards losing their test hooks, `+n −m` counts split in two elements, a
+smooth-scroll rule that re-pinned the transcript, and a mode-pill animation that briefly showed a window scrollbar
+(`.omfp-app { overflow: hidden }`). Light `success`/`warning` were darkened (`#225f23`, `#7e4600`) to reach 4.5:1. The
+real app was compared with the reference shots in Synth light and dark; the matugen theme is covered by the gallery,
+not by app screenshots.
 
 ## M6 — Live voice
 

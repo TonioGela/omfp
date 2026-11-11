@@ -295,17 +295,18 @@ describe("opening paths", () => {
 });
 
 describe("mode line", () => {
-  // spec: UI-112
+  // spec: UI-112, UI-167
   test("while the file editor has the focus the mode line shows vim's mode", () => {
     const test = setup();
-    const line = screen.getByTestId("mode-line");
+    // The mode pill is rendered again on each mode change (its entrance motion).
+    const line = () => screen.getByTestId("mode-line");
     press("i");
-    expect(line.textContent).toBe("INSERT");
+    expect(line().textContent).toBe("INSERT");
     act(() => test.host.window.set(EDITOR_MODE, "visual"));
-    expect([line.textContent, line.dataset.vim]).toEqual(["VISUAL", "visual"]);
+    expect([line().textContent, line().dataset.vim]).toEqual(["VISUAL", "visual"]);
     act(() => test.host.window.set(EDITOR_MODE, "normal"));
-    expect(line.textContent).toBe("NORMAL");
+    expect(line().textContent).toBe("NORMAL");
     act(() => test.host.window.set(EDITOR_MODE, undefined));
-    expect(line.textContent).toBe("INSERT");
+    expect(line().textContent).toBe("INSERT");
   });
 });

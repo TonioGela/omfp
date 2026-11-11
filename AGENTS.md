@@ -72,20 +72,29 @@ crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
-e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process), the journeys and the widget journeys
+e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process), the journeys and the widget journeys;
+                      kit_gallery.rs is the `/kit` screenshot and contrast test (UI-174), its baselines in
+                      tests/kit-baselines/
 ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + Biome (`just lint`), `bun run test`
 ui/packages/protocol  @omfp/protocol: generated protocol types + method table (generated.ts), envelope, topics
 ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked against fixtures/states/
 ui/packages/client    @omfp/client: WebSocket transport, session (hello, subscriptions, reconnect), model
-ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css, kit.css; the bundled
-                      fonts and their licences in fonts/, served at /fonts/ by the bundle)
+ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css: every `--omfp-*` token;
+                      kit.css: the Crush components and the motion catalogue; the bundled fonts and their licences
+                      in fonts/, served at /fonts/ by the bundle); icons.tsx holds the Lucide icons as data
+                      (lucide-LICENSE.txt), motion.ts the effective motion level; marks.tsx (state marks, badges,
+                      counts, meter), shell.tsx (mode line, command line and menu, brand, workspace sections, left
+                      column rows), cards.tsx (tool, approval and ask cards), transcript.tsx (chat header, messages,
+                      composer), feedback.tsx (toasts, empty states), editor/ (CodeMirror and its theme)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
-                      column, view switcher, layout editing, floating file panel), view (layout tree, edits, reference
-                      resolution, widget slot, the `main` slot's file tabs), keymap, theme, strings; build.ts → dist/
-                      (`just build-web`: import map, widget-exports.json, builtin-widgets/)
+                      column, mode line with the `:` line and file picker, view switcher, layout editing, floating
+                      file panel, toasts, dialogs), view (layout tree, edits, reference resolution, widget slot, the
+                      `main` slot's file tabs), gallery (the `/kit` page, UI-173: params, contrast measuring, the
+                      matugen-forest fixture theme), keymap, theme, strings; build.ts → dist/ (`just build-web`:
+                      import map, widget-exports.json, builtin-widgets/)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)

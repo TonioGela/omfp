@@ -6,7 +6,7 @@
  */
 
 import type { ThreadSummary } from "@omfp/protocol";
-import { Button, type Key, Select, TextField } from "omfp/kit";
+import { Button, Icon, type Key, Meter, Select, StateBadge, TextField, type ThreadState } from "omfp/kit";
 import {
   DRAFT_THREAD,
   type DraftThread,
@@ -19,11 +19,11 @@ import {
   RENAMING_THREAD,
   type SdkClient,
   SELECTED_THREAD,
-  StatusBadge,
   splitModel,
   statusLabel,
   strings,
   type ThreadDetails,
+  type ThreadStatus,
   useCall,
   useReportError,
   useThread,
@@ -35,7 +35,7 @@ import {
   WorkspaceChipView,
   workspaceChips,
 } from "omfp/sdk";
-import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 const text = strings.shell.header;
 
@@ -48,8 +48,8 @@ export function HeaderWidget(_props: WidgetProps): ReactNode {
   }
   if (summary === undefined) {
     return (
-      <header className="omfp-header" data-testid="thread-header" data-empty="true">
-        <p className="omfp-muted" data-testid="header-empty">
+      <header className="omfp-chat-header omfp-thread-header" data-testid="thread-header" data-empty="true">
+        <p className="omfp-thread-header__empty" data-testid="header-empty">
           {text.noThread}
         </p>
       </header>
@@ -62,13 +62,17 @@ function DraftHeader({ draft }: { draft: DraftThread }): ReactNode {
   const workspaces = useWorkspaces();
   const chips = useMemo(() => workspaceChips(draft.workspaceId, [...workspaces.values()]), [draft, workspaces]);
   return (
-    <header className="omfp-header" data-testid="thread-header" data-draft="true">
-      <div className="omfp-header__title">
-        <h1 data-testid="thread-title" data-placeholder="true">
+    <header className="omfp-chat-header omfp-thread-header" data-testid="thread-header" data-draft="true">
+      <div className="omfp-thread-header__top">
+        <h1
+          className="omfp-chat-header__title omfp-thread-header__title"
+          data-testid="thread-title"
+          data-placeholder="true"
+        >
           {strings.shell.untitled}
         </h1>
       </div>
-      <div className="omfp-header__chips">
+      <div className="omfp-chat-header__bar">
         {chips.map((chip) => (
           <WorkspaceChipView key={chip.key} chip={chip} />
         ))}
@@ -84,12 +88,21 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
   const [details, refreshSession] = useThreadDetails(summary.id, summary.process.state === "running");
   const view = headerView(summary, thread?.state, details, list);
   return (
-    <header className="omfp-header" data-testid="thread-header" data-thread-id={summary.id} data-omfp-scope="header">
-      <Title threadId={summary.id} view={view} />
-      <Chips view={view} />
-      <Session threadId={summary.id} view={view} onChanged={refreshSession} />
-      <Process threadId={summary.id} view={view} />
-      <Lifecycle threadId={summary.id} archived={view.archived} />
+    <header
+      className="omfp-chat-header omfp-thread-header"
+      data-testid="thread-header"
+      data-thread-id={summary.id}
+      data-omfp-scope="header"
+    >
+      <div className="omfp-thread-header__top">
+        <Title threadId={summary.id} view={view} />
+        <Process threadId={summary.id} view={view} />
+        <Lifecycle threadId={summary.id} archived={view.archived} />
+      </div>
+      <div className="omfp-chat-header__bar">
+        <Chips view={view} />
+        <Session threadId={summary.id} view={view} onChanged={refreshSession} />
+      </div>
     </header>
   );
 }
@@ -141,14 +154,24 @@ function Title({ threadId, view }: { threadId: string; view: HeaderView }): Reac
   const actions = useThreadActions();
   if (renaming !== threadId) {
     return (
-      <div className="omfp-header__title">
-        <h1 data-testid="thread-title" data-placeholder={view.placeholder ? "true" : undefined}>
+      <>
+        <h1
+          className={`omfp-chat-header__title omfp-thread-header__title${view.placeholder ? "" : " omfp-grad-text"}`}
+          data-testid="thread-title"
+          data-placeholder={view.placeholder ? "true" : undefined}
+        >
           {view.title}
         </h1>
-        <Button size="sm" variant="quiet" data-testid="rename-thread" onPress={() => setRenaming(threadId)}>
+        <Button
+          size="sm"
+          variant="quiet"
+          icon={<Icon name="pencil" />}
+          data-testid="rename-thread"
+          onPress={() => setRenaming(threadId)}
+        >
           {text.rename}
         </Button>
-      </div>
+      </>
     );
   }
   return (
@@ -196,7 +219,7 @@ function InlineEditor({
     }
   };
   return (
-    <form className="omfp-header__editor" data-testid={testid} onSubmit={submit}>
+    <form className="omfp-thread-header__editor" data-testid={testid} onSubmit={submit}>
       <TextField
         label={label}
         hideLabel
@@ -218,7 +241,7 @@ function InlineEditor({
 
 function Chips({ view }: { view: HeaderView }): ReactNode {
   return (
-    <div className="omfp-header__chips">
+    <div className="omfp-thread-header__chips">
       {view.chips.map((chip) => (
         <WorkspaceChipView key={chip.key} chip={chip} />
       ))}
@@ -246,10 +269,11 @@ function Session({ threadId, view, onChanged }: { threadId: string; view: Header
     }
   };
   return (
-    <div className="omfp-header__session">
+    <div className="omfp-thread-header__session">
       <Select
         label={text.model}
         hideLabel
+        icon={<Icon name="brain" />}
         placeholder={text.modelPlaceholder}
         data-testid="model-select"
         items={view.models.map((model) => ({ id: model.value, label: model.label }))}
@@ -265,13 +289,18 @@ function Session({ threadId, view, onChanged }: { threadId: string; view: Header
         selectedKey={view.thinking ?? null}
         onSelectionChange={onThinking}
       />
-      {view.context !== undefined && (
-        <span className="omfp-meter" data-testid="context-usage" title={text.contextUsage}>
-          {view.context}
+      {view.usage !== undefined && (
+        <span className="omfp-thread-header__meter" title={view.context}>
+          <Meter
+            value={view.usage.used}
+            max={view.usage.total}
+            label={`${text.contextUsage}: ${view.context ?? ""}`}
+            data-testid="context-usage"
+          />
         </span>
       )}
       {view.cost !== undefined && (
-        <span className="omfp-meter" data-testid="session-cost" title={text.sessionCost}>
+        <span className="omfp-thread-header__cost" data-testid="session-cost" title={text.sessionCost}>
           {view.cost}
         </span>
       )}
@@ -283,17 +312,18 @@ function Session({ threadId, view, onChanged }: { threadId: string; view: Header
 function Process({ threadId, view }: { threadId: string; view: HeaderView }): ReactNode {
   const actions = useThreadActions();
   return (
-    <div className="omfp-header__process">
-      <StatusBadge status={view.status} testid="thread-state" />
-      <span className="omfp-header__state">{statusLabel(view.status)}</span>
+    <div className="omfp-thread-header__process">
+      <HeaderState status={view.status} />
       {view.failure !== undefined && (
-        <span className="omfp-header__failure" data-testid="thread-failure">
+        <span className="omfp-thread-header__failure" data-testid="thread-failure">
           {view.failure}
         </span>
       )}
       {view.action !== undefined && (
         <Button
           size="sm"
+          variant="quiet"
+          icon={<Icon name={view.action === "stop" ? "square" : "refresh-cw"} />}
           data-testid="process-action"
           data-action={view.action}
           onPress={() => void (view.action === "stop" ? actions.stop(threadId) : actions.restart(threadId))}
@@ -309,17 +339,51 @@ function Process({ threadId, view }: { threadId: string; view: HeaderView }): Re
 function Lifecycle({ threadId, archived }: { threadId: string; archived: boolean }): ReactNode {
   const actions = useThreadActions();
   return (
-    <div className="omfp-header__lifecycle">
+    <div className="omfp-thread-header__lifecycle">
       <Button
         size="sm"
+        variant="quiet"
+        icon={<Icon name="archive" />}
         data-testid="archive-thread"
         onPress={() => void (archived ? actions.unarchive(threadId) : actions.archive(threadId))}
       >
         {archived ? text.unarchive : text.archive}
       </Button>
-      <Button size="sm" variant="danger" data-testid="delete-thread" onPress={() => actions.requestDelete(threadId)}>
+      <Button
+        size="sm"
+        variant="danger"
+        icon={<Icon name="trash-2" />}
+        data-testid="delete-thread"
+        onPress={() => actions.requestDelete(threadId)}
+      >
         {text.delete}
       </Button>
     </div>
+  );
+}
+
+const BADGE_STATE: Readonly<Record<ThreadStatus, ThreadState>> = {
+  awaiting: "awaiting",
+  failed: "failed",
+  running: "running",
+  starting: "running",
+  idle: "idle",
+  stopped: "idle",
+  terminal: "idle",
+};
+
+/** The thread's state as a badge (UI-157): glyph and word, popping when it changes after the header opened. */
+function HeaderState({ status }: { status: ThreadStatus }): ReactNode {
+  const first = useRef(status);
+  return (
+    <StateBadge
+      key={status}
+      state={BADGE_STATE[status]}
+      fresh={status !== first.current}
+      data-testid="thread-state"
+      data-status={status}
+    >
+      {statusLabel(status)}
+    </StateBadge>
   );
 }

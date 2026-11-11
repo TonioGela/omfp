@@ -101,7 +101,7 @@ describe("omfp:workspace", () => {
     expect(screen.getByTestId("workspace-name")).toBeDefined();
   });
 
-  // spec: UI-025, DMN-027
+  // spec: UI-025, DMN-027, UI-157
   test("each repository shows its kind, origin, branch and live git status, and a shared badge", () => {
     const { client, flush } = setup();
     expect(rows().map((element) => [element.dataset.name, element.dataset.kind])).toEqual([
@@ -113,6 +113,12 @@ describe("omfp:workspace", () => {
       "Worktree",
       "Link",
       "Clone",
+    ]);
+    // Each kind is the kit's kind mark, colored by kind (UI-157).
+    expect(rows().map((element) => within(element).getByTestId("repo-kind").dataset.kind)).toEqual([
+      "worktree",
+      "link",
+      "clone",
     ]);
     expect(within(row("fe")).getByTestId("repo-origin").textContent).toBe("of /src/fe");
     expect(within(row("be")).getByTestId("repo-origin").textContent).toBe("→ /src/be");

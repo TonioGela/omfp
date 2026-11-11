@@ -1,5 +1,5 @@
 /** Tool cards (UI-163), approval and ask cards with their resolved line (UI-164). */
-import { type HTMLAttributes, type ReactNode, useId } from "react";
+import { type HTMLAttributes, type ReactNode, type Ref, useId } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { cx } from "./class.ts";
 import { Icon } from "./icons.tsx";
@@ -113,6 +113,8 @@ export interface InteractionCardProps extends Omit<HTMLAttributes<HTMLElement>, 
   countdown?: string;
   /** The countdown is about to run out: it turns error. */
   low?: boolean;
+  /** The card's `<section>` (React 19 passes it as a prop). */
+  ref?: Ref<HTMLElement>;
   children?: ReactNode;
 }
 

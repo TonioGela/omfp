@@ -345,7 +345,7 @@ requirements = [
 ]
 
 [M5d]
-status = "in-progress"
+status = "done"
 requirements = [
   # Settings: font size 17 and motion (slice 1)
   "UI-097",

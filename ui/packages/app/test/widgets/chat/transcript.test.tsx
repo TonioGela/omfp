@@ -54,7 +54,7 @@ describe("transcript", () => {
     expect(markdown?.textContent).not.toBe("");
   });
 
-  // spec: UI-040, UI-042
+  // spec: UI-040, UI-042, UI-147
   test("streaming deltas update the reply in place while it is marked streaming", () => {
     const events = fixtureEvents("text_reply");
     const start = events.findIndex(isFrame("message_update", "text_delta"));
@@ -71,7 +71,7 @@ describe("transcript", () => {
     expect(streaming()).toBeUndefined();
   });
 
-  // spec: UI-041
+  // spec: UI-041, UI-171
   test("thinking is collapsed until expanded", async () => {
     const thinking: ThreadEvent = {
       kind: "history",
@@ -81,11 +81,13 @@ describe("transcript", () => {
     renderThread(<TranscriptWidget />, [thinking]);
     const block = screen.getByTestId("thinking");
     expect(block.dataset.expanded).toBe("false");
-    const hidden = () => within(block).getByText("secret plan").closest("[hidden]") !== null;
-    expect(hidden()).toBe(true);
-    await userEvent.click(within(block).getByTestId("toggle"));
+    expect(within(block).queryByText("secret plan")).toBeNull();
+    const head = within(block).getByTestId("thinking-head");
+    expect(head.textContent).toBe("▸Thinking");
+    await userEvent.click(head);
     expect(block.dataset.expanded).toBe("true");
-    expect(hidden()).toBe(false);
+    expect(head.textContent).toBe("▾Thinking");
+    expect(within(block).getByText("secret plan").closest("[hidden]")).toBeNull();
   });
 
   // spec: UI-050
@@ -121,7 +123,7 @@ describe("transcript", () => {
     renderThread(<TranscriptWidget />, [failed]);
     const card = screen.getByTestId("tool-card");
     expect(card.dataset.status).toBe("failed");
-    expect(card.dataset.tone).toBe("error");
+    expect(card.querySelector(".omfp-tool")?.getAttribute("data-status")).toBe("failed");
     expect(within(card).getByTestId("tool-error").textContent).toBe("ENOENT");
   });
 

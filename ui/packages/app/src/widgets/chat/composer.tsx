@@ -7,7 +7,20 @@
  */
 
 import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/core";
-import { Autocomplete, Button, IconButton, Menu, MenuItem, Popover, TextArea } from "omfp/kit";
+import {
+  Autocomplete,
+  Button,
+  ComposerBar,
+  ComposerHint,
+  Icon,
+  IconButton,
+  Kbd,
+  Composer as KitComposer,
+  Menu,
+  MenuItem,
+  Popover,
+  TextArea,
+} from "omfp/kit";
 import {
   alternative,
   behavior,
@@ -26,6 +39,7 @@ import {
   isBlank,
   isBusy,
   keyAction,
+  keyLabel,
   type Modifiers,
   type QueueChip,
   type QueueOp,
@@ -86,6 +100,8 @@ export function DraftComposer({ draft }: { draft: DraftThread }) {
   const actions = useThreadActions();
   const [message, setMessage] = useWindowState(DRAFT_MESSAGE);
   const [sending, setSending] = useState(false);
+  /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
+  const [insert, setInsert] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const labels = strings.shell.draft;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `draft` is a new object each time the draft is opened
@@ -139,22 +155,42 @@ export function DraftComposer({ draft }: { draft: DraftThread }) {
       }}
       onKeyDownCapture={onKeyDownCapture}
     >
-      <TextArea
-        label={text.label}
-        hideLabel
-        rows={3}
-        placeholder={labels.placeholder}
-        value={message.text}
-        onChange={(value) => setMessage((previous) => ({ ...previous, text: value }))}
-        isReadOnly={sending}
-        inputRef={inputRef}
-        inputProps={{ ...testId("composer-input"), "aria-keyshortcuts": "Enter Shift+Enter Escape" }}
-      />
-      <div className="omfp-composer__actions">
-        <Button type="submit" variant="primary" data-testid="send" data-mode="draft" isDisabled={sending}>
-          {labels.send}
-        </Button>
-      </div>
+      <KitComposer mode={insert ? "insert" : "normal"}>
+        <TextArea
+          className="omfp-compose__field"
+          label={text.label}
+          hideLabel
+          rows={2}
+          placeholder={labels.placeholder}
+          value={message.text}
+          onChange={(value) => setMessage((previous) => ({ ...previous, text: value }))}
+          onFocus={() => setInsert(true)}
+          onBlur={() => setInsert(false)}
+          isReadOnly={sending}
+          inputRef={inputRef}
+          inputProps={{ ...testId("composer-input"), "aria-keyshortcuts": "Enter Shift+Enter Escape" }}
+        />
+        <ComposerBar>
+          <ComposerHint>
+            <Kbd>{keyLabel("Shift-Enter")}</Kbd> {text.hint.newline}
+          </ComposerHint>
+          <ComposerHint>
+            <Kbd>{keyLabel("Esc")}</Kbd> {text.hint.leave}
+          </ComposerHint>
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            icon={<Icon name="arrow-up" />}
+            kbd={keyLabel("Enter")}
+            data-testid="send"
+            data-mode="draft"
+            isDisabled={sending}
+          >
+            {labels.send}
+          </Button>
+        </ComposerBar>
+      </KitComposer>
     </form>
   );
 }
@@ -200,24 +236,34 @@ function QueueChipView({ threadId, chip }: { threadId: string; chip: QueueChip }
   const busy = chip.pending !== undefined;
   return (
     <li
-      className="omfp-queue__chip"
+      className="omfp-queue-chip omfp-queue__chip"
+      data-kind={chip.queue === "steering" ? "steer" : "follow-up"}
       data-testid="queue-chip"
       data-queue={chip.queue}
       data-pending={chip.pending}
       aria-busy={busy}
     >
-      <span className="omfp-queue__kind">{strings.chat.queue.kind[chip.queue]}</span>
-      <span className="omfp-queue__text">{chip.text}</span>
+      <span className="omfp-queue-chip__kind">{strings.chat.queue.kind[chip.queue]}</span>
+      <span className="omfp-queue-chip__text">{chip.text}</span>
       {chip.canPromote && (
         <Button size="sm" variant="quiet" data-testid="queue-promote" isDisabled={busy} onPress={() => run("promote")}>
           {strings.chat.queue.promote}
         </Button>
       )}
-      <Button size="sm" variant="quiet" data-testid="queue-remove" isDisabled={busy} onPress={() => run("remove")}>
-        {strings.chat.queue.remove}
-      </Button>
+      <IconButton
+        label={strings.chat.queue.remove}
+        icon={<Icon name="x" />}
+        data-testid="queue-remove"
+        isDisabled={busy}
+        onPress={() => run("remove")}
+      />
     </li>
   );
+}
+
+/** The key chip of a send mode's key (UI-148): `alt+enter` steers while the agent works, `enter` sends otherwise. */
+function sendKey(mode: SendMode): string {
+  return keyLabel(mode === "steer" ? "Alt-Enter" : "Enter");
 }
 
 function modifiersOf(event: KeyboardEvent): Modifiers {
@@ -280,6 +326,8 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
   const [steer, setSteer] = useState(false);
   /** Esc closed the suggestions; typing opens them again. */
   const [dismissed, setDismissed] = useState(false);
+  /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
+  const [insert, setInsert] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const busy = isBusy(state);
   const abortable = canAbort(state);
@@ -462,80 +510,108 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
       onKeyDownCapture={onKeyDownCapture}
       onKeyUpCapture={(event) => setSteer(steerModifier(modifiersOf(event)))}
     >
-      {draft.images.length > 0 && <Attachments draft={draft} setDraft={setDraft} />}
-      <Autocomplete
-        inputValue={draft.text}
-        onInputChange={(value) => {
-          setDraft((previous) => ({ ...previous, text: value }));
-          setDismissed(false);
-          // Typing ends a `Ctrl-C` sequence: the next press clears what was typed rather than aborting (UI-063).
-          lastInterrupt.current = undefined;
-          setInterruptHint(false);
-        }}
-      >
-        <TextArea
-          label={text.label}
-          hideLabel
-          rows={3}
-          placeholder={busy ? text.placeholderBusy : text.placeholderIdle}
-          inputRef={inputRef}
-          onBlur={() => setSteer(false)}
-          inputProps={{
-            ...testId("composer-input"),
-            "aria-keyshortcuts": "Enter Shift+Enter Alt+Enter Escape Tab",
-            onPaste,
+      <KitComposer mode={insert ? "insert" : "normal"}>
+        {draft.images.length > 0 && <Attachments draft={draft} setDraft={setDraft} />}
+        <Autocomplete
+          inputValue={draft.text}
+          onInputChange={(value) => {
+            setDraft((previous) => ({ ...previous, text: value }));
+            setDismissed(false);
+            // Typing ends a `Ctrl-C` sequence: the next press clears what was typed rather than aborting (UI-063).
+            lastInterrupt.current = undefined;
+            setInterruptHint(false);
           }}
-        />
-        <Popover
-          triggerRef={inputRef}
-          isOpen={open}
-          isNonModal
-          placement="top start"
-          onOpenChange={(isOpen) => setDismissed(!isOpen)}
         >
-          <Menu
-            aria-label={text.commands}
-            data-testid="slash-suggestions"
-            items={suggestions.map((suggestion) => ({ id: suggestion.name, suggestion }))}
-            onAction={(key) => {
-              const chosen = suggestions.find((suggestion) => suggestion.name === key);
-              if (chosen !== undefined) {
-                pick(chosen);
-              }
+          <TextArea
+            className="omfp-compose__field"
+            label={text.label}
+            hideLabel
+            rows={2}
+            placeholder={busy ? text.placeholderBusy : text.placeholderIdle}
+            inputRef={inputRef}
+            onFocus={() => setInsert(true)}
+            onBlur={() => {
+              setSteer(false);
+              setInsert(false);
             }}
+            inputProps={{
+              ...testId("composer-input"),
+              "aria-keyshortcuts": "Enter Shift+Enter Alt+Enter Escape Tab",
+              onPaste,
+            }}
+          />
+          <Popover
+            triggerRef={inputRef}
+            isOpen={open}
+            isNonModal
+            placement="top start"
+            onOpenChange={(isOpen) => setDismissed(!isOpen)}
           >
-            {({ suggestion }) => (
-              <MenuItem id={suggestion.name} textValue={`/${suggestion.name}`} data-testid="slash-suggestion">
-                <span className="omfp-composer__command">/{suggestion.name}</span>
-                {suggestion.hint !== undefined && <span className="omfp-composer__hint"> {suggestion.hint}</span>}
-                {suggestion.description !== undefined && (
-                  <span className="omfp-composer__description"> — {suggestion.description}</span>
-                )}
-              </MenuItem>
-            )}
-          </Menu>
-        </Popover>
-      </Autocomplete>
-      <div className="omfp-composer__actions">
-        <Button type="submit" variant="primary" data-testid="send" data-mode={mode}>
-          {text.send[mode]}
-        </Button>
-        {other !== undefined && (
-          <Button data-testid="send-alternative" data-mode={other} onPress={() => send(other)}>
-            {text.send[other]}
+            <Menu
+              aria-label={text.commands}
+              data-testid="slash-suggestions"
+              items={suggestions.map((suggestion) => ({ id: suggestion.name, suggestion }))}
+              onAction={(key) => {
+                const chosen = suggestions.find((suggestion) => suggestion.name === key);
+                if (chosen !== undefined) {
+                  pick(chosen);
+                }
+              }}
+            >
+              {({ suggestion }) => (
+                <MenuItem id={suggestion.name} textValue={`/${suggestion.name}`} data-testid="slash-suggestion">
+                  <span className="omfp-composer__command">/{suggestion.name}</span>
+                  {suggestion.hint !== undefined && <span className="omfp-composer__hint"> {suggestion.hint}</span>}
+                  {suggestion.description !== undefined && (
+                    <span className="omfp-composer__description"> — {suggestion.description}</span>
+                  )}
+                </MenuItem>
+              )}
+            </Menu>
+          </Popover>
+        </Autocomplete>
+        <ComposerBar>
+          <ComposerHint>
+            <Kbd>{keyLabel("Shift-Enter")}</Kbd> {text.hint.newline}
+          </ComposerHint>
+          <ComposerHint>
+            <Kbd>{keyLabel("Esc")}</Kbd> {abortable ? text.hint.abort : text.hint.leave}
+          </ComposerHint>
+          {interruptHint && abortable && (
+            <ComposerHint className="omfp-composer__interrupt" role="status" data-testid="interrupt-hint">
+              <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.interruptHint}
+            </ComposerHint>
+          )}
+          <span className="omfp-composer__spacer" />
+          {abortable && (
+            <Button variant="danger" size="sm" icon={<Icon name="square" />} data-testid="abort" onPress={abort}>
+              {text.abort}
+            </Button>
+          )}
+          {other !== undefined && (
+            <Button
+              size="sm"
+              kbd={sendKey(other)}
+              data-testid="send-alternative"
+              data-mode={other}
+              onPress={() => send(other)}
+            >
+              {text.send[other]}
+            </Button>
+          )}
+          <Button
+            type="submit"
+            variant="primary"
+            size="sm"
+            icon={<Icon name="arrow-up" />}
+            kbd={sendKey(mode)}
+            data-testid="send"
+            data-mode={mode}
+          >
+            {text.send[mode]}
           </Button>
-        )}
-        {abortable && (
-          <Button variant="danger" data-testid="abort" onPress={abort}>
-            {text.abort}
-          </Button>
-        )}
-        {interruptHint && abortable && (
-          <p className="omfp-muted" role="status" data-testid="interrupt-hint">
-            {text.interruptHint}
-          </p>
-        )}
-      </div>
+        </ComposerBar>
+      </KitComposer>
     </form>
   );
 }

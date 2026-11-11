@@ -8,8 +8,19 @@
  */
 
 import type { Workspace } from "@omfp/protocol";
-import { Badge, Button, ConfirmDialog, IconButton, PathField, Radio, RadioGroup, TextField } from "omfp/kit";
-import type { RepoKind } from "omfp/sdk";
+import {
+  Badge,
+  Button,
+  ConfirmDialog,
+  EmptyState,
+  Icon,
+  IconButton,
+  KindMark,
+  PathField,
+  Radio,
+  RadioGroup,
+  TextField,
+} from "omfp/kit";
 import {
   ADD_KINDS,
   type AddKind,
@@ -34,8 +45,8 @@ import { type FormEvent, type KeyboardEvent, type ReactNode, useMemo, useState }
 
 const text = strings.shell.workspace;
 
-/** The glyph of each repository kind (its name is the accessible label). */
-const KIND_ICON: Record<RepoKind, string> = { link: "↗", worktree: "⎇", clone: "⤓" };
+/** The icon of each add kind on the Link/Clone switch. */
+const ADD_ICON: Record<AddKind, "link-2" | "copy"> = { link: "link-2", clone: "copy" };
 
 /** Runs a call, reporting its failure to the frame; resolves to whether it succeeded. */
 function useAttempt(): (call: () => Promise<unknown>) => Promise<boolean> {
@@ -61,9 +72,7 @@ export function WorkspaceWidget(_props: WidgetProps): ReactNode {
       aria-label={text.label}
     >
       {shown === undefined ? (
-        <p className="omfp-muted" data-testid="no-workspace">
-          {text.none}
-        </p>
+        <EmptyState icon="folder-open" title={text.none} data-testid="no-workspace" />
       ) : (
         <CurrentWorkspace key={shown} workspaceId={shown} />
       )}
@@ -101,10 +110,16 @@ function Header({ workspace, row }: { workspace: Workspace; row: WorkspaceRow })
     <header className="omfp-workspace__header">
       <WorkspaceName workspace={workspace} />
       <div className="omfp-workspace__folder">
+        <Icon name="folder-open" className="omfp-workspace__folder-icon" />
         <code className="omfp-workspace__path" data-testid="workspace-path" title={text.path}>
           {row.path}
         </code>
-        <IconButton label={text.copyPath} icon="⎘" data-testid="copy-workspace-path" onPress={copy} />
+        <IconButton
+          label={text.copyPath}
+          icon={<Icon name="copy" />}
+          data-testid="copy-workspace-path"
+          onPress={copy}
+        />
       </div>
       {row.shared && (
         <div className="omfp-workspace__meta">
@@ -183,7 +198,7 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
     <section className="omfp-workspace__repos" aria-labelledby="omfp-workspace-repos">
       <h3 id="omfp-workspace-repos">{text.repos}</h3>
       {row.repos.length === 0 ? (
-        <p className="omfp-muted">{text.noRepo}</p>
+        <EmptyState icon="folder-git-2" title={text.noRepo} />
       ) : (
         <ul>
           {row.repos.map((repo) => (
@@ -195,21 +210,23 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
               data-name={repo.name}
               data-dirty={repo.dirty === undefined ? undefined : String(repo.dirty)}
             >
-              <span
+              <strong className="omfp-workspace__repo-name">{repo.name}</strong>
+              <KindMark
+                kind={repo.kind}
                 className="omfp-workspace__kind"
                 role="img"
                 aria-label={text.kinds[repo.kind]}
                 title={text.kinds[repo.kind]}
                 data-testid="repo-kind"
               >
-                {KIND_ICON[repo.kind]}
-              </span>
-              <strong className="omfp-workspace__repo-name">{repo.name}</strong>
+                {text.kinds[repo.kind].toLowerCase()}
+              </KindMark>
               <span className="omfp-workspace__branch" data-testid="repo-branch">
+                <Icon name="git-branch" />
                 {repo.branch}
               </span>
               {repo.git !== undefined && (
-                <span className="omfp-muted" data-testid="git-status">
+                <span className="omfp-workspace__git" data-testid="git-status">
                   {repo.git}
                 </span>
               )}
@@ -221,12 +238,12 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
               <IconButton
                 className="omfp-workspace__remove"
                 label={text.removeRepo(repo.name)}
-                icon="×"
+                icon={<Icon name="x" />}
                 data-testid="remove-repo"
                 onPress={() => (removalNeedsConfirmation(repo.kind) ? setConfirming(repo) : remove(repo.name))}
               />
               {repo.origin !== undefined && (
-                <span className="omfp-workspace__origin omfp-muted" data-testid="repo-origin">
+                <span className="omfp-workspace__origin" data-testid="repo-origin">
                   {repo.origin}
                 </span>
               )}
@@ -302,6 +319,7 @@ function AddRepository({ workspaceId }: { workspaceId: string }): ReactNode {
         <div className="omfp-workspace__kind-options">
           {ADD_KINDS.map((candidate) => (
             <Radio key={candidate} value={candidate} data-value={candidate}>
+              <Icon name={ADD_ICON[candidate]} />
               {text.kinds[candidate]}
             </Radio>
           ))}

@@ -164,9 +164,9 @@ export const SYNTH: Readonly<Record<string, readonly [light: string, dark: strin
   "outline-variant": ["#c0c7d5", "#404753"],
   shadow: ["#000000", "#000000"],
   scrim: ["#000000", "#000000"],
-  success: ["#2e6a2e", "#8fd88a"],
+  success: ["#225f23", "#8fd88a"],
   "on-success": ["#ffffff", "#00390a"],
-  warning: ["#8a5100", "#ffb868"],
+  warning: ["#7e4600", "#ffb868"],
   "on-warning": ["#ffffff", "#4a2800"],
 };
 

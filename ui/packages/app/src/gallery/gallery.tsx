@@ -1417,9 +1417,8 @@ const DERIVED = [
 ] as const;
 
 /**
- * Text roles and gradient stops on the backgrounds they sit on (UI-174, UI-135): each must reach AA. Names are tokens
- * without `--omfp-`. The derived status colors (`ok`, `warn`, UI-136) are measured too but listed apart
- * ({@link STATUS_PAIRS}): their AA is not part of the check.
+ * Text roles, the derived status colors (`ok`, `warn`, UI-136) and gradient stops on the backgrounds they sit on
+ * (UI-174, UI-135): each must reach AA. Names are tokens without `--omfp-`.
  */
 const TEXT_PAIRS: readonly (readonly [text: string, background: string])[] = [
   ["on-surface", "surface"],
@@ -1439,6 +1438,10 @@ const TEXT_PAIRS: readonly (readonly [text: string, background: string])[] = [
   ["tertiary", "surface-container"],
   ["error", "surface"],
   ["error", "surface-container-low"],
+  ["ok", "surface"],
+  ["warn", "surface"],
+  ["ok", "surface-container-lowest"],
+  ["warn", "surface-container-lowest"],
   ["on-primary", "primary"],
   ["on-primary", "tertiary"],
   ["on-tertiary", "tertiary"],
@@ -1477,38 +1480,20 @@ function colorReader(): ((token: string) => Rgb | undefined) | undefined {
   };
 }
 
-/** Status colors as text (UI-136, UI-137): shown with their ratio, not checked. */
-const STATUS_PAIRS: readonly (readonly [text: string, background: string])[] = [
-  ["ok", "surface"],
-  ["warn", "surface"],
-  ["ok", "surface-container-lowest"],
-  ["warn", "surface-container-lowest"],
-];
-
-interface MeasuredPair extends ContrastPair {
-  /** Part of the AA check (UI-174). */
-  readonly checked: boolean;
-}
-
-function measure(): MeasuredPair[] {
+function measure(): ContrastPair[] {
   const read = colorReader();
   if (read === undefined) {
     return [];
   }
-  return [
-    ...TEXT_PAIRS.map((pair) => [pair, true] as const),
-    ...STATUS_PAIRS.map((pair) => [pair, false] as const),
-  ].flatMap(([[text, background], checked]) => {
+  return TEXT_PAIRS.flatMap(([text, background]) => {
     const fore = read(text);
     const back = read(background);
-    return fore === undefined || back === undefined
-      ? []
-      : [{ text, background, ratio: contrastRatio(fore, back), checked }];
+    return fore === undefined || back === undefined ? [] : [{ text, background, ratio: contrastRatio(fore, back) }];
   });
 }
 
 function TokenSheet({ onMeasured }: { onMeasured: () => void }) {
-  const [pairs, setPairs] = useState<readonly MeasuredPair[] | undefined>();
+  const [pairs, setPairs] = useState<readonly ContrastPair[] | undefined>();
   const measured = useRef(onMeasured);
   measured.current = onMeasured;
   useLayoutEffect(() => {
@@ -1578,7 +1563,6 @@ function TokenSheet({ onMeasured }: { onMeasured: () => void }) {
                 data-background={pair.background}
                 data-ratio={pair.ratio.toFixed(2)}
                 data-pass={pair.ratio >= AA}
-                data-checked={pair.checked}
               >
                 <td>
                   <span
@@ -1590,7 +1574,6 @@ function TokenSheet({ onMeasured }: { onMeasured: () => void }) {
                 </td>
                 <td>
                   {pair.text} on {pair.background}
-                  {pair.checked ? "" : " (status)"}
                 </td>
                 <td className="omfp-gallery__ratio">{pair.ratio.toFixed(2)}</td>
               </tr>

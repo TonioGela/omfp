@@ -58,23 +58,24 @@ describe("bash card", () => {
     expect(within(element).queryByTestId("tool-exit")).toBeNull();
   });
 
-  // spec: UI-050, UI-051
+  // spec: UI-050, UI-051, UI-137, UI-163
   test("success: collapsed, then the output and exit 0", async () => {
     const done = card("bash_tool_call", "call_bash_1");
     expect(within(show(done)).queryByTestId("tool-output")).toBeNull();
     cleanup();
     const element = await open(done);
     expect(byTestId(element, "tool-exit").textContent).toBe("exit 0");
-    expect(byTestId(element, "tool-exit").dataset.tone).toBe("success");
+    expect(byTestId(element, "tool-exit").dataset.ok).toBe("true");
   });
 
-  // spec: UI-050, UI-051, UI-052
+  // spec: UI-050, UI-051, UI-052, UI-137, UI-163
   test("error: expanded and distinct, with the exit code", () => {
     const element = show(card("bash_tool_error", "call_bash_1"));
-    expect([element.dataset.status, element.dataset.tone]).toEqual(["failed", "error"]);
+    expect(element.dataset.status).toBe("failed");
+    expect(element.querySelector(".omfp-tool")?.getAttribute("data-status")).toBe("failed");
     expect(byTestId(element, "tool-output").textContent).toStartWith("oops\n");
     expect(byTestId(element, "tool-exit").textContent).toBe("exit 3");
-    expect(byTestId(element, "tool-exit").dataset.tone).toBe("error");
+    expect(byTestId(element, "tool-exit").dataset.ok).toBe("false");
   });
 
   // spec: UI-050
@@ -240,8 +241,8 @@ describe("todo card", () => {
         .getAllByTestId("todo-task")
         .map((task) => [task.dataset.status, task.textContent]),
     ).toEqual([
-      ["completed", "☑Read the codedone"],
-      ["in_progress", "◐Fix the bugin progress"],
+      ["completed", "●Read the codedone"],
+      ["in_progress", "●Fix the bugin progress"],
     ]);
   });
 
@@ -272,7 +273,7 @@ describe("web_search card", () => {
   // spec: UI-050, UI-051, UI-052
   test("error: the engine's failure, expanded", () => {
     const element = show(card("web_tool_calls", "call_web_search_2"));
-    expect(element.dataset.tone).toBe("error");
+    expect(element.querySelector(".omfp-tool")?.getAttribute("data-status")).toBe("failed");
     expect(byTestId(element, "tool-error").textContent).toContain("SearXNG API error (500)");
   });
 });

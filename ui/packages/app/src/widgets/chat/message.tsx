@@ -1,43 +1,65 @@
 /** One transcript row: a message with its blocks (text, thinking, images, tool cards, records) or a notice row. */
 
-import { Card, Code, Disclosure, Markdown } from "omfp/kit";
+import {
+  Code,
+  Disclosure,
+  ExitCode,
+  Markdown,
+  Message,
+  StreamCaret,
+  Thinking,
+  ToolCard,
+  type ToolStatus,
+} from "omfp/kit";
 import type { MessageBlock as Block, MessageView, NoticeRow, MessageRole as Role, SystemRow } from "omfp/sdk";
-import { expandedByDefault, formatDuration, strings, type ToolCard, useOpenFile } from "omfp/sdk";
-import { useCallback } from "react";
+import { type ToolCard as Card, expandedByDefault, formatDuration, strings, useOpenFile } from "omfp/sdk";
+import { type ReactNode, useCallback } from "react";
 import { useExpanded } from "./state.ts";
 import { fileTarget, ToolBody, ToolSubject } from "./tool-cards.tsx";
 
 const text = strings.chat;
 
-/** One message: label, blocks, error. `cardKey` prefixes the keys of its collapsible blocks. */
+/** One message: name line, blocks, error (UI-171). `cardKey` prefixes the keys of its collapsible blocks. While it
+ * streams, a block caret follows the last character (UI-147). */
 export function MessageRow({ cardKey, view, streaming }: { cardKey: string; view: MessageView; streaming: boolean }) {
-  return (
-    <article
-      className="omfp-message"
-      data-testid="message"
-      data-role={view.role}
-      data-streaming={streaming}
-      aria-busy={streaming}
-    >
-      <div className="omfp-message__label">
-        {view.label}
-        {view.steering && (
-          <span className="omfp-message__tag" data-testid="steering-mark">
-            {text.steeringMark}
-          </span>
-        )}
-      </div>
-      {view.blocks.map((block, index) => (
-        // Blocks only grow at the end while streaming, so the index is a stable key.
-        // biome-ignore lint/suspicious/noArrayIndexKey: see above
-        <BlockView key={index} cardKey={`${cardKey}/${index}`} role={view.role} block={block} />
-      ))}
-      {view.error !== undefined && (
-        <p className="omfp-message__error" data-testid="message-error">
-          {view.error}
-        </p>
+  const name = (
+    <>
+      {view.label}
+      {view.steering && (
+        <span className="omfp-message__tag" data-testid="steering-mark">
+          {text.steeringMark}
+        </span>
       )}
-    </article>
+    </>
+  );
+  const blocks = view.blocks.map((block, index) => (
+    // Blocks only grow at the end while streaming, so the index is a stable key.
+    // biome-ignore lint/suspicious/noArrayIndexKey: see above
+    <BlockView key={index} cardKey={`${cardKey}/${index}`} role={view.role} block={block} />
+  ));
+  const error = view.error === undefined ? undefined : <span data-testid="message-error">{view.error}</span>;
+  const caret = streaming && view.blocks.at(-1)?.type !== "text" ? <StreamCaret /> : null;
+  const common = {
+    className: "omfp-message",
+    "data-testid": "message",
+    "data-role": view.role,
+    "data-streaming": streaming,
+    "aria-busy": streaming,
+  };
+  if (view.role === "record") {
+    return (
+      <article {...common}>
+        <div className="omfp-msg__name">{name}</div>
+        {blocks}
+        {error !== undefined && <p className="omfp-msg__error">{error}</p>}
+      </article>
+    );
+  }
+  return (
+    <Message {...common} author={view.role} name={name} error={error}>
+      {blocks}
+      {caret}
+    </Message>
   );
 }
 
@@ -75,15 +97,19 @@ function BlockView({ cardKey, role, block }: { cardKey: string; role: Role; bloc
   }
 }
 
-/** Thinking, collapsed by default (UI-041). */
+/** Thinking, collapsed by default (UI-041, UI-171). */
 function ThinkingBlock({ cardKey, text: thinking }: { cardKey: string; text: string }) {
   const [expanded, setExpanded] = useExpanded(cardKey, false);
   return (
-    <div className="omfp-thinking" data-testid="thinking" data-expanded={expanded}>
-      <Disclosure title={text.thinking} expanded={expanded} onExpandedChange={setExpanded} level={4}>
-        <div className="omfp-thinking__text omfp-prose">{thinking}</div>
-      </Disclosure>
-    </div>
+    <Thinking
+      className="omfp-thinking"
+      data-testid="thinking"
+      label={text.thinking}
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+    >
+      {thinking}
+    </Thinking>
   );
 }
 
@@ -98,14 +124,27 @@ function RecordBlock({ cardKey, summary, json }: { cardKey: string; summary: str
   );
 }
 
-/** A tool card (UI-050): collapsible, failed cards distinct and expanded by default (UI-052); tools with a recorded
- * shape show their specialized body, others the fallback's arguments and result. */
-export function ToolCardView({ cardKey, card }: { cardKey: string; card: ToolCard }) {
+/** The status mark of a call (UI-163): composing, pending and running calls spin. */
+function markStatus(status: Card["status"]): ToolStatus {
+  switch (status) {
+    case "succeeded":
+      return "done";
+    case "failed":
+      return "failed";
+    default:
+      return "running";
+  }
+}
+
+/** A tool card (UI-050, UI-163): collapsible, failed cards distinct and expanded by default (UI-052); tools with a
+ * recorded shape show their specialized body, others the fallback's arguments and result. */
+export function ToolCardView({ cardKey, card }: { cardKey: string; card: Card }) {
   const [expanded, setExpanded] = useExpanded(cardKey, expandedByDefault(card));
   // `g f` on the focused card opens its file (UI-116).
   const target = fileTarget(card.view);
+  const exitCode = card.view.kind === "bash" ? card.view.exitCode : undefined;
   return (
-    <Card
+    <div
       data-omfp-path={target?.path}
       data-omfp-line={target?.open.line}
       data-omfp-diff={target?.open.diff === true ? "" : undefined}
@@ -115,29 +154,40 @@ export function ToolCardView({ cardKey, card }: { cardKey: string; card: ToolCar
       data-call={card.toolCallId}
       data-view={card.view.kind}
       data-status={card.status}
-      aria-label={text.tool.label(card.name)}
-      tone={card.status === "failed" ? "error" : "default"}
-      collapsible={{ expanded, onExpandedChange: setExpanded }}
-      title={
-        <>
-          <span className="omfp-tool-card__name">{card.name}</span>
-          <ToolSubject view={card.view} />
-          <span className="omfp-tool-card__summary" data-testid="tool-summary">
-            {card.summary}
-          </span>
-          <span className="omfp-tool-card__status" data-testid="tool-status">
-            {text.tool.status[card.status]}
-          </span>
-          {card.durationMs !== undefined && (
-            <span className="omfp-tool-card__duration" data-testid="tool-duration">
-              {formatDuration(card.durationMs)}
-            </span>
-          )}
-        </>
-      }
     >
-      <ToolBody card={card} />
-    </Card>
+      <ToolCard
+        aria-label={text.tool.label(card.name)}
+        status={markStatus(card.status)}
+        name={card.name}
+        headTestId="toggle"
+        expanded={expanded}
+        onExpandedChange={setExpanded}
+        arg={
+          <>
+            <ToolSubject view={card.view} />
+            <span className="omfp-tool-card__summary" data-testid="tool-summary">
+              {card.summary}
+            </span>
+          </>
+        }
+        meta={<ToolMeta card={card} exitCode={exitCode} />}
+      >
+        <ToolBody card={card} />
+      </ToolCard>
+    </div>
+  );
+}
+
+/** Right-aligned metadata of a card's head: the status word for assistive tech, duration, exit code. */
+function ToolMeta({ card, exitCode }: { card: Card; exitCode: number | undefined }): ReactNode {
+  return (
+    <>
+      <span className="omfp-visually-hidden" data-testid="tool-status">
+        {text.tool.status[card.status]}
+      </span>
+      {card.durationMs !== undefined && <span data-testid="tool-duration">{formatDuration(card.durationMs)}</span>}
+      {exitCode !== undefined && <ExitCode code={exitCode} data-testid="tool-exit" />}
+    </>
   );
 }
 

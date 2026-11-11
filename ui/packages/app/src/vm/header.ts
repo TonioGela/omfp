@@ -65,6 +65,8 @@ export interface HeaderView {
   readonly thinkingLevels: readonly string[];
   /** `42% of 200k`. */
   readonly context: string | undefined;
+  /** Context tokens used and the window, for the token meter (UI-158). */
+  readonly usage: { readonly used: number; readonly total: number } | undefined;
   /** `$0.0123`. */
   readonly cost: string | undefined;
   readonly status: ThreadStatus;
@@ -107,6 +109,10 @@ export function headerView(
       usage === undefined
         ? undefined
         : strings.shell.header.context(Math.round(usage.percent), formatTokens(usage.contextWindow)),
+    usage:
+      usage === undefined
+        ? undefined
+        : { used: Math.round((usage.percent / 100) * usage.contextWindow), total: usage.contextWindow },
     cost: cost > 0 ? formatCost(cost) : undefined,
     status: threadStatus(summary),
     failure: process.state === "failed" ? process.message : undefined,

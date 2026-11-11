@@ -7,6 +7,7 @@
 
 import {
   Button,
+  Icon,
   IconButton,
   Menu,
   MenuItem,
@@ -205,7 +206,7 @@ function MainTabs({
         {activeFile !== undefined && (
           <IconButton
             label={filesText.close(fileName(activeFile.path))}
-            icon="×"
+            icon={<Icon name="x" />}
             onPress={() => files.close(activeFile.path)}
             data-testid="file-tab-close"
           />

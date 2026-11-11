@@ -380,7 +380,7 @@
     text-align: end;
   }
 
-  .omfp-gallery__contrast tr[data-pass="false"][data-checked="true"] .omfp-gallery__ratio {
+  .omfp-gallery__contrast tr[data-pass="false"] .omfp-gallery__ratio {
     color: var(--omfp-error);
   }
 }

@@ -114,10 +114,10 @@
     --omfp-outline-variant: #c0c7d5;
     --omfp-shadow: #000000;
     --omfp-scrim: #000000;
-    /* Status roles (UI-136) */
-    --omfp-success: #2e6a2e;
+    /* Status roles (UI-136): dark enough that ok and warn (85 % into surface) reach 4.5:1 on the surfaces */
+    --omfp-success: #225f23;
     --omfp-on-success: #ffffff;
-    --omfp-warning: #8a5100;
+    --omfp-warning: #7e4600;
     --omfp-on-warning: #ffffff;
 
     /* Fonts (UI-121, UI-142) */

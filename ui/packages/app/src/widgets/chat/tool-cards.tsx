@@ -144,7 +144,9 @@ function WriteContent({ content, language }: { content: string; language: string
   const shown = expanded || hidden <= 0 ? content : lines.slice(0, WRITE_PREVIEW_LINES).join("\n");
   return (
     <>
-      <Code code={shown} block language={language} data-testid="tool-content" />
+      <div className="omfp-tool-card__preview" data-cut={!expanded && hidden > 0}>
+        <Code code={shown} block language={language} data-testid="tool-content" />
+      </div>
       {hidden > 0 && (
         <Button
           size="sm"
@@ -173,11 +175,6 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
             <p className="omfp-tool-card__meta">{text.noOutput}</p>
           ) : (
             <AnsiOutput output={view.output} />
-          )}
-          {view.exitCode !== undefined && (
-            <Badge tone={view.exitCode === 0 ? "success" : "error"} data-testid="tool-exit">
-              {text.exitCode(view.exitCode)}
-            </Badge>
           )}
         </div>
       );
@@ -333,17 +330,18 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
   }
 }
 
-const TODO_MARK: Readonly<Record<string, string>> = { completed: "☑", in_progress: "◐" };
-
+/** A todo list (UI-163): a `●` per task, done in ok and struck through, the active one in primary. */
 function TodoList({ phases }: { phases: readonly TodoPhase[] }): ReactNode {
   return phases.map((phase) => (
     <section key={phase.name} className="omfp-tool-card__phase" aria-label={phase.name}>
       {phases.length > 1 && <h4>{phase.name}</h4>}
-      <ul className="omfp-tool-card__todo">
+      <ul className="omfp-todo omfp-tool-card__todo">
         {phase.tasks.map((task) => (
-          <li key={task.content} data-testid="todo-task" data-status={task.status}>
-            <span aria-hidden="true">{TODO_MARK[task.status] ?? "☐"}</span>
-            <span>{task.content}</span>
+          <li key={task.content} className="omfp-todo__item" data-testid="todo-task" data-status={task.status}>
+            <span className="omfp-todo__mark" aria-hidden="true">
+              ●
+            </span>
+            <span className="omfp-todo__text">{task.content}</span>
             <span className="omfp-visually-hidden">{text.todoStatus[task.status] ?? task.status}</span>
           </li>
         ))}

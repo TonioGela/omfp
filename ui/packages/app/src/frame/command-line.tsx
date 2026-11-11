@@ -5,7 +5,7 @@
  * focus goes back there first.
  */
 
-import { Kbd } from "@omfp/kit";
+import { CommandItem, CommandMenu, Kbd, ModeSegment, CommandLine as Prompt } from "@omfp/kit";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useReducer, useRef, useState } from "react";
 import { CMDLINE_ATTRIBUTE } from "../keymap/handler.ts";
 import { type Binding, keyLabel, keysFor } from "../keymap/keymap.ts";
@@ -104,12 +104,31 @@ function CommandLineInput({
         return false;
     }
   };
+  const typed = value.trimStart().toLowerCase();
   return (
     <div className="omfp-cmdline" data-testid="command-line">
-      <div className="omfp-cmdline__line">
-        <span aria-hidden="true">:</span>
+      <CommandMenu
+        className="omfp-cmdline__menu"
+        title={text.commandMenu}
+        hidden={options.length === 0}
+        listProps={{ id: listId, "aria-label": text.commandLine }}
+        footer={<MenuKeys />}
+      >
+        {options.map((option, index) => (
+          <CommandOption
+            key={option.value}
+            id={`${listId}-${index}`}
+            option={option}
+            matched={option.value.toLowerCase().startsWith(typed) ? typed.length : 0}
+            selected={index === active}
+            keys={keysFor(bindings, option.command)}
+            onChoose={() => run(option.value)}
+          />
+        ))}
+      </CommandMenu>
+      <Prompt>
         <input
-          className="omfp-cmdline__input"
+          className="omfp-cmd__input"
           data-testid="command-line-input"
           {...{ [CMDLINE_ATTRIBUTE]: "" }}
           role="combobox"
@@ -131,25 +150,27 @@ function CommandLineInput({
           onKeyDown={onKeyDown}
           onBlur={() => close(false)}
         />
-      </div>
+      </Prompt>
       {error !== undefined && (
-        <p className="omfp-cmdline__error" role="alert" data-testid="command-line-error">
+        <ModeSegment kind="error" role="alert" data-testid="command-line-error">
           {error}
-        </p>
+        </ModeSegment>
       )}
-      <div className="omfp-cmdline__options" role="listbox" id={listId} aria-label={text.commandLine}>
-        {options.map((option, index) => (
-          <CommandOption
-            key={option.value}
-            id={`${listId}-${index}`}
-            option={option}
-            selected={index === active}
-            keys={keysFor(bindings, option.command)}
-            onChoose={() => run(option.value)}
-          />
-        ))}
-      </div>
     </div>
+  );
+}
+
+/** The key row of the completion menu: `tab` complete, `enter` run, `esc` cancel (UI-168). */
+export function MenuKeys(): ReactNode {
+  return (
+    <>
+      <Kbd>{keyLabel("Tab")}</Kbd>
+      <span>{text.commandKeys.complete}</span>
+      <Kbd>{keyLabel("Enter")}</Kbd>
+      <span>{text.commandKeys.run}</span>
+      <Kbd>{keyLabel("Escape")}</Kbd>
+      <span>{text.commandKeys.cancel}</span>
+    </>
   );
 }
 
@@ -175,35 +196,37 @@ function step(active: number | undefined, count: number, delta: number): number 
 function CommandOption({
   id,
   option,
+  matched,
   selected,
   keys,
   onChoose,
 }: {
   id: string;
   option: Completion;
+  matched: number;
   selected: boolean;
   keys: readonly string[];
   onChoose: () => void;
 }): ReactNode {
   return (
-    // biome-ignore lint/a11y/useFocusableInteractive: options of a combobox stay unfocusable (aria-activedescendant)
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the combobox input handles the keys of its options
-    <div
+    <CommandItem
       id={id}
-      role="option"
-      aria-selected={selected}
-      className="omfp-cmdline__option"
+      command={option.value}
+      matched={matched}
+      selected={selected}
+      description={
+        <>
+          <span className="omfp-cmdline__title">{option.title}</span>
+          {keys.map((key) => (
+            <Kbd key={key}>{keyLabel(key)}</Kbd>
+          ))}
+        </>
+      }
       data-testid="command-option"
       data-value={option.value}
       // Keeps the focus in the input, which would otherwise blur and close the line before the click.
       onMouseDown={(event) => event.preventDefault()}
       onClick={onChoose}
-    >
-      <span className="omfp-cmdline__name">{option.value}</span>
-      <span className="omfp-cmdline__title">{option.title}</span>
-      {keys.map((key) => (
-        <Kbd key={key}>{keyLabel(key)}</Kbd>
-      ))}
-    </div>
+    />
   );
 }

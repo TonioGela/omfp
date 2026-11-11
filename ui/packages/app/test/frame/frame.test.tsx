@@ -316,24 +316,29 @@ describe("frame", () => {
     expect(screen.getByTestId("live-region").textContent).toBe("checkout: idle. 1 thread awaits input");
   });
 
-  // spec: UI-098
+  // spec: UI-098, UI-167
   test("the mode line follows the focus; only key-caused mode changes are announced", async () => {
     const { user } = setup({ registry: new Map([...registry, ["omfp:chat", StubComposer]]) });
-    const line = screen.getByTestId("mode-line");
+    // The mode pill is rendered again on each mode change (its entrance motion).
+    const line = () => screen.getByTestId("mode-line");
     const live = screen.getByTestId("live-region");
-    expect([line.textContent, screen.getByTestId("app").dataset.mode]).toEqual(["NORMAL", "normal"]);
+    expect([line().textContent, screen.getByTestId("app").dataset.mode]).toEqual(["NORMAL", "normal"]);
+    expect(line().dataset.mode).toBe("normal");
     press("i");
-    expect([line.textContent, screen.getByTestId("app").dataset.mode]).toEqual(["INSERT", "insert"]);
+    expect([line().textContent, screen.getByTestId("app").dataset.mode]).toEqual(["INSERT", "insert"]);
+    expect(line().dataset.mode).toBe("insert");
     expect(live.textContent).toBe("INSERT mode");
     press("Escape");
-    expect(line.textContent).toBe("NORMAL");
+    expect(line().textContent).toBe("NORMAL");
     expect(live.textContent).toBe("NORMAL mode");
     press(":");
-    expect(line.textContent).toBe("COMMAND");
+    expect([line().textContent, line().dataset.mode]).toEqual(["COMMAND", "command"]);
+    // The `:` line takes the place of the mode line's segments (UI-168).
+    expect(screen.getByTestId("mode-bar").contains(screen.getByTestId("command-line"))).toBe(true);
     press("Escape");
-    expect(line.textContent).toBe("NORMAL");
+    expect(line().textContent).toBe("NORMAL");
     await user.click(screen.getByTestId("stub-input"));
-    expect(line.textContent).toBe("INSERT");
+    expect(line().textContent).toBe("INSERT");
     expect(live.textContent).toBe("NORMAL mode");
   });
 
@@ -383,12 +388,15 @@ describe("frame", () => {
     expect(host.window.get(SELECTED_THREAD)).toBe("t2");
   });
 
-  // spec: UI-092
-  test("errors of failed actions show until dismissed", async () => {
+  // spec: UI-092, UI-160
+  test("errors of failed actions show as error toasts until dismissed", async () => {
     const { host, user } = setup();
     act(() => host.window.set(ERRORS, ["boom"]));
-    expect(screen.getAllByTestId("error").map((error) => error.textContent)).toEqual(["boom×"]);
-    await user.click(screen.getByTestId("dismiss-error"));
+    const shown = screen.getAllByTestId("error");
+    expect(shown.map((error) => [error.textContent, error.dataset.tone, error.getAttribute("role")])).toEqual([
+      ["boom", "error", "alert"],
+    ]);
+    await user.click(screen.getByTestId("toast-dismiss"));
     expect(screen.queryByTestId("errors")).toBeNull();
   });
 });
@@ -398,8 +406,8 @@ describe("daemon settings", () => {
     return { ui, keymap, error };
   }
 
-  // spec: UI-097, UI-094
-  test("fonts become inline font tokens on <html>, removed again when unset", () => {
+  // spec: UI-097, UI-094, UI-143
+  test("fonts become inline font tokens on <html> as given, the chrome following code; removed again when unset", () => {
     const { client, flush } = setup();
     client.indexEvents({
       kind: "settings_changed",

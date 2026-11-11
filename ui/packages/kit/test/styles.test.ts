@@ -211,3 +211,43 @@ describe("kit styles", () => {
     ]);
   });
 });
+
+describe("one style of our own", () => {
+  const UI_ROOT = join(KIT_SRC, "..", "..", "..");
+  /** Every source file of the kit and the app. */
+  function sources(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        return sources(path);
+      }
+      return /\.(tsx?|css)$/.test(entry.name) ? [path] : [];
+    });
+  }
+  const STYLESHEET_IMPORT = /(?:import\s+(?:[^"']*from\s+)?|@import\s+(?:url\()?)["']([^"']+\.css)["']/g;
+
+  // spec: UI-120
+  test("no stylesheet comes from a third-party package: the kit and the app import only our own CSS", () => {
+    const foreign = [...sources(KIT_SRC), ...sources(APP_SRC)].flatMap((path) =>
+      [...readFileSync(path, "utf8").matchAll(STYLESHEET_IMPORT)]
+        .map((match) => match[1] ?? "")
+        .filter((specifier) => !/^(?:\.|\/|@omfp\/)/.test(specifier))
+        .map((specifier) => `${basename(path)}: ${specifier}`),
+    );
+    expect(foreign).toEqual([]);
+  });
+
+  // spec: UI-120
+  test("no CSS framework or styled component library is a dependency", () => {
+    const FRAMEWORK =
+      /^(?:tailwindcss|@tailwindcss\/.*|postcss|unocss|@unocss\/.*|bootstrap|bulma|daisyui|@mantine\/.*|@chakra-ui\/.*|@radix-ui\/themes|@heroui\/.*|@nextui-org\/.*|@mui\/.*|antd|@adobe\/react-spectrum|@react-spectrum\/.*)$/;
+    const manifests = ["package.json", "packages/kit/package.json", "packages/app/package.json"];
+    const found = manifests.flatMap((manifest) => {
+      const json = JSON.parse(readFileSync(join(UI_ROOT, manifest), "utf8")) as Record<string, unknown>;
+      return ["dependencies", "devDependencies", "peerDependencies"].flatMap((field) =>
+        Object.keys((json[field] as Record<string, string> | undefined) ?? {}).filter((name) => FRAMEWORK.test(name)),
+      );
+    });
+    expect(found).toEqual([]);
+  });
+});

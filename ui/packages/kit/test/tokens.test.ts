@@ -31,6 +31,20 @@ const compact = findRule(rules, [LAYER], '[data-density="compact"]');
 const normal = findRule(rules, [LAYER], '[data-density="normal"]');
 const fontFaces = rules.filter((rule) => rule.selector === "@font-face");
 
+/** The `/kit` gallery's matugen fixture (UI-173), which defines no status roles. */
+const forest = parseCss(readFileSync(join(KIT_SRC, "..", "..", "app", "src", "gallery", "matugen-forest.css"), "utf8"));
+
+/** Name, omfp's base tokens, the theme's tokens (UI-136). */
+const STATUS_THEMES: readonly (readonly [string, CssRule, CssRule])[] = [
+  ["Synth light", light, light],
+  ["Synth dark", darkForced, darkForced],
+  ["matugen forest light", light, findRule(forest, [], ":root")],
+  ["matugen forest dark", darkForced, findRule(forest, [], ':root[data-color-scheme="dark"]')],
+];
+
+/** Where status text sits: the app, the left column and mode line, code and popovers (UI-130). */
+const STATUS_BACKGROUNDS = ["surface", "surface-container-lowest", "surface-container-low", "surface-container"];
+
 function missing(rule: CssRule, tokens: readonly string[]): string[] {
   return tokens.filter((token) => !rule.declarations.has(prop(token)));
 }
@@ -74,6 +88,51 @@ function contrast(a: string, b: string): number {
   return ((high ?? 0) + 0.05) / ((low ?? 0) + 0.05);
 }
 
+/** sRGB channel (0–1) to linear light and back. */
+function linear(c: number): number {
+  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+}
+
+function gamma(c: number): number {
+  return Math.min(1, Math.max(0, c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055));
+}
+
+/** `color-mix(in oklab, a p, b)` of two `#rrggbb` colors, as `#rrggbb`. */
+function mixOklab(a: string, b: string, p: number): string {
+  const toOklab = (hex: string) => {
+    const [r, g, bl] = [1, 3, 5].map((at) => linear(Number.parseInt(hex.slice(at, at + 2), 16) / 255)) as [
+      number,
+      number,
+      number,
+    ];
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * bl);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * bl);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * bl);
+    return [
+      0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+      1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+      0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+    ];
+  };
+  const [x, y] = [toOklab(a), toOklab(b)];
+  const [L, A, B] = x.map((channel, at) => p * channel + (1 - p) * (y[at] ?? 0)) as [number, number, number];
+  const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3;
+  const m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3;
+  const s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
+  const rgb = [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s,
+  ];
+  return `#${rgb
+    .map((c) =>
+      Math.round(gamma(c) * 255)
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")}`;
+}
+
 describe("tokens.css", () => {
   // spec: UI-091, UI-125
   test("every rule lives in the omfp-tokens layer", () => {
@@ -111,6 +170,23 @@ describe("tokens.css", () => {
     })).filter(({ ratio }) => ratio < 4.5);
     expect(failing).toEqual([]);
   });
+
+  // spec: UI-136, UI-137
+  test.each(STATUS_THEMES)(
+    "ok and warn reach 4.5:1 as text on the surfaces they sit on in %s",
+    (_name, base, theme) => {
+      // A theme without status roles keeps omfp's (UI-136).
+      const color = (token: string) => value(theme.declarations.has(prop(token)) ? theme : base, token);
+      const failing = ["success", "warning"].flatMap((status) => {
+        const text = mixOklab(color(status), color("surface"), 0.85);
+        return STATUS_BACKGROUNDS.map((background) => ({
+          pair: `${status} 85% on ${background}`,
+          ratio: contrast(text, color(background)),
+        })).filter(({ ratio }) => ratio < 4.5);
+      });
+      expect(failing).toEqual([]);
+    },
+  );
 
   // spec: UI-121, UI-142
   test("prose is IBM Plex Serif, code Commit Mono, and the interface follows the code family", () => {

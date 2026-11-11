@@ -46,6 +46,7 @@
 // View models, strings and helpers the built-in widgets use (AGT-016, AGT-021): a copied built-in imports them from
 // `omfp/sdk` like any agent widget.
 export { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
+export { keyLabel } from "../keymap/keymap.ts";
 export { strings } from "../strings/index.ts";
 export { type AnsiRun, ansiRuns } from "../vm/ansi.ts";
 export { type ChangedFile, type ChangesRepo, changeRunsKey, changesView } from "../vm/changes.ts";

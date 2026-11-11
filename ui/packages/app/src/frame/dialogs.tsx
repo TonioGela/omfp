@@ -3,6 +3,7 @@
 import { Button, Checkbox, ConfirmDialog, Dialog, TextField } from "@omfp/kit";
 import type { ThreadSummary, Workspace } from "@omfp/protocol";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
+import { keyLabel } from "../keymap/keymap.ts";
 import {
   DELETE_THREAD,
   DELETE_WORKSPACE,
@@ -44,6 +45,7 @@ export function DeleteThreadDialog(): ReactNode {
       testId="delete-thread-dialog"
       confirmTestId="confirm-delete-thread"
       cancelTestId="cancel-delete-thread"
+      cancelKbd={keyLabel("Escape")}
     />
   );
 }
@@ -116,7 +118,13 @@ function DeleteWorkspaceForm({
         )}
       </div>
       <div className="omfp-dialog__actions">
-        <Button variant="quiet" onPress={close} autoFocus data-testid="cancel-delete-workspace">
+        <Button
+          variant="quiet"
+          onPress={close}
+          autoFocus
+          kbd={keyLabel("Escape")}
+          data-testid="cancel-delete-workspace"
+        >
           {text.cancel}
         </Button>
         <Button

@@ -5,11 +5,13 @@
  * of the missing path's tab, Escape (or leaving the line) cancelling the opening.
  */
 
+import { CommandItem, CommandMenu, CommandLine as Prompt } from "@omfp/kit";
 import type { FileCandidate } from "@omfp/protocol";
 import { type KeyboardEvent, type ReactNode, useId, useState } from "react";
 import { CMDLINE_ATTRIBUTE } from "../keymap/handler.ts";
 import { cancelFilePicker, chooseFile, FILE_PICKER, type FilePicker, useHost, useWindowState } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
+import { MenuKeys } from "./command-line.tsx";
 
 const text = strings.shell.files;
 
@@ -55,12 +57,34 @@ function PickerInput({ picker }: { picker: FilePicker }): ReactNode {
   };
   return (
     <div className="omfp-cmdline omfp-file-picker" data-testid="file-picker">
-      <div className="omfp-cmdline__line">
-        <span aria-hidden="true">
-          :{text.pickerPrompt} {picker.path}
+      <CommandMenu
+        className="omfp-cmdline__menu"
+        title={strings.shell.frame.filesMenu}
+        hidden={shown.length === 0}
+        listProps={{ id: listId, "aria-label": text.picker(picker.path) }}
+        footer={<MenuKeys />}
+      >
+        {shown.map((candidate) => (
+          <CommandItem
+            key={candidate.path}
+            id={`${listId}-${candidate.path}`}
+            command={candidate.path}
+            selected={candidate === highlighted}
+            description={[text[candidate.match], ...(candidate.mentioned ? [text.mentioned] : [])].join(", ")}
+            data-testid="file-picker-option"
+            data-path={candidate.path}
+            // Keeps the focus in the input, which would otherwise blur and cancel the picker before the click.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => choose(candidate)}
+          />
+        ))}
+      </CommandMenu>
+      <Prompt>
+        <span className="omfp-file-picker__prompt" aria-hidden="true">
+          {text.pickerPrompt} {picker.path}
         </span>
         <input
-          className="omfp-cmdline__input"
+          className="omfp-cmd__input"
           data-testid="file-picker-input"
           {...{ [CMDLINE_ATTRIBUTE]: "" }}
           role="combobox"
@@ -81,30 +105,7 @@ function PickerInput({ picker }: { picker: FilePicker }): ReactNode {
           onKeyDown={onKeyDown}
           onBlur={() => cancelFilePicker(host)}
         />
-      </div>
-      <div className="omfp-cmdline__options" role="listbox" id={listId} aria-label={text.picker(picker.path)}>
-        {shown.map((candidate) => (
-          // biome-ignore lint/a11y/useFocusableInteractive: options of a combobox stay unfocusable (aria-activedescendant)
-          // biome-ignore lint/a11y/useKeyWithClickEvents: the combobox input handles the keys of its options
-          <div
-            key={candidate.path}
-            id={`${listId}-${candidate.path}`}
-            role="option"
-            aria-selected={candidate === highlighted}
-            className="omfp-cmdline__option"
-            data-testid="file-picker-option"
-            data-path={candidate.path}
-            // Keeps the focus in the input, which would otherwise blur and cancel the picker before the click.
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => choose(candidate)}
-          >
-            <span className="omfp-cmdline__name">{candidate.path}</span>
-            <span className="omfp-cmdline__title">
-              {[text[candidate.match], ...(candidate.mentioned ? [text.mentioned] : [])].join(", ")}
-            </span>
-          </div>
-        ))}
-      </div>
+      </Prompt>
     </div>
   );
 }

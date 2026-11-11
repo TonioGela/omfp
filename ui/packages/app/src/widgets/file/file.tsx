@@ -6,7 +6,17 @@
  */
 
 import type { FileContent } from "@omfp/protocol";
-import { Button, Chip, CodeDiff, type CodeDiffLayout, CodeEditor, type CodeEditorHandle, type VimMode } from "omfp/kit";
+import {
+  Button,
+  Chip,
+  CodeDiff,
+  type CodeDiffLayout,
+  CodeEditor,
+  type CodeEditorHandle,
+  EmptyState,
+  Icon,
+  type VimMode,
+} from "omfp/kit";
 import {
   EDITOR_MODE,
   type FileState,
@@ -32,11 +42,7 @@ type Mode = "view" | "edit" | "conflict";
 
 export function FileWidget({ path, line, diff, jump }: WidgetProps): ReactNode {
   if (typeof path !== "string" || path === "") {
-    return (
-      <p className="omfp-file__notice" data-testid="file-none">
-        {text.noPath}
-      </p>
-    );
+    return <EmptyState icon="file" title={text.noPath} className="omfp-file__empty" data-testid="file-none" />;
   }
   return (
     <FileView
@@ -119,9 +125,12 @@ function OtherFile({ file }: { file: FileContent }): ReactNode {
     );
   }
   return (
-    <p className="omfp-file__notice" data-testid="file-binary">
-      {file.kind === "image" ? text.imageTooLarge(text.size(file.size)) : text.binary(text.size(file.size))}
-    </p>
+    <EmptyState
+      icon="file"
+      title={file.kind === "image" ? text.imageTooLarge(text.size(file.size)) : text.binary(text.size(file.size))}
+      className="omfp-file__empty"
+      data-testid="file-binary"
+    />
   );
 }
 
@@ -208,6 +217,7 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
     <>
       <div className="omfp-file__bar" data-testid="file-bar">
         <span className="omfp-file__path">
+          <Icon name="file" className="omfp-file__icon" />
           {typeof file.repo === "string" && <Chip>{file.repo}</Chip>}
           <span data-testid="file-path">{file.path}</span>
         </span>

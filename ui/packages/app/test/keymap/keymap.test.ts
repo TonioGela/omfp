@@ -51,6 +51,7 @@ describe("keymap", () => {
   test("key chips label keys as lowercase words, letters as typed, sequences with a space, never symbol glyphs", () => {
     expect(keyLabel("Space n")).toBe("spc n");
     expect(keyLabel("Esc")).toBe("esc");
+    expect(keyLabel("Escape")).toBe("esc");
     expect(keyLabel("Enter")).toBe("enter");
     expect(keyLabel("Tab")).toBe("tab");
     expect(keyLabel("Shift-Tab")).toBe("shift+tab");

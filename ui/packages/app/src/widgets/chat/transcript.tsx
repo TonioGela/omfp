@@ -6,6 +6,7 @@
  */
 
 import type { ThreadState } from "@omfp/core";
+import { motionLevel } from "omfp/kit";
 import {
   type TranscriptItem as Item,
   isScrollUpKey,
@@ -132,7 +133,9 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
         restoring.current = undefined;
       }
     } else if (pinned.current) {
-      container.scrollTop = container.scrollHeight;
+      // Following new output is the transcript's one smooth scroll (UI-146), and only below motion `none` (UI-145):
+      // restores, paging and the user's own scrolling stay instant, so scrolling up never animates past the pin.
+      container.scrollTo({ top: container.scrollHeight, behavior: motionLevel() === "none" ? "auto" : "smooth" });
     }
   }, []);
   const userScrolls = () => {

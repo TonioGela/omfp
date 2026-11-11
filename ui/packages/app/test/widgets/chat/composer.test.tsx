@@ -133,23 +133,34 @@ describe("composer", () => {
     });
   });
 
-  // spec: UI-061
+  // spec: UI-061, UI-148, UI-172
   test("while busy, sending queues a follow-up; the modifier steers; the button says which", async () => {
     const { client } = renderThread(<ComposerWidget />, busyEvents());
     const send = screen.getByTestId("send");
-    expect([send.dataset.mode, send.textContent]).toEqual(["follow-up", "Queue follow-up"]);
+    expect([send.dataset.mode, send.textContent]).toEqual(["follow-up", "Queue follow-upenter"]);
     expect(screen.getByTestId("send-alternative").dataset.mode).toBe("steer");
     await userEvent.click(input());
     await userEvent.keyboard("later{Enter}");
     await userEvent.keyboard("{Alt>}");
     expect(screen.getByTestId("send").dataset.mode).toBe("steer");
-    expect(screen.getByTestId("send").textContent).toBe("Steer now");
+    expect(screen.getByTestId("send").textContent).toBe("Steer nowalt+enter");
     await userEvent.keyboard("{/Alt}now{Alt>}{Enter}{/Alt}");
     expect(client.callsTo("thread.prompt").map((call) => call.params)).toEqual([
       { threadId: THREAD, text: "later", behavior: "followUp" },
       { threadId: THREAD, text: "now", behavior: "steer" },
     ]);
     expect(screen.getByTestId("send").dataset.mode).toBe("follow-up");
+  });
+
+  // spec: UI-172, UI-098
+  test("the composer box is in insert mode (gradient border) while its input has the focus", async () => {
+    renderThread(<ComposerWidget />, busyEvents());
+    const box = () => screen.getByTestId("composer").querySelector(".omfp-compose");
+    expect(box()?.getAttribute("data-mode")).toBe("normal");
+    await userEvent.click(input());
+    expect(box()?.getAttribute("data-mode")).toBe("insert");
+    act(() => input().blur());
+    expect(box()?.getAttribute("data-mode")).toBe("normal");
   });
 
   // spec: UI-063, UI-092
@@ -218,7 +229,7 @@ describe("composer", () => {
     expect(host.window.get(draftKey(THREAD)).images).toEqual([image]);
   });
 
-  // spec: UI-063, UI-095
+  // spec: UI-063, UI-095, UI-148
   test("busy: Ctrl-C clears with a hint, a second press within 1 s aborts without restoring the queue", async () => {
     const clock = new ManualClock(0);
     const { client, host } = renderThread(<ComposerWidget />, queuedEvents(), clock);
@@ -227,7 +238,7 @@ describe("composer", () => {
     await userEvent.keyboard("typing");
     press("c", { ctrlKey: true });
     expect(input().value).toBe("");
-    expect(screen.getByTestId("interrupt-hint").textContent).toBe("Ctrl-C again to abort");
+    expect(screen.getByTestId("interrupt-hint").textContent).toBe("ctrl+c again to abort");
     expect(client.callsTo("thread.abort")).toHaveLength(0);
     act(() => clock.advance(500));
     expect(screen.getByTestId("interrupt-hint")).toBeDefined();

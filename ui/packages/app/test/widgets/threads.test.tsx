@@ -98,6 +98,24 @@ describe("omfp:threads", () => {
     expect(within(second ?? document.body).queryByTestId("unread")).toBeNull();
   });
 
+  // spec: UI-122, UI-169, UI-170
+  test("rows show the state mark, the selected bar and the attention flash; the current workspace's name flows", async () => {
+    const { client, flush, user } = setup();
+    const item = (index: number) => screen.getAllByTestId("thread-row")[index]?.closest("li") ?? document.body;
+    expect([item(0).dataset.state, item(1).dataset.state]).toEqual(["idle", "awaiting"]);
+    expect(within(item(1)).getByTestId("thread-status").getAttribute("aria-label")).toBe("awaiting input");
+    expect(within(section("w1")).getByTestId("workspace-collapse").textContent).toBe("▾");
+    await user.click(screen.getAllByTestId("thread-row")[0] ?? document.body);
+    expect(item(0).dataset.selected).toBe("true");
+    expect(within(section("w1")).getByTestId("workspace-section-name").classList).toContain("omfp-grad-text");
+    expect(within(section("w2")).getByTestId("workspace-section-name").classList).not.toContain("omfp-grad-text");
+    // Already awaiting when first shown: no flash; turning failed or awaiting while shown flashes.
+    expect([item(0).dataset.fresh, item(1).dataset.fresh]).toEqual([undefined, undefined]);
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t1", "checkout", "w1", { needsAttention: true }) });
+    flush();
+    expect([item(0).dataset.state, item(0).dataset.fresh]).toEqual(["awaiting", "true"]);
+  });
+
   // spec: UI-022
   test("the filter matches title, workspace and repository names, hiding workspaces without a match", async () => {
     const { user } = setup();

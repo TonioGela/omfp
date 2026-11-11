@@ -7,7 +7,19 @@
 import type { ThreadView } from "@omfp/client";
 import type { AskUiRequest, ConfirmUiRequest, EditorUiRequest, InputUiRequest, SelectUiRequest } from "@omfp/core";
 import type { InteractionResponse } from "@omfp/protocol";
-import { Button, Checkbox, IconButton, Radio, RadioGroup, TextArea, TextField } from "omfp/kit";
+import {
+  Button,
+  Checkbox,
+  Icon,
+  IconButton,
+  InteractionCard as KitInteractionCard,
+  OptionText,
+  Radio,
+  RadioGroup,
+  ResolvedLine,
+  TextArea,
+  TextField,
+} from "omfp/kit";
 import {
   type AskForm,
   cardKey,
@@ -73,8 +85,7 @@ export function Interactions({ threadId, view }: { threadId: string; view: Threa
       ))}
       {closed.map((row) => (
         <div key={`closed-${row.id}`} className="omfp-interaction-closed" data-testid="interaction-closed">
-          <strong>{row.title}</strong>
-          <span> — {row.text}</span>
+          <ResolvedLine outcome="answered" question={row.title} answer={row.text} />
           <IconButton
             label={text.dismissClosed}
             icon="×"
@@ -132,18 +143,16 @@ function InteractionCard({ threadId, request, first }: { threadId: string; reque
     }
   }, [first]);
   return (
-    <section
+    <KitInteractionCard
       ref={cardRef}
       className="omfp-interaction"
       data-testid="interaction"
       data-kind={request.method}
-      aria-label={heading}
       aria-busy={answered}
+      aria-label={heading}
+      title={<span className="omfp-interaction__title">{heading}</span>}
+      meta={timeout === undefined ? undefined : <Countdown timeout={timeout} shownAt={shownAt} />}
     >
-      <div className="omfp-interaction__heading">
-        <h3 className="omfp-interaction__title">{heading}</h3>
-        {timeout !== undefined && <Countdown timeout={timeout} shownAt={shownAt} />}
-      </div>
       {request.method === "select" && <SelectBody request={request} {...body} />}
       {request.method === "confirm" && <ConfirmBody request={request} {...body} />}
       {request.method === "input" && <InputBody request={request} {...body} />}
@@ -151,7 +160,7 @@ function InteractionCard({ threadId, request, first }: { threadId: string; reque
       {request.method === "ask" && (
         <AskBody formKey={interactionKey(threadId, request.id)} request={request} {...body} />
       )}
-    </section>
+    </KitInteractionCard>
   );
 }
 
@@ -164,20 +173,30 @@ function Countdown({ timeout, shownAt }: { timeout: number; shownAt: number }) {
   useEffect(() => (expired ? undefined : clock.every(1000, () => setNow(clock.now()))), [clock, expired]);
   return (
     <span
-      className="omfp-countdown"
+      className="omfp-request__countdown omfp-countdown"
       role="timer"
       aria-label={text.timeLeft}
       data-testid="countdown"
       data-expired={expired}
+      data-low={remaining < LOW_MS || undefined}
     >
+      <Icon name="clock" />
       {formatCountdown(remaining)}
     </span>
   );
 }
 
+/** Below this the countdown turns error (UI-164). */
+const LOW_MS = 30_000;
+
 function DismissButton({ disabled, onRespond }: Pick<BodyProps<unknown>, "disabled" | "onRespond">) {
   return (
-    <Button data-testid="interaction-dismiss" isDisabled={disabled} onPress={() => onRespond({ cancelled: true })}>
+    <Button
+      variant="quiet"
+      data-testid="interaction-dismiss"
+      isDisabled={disabled}
+      onPress={() => onRespond({ cancelled: true })}
+    >
       {text.dismiss}
     </Button>
   );
@@ -186,7 +205,7 @@ function DismissButton({ disabled, onRespond }: Pick<BodyProps<unknown>, "disabl
 function SelectBody({ request, disabled, onRespond }: BodyProps<SelectUiRequest>) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: a group of buttons, not form fields
-    <div className="omfp-interaction__options" role="group" aria-label={request.title}>
+    <div className="omfp-request__actions omfp-interaction__options" role="group" aria-label={request.title}>
       {request.options.map((option, index) => (
         <Button
           // Options are fixed for the request's lifetime.
@@ -212,7 +231,7 @@ function ConfirmBody({ request, disabled, onRespond }: BodyProps<ConfirmUiReques
   return (
     <>
       <p className="omfp-interaction__message">{request.message}</p>
-      <div className="omfp-interaction__options">
+      <div className="omfp-request__actions omfp-interaction__options">
         <Button
           data-testid="interaction-confirm"
           variant="primary"
@@ -221,7 +240,12 @@ function ConfirmBody({ request, disabled, onRespond }: BodyProps<ConfirmUiReques
         >
           {text.yes}
         </Button>
-        <Button data-testid="interaction-deny" isDisabled={disabled} onPress={() => onRespond({ confirmed: false })}>
+        <Button
+          variant="danger"
+          data-testid="interaction-deny"
+          isDisabled={disabled}
+          onPress={() => onRespond({ confirmed: false })}
+        >
           {text.no}
         </Button>
       </div>
@@ -303,11 +327,8 @@ function AskBody({ formKey, request, disabled, onRespond }: BodyProps<AskUiReque
           const recommended = question.recommended === position;
           const label = (
             <>
-              <span>{option.label}</span>
+              <OptionText label={option.label} description={option.description} />
               {recommended && <span className="omfp-ask__tag">{text.recommended}</span>}
-              {option.description !== undefined && (
-                <span className="omfp-interaction__description">{option.description}</span>
-              )}
             </>
           );
           return question.multi ? (

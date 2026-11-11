@@ -1,13 +1,30 @@
 /**
- * The left column the frame renders outside any view (UI-020..023, UI-026, UI-100): the full-text filter (`/`), the
- * "+ workspace" field, then one section per workspace — name (the current one highlighted), a menu with rename and
- * remove, a delete button, its threads (state badge, title, unread mark), its draft thread, a collapsed "Archived (N)"
- * row and "+ thread". Sections collapse (chevron, `za`); the collapsed set is window-local and survives reloads. Its
+ * The left column the frame renders outside any view (UI-020..023, UI-026, UI-100, UI-169, UI-170): the brand, the
+ * full-text filter (`/`), the "+ workspace" field, then one section per workspace — `▾`/`▸`, name (the current one in
+ * gradient text), path, count, a menu with rename and remove, a delete button, its threads (state mark, title, time;
+ * unread titles bold), its draft thread, a collapsed "Archived (N)" row and "+ thread". Sections collapse (`za`); the
+ * collapsed set is window-local and survives reloads. Its
  * `threads` scope answers `nav.*` (j/k, gg/G, Ctrl-d/u, UI-095), which are also the global fallback, `dd` and `za` on
  * the focused row or section; it registers `nav.search` (`/`) and `workspace.new` (`Space w`).
  */
 
-import { Button, IconButton, Menu, MenuItem, MenuTrigger, PathField, Popover, SearchField, TextField } from "@omfp/kit";
+import {
+  ActionRow,
+  Brand,
+  Button,
+  cx,
+  HintRow,
+  Icon,
+  IconButton,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  PathField,
+  Popover,
+  SearchField,
+  StateMark,
+  TextField,
+} from "@omfp/kit";
 import { INDEX_TOPIC, type ThreadSummary, type Workspace } from "@omfp/protocol";
 import {
   type FormEvent,
@@ -54,13 +71,15 @@ import {
   type Section,
   type Seen,
   sidebarSections,
+  statusLabel,
   type ThreadFilter,
   threadStatus,
   toggled,
   updateSeen,
   visibleOrder,
 } from "../../vm/threads.ts";
-import { StatusBadge } from "./badges.tsx";
+import { relativeAge } from "./age.ts";
+import { threadMarkState, useFresh } from "./marks.ts";
 
 const text = strings.shell.threads;
 
@@ -116,6 +135,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
   if (workspaces.length === 0) {
     return (
       <nav ref={root} className="omfp-threads" aria-label={text.label} data-testid="sidebar" data-omfp-scope="threads">
+        <Brand host={location.hostname} />
         <NewWorkspace inputRef={newWorkspace} focus={loaded} />
         {loaded && (
           <p className="omfp-muted" data-testid="no-workspaces-hint">
@@ -127,6 +147,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
   }
   return (
     <nav ref={root} className="omfp-threads" aria-label={text.label} data-testid="sidebar" data-omfp-scope="threads">
+      <Brand host={location.hostname} />
       <ThreadFilterField search={search} />
       <NewWorkspace inputRef={newWorkspace} focus={false} />
       {sections.map((section) => (
@@ -139,11 +160,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
           selected={selected}
         />
       ))}
-      {sections.length === 0 && (
-        <p className="omfp-muted" data-testid="no-threads">
-          {text.noMatch}
-        </p>
-      )}
+      {sections.length === 0 && <HintRow data-testid="no-threads">{text.noMatch}</HintRow>}
     </nav>
   );
 }
@@ -381,13 +398,14 @@ function WorkspaceSection({
   const snippets = isFiltering(filter) ? filter.conversation : NO_SNIPPETS;
   return (
     <section
-      className="omfp-ws"
+      className="omfp-wsection omfp-ws"
       data-testid="workspace-section"
       data-workspace-id={workspace.id}
+      data-expanded={!collapsed}
       data-current={current ? "true" : undefined}
       aria-labelledby={headingId}
     >
-      <div className="omfp-ws__header">
+      <div className="omfp-ws__head">
         <button
           type="button"
           className="omfp-ws__chevron"
@@ -401,13 +419,28 @@ function WorkspaceSection({
         {renaming ? (
           <RenameWorkspace workspace={workspace} close={() => setRenaming(false)} />
         ) : (
-          <h3 id={headingId} className="omfp-ws__name" data-testid="workspace-section-name">
-            {workspace.name}
-            {current && <span className="omfp-visually-hidden"> ({text.current})</span>}
-          </h3>
+          <>
+            <h3
+              id={headingId}
+              className={cx("omfp-wsection__name omfp-ws__name", current && "omfp-grad-text")}
+              data-testid="workspace-section-name"
+            >
+              {workspace.name}
+              {current && <span className="omfp-visually-hidden"> ({text.current})</span>}
+            </h3>
+            <span className="omfp-wsection__path" title={workspace.path}>
+              {workspace.path}
+            </span>
+          </>
         )}
+        <span className="omfp-wsection__count omfp-ws__count">{section.threadIds.length}</span>
         <MenuTrigger>
-          <IconButton label={text.menu(workspace.name)} icon="⋯" data-testid="workspace-menu" />
+          <IconButton
+            className="omfp-reveal"
+            label={text.menu(workspace.name)}
+            icon={<Icon name="settings-2" />}
+            data-testid="workspace-menu"
+          />
           <Popover placement="bottom end">
             <Menu
               aria-label={text.menu(workspace.name)}
@@ -431,7 +464,7 @@ function WorkspaceSection({
         <IconButton
           className="omfp-reveal"
           label={text.deleteWorkspace(workspace.name)}
-          icon="✕"
+          icon={<Icon name="trash-2" />}
           data-testid="delete-workspace"
           onPress={() => host.window.set(DELETE_WORKSPACE, workspace.id)}
         />
@@ -452,7 +485,11 @@ function WorkspaceSection({
               );
             })}
             {draftHere && (
-              <li className="omfp-thread-item">
+              <li
+                className="omfp-row omfp-thread omfp-thread-item"
+                data-state="idle"
+                data-selected={selected === undefined || undefined}
+              >
                 <button
                   type="button"
                   className="omfp-thread-row"
@@ -461,25 +498,32 @@ function WorkspaceSection({
                   aria-current={selected === undefined ? "true" : undefined}
                   onClick={() => actions.openDraft(workspace.id)}
                 >
-                  <span className="omfp-thread-row__title" data-placeholder="true">
+                  <StateMark state="idle" />
+                  <span className="omfp-row__title omfp-thread-row__title" data-placeholder="true">
                     {strings.shell.untitled}
                   </span>
-                  <span className="omfp-muted">{text.draft}</span>
+                  <span className="omfp-row__meta">{text.draft}</span>
                 </button>
+              </li>
+            )}
+            {section.threadIds.length === 0 && !draftHere && (
+              <li>
+                <HintRow>{text.empty}</HintRow>
               </li>
             )}
           </ul>
           {section.archivedIds.length > 0 && (
             <div className="omfp-ws__archived">
-              <button
-                type="button"
+              <ActionRow
+                kind="archived"
+                icon="archive"
                 className="omfp-ws__archived-toggle"
                 data-testid="archived-toggle"
                 aria-expanded={showArchived}
-                onClick={() => setArchivedOpen((previous) => toggled(previous, workspace.id))}
+                onPress={() => setArchivedOpen((previous) => toggled(previous, workspace.id))}
               >
                 {text.archived(section.archivedIds.length)}
-              </button>
+              </ActionRow>
               {showArchived && (
                 <ul className="omfp-threads__list" data-testid="archived-list">
                   {section.archivedIds.map((id) => {
@@ -499,16 +543,14 @@ function WorkspaceSection({
               )}
             </div>
           )}
-          <Button
-            size="sm"
-            variant="quiet"
+          <ActionRow
             className="omfp-ws__add"
             data-testid="add-thread"
             data-workspace-id={workspace.id}
             onPress={() => actions.openDraft(workspace.id)}
           >
             {text.addThread}
-          </Button>
+          </ActionRow>
         </>
       )}
     </section>
@@ -573,8 +615,18 @@ function ThreadRow({
   const actions = useThreadActions();
   const status = threadStatus(thread);
   const title = displayTitle(thread);
+  const state = threadMarkState(status, unread);
+  const fresh = useFresh(status);
   return (
-    <li className="omfp-thread-item">
+    <li
+      className="omfp-row omfp-thread omfp-thread-item"
+      data-state={state}
+      data-unread={unread || undefined}
+      data-selected={selected || undefined}
+      data-fresh={fresh || undefined}
+      data-archived={archived || undefined}
+      data-snippet={snippet !== undefined || undefined}
+    >
       <button
         type="button"
         className="omfp-thread-row"
@@ -586,13 +638,16 @@ function ThreadRow({
         aria-current={selected ? "true" : undefined}
         onClick={() => actions.select(thread.id)}
       >
-        <StatusBadge status={status} testid="thread-status" />
-        <span className="omfp-thread-row__title">{title}</span>
+        <StateMark state={state} label={statusLabel(status)} data-testid="thread-status" data-status={status} />
+        <span className="omfp-row__title omfp-thread-row__title">{title}</span>
         {unread && (
-          <span className="omfp-thread-row__unread" data-testid="unread" role="img" aria-label={text.unread}>
-            •
+          <span className="omfp-visually-hidden" data-testid="unread">
+            {text.unread}
           </span>
         )}
+        <span className="omfp-row__meta" data-testid="thread-age">
+          {relativeAge(thread.updatedAt, Date.now())}
+        </span>
         {snippet !== undefined && (
           <span className="omfp-thread-row__snippet" data-testid="thread-snippet">
             {snippet}
@@ -612,9 +667,9 @@ function ThreadRow({
         </Button>
       )}
       <IconButton
-        className="omfp-reveal"
+        className="omfp-row__delete"
         label={text.deleteThread(title)}
-        icon="✕"
+        icon={<Icon name="x" />}
         data-testid="row-delete-thread"
         data-thread-id={thread.id}
         onPress={() => actions.requestDelete(thread.id)}

@@ -67,7 +67,8 @@ describe("omfp:header", () => {
     expect(screen.queryByTestId("edit-tags")).toBeNull();
     expect(screen.getAllByTestId("workspace-chip").map((chip) => chip.textContent)).toEqual(["⌂w1", "fe:main"]);
     expect(screen.getByTestId("thread-state").dataset.status).toBe("idle");
-    await waitFor(() => expect(screen.getByTestId("context-usage").textContent).toBe("42% of 200k"));
+    await waitFor(() => expect(screen.getByTestId("context-usage").textContent).toBe("84k/200k"));
+    expect(screen.getByTestId("context-usage").getAttribute("aria-label")).toBe("Context window usage: 42% of 200k");
     expect(within(screen.getByTestId("model-select")).getByRole("button").textContent).toContain("Opus (anthropic)");
     expect(within(screen.getByTestId("thinking-select")).getByRole("button").textContent).toContain("high");
   });
