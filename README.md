@@ -10,21 +10,29 @@
 
 **The agent multiplexer for hackers who are tired of prepackaged workflows.**
 
-- **Many [omp](https://github.com/can1357/oh-my-pi) sessions, one place.** Every thread is its own agent. Control them
-  from different devices.
-- **Persistent workspaces.** A folder of repos and worktrees, shared by as many threads as you want.
-- **The agent can rewrite the UI.** Views are trees of React widgets: ask for whatever you want, or let the agent
-  propose it. The default view is just as hackable.
-- **Almost no opinions.** A small core, a keyboard-driven shell, and the rest is widgets you can copy, replace or throw
-  away.
-- **Emacs at heart.** You shape the tool from inside it, while it runs.
+A browser and desktop app for the [oh-my-pi](https://github.com/can1357/oh-my-pi) coding agent: many
+conversations with the agent at once, each with its own oh-my-pi running in the background.
+
+- **Run as many agents as you like.** Every conversation (a thread) is a separate oh-my-pi, and it keeps working when
+  you close the window. Pick them up from your laptop or your phone.
+- **Bring your subscription.** Works with your ChatGPT or Claude plan, or any API key oh-my-pi supports.
+- **Workspaces that stay.** A workspace is a folder holding the repos and worktrees you work on. Threads in the same
+  workspace share it, and it is still there tomorrow.
+- **The agent can rewrite the UI.** Everything around the chat is made of small React panels. Ask for a test
+  dashboard or a deploy button, or let the agent suggest one: it writes the panel and it shows up live. The panels
+  omfp ships with work the same way, so you can change those too.
+- **Almost no opinions.** A small core, a keyboard-driven shell, and the rest is panels you can copy, replace or
+  throw away.
+- **Emacs at heart.** You change the tool from inside it, while it runs. No rebuilds.
+
+Early and changing fast.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/brand/screenshot-dark.png">
   <img alt="omfp with a running thread" src="docs/brand/screenshot-light.png">
 </picture>
 
-<sub>This README is for humans. The slop lives in [docs/overview.md](docs/overview.md). Anything else: ask your agent how
-omfp works.\*</sub>
+<sub>This README is for humans. The slop lives in [docs/overview.md](docs/overview.md); anything else, ask your agent
+how omfp works.\*</sub>
 
 <sub>\* OK, this one is AI-generated too, but at least I read it.</sub>
