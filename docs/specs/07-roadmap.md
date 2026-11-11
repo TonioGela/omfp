@@ -8,7 +8,7 @@ into tests.
 flowchart LR
   M0[M0 Foundations] --> M1[M1 Headless daemon] --> M2[M2 Web UI MVP] --> M2b[M2b Workspace folders]
   M2b --> M3[M3 TypeScript UI] --> M4[M4 Widgets]
-  M4 --> M5[M5 Tools and changes] --> M5b[M5b Widget loop and views file] --> M5c[M5c Files]
+  M4 --> M5[M5 Tools and changes] --> M5b[M5b Widget loop and views file] --> M5c[M5c Files] --> M5d[M5d Crush]
   M4 --> M6[M6 Live voice]
   M4 --> M7[M7 Desktop]
   M5 --> M8[M8 Subagents, tree, goal]
@@ -243,6 +243,21 @@ config polls apply a change only once the file settled, so a non-atomic writer s
 
 Acceptance: E2E-13; headless screenshots of a read-only file tab, editing in vim insert mode, the unified diff and the
 conflict view.
+
+## M5d — Crush
+
+Scope (D-20): the visual design of [09](09-design.md) (UI-120..UI-174) applied to the shell and the kit, in slices.
+Foundation: every design token in the one `--omfp-*` namespace (the kit's earlier size, radius, line-height and spacing
+tokens migrated, no aliases), the Synth palette as the built-in light and dark themes, colors derived from the roles
+(gradients with the close-hue fallback, ok/warn mixed toward the surface), IBM Plex Serif and Commit Mono bundled
+(WOFF2 latin subsets with their OFL licences, served at `/fonts/` with the bundle), `[ui] font_size` defaulting to 17 px
+and the new `[ui] motion` (`full` / `reduced` / `none`, capped by `prefers-reduced-motion`, `data-motion` on `<html>`),
+key chips (UI-148). Then: every kit component restyled with all its states and the `/kit` gallery (UI-149..UI-173)
+with its screenshot test (UI-174); the frame (left column, mode line, command line, banners, notifications, dialogs);
+the chat (transcript, tool, approval and ask cards, composer); the side widgets and the file editor.
+
+Acceptance: every UI-120..UI-174 cited by a test or the screenshot test; headless screenshots of the real app at the
+defaults (Synth light and dark, a matugen theme, motion `none`) compared by eye with `docs/specs/design/crush-default-*`.
 
 ## M6 — Live voice
 

@@ -902,7 +902,7 @@ fn a_discovered_repository_carries_its_kind_inline() {
     assert_eq!(link["sharedWith"], json!([workspace().id]));
 }
 
-// spec: DMN-009, UI-097
+// spec: DMN-009, UI-097, UI-145
 #[test]
 fn settings_omit_defaults_and_null_the_error() {
     assert_eq!(
@@ -912,6 +912,7 @@ fn settings_omit_defaults_and_null_the_error() {
     let wire = serde_json::to_value(settings()).unwrap();
     assert_eq!(wire["ui"]["density"], "normal");
     assert_eq!(wire["ui"]["fontSize"], 18);
+    assert_eq!(wire["ui"]["motion"], "reduced");
     assert_eq!(wire["ui"]["notifications"], "always");
     assert_eq!(
         wire["ui"]["fonts"],

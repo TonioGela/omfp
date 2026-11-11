@@ -3,7 +3,7 @@
 use omfp_core::ProcessState;
 use omfp_protocol::{
     CreatedBy, Density, FileChange, FileStatus, FontSettings, GitStatus, KeymapEntry, KeymapMode,
-    NotificationMode, Provenance, RepoKind, RepoStatus, Settings, Theme, ThreadSummary,
+    Motion, NotificationMode, Provenance, RepoKind, RepoStatus, Settings, Theme, ThreadSummary,
     TitleSource, UiSettings, Workspace, WorkspaceRepo,
 };
 
@@ -128,6 +128,7 @@ pub fn settings() -> Settings {
         ui: UiSettings {
             density: Some(Density::Normal),
             font_size: Some(18),
+            motion: Some(Motion::Reduced),
             notifications: Some(NotificationMode::Always),
             fonts: Some(FontSettings {
                 prose: Some("Literata, serif".to_owned()),

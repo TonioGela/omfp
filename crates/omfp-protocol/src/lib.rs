@@ -15,7 +15,7 @@ mod topic;
 pub use dto::{
     CreatedBy, Density, DiffPage, FileChange, FileContent, FileDiff, FileKind, FileStatus,
     FileWritten, FontSettings, GitStatus, IndexSnapshot, JobInfo, JobLine, JobState, JobStatus,
-    JobStream, KeymapEntry, KeymapMode, NotificationMode, PathEntry, Provenance, RepoKind,
+    JobStream, KeymapEntry, KeymapMode, Motion, NotificationMode, PathEntry, Provenance, RepoKind,
     RepoStatus, SeenRepository, Settings, TerminalInfo, TerminalKind, Theme, ThreadSummary,
     TitleSource, UiSettings, ViewsState, WidgetInfo, WidgetSource, Workspace, WorkspaceRepo,
 };

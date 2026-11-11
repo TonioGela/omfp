@@ -26,6 +26,7 @@ afterEach(() => {
   document.head.innerHTML = "";
   delete document.documentElement.dataset.colorScheme;
   delete document.documentElement.dataset.density;
+  delete document.documentElement.dataset.motion;
   document.documentElement.removeAttribute("style");
 });
 
@@ -86,6 +87,32 @@ function press(key: string, init: KeyboardEventInit = {}): void {
   act(() => {
     fireEvent.keyDown(document.activeElement ?? document.body, { key, ...init });
   });
+}
+
+/** `matchMedia` answering `(prefers-reduced-motion: reduce)` from a switch the test flips; other queries never match. */
+class SystemMotion {
+  reduce = false;
+  readonly listeners = new Set<() => void>();
+
+  readonly matchMedia = (query: string): MediaQueryList => {
+    const system = this;
+    const list: Pick<MediaQueryList, "media" | "matches" | "addEventListener" | "removeEventListener"> = {
+      media: query,
+      get matches() {
+        return query === "(prefers-reduced-motion: reduce)" && system.reduce;
+      },
+      addEventListener: (_type: string, listener: unknown) => system.listeners.add(listener as () => void),
+      removeEventListener: (_type: string, listener: unknown) => system.listeners.delete(listener as () => void),
+    };
+    return list as MediaQueryList;
+  };
+
+  set(reduce: boolean): void {
+    this.reduce = reduce;
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
 }
 
 function shownWidgets(): (string | undefined)[] {
@@ -388,17 +415,50 @@ describe("daemon settings", () => {
     expect(style.getPropertyValue("--omfp-font-prose")).toBe("");
   });
 
-  // spec: UI-097, UI-094
-  test("the font size becomes the root font-size on <html>, 16px without one", () => {
+  // spec: UI-097, UI-094, UI-144
+  test("the font size becomes the root font-size on <html>, 17px without one", () => {
     const { client, flush } = setup();
     const style = document.documentElement.style;
-    expect(style.fontSize).toBe("16px");
+    expect(style.fontSize).toBe("17px");
     client.indexEvents({ kind: "settings_changed", settings: settings({ fontSize: 20 }) });
     flush();
     expect(style.fontSize).toBe("20px");
     client.indexEvents({ kind: "settings_changed", settings: settings({}) });
     flush();
-    expect(style.fontSize).toBe("16px");
+    expect(style.fontSize).toBe("17px");
+  });
+
+  // spec: UI-097, UI-145
+  test("motion becomes data-motion on <html>, full without one", () => {
+    const { client, flush } = setup();
+    const root = document.documentElement;
+    expect(root.dataset.motion).toBe("full");
+    client.indexEvents({ kind: "settings_changed", settings: settings({ motion: "reduced" }) });
+    flush();
+    expect(root.dataset.motion).toBe("reduced");
+    client.indexEvents({ kind: "settings_changed", settings: settings({ motion: "none" }) });
+    flush();
+    expect(root.dataset.motion).toBe("none");
+  });
+
+  // spec: UI-145
+  test("prefers-reduced-motion caps the effective level at none, live", () => {
+    const original = window.matchMedia;
+    const system = new SystemMotion();
+    window.matchMedia = system.matchMedia;
+    try {
+      const { client, flush } = setup();
+      const root = document.documentElement;
+      client.indexEvents({ kind: "settings_changed", settings: settings({ motion: "reduced" }) });
+      flush();
+      expect(root.dataset.motion).toBe("reduced");
+      act(() => system.set(true));
+      expect(root.dataset.motion).toBe("none");
+      act(() => system.set(false));
+      expect(root.dataset.motion).toBe("reduced");
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   // spec: UI-097, UI-095

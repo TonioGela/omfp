@@ -1,6 +1,7 @@
 /**
  * A tiny CSS reader for the style tests: enough for our own files (at-rules, flat style rules, no nesting, no braces
- * inside strings), not a general parser.
+ * inside strings), not a general parser. An at-rule holding declarations (`@font-face { … }`) is a rule whose
+ * selector is its prelude.
  */
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -60,7 +61,7 @@ function parseBlock(css: string, at: readonly string[], rules: CssRule[]): void 
     const prelude = collapse(css.slice(cursor, open));
     const close = closingBrace(css, open);
     const body = css.slice(open + 1, close);
-    if (prelude.startsWith("@")) {
+    if (prelude.startsWith("@") && body.includes("{")) {
       parseBlock(body, [...at, prelude], rules);
     } else {
       rules.push({ at, selector: prelude, declarations: parseDeclarations(body) });

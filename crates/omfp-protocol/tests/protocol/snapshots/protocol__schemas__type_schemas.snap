@@ -181,6 +181,26 @@ expression: type_schemas()
         ],
         "type": "string"
       },
+      "Motion": {
+        "description": "How much the UI animates (UI-145); `prefers-reduced-motion: reduce` caps it at `none`.",
+        "oneOf": [
+          {
+            "const": "full",
+            "description": "Every effect of the motion catalogue (default).",
+            "type": "string"
+          },
+          {
+            "const": "reduced",
+            "description": "State indicators and short UI feedback only, with a steady caret.",
+            "type": "string"
+          },
+          {
+            "const": "none",
+            "description": "No animation or transition.",
+            "type": "string"
+          }
+        ]
+      },
       "NotificationMode": {
         "description": "When the UI shows system notifications (UI-096).",
         "oneOf": [
@@ -356,7 +376,7 @@ expression: type_schemas()
             ]
           },
           "fontSize": {
-            "description": "Root font size in px (10..=28, default 16); every rem-based size token scales with it.",
+            "description": "Root font size in px (10..=28, default 17); every rem-based size token scales with it.",
             "format": "uint8",
             "maximum": 28,
             "minimum": 10,
@@ -369,6 +389,16 @@ expression: type_schemas()
             "anyOf": [
               {
                 "$ref": "#/$defs/FontSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "motion": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Motion"
               },
               {
                 "type": "null"
@@ -739,6 +769,26 @@ expression: type_schemas()
         ],
         "type": "string"
       },
+      "Motion": {
+        "description": "How much the UI animates (UI-145); `prefers-reduced-motion: reduce` caps it at `none`.",
+        "oneOf": [
+          {
+            "const": "full",
+            "description": "Every effect of the motion catalogue (default).",
+            "type": "string"
+          },
+          {
+            "const": "reduced",
+            "description": "State indicators and short UI feedback only, with a steady caret.",
+            "type": "string"
+          },
+          {
+            "const": "none",
+            "description": "No animation or transition.",
+            "type": "string"
+          }
+        ]
+      },
       "NotificationMode": {
         "description": "When the UI shows system notifications (UI-096).",
         "oneOf": [
@@ -914,7 +964,7 @@ expression: type_schemas()
             ]
           },
           "fontSize": {
-            "description": "Root font size in px (10..=28, default 16); every rem-based size token scales with it.",
+            "description": "Root font size in px (10..=28, default 17); every rem-based size token scales with it.",
             "format": "uint8",
             "maximum": 28,
             "minimum": 10,
@@ -927,6 +977,16 @@ expression: type_schemas()
             "anyOf": [
               {
                 "$ref": "#/$defs/FontSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "motion": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Motion"
               },
               {
                 "type": "null"

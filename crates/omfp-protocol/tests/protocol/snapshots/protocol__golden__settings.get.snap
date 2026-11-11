@@ -33,6 +33,7 @@ expression: golden
           "code": "\"JetBrains Mono\", monospace",
           "prose": "Literata, serif"
         },
+        "motion": "reduced",
         "notifications": "always"
       }
     },

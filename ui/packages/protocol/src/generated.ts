@@ -395,6 +395,15 @@ export type MessageParams = {
   threadId: string;
 };
 
+/** How much the UI animates (UI-145); `prefers-reduced-motion: reduce` caps it at `none`. */
+export type Motion =
+  /** Every effect of the motion catalogue (default). */
+  | "full"
+  /** State indicators and short UI feedback only, with a steady caret. */
+  | "reduced"
+  /** No animation or transition. */
+  | "none";
+
 /** `thread.navigate` params. */
 export type NavigateParams = {
   entryId: string;
@@ -818,9 +827,10 @@ export type TopicParams = {
 /** The `[ui]` table of the config file; an absent value is the default (UI-097). */
 export type UiSettings = {
   density?: Density | null;
-  /** Root font size in px (10..=28, default 16); every rem-based size token scales with it. */
+  /** Root font size in px (10..=28, default 17); every rem-based size token scales with it. */
   fontSize?: number | null;
   fonts?: FontSettings | null;
+  motion?: Motion | null;
   notifications?: NotificationMode | null;
 };
 

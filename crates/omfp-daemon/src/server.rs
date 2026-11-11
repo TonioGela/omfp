@@ -208,6 +208,7 @@ fn content_type(path: &Path) -> &'static str {
         Some("png") => "image/png",
         Some("ico") => "image/x-icon",
         Some("txt") => "text/plain; charset=utf-8",
+        Some("woff2") => "font/woff2",
         _ => "application/octet-stream",
     }
 }
@@ -255,5 +256,18 @@ mod tests {
         );
         assert_eq!(safe_relative("/../etc/passwd"), None);
         assert_eq!(safe_relative("/a/../../b"), None);
+    }
+
+    // spec: UI-141
+    #[test]
+    fn the_bundled_fonts_and_their_licences_are_served_with_their_types() {
+        assert_eq!(
+            content_type(Path::new("commit-mono-latin-400-normal-a1b2.woff2")),
+            "font/woff2"
+        );
+        assert_eq!(
+            content_type(Path::new("commit-mono-OFL.txt")),
+            "text/plain; charset=utf-8"
+        );
     }
 }

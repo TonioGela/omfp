@@ -6,6 +6,7 @@ import {
   type Binding,
   DEFAULT_BINDINGS,
   KeymapMatcher,
+  keyLabel,
   keysFor,
   keyToken,
   SEQUENCE_TIMEOUT_MS,
@@ -44,6 +45,24 @@ describe("keymap", () => {
     expect(keyToken(key("Tab", { shiftKey: true }))).toBe("Shift-Tab");
     expect(keyToken(key("a", { altKey: true }))).toBe("Alt-a");
     expect(keyToken(key("Shift", { shiftKey: true }))).toBeUndefined();
+  });
+
+  // spec: UI-148
+  test("key chips label keys as lowercase words, letters as typed, sequences with a space, never symbol glyphs", () => {
+    expect(keyLabel("Space n")).toBe("spc n");
+    expect(keyLabel("Esc")).toBe("esc");
+    expect(keyLabel("Enter")).toBe("enter");
+    expect(keyLabel("Tab")).toBe("tab");
+    expect(keyLabel("Shift-Tab")).toBe("shift+tab");
+    expect(keyLabel("Alt-Enter")).toBe("alt+enter");
+    expect(keyLabel("Ctrl-c")).toBe("ctrl+c");
+    expect(keyLabel("Ctrl-Shift-ArrowUp")).toBe("ctrl+shift+arrowup");
+    expect(keyLabel("Meta-k")).toBe("meta+k");
+    expect(keyLabel("G")).toBe("G");
+    expect(keyLabel("g g")).toBe("g g");
+    expect(keyLabel("Space :")).toBe("spc :");
+    expect(keyLabel("Ctrl--")).toBe("ctrl+-");
+    expect(keyLabel("-")).toBe("-");
   });
 
   // spec: UI-095, UI-020, UI-022, UI-023, UI-063

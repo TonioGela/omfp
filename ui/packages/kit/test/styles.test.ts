@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { cssFiles, KIT_SRC, parseCss, stripComments } from "./support/css.ts";
+import { cssFiles, findRule, KIT_SRC, parseCss, stripComments } from "./support/css.ts";
+import { RETIRED_TOKEN } from "./support/tokens.ts";
 
 /** CSS named and system colors (`transparent` and `currentColor` are allowed: they carry no palette choice). */
 const NAMED_COLORS = new Set(
@@ -29,8 +30,10 @@ const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi;
 const VAR_REF = /var\(\s*(--[\w-]+)/g;
 
 const styleFiles = cssFiles(KIT_SRC).filter((path) => basename(path) !== "tokens.css");
+const APP_SRC = join(KIT_SRC, "..", "..", "app", "src");
 const tokensCss = readFileSync(join(KIT_SRC, "tokens.css"), "utf8");
 const kitRules = parseCss(readFileSync(join(KIT_SRC, "kit.css"), "utf8"));
+const LAYER = "@layer omfp-kit";
 
 /** Color literals of one stylesheet: hex colors, color functions and named colors in declaration values. */
 function colorLiterals(css: string): string[] {
@@ -74,8 +77,68 @@ describe("kit styles", () => {
     expect([...used].filter((name) => name.startsWith("--omfp-") && !defined.has(name))).toEqual([]);
   });
 
-  // spec: UI-094
-  test("serif only in prose, monospace only in code and logs, sans everywhere else", () => {
+  // spec: UI-125
+  test("the app's stylesheets only use tokens that tokens.css defines", () => {
+    const defined = definedTokens(tokensCss);
+    const undefinedTokens = cssFiles(APP_SRC).flatMap((path) =>
+      [...stripComments(readFileSync(path, "utf8")).matchAll(VAR_REF)]
+        .map((match) => match[1] ?? "")
+        .filter((name) => name.startsWith("--omfp-") && !defined.has(name))
+        .map((name) => `${basename(path)}: ${name}`),
+    );
+    expect(undefinedTokens).toEqual([]);
+  });
+
+  // spec: UI-125
+  test("the earlier size, radius, line-height and spacing tokens are gone everywhere, with no aliases", () => {
+    const sources = [KIT_SRC, APP_SRC].flatMap((dir) =>
+      readdirSync(dir, { recursive: true, encoding: "utf8" })
+        .filter((name) => /\.(?:css|tsx?)$/.test(name))
+        .map((name) => join(dir, name)),
+    );
+    expect(sources.filter((path) => RETIRED_TOKEN.test(readFileSync(path, "utf8")))).toEqual([]);
+  });
+
+  // spec: UI-148
+  test("key chips: code family at fs-2xs, optically centred on the text baseline, tertiary on surface-container", () => {
+    const chip = findRule(kitRules, [LAYER], ".omfp-kbd");
+    expect(Object.fromEntries(chip.declarations)).toEqual({
+      display: "inline-block",
+      "min-inline-size": "1.6em",
+      padding: "0.36em 0.4em",
+      "font-family": "var(--omfp-font-code)",
+      "font-size": "var(--omfp-fs-2xs)",
+      "line-height": "1",
+      "text-box": "trim-both ex alphabetic",
+      "text-align": "center",
+      "white-space": "nowrap",
+      color: "var(--omfp-tertiary)",
+      border: "var(--omfp-bw) solid color-mix(in oklab, var(--omfp-tertiary) 40%, transparent)",
+      "border-radius": "var(--omfp-r-chip)",
+      background: "var(--omfp-kbd-bg)",
+    });
+    const inButton = findRule(kitRules, [LAYER], ".omfp-button .omfp-kbd");
+    expect(Object.fromEntries(inButton.declarations)).toEqual({ color: "inherit", background: "transparent" });
+  });
+
+  // spec: UI-145
+  test("motion none stops every animation and transition and makes scrolling instant; the effective level is data-motion", () => {
+    const none = findRule(
+      kitRules,
+      [LAYER],
+      ':root[data-motion="none"], :root[data-motion="none"] *, :root[data-motion="none"] *::before, :root[data-motion="none"] *::after',
+    );
+    expect(Object.fromEntries(none.declarations)).toEqual({
+      animation: "none !important",
+      transition: "none !important",
+      "scroll-behavior": "auto !important",
+    });
+    const css = stripComments(readFileSync(join(KIT_SRC, "kit.css"), "utf8"));
+    expect(css).not.toContain("prefers-reduced-motion");
+  });
+
+  // spec: UI-094, UI-121
+  test("the prose family only in prose; chrome in the ui family (which is the code family), code in code", () => {
     const usages = kitRules.flatMap((rule) =>
       [...rule.declarations]
         .filter(([property]) => property === "font-family" || property === "font")

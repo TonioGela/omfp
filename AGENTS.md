@@ -12,7 +12,7 @@ only be reachable from the human UI.
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; next: M6 live voice, M7 desktop, M8 subagents);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; M5d Crush in progress; next: M6 live voice, M7 desktop, M8 subagents);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -77,7 +77,8 @@ ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + 
 ui/packages/protocol  @omfp/protocol: generated protocol types + method table (generated.ts), envelope, topics
 ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked against fixtures/states/
 ui/packages/client    @omfp/client: WebSocket transport, session (hello, subscriptions, reconnect), model
-ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css, kit.css)
+ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css, kit.css; the bundled
+                      fonts and their licences in fonts/, served at /fonts/ by the bundle)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,

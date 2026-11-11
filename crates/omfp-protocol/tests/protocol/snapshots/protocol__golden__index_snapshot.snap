@@ -113,6 +113,7 @@ expression: snapshot
     "ui": {
       "density": "normal",
       "fontSize": 18,
+      "motion": "reduced",
       "notifications": "always",
       "fonts": {
         "prose": "Literata, serif",

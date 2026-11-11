@@ -35,9 +35,11 @@ light|dark|system`) keeps working:
 | `@media (prefers-color-scheme: dark) { :root:not([data-color-scheme="light"]) }` | dark, following the system |
 | `:root[data-color-scheme="dark"]` | dark, forced |
 
-Fonts, sizes, spacing, radii and density are not part of the template; add declarations for `--omfp-font-prose`,
-`--omfp-font-ui`, `--omfp-font-code`, … to the generated `:root` rule (or the template) to change them. The overall text size is the
-`[ui] font_size` setting of the config file (root font size in px; every rem-based token scales with it).
+Only the roles are needed: gradients, hover, selection, focus, diff and status colors are derived from them in the
+built-in tokens (UI-135, UI-136), so they follow the theme. Fonts, sizes, spacing, radii and density are not part of the
+template; add declarations for `--omfp-font-prose`, `--omfp-font-code`, … to the generated `:root` rule (or the
+template) to change them. The overall text size is the `[ui] font_size` setting of the config file (root font size in
+px, default 17; every rem-based token scales with it).
 
 ## Token mapping
 

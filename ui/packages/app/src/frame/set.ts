@@ -1,10 +1,10 @@
 /**
  * `:set <key>=<value>` (UI-097): one setting of the daemon's `[ui]` or `[keymap]`, sent with `settings.set`. Keys:
- * `density`, `font_size` (px, 10..=28), `notifications`, `fonts.prose|ui|code`, `keymap.<keys>` (normal mode) and
- * `keymap.<mode>.<keys>`; a keymap value is a command id, `""` removes the binding.
+ * `density`, `font_size` (px, 10..=28), `motion`, `notifications`, `fonts.prose|ui|code`, `keymap.<keys>` (normal
+ * mode) and `keymap.<mode>.<keys>`; a keymap value is a command id, `""` removes the binding.
  */
 
-import type { Density, NotificationMode, SetSettingsParams } from "@omfp/protocol";
+import type { Density, Motion, NotificationMode, SetSettingsParams } from "@omfp/protocol";
 import { type Mode, normalizeKeys } from "../keymap/keymap.ts";
 import { FONT_SIZE_MAX, FONT_SIZE_MIN } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
@@ -12,6 +12,7 @@ import { strings } from "../strings/index.ts";
 type FontRole = "prose" | "ui" | "code";
 
 export const DENSITIES: readonly Density[] = ["compact", "normal"];
+export const MOTIONS: readonly Motion[] = ["full", "reduced", "none"];
 export const NOTIFICATIONS: readonly NotificationMode[] = ["background", "always", "never"];
 const FONT_ROLES: readonly FontRole[] = ["prose", "ui", "code"];
 const MODES: readonly Mode[] = ["normal", "insert", "cmdline"];
@@ -20,6 +21,7 @@ const MODES: readonly Mode[] = ["normal", "insert", "cmdline"];
 export const SET_KEYS: readonly string[] = [
   ...DENSITIES.map((density) => `density=${density}`),
   "font_size=",
+  ...MOTIONS.map((motion) => `motion=${motion}`),
   ...NOTIFICATIONS.map((mode) => `notifications=${mode}`),
   ...FONT_ROLES.map((role) => `fonts.${role}=`),
   "keymap.",
@@ -48,6 +50,10 @@ export function parseSet(line: string): ParsedSet {
     return fontSize >= FONT_SIZE_MIN && fontSize <= FONT_SIZE_MAX
       ? { ok: true, patch: { ui: { fontSize } } }
       : invalid(key, value);
+  }
+  if (key === "motion") {
+    const motion = MOTIONS.find((candidate) => candidate === value);
+    return motion === undefined ? invalid(key, value) : { ok: true, patch: { ui: { motion } } };
   }
   if (key === "notifications") {
     const notifications = NOTIFICATIONS.find((candidate) => candidate === value);

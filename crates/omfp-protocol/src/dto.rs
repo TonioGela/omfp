@@ -176,10 +176,12 @@ pub struct Settings {
 pub struct UiSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub density: Option<Density>,
-    /// Root font size in px (10..=28, default 16); every rem-based size token scales with it.
+    /// Root font size in px (10..=28, default 17); every rem-based size token scales with it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(range(min = 10, max = 28))]
     pub font_size: Option<u8>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion: Option<Motion>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notifications: Option<NotificationMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -192,6 +194,18 @@ pub struct UiSettings {
 pub enum Density {
     Compact,
     Normal,
+}
+
+/// How much the UI animates (UI-145); `prefers-reduced-motion: reduce` caps it at `none`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Motion {
+    /// Every effect of the motion catalogue (default).
+    Full,
+    /// State indicators and short UI feedback only, with a steady caret.
+    Reduced,
+    /// No animation or transition.
+    None,
 }
 
 /// When the UI shows system notifications (UI-096).

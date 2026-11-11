@@ -39,10 +39,12 @@ describe("keymap overrides", () => {
 });
 
 describe(":set", () => {
-  // spec: UI-097
+  // spec: UI-097, UI-145
   test("ui keys become settings.set params", () => {
     expect(parseSet("density=normal")).toEqual({ ok: true, patch: { ui: { density: "normal" } } });
     expect(parseSet("font_size=18")).toEqual({ ok: true, patch: { ui: { fontSize: 18 } } });
+    expect(parseSet("motion=reduced")).toEqual({ ok: true, patch: { ui: { motion: "reduced" } } });
+    expect(parseSet("motion = none")).toEqual({ ok: true, patch: { ui: { motion: "none" } } });
     expect(parseSet(" notifications = never ")).toEqual({ ok: true, patch: { ui: { notifications: "never" } } });
     expect(parseSet("fonts.prose=Iowan Old Style, serif")).toEqual({
       ok: true,
@@ -70,10 +72,11 @@ describe(":set", () => {
     });
   });
 
-  // spec: UI-097
+  // spec: UI-097, UI-145
   test("unknown keys and invalid values are refused", () => {
     expect(parseSet("density")).toEqual({ ok: false, error: expect.stringContaining("Usage: :set") });
     expect(parseSet("density=huge")).toEqual({ ok: false, error: "Invalid value for density: huge" });
+    expect(parseSet("motion=slow")).toEqual({ ok: false, error: "Invalid value for motion: slow" });
     expect(parseSet("fonts.title=x")).toEqual({ ok: false, error: "Invalid value for fonts.title: x" });
     expect(parseSet("fonts.ui=")).toEqual({ ok: false, error: "Invalid value for fonts.ui: (empty)" });
     expect(parseSet("font_size=9")).toEqual({ ok: false, error: "Invalid value for font_size: 9" });

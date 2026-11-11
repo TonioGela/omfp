@@ -9,7 +9,8 @@
  *   the app entry;
  * - `widget-exports.json`: every export name of each import-map module, which the daemon checks widget imports against
  *   (DMN-085);
- * - `builtin-widgets/<name>/`: the source of each built-in widget as a copyable widget folder (AGT-021, DMN-087).
+ * - `builtin-widgets/<name>/`: the source of each built-in widget as a copyable widget folder (AGT-021, DMN-087);
+ * - `fonts/`: the bundled faces of the kit's tokens with their licences (UI-141).
  */
 import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -101,6 +102,9 @@ try {
     publicPath: "/",
     sourcemap: "linked",
     naming: { entry: "[name]-[hash].[ext]", chunk: "chunk-[hash].[ext]", asset: "[name]-[hash].[ext]" },
+    // The kit's `@font-face` rules point at `/fonts/…`, copied below as files (UI-141, UI-142): the browser fetches a
+    // face only when text uses it (the bundler would otherwise inline every face into the CSS).
+    external: ["/fonts/*"],
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
   });
 } finally {
@@ -150,6 +154,12 @@ await Bun.write(
   ].join("\n"),
 );
 await Bun.write(join(outdir, "widget-exports.json"), `${JSON.stringify(exportsBySpecifier, null, 2)}\n`);
+
+const fonts = join(root, "../kit/fonts");
+await mkdir(join(outdir, "fonts"));
+for (const file of await readdir(fonts)) {
+  await copyFile(join(fonts, file), join(outdir, "fonts", file));
+}
 
 for (const { name, folder, part } of BUILTINS) {
   const from = join(root, "src/widgets", folder);

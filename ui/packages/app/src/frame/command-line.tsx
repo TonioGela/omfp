@@ -8,7 +8,7 @@
 import { Kbd } from "@omfp/kit";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useReducer, useRef, useState } from "react";
 import { CMDLINE_ATTRIBUTE } from "../keymap/handler.ts";
-import { type Binding, keysFor } from "../keymap/keymap.ts";
+import { type Binding, keyLabel, keysFor } from "../keymap/keymap.ts";
 import { scopesAt, useCommand, useHost } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { type Completion, completions, parseCommandLine } from "./cmdline.ts";
@@ -202,7 +202,7 @@ function CommandOption({
       <span className="omfp-cmdline__name">{option.value}</span>
       <span className="omfp-cmdline__title">{option.title}</span>
       {keys.map((key) => (
-        <Kbd key={key}>{key}</Kbd>
+        <Kbd key={key}>{keyLabel(key)}</Kbd>
       ))}
     </div>
   );

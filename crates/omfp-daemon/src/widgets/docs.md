@@ -49,7 +49,7 @@ Only these specifiers resolve; everything else must be a relative file of the wi
 
 JSX needs no import. TypeScript types are stripped, not checked. CSS files cannot be imported: use the kit, inline
 `style`, or the theme's custom properties (`var(--omfp-primary)`, `var(--omfp-surface-container)`,
-`var(--omfp-on-surface)`, `var(--omfp-outline)`, `var(--omfp-space-2)`, `var(--omfp-font-code)`, …).
+`var(--omfp-on-surface)`, `var(--omfp-outline)`, `var(--omfp-s2)`, `var(--omfp-fs-sm)`, `var(--omfp-font-code)`, …).
 
 ```tsx
 import { Button, Card, Log, Progress } from "omfp/kit";

@@ -29,7 +29,7 @@
  * | `useCurrentWorkspaceId()` | the workspace this window works in: the selected thread's, else the draft thread's |
  * | `usePathSources()` | `suggest`/`complete` for the kit's `PathField`, on the daemon's machine |
  * | `useHost()` | the host itself (registry, window store), for frame-level code |
- * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
+ * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.motion`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
  * | `useSetSettings()` | `settings.set(patch)`: merges `ui`/`keymap` into the config file; failures go to `ERRORS` |
  * | `useFile(path, { follow? })` | a workspace file (`workspaces.read_file`), followed, with `reload` and `save(content, expectedHash?)` (AGT-027) |
  * | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file tab (UI-115) |
@@ -269,6 +269,7 @@ export {
 export {
   DEFAULT_DENSITY,
   DEFAULT_FONT_SIZE,
+  DEFAULT_MOTION,
   DEFAULT_NOTIFICATIONS,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,

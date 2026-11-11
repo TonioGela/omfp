@@ -1,10 +1,10 @@
 /**
- * UI settings kept by the daemon (DMN-009, UI-097): `[ui]` density, font size, notifications and fonts, and `[keymap]`
- * entries, pushed on the `index` topic so every window applies changes live. `settings.set` merges a patch into the
- * config file.
+ * UI settings kept by the daemon (DMN-009, UI-097): `[ui]` density, font size, motion, notifications and fonts, and
+ * `[keymap]` entries, pushed on the `index` topic so every window applies changes live. `settings.set` merges a patch
+ * into the config file.
  */
 
-import type { Density, NotificationMode, SetSettingsParams, Settings } from "@omfp/protocol";
+import type { Density, Motion, NotificationMode, SetSettingsParams, Settings } from "@omfp/protocol";
 import { useMemo } from "react";
 import { reportError } from "./actions.ts";
 import { useSnapshot } from "./hooks.ts";
@@ -12,11 +12,13 @@ import { useHost } from "./host.tsx";
 
 /** Without a `[ui]` density: compact (UI-094). */
 export const DEFAULT_DENSITY: Density = "compact";
-/** Without a `[ui]` font_size: the root font size in px every rem-based token scales with (UI-094). */
-export const DEFAULT_FONT_SIZE = 16;
+/** Without a `[ui]` font_size: the root font size in px every rem-based token scales with (UI-094, UI-144). */
+export const DEFAULT_FONT_SIZE = 17;
 /** The accepted `[ui]` font_size values in px, as the daemon checks them. */
 export const FONT_SIZE_MIN = 10;
 export const FONT_SIZE_MAX = 28;
+/** Without a `[ui]` motion: every effect of the motion catalogue (UI-145). */
+export const DEFAULT_MOTION: Motion = "full";
 /** Without a `[ui]` notifications mode: only while the window has no focus (UI-096). */
 export const DEFAULT_NOTIFICATIONS: NotificationMode = "background";
 

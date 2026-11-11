@@ -13,11 +13,11 @@ export const omfpTheme = EditorView.theme({
   "&": {
     color: v("on-surface"),
     backgroundColor: v("surface"),
-    fontSize: v("font-size-sm"),
+    fontSize: v("fs-code"),
     height: "100%",
   },
   "&.cm-focused": { outline: `2px solid ${v("primary")}`, outlineOffset: "-2px" },
-  ".cm-scroller": { fontFamily: v("font-code"), lineHeight: v("line-height") },
+  ".cm-scroller": { fontFamily: v("font-code"), lineHeight: v("lh-code") },
   ".cm-content": { caretColor: v("primary") },
   ".cm-cursor, .cm-dropCursor": { borderLeftColor: v("primary") },
   // vim's block cursor in normal mode.

@@ -9,7 +9,8 @@
 //!
 //! [ui]
 //! density = "normal"            # compact | normal
-//! font_size = 16                # root font size in px, 10..=28
+//! font_size = 17                # root font size in px, 10..=28
+//! motion = "full"               # full | reduced | none
 //! notifications = "background"  # background | always | never
 //!
 //! [ui.fonts]
@@ -27,8 +28,8 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use omfp_protocol::{
-    Density, FontSettings, KeymapEntry, KeymapMode, NotificationMode, SetSettingsParams, Settings,
-    UiSettings,
+    Density, FontSettings, KeymapEntry, KeymapMode, Motion, NotificationMode, SetSettingsParams,
+    Settings, UiSettings,
 };
 use serde::Deserialize;
 use toml_edit::{DocumentMut, Item, Table};
@@ -96,6 +97,7 @@ struct RawFile {
 struct RawUi {
     density: Option<Density>,
     font_size: Option<u8>,
+    motion: Option<Motion>,
     notifications: Option<NotificationMode>,
     fonts: Option<RawFonts>,
 }
@@ -140,6 +142,7 @@ impl ConfigFile {
             ui: UiSettings {
                 density: raw.ui.density,
                 font_size: raw.ui.font_size,
+                motion: raw.ui.motion,
                 notifications: raw.ui.notifications,
                 fonts,
             },
@@ -233,6 +236,9 @@ pub fn write_back(text: &str, update: &SetSettingsParams) -> Result<String, Stri
         if let Some(size) = ui.font_size {
             set(table, "font_size", i64::from(size));
         }
+        if let Some(motion) = ui.motion {
+            set(table, "motion", motion_name(motion));
+        }
         if let Some(notifications) = ui.notifications {
             set(table, "notifications", notifications_name(notifications));
         }
@@ -299,6 +305,14 @@ fn density_name(density: Density) -> &'static str {
     }
 }
 
+fn motion_name(motion: Motion) -> &'static str {
+    match motion {
+        Motion::Full => "full",
+        Motion::Reduced => "reduced",
+        Motion::None => "none",
+    }
+}
+
 fn notifications_name(mode: NotificationMode) -> &'static str {
     match mode {
         NotificationMode::Background => "background",
@@ -319,6 +333,7 @@ max_processes = 4 # enough
 # Roomier rows.
 density = "compact" # for now
 font_size = 15
+motion = "reduced"
 [ui.fonts]
 prose = "Literata, serif"
 
@@ -338,7 +353,7 @@ prose = "Literata, serif"
         }
     }
 
-    // spec: DMN-009, UI-097
+    // spec: DMN-009, UI-097, UI-145
     #[test]
     fn the_file_holds_daemon_options_ui_settings_and_keymap_entries() {
         let file = ConfigFile::parse(FILE).unwrap();
@@ -349,6 +364,7 @@ prose = "Literata, serif"
             UiSettings {
                 density: Some(Density::Compact),
                 font_size: Some(15),
+                motion: Some(Motion::Reduced),
                 notifications: None,
                 fonts: Some(FontSettings {
                     prose: Some("Literata, serif".into()),
@@ -376,6 +392,7 @@ prose = "Literata, serif"
             ("[colors]\na = 1", "colors"),
             ("[ui]\ndensty = \"normal\"", "densty"),
             ("[ui]\ndensity = \"huge\"", "huge"),
+            ("[ui]\nmotion = \"slow\"", "slow"),
             ("[ui]\nfont_size = 9", "ui.font_size"),
             ("[ui]\nfont_size = 29", "ui.font_size"),
             ("[ui]\nfont_size = \"big\"", "font_size"),
@@ -413,13 +430,14 @@ prose = "Literata, serif"
         assert_eq!(expand_home("~/data".into(), None), PathBuf::from("~/data"));
     }
 
-    // spec: DMN-009, UI-097
+    // spec: DMN-009, UI-097, UI-145
     #[test]
     fn write_back_changes_only_the_given_values_and_keeps_comments() {
         let update = SetSettingsParams {
             ui: Some(UiSettings {
                 density: Some(Density::Normal),
                 font_size: Some(18),
+                motion: Some(Motion::None),
                 notifications: Some(NotificationMode::Never),
                 fonts: Some(FontSettings {
                     prose: None,
@@ -445,6 +463,7 @@ max_processes = 4 # enough
 # Roomier rows.
 density = "normal" # for now
 font_size = 18
+motion = "none"
 notifications = "never"
 [ui.fonts]
 prose = "Literata, serif"

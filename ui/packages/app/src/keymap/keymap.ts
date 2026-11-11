@@ -165,6 +165,29 @@ export function keysFor(bindings: readonly Binding[], command: string, mode: Mod
     .map((binding) => binding.keys);
 }
 
+const MODIFIER = /^(Ctrl|Alt|Meta|Shift)-(?=.)/;
+const CHIP_NAMES: Readonly<Record<string, string>> = { Space: "spc" };
+
+/**
+ * The key chip label of a key sequence (UI-148): lowercase words (`spc`, `esc`, `enter`, `alt+enter`, `ctrl+c`),
+ * printable keys as typed (`G`, `:`), tokens separated by a space (`spc n`, `d d`); never symbol glyphs.
+ */
+export function keyLabel(keys: string): string {
+  return normalizeKeys(keys)
+    .split(" ")
+    .map((token) => {
+      const modifiers: string[] = [];
+      let rest = token;
+      for (let match = MODIFIER.exec(rest); match !== null; match = MODIFIER.exec(rest)) {
+        modifiers.push((match[1] ?? "").toLowerCase());
+        rest = rest.slice(match[0].length);
+      }
+      const base = CHIP_NAMES[rest] ?? ([...rest].length === 1 ? rest : rest.toLowerCase());
+      return [...modifiers, base].join("+");
+    })
+    .join(" ");
+}
+
 /** One `[keymap]` entry of the daemon's settings (UI-097): `command: ""` removes the binding of `keys` in `mode`. */
 export interface KeymapOverride {
   readonly mode: Mode;

@@ -791,7 +791,7 @@ async fn until_density(journey: &Journey, density: &str) -> anyhow::Result<()> {
         .await
 }
 
-/// Waits until `<html>`'s computed `font-size` is `size` (in px, e.g. `"16px"`).
+/// Waits until `<html>`'s computed `font-size` is `size` (in px, e.g. `"17px"`).
 async fn until_root_font_size(journey: &Journey, size: &str) -> anyhow::Result<()> {
     journey
         .until(&format!("a root font size of {size}"), async |page| {
@@ -806,14 +806,38 @@ async fn until_root_font_size(journey: &Journey, size: &str) -> anyhow::Result<(
         .await
 }
 
-// spec: DMN-009, UI-097
+/// Waits until `<html>` carries `data-motion="<motion>"`.
+async fn until_motion(journey: &Journey, motion: &str) -> anyhow::Result<()> {
+    journey
+        .until(&format!("motion {motion}"), async |page| {
+            let value = page.attr("html", "data-motion").await?;
+            Ok((value.as_deref() == Some(motion)).then_some(()))
+        })
+        .await
+}
+
+// spec: DMN-009, UI-097, UI-141, UI-144, UI-145
 #[tokio::test(flavor = "multi_thread")]
 async fn editing_the_config_file_changes_the_open_page_live() -> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
     journey.connected().await?;
     until_density(&journey, "compact").await?;
-    until_root_font_size(&journey, "16px").await?;
-    let compact = journey.token("--omfp-row-height").await?;
+    until_root_font_size(&journey, "17px").await?;
+    until_motion(&journey, "full").await?;
+    // The chrome is set in the bundled Commit Mono, served by the daemon with the bundle.
+    journey
+        .until("the bundled code face", async |page| {
+            let loaded = page
+                .eval(
+                    "return [...document.fonts].some((f) => \
+                     f.family.replaceAll('\"', '') === 'Commit Mono' && f.status === 'loaded');",
+                    Vec::new(),
+                )
+                .await?;
+            Ok((loaded == json!(true)).then_some(()))
+        })
+        .await?;
+    let compact = journey.token("--omfp-row-h").await?;
     journey
         .eval("window.omfpE2eMarker = 'kept';", Vec::new())
         .await?;
@@ -822,11 +846,12 @@ async fn editing_the_config_file_changes_the_open_page_live() -> anyhow::Result<
     let config = journey.config_file();
     std::fs::write(
         &config,
-        "# edited by hand\n[ui]\ndensity = \"normal\"\nfont_size = 20\n",
+        "# edited by hand\n[ui]\ndensity = \"normal\"\nfont_size = 20\nmotion = \"none\"\n",
     )?;
     until_density(&journey, "normal").await?;
     until_root_font_size(&journey, "20px").await?;
-    let normal = journey.token("--omfp-row-height").await?;
+    until_motion(&journey, "none").await?;
+    let normal = journey.token("--omfp-row-h").await?;
     assert_ne!(normal, compact, "the density changes the row height");
     let marker = journey
         .eval("return window.omfpE2eMarker || null;", Vec::new())
@@ -836,8 +861,9 @@ async fn editing_the_config_file_changes_the_open_page_live() -> anyhow::Result<
     // And back.
     std::fs::write(&config, "[ui]\ndensity = \"compact\"\n")?;
     until_density(&journey, "compact").await?;
-    until_root_font_size(&journey, "16px").await?;
-    assert_eq!(journey.token("--omfp-row-height").await?, compact);
+    until_root_font_size(&journey, "17px").await?;
+    until_motion(&journey, "full").await?;
+    assert_eq!(journey.token("--omfp-row-h").await?, compact);
     journey.finish("config file").await
 }
 
