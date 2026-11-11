@@ -12,12 +12,24 @@ const LAYOUT: LayoutNode = [
   ["tabs", { note: "kept" }, "omfp:workspace", ["./widgets/tests", { instance: "t1" }]],
 ];
 
+/** The right-hand tabs of the default view. */
+const SIDE_TABS: LayoutNode = ["tabs", {}, "omfp:workspace", "omfp:changes"];
+
 describe("move", () => {
   // spec: UI-103
   test("before or after another widget; a container left with one child stays, its sizes follow", () => {
     expect(moveNode(DEFAULT_VIEW.layout, "0.1", "before", "0.0.0")).toEqual({
       ok: true,
-      value: ["row", { sizes: [3] }, ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"]],
+      value: ["row", { sizes: [3] }, ["col", {}, SIDE_TABS, "omfp:header", "omfp:chat"]],
+    });
+    expect(moveNode(DEFAULT_VIEW.layout, "0.1.0", "before", "0.0.0")).toEqual({
+      ok: true,
+      value: [
+        "row",
+        { sizes: [3, 1] },
+        ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"],
+        ["tabs", {}, "omfp:changes"],
+      ],
     });
     expect(moveNode(LAYOUT, "0.0.0", "after", "0.1.1")).toEqual({
       ok: true,
@@ -91,7 +103,7 @@ describe("resize", () => {
   test("a keyboard step moves 5 % of the container between two adjacent cells", () => {
     expect(resizeCells(DEFAULT_VIEW.layout, "0", 1, RESIZE_STEP)).toEqual({
       ok: true,
-      value: ["row", { sizes: [3.2, 0.8] }, ["col", {}, "omfp:header", "omfp:chat"], "omfp:workspace"],
+      value: ["row", { sizes: [3.2, 0.8] }, ["col", {}, "omfp:header", "omfp:chat"], SIDE_TABS],
     });
     expect(resizeCells(["col", {}, "a", "b", "c"], "0", 2, -RESIZE_STEP)).toEqual({
       ok: true,
@@ -122,7 +134,7 @@ describe("add", () => {
       "row",
       { sizes: [3, 1, 2] },
       ["col", {}, "omfp:header", "omfp:chat"],
-      "omfp:workspace",
+      SIDE_TABS,
       "user:charts",
     ]);
     expect(addWidget(["tabs", {}, "a"], "./widgets/tests")).toEqual(["tabs", {}, "a", "./widgets/tests"]);
@@ -152,7 +164,7 @@ describe("manifest to write", () => {
               "row",
               { sizes: [3, 1, 2] },
               ["col", {}, "omfp:header", "omfp:chat"],
-              "omfp:workspace",
+              SIDE_TABS,
               "omfp:transcript",
             ],
           },

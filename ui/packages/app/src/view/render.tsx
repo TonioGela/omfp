@@ -305,10 +305,13 @@ function WidgetToolbar({ reference, path, scope, onEdit }: ToolbarProps): ReactN
   );
 }
 
-/** A tab's label: the widget's `title` prop, else its name; a container's kind. */
+/** A tab's label: the widget's `title` prop, else a built-in's own name, else its reference; a container's kind. */
 function nodeTitle(tree: LayoutTree): string {
   if (tree.kind !== "widget") {
     return tree.kind;
   }
-  return typeof tree.props.title === "string" ? tree.props.title : tree.name;
+  if (typeof tree.props.title === "string") {
+    return tree.props.title;
+  }
+  return Object.hasOwn(text.widgetTitles, tree.name) ? (text.widgetTitles[tree.name] ?? tree.name) : tree.name;
 }

@@ -43,14 +43,14 @@ const CASES = FIXTURE.cases;
 
 describe("layouts", () => {
   // spec: UI-024, AGT-010
-  test("the default view is header over chat, and the workspace; the threads column is the frame's", () => {
+  test("the default view is header over chat, with the workspace and changes as tabs; the threads column is the frame's", () => {
     const { views, defaultId, error } = resolveViews(undefined);
     expect([defaultId, error, views.length]).toEqual(["default", undefined, 1]);
     expect(DEFAULT_VIEW.layout).toEqual([
       "row",
       { sizes: [3, 1] },
       ["col", {}, "omfp:header", "omfp:chat"],
-      "omfp:workspace",
+      ["tabs", {}, "omfp:workspace", "omfp:changes"],
     ]);
     expect(DEFAULT_VIEW.title).toBe("Default");
     const tree = views[0]?.tree;
@@ -181,6 +181,12 @@ describe("renderer", () => {
     await user.click(tabs[0] ?? document.body);
     await user.keyboard("{ArrowRight}");
     expect(screen.getByTestId("named").textContent).toBe("2");
+  });
+
+  // spec: AGT-010, UI-080
+  test("a built-in without a title prop is labelled with its own name", () => {
+    show(["tabs", {}, "omfp:workspace", "omfp:changes", ["omfp:changes", { title: "Diffs" }]]);
+    expect(screen.getAllByTestId("view-tab").map((tab) => tab.textContent)).toEqual(["Workspace", "Changes", "Diffs"]);
   });
 });
 

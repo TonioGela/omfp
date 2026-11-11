@@ -556,7 +556,9 @@ describe("layout editing", () => {
   test("the first change without views.json writes the default view with it; the view follows the pushed manifest", async () => {
     const test = editing();
     const { client, flush, user } = test;
-    const workspaceToolbar = screen.getAllByTestId("widget-toolbar").find((toolbar) => toolbar.dataset.path === "0.1");
+    const workspaceToolbar = screen
+      .getAllByTestId("widget-toolbar")
+      .find((toolbar) => toolbar.dataset.path === "0.1.0");
     await user.click(within(workspaceToolbar ?? document.body).getByTestId("widget-move"));
     await user.click(
       screen
@@ -569,7 +571,12 @@ describe("layout editing", () => {
       views: {
         default: {
           title: "Default",
-          layout: ["row", { sizes: [3] }, ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"]],
+          layout: [
+            "row",
+            { sizes: [3, 1] },
+            ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"],
+            ["tabs", {}, "omfp:changes"],
+          ],
         },
       },
     };
@@ -578,14 +585,17 @@ describe("layout editing", () => {
     expect(shownWidgets()).toEqual(["omfp:header", "omfp:chat", "omfp:workspace"]);
     client.viewsEvents("w1", { kind: "views_manifest", manifest, error: null });
     flush();
-    expect(shownWidgets()).toEqual(["omfp:workspace", "omfp:header", "omfp:chat"]);
+    expect(shownWidgets()).toEqual(["omfp:workspace", "omfp:header", "omfp:chat", "omfp:changes"]);
     await user.click(within(screen.getAllByTestId("widget-toolbar")[0] ?? document.body).getByTestId("widget-hide"));
     expect(written(test)[1]).toEqual({
       workspaceId: "w1",
       manifest: {
         ...manifest,
         views: {
-          default: { title: "Default", layout: ["row", { sizes: [3] }, ["col", {}, "omfp:header", "omfp:chat"]] },
+          default: {
+            title: "Default",
+            layout: ["row", { sizes: [3, 1] }, ["col", {}, "omfp:header", "omfp:chat"], ["tabs", {}, "omfp:changes"]],
+          },
         },
       },
     });

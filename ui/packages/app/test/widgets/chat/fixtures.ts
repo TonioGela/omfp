@@ -9,10 +9,19 @@ import { isObject } from "../../../src/vm/tool.ts";
 export type FixtureName =
   | "text_reply"
   | "bash_tool_call"
+  | "bash_tool_error"
   | "approval_granted"
   | "ask_answered"
+  | "ask_cancelled"
   | "follow_up_then_abort"
-  | "restart_with_history";
+  | "restart_with_history"
+  | "read_tool_calls"
+  | "edit_tool_calls"
+  | "write_tool_calls"
+  | "search_tool_calls"
+  | "todo_tool_calls"
+  | "web_tool_calls"
+  | "task_tool_call";
 
 /** The `ThreadEvent`s of `fixtures/threads/<omp>/<name>.jsonl`. */
 export function fixtureEvents(name: FixtureName): ThreadEvent[] {
@@ -58,6 +67,15 @@ export function isFrame(type: string, delta?: string): (event: ThreadEvent) => b
     const update = frame.assistantMessageEvent;
     return delta === undefined || (isObject(update) && update.type === delta);
   };
+}
+
+/** The `tool_execution_end` frame of call `toolCallId`. */
+export function isToolEnd(toolCallId: string): (event: ThreadEvent) => boolean {
+  return (event) =>
+    isFrame("tool_execution_end")(event) &&
+    event.kind === "omp" &&
+    isObject(event.frame) &&
+    event.frame.toolCallId === toolCallId;
 }
 
 /** A thread summary for the index. */

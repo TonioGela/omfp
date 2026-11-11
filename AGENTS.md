@@ -12,7 +12,7 @@ only be reachable from the human UI.
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M4 and M2b done; next: M5 tools and changes);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5 and M2b done; next: M6 live voice, M7 desktop, M8 subagents);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -114,6 +114,10 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   `--add-dir` root; it does not resolve symlinked roots, and tools write through symlinks. Roots saved in a session
   survive a restart without their flag: detach with `/remove-dir` (S-10).
 - `--append-system-prompt` disables every `APPEND_SYSTEM.md` (user and project); the daemon must concatenate them.
+- Tools offered by default: read, bash, edit, ask, eval, glob, grep, task, wait, todo, web_search, write (no `find`,
+  `ast_grep` or `fetch`: `read` fetches URLs). `edit` takes hashline input whose `[path#TAG]` needs a prior `read`.
+  `web_search` failures and URL reads that fail (HTTP 404) end with `isError: false`; `task` runs subagents in the
+  background unless `async.enabled: false`; open `todo` items make omp prompt the model again.
 - omp-rpc's client is blocking and closes the omp process group on drop; command default timeout is 30 s.
 - Our harness docs (`omp://…`) may describe a different omp version than the pinned one: verify against the source at
   `~/.cargo/git/checkouts/oh-my-pi-*/<rev>/` (docs in `docs/`, Rust client in `sdk/rust/omp-rpc/`).
@@ -131,7 +135,7 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 - The web bundle has no user theme: `build.ts` adds `<link rel="stylesheet" href="/theme.css" data-omfp-theme>` after
   the bundle's CSS; the daemon serves `/theme.css` (UI-091), and the app replaces the link with a
   `<style data-omfp-theme>` when the theme changes.
-- Fixtures are normalized (timestamps, durations, UUIDs, random ids, temp roots); if a re-record shows churn, add the
+- Fixtures are normalized (timestamps, durations, token counts, UUIDs, random ids, temp roots); if a re-record shows churn, add the
   volatile field to `omfp_testkit::normalize_frame` rather than accepting noise.
 - TypeScript (`ui/`): one root `tsconfig.json` (strict, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`),
   type-checked by `typescript` 7's native `tsc` (`bun run check`); no `any`. Biome comes from nixpkgs (the npm

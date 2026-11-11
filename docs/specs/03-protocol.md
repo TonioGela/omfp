@@ -108,9 +108,9 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `workspaces.update` | `workspaceId`, `name` | workspace |
 | `workspaces.remove` | `workspaceId`, `force?` | `{}`; removes the repositories and deletes the folder (DMN-028) |
 | `workspaces.rescan` | `workspaceId` | workspace (DMN-023; the daemon also rescans watched workspaces on its own) |
-| `workspaces.add_repo` | `workspaceId`, `name?`, `source`: `link { path }` \| `worktree { repo (id or path), branch?, baseRef? }` \| `clone { url }` \| `pr { pr }` (after S-08) | workspace (DMN-024) |
+| `workspaces.add_repo` | `workspaceId`, `name?`, `source`: `link { path }` \| `worktree { repo (id or path), branch?, baseRef? }` \| `clone { url }` \| `pr { pr }` (later, S-08) | workspace (DMN-024) |
 | `workspaces.remove_repo` | `workspaceId`, `name`, `force?`, `deleteBranch?` | workspace (DMN-025) |
-| `workspaces.status` / `.diff` | `workspaceId`, `repo` (name), `path?`, `cursor?` | status / paged diff of one repository |
+| `workspaces.status` / `.diff` | `workspaceId`, `repo` (name), `path?`, `cursor?` | status / paged diff of one repository; `status` rescans the workspace first and publishes the fresh status of all its repositories on `workspace/<id>` when it changed (what `omfp:changes` uses to refresh, UI-080) |
 | `threads.create` | `workspace`: `{ id }` \| `{ new: { name?, link? } }` (default: a new folder named after the title, else the first message), `prompt?` (first message), `model?`, `thinkingLevel?`, `approvalMode?` (default `yolo`, DMN-074), `title?` (scripts and agents; otherwise generated, DMN-073) | thread |
 | `threads.update` | `threadId`, `title?` (a `set` title, DMN-073), `approvalMode?` (from the next start of the thread's omp) | thread |
 | `threads.archive` / `.unarchive` / `.delete` | `threadId` | `{}`; archive stops the thread's omp process and sets `archivedAt`, unarchive clears it, delete removes the thread's records and directory (workspaces are never removed implicitly) |

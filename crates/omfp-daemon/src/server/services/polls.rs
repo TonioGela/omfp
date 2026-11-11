@@ -85,8 +85,8 @@ impl Services {
     }
 
     /// The rescan (a change reaches the index and the live threads' roots), then the git status published on
-    /// `workspace/<id>`.
-    async fn full_scan(&self, id: &str) -> Result<(), ErrorBody> {
+    /// `workspace/<id>`; also what a tool run's end triggers (`spawn_rescans`).
+    pub(super) async fn full_scan(&self, id: &str) -> Result<(), ErrorBody> {
         self.rescan(id).await?;
         self.workspace_status(id).await?;
         Ok(())
@@ -114,6 +114,8 @@ mod tests {
     use std::path::Path;
     use std::sync::Mutex;
 
+    use omfp_core::ThreadEvent;
+    use omp_rpc::{RpcAgentEvent, RpcNotification};
     use tempfile::TempDir;
 
     use super::*;
@@ -128,6 +130,7 @@ mod tests {
     struct Harness {
         dir: TempDir,
         services: Services,
+        launcher: FakeLauncher,
         git: Arc<FakeGit>,
         /// The checkouts `git status` ran in, in order.
         statuses: Arc<Mutex<Vec<PathBuf>>>,
@@ -158,8 +161,9 @@ mod tests {
         let seen = Arc::clone(&statuses);
         git.on_status(move |dir| seen.lock().unwrap().push(dir.to_owned()));
         let widgets = Arc::new(crate::widgets::Widgets::new(data.widgets(), None));
+        let launcher = FakeLauncher::new();
         let supervisor = Supervisor::new(
-            Arc::new(FakeLauncher::new()),
+            Arc::new(launcher.clone()),
             Arc::clone(&threads),
             Arc::clone(&workspaces),
             data,
@@ -171,6 +175,7 @@ mod tests {
         Harness {
             dir,
             services,
+            launcher,
             git,
             statuses,
             workspace: view.workspace.id,
@@ -306,6 +311,86 @@ mod tests {
         assert_eq!(h.full_scans(), 1);
         until(start, 29).await;
         assert_eq!(h.full_scans(), 1);
+    }
+
+    // spec: DMN-023, UI-025
+    #[tokio::test(start_paused = true)]
+    async fn a_tool_runs_end_publishes_a_dirty_state_the_cheap_check_cannot_see() {
+        let h = harness().await;
+        let thread = h.thread();
+        h.services.supervisor.start(&thread).await.unwrap();
+        h.services.workspace_log(&h.workspace).await.unwrap();
+        assert_eq!(h.app_dirty(), Some(false));
+        let _rescans = AbortOnDrop(h.services.spawn_rescans());
+
+        // The agent's `write` to a tracked file: no top-level entry, no git file changes, no poll runs.
+        h.git.set_dirty(&h.app, true);
+        h.launcher.process(0).emit(vec![tool_end()]);
+
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while h.app_dirty() != Some(true) {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the tool run's end publishes the dirty state on `workspace/<id>`");
+    }
+
+    // spec: DMN-023
+    #[tokio::test(start_paused = true)]
+    async fn only_tools_that_can_change_files_trigger_a_git_scan() {
+        let h = harness().await;
+        let thread = h.thread();
+        h.services.supervisor.start(&thread).await.unwrap();
+        let _rescans = AbortOnDrop(h.services.spawn_rescans());
+        let before = h.full_scans();
+
+        for name in ["read", "grep", "glob", "web_search", "todo", "ask"] {
+            h.launcher.process(0).emit(vec![tool_end_named(name)]);
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert_eq!(
+            h.full_scans(),
+            before,
+            "read-only tools run no `git status`"
+        );
+
+        h.launcher.process(0).emit(vec![tool_end_named("edit")]);
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while h.full_scans() == before {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("an `edit` end runs a full scan");
+    }
+
+    fn tool_end_named(name: &str) -> RpcNotification {
+        let mut frame = tool_end();
+        if let RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(end)) = &mut frame {
+            name.clone_into(&mut end.tool_name);
+        }
+        frame
+    }
+
+    /// The `tool_execution_end` of the recorded bash scenario.
+    fn tool_end() -> RpcNotification {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/threads")
+            .join(omfp_core::OMP_VERSION)
+            .join("bash_tool_call.jsonl");
+        std::fs::read_to_string(path)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str::<ThreadEvent>(line).unwrap())
+            .find_map(|event| match event {
+                ThreadEvent::Omp {
+                    frame:
+                        frame @ RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(_)),
+                } => Some(frame),
+                _ => None,
+            })
+            .unwrap()
     }
 
     // spec: DMN-023

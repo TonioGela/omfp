@@ -813,6 +813,99 @@
     line-height: var(--omfp-line-height);
   }
 
+  /* Code highlighting (UI-090): highlight.js classes colored by the theme's roles, so every theme (built-in light and
+     dark, a matugen or hand-written one) recolors code without its own syntax palette. */
+  .omfp-code :is(.hljs-keyword, .hljs-built_in, .hljs-type, .hljs-selector-tag, .hljs-doctag) {
+    color: var(--omfp-primary);
+  }
+
+  .omfp-code :is(.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class) {
+    color: var(--omfp-tertiary);
+  }
+
+  .omfp-code :is(.hljs-string, .hljs-regexp, .hljs-subst, .hljs-template-variable, .hljs-addition) {
+    color: var(--omfp-success);
+  }
+
+  .omfp-code :is(.hljs-number, .hljs-literal, .hljs-symbol, .hljs-bullet, .hljs-variable.constant_, .hljs-meta) {
+    color: var(--omfp-warning);
+  }
+
+  .omfp-code :is(.hljs-params, .hljs-attr, .hljs-attribute, .hljs-property, .hljs-variable, .hljs-template-tag) {
+    color: var(--omfp-secondary);
+  }
+
+  .omfp-code :is(.hljs-comment, .hljs-quote) {
+    color: var(--omfp-on-surface-variant);
+    font-style: italic;
+  }
+
+  .omfp-code :is(.hljs-punctuation, .hljs-operator) {
+    color: var(--omfp-outline);
+  }
+
+  .omfp-code .hljs-deletion {
+    color: var(--omfp-error);
+  }
+
+  .omfp-code .hljs-emphasis {
+    font-style: italic;
+  }
+
+  .omfp-code .hljs-strong {
+    font-weight: 600;
+  }
+
+  /* Diff: a table of numbered lines (also `.omfp-code`, for the code font), colored by the success and error roles. */
+  .omfp-diff {
+    display: block;
+    overflow: auto;
+    border-collapse: collapse;
+    border-radius: var(--omfp-radius-sm);
+    color: var(--omfp-on-surface);
+    background: var(--omfp-surface-container-highest);
+    line-height: var(--omfp-line-height);
+  }
+
+  .omfp-diff td {
+    padding: 0 var(--omfp-space-2);
+    vertical-align: top;
+  }
+
+  .omfp-diff__number,
+  .omfp-diff__sign {
+    color: var(--omfp-on-surface-variant);
+    text-align: end;
+    user-select: none;
+  }
+
+  .omfp-diff__code {
+    inline-size: 100%;
+    white-space: pre;
+  }
+
+  .omfp-diff__header {
+    color: var(--omfp-on-surface-variant);
+    background: var(--omfp-surface-container-high);
+    white-space: pre;
+  }
+
+  .omfp-diff__line[data-kind="add"] {
+    background: color-mix(in srgb, var(--omfp-success) 16%, transparent);
+  }
+
+  .omfp-diff__line[data-kind="del"] {
+    background: color-mix(in srgb, var(--omfp-error) 16%, transparent);
+  }
+
+  .omfp-diff__line[data-kind="add"] .omfp-diff__sign {
+    color: var(--omfp-success);
+  }
+
+  .omfp-diff__line[data-kind="del"] .omfp-diff__sign {
+    color: var(--omfp-error);
+  }
+
   .omfp-disclosure__heading {
     margin: 0;
     font-size: inherit;

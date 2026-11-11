@@ -1,0 +1,291 @@
+/**
+ * L4: the specialized tool cards (UI-050..052) rendered from fixtures recorded from the pinned omp (UI-051), each in
+ * its streaming, success and error states; code in them is highlighted (UI-090).
+ */
+
+import { afterEach, describe, expect, test } from "bun:test";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { SELECTED_THREAD } from "../../../src/sdk/index.ts";
+import type { ToolCard } from "../../../src/vm/tool.ts";
+import { ToolCardView } from "../../../src/widgets/chat/message.tsx";
+import { card, streaming } from "../../support/cards.ts";
+import { repo, thread, workspace } from "../../support/fixtures.ts";
+import { renderWithHost, testHost } from "../../support/host.tsx";
+
+afterEach(cleanup);
+
+/** Renders `toolCard` in workspace `w1` (folder `/work/w1`, whose repository `src` holds the fixtures' files). */
+function show(toolCard: ToolCard): HTMLElement {
+  const test = testHost();
+  test.client.connected();
+  test.client.index({
+    workspaces: [workspace("w1", [{ ...repo("w1", "src", "main"), kind: "clone" }])],
+    threads: [thread("t1", "cards", "w1")],
+  });
+  test.host.window.set(SELECTED_THREAD, "t1");
+  renderWithHost(<ToolCardView cardKey={toolCard.toolCallId} card={toolCard} />, test);
+  test.flush();
+  return screen.getByTestId("tool-card");
+}
+
+/** Renders the card and opens it. */
+async function open(toolCard: ToolCard): Promise<HTMLElement> {
+  const element = show(toolCard);
+  if (element.querySelector("[aria-expanded=false]") !== null) {
+    await userEvent.click(within(element).getByTestId("toggle"));
+  }
+  return element;
+}
+
+const byTestId = (element: HTMLElement, id: string) => within(element).getByTestId(id);
+const texts = (element: HTMLElement, id: string) =>
+  within(element)
+    .queryAllByTestId(id)
+    .map((node) => node.textContent);
+
+describe("bash card", () => {
+  // spec: UI-050, UI-051
+  test("streaming: the command in the header, the output so far, no exit code yet", async () => {
+    const element = await open(streaming("bash_tool_call", "call_bash_1"));
+    expect([element.dataset.view, element.dataset.status]).toEqual(["bash", "running"]);
+    expect(byTestId(element, "tool-subject").textContent).toBe("echo tool-output-123");
+    expect(byTestId(element, "tool-output").textContent).toBe("tool-output-123\n");
+    expect(within(element).queryByTestId("tool-exit")).toBeNull();
+  });
+
+  // spec: UI-050, UI-051
+  test("success: collapsed, then the output and exit 0", async () => {
+    const done = card("bash_tool_call", "call_bash_1");
+    expect(within(show(done)).queryByTestId("tool-output")).toBeNull();
+    cleanup();
+    const element = await open(done);
+    expect(byTestId(element, "tool-exit").textContent).toBe("exit 0");
+    expect(byTestId(element, "tool-exit").dataset.tone).toBe("success");
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: expanded and distinct, with the exit code", () => {
+    const element = show(card("bash_tool_error", "call_bash_1"));
+    expect([element.dataset.status, element.dataset.tone]).toEqual(["failed", "error"]);
+    expect(byTestId(element, "tool-output").textContent).toStartWith("oops\n");
+    expect(byTestId(element, "tool-exit").textContent).toBe("exit 3");
+    expect(byTestId(element, "tool-exit").dataset.tone).toBe("error");
+  });
+
+  // spec: UI-050
+  test("ANSI colors become theme classes", async () => {
+    const done = card("bash_tool_call", "call_bash_1");
+    const colored: ToolCard = {
+      ...done,
+      view: { kind: "bash", command: "ls", cwd: "/tmp", output: "\u001b[1;34mdir\u001b[0m file", exitCode: 0 },
+    };
+    const element = await open(colored);
+    const output = byTestId(element, "tool-output");
+    expect(output.textContent).toBe("dir file");
+    expect(output.querySelector("span")?.className).toBe("omfp-ansi-fg-blue omfp-ansi-bold");
+    expect(element.textContent).toContain("in /tmp");
+  });
+});
+
+describe("read card", () => {
+  // spec: UI-050, UI-051
+  test("streaming: the path relative to its repository, with the repository chip", () => {
+    const element = show(streaming("read_tool_calls", "call_read_1"));
+    expect(element.dataset.status).toBe("running");
+    expect(byTestId(element, "tool-repo").textContent).toBe("src");
+    expect(byTestId(element, "tool-path").textContent).toBe("srclib.rs");
+  });
+
+  // spec: UI-050, UI-051, UI-090
+  test("success: the result is collapsed, then the highlighted lines and their range", async () => {
+    const done = card("read_tool_calls", "call_read_1");
+    expect(within(show(done)).queryByTestId("tool-content")).toBeNull();
+    cleanup();
+    const element = await open(done);
+    expect(byTestId(element, "tool-range").textContent).toBe("1–9 of 9");
+    const content = byTestId(element, "tool-content");
+    expect(content.textContent).toStartWith("//! Tool card fixture crate.");
+    await waitFor(() => expect(content.querySelector(".hljs-keyword")?.textContent).toBe("pub"));
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: omp's message, expanded", () => {
+    const element = show(card("read_tool_calls", "call_read_2"));
+    expect(byTestId(element, "tool-error").textContent).toBe("Path 'src/missing.rs' not found");
+    expect(within(element).queryByTestId("tool-content")).toBeNull();
+  });
+});
+
+describe("fetch card", () => {
+  // spec: UI-050, UI-051
+  test("streaming and success: the URL, then the page", async () => {
+    expect(byTestId(show(streaming("web_tool_calls", "call_read_1")), "tool-subject").textContent).toBe(
+      "http://127.0.0.1:29417/page",
+    );
+    cleanup();
+    const element = await open(card("web_tool_calls", "call_read_1"));
+    expect(byTestId(element, "tool-link").getAttribute("href")).toBe("http://127.0.0.1:29417/page");
+    expect(byTestId(element, "tool-content").textContent).toContain("# Tool cards");
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: a 404 is a failure with omp's note", () => {
+    const element = show(card("web_tool_calls", "call_read_2"));
+    expect(element.dataset.status).toBe("failed");
+    expect(byTestId(element, "tool-error").textContent).toContain("Method: failed");
+  });
+});
+
+describe("edit card", () => {
+  // spec: UI-050, UI-051
+  test("streaming: the file and the edit as written", async () => {
+    const element = await open(streaming("edit_tool_calls", "call_edit_1"));
+    expect(byTestId(element, "tool-path").textContent).toBe("srclib.rs");
+    expect(byTestId(element, "tool-input").textContent).toContain("left.saturating_add(right)");
+  });
+
+  // spec: UI-050, UI-051, UI-090
+  test("success: a highlighted diff view", async () => {
+    const element = await open(card("edit_tool_calls", "call_edit_1"));
+    const diff = byTestId(element, "tool-diff");
+    expect([...diff.querySelectorAll("[data-kind=del]")].map((row) => row.textContent)).toEqual(["4−    left + right"]);
+    expect([...diff.querySelectorAll("[data-kind=add]")].map((row) => row.textContent)).toEqual([
+      "4+    left.saturating_add(right)",
+    ]);
+    await waitFor(() => expect(diff.querySelector(".hljs-keyword")?.textContent).toBe("pub"));
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: omp's reason and the refused edit", () => {
+    const element = show(card("edit_tool_calls", "call_edit_2"));
+    expect(byTestId(element, "tool-error").textContent).toContain("is not from this session");
+    expect(byTestId(element, "tool-input").textContent).toContain("PUT 8.=8:");
+  });
+});
+
+describe("write card", () => {
+  // spec: UI-050, UI-051, UI-090
+  test("streaming and success: the file and its highlighted content", async () => {
+    expect(byTestId(show(streaming("write_tool_calls", "call_write_1")), "tool-path").textContent).toBe("notes.md");
+    cleanup();
+    const element = await open(card("write_tool_calls", "call_write_1"));
+    const content = byTestId(element, "tool-content");
+    expect(content.textContent).toBe("# Notes\n\n- add saturates\n- greet says hello\n");
+    await waitFor(() => expect(content.querySelector(".hljs-section")?.textContent).toBe("# Notes"));
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: writing over a directory", () => {
+    expect(byTestId(show(card("write_tool_calls", "call_write_2")), "tool-error").textContent).toContain("EISDIR");
+  });
+});
+
+describe("search cards", () => {
+  // spec: UI-050, UI-051
+  test("streaming: the query; success: the files with their match counts", async () => {
+    expect(byTestId(show(streaming("search_tool_calls", "call_grep_1")), "tool-subject").textContent).toBe("pub fn");
+    cleanup();
+    const grep = await open(card("search_tool_calls", "call_grep_1"));
+    expect(byTestId(grep, "tool-total").textContent).toBe("2 matches in 1 file");
+    expect(texts(grep, "tool-file")).toEqual(["srclib.rs2"]);
+    cleanup();
+    const glob = await open(card("search_tool_calls", "call_glob_1"));
+    expect([byTestId(glob, "tool-subject").textContent, byTestId(glob, "tool-total").textContent]).toEqual([
+      "src/**/*.rs",
+      "1 file",
+    ]);
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: a missing folder", () => {
+    expect(byTestId(show(card("search_tool_calls", "call_glob_2")), "tool-error").textContent).toBe(
+      "Path not found: missing",
+    );
+  });
+});
+
+describe("todo card", () => {
+  // spec: UI-050, UI-051
+  test("streaming: no list yet; success: the checklist", async () => {
+    expect(texts(await open(streaming("todo_tool_calls", "call_todo_1")), "todo-task")).toEqual([]);
+    cleanup();
+    const element = await open(card("todo_tool_calls", "call_todo_3"));
+    expect(
+      within(element)
+        .getAllByTestId("todo-task")
+        .map((task) => [task.dataset.status, task.textContent]),
+    ).toEqual([
+      ["completed", "☑Read the codedone"],
+      ["in_progress", "◐Fix the bugin progress"],
+    ]);
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: an unknown task, with the list kept", () => {
+    const element = show(card("todo_tool_calls", "call_todo_2"));
+    expect(byTestId(element, "tool-error").textContent).toStartWith('Errors: Task "Write the docs" not found');
+    expect(texts(element, "todo-task").length).toBe(2);
+  });
+});
+
+describe("web_search card", () => {
+  // spec: UI-050, UI-051
+  test("streaming: the query; success: the links", async () => {
+    expect(byTestId(show(streaming("web_tool_calls", "call_web_search_1")), "tool-subject").textContent).toBe(
+      "omfp tool cards",
+    );
+    cleanup();
+    const element = await open(card("web_tool_calls", "call_web_search_1"));
+    const links = within(element).getAllByTestId("tool-link");
+    expect(links.map((link) => link.querySelector("a")?.getAttribute("href"))).toEqual([
+      "http://127.0.0.1:29417/page",
+      "http://127.0.0.1/tools",
+    ]);
+    expect(links[0]?.textContent).toContain("Tool cards");
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: the engine's failure, expanded", () => {
+    const element = show(card("web_tool_calls", "call_web_search_2"));
+    expect(element.dataset.tone).toBe("error");
+    expect(byTestId(element, "tool-error").textContent).toContain("SearXNG API error (500)");
+  });
+});
+
+describe("ask card", () => {
+  // spec: UI-050, UI-051
+  test("streaming: the questions; success: with the given answers", async () => {
+    expect(texts(await open(streaming("ask_answered", "call_ask_1")), "ask-answer")).toEqual([]);
+    cleanup();
+    const element = await open(card("ask_answered", "call_ask_1"));
+    expect(texts(element, "ask-question")).toEqual(["Which database?SQLite", "Which features?no answer"]);
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: cancelled by the user", () => {
+    const element = show(card("ask_cancelled", "call_ask_1"));
+    expect(byTestId(element, "tool-error").textContent).toBe("Ask tool was cancelled by the user");
+    expect(texts(element, "ask-question")).toEqual(["Which database?"]);
+  });
+});
+
+describe("task card", () => {
+  // spec: UI-050, UI-051
+  test("streaming: each subagent's name, task and live progress; success: its output", async () => {
+    const running = await open(streaming("task_tool_call", "call_task_1"));
+    expect(byTestId(running, "tool-subject").textContent).toBe("Counter");
+    expect(byTestId(running, "subagent-activity").textContent).toBe("Reading the library");
+    cleanup();
+    const element = await open(card("task_tool_call", "call_task_1"));
+    expect(byTestId(element, "subagent").dataset.status).toBe("completed");
+    expect(byTestId(element, "subagent-output").textContent).toBe("src/lib.rs defines 2 functions: add and greet.");
+  });
+
+  // spec: UI-050, UI-051, UI-052
+  test("error: an unknown agent", () => {
+    const element = show(card("task_tool_call", "call_task_2"));
+    expect(byTestId(element, "tool-error").textContent).toContain('Unknown agent "no-such-agent"');
+    expect(byTestId(element, "subagent").dataset.status).toBe("pending");
+  });
+});

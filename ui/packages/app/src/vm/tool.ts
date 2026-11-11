@@ -1,10 +1,12 @@
 /**
- * The fallback tool card (UI-050): name, one-line argument summary, status, duration, and expandable pretty JSON
- * arguments and text result. Failed tools are distinct and expanded by default (UI-052).
+ * Tool cards (UI-050): name, one-line argument summary, status, duration, and expandable pretty JSON arguments and
+ * text result; tools with a recorded shape add their specialized view (`tool-view.ts`). Failed tools are distinct and
+ * expanded by default (UI-052).
  */
 
 import type { JsonValue, ToolCall, ToolResultMessage, ToolRun, UserContent } from "@omfp/core";
 import { strings } from "../strings/index.ts";
+import { quietFailure, shownArguments, type ToolView, toolOutput, toolView } from "./tool-view.ts";
 
 /** Longest argument summary. */
 const SUMMARY_CHARS = 96;
@@ -27,7 +29,7 @@ export function prettyJson(value: unknown): string {
 /** Progress shown on a card. */
 export type CardStatus = "composing" | "pending" | "running" | "succeeded" | "failed";
 
-/** Everything the fallback card shows. */
+/** Everything a tool card shows. */
 export interface ToolCard {
   readonly toolCallId: string;
   readonly name: string;
@@ -39,6 +41,8 @@ export interface ToolCard {
   readonly args: string;
   /** Text parts of the result (or of the latest partial result), else its pretty JSON. */
   readonly result: string | undefined;
+  /** The specialized view of the tool (`generic` for the fallback card). */
+  readonly view: ToolView;
 }
 
 /** Cards start collapsed, failed ones expanded (UI-052). */
@@ -60,31 +64,46 @@ export function toolCard(
 ): ToolCard {
   const name = call?.name ?? run?.tool_name ?? result?.toolName ?? strings.chat.tool.fallbackName;
   const partial = call?.partialArgs;
-  const args: JsonValue | undefined = call?.arguments ?? run?.args ?? undefined;
+  // omp's own copy of the arguments (defaults filled in, its `i` intent field split off) once the run started.
+  const args: JsonValue | undefined = run?.args ?? call?.arguments ?? undefined;
   const intent = call?.intent ?? run?.intent ?? undefined;
   const finishedAt = result?.timestamp;
+  const value = run?.result ?? run?.partial_result ?? null;
+  const output = toolOutput(value ?? result);
+  const status = statusOf(partial !== undefined && args === undefined, run, result);
   return {
     toolCallId,
     name,
-    summary: summaryOf(intent, args, partial),
-    status: statusOf(partial !== undefined && args === undefined, run, result),
+    summary: summaryOf(name, intent, args, partial),
+    status: status === "succeeded" && quietFailure(name, output) !== undefined ? "failed" : status,
     durationMs:
       calledAt !== undefined && finishedAt !== undefined && calledAt > 0 && finishedAt >= calledAt
         ? finishedAt - calledAt
         : undefined,
     args: args !== undefined ? prettyJson(args) : (partial ?? "{}"),
     result: resultOf(run, result),
+    view: toolView(name, args, output, status === "succeeded" || status === "failed"),
   };
 }
 
-function summaryOf(intent: string | undefined, args: JsonValue | undefined, partial: string | undefined): string {
+/**
+ * The header's one-line summary: the intent, else the arguments the card does not show elsewhere (`shownArguments`),
+ * else, while the model writes the arguments of a tool without a specialized subject, their partial text.
+ */
+function summaryOf(
+  name: string,
+  intent: string | undefined,
+  args: JsonValue | undefined,
+  partial: string | undefined,
+): string {
   if (intent !== undefined) {
     return oneLine(intent, SUMMARY_CHARS);
   }
+  const shown = shownArguments(name);
   if (isObject(args)) {
-    return summarize(args);
+    return summarize(args, shown ?? []);
   }
-  return partial === undefined ? "" : oneLine(partial, SUMMARY_CHARS);
+  return partial === undefined || shown !== undefined ? "" : oneLine(partial, SUMMARY_CHARS);
 }
 
 function resultOf(run: ToolRun | undefined, result: ToolResultMessage | undefined): string | undefined {
@@ -112,9 +131,10 @@ export function isObject(value: unknown): value is Readonly<Record<string, unkno
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** `key: value` of the scalar arguments, by key, on one line. */
-function summarize(args: Readonly<Record<string, unknown>>): string {
+/** `key: value` of the scalar arguments but `omitted`, by key, on one line. */
+function summarize(args: Readonly<Record<string, unknown>>, omitted: readonly string[]): string {
   const parts = Object.keys(args)
+    .filter((key) => !omitted.includes(key))
     .sort()
     .flatMap((key) => {
       const value = args[key];

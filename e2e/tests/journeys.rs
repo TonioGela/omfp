@@ -1102,3 +1102,176 @@ async fn a_repository_seen_in_one_workspace_is_suggested_in_another() -> anyhow:
     assert_eq!(name, dir_name(&repo));
     journey.finish("suggestions").await
 }
+
+/// The computed text color of the first highlighted keyword of the reply's code block.
+async fn keyword_color(journey: &Journey) -> anyhow::Result<String> {
+    let value = journey
+        .eval(
+            "const k = document.querySelector('[data-testid=markdown] pre .hljs-keyword');
+             return k === null ? null : getComputedStyle(k).color;",
+            Vec::new(),
+        )
+        .await?;
+    Ok(value.as_str().unwrap_or_default().to_owned())
+}
+
+/// The computed color of `--omfp-primary` (as `rgb(…)`), the color keywords take.
+async fn primary_color(journey: &Journey) -> anyhow::Result<String> {
+    let value = journey
+        .eval(
+            "const probe = document.createElement('span');
+             probe.style.color = 'var(--omfp-primary)';
+             document.body.append(probe);
+             const color = getComputedStyle(probe).color;
+             probe.remove();
+             return color;",
+            Vec::new(),
+        )
+        .await?;
+    Ok(value.as_str().unwrap_or_default().to_owned())
+}
+
+/// Waits until the reply's keywords have the theme's primary color.
+async fn keywords_follow_the_theme(journey: &Journey) -> anyhow::Result<String> {
+    journey
+        .until("keywords in the theme's primary color", async |page| {
+            let keyword = keyword_color(page).await?;
+            Ok((!keyword.is_empty() && keyword == primary_color(page).await?).then_some(keyword))
+        })
+        .await
+}
+
+/// The reply's code block is highlighted with the theme's colors: light, dark and a custom theme (UI-090).
+async fn code_follows_the_theme(journey: &Journey) -> anyhow::Result<()> {
+    journey.scheme("light").await?;
+    let light = keywords_follow_the_theme(journey).await?;
+    journey.screenshot("m5-code-light").await?;
+    journey.scheme("dark").await?;
+    let dark = keywords_follow_the_theme(journey).await?;
+    assert_ne!(light, dark, "keywords change color with the scheme");
+    journey.screenshot("m5-code-dark").await?;
+    let mut connection = journey.connect().await?;
+    connection
+        .call::<omfp_protocol::method::ThemeSet>(omfp_protocol::Theme {
+            css: Some(":root { --omfp-primary: #c2185b; }\n".to_owned()),
+        })
+        .await?;
+    connection.close().await?;
+    journey
+        .until("the custom theme's keywords", async |page| {
+            Ok((keyword_color(page).await? == "rgb(194, 24, 91)").then_some(()))
+        })
+        .await?;
+    journey.screenshot("m5-code-custom").await?;
+    Ok(())
+}
+
+// spec: E2E-06, UI-080, UI-050, UI-090, DMN-026, UI-025, DMN-023
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_the_agent_edits_shows_its_diff_in_the_changes_widget() -> anyhow::Result<()> {
+    let repo = repository("fig-6");
+    let name = dir_name(&repo);
+    let file = format!("{name}/AGENTS.md");
+    let call = |id: &str, tool: &str, args: serde_json::Value| {
+        Step::reply(Reply::tool_calls(vec![ToolCall::new(id, tool, args)]))
+    };
+    let journey = Journey::start(vec![
+        call("call_read_1", "read", json!({ "path": file })),
+        call(
+            "call_write_1",
+            "write",
+            json!({ "path": file, "content": "Marker: fig-6\nEdited by the agent.\n" }),
+        ),
+        call("call_grep_1", "grep", json!({ "pattern": "Edited", "path": name })),
+        call(
+            "call_todo_1",
+            "todo",
+            json!({ "op": "init", "items": ["Edit AGENTS.md", "Show the diff"] }),
+        ),
+        // Open items make omp remind the model to go on: the journey finishes them.
+        call(
+            "call_todo_2",
+            "todo",
+            json!({ "op": "done", "task": "Edit AGENTS.md" }),
+        ),
+        call(
+            "call_todo_3",
+            "todo",
+            json!({ "op": "done", "task": "Show the diff" }),
+        ),
+        call(
+            "call_bash_1",
+            "bash",
+            json!({ "command": format!("git -C {name} status --short") }),
+        ),
+        Step::reply(Reply::text(
+            "Edited `AGENTS.md`:\n\n```rust\nfn main() {\n    let edited = true;\n    println!(\"{edited}\");\n}\n```\n",
+        )),
+    ])
+    .await?;
+    journey.connected().await?;
+    journey
+        .new_linked_workspace(&partial(repo.path()), &repo.path().to_string_lossy())
+        .await?;
+    let thread = journey.first_message("edit the agents file").await?;
+    journey.reply("Edited").await?;
+    journey.status(&thread, "idle").await?;
+    for tool in ["read", "write", "grep", "todo", "bash"] {
+        journey
+            .element(&format!(
+                "[data-testid=tool-card][data-tool={tool}][data-status=succeeded]"
+            ))
+            .await?;
+    }
+    // The workspace widget shows the edited repository as dirty, without a refresh (UI-025, DMN-023).
+    let edited = format!(
+        "[data-widget=\"omfp:workspace\"] [data-testid=workspace-repo][data-name=\"{name}\"][data-dirty=true]"
+    );
+    journey.element(&edited).await?;
+    assert_eq!(
+        journey
+            .text(&format!("{edited} [data-testid=git-status]"))
+            .await?,
+        "dirty · 1 file +1 −0"
+    );
+    journey.screenshot("m5-transcript").await?;
+
+    // The Changes tab next to the workspace widget lists the edited file; it expands to its diff.
+    let clicked = journey
+        .eval(
+            "const tab = [...document.querySelectorAll('[data-testid=view-tab]')]
+               .find(t => t.textContent === 'Changes');
+             if (tab) { tab.click(); }
+             return tab !== undefined;",
+            Vec::new(),
+        )
+        .await?;
+    assert_eq!(clicked, json!(true), "the default view has a Changes tab");
+    let entry = "[data-testid=changes-file][data-path=\"AGENTS.md\"]";
+    journey.element(entry).await?;
+    assert_eq!(
+        journey
+            .text(&format!("{entry} [data-testid=changes-counts]"))
+            .await?,
+        "+1 −0"
+    );
+    journey
+        .click(&format!("{entry} [data-testid=changes-file-toggle]"))
+        .await?;
+    let added = journey
+        .until("the diff's added line", async |page| {
+            let rows = page
+                .texts("[data-testid=changes-diff] [data-kind=add]")
+                .await?;
+            Ok((!rows.is_empty()).then_some(rows))
+        })
+        .await?;
+    assert!(
+        added.iter().any(|row| row.contains("Edited by the agent.")),
+        "{added:?}"
+    );
+    journey.screenshot("m5-changes").await?;
+
+    code_follows_the_theme(&journey).await?;
+    journey.finish("E2E-06").await
+}

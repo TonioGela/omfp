@@ -21,12 +21,12 @@ flowchart LR
 | --- | --- | --- | --- |
 | S-01 | Does `omp-rpc` (tag of the pinned omp) compile for `wasm32-unknown-unknown`? If not: fork with an optional `client` feature, or vendor the generated `wire.rs` with a script that copies it from the tag. | ARC-011 | **Done (M0):** compiles as-is; `omfp-core` depends on it directly. |
 | S-02 | omp against `fake-llm`: custom `openai-completions` provider streams text and tool calls; which `config.yml` keys make a run offline and deterministic (catalog refresh, update check, title, memory, advisor); how to detect stray network access. | TST-020/021, 06 fake LLM section | **Done (M0):** text round trip works; background catalog discovery cannot be disabled, so tests run behind a deny proxy with a list of known discovery hosts (06). |
-| S-03 | Code highlighting in the web bundle and the desktop webview: candidate libraries, bundle size and speed on a 5k-line file. | UI-090 | |
+| S-03 | Code highlighting in the web bundle and the desktop webview: candidate libraries, bundle size and speed on a 5k-line file. | UI-090 | **Done (M5):** highlight.js 11.12 core through lowlight 3.3, each grammar a lazily `import()`ed chunk, `hljs-*` classes colored by the theme's role tokens in kit.css (light, dark, matugen and hand-written themes apply without rebuilding), tokens rendered as React elements (no `dangerouslySetInnerHTML`), Markdown fences through react-markdown's `code` component (not `rehype-highlight`, which bundles 37 grammars). Measured (Bun 1.4.4 minify + splitting, gzip): lowlight 10 KiB in the main chunk, 0.3–4 KiB per grammar, 40 KiB for 30 languages; Shiki 4.6 (JavaScript regex engine, CSS-variables theme) 56 KiB core, 1–40 KiB per grammar (ruby 182 KiB), 313 KiB for 30. On a 5k-line TypeScript file lowlight takes 44 ms in Chromium 157 and 51 ms in WebKitGTK 2.54, Shiki 242 ms and 1.7 s; hast → React 5 ms vs 108 ms. Shiki's finer TextMate scopes collapse onto our ~12 role colors anyway. The app bundle was 276 KiB gzip of the 3 MiB budget before M5. |
 | S-04 | Tauri 2 desktop on NixOS in the dev shell: window opens (webkitgtk), the web bundle connects to the local daemon, xterm.js works in the webview. | UI-001, TRM-021 | |
 | S-05 | `dx` 0.7.10 + nixpkgs `wasm-bindgen-cli` 0.2.130: pin `wasm-bindgen = "=0.2.130"` in the workspace and check `dx build --platform web` uses the shell's binary without downloading another. | 01 | **Done (M0):** `dx build -p omfp-ui --platform web` uses the shell's wasm-bindgen; nothing downloaded. dx 0.7.10 panics on glob `default-members`, so the workspace sets none. |
 | S-06 | Transcript virtualization in Dioxus with variable-height items, streaming at the bottom. | UI-042 | **Done (M2):** in headless Chromium 157 a 10,000-message transcript keeps 7–13 items (≈150–400 nodes) in the DOM: unmeasured items count as 120 px, measured heights come from `onresize` per item, two spacers stand for the rest. Bottom pinning holds through streaming; only user scrolling (wheel up, ArrowUp/PageUp/Home, pointer or touch drag) unpins — layout-driven scroll events must not, or the bottom is lost while streaming — and reaching the bottom pins again. The container exposes `data-pinned`. |
 | S-07 | Multi-workspace threads: `/add-dir` and `/remove-dir` over RPC (idle and busy); repo-level context files (`AGENTS.md`) and rules picked up from `--add-dir` roots when cwd is the thread home; injecting a per-thread MCP server through `<home>/.omp/mcp.json` (08). | DMN-029, DMN-030, 08 | **Done (M1):** `/add-dir` over RPC is a local command (no model turn) that adds the root live; `AGENTS.md` of every `--add-dir` root reaches the model, but only when the session is bound at launch (`--session-dir … --continue`, DMN-030); `<home>/.omp/mcp.json` is honored and its headers are sent. `/add-dir` while the thread is busy is still unverified against real omp (DMN-029). |
-| S-08 | Workspaces from PRs: fetching a PR head (GitHub via `gh`, generic `refs/pull/N/head`), storing PR metadata, detecting merged/closed PRs. | DMN-024 | |
+| S-08 | Workspaces from PRs: fetching a PR head (GitHub via `gh`, generic `refs/pull/N/head`), storing PR metadata, detecting merged/closed PRs. | DMN-024 | **Postponed** with PR repositories (M5 scope check, see "Later"). |
 | S-09 | Live voice through omp's `live_connect`: a WebRTC peer (Opus sendrecv track + `oai-events` data channel) in Chromium and in the desktop webview (webkitgtk), SDP relayed by the daemon; secure-context requirements for the microphone. | M9 | |
 | S-10 | Workspace folders (D-11 revised): cwd = a non-git folder whose top-level entries are repos (real clones and symlinks to external repos); context files, roots, tools through symlinks, `--append-system-prompt`, `--config` overlays. | D-11, DMN-022..030 | **Done:** without `--add-dir` omp shows nothing about child repos (no context files, no roots); with `--add-dir <ws>/<name>` (symlink path) their `AGENTS.md` load and `<workspace-roots>` lists them under the symlink path, live `/add-dir` too; omp never resolves the symlink. `read`/`write`/`bash` through a symlink work and change the external target; no path refusal. Roots saved in a session are merged with the flags on `--continue`: dropping a flag does not detach, `/remove-dir` does. `--append-system-prompt` lands verbatim at the very end of the prompt and disables every `APPEND_SYSTEM.md` (user, cwd `.omp/`; a repo's `.omp/APPEND_SYSTEM.md` is never read). A `--config` overlay with `workspace.additionalDirectories` equals `--add-dir`. A non-git cwd causes no warning. Tests: `crates/omfp-daemon/tests/contract_workspace_folder.rs`. |
 | S-11 | Preact + `preact/compat` with React Aria Components: dialog (focus trap), menu, popover, combobox (`/` commands), tabs, listbox, virtualized list; keyboard, focus and portal event behaviour in Chromium and WebKitGTK; bundle size and streaming render cost vs React 19 on the same screens. | D-18, UI-092, UI-093 | **Done (M3):** React 19 chosen. Preact 10 crashes in React Aria's collection document (global `document` for DOM nodes); Preact 11 passes every check only with three workarounds on React Aria internals (missing `createElementNS`/`remove()` in its collection document, `{...e}` losing native keyboard event fields, effect cleanups after paint leaving the trigger `inert` on focus restore) and events inside portals do not bubble to JSX ancestors. React 19 passes every keyboard, focus, portal, `/` completion and virtualized-transcript check in headless Chromium 157 and WebKitGTK 2.54 (WebKitWebDriver + MiniBrowser under xvfb-run) with no workaround. Sizes (gzip): React 19 145 KB vs Preact 11 87 KB. Streaming 100 updates/s for 10 s: both 600 frames without long tasks; React uses 1.5–4× more script time, still with headroom. WebKitGTK does not scroll a focused container on PageUp: the transcript must handle PageUp/PageDown/Home/End itself. `bun build` needs no Node. |
@@ -175,13 +175,45 @@ handed out in `system.hello` (D-19). omp 18.18.6 streams partial `bash` output, 
 scope check (08 lists them as later): `useAgent`, `useFile`, the agent's job and widget-state host tools, `jobs.list`,
 `:widget save`, pointer drag, dashboards outside the workspace view.
 
-## M5 — Tools and changes
+## M5 — Tools and changes (done)
 
-Scope: specialized tool cards in the transcript (UI-050..052) from recorded fixtures; the git changes widget with diffs
-(UI-080, DMN-026); PR repositories (DMN-024 `pr`, after S-08); `open_in_editor` (DMN-060/061: `$VISUAL`/`$EDITOR` from
-desktop windows, a clear error from the web); code highlighting (UI-090, after S-03).
+Scope: specialized tool cards in the transcript (UI-050..052) from recorded fixtures — `bash`, `read`, `edit`/`write`,
+`grep`/`glob`/`find`/`ast_grep`, `todo`, `web_search`/`fetch`, `ask`, `task` (subagent name, task and live progress;
+the subagent panel it would link to is M8); the **`omfp:changes`** widget (UI-080, DMN-026): per repository of the
+current workspace, changed files with +/− counts and a diff view, in the default view as a tab next to
+`omfp:workspace`; code highlighting (UI-090, after S-03) in Markdown code blocks, the diff view and tool results whose
+language is known.
 
-Acceptance: E2E-06; every specialized card has fixture-driven tests for success, error and streaming states.
+Moved out by the scope check:
+
+- PR repositories (DMN-024 `pr`, S-08) → "Later": worktrees and similar are the agent's job, the agent can run
+  `gh pr checkout` or `git fetch origin pull/N/head` itself, and GitHub cannot be tested offline; pending a user
+  decision.
+- `open_in_editor` (DMN-060/061) → M7: it is only useful from a desktop window on the daemon's machine; without the
+  desktop it can only return an error.
+
+Acceptance: E2E-06 (the agent edits a file → `omfp:changes` shows the diff); every specialized card has
+fixture-driven tests for success, error and streaming states; highlighting follows the theme (light, dark, a custom
+theme).
+
+Result: nine contract scenarios (`crates/omfp-daemon/tests/contract_tool_cards.rs`) record the shapes of `read` (file,
+directory, URL), `edit` (hashline input, omp's diff), `write`, `grep`, `glob`, a failing `bash` (exit code in
+`details.exitCode`), `todo`, `web_search` (a SearXNG endpoint on loopback), `task` (a blocking subagent run with its
+progress frames) and a cancelled `ask`; omp 18.18.6 offers no `find`, `ast_grep` or `fetch` tool (a URL is fetched with
+`read`), so those keep the fallback card. Each specialized card (`ui/packages/app/src/vm/tool-view.ts`,
+`widgets/chat/tool-cards.tsx`) is tested in its streaming, success and error states from those fixtures; `web_search`
+engine failures and URL reads that could not be fetched end with `isError: false` in omp, so the cards read
+`details.error` / `details.method` and show them as failed. `omfp:changes` follows the `workspace/<id>` topic and asks
+`workspaces.status` (which rescans and republishes) after each `edit`/`write`/`bash` end of the selected thread and from
+its refresh button; the kit gained `Diff`, `Code`'s `language` and `languageOfPath`. Highlighting is lowlight (S-03) in
+Markdown fences, diffs and tool results with a known language. E2E-06 (a scripted agent rewrites a tracked file → the
+Workspace tab shows the repository dirty, the Changes tab shows `+1 −0` and the diff) also checks that keywords take the
+theme's primary color in light, dark and a custom theme. A tool run's end also refreshes `workspace/<id>`'s git status
+(DMN-023): an edit of a tracked file is invisible to the poll's cheap check. Specialized card headers leave the
+arguments their subject shows (and a `write`'s content) out of the argument summary. Known gaps: the `write` card shows
+the written content, not a diff (omp sends no old text); the edit card
+is covered by fixtures, but the journey edits with `write` because a hashline `edit` needs the file's tag from a
+`read`; grep results list file paths as text (opening them waits for `open_in_editor`, M7).
 
 ## M6 — Live voice
 
@@ -204,7 +236,9 @@ the spike result.
 ## M7 — Desktop
 
 Scope: ARC-003, DMN-004, UI-004, UI-005, TST-033, `omfp desktop` with Tauri 2 (D-18): finds or starts the local daemon
-in the background and opens one more window on it (D-15/D-16), or with `--connect <url>` opens a window on a remote daemon; watches the client-side theme file and pushes it (UI-091); spike S-04 (Tauri on NixOS, webkitgtk) first.
+in the background and opens one more window on it (D-15/D-16), or with `--connect <url>` opens a window on a remote daemon; watches the client-side theme file and pushes it (UI-091); spike S-04 (Tauri on NixOS, webkitgtk) first;
+`open_in_editor` (DMN-060/061: `$VISUAL`/`$EDITOR` from a desktop window on the daemon's machine, a clear error from
+the web; moved from M5, where it could only have been an error).
 
 Acceptance: desktop smoke test passes under `xvfb-run`; a second `omfp desktop` opens another window on the same daemon,
 each window selecting a different thread; a browser attaches to the same daemon and sees the same threads.
@@ -253,3 +287,6 @@ refused while `Busy` (TRM-001).
 - Helix-style modal editing in the composer (UI-095 keeps a keymap with modes, so it fits later).
 - Configurable fonts, keymap and density from a settings file (the tokens and the keymap are data from M3).
 - Terminal widget over PTY jobs (see "Terminal (deferred)").
+- PR repositories (DMN-024 `pr`, spike S-08; moved out of M5): fetching a PR head into a worktree and tracking the PR.
+  The agent can already do it with `gh pr checkout` or `git fetch origin pull/N/head`, and GitHub cannot be tested
+  offline; waiting for a user decision.

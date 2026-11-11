@@ -696,6 +696,36 @@ async fn a_workspace_open_in_a_window_is_polled_and_removing_it_unlinks_its_repo
     assert!(app.is_dir(), "a link's target is never touched");
 }
 
+// spec: DMN-026, UI-080
+#[tokio::test(flavor = "multi_thread")]
+async fn workspaces_status_publishes_the_fresh_status_of_every_repository_on_the_workspace_topic() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let app = daemon.external_repo("app");
+    let workspace = client.ok("workspaces.create", json!({ "link": app })).await;
+    let id = workspace["id"].as_str().unwrap().to_owned();
+    let topic = format!("workspace/{id}");
+    let subscribed = client.ok("subscribe", json!({ "topic": topic })).await;
+    assert_eq!(
+        subscribed["state"][0]["status"]["dirty"], false,
+        "{subscribed}"
+    );
+
+    // An edit the cheap poll cannot see: `workspaces.status` (what `omfp:changes` calls after a tool run) publishes it.
+    daemon.git.set_dirty(&app, true);
+    let status = client
+        .ok(
+            "workspaces.status",
+            json!({ "workspaceId": id, "repo": "app" }),
+        )
+        .await;
+    assert_eq!(status["dirty"], true);
+    let event = client.event(&topic).await;
+    assert_eq!(event["event"]["kind"], "status", "{event}");
+    assert_eq!(event["event"]["repos"][0]["name"], "app");
+    assert_eq!(event["event"]["repos"][0]["status"]["dirty"], true);
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_index_follows_thread_process_changes() {
     let daemon = daemon(&[]).await;

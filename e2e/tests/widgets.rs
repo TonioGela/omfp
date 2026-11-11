@@ -259,20 +259,25 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
     let folder = journey.workspace_folder(&thread).await?;
     assert!(!folder.join(".omfp/views.json").exists());
 
-    // Edit mode: move the workspace widget (the default view's `0.1`) before the header (`0.0.0`); the first change
-    // writes the default view with it.
+    // Edit mode: move the workspace widget (the default view's `0.1.0`, first tab next to the changes) before the
+    // header (`0.0.0`); the first change writes the default view with it.
     journey.click("[data-testid=layout-edit]").await?;
     journey
-        .element("[data-testid=widget-toolbar][data-path=\"0.1\"]")
+        .element("[data-testid=widget-toolbar][data-path=\"0.1.0\"]")
         .await?;
-    move_widget(&journey, "0.1", "before", "0.0.0").await?;
+    move_widget(&journey, "0.1.0", "before", "0.0.0").await?;
     let layout = written_layout(&journey, &folder, "the moved workspace widget", |layout| {
-        references(layout) == ["omfp:workspace", "omfp:header", "omfp:chat"]
+        references(layout) == ["omfp:workspace", "omfp:header", "omfp:chat", "omfp:changes"]
     })
     .await?;
     assert_eq!(
         layout,
-        json!(["row", { "sizes": [3] }, ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"]])
+        json!([
+            "row",
+            { "sizes": [3, 1] },
+            ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"],
+            ["tabs", {}, "omfp:changes"]
+        ])
     );
 
     // Hide the header (now `0.0.1`).
@@ -283,7 +288,7 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
         .click("[data-testid=widget-toolbar][data-path=\"0.0.1\"] [data-testid=widget-hide]")
         .await?;
     written_layout(&journey, &folder, "the hidden header", |layout| {
-        references(layout) == ["omfp:workspace", "omfp:chat"]
+        references(layout) == ["omfp:workspace", "omfp:chat", "omfp:changes"]
     })
     .await?;
 
@@ -298,7 +303,7 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
         .click("[data-testid=widget-option][data-widget=\"omfp:header\"]")
         .await?;
     written_layout(&journey, &folder, "the added header", |layout| {
-        references(layout) == ["omfp:workspace", "omfp:chat", "omfp:header"]
+        references(layout) == ["omfp:workspace", "omfp:chat", "omfp:changes", "omfp:header"]
     })
     .await?;
     journey.gone("[data-testid=widget-picker]").await?;

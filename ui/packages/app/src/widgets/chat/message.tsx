@@ -4,6 +4,7 @@ import { Card, Code, Disclosure, Markdown } from "omfp/kit";
 import type { MessageBlock as Block, MessageView, NoticeRow, MessageRole as Role, SystemRow } from "omfp/sdk";
 import { expandedByDefault, formatDuration, strings, type ToolCard } from "omfp/sdk";
 import { useExpanded } from "./state.ts";
+import { ToolBody, ToolSubject } from "./tool-cards.tsx";
 
 const text = strings.chat;
 
@@ -90,7 +91,8 @@ function RecordBlock({ cardKey, summary, json }: { cardKey: string; summary: str
   );
 }
 
-/** The fallback tool card (UI-050): collapsible; failed cards distinct and expanded by default (UI-052). */
+/** A tool card (UI-050): collapsible, failed cards distinct and expanded by default (UI-052); tools with a recorded
+ * shape show their specialized body, others the fallback's arguments and result. */
 export function ToolCardView({ cardKey, card }: { cardKey: string; card: ToolCard }) {
   const [expanded, setExpanded] = useExpanded(cardKey, expandedByDefault(card));
   return (
@@ -98,6 +100,8 @@ export function ToolCardView({ cardKey, card }: { cardKey: string; card: ToolCar
       className="omfp-tool-card"
       data-testid="tool-card"
       data-tool={card.name}
+      data-call={card.toolCallId}
+      data-view={card.view.kind}
       data-status={card.status}
       aria-label={text.tool.label(card.name)}
       tone={card.status === "failed" ? "error" : "default"}
@@ -105,6 +109,7 @@ export function ToolCardView({ cardKey, card }: { cardKey: string; card: ToolCar
       title={
         <>
           <span className="omfp-tool-card__name">{card.name}</span>
+          <ToolSubject view={card.view} />
           <span className="omfp-tool-card__summary" data-testid="tool-summary">
             {card.summary}
           </span>
@@ -119,16 +124,7 @@ export function ToolCardView({ cardKey, card }: { cardKey: string; card: ToolCar
         </>
       }
     >
-      <div className="omfp-tool-card__section">
-        <h4>{text.tool.arguments}</h4>
-        <Code code={card.args} block data-testid="tool-args" />
-      </div>
-      {card.result !== undefined && (
-        <div className="omfp-tool-card__section">
-          <h4>{text.tool.result}</h4>
-          <Code code={card.result} block data-testid="tool-result" />
-        </div>
-      )}
+      <ToolBody card={card} />
     </Card>
   );
 }

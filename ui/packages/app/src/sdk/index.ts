@@ -41,6 +41,8 @@
 // `omfp/sdk` like any agent widget.
 export { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 export { strings } from "../strings/index.ts";
+export { type AnsiRun, ansiRuns } from "../vm/ansi.ts";
+export { type ChangedFile, type ChangesRepo, changeRunsKey, changesView } from "../vm/changes.ts";
 export {
   alternative,
   behavior,
@@ -108,6 +110,14 @@ export {
   workspaceChips,
 } from "../vm/threads.ts";
 export { expandedByDefault, formatDuration, resultText, type ToolCard } from "../vm/tool.ts";
+export {
+  type RepoPath,
+  repoPath,
+  type SubagentRun,
+  type TodoPhase,
+  type TodoTask,
+  type ToolView,
+} from "../vm/tool-view.ts";
 export {
   type Block as MessageBlock,
   type Item as TranscriptItem,

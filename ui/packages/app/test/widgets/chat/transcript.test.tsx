@@ -89,15 +89,23 @@ describe("transcript", () => {
   });
 
   // spec: UI-050
-  test("a tool call renders through the fallback card with its arguments and result on demand", async () => {
-    renderThread(<TranscriptWidget />, fixtureEvents("bash_tool_call"));
+  test("a tool without a specialized card renders through the fallback card, arguments and result on demand", async () => {
+    const call: ThreadEvent = {
+      kind: "history",
+      session: { session_id: "s", resumed: true },
+      messages: [
+        { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "eval", arguments: { code: "1 + 1" } }] },
+        { role: "toolResult", toolCallId: "c1", toolName: "eval", content: [{ type: "text", text: "2" }] },
+      ],
+    };
+    renderThread(<TranscriptWidget />, [call]);
     const card = screen.getByTestId("tool-card");
-    expect([card.dataset.tool, card.dataset.status]).toEqual(["bash", "succeeded"]);
-    expect(within(card).getByTestId("tool-summary").textContent).toContain("echo tool-output-123");
+    expect([card.dataset.tool, card.dataset.view, card.dataset.status]).toEqual(["eval", "generic", "succeeded"]);
+    expect(within(card).getByTestId("tool-summary").textContent).toBe("code: 1 + 1");
     expect(within(card).queryByTestId("tool-result")).toBeNull();
     await userEvent.click(within(card).getByTestId("toggle"));
-    expect(within(card).getByTestId("tool-args").textContent).toContain('"command"');
-    expect(within(card).getByTestId("tool-result").textContent).toBe("tool-output-123\n");
+    expect(within(card).getByTestId("tool-args").textContent).toContain('"code"');
+    expect(within(card).getByTestId("tool-result").textContent).toBe("2");
   });
 
   // spec: UI-050, UI-052
@@ -114,7 +122,7 @@ describe("transcript", () => {
     const card = screen.getByTestId("tool-card");
     expect(card.dataset.status).toBe("failed");
     expect(card.dataset.tone).toBe("error");
-    expect(within(card).getByTestId("tool-result").textContent).toBe("ENOENT");
+    expect(within(card).getByTestId("tool-error").textContent).toBe("ENOENT");
   });
 
   // spec: UI-043

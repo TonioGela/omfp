@@ -6,7 +6,8 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 ## Files
 
 - `<workspace>/.omfp/views.json` — the views of the window (schema: `omfp://schemas/views.json`). Without it the window
-  shows the default view: `["row", { "sizes": [3, 1] }, ["col", {}, "omfp:header", "omfp:chat"], "omfp:workspace"]`.
+  shows the default view:
+  `["row", { "sizes": [3, 1] }, ["col", {}, "omfp:header", "omfp:chat"], ["tabs", {}, "omfp:workspace", "omfp:changes"]]`.
 - `<workspace>/.omfp/widgets/<name>/index.tsx` (or `index.ts`, `index.jsx`, `index.js`) — a workspace widget,
   referenced as `./widgets/<name>`. Its default export is a React component; its props are the layout node's props.
   Other files of the folder are imported with relative paths (`./chart.tsx` or `./chart`).
@@ -32,8 +33,9 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 Layout nodes: a reference (`"omfp:chat"`), `[reference, props]`, or `[container, props, ...children]` where the
 container is `row`, `col`, `tabs` or `stack` and `props.sizes` (optional) gives one positive flex weight per child.
 Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue and composer), `omfp:transcript`,
-`omfp:interactions`, `omfp:composer`, `omfp:workspace`. Props every widget accepts: `instance` (a string naming the
-instance for `useStored` and `useJob`; default: the reference) and `title` (a tab's label).
+`omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes` (changed files and diffs of the workspace's
+repositories). Props every widget accepts: `instance` (a string naming the instance for `useStored` and `useJob`;
+default: the reference) and `title` (a tab's label; default: the built-in's name, else the reference).
 
 ## Imports
 
@@ -104,7 +106,9 @@ The SDK also exports the view models and strings the built-in widgets use; read 
 | `Badge` | A small status label: `tone` (`default`, `primary`, `error`, `warning`, `success`). |
 | `Chip` | A compact labelled item: `tone`, `onRemove`. |
 | `Markdown` | Renders Markdown text (no raw HTML): `text`. |
-| `Code` | Code: `code`, `block`. |
+| `Code` | Code: `code`, `block`, `language` (a name or file extension; highlights a block). |
+| `Diff` | A unified patch (`git diff` output) as numbered lines: `patch`, `language` (highlighting). |
+| `languageOfPath` | `languageOfPath("src/lib.rs")` → `"rust"`: the language to pass to `Code` or `Diff`. |
 | `Tabs` | Tabs with `TabList`, `Tab` and `TabPanel`. |
 | `ListBox` | A selectable list with `ListBoxItem`. |
 | `Menu` | A menu with `MenuItem` and `MenuTrigger`. |

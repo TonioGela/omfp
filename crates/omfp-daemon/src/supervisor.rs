@@ -48,6 +48,20 @@ pub const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 /// Lines of `omp.log` reported with a crash (DMN-035).
 const STDERR_TAIL_LINES: usize = 20;
 
+/// omp tools that never change files; their end needs no rescan (DMN-023). Unknown tools count as writers.
+const READ_ONLY_TOOLS: &[&str] = &[
+    "read",
+    "grep",
+    "glob",
+    "find",
+    "ast_grep",
+    "web_search",
+    "fetch",
+    "todo",
+    "ask",
+    "lsp",
+];
+
 /// Supervisor settings.
 #[derive(Debug, Clone)]
 pub struct SupervisorConfig {
@@ -840,11 +854,12 @@ impl Supervisor {
     }
 
     fn push(&self, actor: &Actor, event: ThreadEvent) {
+        // Read-only tools cannot change files: skip the `git status` of a full scan after them (DMN-023).
         let tool_end = matches!(
             &event,
             ThreadEvent::Omp {
-                frame: RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(_))
-            }
+                frame: RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(end))
+            } if !READ_ONLY_TOOLS.contains(&end.tool_name.as_str())
         );
         let before = actor.status();
         actor.log.push(event);

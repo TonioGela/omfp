@@ -3,12 +3,13 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import changes from "../../src/widgets/changes/index.ts";
 import * as chat from "../../src/widgets/chat/index.ts";
 import header from "../../src/widgets/header/index.ts";
 import workspace from "../../src/widgets/workspace/index.ts";
 
 const WIDGETS = join(import.meta.dir, "../../src/widgets");
-const COPYABLE = ["chat", "header", "workspace"];
+const COPYABLE = ["chat", "header", "workspace", "changes"];
 /** What an agent widget may import (AGT-012), besides files of its own folder. */
 const ALLOWED = new Set(["react", "react/jsx-runtime", "react-dom", "omfp/sdk", "omfp/kit"]);
 
@@ -48,5 +49,6 @@ describe("copyable built-ins", () => {
     }
     expect(typeof header).toBe("function");
     expect(typeof workspace).toBe("function");
+    expect(typeof changes).toBe("function");
   });
 });

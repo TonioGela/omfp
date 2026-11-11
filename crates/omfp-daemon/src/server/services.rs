@@ -189,7 +189,9 @@ impl Services {
         Ok(services)
     }
 
-    /// Rescans the workspace of every thread that finishes a tool execution (DMN-023).
+    /// Rescans the workspace of every thread that finishes a tool execution and publishes its git status (DMN-023):
+    /// an edit of a tracked file changes nothing the poll's cheap check sees, so the dirty state of `workspace/<id>`
+    /// (UI-025) would otherwise wait for the next full scan.
     pub fn spawn_rescans(&self) -> JoinHandle<()> {
         let mut tool_ends = self.supervisor.subscribe_tool_ends();
         let services = self.clone();
@@ -209,7 +211,7 @@ impl Services {
                 })
                 .await;
                 let result = match workspace {
-                    Ok(workspace_id) => services.rescan(&workspace_id).await.map(drop),
+                    Ok(workspace_id) => services.full_scan(&workspace_id).await,
                     Err(error) => Err(error),
                 };
                 if let Err(error) = result {

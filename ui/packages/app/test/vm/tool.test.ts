@@ -14,11 +14,11 @@ function cards(state: ThreadState): ToolCard[] {
 
 describe("tool cards", () => {
   // spec: UI-050
-  test("a finished bash call renders through the fallback card", () => {
+  test("every card has the name, status, argument summary, arguments and result text", () => {
     const [card, ...rest] = cards(fixture("bash_tool_call"));
     expect(rest).toEqual([]);
     expect([card?.name, card?.status]).toEqual(["bash", "succeeded"]);
-    expect(card?.summary).toContain("echo tool-output-123");
+    expect(card?.summary).toBe("");
     expect(card?.args).toContain('"command"');
     expect(card?.result).toBe("tool-output-123\n");
     expect(card !== undefined && expandedByDefault(card)).toBe(false);
@@ -35,17 +35,46 @@ describe("tool cards", () => {
   });
 
   // spec: UI-050
-  test("while streaming the card shows the partial argument text", () => {
+  test("while streaming the fallback card shows the partial argument text", () => {
     const card = toolCard(
       "c1",
-      { type: "toolCall", name: "bash", partialArgs: '{"command": "ec' },
+      { type: "toolCall", name: "eval", partialArgs: '{"code": "1 +' },
       undefined,
       undefined,
       undefined,
     );
     expect(card.status).toBe("composing");
-    expect(card.args).toBe('{"command": "ec');
-    expect(card.summary).toBe('{"command": "ec');
+    expect(card.args).toBe('{"code": "1 +');
+    expect(card.summary).toBe('{"code": "1 +');
+  });
+
+  // spec: UI-050
+  test("while streaming a specialized card keeps the partial arguments out of its header", () => {
+    const card = toolCard(
+      "c1",
+      { type: "toolCall", name: "write", partialArgs: '{"path": "a.md", "content": "Marker' },
+      undefined,
+      undefined,
+      undefined,
+    );
+    expect(card.status).toBe("composing");
+    expect(card.args).toBe('{"path": "a.md", "content": "Marker');
+    expect(card.summary).toBe("");
+  });
+
+  // spec: UI-050
+  test("a specialized card's header does not repeat its subject nor a write's content", () => {
+    const summary = (name: string, args: Record<string, string | number>) =>
+      toolCard("c1", { type: "toolCall", name, arguments: args }, undefined, undefined, undefined).summary;
+    expect(summary("write", { path: "repo/AGENTS.md", content: "Marker: one\nEdited.\n" })).toBe("");
+    expect(summary("bash", { command: "git -C repo status --short", timeout: 30 })).toBe("timeout: 30");
+    expect(summary("read", { path: "repo/AGENTS.md", limit: 5 })).toBe("limit: 5");
+    expect(summary("edit", { path: "repo/a.rs", input: "[repo/a.rs#1A2B]\nPUT 1.=1:\n+x" })).toBe("");
+    expect(summary("grep", { pattern: "Edited", path: "repo" })).toBe("path: repo");
+    expect(summary("glob", { path: "src/**/*.ts" })).toBe("");
+    expect(summary("web_search", { query: "omp rpc", limit: 3 })).toBe("limit: 3");
+    // Tools without a subject keep every scalar argument.
+    expect(summary("todo", { op: "done", task: "Edit AGENTS.md" })).toBe("op: done, task: Edit AGENTS.md");
   });
 
   // spec: UI-050, UI-052
@@ -62,7 +91,7 @@ describe("tool cards", () => {
     };
     const card = toolCard("c1", undefined, run, undefined, undefined);
     expect(expandedByDefault(card)).toBe(true);
-    expect(card.summary).toBe("limit: 5, path: missing.txt");
+    expect(card.summary).toBe("limit: 5");
     expect(card.result).toBe("ENOENT");
   });
 

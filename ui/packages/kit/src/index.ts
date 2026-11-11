@@ -53,6 +53,7 @@ export {
   Popover,
   type PopoverProps,
 } from "./dialog.tsx";
+export { Diff, type DiffLine, type DiffLineKind, type DiffProps, parsePatch } from "./diff.tsx";
 export {
   type DataAttributes,
   type FieldTexts,
@@ -63,6 +64,7 @@ export {
   TextField,
   type TextFieldProps,
 } from "./field.tsx";
+export { Highlighted, languageOfPath, loadLanguage } from "./highlight.tsx";
 export {
   Disclosure,
   type DisclosureProps,

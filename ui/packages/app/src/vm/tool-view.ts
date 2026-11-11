@@ -1,0 +1,434 @@
+/**
+ * Specialized tool cards (UI-050, UI-051): what each card shows, read from the argument and result shapes recorded
+ * from the pinned omp (`fixtures/threads/<omp>/*tool_call*.jsonl`, `crates/omfp-daemon/tests/contract_tool_cards.rs`).
+ * Tools without a recorded shape keep the fallback card (`generic`).
+ */
+
+import type { JsonValue } from "@omfp/core";
+import type { DiffLine } from "@omfp/kit";
+import { languageOfPath } from "@omfp/kit";
+import type { Workspace } from "@omfp/protocol";
+import { strings } from "../strings/index.ts";
+import { isObject as isRecord } from "./tool.ts";
+
+const text = strings.chat.tool;
+
+/** A task of the `todo` tool. */
+export interface TodoTask {
+  readonly content: string;
+  /** omp's status: `pending`, `in_progress`, `completed`, or another it may add. */
+  readonly status: string;
+}
+
+/** One subagent of a `task` call. */
+export interface SubagentRun {
+  readonly name: string;
+  /** The agent kind (`task`, `scout`, …). */
+  readonly agent: string;
+  readonly task: string;
+  /** `pending` until omp reports it, then omp's status (`running`, `completed`, `failed`, `aborted`, …). */
+  readonly status: string;
+  /** What it does now (its current tool's intent), else what it did last. */
+  readonly activity: string | undefined;
+  /** Tool calls so far. */
+  readonly tools: number;
+  /** Its final output, else its latest output line. */
+  readonly output: string | undefined;
+}
+
+/** What the card of one call shows besides its header. */
+export type ToolView =
+  | { readonly kind: "generic" }
+  | {
+      readonly kind: "bash";
+      readonly command: string;
+      /** The directory given to the call, when not the thread's. */
+      readonly cwd: string | undefined;
+      /** The output so far while it runs, then the result's text. */
+      readonly output: string | undefined;
+      readonly exitCode: number | undefined;
+    }
+  | {
+      readonly kind: "read";
+      readonly path: string;
+      /** The selector of the path (`50-80`), else the lines omp returned (`1–9 of 9`). */
+      readonly range: string | undefined;
+      readonly language: string | undefined;
+      readonly content: string | undefined;
+      readonly directory: boolean;
+    }
+  | {
+      readonly kind: "fetch";
+      readonly url: string;
+      readonly content: string | undefined;
+      /** omp's notes on the fetch (`Failed to fetch URL (HTTP 404)`). */
+      readonly notes: readonly string[];
+    }
+  | {
+      readonly kind: "edit";
+      readonly path: string | undefined;
+      /** The change omp applied (`details.diff`). */
+      readonly diff: readonly DiffLine[] | undefined;
+      /** The edit as the agent wrote it (shown while it runs and when it failed). */
+      readonly input: string | undefined;
+      readonly language: string | undefined;
+    }
+  | {
+      readonly kind: "write";
+      readonly path: string;
+      readonly content: string | undefined;
+      readonly language: string | undefined;
+    }
+  | {
+      readonly kind: "search";
+      readonly query: string;
+      /** Where it searched (`grep`'s path, the folder of a `glob`). */
+      readonly scope: string | undefined;
+      /** Matching files with their match counts when known. */
+      readonly files: readonly { readonly path: string; readonly count: number | undefined }[] | undefined;
+      /** `2 matches in 1 file`. */
+      readonly total: string | undefined;
+      readonly truncated: boolean;
+    }
+  | { readonly kind: "todo"; readonly op: string; readonly phases: readonly TodoPhase[] }
+  | {
+      readonly kind: "web_search";
+      readonly query: string;
+      readonly links: readonly { readonly title: string; readonly url: string; readonly snippet: string }[];
+    }
+  | {
+      readonly kind: "ask";
+      readonly questions: readonly { readonly question: string; readonly answer: string | undefined }[];
+    }
+  | { readonly kind: "task"; readonly context: string | undefined; readonly agents: readonly SubagentRun[] };
+
+/** A phase of the `todo` list. */
+export interface TodoPhase {
+  readonly name: string;
+  readonly tasks: readonly TodoTask[];
+}
+
+/** A tool result reduced to what the cards read: its text and its `details`. */
+export interface ToolOutput {
+  readonly text: string | undefined;
+  readonly details: Readonly<Record<string, unknown>>;
+}
+
+function str(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function num(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function list(value: unknown): readonly unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function records(value: unknown): readonly Readonly<Record<string, unknown>>[] {
+  return list(value).filter(isRecord);
+}
+
+/** The text parts and the `details` of a tool result (`{ content: [{ type: "text", text }], details }`). */
+export function toolOutput(value: unknown): ToolOutput | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const texts = records(value.content).flatMap((part) => (part.type === "text" ? [str(part.text) ?? ""] : []));
+  return {
+    text: texts.length === 0 ? undefined : texts.join("\n"),
+    details: isRecord(value.details) ? value.details : {},
+  };
+}
+
+/**
+ * Why a call that omp did not flag `isError` still failed: `web_search` reports engine failures in `details.error`,
+ * a `read` of a URL that could not be fetched has `details.method` `failed`.
+ */
+export function quietFailure(name: string, output: ToolOutput | undefined): string | undefined {
+  if (output === undefined) {
+    return undefined;
+  }
+  const { details } = output;
+  if (name === "web_search") {
+    return str(details.error);
+  }
+  if (name === "read" && details.kind === "url" && details.method === "failed") {
+    const notes = list(details.notes).flatMap((note) => (typeof note === "string" ? [note] : []));
+    return notes.join("\n") || text.fetchFailed;
+  }
+  return undefined;
+}
+
+/** `path:50-80` (omp's selector syntax) split into the path and its selector. */
+function splitSelector(path: string): { path: string; selector: string | undefined } {
+  const match = /^(.*?):((?:raw:)?\d+(?:[-+]\d*)?(?:,\d+(?:[-+]\d*)?)*(?::raw)?)$/.exec(path);
+  return match === null ? { path, selector: undefined } : { path: match[1] ?? path, selector: match[2] };
+}
+
+/** omp's edit diff (` 2|ctx`, `-4|old`, `+4|new`) as diff lines; other lines (`...`) become separators. */
+export function ompDiffLines(diff: string): DiffLine[] {
+  if (diff === "") {
+    return [];
+  }
+  return diff.split("\n").map((line): DiffLine => {
+    const match = /^([ +-])\s*(\d+)\|(.*)$/.exec(line);
+    if (match === null) {
+      return { kind: "hunk", text: line };
+    }
+    const number = Number(match[2]);
+    const body = match[3] ?? "";
+    switch (match[1]) {
+      case "+":
+        return { kind: "add", text: body, newLine: number };
+      case "-":
+        return { kind: "del", text: body, oldLine: number };
+      default:
+        return { kind: "context", text: body, newLine: number };
+    }
+  });
+}
+
+/** The file a hashline `edit` input targets: its first `[path#TAG]` header. */
+function editPath(input: string | undefined): string | undefined {
+  const match = input === undefined ? null : /^\[(.+?)#[0-9A-Za-z]{4}\]/m.exec(input);
+  return match?.[1];
+}
+
+/** The questions of an `ask` form: its `<legend>`s, else its labels. */
+function askQuestions(html: string): string[] {
+  const legends = [...html.matchAll(/<legend[^>]*>([\s\S]*?)<\/legend>/gi)].map((match) =>
+    (match[1] ?? "").replace(/<[^>]*>/g, "").trim(),
+  );
+  return legends.filter((legend) => legend !== "");
+}
+
+/**
+ * The arguments a specialized card shows outside its header's argument summary: its subject (command, path, query,
+ * pattern) and the text of its body (a write's content, an edit's input).
+ */
+const SHOWN_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {
+  bash: ["command"],
+  read: ["path"],
+  edit: ["path", "input"],
+  write: ["path", "content"],
+  grep: ["pattern"],
+  glob: ["path"],
+  web_search: ["query"],
+};
+
+/** The arguments of a call of tool `name` its card shows elsewhere than the header's summary; `undefined` if none. */
+export function shownArguments(name: string): readonly string[] | undefined {
+  return Object.hasOwn(SHOWN_ARGUMENTS, name) ? SHOWN_ARGUMENTS[name] : undefined;
+}
+
+function plural(count: number, one: string, many: string): string {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * The specialized view of a call of tool `name`. `args` are its arguments (or `undefined` while the model writes them),
+ * `output` the result once it ended or the latest partial result while it runs, `ended` whether it ended.
+ */
+export function toolView(
+  name: string,
+  args: JsonValue | undefined,
+  output: ToolOutput | undefined,
+  ended: boolean,
+): ToolView {
+  const input = isRecord(args) ? args : {};
+  const details = output?.details ?? {};
+  switch (name) {
+    case "bash":
+      return {
+        kind: "bash",
+        command: str(input.command) ?? "",
+        cwd: str(input.cwd),
+        output: output?.text,
+        exitCode: num(details.exitCode) ?? (ended && output !== undefined ? 0 : undefined),
+      };
+    case "read": {
+      const raw = str(input.path) ?? "";
+      if (/^https?:\/\//i.test(raw) || details.kind === "url") {
+        return {
+          kind: "fetch",
+          url: str(details.finalUrl) ?? str(details.url) ?? raw,
+          content: output?.text,
+          notes: list(details.notes).flatMap((note) => (typeof note === "string" ? [note] : [])),
+        };
+      }
+      const { path, selector } = splitSelector(raw);
+      const shown = isRecord(details.displayContent) ? details.displayContent : undefined;
+      const numbers = list(shown?.lineNumbers).flatMap((line) => (typeof line === "number" ? [line] : []));
+      const total = num(details.totalLines);
+      const first = numbers[0];
+      const last = numbers.at(-1);
+      return {
+        kind: "read",
+        path,
+        range:
+          selector ??
+          (first !== undefined && last !== undefined && total !== undefined
+            ? text.lines(first, last, total)
+            : undefined),
+        language: languageOfPath(path),
+        content: str(shown?.text) ?? output?.text,
+        directory: details.isDirectory === true,
+      };
+    }
+    case "edit": {
+      const edit = str(input.input);
+      const path = str(input.path) ?? editPath(edit);
+      const diff = str(details.diff);
+      return {
+        kind: "edit",
+        path,
+        diff: diff === undefined || diff === "" ? undefined : ompDiffLines(diff),
+        input: edit,
+        language: path === undefined ? undefined : languageOfPath(path),
+      };
+    }
+    case "write": {
+      const path = str(input.path) ?? "";
+      return { kind: "write", path, content: str(input.content), language: languageOfPath(path) };
+    }
+    case "grep":
+    case "glob": {
+      const fileMatches = records(details.fileMatches);
+      const files =
+        fileMatches.length > 0
+          ? fileMatches.map((file) => ({ path: str(file.path) ?? "", count: num(file.count) }))
+          : Array.isArray(details.files)
+            ? list(details.files).flatMap((file) =>
+                typeof file === "string" ? [{ path: file, count: undefined }] : [],
+              )
+            : undefined;
+      const matches = num(details.matchCount);
+      const fileCount = num(details.fileCount) ?? files?.length;
+      return {
+        kind: "search",
+        query: str(name === "grep" ? input.pattern : input.path) ?? "",
+        scope: name === "grep" ? str(input.path) : str(details.scopePath),
+        files,
+        total:
+          fileCount === undefined
+            ? undefined
+            : matches === undefined
+              ? plural(fileCount, "file", "files")
+              : `${plural(matches, "match", "matches")} in ${plural(fileCount, "file", "files")}`,
+        truncated: details.truncated === true,
+      };
+    }
+    case "todo":
+      return {
+        kind: "todo",
+        op: str(input.op) ?? "",
+        phases: records(details.phases).map((phase) => ({
+          name: str(phase.name) ?? "",
+          tasks: records(phase.tasks).map((task) => ({
+            content: str(task.content) ?? "",
+            status: str(task.status) ?? "pending",
+          })),
+        })),
+      };
+    case "web_search": {
+      const response = isRecord(details.response) ? details.response : {};
+      return {
+        kind: "web_search",
+        query: str(input.query) ?? "",
+        links: records(response.sources).map((source) => ({
+          title: str(source.title) ?? str(source.url) ?? "",
+          url: str(source.url) ?? "",
+          snippet: str(source.snippet) ?? "",
+        })),
+      };
+    }
+    case "ask": {
+      const answers = records(details.answers);
+      if (answers.length > 0) {
+        return {
+          kind: "ask",
+          questions: answers.map((answer) => ({
+            question: str(answer.question) ?? str(answer.name) ?? "",
+            answer: str(answer.answer),
+          })),
+        };
+      }
+      return {
+        kind: "ask",
+        questions: askQuestions(str(input.html) ?? "").map((question) => ({ question, answer: undefined })),
+      };
+    }
+    case "task":
+      return { kind: "task", context: str(input.context), agents: subagents(input, details) };
+    default:
+      return { kind: "generic" };
+  }
+}
+
+/** The subagents of a `task` call: what it asked for, with omp's progress while it runs and the results once done. */
+function subagents(
+  input: Readonly<Record<string, unknown>>,
+  details: Readonly<Record<string, unknown>>,
+): SubagentRun[] {
+  const progress = records(details.progress);
+  const results = records(details.results);
+  return records(input.tasks).map((task, index) => {
+    const name = str(task.name) ?? String(index + 1);
+    const result = results.find((entry) => entry.id === name);
+    const live = progress.find((entry) => entry.id === name);
+    const status = result !== undefined ? resultStatus(result) : (str(live?.status) ?? "pending");
+    const recentOutput = list(live?.recentOutput).flatMap((line) => (typeof line === "string" ? [line] : []));
+    return {
+      name,
+      agent: str(task.agent) ?? "",
+      task: str(task.task) ?? "",
+      status,
+      activity: str(live?.currentToolIntent) ?? str(result?.lastIntent) ?? str(live?.lastIntent),
+      tools: num(live?.toolCount) ?? list(live?.recentTools).length,
+      output: str(result?.output) ?? recentOutput.at(-1),
+    };
+  });
+}
+
+function resultStatus(result: Readonly<Record<string, unknown>>): string {
+  if (result.aborted === true) {
+    return "aborted";
+  }
+  const exitCode = num(result.exitCode);
+  return exitCode === undefined || exitCode === 0 ? "completed" : "failed";
+}
+
+/** A path as the card shows it: in a repository of the workspace (its chip) or as given. */
+export interface RepoPath {
+  readonly repo: string | undefined;
+  readonly path: string;
+}
+
+/**
+ * `path` (absolute, or relative to the workspace folder, the agent's cwd) relative to the repository of `workspace`
+ * holding it, with that repository's name; as given when no repository holds it.
+ */
+export function repoPath(path: string, workspace: Pick<Workspace, "path" | "repos"> | undefined): RepoPath {
+  if (workspace === undefined) {
+    return { repo: undefined, path };
+  }
+  const folder = workspace.path.replace(/\/+$/, "");
+  const inside = path.startsWith(`${folder}/`)
+    ? path.slice(folder.length + 1)
+    : path.startsWith("/")
+      ? undefined
+      : path;
+  if (inside === undefined) {
+    return { repo: undefined, path };
+  }
+  const relative = inside.replace(/^\.\//, "");
+  const [first, ...rest] = relative.split("/");
+  const repo = workspace.repos.find((candidate) => !candidate.isRoot && candidate.name === first);
+  if (repo !== undefined && rest.length > 0) {
+    return { repo: repo.name, path: rest.join("/") };
+  }
+  const root = workspace.repos.find((candidate) => candidate.isRoot);
+  return root === undefined ? { repo: undefined, path: relative } : { repo: root.name, path: relative };
+}

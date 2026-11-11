@@ -280,3 +280,19 @@ requirements = [
   "E2E-11",
   "E2E-12",
 ]
+
+[M5]
+status = "done"
+requirements = [
+  # Tool cards (fixtures from the pinned omp)
+  "UI-050",
+  "UI-051",
+  "UI-052",
+  # Changes widget over the daemon's git status and diff
+  "UI-080",
+  "DMN-026",
+  # Code highlighting (S-03)
+  "UI-090",
+  # End-to-end journey
+  "E2E-06",
+]

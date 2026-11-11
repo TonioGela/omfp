@@ -136,6 +136,29 @@ export const shell = {
     cloneUrl: "Clone URL",
     clonePlaceholder: "https://…",
   },
+  changes: {
+    label: "Changes",
+    none: "No workspace selected",
+    noRepos: "No repository in this workspace",
+    refresh: "Refresh the changes",
+    loading: "Reading the git status…",
+    loadingDiff: "Reading the diff…",
+    clean: "No changes",
+    truncated: "The diff is too large and was cut.",
+    branch: (branch: string) => `on ${branch}`,
+    counts: (additions: number, deletions: number) => `+${additions} −${deletions}`,
+    renamedFrom: (path: string) => `from ${path}`,
+    /** One letter per kind of change, as `git status --short` writes them. */
+    status: { added: "A", modified: "M", deleted: "D", renamed: "R", untracked: "U" },
+    statusLabel: {
+      added: "added",
+      modified: "modified",
+      deleted: "deleted",
+      renamed: "renamed",
+      untracked: "untracked",
+    },
+    diffLabel: (path: string) => `Diff of ${path}`,
+  },
   frame: {
     views: "View",
     invalidView: (error: string) => `The view is invalid, showing the default view: ${error}`,
@@ -143,6 +166,16 @@ export const shell = {
     commandLine: "Command line",
     unknownCommand: (name: string) => `Unknown command: ${name}`,
     defaultView: "Default",
+    /** Tab labels of the built-in widgets without a `title` prop (AGT-010). */
+    widgetTitles: {
+      "omfp:header": "Header",
+      "omfp:chat": "Chat",
+      "omfp:transcript": "Transcript",
+      "omfp:interactions": "Interactions",
+      "omfp:composer": "Composer",
+      "omfp:workspace": "Workspace",
+      "omfp:changes": "Changes",
+    } as Readonly<Record<string, string>>,
   },
   layout: {
     edit: "Edit layout",

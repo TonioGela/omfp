@@ -7,11 +7,17 @@ import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { type LayoutNode, type LayoutTree, type Parsed, parseLayout, type View } from "./layout.ts";
 
-/** Header over the conversation, the workspace on the right; the frame renders the threads column itself (UI-100). */
+/** Header over the conversation, the workspace and changes widgets as tabs on the right; the frame renders the threads
+ * column itself (UI-100). */
 export const DEFAULT_VIEW: View = {
   id: "default",
   title: strings.shell.frame.defaultView,
-  layout: ["row", { sizes: [3, 1] }, ["col", {}, "omfp:header", "omfp:chat"], "omfp:workspace"],
+  layout: [
+    "row",
+    { sizes: [3, 1] },
+    ["col", {}, "omfp:header", "omfp:chat"],
+    ["tabs", {}, "omfp:workspace", "omfp:changes"],
+  ],
 };
 
 /** A validated view: its layout as written (what layout edits change) and as a tree (what the renderer walks). */

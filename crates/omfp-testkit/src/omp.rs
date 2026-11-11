@@ -1,4 +1,5 @@
 use std::ffi::OsString;
+use std::fmt::Write as _;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -79,6 +80,18 @@ impl OmpEnv {
         )?;
         std::fs::write(env.agent_dir().join("config.yml"), CONFIG_YML)?;
         Ok(env)
+    }
+
+    /// Rewrites `config.yml` before omp starts: `roles` extend `modelRoles` (e.g. `("web", "web/searxng")`) and
+    /// `settings` (top-level YAML keys, e.g. `searxng:\n  endpoint: …\n`) follow the base settings.
+    pub fn configure(&self, roles: &[(&str, &str)], settings: &str) -> anyhow::Result<()> {
+        let mut config = CONFIG_YML.to_owned();
+        for (role, model) in roles {
+            writeln!(config, "  {role}: {model}")?;
+        }
+        config.push_str(settings);
+        std::fs::write(self.agent_dir().join("config.yml"), config)?;
+        Ok(())
     }
 
     #[must_use]
@@ -310,7 +323,10 @@ impl OmpSession {
     }
 }
 
-/// Numeric fields that differ on every run (wall-clock times and latencies).
+/// Numeric fields that differ on every run (wall-clock times and latencies; `*Ms` of subagent progress), or between
+/// environments: the fake LLM counts prompt tokens from the request size, which varies with the environment (e.g.
+/// the length of the temporary paths in the prompt): `promptTokens` of a context snapshot, `contextTokens`/`tokens`
+/// of subagent progress, and [`PROMPT_SIZED_USAGE`].
 const VOLATILE_NUMBERS: &[&str] = &[
     "timestamp",
     "completedAt",
@@ -324,11 +340,22 @@ const VOLATILE_NUMBERS: &[&str] = &[
     "ns",
     "at",
     "wallTimeMs",
+    "durationMs",
+    "totalDurationMs",
+    "currentToolStartMs",
+    "endMs",
+    "promptTokens",
+    "contextTokens",
+    "tokens",
 ];
 
-/// Makes a recorded frame stable across runs: volatile numbers become `0`, random 16-hex-digit request ids become
-/// `<id>`, and inside strings the temporary `root` becomes `<root>`, UUIDs become `<uuid>` and session-file
-/// timestamps become `<time>`.
+/// Fields of a `usage` object that follow the request size (see [`VOLATILE_NUMBERS`]); `output` stays.
+const PROMPT_SIZED_USAGE: &[&str] = &["input", "totalTokens"];
+
+/// Makes a recorded frame stable across runs: volatile numbers (and the prompt-sized counts of `usage`) become `0`,
+/// random 16-hex-digit request ids become `<id>`, and inside strings the temporary `root` becomes `<root>`, UUIDs
+/// become `<uuid>`, session-file timestamps become `<time>` and the `duration="…"` attribute of a `<task-result>`
+/// becomes `duration="<duration>"`.
 pub fn normalize_frame(value: &mut Value, root: &str) {
     match value {
         Value::Object(map) => {
@@ -340,6 +367,17 @@ pub fn normalize_frame(value: &mut Value, root: &str) {
                 {
                     *field = Value::from("<id>");
                 } else {
+                    if key == "usage"
+                        && let Value::Object(usage) = field
+                    {
+                        for name in PROMPT_SIZED_USAGE {
+                            if let Some(count) =
+                                usage.get_mut(*name).filter(|count| count.is_number())
+                            {
+                                *count = Value::from(0);
+                            }
+                        }
+                    }
                     normalize_frame(field, root);
                 }
             }
@@ -355,6 +393,9 @@ pub fn normalize_frame(value: &mut Value, root: &str) {
             };
             normalized = UUID.replace_all(&normalized, "<uuid>").into_owned();
             normalized = SESSION_TIME.replace_all(&normalized, "<time>").into_owned();
+            normalized = TASK_DURATION
+                .replace_all(&normalized, r#"$1"<duration>""#)
+                .into_owned();
             *text = normalized;
         }
         _ => {}
@@ -369,6 +410,9 @@ static UUID: LazyLock<Regex> = LazyLock::new(|| {
 static SESSION_TIME: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z").expect("valid regex")
 });
+/// `<task-result id="…" agent="…" status="…" duration="63ms">`, the summary of a subagent run.
+static TASK_DURATION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(<task-result [^>]*duration=)"[^"]*""#).expect("valid regex"));
 
 fn is_random_id(text: &str) -> bool {
     text.len() == 16 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -418,9 +462,17 @@ mod tests {
             "type": "message_end",
             "id": "15c88d181ed15103",
             "messageId": "msg-1",
-            "message": { "timestamp": 1_794_306_420_199_u64, "usage": { "ttft": 3.7, "duration": 4.7 }, "text": "hi" },
+            "message": {
+                "timestamp": 1_794_306_420_199_u64,
+                "usage": { "ttft": 3.7, "duration": 4.7, "input": 8503, "output": 7, "totalTokens": 8510 },
+                "contextSnapshot": { "promptTokens": 8506, "toolSchemaTokens": 5099 },
+                "text": "hi"
+            },
             "cwd": "/tmp/omfp-omp-abc/work",
             "items": [ { "completedAt": 5, "id": "not-random" } ],
+            "progress": { "currentToolStartMs": 1_794_356_027_239_u64, "contextTokens": 7177, "tokens": 7177, "recentTools": [ { "endMs": 1_794_356_027_241_u64 } ] },
+            "input": 3,
+            "text": "<task-result id=\"Counter\" agent=\"task\" status=\"completed\" duration=\"63ms\">\n<output>\nduration=\"5s\"\n</output>",
             "timestamp": "kept-because-not-a-number",
         });
 
@@ -432,9 +484,17 @@ mod tests {
                 "type": "message_end",
                 "id": "<id>",
                 "messageId": "msg-1",
-                "message": { "timestamp": 0, "usage": { "ttft": 0, "duration": 0 }, "text": "hi" },
+                "message": {
+                    "timestamp": 0,
+                    "usage": { "ttft": 0, "duration": 0, "input": 0, "output": 7, "totalTokens": 0 },
+                    "contextSnapshot": { "promptTokens": 0, "toolSchemaTokens": 5099 },
+                    "text": "hi"
+                },
                 "cwd": "<root>/work",
                 "items": [ { "completedAt": 0, "id": "not-random" } ],
+                "progress": { "currentToolStartMs": 0, "contextTokens": 0, "tokens": 0, "recentTools": [ { "endMs": 0 } ] },
+                "input": 3,
+                "text": "<task-result id=\"Counter\" agent=\"task\" status=\"completed\" duration=\"<duration>\">\n<output>\nduration=\"5s\"\n</output>",
                 "timestamp": "kept-because-not-a-number",
             })
         );
