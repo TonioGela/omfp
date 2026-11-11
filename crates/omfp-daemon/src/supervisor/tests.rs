@@ -954,6 +954,55 @@ async fn live_connect_starts_omp_records_the_owner_and_relays_the_answer() {
     assert!(live.transcript.iter().all(|line| line.r#final));
 }
 
+// spec: DMN-105
+#[tokio::test]
+async fn live_connect_sends_the_live_prompt_with_the_threads_conversation() {
+    let h = harness(|_| {});
+    let (ws, _) = h.workspace();
+    let id = h
+        .threads
+        .create(NewThread::new("Login bug", ws))
+        .unwrap()
+        .id;
+    let history = [
+        json!({ "role": "user", "content": "why does {{login}} fail?" }),
+        json!({ "role": "assistant", "content": [{ "type": "text", "text": "The token was stale." }] }),
+    ]
+    .map(|message| omp_rpc::AgentMessage::from_value(message).unwrap());
+    h.launcher
+        .push_run(FakeRun::fresh().with_history(history.into()));
+
+    h.supervisor
+        .live_connect(&id, owner(1), OFFER.into())
+        .await
+        .unwrap();
+
+    let instructions: Vec<Option<String>> = h
+        .launcher
+        .process(0)
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            FakeCall::Call(OmpCall::LiveConnect(connect)) => Some(connect.instructions),
+            _ => None,
+        })
+        .collect();
+    let state = h.log(&id).await.with_state(Clone::clone);
+    assert_eq!(
+        instructions,
+        vec![Some(crate::live_context::live_instructions(
+            "Login bug",
+            &state
+        ))]
+    );
+    let sent = instructions[0].as_deref().unwrap();
+    assert!(sent.starts_with("You: omp Live, realtime voice surface"));
+    assert!(sent.contains("Thread title: Login bug"));
+    assert!(sent.contains(
+        "User: why does {{default \"\" \"{{\"}}login}} fail?\n\nAssistant: The token was stale."
+    ));
+}
+
 // spec: DMN-100
 #[tokio::test]
 async fn a_blank_offer_is_refused_without_omp() {

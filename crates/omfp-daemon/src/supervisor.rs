@@ -758,11 +758,27 @@ impl Supervisor {
                 return Err(error);
             }
         };
+        let threads = Arc::clone(&self.inner.threads);
+        let thread_id = id.to_owned();
+        let fetched = blocking(move || threads.get(&thread_id).map_err(SupervisorError::from))
+            .await
+            .and_then(|fetched| fetched);
+        let title = match fetched {
+            Ok(thread) => thread.title,
+            Err(error) => {
+                actor.release_voice(slot);
+                return Err(error);
+            }
+        };
+        // The realtime model knows only its instructions, so they carry the thread's conversation (DMN-105).
+        let instructions = actor
+            .log
+            .with_state(|state| crate::live_context::live_instructions(&title, state));
         self.push(&actor, ThreadEvent::LiveSession { owner: Some(owner) });
         let call = OmpCall::LiveConnect(LiveConnectCommand {
             sdp_offer,
             voice: None,
-            instructions: None,
+            instructions: Some(instructions),
         });
         let answer = blocking(move || process.call(call)).await?;
         actor.touch();

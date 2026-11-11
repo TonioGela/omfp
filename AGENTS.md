@@ -56,7 +56,8 @@ Clippy runs with `pedantic` as errors. Notable: `assert_is_empty` forbids `asser
 crates/omfp-core      reducer over omp events (ThreadEvent → ThreadState); no I/O; compiles to wasm (ARC-010)
 crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wasm (ARC-010)
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs; omp's live voice
-                      sequence in agent/fake/live.rs), live voice relay (supervisor.rs: one session per thread),
+                      sequence in agent/fake/live.rs), live voice relay (supervisor.rs: one session per thread;
+                      live_context.rs: omp's vendored live prompt live_instructions.txt + the thread's conversation),
                       supervisor (launch in the workspace folder, root sync), agent conventions (conventions.rs),
                       event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
                       workspaces/scan.rs, cheap change check in workspaces/fingerprint.rs, reading and writing

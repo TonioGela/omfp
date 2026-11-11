@@ -65,4 +65,7 @@ with the Dioxus UI (D-18); the ID is not reused.
 4. Update the `omp-rpc` tag and `omfp_core::OMP_VERSION`; run `cargo update -p omp-rpc`.
 5. Re-record contract fixtures (`OMFP_RECORD_FIXTURES=1 just test-contract`) and review their diff: new event kinds,
    renamed fields, changed tool argument shapes (TST-012, UI-051).
-6. Fix what broke, then `just ci`.
+6. Re-sync the vendored live prompt `crates/omfp-daemon/src/live_instructions.txt` from omp's
+   `packages/coding-agent/src/live/prompts/live-instructions.md` and update the version named in
+   `crates/omfp-daemon/src/live_context.rs` (DMN-105).
+7. Fix what broke, then `just ci`.

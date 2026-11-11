@@ -416,6 +416,7 @@ requirements = [
   "DMN-102",
   "DMN-103",
   "DMN-104",
+  "DMN-105",
   # Protocol: methods, connection number, live state in the reducer
   "PRT-050",
   "PRT-051",

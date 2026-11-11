@@ -13,6 +13,7 @@ pub mod fs_complete;
 pub mod git;
 pub mod host_tools;
 pub mod jobs;
+pub mod live_context;
 pub mod names;
 pub mod omp;
 pub mod omp_binary;

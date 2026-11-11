@@ -11,8 +11,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use omfp_core::ThreadEvent;
 use omp_rpc::{
-    Event, ExtensionUiResponse, HostTool, HostUri, OpenSessionResult, PromptCommand, ReadyEvent,
-    RpcAgentEvent, RpcNotification,
+    AgentMessage, Event, ExtensionUiResponse, HostTool, HostUri, OpenSessionResult, PromptCommand,
+    ReadyEvent, RpcAgentEvent, RpcNotification,
 };
 use serde_json::{Value, json};
 use tokio::sync::watch;
@@ -56,6 +56,14 @@ impl FakeRun {
             },
             segments: VecDeque::new(),
         }
+    }
+
+    /// The same run resuming a session with `messages` as its history.
+    #[must_use]
+    pub fn with_history(mut self, messages: Vec<AgentMessage>) -> Self {
+        self.startup.session.resumed = true;
+        self.startup.history = messages;
+        self
     }
 
     /// Reads a fixture file.
