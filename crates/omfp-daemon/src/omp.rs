@@ -34,6 +34,8 @@ pub struct LaunchSpec {
     pub approval_mode: Option<String>,
     /// Text passed as `--append-system-prompt`: the daemon's conventions and the user's append prompt (DMN-030).
     pub append_system_prompt: Option<String>,
+    /// The daemon's omp extension root, passed as `--extension`: it ships the `widget-builder` agent (DMN-107).
+    pub extension: Option<PathBuf>,
     /// File receiving omp's stderr (DMN-036).
     pub stderr_log: PathBuf,
     /// Environment overrides applied last: `Some` sets, `None` removes.
@@ -68,6 +70,10 @@ impl LaunchSpec {
         if let Some(text) = &self.append_system_prompt {
             args.push("--append-system-prompt".into());
             args.push(text.into());
+        }
+        if let Some(dir) = &self.extension {
+            args.push("--extension".into());
+            args.push(dir.clone().into_os_string());
         }
         args
     }
@@ -334,12 +340,13 @@ mod tests {
             model: Some("anthropic/claude".into()),
             approval_mode: Some("always-ask".into()),
             append_system_prompt: Some("line one\nline two".into()),
+            extension: Some("/data/omp".into()),
             stderr_log: "/data/threads/t1/omp.log".into(),
             env: vec![],
         }
     }
 
-    // spec: DMN-030
+    // spec: DMN-030, DMN-107
     #[test]
     fn args_run_rpc_ui_with_one_add_dir_per_repository_in_order() {
         let args: Vec<String> = spec()
@@ -364,19 +371,22 @@ mod tests {
                 "--approval-mode",
                 "always-ask",
                 "--append-system-prompt",
-                "line one\nline two"
+                "line one\nline two",
+                "--extension",
+                "/data/omp"
             ]
         );
     }
 
     // spec: DMN-030
     #[test]
-    fn args_omit_unset_model_approval_mode_and_append_prompt() {
+    fn args_omit_unset_model_approval_mode_append_prompt_and_extension() {
         let mut spec = spec();
         spec.add_dirs.clear();
         spec.model = None;
         spec.approval_mode = None;
         spec.append_system_prompt = None;
+        spec.extension = None;
         let args: Vec<String> = spec
             .args()
             .into_iter()

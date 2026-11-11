@@ -26,8 +26,8 @@ pub use script::{Matcher, Reply, Script, Step, ToolCall};
 #[derive(Debug)]
 struct Inner {
     model: String,
-    steps: Mutex<VecDeque<Step>>,
-    answered: Mutex<usize>,
+    /// The steps not answered yet, with their position in the script.
+    steps: Mutex<VecDeque<(usize, Step)>>,
     requests: Mutex<Vec<Value>>,
     failures: Mutex<Vec<String>>,
     /// One entry per step, `Some` for gated steps.
@@ -72,8 +72,7 @@ impl FakeLlm {
             .collect();
         let inner = Arc::new(Inner {
             model,
-            steps: Mutex::new(steps.into()),
-            answered: Mutex::new(0),
+            steps: Mutex::new(steps.into_iter().enumerate().collect()),
             requests: Mutex::new(Vec::new()),
             failures: Mutex::new(Vec::new()),
             gates,
@@ -178,22 +177,30 @@ async fn chat_completions(
 
     let popped = {
         let mut steps = lock(&inner.steps);
-        match steps.front() {
-            None => Err(format!(
+        let matches = |step: &Step| {
+            step.when
+                .as_ref()
+                .is_none_or(|matcher| matcher.matches(&request))
+        };
+        let position = steps.front().and_then(|(_, front)| {
+            if matches(front) {
+                Some(0)
+            } else {
+                steps
+                    .iter()
+                    .position(|(_, step)| step.any_order && step.when.is_some() && matches(step))
+            }
+        });
+        match (position, steps.front()) {
+            (_, None) => Err(format!(
                 "unexpected request: script exhausted; request: {request}"
             )),
-            Some(step) => match &step.when {
-                Some(matcher) if !matcher.matches(&request) => Err(format!(
-                    "request did not match {matcher:?}; last user message: {:?}; request: {request}",
-                    script::last_user_text(&request)
-                )),
-                _ => {
-                    let mut answered = lock(&inner.answered);
-                    let index = *answered;
-                    *answered += 1;
-                    Ok((index, steps.pop_front().expect("front exists")))
-                }
-            },
+            (None, Some((_, front))) => Err(format!(
+                "request did not match {:?}; last user message: {:?}; request: {request}",
+                front.when,
+                script::last_user_text(&request)
+            )),
+            (Some(position), Some(_)) => Ok(steps.remove(position).expect("position exists")),
         }
     };
     let (index, step) = match popped {

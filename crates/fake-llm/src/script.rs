@@ -41,6 +41,10 @@ pub struct Step {
     /// Hold the reply until the test calls `FakeLlm::release_gate` for this step, keeping omp busy deterministically.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub gated: bool,
+    /// May answer a matching request that arrives while other steps are still ahead of it (concurrent agents: a
+    /// background subagent next to its parent). Needs `when`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub any_order: bool,
 }
 
 impl Step {
@@ -51,6 +55,7 @@ impl Step {
             when: None,
             reply,
             gated: false,
+            any_order: false,
         }
     }
 
@@ -61,6 +66,7 @@ impl Step {
             when: Some(matcher),
             reply,
             gated: false,
+            any_order: false,
         }
     }
 
@@ -68,6 +74,14 @@ impl Step {
     #[must_use]
     pub fn gated(mut self) -> Self {
         self.gated = true;
+        self
+    }
+
+    /// Lets this `when` step answer a matching request before the steps ahead of it: a request the front step does not
+    /// match goes to the first matching `any_order` step instead of failing.
+    #[must_use]
+    pub fn any_order(mut self) -> Self {
+        self.any_order = true;
         self
     }
 }

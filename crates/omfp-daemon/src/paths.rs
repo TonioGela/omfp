@@ -54,6 +54,20 @@ impl DataDir {
     pub fn widgets(&self) -> PathBuf {
         self.root.join("widgets")
     }
+
+    /// The daemon's omp extension root, passed to every omp as `--extension` (DMN-107); it holds only `agents/`.
+    #[must_use]
+    pub fn omp_extension(&self) -> PathBuf {
+        self.root.join("omp")
+    }
+
+    /// The `widget-builder` agent definition (AGT-029, DMN-107).
+    #[must_use]
+    pub fn widget_builder(&self) -> PathBuf {
+        self.omp_extension()
+            .join("agents")
+            .join("widget-builder.md")
+    }
 }
 
 #[cfg(test)]
@@ -76,5 +90,10 @@ mod tests {
             Path::new("/data/omfp/threads/T1/omp.log")
         );
         assert_eq!(data.widgets(), Path::new("/data/omfp/widgets"));
+        assert_eq!(data.omp_extension(), Path::new("/data/omfp/omp"));
+        assert_eq!(
+            data.widget_builder(),
+            Path::new("/data/omfp/omp/agents/widget-builder.md")
+        );
     }
 }

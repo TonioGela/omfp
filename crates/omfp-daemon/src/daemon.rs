@@ -241,6 +241,12 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
     let lock = lock_data_dir(&data_dir)?;
     let data = DataDir::new(&data_dir);
     let token = Token::load_or_create(&data.token()).context("cannot read or create the token")?;
+    conventions::write_widget_builder(&data).with_context(|| {
+        format!(
+            "cannot write the widget-builder agent to {}",
+            data.widget_builder().display()
+        )
+    })?;
     let workspaces_root = std::path::absolute(&config.workspaces_root)?;
     let store =
         Arc::new(Store::open(&data.db(), &workspaces_root).context("cannot open the database")?);

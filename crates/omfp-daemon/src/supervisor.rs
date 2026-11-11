@@ -1142,6 +1142,7 @@ impl Supervisor {
                 self.inner.config.agent_dir.as_deref(),
                 &data.widgets(),
             )),
+            extension: Some(data.omp_extension()),
             stderr_log: data.thread_log(&actor.id),
             env: self.inner.config.omp_env.clone(),
         };
@@ -1191,7 +1192,10 @@ impl Supervisor {
             &thread.workspace_id,
             widget_host,
         );
-        let uris = match widgets::host_uris(self.inner.config.builtin_widgets.clone()) {
+        let check_host = lock(&self.inner.widget_host)
+            .clone()
+            .map(|host| (thread.workspace_id.clone(), host));
+        let uris = match widgets::host_uris(self.inner.config.builtin_widgets.clone(), check_host) {
             Ok(uris) => uris,
             Err(error) => {
                 self.fail(actor, error.to_string(), String::new());

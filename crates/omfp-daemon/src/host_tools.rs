@@ -8,6 +8,7 @@ use std::sync::Arc;
 use omfp_core::ThreadEvent;
 use omp_rpc::{
     ExtensionUiRequest, HostTool, HostToolError, HostToolOutput, OpenUrlUiRequest, RpcNotification,
+    ToolLoadMode,
 };
 use serde_json::{Map, Value, json};
 
@@ -52,6 +53,7 @@ pub trait WidgetHost: Send + Sync {
 /// The host tools of one thread: `cwd` (omp's working directory, the thread's workspace folder, DMN-030) resolves
 /// relative paths, `emit` delivers the presentation events to the thread's clients, `set_title` renames the thread,
 /// and `widgets` (absent in tests that need no widget tools) backs the widget tools of workspace `workspace_id`.
+/// Every tool is `essential`: a direct tool of the agent, not only an `xd://` device (DMN-106).
 #[must_use]
 pub fn thread_tools(
     cwd: PathBuf,
@@ -66,6 +68,9 @@ pub fn thread_tools(
         tools.push(view_add(workspace_id.to_owned(), host));
     }
     tools
+        .into_iter()
+        .map(|tool| tool.load_mode(ToolLoadMode::Essential))
+        .collect()
 }
 
 fn schema(value: &Value) -> Map<String, Value> {
@@ -510,7 +515,7 @@ mod tests {
         }
     }
 
-    // spec: DMN-060, DMN-063, DMN-064
+    // spec: DMN-060, DMN-063, DMN-064, DMN-106
     #[test]
     fn the_widget_tools_are_registered_and_reach_the_widget_host_of_the_threads_workspace() {
         let host = Arc::new(FakeWidgets::default());
@@ -529,6 +534,14 @@ mod tests {
             names,
             [OPEN_IN_EDITOR, SET_THREAD_TITLE, WIDGET_CHECK, VIEW_ADD]
         );
+        for tool in &tools {
+            assert_eq!(
+                tool.definition().load_mode,
+                Some(ToolLoadMode::Essential),
+                "{} is a direct tool of the agent",
+                tool.definition().name
+            );
+        }
         assert_eq!(
             tools[2].definition().parameters["required"],
             json!(["name"])

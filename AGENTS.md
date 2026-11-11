@@ -12,7 +12,7 @@ only be reachable from the human UI.
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; M5d Crush and M6 live voice done; next: M7 desktop, M8 subagents);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; M5d Crush, M6 live voice and M6b widget builder done; next: M7 desktop, M8 subagents);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -58,7 +58,7 @@ crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wa
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs; omp's live voice
                       sequence in agent/fake/live.rs), live voice relay (supervisor.rs: one session per thread;
                       live_context.rs: omp's vendored live prompt live_instructions.txt + the thread's conversation),
-                      supervisor (launch in the workspace folder, root sync), agent conventions (conventions.rs),
+                      supervisor (launch in the workspace folder, root sync), agent conventions and the widget-builder agent (conventions.rs),
                       event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
                       workspaces/scan.rs, cheap change check in workspaces/fingerprint.rs, reading and writing
                       workspace files with a hash check in workspaces/files.rs, add/remove repo,

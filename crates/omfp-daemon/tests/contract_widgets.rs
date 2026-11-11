@@ -1,5 +1,6 @@
 //! M4 contract tests (L3): the real daemon with the pinned omp and the fake LLM — the `omfp://` host URIs every thread
-//! reads (DMN-062, AGT-025) and the bash output omp streams while a command runs (AGT-020).
+//! reads (DMN-062, AGT-025), the bash output omp streams while a command runs (AGT-020), and the main agent
+//! delegating a widget to the daemon's `widget-builder` subagent (AGT-029, M6b).
 
 mod client;
 mod common;
@@ -7,7 +8,7 @@ mod common;
 use clap::Parser;
 use client::{Client, Follower};
 use common::Harness;
-use fake_llm::{Reply, Step, ToolCall};
+use fake_llm::{Matcher, Reply, Step, ToolCall};
 use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::widgets::{DOCS, SCHEMA_URL};
 use omfp_daemon::{DaemonHandle, Ports, start_with};
@@ -202,4 +203,157 @@ async fn omp_streams_the_bash_output_while_the_command_runs() {
     })
     .await;
     harness.assert_no_stray_network();
+}
+
+/// The names of the tools a chat-completions request offers the model.
+fn offered_tools(request: &Value) -> Vec<String> {
+    request["tools"]
+        .as_array()
+        .map(|tools| {
+            tools
+                .iter()
+                .filter_map(|tool| tool["function"]["name"].as_str().map(str::to_owned))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+const WIDGET: &str = "import { Card } from \"omfp/kit\";\nexport default function Clock() {\n  return <Card title=\"Clock\">12:00</Card>;\n}\n";
+
+/// The main agent's and the builder's turns; the builder runs beside its parent, so its steps answer in any order.
+fn delegation_script() -> Vec<Step> {
+    let brief = Matcher::LastUserContains("WIDGET-BRIEF".into());
+    vec![
+        // The main agent starts the builder in the background...
+        Step::when(
+            Matcher::LastUserContains("show a clock".into()),
+            Reply::tool_calls(vec![ToolCall::new(
+                "task1",
+                "task",
+                json!({
+                    "context": "The user wants a clock in their omfp window.",
+                    "tasks": [{
+                        "agent": "widget-builder",
+                        "name": "ClockBuilder",
+                        "task": "WIDGET-BRIEF: build ./widgets/clock showing the time; it goes in a side tab.",
+                        "solutionSpace": "one widget, design open"
+                    }]
+                }),
+            )]),
+        ),
+        // ...and keeps talking while the builder runs.
+        Step::when(
+            Matcher::LastUserContains("show a clock".into()),
+            Reply::text("The builder is on it."),
+        )
+        .any_order(),
+        Step::when(
+            brief.clone(),
+            Reply::tool_calls(vec![ToolCall::new(
+                "write1",
+                "write",
+                json!({ "path": ".omfp/widgets/clock/index.tsx", "content": WIDGET }),
+            )]),
+        )
+        .any_order(),
+        Step::when(
+            brief.clone(),
+            Reply::tool_calls(vec![ToolCall::new(
+                "check1",
+                "read",
+                json!({ "path": "omfp://widgets/check/clock" }),
+            )]),
+        )
+        .any_order(),
+        Step::when(
+            brief,
+            Reply::text("CLOCK-BUILT: ./widgets/clock, no props."),
+        )
+        .any_order(),
+        // The builder's result arrives as a follow-up turn; the main agent places the widget.
+        Step::when(
+            Matcher::LastUserContains("CLOCK-BUILT".into()),
+            Reply::tool_calls(vec![ToolCall::new(
+                "add1",
+                "omfp_view_add",
+                json!({ "widget": "./widgets/clock", "where": "side-tab" }),
+            )]),
+        ),
+        Step::reply(Reply::text("Your clock is in a side tab.")),
+    ]
+}
+
+// spec: AGT-029, DMN-106, DMN-107, DMN-108
+#[tokio::test(flavor = "multi_thread")]
+async fn the_main_agent_delegates_a_widget_to_the_widget_builder_which_checks_it_through_the_daemon()
+ {
+    let harness = Harness::new(delegation_script()).await;
+    let daemon = Daemon::start(&harness).await;
+    let mut client = daemon.client().await;
+    let (thread, mut view) = thread(&mut client).await;
+
+    prompt(&mut client, &thread, "show a clock").await;
+    let started = until_frame(&mut client, &mut view, "subagent_lifecycle", |_| true).await;
+    assert_eq!(started["payload"]["agent"], "widget-builder", "{started:#}");
+    assert_eq!(
+        started["payload"]["agentSource"], "user",
+        "from --extension: {started:#}"
+    );
+    assert_eq!(
+        started["payload"]["detached"], true,
+        "a background task: {started:#}"
+    );
+    let fake = &harness.fake;
+    view.until(&mut client, |state| {
+        state.settled && fake.requests().len() == 7
+    })
+    .await;
+    harness.assert_no_stray_network();
+
+    let requests = fake.requests();
+    let parent = offered_tools(&requests[0]);
+    for tool in ["task", "omfp_widget_check", "omfp_view_add"] {
+        assert!(
+            parent.contains(&tool.to_owned()),
+            "{tool} is a direct tool of the main agent: {parent:?}"
+        );
+    }
+    let child: Vec<&Value> = requests
+        .iter()
+        .filter(|request| {
+            request["messages"][0]["content"]
+                .as_str()
+                .is_some_and(|system| system.contains("# omfp widget builder"))
+        })
+        .collect();
+    assert_eq!(
+        child.len(),
+        3,
+        "the builder's three turns carry its definition"
+    );
+    let tools = offered_tools(child[0]);
+    for tool in ["read", "write", "edit"] {
+        assert!(tools.contains(&tool.to_owned()), "{tool}: {tools:?}");
+    }
+    assert!(
+        !tools.iter().any(|tool| tool.starts_with("omfp_")),
+        "no host tools in a subagent: {tools:?}"
+    );
+    let report = tool_result(child[2], "check1");
+    assert!(
+        report.contains("clock") && !report.contains("unknown omfp URL"),
+        "the daemon answered the check: {report}"
+    );
+    let placed = requests
+        .iter()
+        .find_map(|request| {
+            request["messages"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|message| message["tool_call_id"] == "add1")
+                .then(|| tool_result(request, "add1"))
+        })
+        .expect("the main agent placed the widget");
+    assert!(!placed.contains("not found"), "{placed}");
 }

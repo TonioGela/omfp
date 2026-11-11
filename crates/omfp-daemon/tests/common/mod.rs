@@ -58,6 +58,7 @@ impl Harness {
             model: Some(format!("{FAKE_PROVIDER}/{FAKE_MODEL}")),
             approval_mode: None,
             append_system_prompt: None,
+            extension: None,
             stderr_log: self.thread.path().join("omp.log"),
             env: self.env.env_overrides(),
         }

@@ -61,6 +61,8 @@ An OpenAI-compatible server (axum) that answers from a script, making omp runs d
   text chunks, tool calls (`id`, `name`, JSON arguments), finish reason; optionally an HTTP error (429/500) or a delay to
   test retries and streaming.
 - Every received request is recorded and exposed in-process (and at `GET /__requests`) for assertions.
+- Steps answer in order. An `any_order` step (with a match) may answer a matching request that arrives while earlier
+  steps still wait, for agents running side by side (a background subagent next to its parent, M6b).
 - An unexpected request (script exhausted or no match) answers 500 and fails the test with the request body.
 
 omp runs in an isolated environment (`omfp_testkit::OmpEnv`): its own `HOME`, agent directory (`PI_CODING_AGENT_DIR`,

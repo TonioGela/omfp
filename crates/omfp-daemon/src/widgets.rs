@@ -13,7 +13,7 @@ pub mod manifest;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::SystemTime;
 
 use omfp_protocol::{WidgetInfo, WidgetSource};
@@ -21,9 +21,11 @@ use omp_rpc::{HostUri, HostUriRead, HostUriResultContentType};
 use serde_json::Value;
 use tracing::warn;
 
+use crate::host_tools::{WidgetHost, run_widget_check};
 use crate::store::new_id;
 use compile::{CompileError, Exports};
 use folders::{files, is_widget_name};
+use omp_rpc::HostToolOutput;
 
 /// The widget SDK and kit reference, served as [`DOCS_URL`] (AGT-025).
 pub const DOCS: &str = include_str!("widgets/docs.md");
@@ -37,6 +39,8 @@ pub const DOCS_URL: &str = "omfp://docs/widgets";
 pub const SCHEMA_URL: &str = "omfp://schemas/views.json";
 /// Host URI listing the built-in widgets; `<BUILTIN_URL>/<name>[/<path>]` reads their sources (DMN-062).
 pub const BUILTIN_URL: &str = "omfp://widgets/builtin";
+/// Host URI checking a widget: `<CHECK_URL>/<name>` reads the `omfp_widget_check` report (DMN-108).
+pub const CHECK_URL: &str = "omfp://widgets/check";
 /// The host URI scheme of the daemon (DMN-062).
 pub const SCHEME: &str = "omfp";
 
@@ -113,8 +117,8 @@ pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String
             Some(rest) => read_builtin(builtin_folder(builtin)?, rest),
             None => Err(format!(
                 "unknown omfp URL {url}: omfp serves {DOCS_URL} (the widget SDK and kit reference), {SCHEMA_URL} \
-                 (the views manifest schema), {BUILTIN_URL} (the built-in widgets) and {BUILTIN_URL}/<name>[/<path>] \
-                 (their sources)"
+                 (the views manifest schema), {BUILTIN_URL} (the built-in widgets), {BUILTIN_URL}/<name>[/<path>] \
+                 (their sources) and {CHECK_URL}/<name> (a widget's check report)"
             )),
         },
     }
@@ -209,16 +213,58 @@ fn read_builtin(builtin: &Path, rest: &str) -> Result<HostUriRead, String> {
     Ok(markdown(text))
 }
 
+/// `omfp://widgets/check/<name>` (DMN-108): the `omfp_widget_check` report of widget `name` of workspace
+/// `workspace_id`, read fresh every time; `None` when `url` is no check URL.
+pub fn read_check(
+    url: &str,
+    is_cancelled: impl Fn() -> bool,
+    workspace_id: &str,
+    host: Option<&dyn WidgetHost>,
+) -> Option<Result<HostUriRead, String>> {
+    let name = url
+        .trim_end_matches('/')
+        .strip_prefix(CHECK_URL)?
+        .strip_prefix('/')?;
+    let Some(host) = host else {
+        return Some(Err(
+            "this omfp daemon cannot check widgets for this thread".to_owned()
+        ));
+    };
+    let mut arguments = serde_json::Map::new();
+    arguments.insert("name".to_owned(), Value::String(name.to_owned()));
+    Some(
+        match run_widget_check(&arguments, is_cancelled, workspace_id, host) {
+            Ok(HostToolOutput::Text(content)) => Ok(HostUriRead {
+                content,
+                content_type: Some(HostUriResultContentType::TextPlain),
+                immutable: Some(false),
+                ..HostUriRead::default()
+            }),
+            Ok(other) => Err(format!("unexpected check output {other:?}")),
+            Err(error) => Err(error.to_string()),
+        },
+    )
+}
+
 /// The host URI schemes of every thread (DMN-062): `omfp://`, read-only; `builtin` is
-/// `<static-dir>/builtin-widgets/` when the daemon serves a bundle.
-pub fn host_uris(builtin: Option<PathBuf>) -> Result<Vec<HostUri>, omp_rpc::Error> {
-    let omfp = HostUri::new(SCHEME, move |url, _context| {
-        read_uri(url, builtin.as_deref()).map_err(Into::into)
+/// `<static-dir>/builtin-widgets/` when the daemon serves a bundle; `widgets` (the thread's workspace id and the
+/// widget host) backs `omfp://widgets/check/<name>` (DMN-108).
+pub fn host_uris(
+    builtin: Option<PathBuf>,
+    widgets: Option<(String, Arc<dyn WidgetHost>)>,
+) -> Result<Vec<HostUri>, omp_rpc::Error> {
+    let omfp = HostUri::new(SCHEME, move |url, context| {
+        let (workspace_id, host) = widgets
+            .as_ref()
+            .map_or(("", None), |(id, host)| (id.as_str(), Some(&**host)));
+        read_check(url, || context.is_cancelled(), workspace_id, host)
+            .unwrap_or_else(|| read_uri(url, builtin.as_deref()))
+            .map_err(Into::into)
     })?
     .description(format!(
         "omfp, the window the user works in: {DOCS_URL} documents widgets (SDK, kit, views); {SCHEMA_URL} is the \
          JSON Schema of .omfp/views.json; {BUILTIN_URL} lists the built-in widgets and {BUILTIN_URL}/<name> shows \
-         one's source"
+         one's source; {CHECK_URL}/<name> checks a widget (compile errors, what open windows render)"
     ))
     .immutable(true);
     Ok(vec![omfp])
@@ -675,11 +721,80 @@ mod tests {
     // spec: DMN-062
     #[test]
     fn the_omfp_scheme_is_read_only() {
-        let uris = host_uris(None).unwrap();
+        let uris = host_uris(None, None).unwrap();
         assert_eq!(uris.len(), 1);
         assert_eq!(uris[0].scheme(), "omfp");
         assert!(!uris[0].writable());
         assert_eq!(uris[0].definition().immutable, Some(true));
+    }
+
+    /// A widget host answering checks with the workspace and name it was asked for.
+    struct Checks;
+
+    impl WidgetHost for Checks {
+        fn check_widget(
+            &self,
+            workspace_id: &str,
+            name: &str,
+            _is_cancelled: &dyn Fn() -> bool,
+        ) -> Result<String, String> {
+            if name == "broken" {
+                return Err("no widget broken".to_owned());
+            }
+            Ok(format!("report {workspace_id} {name}"))
+        }
+
+        fn add_to_view(&self, _: &str, _: &layout::Addition<'_>) -> Result<String, String> {
+            unreachable!("the check URI never places a widget")
+        }
+    }
+
+    // spec: DMN-108
+    #[test]
+    fn the_check_url_reads_the_widget_check_report_fresh_every_time() {
+        let check = |url: &str, cancelled: bool, host: Option<&dyn WidgetHost>| {
+            read_check(url, || cancelled, "01WS", host)
+        };
+        let read = check("omfp://widgets/check/clock", false, Some(&Checks))
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.content, "report 01WS clock");
+        assert_eq!(read.content_type, Some(HostUriResultContentType::TextPlain));
+        assert_eq!(
+            read.immutable,
+            Some(false),
+            "never cached: the report changes"
+        );
+        assert_eq!(
+            check("omfp://widgets/check/user:clock/", false, Some(&Checks))
+                .unwrap()
+                .unwrap()
+                .content,
+            "report 01WS user:clock"
+        );
+        assert_eq!(
+            check("omfp://widgets/check/broken", false, Some(&Checks)).unwrap(),
+            Err("no widget broken".to_owned())
+        );
+        assert_eq!(
+            check("omfp://widgets/check/clock", true, Some(&Checks)).unwrap(),
+            Err("cancelled".to_owned())
+        );
+        assert_eq!(
+            check("omfp://widgets/check/ ", false, Some(&Checks)).unwrap(),
+            Err("`name` must be a non-empty string".to_owned())
+        );
+        assert!(
+            check("omfp://widgets/check/clock", false, None)
+                .unwrap()
+                .is_err()
+        );
+        assert_eq!(check("omfp://docs/widgets", false, Some(&Checks)), None);
+        assert!(
+            read_uri("omfp://nothing", None)
+                .unwrap_err()
+                .contains("omfp://widgets/check/<name>")
+        );
     }
 
     // spec: AGT-010, DMN-088

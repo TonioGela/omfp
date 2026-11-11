@@ -160,7 +160,7 @@ async fn a_prompt_on_a_stopped_thread_starts_omp_and_reduces_the_recorded_turn()
     assert_eq!(seq, u64::try_from(recorded.len()).unwrap());
 }
 
-// spec: DMN-030, DMN-029, DMN-060, ARC-008, AGT-024
+// spec: DMN-030, DMN-029, DMN-060, ARC-008, AGT-024, DMN-107
 #[tokio::test]
 async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
     let agent_dir = tempfile::tempdir().unwrap();
@@ -211,6 +211,11 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
     assert_eq!(launch.spec.model.as_deref(), Some("fake/scripted"));
     assert_eq!(launch.spec.approval_mode.as_deref(), Some("always-ask"));
     assert_eq!(launch.spec.stderr_log, h.data.thread_log(&id));
+    assert_eq!(
+        launch.spec.extension.as_deref(),
+        Some(h.data.omp_extension().as_path()),
+        "the daemon's omp extension root ships the widget-builder agent"
+    );
     assert_eq!(launch.spec.env, [("OMFP_TEST".into(), Some("1".into()))]);
     assert_eq!(launch.tools, [OPEN_IN_EDITOR, SET_THREAD_TITLE]);
     // The session is stored once omp opened it (DMN-032), and its roots are the flags (DMN-029).

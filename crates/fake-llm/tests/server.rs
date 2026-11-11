@@ -224,6 +224,37 @@ async fn replies_only_when_the_matcher_accepts_the_last_user_message() {
 
 // spec: TST-020
 #[tokio::test]
+async fn an_any_order_step_answers_a_matching_request_before_the_steps_ahead_of_it() {
+    let server = FakeLlm::start(Script::new(
+        MODEL,
+        vec![
+            Step::when(Matcher::LastUserContains("parent".into()), Reply::text("p")),
+            Step::when(Matcher::LastUserContains("child".into()), Reply::text("c")).any_order(),
+            Step::when(Matcher::LastUserContains("late".into()), Reply::text("l")),
+        ],
+    ))
+    .await
+    .unwrap();
+
+    let child = post_chat(&server, &chat_request("child", false)).await;
+    assert_eq!(child.status(), 200);
+    let child: Value = child.json().await.unwrap();
+    assert_eq!(child["choices"][0]["message"]["content"], "c");
+    let late = post_chat(&server, &chat_request("late", false)).await;
+    assert_eq!(late.status(), 500, "only any_order steps jump the queue");
+    assert_eq!(server.failures().len(), 1);
+    let parent = post_chat(&server, &chat_request("parent", false)).await;
+    assert_eq!(parent.status(), 200);
+    assert_eq!(
+        post_chat(&server, &chat_request("late", false))
+            .await
+            .status(),
+        200
+    );
+}
+
+// spec: TST-020
+#[tokio::test]
 async fn reports_requests_beyond_the_end_of_the_script() {
     let server = FakeLlm::start(Script::new(
         MODEL,
