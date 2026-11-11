@@ -470,7 +470,7 @@ describe("reducer", () => {
     expect(state.prompts.p2?.status).toBe("error");
   });
 
-  // spec: TST-010
+  // spec: TST-010, PRT-055
   test("subagent frames keep the latest lifecycle and progress", () => {
     const lifecycle = (status: string) => ({
       type: "subagent_lifecycle",
@@ -490,6 +490,61 @@ describe("reducer", () => {
     expect(Object.keys(state.subagents)).toEqual(["sa1"]);
     expect(state.subagents.sa1?.lifecycle?.status).toBe("completed");
     expect(state.subagents.sa1?.progress?.progress.status).toBe("completed");
+  });
+
+  // spec: TST-010, PRT-057
+  test("todo phases are the last committed todo result of the transcript", () => {
+    const todo = (id: string, op: string, isError: boolean, tasks: JsonValue[]): JsonObject => ({
+      role: "toolResult",
+      toolCallId: id,
+      toolName: "todo",
+      isError,
+      timestamp: 0,
+      content: [{ type: "text", text: "list" }],
+      details: { op, phases: [{ name: "Tasks", tasks }], storage: "session" },
+    });
+    const read = { content: "Read", status: "completed" };
+    const fix = { content: "Fix", status: "in_progress" };
+    const contents = (state: ThreadState) =>
+      state.todo_phases.flatMap((phase) => phase.tasks.map((task) => [task.content, task.status]));
+    const state = replay([
+      messageEnd("t1", todo("t1", "init", false, [read, fix])),
+      // A failed call and a `view` commit nothing (omp's `committedTodoPhases`).
+      messageEnd("t2", todo("t2", "done", true, [])),
+      messageEnd("t3", todo("t3", "view", false, [])),
+    ]);
+    expect(contents(state)).toEqual([
+      ["Read", "completed"],
+      ["Fix", "in_progress"],
+    ]);
+    // History (a restart, a fork or a navigation) recomputes them from the restored branch.
+    expect(contents(reduce(state, history([todo("h1", "init", false, [read]), userMessage("again")])))).toEqual([
+      ["Read", "completed"],
+    ]);
+    expect(reduce(state, history([userMessage("before the list")])).todo_phases).toEqual([]);
+  });
+
+  // spec: TST-010, PRT-056
+  test("goal_updated keeps the session's goal", () => {
+    const goal = {
+      id: "g1",
+      objective: "Ship it",
+      status: "active" as const,
+      tokensUsed: 10,
+      timeUsedSeconds: 1.5,
+      createdAt: 1,
+      updatedAt: 2,
+      tokenBudget: 1000,
+    };
+    const state = replay([omp({ type: "goal_updated", goal, state: { enabled: true, mode: "active", goal } })]);
+    expect(state.goal).toEqual(goal);
+    // A history keeps it (the goal belongs to the omp session, not the transcript); `goal: null` drops it.
+    expect(reduce(state, history([])).goal).toEqual(goal);
+    expect(reduce(state, omp({ type: "goal_updated", goal: null })).goal).toBeNull();
+    // Like omp-rpc, a frame without `goal` or with a malformed one does not decode.
+    expect(reduce(state, omp({ type: "goal_updated" })).notices.map((notice) => notice.frame.type)).toEqual([
+      "unknown",
+    ]);
   });
 
   // spec: TST-010, UI-043, DMN-042

@@ -346,7 +346,9 @@ restarts, and on a random port of the same interface only when that port is take
 no IPC and no capabilities, keeps its web storage in `<data-dir>/webview`, allows the UI's notifications, and the
 command prints the browser URL with the token (UI-004). With `--connect`, the window opens `<url>/#token=…` without
 `local=1`, and the theme file of this machine (`$XDG_CONFIG_HOME/omfp/theme.css`) is followed and sent to that daemon
-with `theme.set` (removal clears it); a local daemon follows the file itself (UI-091). Live voice picks its path per
+with `theme.set` (removal clears it); a local daemon follows the file itself (UI-091). The window follows the
+desktop's color scheme from the settings portal (`org.freedesktop.appearance color-scheme`, read at startup and on
+`SettingChanged`, over gio's D-Bus API), which WebKitGTK 4.1 ignores on its own (UI-195). Live voice picks its path per
 window (UI-188): `live_connect` where WebRTC exists, else omp's own `thread.live_start` session when `local=1` says the
 window runs on the daemon's machine (DMN-109, PRT-053), its spectrum drawn from omp's `live_levels`, which the daemon
 relays as transient frames outside the event log (DMN-110, PRT-054, UI-189), else the mic button says why; the fake
@@ -360,13 +362,39 @@ Synth gradient, rendered headlessly from `crates/omfp/icons/icon.html`. Screensh
 desktop windows on one daemon showing different threads, and Chromium on the same daemon with the same threads.
 Packaging the flake's `omfp` package (wrapped with glib-networking, bundled `web/` and `omp`) is left to M9.
 
-## M8 — Subagents, tree, goal
+## M8 — Subagents, tree, goal (done)
 
 Scope: UI-081..083 (as built-in widgets); daemon commands for subagents, tree, fork, label, goal, btw, compact; reducer
 support for subagent progress frames and goal updates.
 
 Acceptance: contract scenarios for a `task` tool spawning a subagent (scripted), fork from an entry, navigate with
 `editorText` restored; tests for each widget.
+
+Result: the daemon's subagent, tree, fork, label, goal, btw and compact commands forward to omp (in place since M2);
+new is that a successful `fork` or `navigate_tree` makes the daemon read `get_state` and `get_messages` again and record
+a `history` event, since omp announces no event for a branch change (DMN-111). The shared reducer, in Rust and the TS
+port, keeps the subagents' lifecycle and progress (PRT-055), the session's `goal` from `goal_updated` (PRT-056) and
+`todo_phases` from the last todo result that changed the list, recomputed on history (PRT-057). Three built-in widgets,
+not in the default view and added through the widget picker: `omfp:subagents` (UI-081) merges the reducer's roster with
+omp's running `thread.subagents` and reads a subagent's transcript incrementally with steer and cancel; `omfp:todos`
+(UI-082) shows the goal and one border box per phase; `omfp:tree` (UI-083) shows the session tree with go-here,
+summarize-and-go, fork and label, and a returned `editorText` becomes the thread's composer draft. The contract scenarios
+(TST-060) run a scripted `task` subagent (seen running behind a fake-LLM gate, then its transcript paged by `fromByte`),
+navigate with `editorText`, label, fork from an entry, and create and drop a goal against the pinned omp.
+
+## M8b — Notices and theme contrast (done)
+
+Scope (user requests after M7): a thread you are not on that needs you, fails or finishes a turn while the window has
+focus gets a notice in the mode line instead of nothing (system notifications stay for an unfocused window); widgets
+send the same notices through the SDK; user themes whose roles miss AA as text are corrected by a contrast guard.
+
+Result: the mode-line notice `◆ <thread> needs you | failed | finished its turn` (UI-192, UI-193) with `g n` / `:notice`
+or a click to jump, cleared on visit or after 8 s, newest first with a `+n` count; `useNotify()` in `omfp/sdk`
+(UI-194) goes through the same `host.notices.notify` the frame uses, ready for an agent tool.
+The contrast guard (UI-196) measures, whenever the theme or scheme changes, every role omfp uses as text against the
+surfaces it sits on and moves only the failing ones in OKLab lightness toward `on-surface` until they reach 4.5:1 (3:1
+for `outline`), plus the labels on filled buttons and pills; Synth and the matugen forest fixture are untouched, a Dux
+Solarized preset (`?theme=dux-solarized` in the gallery, from the user's theme) becomes readable in light and dark.
 
 ## M9 — Hardening
 
@@ -379,6 +407,15 @@ Scope:
 - omp upgrade playbook rehearsed once on a real release (ENV-020).
 
 Acceptance: all of the above documented and green in CI.
+
+Performance (done): measured on the React UI (headless Chromium 157, Ryzen 9 7900X), 10,000 messages keep 8–9 items
+(~180 elements) in the DOM, first open takes ~180 ms, and scrolling top to bottom in 600 frames and streaming 100
+events/s for 10 s and 60 s drop no frames (0.7 ms of script per event, from 5.6 ms). Fixed: a per-render `getItemKey`
+that made the virtualizer re-lay out all items, every visible row re-rendering per event (view models now keep derived
+values by identity), the streaming reply re-parsed whole per delta (now per top-level Markdown chunk), the header
+following the whole thread state, and a commit per event storing the pinned scroll position. Tests assert structure only
+(UI-190, UI-191, TST-052); the benchmark is `just build-web && cargo test -p e2e --release --test perf -- --ignored
+--nocapture`.
 
 ## M10 — Agent control
 

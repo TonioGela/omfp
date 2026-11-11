@@ -16,6 +16,7 @@ import type {
   AvailableSlashCommand,
   ExtensionError,
   ExtensionUiRequest,
+  Goal,
   LivePhase,
   LiveRole,
   ManualCompactionEndEvent,
@@ -27,6 +28,7 @@ import type {
   RpcFrameErrorEvent,
   SubagentLifecyclePayload,
   SubagentProgressPayload,
+  TodoPhase,
   WidgetPlacement,
 } from "./wire.ts";
 
@@ -54,8 +56,12 @@ export interface ThreadState {
   commands: AvailableSlashCommand[];
   /** Outcome of each prompt, keyed by the prompt's request id (`prompt_result`). */
   prompts: Record<string, PromptResultEvent>;
-  /** Latest lifecycle and progress per subagent id. */
+  /** Latest lifecycle and progress per subagent id (PRT-055). */
   subagents: Record<string, Subagent>;
+  /** The session's goal from the last `goal_updated` (PRT-056); `null` when omp reported none (or never did). */
+  goal: Goal | null;
+  /** The todo list: the phases of the transcript's last `todo` result that committed some (PRT-057). */
+  todo_phases: TodoPhase[];
   /** Noteworthy frames outside the transcript, shown as inline rows (UI-043). */
   notices: Notice[];
   /**
@@ -201,6 +207,8 @@ export function emptyThreadState(): ThreadState {
     commands: [],
     prompts: {},
     subagents: {},
+    goal: null,
+    todo_phases: [],
     notices: [],
     live: null,
     live_error: null,

@@ -36,12 +36,13 @@
  * | `useMissingFile(path, missing, options)` | finds the file a path that does not exist names (`workspaces.find_file`): one opens in its place, several open the frame's picker (UI-117) |
  * | `useFileTabs(workspaceId)` | this window's file tabs of a workspace, `select` and `close` |
  * | `useLive()` | `[live, snapshot]`: this window's live voice session (start, end, mute, spectrum source, UI-180..UI-189) |
+ * | `useNotify()` | `notify({ title, body, threadId? })`: a notice in this window's mode line, a system notification while the window has no focus (UI-194) |
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
  * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,
- * `RENAMING_THREAD`, `ERRORS`, `OPEN_FILES` and `FLOATING_FILES` (persisted), `FILE_PICKER`, `EDITOR_MODE`. A widget
- * is a {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own scoped
- * commands.
+ * `RENAMING_THREAD`, `ERRORS`, `OPEN_FILES` and `FLOATING_FILES` (persisted), `FILE_PICKER`, `EDITOR_MODE`, `NOTICES`.
+ * A widget is a {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own
+ * scoped commands.
  */
 
 // View models, strings and helpers the built-in widgets use (AGT-016, AGT-021): a copied built-in imports them from
@@ -94,6 +95,7 @@ export {
   workspaceFilePath,
 } from "../vm/files.ts";
 export {
+  costLabel,
   decodeModels,
   decodeSession,
   decodeThinkingLevels,
@@ -129,6 +131,7 @@ export {
   micButton,
   ownStatus,
 } from "../vm/live.ts";
+export { markdownChunks } from "../vm/markdown.ts";
 export { type NoticeRow, noticeRow } from "../vm/notice.ts";
 export {
   type PendingQueueOp,
@@ -138,6 +141,15 @@ export {
   queueOpApplied,
   settleQueueOp,
 } from "../vm/queue.ts";
+export {
+  appendTranscriptPage,
+  EMPTY_TRANSCRIPT,
+  type SubagentRow,
+  type SubagentTranscript,
+  subagentRows,
+  type TranscriptLine as SubagentLine,
+  transcriptLines as subagentLines,
+} from "../vm/subagents.ts";
 export { type SystemRow, systemMessage, systemNotice } from "../vm/system.ts";
 export {
   type RepoKind,
@@ -147,6 +159,7 @@ export {
   type WorkspaceChip,
   workspaceChips,
 } from "../vm/threads.ts";
+export { type GoalView, type TodoPhaseView, type TodoRow, type TodosView, todosView } from "../vm/todos.ts";
 export { expandedByDefault, formatDuration, resultText, type ToolCard } from "../vm/tool.ts";
 export {
   type RepoPath,
@@ -163,8 +176,18 @@ export {
   type MessageView,
   messageView,
   type Role as MessageRole,
+  type RowContent as TranscriptRowContent,
+  rowContent as transcriptRowContent,
   streamingView,
 } from "../vm/transcript.ts";
+export {
+  type NavigateOutcome,
+  navigateOutcome,
+  type TreeRow,
+  type TreeView,
+  treeView,
+  withEditorText,
+} from "../vm/tree.ts";
 export {
   INITIAL_PIN,
   isScrollUpKey,
@@ -292,6 +315,17 @@ export {
   type WidgetLoadError,
   WidgetModules,
 } from "./modules.ts";
+export {
+  NOTICE_MS,
+  NOTICES,
+  type Notice,
+  type NoticeRequest,
+  type NoticeRoute,
+  Notices,
+  type NoticeTimers,
+  type NoticeTone,
+  useNotify,
+} from "./notify.ts";
 export { type PathSources, usePathSources } from "./paths.ts";
 export {
   JOB_TAIL,

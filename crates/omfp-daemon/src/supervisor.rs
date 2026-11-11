@@ -15,15 +15,15 @@ use std::time::Duration;
 
 use omfp_core::wire::LitTrue;
 use omfp_core::{
-    LiveOwner, OpenFileRequest, ProcessState, Resolution, ThreadEvent, ThreadState,
+    LiveOwner, OpenFileRequest, ProcessState, Resolution, SessionInfo, ThreadEvent, ThreadState,
     live_error_message, validate_ask_answers,
 };
 use omfp_protocol::InteractionResponse;
 use omp_rpc::{
     AnswersUiResponse, CancelUiResponse, ConfirmUiResponse, ExtensionUiRequest,
-    ExtensionUiResponse, LiveConnectCommand, LiveConnectResult, LiveLevelsEvent, LiveMuteCommand,
-    LiveStartCommand, LiveStartResult, PromptCommand, RpcAgentEvent, RpcNotification,
-    SetSessionNameCommand, ValueUiResponse,
+    ExtensionUiResponse, GetMessagesResult, LiveConnectCommand, LiveConnectResult, LiveLevelsEvent,
+    LiveMuteCommand, LiveStartCommand, LiveStartResult, PromptCommand, RpcAgentEvent,
+    RpcNotification, SetSessionNameCommand, ValueUiResponse,
 };
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, watch};
@@ -51,6 +51,15 @@ pub const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 
 /// Lines of `omp.log` reported with a crash (DMN-035).
 const STDERR_TAIL_LINES: usize = 20;
+
+/// An omp command that moves the session's leaf: the transcript is read again once it succeeded (DMN-111).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionChange {
+    /// `fork`: a new session file too (DMN-072).
+    Fork,
+    /// `navigate_tree`: the same session file.
+    Navigate,
+}
 
 /// omp tools that never change files; their end needs no rescan (DMN-023). Unknown tools count as writers.
 const READ_ONLY_TOOLS: &[&str] = &[
@@ -754,27 +763,62 @@ impl Supervisor {
         let actor = self.actor(id).await?;
         let process = self.ensure_running(&actor).await?;
         actor.touch();
-        let fork = matches!(call, OmpCall::Fork(_));
+        let change = match call {
+            OmpCall::Fork(_) => Some(SessionChange::Fork),
+            OmpCall::NavigateTree(_) => Some(SessionChange::Navigate),
+            _ => None,
+        };
         let forwarded = Arc::clone(&process);
         let result = blocking(move || forwarded.call(call)).await??;
         actor.touch();
-        if fork {
-            self.refresh_session_id(id, process).await?;
+        // `cancelled` (an extension refused) or `aborted` (the summary stopped): nothing moved.
+        let moved = result.get("cancelled").and_then(Value::as_bool) != Some(true)
+            && result.get("aborted").and_then(Value::as_bool) != Some(true);
+        if let Some(change) = change.filter(|_| moved) {
+            self.reload_branch(&actor, process, change).await?;
         }
         Ok(result)
     }
 
-    /// A fork moves the process to a new session file: re-read it and store its id (DMN-072).
-    async fn refresh_session_id(&self, id: &str, process: Arc<dyn AgentProcess>) -> Result<()> {
-        let state = blocking(move || process.call(OmpCall::State)).await??;
+    /// A fork moves the process to a new session file, whose id is stored (DMN-072); a fork or a navigation changes
+    /// the branch the transcript shows, which omp announces with no event: the daemon reads the session and its
+    /// messages again and records them as a `history` event (DMN-111).
+    async fn reload_branch(
+        &self,
+        actor: &Actor,
+        process: Arc<dyn AgentProcess>,
+        change: SessionChange,
+    ) -> Result<()> {
+        let state_process = Arc::clone(&process);
+        let state = blocking(move || state_process.call(OmpCall::State)).await??;
         let Some(session_id) = state.get("sessionId").and_then(Value::as_str) else {
             return Err(SupervisorError::Internal(
                 "get_state returned no sessionId".into(),
             ));
         };
-        let threads = Arc::clone(&self.inner.threads);
-        let (id, session_id) = (id.to_owned(), session_id.to_owned());
-        blocking(move || threads.set_omp_session_id(&id, &session_id)).await??;
+        let session = SessionInfo {
+            session_id: session_id.to_owned(),
+            session_file: state
+                .get("sessionFile")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            resumed: true,
+        };
+        if change == SessionChange::Fork {
+            let threads = Arc::clone(&self.inner.threads);
+            let (id, session_id) = (actor.id.clone(), session.session_id.clone());
+            blocking(move || threads.set_omp_session_id(&id, &session_id)).await??;
+        }
+        let messages = blocking(move || process.call(OmpCall::Messages)).await??;
+        let messages: GetMessagesResult = serde_json::from_value(messages)
+            .map_err(|error| SupervisorError::Internal(format!("get_messages: {error}")))?;
+        self.push(
+            actor,
+            ThreadEvent::History {
+                session,
+                messages: messages.messages,
+            },
+        );
         Ok(())
     }
 

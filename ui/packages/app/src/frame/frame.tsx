@@ -2,8 +2,8 @@
  * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), the left column of
  * workspaces and threads (UI-100), the view of the current workspace with its switcher, error banner and layout
  * editing (UI-100..104, AGT-011), the keymap and `:` command line (UI-095), the safety net for pending interactions
- * (AGT-015), notifications (UI-096), the live region (UI-092), dialogs, the files the agent opens (DMN-060), and
- * theme/density on `<html>` (UI-091, UI-094). Everything else is a widget of the view.
+ * (AGT-015), notices and notifications (UI-096, UI-192), the live region (UI-092), dialogs, the files the agent opens
+ * (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything else is a widget of the view.
  */
 
 import { Select } from "@omfp/kit";
@@ -150,7 +150,7 @@ export function Frame({
           {view !== undefined && !hasMainSlot(view.tree) && (
             <FloatingFile workspaceId={workspaceId} views={state} registry={registry} />
           )}
-          <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined}>
+          <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} bindings={bindings}>
             <CommandLine bindings={bindings} />
             <FilePickerLine />
           </ModeLine>

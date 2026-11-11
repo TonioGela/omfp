@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { completions, parseCommandLine } from "../../src/frame/cmdline.ts";
-import { notificationsFor } from "../../src/frame/notifications.ts";
+import { threadNotices } from "../../src/frame/notifications.ts";
 import type { Command } from "../../src/sdk/index.ts";
 import { thread } from "../support/fixtures.ts";
 
@@ -40,7 +40,7 @@ describe("command line", () => {
 });
 
 describe("notifications", () => {
-  // spec: UI-096
+  // spec: UI-096, UI-192
   test("a thread starting to need the user, failing or finishing a turn is notified; new threads are not", () => {
     const before = new Map([
       ["t1", thread("t1", "ask", "w")],
@@ -55,11 +55,11 @@ describe("notifications", () => {
       ["t4", thread("t4", "old", "w", { archivedAt: 1 })],
       ["t5", thread("t5", "new", "w", { needsAttention: true })],
     ]);
-    expect(notificationsFor(before, after).map((item) => [item.threadId, item.kind, item.title, item.body])).toEqual([
-      ["t1", "attention", "ask", "Needs your input"],
-      ["t2", "finished", "New thread", "Finished its turn"],
-      ["t3", "failed", "fail", "Failed"],
+    expect(threadNotices(before, after).map((item) => [item.threadId, item.tone, item.title, item.body])).toEqual([
+      ["t1", "attention", "ask", "needs you"],
+      ["t2", "finished", "New thread", "finished its turn"],
+      ["t3", "failed", "fail", "failed"],
     ]);
-    expect(notificationsFor(after, after)).toEqual([]);
+    expect(threadNotices(after, after)).toEqual([]);
   });
 });

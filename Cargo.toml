@@ -65,6 +65,9 @@ tauri = { version = "2.12", default-features = false, features = [
 ] }
 # Tauri's build step has its own version line (2.7.x).
 tauri-build = { version = "2.7", default-features = false }
+# The desktop window's color scheme from the settings portal over D-Bus (UI-195): gtk-rs's gio, the version Tauri's
+# GTK3 stack already builds (no zbus).
+gio = "0.18"
 thiserror = "2"
 tokio = { version = "1", features = [
   "macros",

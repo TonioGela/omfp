@@ -10,7 +10,7 @@ use crate::state::{
 };
 use crate::wire::{
     AgentMessage, AssistantMessageEvent, ExtensionUiRequest, LivePhase, LiveTranscriptEvent,
-    MessageEndEvent, MessageUpdateEvent, RpcAgentEvent, RpcNotification,
+    MessageEndEvent, MessageUpdateEvent, RpcAgentEvent, RpcNotification, TodoPhase,
 };
 
 impl ThreadState {
@@ -27,6 +27,12 @@ impl ThreadState {
                         message: message.clone(),
                     })
                     .collect();
+                // The restored branch has its own list (omp's `getLatestTodoSnapshotIdentity`).
+                self.todo_phases = messages
+                    .iter()
+                    .rev()
+                    .find_map(committed_todo_phases)
+                    .unwrap_or_default();
                 self.streaming = None;
                 // Their positions referred to the replaced transcript.
                 self.notices.clear();
@@ -223,8 +229,8 @@ impl ThreadState {
             | RpcAgentEvent::TodoReminder(_)
             | RpcAgentEvent::TodoAutoClear(_)
             | RpcAgentEvent::IrcMessage(_)
-            | RpcAgentEvent::ThinkingLevelChanged(_)
-            | RpcAgentEvent::GoalUpdated(_) => {}
+            | RpcAgentEvent::ThinkingLevelChanged(_) => {}
+            RpcAgentEvent::GoalUpdated(update) => self.goal.clone_from(&update.goal),
         }
     }
 
@@ -261,6 +267,9 @@ impl ThreadState {
         match existing {
             Some(index) => self.transcript[index] = entry,
             None => self.transcript.push(entry),
+        }
+        if let Some(phases) = committed_todo_phases(&end.message) {
+            self.todo_phases = phases;
         }
         // Records injected mid-stream (IRC, advisor cards) end without ending the streaming reply.
         if matches!(end.message, AgentMessage::Assistant(_)) {
@@ -361,6 +370,22 @@ fn dialog_id(request: &ExtensionUiRequest) -> Option<&str> {
         ExtensionUiRequest::Ask(ask) => Some(&ask.id),
         _ => None,
     }
+}
+
+/// The phases a successful, state-changing `todo` result committed (omp's `committedTodoPhases`): `None` for other
+/// messages, failed calls, `view` reads and phases that do not decode.
+fn committed_todo_phases(message: &AgentMessage) -> Option<Vec<TodoPhase>> {
+    let AgentMessage::ToolResult(result) = message else {
+        return None;
+    };
+    if result.tool_name.as_deref() != Some("todo") || result.is_error == Some(true) {
+        return None;
+    }
+    let details = result.details.as_ref()?;
+    if details.get("op").and_then(Value::as_str) == Some("view") {
+        return None;
+    }
+    serde_json::from_value(details.get("phases")?.clone()).ok()
 }
 
 /// Applies `events` in order to a fresh state.

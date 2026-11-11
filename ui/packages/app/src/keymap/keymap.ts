@@ -34,6 +34,8 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { mode: "normal", keys: "z a", command: "nav.toggleSection" },
   // The path of the focused element (a path link, a tool card, a changed file) in a file tab (UI-116).
   { mode: "normal", keys: "g f", command: "file.open" },
+  // The newest notice of the mode line: its thread (UI-192).
+  { mode: "normal", keys: "g n", command: "notice.open" },
   { mode: "normal", keys: "i", command: "composer.focus" },
   { mode: "normal", keys: ":", command: "cmdline.open" },
   { mode: "normal", keys: "Space a", command: "thread.nextAttention" },

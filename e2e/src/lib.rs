@@ -159,18 +159,29 @@ impl Journey {
     /// Starts everything with the model replying `steps` in order, then opens the UI with the token in the URL.
     pub async fn start(steps: Vec<Step>) -> anyhow::Result<Self> {
         require_pinned_omp();
-        Self::launch(steps, None).await
+        Self::launch(steps, None, web_bundle()).await
     }
 
     /// Starts a journey whose daemon runs `launcher` (the fake omp of `omfp_daemon::agent`, scripted by the test
     /// through its clone) instead of omp: for what the pinned omp cannot do offline, e.g. a live voice call (E2E-14).
     pub async fn start_fake(launcher: FakeLauncher) -> anyhow::Result<Self> {
-        Self::launch(Vec::new(), Some(launcher)).await
+        Self::launch(Vec::new(), Some(launcher), web_bundle()).await
     }
 
-    async fn launch(steps: Vec<Step>, launcher: Option<FakeLauncher>) -> anyhow::Result<Self> {
+    /// [`Journey::start_fake`] serving the web bundle at `bundle` (e.g. a copy with a measuring script, TST-052).
+    pub async fn start_fake_with_bundle(
+        launcher: FakeLauncher,
+        bundle: PathBuf,
+    ) -> anyhow::Result<Self> {
+        Self::launch(Vec::new(), Some(launcher), bundle).await
+    }
+
+    async fn launch(
+        steps: Vec<Step>,
+        launcher: Option<FakeLauncher>,
+        bundle: PathBuf,
+    ) -> anyhow::Result<Self> {
         let started = Instant::now();
-        let bundle = web_bundle();
         if !bundle.join("index.html").is_file() {
             bail!(
                 "no web bundle at {}: run `just build-web` (or `just test-e2e`)",

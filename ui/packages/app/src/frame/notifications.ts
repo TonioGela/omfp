@@ -1,44 +1,41 @@
 /**
- * System notifications (UI-096): when a thread starts needing the user (an approval or `ask` — `needsAttention` —, or
- * a failed process) or finishes a turn (it settles), and the window does not have focus. The Notification API is
+ * Thread notices (UI-096, UI-192): a thread that starts needing the user (an approval or `ask` — `needsAttention` —,
+ * or a failed process) or finishes a turn (it settles). They go through `host.notices` like a widget's `notify`:
+ * a system notification while the window has no focus, else a notice in the mode line. The Notification API is
  * injected (a {@link NotificationPort}) so tests drive it; permission is asked on the first user gesture.
  */
 
 import type { ThreadSummary } from "@omfp/protocol";
+import type { Notice, NoticeTone } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { displayTitle, isArchived } from "../vm/threads.ts";
 
-export type NotificationKind = "attention" | "failed" | "finished";
+export type ThreadNoticeTone = Exclude<NoticeTone, "info">;
 
-export interface ThreadNotification {
+export interface ThreadNotice {
   readonly threadId: string;
-  readonly kind: NotificationKind;
+  readonly tone: ThreadNoticeTone;
   readonly title: string;
   readonly body: string;
 }
 
-/** What changed from `previous` to `next` that deserves a notification; threads new to `next` have no baseline. */
-export function notificationsFor(
+/** What changed from `previous` to `next` that deserves a notice; threads new to `next` have no baseline. */
+export function threadNotices(
   previous: ReadonlyMap<string, ThreadSummary>,
   next: ReadonlyMap<string, ThreadSummary>,
-): ThreadNotification[] {
-  const notifications: ThreadNotification[] = [];
+): ThreadNotice[] {
+  const notices: ThreadNotice[] = [];
   for (const thread of next.values()) {
     const before = previous.get(thread.id);
-    const kind = before === undefined || isArchived(thread) ? undefined : change(before, thread);
-    if (kind !== undefined) {
-      notifications.push({
-        threadId: thread.id,
-        kind,
-        title: displayTitle(thread),
-        body: strings.shell.notifications[kind],
-      });
+    const tone = before === undefined || isArchived(thread) ? undefined : change(before, thread);
+    if (tone !== undefined) {
+      notices.push({ threadId: thread.id, tone, title: displayTitle(thread), body: strings.shell.notices[tone] });
     }
   }
-  return notifications;
+  return notices;
 }
 
-function change(before: ThreadSummary, after: ThreadSummary): NotificationKind | undefined {
+function change(before: ThreadSummary, after: ThreadSummary): ThreadNoticeTone | undefined {
   if (after.needsAttention && !before.needsAttention) {
     return "attention";
   }
@@ -55,8 +52,8 @@ function change(before: ThreadSummary, after: ThreadSummary): NotificationKind |
 export interface NotificationPort {
   permission(): NotificationPermission;
   requestPermission(): Promise<NotificationPermission>;
-  /** Shows one notification; `onClick` runs when the user clicks it. */
-  show(notification: ThreadNotification, onClick: () => void): void;
+  /** Shows one system notification; `onClick` runs when the user clicks it. */
+  show(notice: Notice, onClick: () => void): void;
 }
 
 /** The browser's Notification API; `undefined` where there is none. */
@@ -67,8 +64,11 @@ export function browserNotifications(): NotificationPort | undefined {
   return {
     permission: () => Notification.permission,
     requestPermission: () => Notification.requestPermission(),
-    show: (notification, onClick) => {
-      const shown = new Notification(notification.title, { body: notification.body, tag: notification.threadId });
+    show: (notice, onClick) => {
+      const shown = new Notification(notice.title, {
+        body: notice.body,
+        tag: notice.threadId ?? `notice-${notice.id}`,
+      });
       shown.onclick = () => {
         onClick();
         shown.close();

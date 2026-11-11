@@ -67,8 +67,6 @@ export interface HeaderView {
   readonly context: string | undefined;
   /** Context tokens used and the window, for the token meter (UI-158). */
   readonly usage: { readonly used: number; readonly total: number } | undefined;
-  /** `$0.0123`. */
-  readonly cost: string | undefined;
   readonly status: ThreadStatus;
   /** Why the process failed. */
   readonly failure: string | undefined;
@@ -77,9 +75,10 @@ export interface HeaderView {
   readonly archived: boolean;
 }
 
+/** The header of a thread; the session cost comes from {@link costLabel}, so the header does not depend on the
+ * reducer state, which changes with every streamed delta. */
 export function headerView(
   summary: ThreadSummary,
-  state: ThreadState | undefined,
   details: ThreadDetails,
   workspaces: readonly Workspace[],
 ): HeaderView {
@@ -95,7 +94,6 @@ export function headerView(
     thinkingLevels.unshift(thinking);
   }
   const usage = details.session?.contextUsage;
-  const cost = state === undefined ? 0 : sessionCost(state);
   const process = summary.process;
   return {
     title: displayTitle(summary),
@@ -113,7 +111,6 @@ export function headerView(
       usage === undefined
         ? undefined
         : { used: Math.round((usage.percent / 100) * usage.contextWindow), total: usage.contextWindow },
-    cost: cost > 0 ? formatCost(cost) : undefined,
     status: threadStatus(summary),
     failure: process.state === "failed" ? process.message : undefined,
     action: processAction(process.state),
@@ -142,8 +139,15 @@ function modelOption(model: ModelInfo): ModelOption {
   return { value: modelValue(model), label: `${model.name} (${model.provider})` };
 }
 
+/** Totals computed per transcript array: the header renders on every event, the transcript changes per message. */
+const COSTS = new WeakMap<ThreadState["transcript"], number>();
+
 /** Total cost reported by the assistant messages of the transcript (`usage.cost.total`). */
 export function sessionCost(state: ThreadState): number {
+  const known = COSTS.get(state.transcript);
+  if (known !== undefined) {
+    return known;
+  }
   let total = 0;
   for (const { message } of state.transcript) {
     if (message.role !== "assistant") {
@@ -154,7 +158,14 @@ export function sessionCost(state: ThreadState): number {
       total += cost;
     }
   }
+  COSTS.set(state.transcript, total);
   return total;
+}
+
+/** The session cost to show (`$0.0123`), `undefined` while nothing was spent. */
+export function costLabel(state: ThreadState | undefined): string | undefined {
+  const cost = state === undefined ? 0 : sessionCost(state);
+  return cost > 0 ? formatCost(cost) : undefined;
 }
 
 /** `$0.0123` below a dollar, `$1.23` above. */

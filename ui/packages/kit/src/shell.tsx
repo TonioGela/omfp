@@ -8,6 +8,7 @@ import { Button as AriaButton, type ButtonProps as AriaButtonProps } from "react
 import { IconButton } from "./button.tsx";
 import { cx, withClass } from "./class.ts";
 import { Icon, type IconName } from "./icons.tsx";
+import { Kbd } from "./kbd.tsx";
 import { StateMark, type ThreadState } from "./marks.tsx";
 
 /** The keymap modes (UI-098). */
@@ -32,19 +33,22 @@ export interface ModeLineProps extends HTMLAttributes<HTMLDivElement> {
   mode: Mode;
   /** The mode pill's text. */
   modeLabel?: ReactNode;
+  /** A {@link ModeNotice} at the right end, outside the segments that drop when narrow. */
+  notice?: ReactNode;
   /** Segments ({@link ModeSegment}), or the command line in command mode. */
   children?: ReactNode;
 }
 
 /**
  * The bottom bar (UI-167): a gradient hairline on top, the mode pill, then segments separated by `·`; segments that do
- * not fit drop from the right.
+ * not fit drop from the right; a notice (UI-193) keeps the right end.
  */
-export function ModeLine({ mode, modeLabel, className, children, ...props }: ModeLineProps) {
+export function ModeLine({ mode, modeLabel, notice, className, children, ...props }: ModeLineProps) {
   return (
     <div {...props} className={cx("omfp-modeline", className)} data-mode={mode}>
       <ModePill mode={mode}>{modeLabel}</ModePill>
       <div className="omfp-modeline__segments">{children}</div>
+      {notice}
     </div>
   );
 }
@@ -57,6 +61,40 @@ export interface ModeSegmentProps extends HTMLAttributes<HTMLSpanElement> {
 /** One segment of the mode line. */
 export function ModeSegment({ kind = "plain", className, ...props }: ModeSegmentProps) {
   return <span {...props} className={cx("omfp-modeline__segment", className)} data-kind={kind} />;
+}
+
+/** The tone of a mode-line notice: a thread awaiting the user, a failure, a finished turn, anything else. */
+export type NoticeTone = "attention" | "error" | "ok" | "info";
+
+export interface ModeNoticeProps extends Omit<AriaButtonProps, "children"> {
+  tone: NoticeTone;
+  /** What it is about (a thread title), on-surface with an ellipsis. */
+  title: ReactNode;
+  /** What happened (`needs you`), in the tone's color. */
+  body: ReactNode;
+  /** Notices behind this one, shown as `+n`. */
+  more?: number;
+  /** The key that opens it, as a key chip (`g n`). */
+  kbd?: string;
+}
+
+/**
+ * A notice at the right end of the mode line (UI-193), like vim's message area: `◆`, the title and what happened in
+ * the tone's color, `+n` more and the key chip; pressing it opens what it is about. It pops in, and its `◆` pulses
+ * at motion `full`.
+ */
+export function ModeNotice({ tone, title, body, more = 0, kbd, className, ...props }: ModeNoticeProps) {
+  return (
+    <AriaButton {...props} className={withClass("omfp-modeline__notice", className)} data-tone={tone}>
+      <span className="omfp-modeline__notice-mark" aria-hidden="true">
+        ◆
+      </span>
+      <span className="omfp-modeline__notice-title">{title}</span>
+      <span className="omfp-modeline__notice-body">{body}</span>
+      {more > 0 && <span className="omfp-modeline__notice-more">+{more}</span>}
+      {kbd !== undefined && <Kbd aria-hidden="true">{kbd}</Kbd>}
+    </AriaButton>
+  );
 }
 
 export type CommandLineProps = HTMLAttributes<HTMLSpanElement>;

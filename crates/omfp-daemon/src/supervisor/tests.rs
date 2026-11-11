@@ -450,14 +450,40 @@ async fn omp_errors_keep_their_code() {
     );
 }
 
-// spec: DMN-072
+fn call_names(h: &Harness) -> Vec<&'static str> {
+    h.launcher
+        .process(0)
+        .calls()
+        .iter()
+        .filter_map(|call| match call {
+            FakeCall::Call(call) => Some(call.name()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn navigate(entry_id: &str) -> OmpCall {
+    OmpCall::NavigateTree(omp_rpc::NavigateTreeCommand {
+        entry_id: entry_id.into(),
+        summarize: None,
+        custom_instructions: None,
+    })
+}
+
+// spec: DMN-072, DMN-111
 #[tokio::test]
-async fn a_fork_stores_the_new_session_id() {
+async fn a_fork_stores_the_new_session_id_and_reloads_its_transcript() {
     let h = harness(|_| {});
     let id = h.thread();
     h.launcher.reply(
         "get_state",
-        FakeReply::Ok(json!({ "sessionId": "S-forked" })),
+        FakeReply::Ok(json!({ "sessionId": "S-forked", "sessionFile": "/s/forked.jsonl" })),
+    );
+    h.launcher.reply(
+        "get_messages",
+        FakeReply::Ok(
+            json!({ "messages": [{ "role": "user", "content": "kept", "timestamp": 0 }] }),
+        ),
     );
 
     h.supervisor
@@ -469,17 +495,54 @@ async fn a_fork_stores_the_new_session_id() {
         h.threads.get(&id).unwrap().omp_session_id.as_deref(),
         Some("S-forked")
     );
-    let names: Vec<&str> = h
-        .launcher
-        .process(0)
-        .calls()
-        .iter()
-        .filter_map(|call| match call {
-            FakeCall::Call(call) => Some(call.name()),
-            _ => None,
-        })
-        .collect();
-    assert_eq!(names, ["fork", "get_state"]);
+    assert_eq!(call_names(&h), ["fork", "get_state", "get_messages"]);
+    let state = h.log(&id).await.with_state(Clone::clone);
+    let session = state.session.unwrap();
+    assert_eq!(
+        (session.session_id.as_str(), session.session_file.as_deref()),
+        ("S-forked", Some("/s/forked.jsonl"))
+    );
+    assert_eq!(state.transcript.len(), 1);
+}
+
+// spec: DMN-111
+#[tokio::test]
+async fn a_navigation_that_moved_reloads_the_transcript_and_a_cancelled_one_does_not() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher.reply(
+        "navigate_tree",
+        FakeReply::Ok(json!({ "cancelled": false, "editorText": "again" })),
+    );
+    h.launcher.reply(
+        "get_messages",
+        FakeReply::Ok(
+            json!({ "messages": [{ "role": "user", "content": "before", "timestamp": 0 }] }),
+        ),
+    );
+
+    let result = h.supervisor.call(&id, navigate("e2")).await.unwrap();
+
+    assert_eq!(result["editorText"], "again");
+    assert_eq!(
+        call_names(&h),
+        ["navigate_tree", "get_state", "get_messages"]
+    );
+    let transcript = h.log(&id).await.with_state(|state| state.transcript.len());
+    assert_eq!(transcript, 1, "the branch the leaf moved to");
+
+    h.launcher
+        .reply("navigate_tree", FakeReply::Ok(json!({ "cancelled": true })));
+    h.supervisor.call(&id, navigate("e1")).await.unwrap();
+    assert_eq!(
+        call_names(&h),
+        [
+            "navigate_tree",
+            "get_state",
+            "get_messages",
+            "navigate_tree"
+        ]
+    );
 }
 
 // spec: DMN-051, DMN-050

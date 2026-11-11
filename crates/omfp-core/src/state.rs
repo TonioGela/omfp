@@ -10,9 +10,10 @@ use crate::event::{LiveOwner, OpenFileRequest, ProcessState, SessionInfo};
 use crate::wire::{
     AgentMessage, AssistantMessage, AutoCompactionEndEvent, AutoCompactionStartEvent,
     AutoRetryEndEvent, AutoRetryStartEvent, AvailableSlashCommand, ExtensionError,
-    ExtensionUiRequest, LivePhase, LiveRole, ManualCompactionEndEvent, ManualCompactionStartEvent,
-    NoticeEvent, NotifyUiRequest, OpenUrlUiRequest, PromptResultEvent, RpcFrameErrorEvent,
-    SubagentLifecyclePayload, SubagentProgressPayload, WidgetPlacement,
+    ExtensionUiRequest, Goal, LivePhase, LiveRole, ManualCompactionEndEvent,
+    ManualCompactionStartEvent, NoticeEvent, NotifyUiRequest, OpenUrlUiRequest, PromptResultEvent,
+    RpcFrameErrorEvent, SubagentLifecyclePayload, SubagentProgressPayload, TodoPhase,
+    WidgetPlacement,
 };
 
 /// Everything a client shows about a thread. Built only by [`ThreadState::apply`].
@@ -40,8 +41,12 @@ pub struct ThreadState {
     pub commands: Vec<AvailableSlashCommand>,
     /// Outcome of each prompt, keyed by the prompt's request id (`prompt_result`).
     pub prompts: BTreeMap<String, PromptResultEvent>,
-    /// Latest lifecycle and progress per subagent id.
+    /// Latest lifecycle and progress per subagent id (PRT-055).
     pub subagents: BTreeMap<String, Subagent>,
+    /// The session's goal from the last `goal_updated` (PRT-056); `None` when omp reported none (or never did).
+    pub goal: Option<Goal>,
+    /// The todo list: the phases of the transcript's last `todo` result that committed some (PRT-057).
+    pub todo_phases: Vec<TodoPhase>,
     /// Noteworthy frames outside the transcript, shown as inline rows (UI-043).
     pub notices: Vec<Notice>,
     /// The live voice session (PRT-052): opened by a `live_session` event, closed by `live_end`, a `live_session`
@@ -69,6 +74,8 @@ impl Default for ThreadState {
             commands: Vec::new(),
             prompts: BTreeMap::new(),
             subagents: BTreeMap::new(),
+            goal: None,
+            todo_phases: Vec::new(),
             notices: Vec::new(),
             live: None,
             live_error: None,

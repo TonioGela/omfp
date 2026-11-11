@@ -13,6 +13,7 @@ import {
   Invalid,
   int,
   json,
+  num,
   object,
   oneOf,
   optional,
@@ -362,6 +363,86 @@ export const subagentProgressPayload = record<SubagentProgressPayload>({
   assignment: optional(str),
   sessionFile: optional(str),
   detached: optional(bool),
+});
+
+export type GoalStatus = "active" | "paused" | "budget-limited" | "complete" | "dropped";
+
+/** A tracked goal: its objective, lifecycle status, and resource accounting. */
+export interface Goal {
+  id: string;
+  objective: string;
+  status: GoalStatus;
+  tokensUsed: number;
+  timeUsedSeconds: number;
+  createdAt: number;
+  updatedAt: number;
+  tokenBudget?: number;
+}
+
+export const goal = record<Goal>({
+  id: str,
+  objective: str,
+  status: oneOf(["active", "paused", "budget-limited", "complete", "dropped"]),
+  tokensUsed: int,
+  timeUsedSeconds: num,
+  createdAt: int,
+  updatedAt: int,
+  tokenBudget: optional(int),
+});
+
+/** Session goal mode; `mode` is `"exiting"` while a completed goal unwinds. */
+export interface GoalModeState {
+  enabled: boolean;
+  mode: "active" | "exiting";
+  goal: Goal;
+  reason?: "completed";
+}
+
+export interface GoalUpdatedEvent {
+  goal: Goal | null;
+  state?: GoalModeState;
+}
+
+export const goalUpdatedEvent = record<GoalUpdatedEvent>({
+  // Required, `null` when the session has no goal.
+  goal: (value) => (value === null ? null : goal(value)),
+  state: optional(
+    record<GoalModeState>({
+      enabled: bool,
+      mode: oneOf(["active", "exiting"]),
+      goal,
+      reason: optional(oneOf(["completed"])),
+    }),
+  ),
+});
+
+export type TodoStatus = "pending" | "in_progress" | "completed" | "abandoned" | "blocked";
+
+export interface TodoItem {
+  content: string;
+  status: TodoStatus;
+  /** What a `blocked` task is waiting on. */
+  blocker?: string;
+  details?: string;
+  notes?: string[];
+}
+
+export interface TodoPhase {
+  name: string;
+  tasks: TodoItem[];
+}
+
+export const todoPhase = record<TodoPhase>({
+  name: str,
+  tasks: arrayOf(
+    record<TodoItem>({
+      content: str,
+      status: oneOf(["pending", "in_progress", "completed", "abandoned", "blocked"]),
+      blocker: optional(str),
+      details: optional(str),
+      notes: optional(arrayOf(str)),
+    }),
+  ),
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

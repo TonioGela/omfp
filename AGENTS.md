@@ -74,7 +74,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
 crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI), and with
                       the `desktop` feature (Tauri 2, WebKitGTK) `desktop` (desktop.rs: find or start the background
-                      daemon, the window on its own UI, the theme push of `--connect`, the `OMFP_SMOKE` check;
+                      daemon, the window on its own UI, the theme push of `--connect`, the color scheme of the
+                      settings portal over gio's D-Bus API, the `OMFP_SMOKE` check;
                       build.rs, tauri.conf.json, icons/ with the icon's HTML source; tests/desktop_smoke.rs, TST-033)
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization

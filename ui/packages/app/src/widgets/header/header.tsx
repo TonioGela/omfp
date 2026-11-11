@@ -8,6 +8,7 @@
 import type { ThreadSummary } from "@omfp/protocol";
 import { Button, Icon, type Key, Meter, Select, StateBadge, TextField, type ThreadState } from "omfp/kit";
 import {
+  costLabel,
   DRAFT_THREAD,
   type DraftThread,
   decodeModels,
@@ -81,12 +82,13 @@ function DraftHeader({ draft }: { draft: DraftThread }): ReactNode {
   );
 }
 
+/** The header of a thread. It does not read the reducer state, so a streamed delta does not render it again: only
+ * {@link SessionCost} follows the thread's events (UI-191). */
 function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
-  const thread = useThread(summary.id);
   const workspaces = useWorkspaces();
   const list = useMemo(() => [...workspaces.values()], [workspaces]);
   const [details, refreshSession] = useThreadDetails(summary.id, summary.process.state === "running");
-  const view = headerView(summary, thread?.state, details, list);
+  const view = headerView(summary, details, list);
   return (
     <header
       className="omfp-chat-header omfp-thread-header"
@@ -299,12 +301,20 @@ function Session({ threadId, view, onChanged }: { threadId: string; view: Header
           />
         </span>
       )}
-      {view.cost !== undefined && (
-        <span className="omfp-thread-header__cost" data-testid="session-cost" title={text.sessionCost}>
-          {view.cost}
-        </span>
-      )}
+      <SessionCost threadId={threadId} />
     </div>
+  );
+}
+
+/** The session cost (UI-030); follows the thread while mounted. */
+function SessionCost({ threadId }: { threadId: string }): ReactNode {
+  const cost = costLabel(useThread(threadId)?.state);
+  return (
+    cost !== undefined && (
+      <span className="omfp-thread-header__cost" data-testid="session-cost" title={text.sessionCost}>
+        {cost}
+      </span>
+    )
   );
 }
 

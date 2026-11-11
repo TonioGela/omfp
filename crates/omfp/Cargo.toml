@@ -20,12 +20,13 @@ doc = false
 
 [features]
 # `omfp desktop` (M7): links WebKitGTK through Tauri; daemon-only builds leave it off.
-desktop = ["dep:tauri", "dep:tauri-build"]
+desktop = ["dep:tauri", "dep:tauri-build", "dep:gio"]
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 futures.workspace = true
+gio = { workspace = true, optional = true }
 omfp-daemon.workspace = true
 omfp-protocol.workspace = true
 serde_json.workspace = true

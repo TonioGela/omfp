@@ -21,6 +21,7 @@ import type {
 import { emptyThreadState } from "./state.ts";
 import { applyStreamEvent, newStreamingMessage } from "./stream.ts";
 import {
+  type AgentMessage,
   agentMessage,
   autoCompactionEndEvent,
   autoCompactionStartEvent,
@@ -30,6 +31,7 @@ import {
   type ExtensionUiRequest,
   extensionError,
   extensionUiRequest,
+  goalUpdatedEvent,
   liveEndEvent,
   livePhaseEvent,
   liveTranscriptEvent,
@@ -43,6 +45,8 @@ import {
   rpcFrameErrorEvent,
   subagentLifecycleEvent,
   subagentProgressEvent,
+  type TodoPhase,
+  todoPhase,
   toolExecutionEndEvent,
   toolExecutionStartEvent,
   toolExecutionUpdateEvent,
@@ -79,7 +83,6 @@ const IGNORED_FRAMES: Record<string, true> = {
   todo_auto_clear: true,
   irc_message: true,
   thinking_level_changed: true,
-  goal_updated: true,
 };
 
 type NoticeType = Exclude<NoticeFrame["type"], "unknown">;
@@ -214,8 +217,24 @@ function endMessage(state: ThreadState, frame: Record<string, unknown>): ThreadS
   } else {
     transcript[index] = entry;
   }
+  const todo_phases = committedTodoPhases(message) ?? state.todo_phases;
   // Records injected mid-stream (IRC, advisor cards) end without ending the streaming reply.
-  return { ...state, transcript, streaming: message.role === "assistant" ? null : state.streaming };
+  return { ...state, transcript, todo_phases, streaming: message.role === "assistant" ? null : state.streaming };
+}
+
+/**
+ * The phases a successful, state-changing `todo` result committed (omp's `committedTodoPhases`): `undefined` for other
+ * messages, failed calls, `view` reads and phases that do not decode.
+ */
+function committedTodoPhases(message: AgentMessage): TodoPhase[] | undefined {
+  if (message.role !== "toolResult" || message.toolName !== "todo" || message.isError === true) {
+    return undefined;
+  }
+  const details = message.details;
+  if (!isObject(details) || details.op === "view") {
+    return undefined;
+  }
+  return decodeOrUndefined(arrayOf(todoPhase), details.phases);
 }
 
 /** One line per role and turn; a later frame replaces the text until the final one (PRT-052). */
@@ -327,6 +346,8 @@ function applyFrame(state: ThreadState, type: string, frame: Record<string, unkn
       });
       return live === state.live ? state : { ...state, live };
     }
+    case "goal_updated":
+      return { ...state, goal: goalUpdatedEvent(frame).goal };
     case "live_end": {
       const { error } = liveEndEvent(frame);
       return { ...state, live: null, live_error: error === undefined ? null : liveErrorMessage(error) };
@@ -380,6 +401,12 @@ export function reduce(state: ThreadState, event: ThreadEvent): ThreadState {
         ...state,
         session,
         transcript: messages.map((message) => ({ message_id: null, message })),
+        // The restored branch has its own list (omp's `getLatestTodoSnapshotIdentity`).
+        todo_phases:
+          messages.reduceRight<TodoPhase[] | undefined>(
+            (found, message) => found ?? committedTodoPhases(message),
+            undefined,
+          ) ?? [],
         streaming: null,
         // Their positions referred to the replaced transcript.
         notices: [],

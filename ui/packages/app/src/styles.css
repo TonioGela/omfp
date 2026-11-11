@@ -705,6 +705,245 @@
     white-space: nowrap;
   }
 
+  /* omfp:subagents (UI-081): a row per subagent (state mark, name, kind, status, task, activity, use), the opened
+   * one's transcript in a border box (UI-187) with its steer and cancel actions. */
+  .omfp-subagents,
+  .omfp-todos {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s3);
+    padding: var(--omfp-s2) var(--omfp-s3) var(--omfp-s3);
+    font-family: var(--omfp-font-code);
+  }
+
+  .omfp-subagents__bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-block-end: calc(-1 * var(--omfp-s2));
+  }
+
+  .omfp-subagents__list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .omfp-subagents__row {
+    display: grid;
+    grid-template-columns: auto auto auto 1fr;
+    align-items: baseline;
+    column-gap: var(--omfp-s2);
+    inline-size: 100%;
+    padding: var(--omfp-s1) var(--omfp-s2);
+    border: 0;
+    border-radius: var(--omfp-r-card);
+    background: transparent;
+    color: var(--omfp-on-surface);
+    font: inherit;
+    font-size: var(--omfp-fs-xs);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .omfp-subagents__row:hover,
+  .omfp-subagents__row[aria-expanded="true"] {
+    background: var(--omfp-hover);
+  }
+
+  .omfp-subagents__row:focus-visible {
+    outline: 2px solid var(--omfp-primary);
+    outline-offset: -2px;
+  }
+
+  .omfp-subagents__name {
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-subagents__agent,
+  .omfp-subagents__status,
+  .omfp-subagents__meta,
+  .omfp-subagents__activity,
+  .omfp-subagents__empty,
+  .omfp-subagents__tool {
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-subagents__row[data-status="failed"] .omfp-subagents__status {
+    color: var(--omfp-error);
+  }
+
+  .omfp-subagents__task,
+  .omfp-subagents__activity,
+  .omfp-subagents__meta {
+    grid-column: 2 / -1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .omfp-subagents__lines {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s2);
+    max-block-size: 24rem;
+    overflow: auto;
+  }
+
+  .omfp-subagents__tool,
+  .omfp-subagents__empty {
+    margin: 0;
+  }
+
+  .omfp-subagents__actions,
+  .omfp-subagents__steer,
+  .omfp-tree__label-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s2);
+    margin-block-start: var(--omfp-s2);
+  }
+
+  .omfp-subagents__steer {
+    flex: 1;
+    margin: 0;
+  }
+
+  .omfp-subagents__steer > .omfp-field,
+  .omfp-tree__label-form > .omfp-field {
+    flex: 1;
+    min-inline-size: 10rem;
+  }
+
+  /* omfp:todos (UI-082): the goal, then a border box per phase (UI-187) with omp's statuses on the todo list of the
+   * tool card (UI-163); blocked in warn, abandoned struck through and muted. */
+  .omfp-todos__objective {
+    margin: 0;
+    font-family: var(--omfp-font-prose);
+    font-size: var(--omfp-fs-sm);
+  }
+
+  .omfp-todos__meta,
+  .omfp-todos__blocker {
+    margin: 0;
+    font-size: var(--omfp-fs-2xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-todos__blocker {
+    display: block;
+    color: var(--omfp-warn);
+  }
+
+  .omfp-todos__goal[data-status="active"] .omfp-bbox__end {
+    color: var(--omfp-primary);
+  }
+
+  .omfp-todos .omfp-todo__item[data-status="blocked"] .omfp-todo__mark {
+    color: var(--omfp-warn);
+  }
+
+  .omfp-todos .omfp-todo__item[data-status="abandoned"] {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-todos .omfp-todo__item[data-status="abandoned"] .omfp-todo__text {
+    text-decoration: line-through;
+  }
+
+  /* omfp:tree (UI-083): one row per conversation entry, indented per branch (`--depth`), the branch the transcript
+   * shows in on-surface and the others muted, the leaf marked; actions show on hover and focus. */
+  .omfp-tree {
+    margin: var(--omfp-s2) var(--omfp-s3) var(--omfp-s3);
+    font-family: var(--omfp-font-code);
+  }
+
+  .omfp-tree__rows {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .omfp-tree__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s1) var(--omfp-s2);
+    min-block-size: var(--omfp-row-h);
+    padding-inline-start: calc(var(--depth, 0) * var(--omfp-s4));
+    border-radius: var(--omfp-r-card);
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-tree__row[data-active] {
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-tree__row:hover,
+  .omfp-tree__row:focus-within {
+    background: var(--omfp-hover);
+  }
+
+  .omfp-tree__glyph {
+    inline-size: 1ch;
+    color: var(--omfp-tertiary);
+  }
+
+  .omfp-tree__row[data-kind="assistant"] .omfp-tree__glyph {
+    color: var(--omfp-primary);
+  }
+
+  .omfp-tree__text {
+    flex: 1 1 12rem;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .omfp-tree__label,
+  .omfp-tree__here {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-tertiary);
+  }
+
+  .omfp-tree__label .omfp-ic {
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+  }
+
+  .omfp-tree__here {
+    color: var(--omfp-primary);
+  }
+
+  .omfp-tree__actions {
+    display: inline-flex;
+    gap: var(--omfp-s1);
+    opacity: 0;
+  }
+
+  .omfp-tree__row:hover .omfp-tree__actions,
+  .omfp-tree__row:focus-within .omfp-tree__actions {
+    opacity: 1;
+  }
+
+  .omfp-tree__empty {
+    margin: 0;
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
   /* omfp:changes (UI-080): per repository a head (name, branch, ahead/behind, summary), then file rows (status letter,
    * path, `+n −m`) that expand to the file's diff card (UI-165). */
   .omfp-changes {

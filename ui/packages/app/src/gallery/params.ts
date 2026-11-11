@@ -1,12 +1,12 @@
 /**
- * The `/kit` gallery's parameters (UI-173): `?scheme=light|dark`, `?theme=synth|matugen-forest`, `?density=`,
- * `?motion=` and `?fs=` (the root size in px). Unknown values keep the app's defaults.
+ * The `/kit` gallery's parameters (UI-173): `?scheme=light|dark`, `?theme=synth|matugen-forest|dux-solarized`,
+ * `?density=`, `?motion=` and `?fs=` (the root size in px). Unknown values keep the app's defaults.
  */
 import type { Density, Motion } from "@omfp/protocol";
 import { type ColorScheme, DEFAULT_DENSITY, DEFAULT_FONT_SIZE, DEFAULT_MOTION } from "../sdk/index.ts";
 
-/** The built-in palette, or the matugen fixture theme. */
-export type GalleryTheme = "synth" | "matugen-forest";
+/** The built-in palette, the matugen fixture theme, or the user preset the contrast guard fixes (UI-196). */
+export type GalleryTheme = "synth" | "matugen-forest" | "dux-solarized";
 
 export interface GalleryParams {
   readonly scheme: ColorScheme;
@@ -17,7 +17,7 @@ export interface GalleryParams {
 }
 
 const SCHEMES: readonly ColorScheme[] = ["system", "light", "dark"];
-const THEMES: readonly GalleryTheme[] = ["synth", "matugen-forest"];
+const THEMES: readonly GalleryTheme[] = ["synth", "matugen-forest", "dux-solarized"];
 const DENSITIES: readonly Density[] = ["compact", "normal"];
 const MOTIONS: readonly Motion[] = ["full", "reduced", "none"];
 /** Root sizes the gallery accepts (px), the `[ui] font_size` range. */

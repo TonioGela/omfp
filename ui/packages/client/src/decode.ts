@@ -365,6 +365,8 @@ const THREAD_STATE_FIELDS: Record<keyof ThreadState, (field: unknown) => boolean
   commands: Array.isArray,
   prompts: isObject,
   subagents: isObject,
+  goal: isNullableObject,
+  todo_phases: Array.isArray,
   notices: Array.isArray,
   live: isNullableObject,
   live_error: (field) => field === null || typeof field === "string",

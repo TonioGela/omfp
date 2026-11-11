@@ -54,6 +54,13 @@ describe("pinning", () => {
   test("an event that changes nothing keeps the same state object", () => {
     expect(pinReducer(INITIAL_PIN, { type: "drag", active: false })).toBe(INITIAL_PIN);
   });
+
+  // spec: UI-191
+  test("a layout scroll while pinned keeps the same state object, so streaming does not render the list again", () => {
+    const pinned = pinReducer(INITIAL_PIN, scroll(4400, 5000, 600));
+    expect(pinned).toBe(INITIAL_PIN);
+    expect(pinReducer(pinned, scroll(1000, 5000, 600))).toBe(INITIAL_PIN);
+  });
 });
 
 describe("keys", () => {

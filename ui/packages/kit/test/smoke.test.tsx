@@ -39,6 +39,7 @@ import {
   MenuSection,
   Message,
   ModeLine,
+  ModeNotice,
   ModePill,
   ModeSegment,
   Progress,
@@ -225,6 +226,12 @@ const CASES: readonly Case[] = [
   { name: "ModePill", element: <ModePill {...FORWARDED} mode="insert" />, base: "omfp-mode-pill" },
   { name: "ModeLine", element: <ModeLine {...FORWARDED} mode="normal" />, base: "omfp-modeline" },
   { name: "ModeSegment", element: <ModeSegment {...FORWARDED}>opus</ModeSegment>, base: "omfp-modeline__segment" },
+  {
+    name: "ModeNotice",
+    element: <ModeNotice {...FORWARDED} tone="attention" title="Fix it" body="needs you" />,
+    base: "omfp-modeline__notice",
+    role: "button",
+  },
   { name: "CommandLine", element: <CommandLine {...FORWARDED} />, base: "omfp-cmd" },
   { name: "CommandMenu", element: <CommandMenu {...FORWARDED} />, base: "omfp-cmdmenu" },
   {
@@ -263,7 +270,7 @@ const CASES: readonly Case[] = [
 ];
 
 describe("kit components", () => {
-  // spec: UI-093, UI-131, UI-157, UI-160, UI-161, UI-163, UI-164, UI-167, UI-168, UI-169, UI-170, UI-171, UI-172, UI-187
+  // spec: UI-093, UI-131, UI-157, UI-160, UI-161, UI-163, UI-164, UI-167, UI-168, UI-169, UI-170, UI-171, UI-172, UI-187, UI-193
   test.each(CASES.map((c) => [c.name, c] as const))("%s renders and forwards id, className, data-*", (_name, c) => {
     render(c.element);
     const root = screen.getByTestId("subject");

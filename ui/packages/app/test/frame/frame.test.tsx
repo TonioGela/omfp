@@ -7,13 +7,16 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { Frame, type FrameProps } from "../../src/frame/frame.tsx";
 import { LAYOUT_EDIT } from "../../src/frame/layout.tsx";
-import type { NotificationPort, ThreadNotification } from "../../src/frame/notifications.ts";
+import type { NotificationPort } from "../../src/frame/notifications.ts";
 import {
   ACTIVE_VIEW,
   DRAFT_THREAD,
   ERRORS,
+  NOTICES,
+  type Notice,
   SELECTED_THREAD,
   useCommand,
+  useNotify,
   type WidgetComponent,
 } from "../../src/sdk/index.ts";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
@@ -47,12 +50,27 @@ const StubComposer: WidgetComponent = () => {
   return <textarea id="stub-input" data-testid="stub-input" />;
 };
 
+/** A widget that notifies through the SDK (UI-194). */
+const Notifying: WidgetComponent = () => {
+  const notify = useNotify();
+  return (
+    <button type="button" onClick={() => notify({ title: "Build", body: "is green", threadId: "t2" })}>
+      notify
+    </button>
+  );
+};
+
 const threads: ThreadSummary[] = [thread("t1", "checkout", "w1"), thread("t2", "flaky", "w1")];
 
 function setup(props: FrameProps = {}, connect = true) {
   // Module widgets (workspace overrides) stay loading: these tests are about the frame.
   const timers = new ManualTimers();
-  const base = testHost(undefined, { importer: () => new Promise<unknown>(() => {}), reportTimers: timers });
+  const noticeTimers = new ManualTimers();
+  const base = testHost(undefined, {
+    importer: () => new Promise<unknown>(() => {}),
+    reportTimers: timers,
+    noticeTimers,
+  });
   for (const method of [
     "threads.archive",
     "threads.delete",
@@ -71,6 +89,7 @@ function setup(props: FrameProps = {}, connect = true) {
   return {
     ...test,
     timers,
+    noticeTimers,
     /** Runs the report timers and gives the `widgets.report` params sent so far. */
     reports: () => {
       timers.run();
@@ -344,7 +363,7 @@ describe("frame", () => {
 
   // spec: UI-096
   test("notifications only without focus; permission on a gesture; a click focuses the window on the thread", () => {
-    const shown: Array<{ notification: ThreadNotification; click: () => void }> = [];
+    const shown: Array<{ notification: Notice; click: () => void }> = [];
     let permission: NotificationPermission = "default";
     let requested = 0;
     let focused = true;
@@ -379,12 +398,117 @@ describe("frame", () => {
     flush();
     client.indexEvents({ kind: "thread_upserted", thread: thread("t1", "checkout", "w1") });
     flush();
-    expect(shown.map(({ notification }) => [notification.threadId, notification.kind, notification.title])).toEqual([
+    expect(shown.map(({ notification }) => [notification.threadId, notification.tone, notification.title])).toEqual([
       ["t2", "failed", "flaky"],
       ["t1", "finished", "checkout"],
     ]);
+    // Shown as system notifications, so not in the mode line too (UI-192).
+    expect(host.window.get(NOTICES).map((notice) => notice.threadId)).toEqual(["t1"]);
     act(() => shown[0]?.click());
     expect(windowFocused).toBe(1);
+    expect(host.window.get(SELECTED_THREAD)).toBe("t2");
+  });
+
+  // spec: UI-192, UI-193
+  test("with focus, a change of another thread is a mode-line notice: newest plus a count, `g n` opens it", () => {
+    const { client, flush, host } = setup({ hasFocus: () => true });
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1", { needsAttention: true }) });
+    flush();
+    const notice = () => screen.getByTestId("mode-notice");
+    expect([notice().dataset.tone, notice().dataset.thread, notice().textContent]).toEqual([
+      "attention",
+      "t2",
+      "◆flakyneeds youg n",
+    ]);
+    // It sits in the mode line, not over the view.
+    expect(screen.getByTestId("mode-bar").contains(notice())).toBe(true);
+    client.indexEvents({
+      kind: "thread_upserted",
+      thread: thread("t2", "flaky", "w1", { needsAttention: true, process: { state: "failed", message: "x" } }),
+    });
+    flush();
+    expect([notice().dataset.tone, notice().textContent]).toEqual(["error", "◆flakyfailed+1g n"]);
+    expect(screen.getByTestId("live-region").textContent).toBe("flaky failed");
+    press("g");
+    press("n");
+    expect(host.window.get(SELECTED_THREAD)).toBe("t2");
+    // Visiting the thread clears all its notices.
+    expect(screen.queryByTestId("mode-notice")).toBeNull();
+  });
+
+  // spec: UI-192
+  test("a click on the notice opens its thread; visiting the thread clears it; notices expire", async () => {
+    const { client, flush, host, user, noticeTimers } = setup({ hasFocus: () => true });
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1", { settled: false }) });
+    flush();
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1") });
+    flush();
+    expect(screen.getByTestId("mode-notice").dataset.tone).toBe("ok");
+    await user.click(screen.getByTestId("mode-notice"));
+    expect(host.window.get(SELECTED_THREAD)).toBe("t2");
+    expect(screen.queryByTestId("mode-notice")).toBeNull();
+    // Visiting by any other way clears it too.
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t1", "checkout", "w1", { needsAttention: true }) });
+    flush();
+    expect(screen.getByTestId("mode-notice").dataset.thread).toBe("t1");
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    expect(screen.queryByTestId("mode-notice")).toBeNull();
+    // After a short time it goes away by itself.
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1", { needsAttention: true }) });
+    flush();
+    expect(screen.getByTestId("mode-notice").dataset.thread).toBe("t2");
+    act(() => noticeTimers.run());
+    expect(screen.queryByTestId("mode-notice")).toBeNull();
+  });
+
+  // spec: UI-192
+  test("no notice about the thread the user is on while the window has focus", () => {
+    const shown: string[] = [];
+    const port: NotificationPort = {
+      permission: () => "granted",
+      requestPermission: async () => "granted",
+      show: (notice) => shown.push(notice.title),
+    };
+    const { client, flush, host } = setup({ notifications: port, hasFocus: () => true });
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t1", "checkout", "w1", { needsAttention: true }) });
+    flush();
+    expect([screen.queryByTestId("mode-notice"), host.window.get(NOTICES), shown]).toEqual([null, [], []]);
+  });
+
+  // spec: UI-194
+  test("a widget's notify: a mode-line notice with focus, a system notification without", async () => {
+    let focused = true;
+    const shown: Array<{ notice: Notice; click: () => void }> = [];
+    const port: NotificationPort = {
+      permission: () => "granted",
+      requestPermission: async () => "granted",
+      show: (notice, click) => shown.push({ notice, click }),
+    };
+    const { user, host } = inWorkspace(
+      {},
+      {
+        registry: new Map([...registry, ["omfp:header", Notifying]]),
+        notifications: port,
+        hasFocus: () => focused,
+      },
+    );
+    await user.click(screen.getByRole("button", { name: "notify" }));
+    expect([screen.getByTestId("mode-notice").dataset.tone, screen.getByTestId("mode-notice").textContent]).toEqual([
+      "info",
+      "◆Buildis greeng n",
+    ]);
+    expect(shown).toEqual([]);
+    expect(screen.getByTestId("live-region").textContent).toBe("Build is green");
+    focused = false;
+    await user.click(screen.getByRole("button", { name: "notify" }));
+    expect(shown.map(({ notice }) => [notice.title, notice.body, notice.threadId, notice.tone])).toEqual([
+      ["Build", "is green", "t2", "info"],
+    ]);
+    expect(host.window.get(NOTICES)).toHaveLength(1);
+    act(() => shown[0]?.click());
     expect(host.window.get(SELECTED_THREAD)).toBe("t2");
   });
 
@@ -521,7 +645,7 @@ describe("daemon settings", () => {
 
   // spec: UI-097, UI-096
   test("notifications `always` show even with focus, `never` shows none and asks no permission", () => {
-    const shown: string[] = [];
+    const shown: (string | undefined)[] = [];
     let requested = 0;
     const port: NotificationPort = {
       permission: () => "granted",

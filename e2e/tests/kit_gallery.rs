@@ -1,6 +1,7 @@
 //! The `/kit` gallery (UI-173, UI-174) at motion `none`, 17 px, compact, in light and dark for the built-in Synth
-//! palette and the matugen fixture theme: every text role, status color and gradient stop the page measures reaches
-//! WCAG AA. Full-page shots land in `/tmp/omfp-kit-<theme>-<scheme>.png` (or `OMFP_SCREENSHOT_DIR`) for a look by eye;
+//! palette, the matugen fixture theme and the Dux Solarized preset (whose tertiary and secondary sit on the surface at
+//! 1.14:1 until the contrast guard, UI-196, moves them): every text role, status color and gradient stop the page
+//! measures reaches WCAG AA, and the guard overrides nothing in Synth and the matugen fixture. Full-page shots land in `/tmp/omfp-kit-<theme>-<scheme>.png` (or `OMFP_SCREENSHOT_DIR`) for a look by eye;
 //! nothing compares them.
 
 use std::path::PathBuf;
@@ -12,7 +13,9 @@ use serde_json::json;
 /// The page width of every shot (CSS px, device scale 1).
 const WIDTH: u32 = 1400;
 
-const THEMES: [&str; 2] = ["synth", "matugen-forest"];
+const THEMES: [&str; 3] = ["synth", "matugen-forest", "dux-solarized"];
+/// The themes the contrast guard must leave as they are.
+const GOOD_THEMES: [&str; 2] = ["synth", "matugen-forest"];
 const SCHEMES: [&str; 2] = ["light", "dark"];
 
 fn shot_path(theme: &str, scheme: &str) -> PathBuf {
@@ -79,7 +82,7 @@ async fn contrast_failures(journey: &Journey) -> anyhow::Result<Vec<String>> {
     Ok(serde_json::from_value(value)?)
 }
 
-// spec: UI-173, UI-174, UI-124, UI-135, UI-140, UI-145
+// spec: UI-173, UI-174, UI-124, UI-135, UI-140, UI-145, UI-196
 #[tokio::test(flavor = "multi_thread")]
 async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
@@ -94,6 +97,12 @@ async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> 
             );
             for failure in contrast_failures(&journey).await? {
                 problems.push(format!("{theme} {scheme}: under AA: {failure}"));
+            }
+            let guarded = journey.attr("html", "data-contrast-guard").await?;
+            if GOOD_THEMES.contains(&theme) == guarded.is_some() {
+                problems.push(format!(
+                    "{theme} {scheme}: contrast guard overrides {guarded:?}"
+                ));
             }
             let path = shot_path(theme, scheme);
             std::fs::write(&path, full_page(&journey).await?)?;

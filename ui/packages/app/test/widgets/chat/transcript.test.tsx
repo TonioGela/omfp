@@ -1,7 +1,7 @@
 /** L4: `omfp:transcript` over recorded fixtures. */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { ThreadEvent } from "@omfp/core";
+import type { JsonObject, ThreadEvent } from "@omfp/core";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SELECTED_THREAD, scopesAt } from "../../../src/sdk/index.ts";
@@ -69,6 +69,38 @@ describe("transcript", () => {
     client.threadEvents(THREAD, ...events.slice(end));
     flush();
     expect(streaming()).toBeUndefined();
+  });
+
+  // spec: UI-147, UI-191
+  test("a streaming reply's Markdown is rendered in chunks that stay in place as it grows; the finished one whole", () => {
+    const update = (assistantMessageEvent: JsonObject): ThreadEvent => ({
+      kind: "omp",
+      frame: { type: "message_update", messageId: "live", message: { role: "assistant" }, assistantMessageEvent },
+    });
+    const { client, flush } = renderThread(<TranscriptWidget />, [
+      { kind: "omp", frame: { type: "message_start", messageId: "live", message: { role: "assistant", content: [] } } },
+      update({ type: "text_start", contentIndex: 0, block: { type: "text", text: "" } }),
+      update({ type: "text_delta", contentIndex: 0, delta: "First paragraph.\n\nSecond" }),
+    ]);
+    const chunks = () => [...screen.getByTestId("markdown").querySelectorAll(":scope > .omfp-markdown")];
+    const [first, second] = chunks();
+    expect([first?.textContent, second?.textContent]).toEqual(["First paragraph.", "Second"]);
+    client.threadEvents(THREAD, update({ type: "text_delta", contentIndex: 0, delta: " half." }));
+    flush();
+    expect(chunks()[0]).toBe(first);
+    expect(chunks()[1]?.textContent).toBe("Second half.");
+    const text = "First paragraph.\n\nSecond half.";
+    client.threadEvents(THREAD, update({ type: "text_end", contentIndex: 0, content: text, block: { type: "text" } }), {
+      kind: "omp",
+      frame: {
+        type: "message_end",
+        messageId: "live",
+        message: { role: "assistant", content: [{ type: "text", text }] },
+      },
+    });
+    flush();
+    const markdown = screen.getByTestId("markdown");
+    expect([markdown.classList.contains("omfp-markdown"), markdown.querySelectorAll("p").length]).toEqual([true, 2]);
   });
 
   // spec: UI-041, UI-171

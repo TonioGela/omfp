@@ -387,4 +387,8 @@
   .omfp-gallery__contrast tr[data-pass="false"] .omfp-gallery__ratio {
     color: var(--omfp-error);
   }
+
+  .omfp-gallery__guard td {
+    white-space: nowrap;
+  }
 }

@@ -12,8 +12,15 @@ import {
   type ToolStatus,
 } from "omfp/kit";
 import type { MessageBlock as Block, MessageView, NoticeRow, MessageRole as Role, SystemRow } from "omfp/sdk";
-import { type ToolCard as Card, expandedByDefault, formatDuration, strings, useOpenFile } from "omfp/sdk";
-import { type ReactNode, useCallback } from "react";
+import {
+  type ToolCard as Card,
+  expandedByDefault,
+  formatDuration,
+  markdownChunks,
+  strings,
+  useOpenFile,
+} from "omfp/sdk";
+import { memo, type ReactNode, useCallback } from "react";
 import { useExpanded } from "./state.ts";
 import { fileTarget, ToolBody, ToolSubject } from "./tool-cards.tsx";
 
@@ -35,7 +42,7 @@ export function MessageRow({ cardKey, view, streaming }: { cardKey: string; view
   const blocks = view.blocks.map((block, index) => (
     // Blocks only grow at the end while streaming, so the index is a stable key.
     // biome-ignore lint/suspicious/noArrayIndexKey: see above
-    <BlockView key={index} cardKey={`${cardKey}/${index}`} role={view.role} block={block} />
+    <BlockView key={index} cardKey={`${cardKey}/${index}`} role={view.role} block={block} streaming={streaming} />
   ));
   const error = view.error === undefined ? undefined : <span data-testid="message-error">{view.error}</span>;
   const caret = streaming && view.blocks.at(-1)?.type !== "text" ? <StreamCaret /> : null;
@@ -63,7 +70,19 @@ export function MessageRow({ cardKey, view, streaming }: { cardKey: string; view
   );
 }
 
-function BlockView({ cardKey, role, block }: { cardKey: string; role: Role; block: Block }) {
+/** One block; renders again only when the block changes (the view model keeps unchanged blocks, UI-191), so a
+ * streaming delta renders the growing block only. */
+const BlockView = memo(function BlockView({
+  cardKey,
+  role,
+  block,
+  streaming,
+}: {
+  cardKey: string;
+  role: Role;
+  block: Block;
+  streaming: boolean;
+}) {
   const openFile = useOpenFile();
   // Paths in the assistant's text open the file (UI-116).
   const openPath = useCallback(
@@ -72,12 +91,17 @@ function BlockView({ cardKey, role, block }: { cardKey: string; role: Role; bloc
   );
   switch (block.type) {
     case "text":
-      return role === "assistant" ? (
-        <Markdown text={block.text} data-testid="markdown" onOpenPath={openPath} />
+      if (role !== "assistant") {
+        return (
+          <div className="omfp-message__plain omfp-prose" data-testid="plain-text">
+            {block.text}
+          </div>
+        );
+      }
+      return streaming ? (
+        <StreamingMarkdown text={block.text} onOpenPath={openPath} />
       ) : (
-        <div className="omfp-message__plain omfp-prose" data-testid="plain-text">
-          {block.text}
-        </div>
+        <Markdown text={block.text} data-testid="markdown" onOpenPath={openPath} />
       );
     case "thinking":
       return <ThinkingBlock cardKey={cardKey} text={block.text} />;
@@ -95,6 +119,28 @@ function BlockView({ cardKey, role, block }: { cardKey: string; role: Role; bloc
     case "record":
       return <RecordBlock cardKey={cardKey} summary={block.summary} json={block.json} />;
   }
+});
+
+/** A Markdown chunk, parsed again only when its text changes. */
+const MarkdownChunk = memo(Markdown);
+
+/** Streaming Markdown in top-level chunks (UI-191): a delta parses the chunk it grows, not the whole reply. */
+function StreamingMarkdown({
+  text: markdown,
+  onOpenPath,
+}: {
+  text: string;
+  onOpenPath: (reference: { path: string; line: number | undefined }) => void;
+}) {
+  return (
+    <div className="omfp-markdown-stream" data-testid="markdown">
+      {markdownChunks(markdown).map((chunk, index) => (
+        // Chunks only change or grow at the end while streaming, so the index is a stable key.
+        // biome-ignore lint/suspicious/noArrayIndexKey: see above
+        <MarkdownChunk key={index} text={chunk} onOpenPath={onOpenPath} />
+      ))}
+    </div>
+  );
 }
 
 /** Thinking, collapsed by default (UI-041, UI-171). */

@@ -735,7 +735,7 @@ fn prompt_results_are_kept_by_prompt_id() {
     assert_eq!(state.prompts["p2"].status, PromptStatus::Error);
 }
 
-// spec: TST-010
+// spec: TST-010, PRT-055
 #[test]
 fn subagent_frames_keep_the_latest_lifecycle_and_progress() {
     let state = replay(&[
@@ -768,6 +768,84 @@ fn subagent_frames_keep_the_latest_lifecycle_and_progress() {
             .and_then(|p| p.progress.get("status")),
         Some(&json!("completed"))
     );
+}
+
+fn todo_result(id: &str, op: &str, is_error: bool, tasks: &Value) -> omfp_core::ThreadEvent {
+    message_end(
+        id,
+        json!({
+            "role": "toolResult", "toolCallId": id, "toolName": "todo", "isError": is_error, "timestamp": 0,
+            "content": [{ "type": "text", "text": "list" }],
+            "details": { "op": op, "phases": [{ "name": "Tasks", "tasks": tasks }], "storage": "session" },
+        }),
+    )
+}
+
+fn todo_contents(state: &ThreadState) -> Vec<(String, String)> {
+    state
+        .todo_phases
+        .iter()
+        .flat_map(|phase| &phase.tasks)
+        .map(|task| (task.content.clone(), task.status.as_str().to_owned()))
+        .collect()
+}
+
+// spec: TST-010, PRT-057
+#[test]
+fn todo_phases_are_the_last_committed_todo_result_of_the_transcript() {
+    let read = json!({ "content": "Read", "status": "completed" });
+    let fix = json!({ "content": "Fix", "status": "in_progress" });
+    let state = replay(&[
+        todo_result("t1", "init", false, &json!([read, fix])),
+        // A failed call and a `view` commit nothing (omp's `committedTodoPhases`).
+        todo_result("t2", "done", true, &json!([])),
+        todo_result("t3", "view", false, &json!([])),
+    ]);
+    assert_eq!(
+        todo_contents(&state),
+        [
+            ("Read".to_owned(), "completed".to_owned()),
+            ("Fix".to_owned(), "in_progress".to_owned())
+        ]
+    );
+
+    // History (a restart, a fork or a navigation) recomputes them from the restored branch.
+    let restored = json!({
+        "role": "toolResult", "toolCallId": "h1", "toolName": "todo", "isError": false, "timestamp": 0,
+        "content": [], "details": { "op": "init", "phases": [{ "name": "Old", "tasks": [read] }] },
+    });
+    let mut reloaded = state.clone();
+    reloaded.apply(&history(json!([restored, user_message("again")])));
+    assert_eq!(
+        todo_contents(&reloaded),
+        [("Read".to_owned(), "completed".to_owned())]
+    );
+    let mut empty = state;
+    empty.apply(&history(json!([user_message("before the list")])));
+    assert_eq!(empty.todo_phases, Vec::new());
+}
+
+// spec: TST-010, PRT-056
+#[test]
+fn goal_updated_keeps_the_sessions_goal() {
+    let goal = json!({
+        "id": "g1", "objective": "Ship it", "status": "active", "tokensUsed": 10, "timeUsedSeconds": 1.5,
+        "createdAt": 1, "updatedAt": 2, "tokenBudget": 1000,
+    });
+    let mut state = replay(&[omp(
+        json!({ "type": "goal_updated", "goal": goal, "state": { "enabled": true, "mode": "active", "goal": goal } }),
+    )]);
+    let kept = state
+        .goal
+        .as_ref()
+        .map(|goal| (goal.objective.as_str(), goal.status.as_str()));
+    assert_eq!(kept, Some(("Ship it", "active")));
+
+    // A history keeps it (the goal belongs to the omp session, not the transcript); `goal: null` drops it.
+    state.apply(&history(json!([])));
+    assert!(state.goal.is_some());
+    state.apply(&omp(json!({ "type": "goal_updated", "goal": null })));
+    assert_eq!(state.goal, None);
 }
 
 // spec: TST-010, UI-043, DMN-042

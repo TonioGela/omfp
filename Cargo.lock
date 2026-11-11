@@ -2830,6 +2830,7 @@ dependencies = [
  "anyhow",
  "clap",
  "futures",
+ "gio",
  "omfp-core",
  "omfp-daemon",
  "omfp-protocol",

@@ -1176,16 +1176,17 @@ async fn code_follows_the_theme(journey: &Journey) -> anyhow::Result<()> {
     let dark = keywords_follow_the_theme(journey).await?;
     assert_ne!(light, dark, "keywords change color with the scheme");
     journey.screenshot("m5-code-dark").await?;
+    // A color that reaches AA on the dark surfaces, so the contrast guard (UI-196) keeps it as given.
     let mut connection = journey.connect().await?;
     connection
         .call::<omfp_protocol::method::ThemeSet>(omfp_protocol::Theme {
-            css: Some(":root { --omfp-primary: #c2185b; }\n".to_owned()),
+            css: Some(":root { --omfp-primary: #ff80ab; }\n".to_owned()),
         })
         .await?;
     connection.close().await?;
     journey
         .until("the custom theme's keywords", async |page| {
-            Ok((keyword_color(page).await? == "rgb(194, 24, 91)").then_some(()))
+            Ok((keyword_color(page).await? == "rgb(255, 128, 171)").then_some(()))
         })
         .await?;
     journey.screenshot("m5-code-custom").await?;

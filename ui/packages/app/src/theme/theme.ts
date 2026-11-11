@@ -8,7 +8,8 @@
  * included. The user theme is the daemon's (global, `theme.get`/`theme.set`): the page loads it first through
  * `<link rel="stylesheet" href="/theme.css" data-omfp-theme>` (so it applies before the socket connects), then the
  * `index` topic's `theme` replaces that link with `<style data-omfp-theme>` in the same place and keeps it current
- * (`theme_changed`). The tokens live in `@layer omfp-tokens`, so the unlayered user theme always wins over them.
+ * (`theme_changed`). The tokens live in `@layer omfp-tokens`, so the unlayered user theme always wins over them. The
+ * contrast guard (guard.ts, UI-196) then keeps the theme's text roles readable: it runs with the appearance.
  */
 
 import { type Density, type FontSettings, INDEX_TOPIC, type Motion } from "@omfp/protocol";
@@ -23,6 +24,7 @@ import {
   useSnapshot,
   useWindowState,
 } from "../sdk/index.ts";
+import { installContrastGuard } from "./guard.ts";
 
 export const THEME_ATTRIBUTE = "data-omfp-theme";
 
@@ -84,7 +86,10 @@ function useSystemReducedMotion(): boolean {
   );
 }
 
-/** Keeps `<html>`'s colour scheme (window state), density, motion, font size and fonts (daemon settings) current. */
+/**
+ * Keeps `<html>`'s colour scheme (window state), density, motion, font size and fonts (daemon settings) current, and
+ * the contrast guard (UI-196) on it.
+ */
 export function useAppearance(root: HTMLElement = document.documentElement): void {
   const [scheme] = useWindowState(COLOR_SCHEME);
   const { ui } = useSettings();
@@ -97,6 +102,7 @@ export function useAppearance(root: HTMLElement = document.documentElement): voi
     () => applyAppearance(root, { scheme, density, fontSize, motion, fonts }),
     [root, scheme, density, fontSize, motion, fonts],
   );
+  useEffect(() => installContrastGuard(root.ownerDocument, root), [root]);
 }
 
 /** Applies the daemon's theme once the `index` topic is live, and every change after (`theme_changed`). */

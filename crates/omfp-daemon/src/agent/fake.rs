@@ -553,6 +553,7 @@ impl AgentProcess for FakeAgent {
 fn default_data(command: &str, session_id: &str) -> Value {
     match command {
         "get_state" => json!({ "sessionId": session_id }),
+        "get_messages" => json!({ "messages": [] }),
         "abort_and_restore_queue" => json!({ "steering": [], "followUp": [] }),
         "remove_queued_message" => json!({ "removed": false }),
         "promote_queued_message" => json!({ "promoted": false }),

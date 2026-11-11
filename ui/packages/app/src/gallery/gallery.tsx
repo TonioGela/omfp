@@ -49,6 +49,7 @@ import {
   Message,
   Meter,
   ModeLine,
+  ModeNotice,
   ModeSegment,
   OptionText,
   PathField,
@@ -81,10 +82,12 @@ import {
   WorkspaceSection,
 } from "@omfp/kit";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AA, type Adjustment, type ContrastPair, contrastRatio } from "../theme/contrast.ts";
+import { applyContrastGuard, cssColorReader } from "../theme/guard.ts";
 import { applyAppearance, applyUserTheme } from "../theme/theme.ts";
-import { AA, type ContrastPair, contrastRatio, parseRgb, type Rgb } from "./contrast.ts";
+import duxTheme from "./dux-solarized.css" with { type: "text" };
 import forestTheme from "./matugen-forest.css" with { type: "text" };
-import { type GalleryParams, galleryParams } from "./params.ts";
+import { type GalleryParams, type GalleryTheme, galleryParams } from "./params.ts";
 
 /** The forced interaction states shown next to the live one. */
 type Forced = "live" | "hover" | "pressed" | "focus" | "disabled";
@@ -1117,7 +1120,7 @@ function CodeDemo() {
 
 function ModeLines() {
   return (
-    <Section title="Mode line · command line" note="UI-167 · UI-168" wide>
+    <Section title="Mode line · command line" note="UI-167 · UI-168 · UI-193" wide>
       <ModeLine mode="normal">
         <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
         <ModeSegment>
@@ -1148,6 +1151,29 @@ function ModeLines() {
         <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
         <ModeSegment kind="error">Unknown command: rescna</ModeSegment>
       </ModeLine>
+      {/* Notices (UI-193): each tone, with a count, hover and focus. */}
+      <ModeLine
+        mode="normal"
+        notice={<ModeNotice tone="attention" title="Fix flaky checkout test" body="needs you" more={2} kbd="g n" />}
+      >
+        <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
+        <ModeSegment>idle</ModeSegment>
+      </ModeLine>
+      <ModeLine
+        mode="insert"
+        notice={<ModeNotice tone="error" title="flaky" body="failed" kbd="g n" className="is-hover" />}
+      >
+        <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
+      </ModeLine>
+      <ModeLine
+        mode="normal"
+        notice={<ModeNotice tone="ok" title="checkout" body="finished its turn" kbd="g n" className="is-focus" />}
+      >
+        <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
+      </ModeLine>
+      <ModeLine mode="normal" notice={<ModeNotice tone="info" title="CI" body="is green again" kbd="g n" />}>
+        <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
+      </ModeLine>
       <div className="omfp-gallery__narrow">
         <ModeLine mode="normal">
           <ModeSegment kind="title">omfp › A long thread title that does not fit</ModeSegment>
@@ -1155,6 +1181,13 @@ function ModeLines() {
           <ModeSegment>
             <Meter value={48_200} max={200_000} label="Context" />
           </ModeSegment>
+        </ModeLine>
+        <ModeLine
+          mode="normal"
+          notice={<ModeNotice tone="attention" title="A long thread title that waits" body="needs you" kbd="g n" />}
+        >
+          <ModeSegment kind="title">omfp › A long thread title that does not fit</ModeSegment>
+          <ModeSegment>opus-4.5</ModeSegment>
         </ModeLine>
       </div>
       <div className="omfp-gallery__pair">
@@ -1587,6 +1620,8 @@ const TEXT_PAIRS: readonly (readonly [text: string, background: string])[] = [
   ["primary", "surface-container-low"],
   ["tertiary", "surface"],
   ["tertiary", "surface-container"],
+  ["secondary", "surface"],
+  ["secondary", "surface-container-low"],
   ["error", "surface"],
   ["error", "surface-container-low"],
   ["ok", "surface"],
@@ -1605,37 +1640,8 @@ const TEXT_PAIRS: readonly (readonly [text: string, background: string])[] = [
   ["tertiary", "surface-container-lowest"],
 ];
 
-/** Resolves color tokens to sRGB through the page (`getComputedStyle` → canvas), for any notation. */
-function colorReader(): ((token: string) => Rgb | undefined) | undefined {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1;
-  canvas.height = 1;
-  const context = canvas.getContext("2d", { willReadFrequently: true });
-  if (context === null) {
-    return undefined;
-  }
-  const probe = document.createElement("span");
-  document.body.append(probe);
-  return (token) => {
-    probe.style.color = `var(--omfp-${token})`;
-    const computed = getComputedStyle(probe).color;
-    const direct = parseRgb(computed);
-    if (direct !== undefined && !computed.startsWith("rgba")) {
-      return direct;
-    }
-    context.clearRect(0, 0, 1, 1);
-    context.fillStyle = computed;
-    context.fillRect(0, 0, 1, 1);
-    const [red = 0, green = 0, blue = 0] = context.getImageData(0, 0, 1, 1).data;
-    return [red, green, blue];
-  };
-}
-
 function measure(): ContrastPair[] {
-  const read = colorReader();
-  if (read === undefined) {
-    return [];
-  }
+  const read = cssColorReader(document);
   return TEXT_PAIRS.flatMap(([text, background]) => {
     const fore = read(text);
     const back = read(background);
@@ -1643,7 +1649,50 @@ function measure(): ContrastPair[] {
   });
 }
 
-function TokenSheet({ onMeasured }: { onMeasured: () => void }) {
+/** The roles the contrast guard (UI-196) overrode for this theme: the theme's color, the override, both ratios. */
+function GuardTable({ adjustments }: { adjustments: readonly Adjustment[] }) {
+  return (
+    <Section title="Contrast guard" note="UI-196 · theme → override">
+      {adjustments.length === 0 ? (
+        <span className="omfp-gallery__note" data-testid="contrast-guard-none">
+          Every guarded role passes; nothing is overridden.
+        </span>
+      ) : (
+        <table className="omfp-gallery__contrast omfp-gallery__guard">
+          <tbody>
+            {adjustments.map((adjustment) => (
+              <tr
+                key={adjustment.role}
+                data-testid="contrast-guard"
+                data-role={adjustment.role}
+                data-from={adjustment.from}
+                data-to={adjustment.to}
+              >
+                <td>
+                  <span className="omfp-gallery__sample" style={{ color: adjustment.from }}>
+                    Aa
+                  </span>
+                  <span className="omfp-gallery__sample" style={{ color: `var(--omfp-${adjustment.role})` }}>
+                    Aa
+                  </span>
+                </td>
+                <td>{adjustment.role}</td>
+                <td>
+                  {adjustment.from} → {adjustment.to}
+                </td>
+                <td className="omfp-gallery__ratio">
+                  {adjustment.before.toFixed(2)} → {adjustment.after.toFixed(2)} / {adjustment.threshold}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Section>
+  );
+}
+
+function TokenSheet({ guard, onMeasured }: { guard: readonly Adjustment[]; onMeasured: () => void }) {
   const [pairs, setPairs] = useState<readonly ContrastPair[] | undefined>();
   const measured = useRef(onMeasured);
   measured.current = onMeasured;
@@ -1732,15 +1781,24 @@ function TokenSheet({ onMeasured }: { onMeasured: () => void }) {
           </tbody>
         </table>
       </Section>
+      <GuardTable adjustments={guard} />
     </>
   );
 }
 
+/** The fixture themes of `?theme=` (UI-173); Synth is the built-in palette (no user theme). */
+const THEME_CSS: Readonly<Record<GalleryTheme, string | null>> = {
+  synth: null,
+  "matugen-forest": forestTheme as string,
+  "dux-solarized": duxTheme as string,
+};
+
 /**
- * Puts the query's appearance and theme on the document (the user theme is replaced by the fixture or nothing), before
- * the first render, so what the page measures is in its final colors.
+ * Puts the query's appearance and theme on the document (the user theme is replaced by the fixture or nothing) and runs
+ * the contrast guard (UI-196), before the first render, so what the page measures is in its final colors. Returns
+ * what the guard overrode.
  */
-function applyGalleryParams(params: GalleryParams): void {
+function applyGalleryParams(params: GalleryParams): Adjustment[] {
   applyAppearance(document.documentElement, {
     scheme: params.scheme,
     density: params.density,
@@ -1748,8 +1806,9 @@ function applyGalleryParams(params: GalleryParams): void {
     motion: params.motion,
     fonts: null,
   });
-  applyUserTheme(document, params.theme === "matugen-forest" ? (forestTheme as string) : null);
+  applyUserTheme(document, THEME_CSS[params.theme]);
   document.title = "omfp kit";
+  return applyContrastGuard(document.documentElement, cssColorReader(document));
 }
 
 /** Two frames: what the last state change shows has been laid out and painted. */
@@ -1761,10 +1820,9 @@ function afterPaint(): Promise<void> {
 
 /** The `/kit` page. */
 export function Gallery({ search }: { search: string }) {
-  const [params] = useState(() => {
+  const [{ params, guard }] = useState(() => {
     const parsed = galleryParams(search);
-    applyGalleryParams(parsed);
-    return parsed;
+    return { params: parsed, guard: applyGalleryParams(parsed) };
   });
   const [measured, setMeasured] = useState(false);
   const [ready, setReady] = useState(false);
@@ -1820,7 +1878,7 @@ export function Gallery({ search }: { search: string }) {
         <Composers />
         <LiveVoice />
         <DensityStrip />
-        <TokenSheet onMeasured={() => setMeasured(true)} />
+        <TokenSheet guard={guard} onMeasured={() => setMeasured(true)} />
       </div>
     </main>
   );

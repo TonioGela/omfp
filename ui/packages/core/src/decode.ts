@@ -41,6 +41,9 @@ export const i32: Decoder<number> = (value) => {
   return decoded >= -0x8000_0000 && decoded <= 0x7fff_ffff ? decoded : fail();
 };
 
+/** A finite number (`f64`). */
+export const num: Decoder<number> = (value) => (typeof value === "number" && Number.isFinite(value) ? value : fail());
+
 /** Any JSON value (`serde_json::Value`); `undefined` means the field is missing. */
 export const json: Decoder<JsonValue> = (value) => (value === undefined ? fail() : (value as JsonValue));
 

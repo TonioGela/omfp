@@ -1,0 +1,838 @@
+//! Transcript performance (M9) in headless Chromium against a daemon on the fake launcher: a thread resumes a session
+//! of 10,000 messages (prose, Markdown with code blocks, tool calls with their results), and the test plays omp's
+//! streaming frames into it. A probe installed before the page's scripts (`perf/probe.js`) stands in for the React
+//! developer tools to count commits and component renders per transcript item, and records frames, long tasks and the time
+//! spent handling WebSocket messages.
+//!
+//! The test asserts structure only (TST-052): the DOM stays bounded with 10,000 messages (UI-190) and a streamed delta
+//! re-renders the streaming row and no other transcript item (UI-191). The benchmark prints timings and asserts
+//! nothing; it is not part of `just ci`:
+//!
+//! ```sh
+//! just build-web && cargo test -p e2e --release --test perf -- --ignored --nocapture
+//! ```
+//!
+//! `OMFP_PERF_MESSAGES` (default 10000), `OMFP_PERF_RATE` (events per second, default 100) and `OMFP_PERF_SECONDS`
+//! (default 10) change its load; with `OMFP_PERF_PROFILE=1` it also prints the functions with the most self time
+//! while scrolling and streaming (Chromium's sampling profiler; build the bundle without `minify` for readable names,
+//! and point `OMFP_WEB_BUNDLE` at it).
+
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+use e2e::{Journey, row};
+use omfp_core::wire::{AgentMessage, RpcNotification};
+use omfp_daemon::agent::{FakeLauncher, FakeProcess, FakeRun};
+use omfp_protocol::method::ThreadsCreate;
+use omfp_protocol::{CreateThreadParams, CreateWorkspaceParams, ThreadWorkspace};
+use serde_json::{Value, json};
+use thirtyfour::prelude::*;
+
+const PROBE: &str = include_str!("perf/probe.js");
+const TRANSCRIPT: &str = "[data-testid=transcript]";
+const STREAMING: &str = "[data-testid=transcript-item][data-key=streaming]";
+/// The streamed reply's omp message id.
+const STREAM_ID: &str = "perf-stream";
+
+/// Transcript items in the DOM with 10,000 messages: the viewport's and the overscan on each side (UI-190).
+const MAX_ITEMS: u64 = 32;
+/// Elements under the transcript with 10,000 messages (UI-190).
+const MAX_NODES: u64 = 1500;
+
+fn assistant(content: &Value) -> Value {
+    json!({
+        "role": "assistant",
+        "api": "openai-completions",
+        "provider": "fake",
+        "model": "scripted",
+        "content": content,
+        "stopReason": "stop",
+        "timestamp": 0,
+        "completedAt": 0,
+        "usage": {
+            "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0, "totalTokens": 0,
+            "cost": { "input": 0.0, "output": 0.0, "cacheRead": 0.0, "cacheWrite": 0.0, "total": 0.0 },
+        },
+    })
+}
+
+/// One turn of four messages: a question, a reply with a tool call, the tool's result, and a Markdown answer with a
+/// list and a code block.
+fn turn(index: usize) -> [Value; 4] {
+    let call = format!("call_{index}");
+    let (tool, arguments, output) = match index % 4 {
+        0 => (
+            "bash",
+            json!({ "command": format!("cargo test -p crate{index} -- --nocapture") }),
+            (0..12)
+                .map(|line| format!("test module{line}::case_{index} ... ok\n"))
+                .collect::<Vec<_>>()
+                .concat(),
+        ),
+        1 => (
+            "read",
+            json!({ "path": format!("src/module{index}.rs") }),
+            (1..=20)
+                .map(|line| format!("{line}:    let value_{line} = compute({index}, {line});\n"))
+                .collect::<Vec<_>>()
+                .concat(),
+        ),
+        2 => (
+            "grep",
+            json!({ "pattern": format!("fn handler_{index}"), "path": "src" }),
+            (0..6)
+                .map(|line| format!("src/handlers/h{line}.rs:{index}: fn handler_{index}() {{\n"))
+                .collect::<Vec<_>>()
+                .concat(),
+        ),
+        _ => (
+            "write",
+            json!({ "path": format!("notes/n{index}.md"), "content": format!("# Note {index}\n\nSome text.\n") }),
+            format!("Wrote notes/n{index}.md"),
+        ),
+    };
+    [
+        json!({
+            "role": "user",
+            "attribution": "user",
+            "timestamp": 0,
+            "content": [{ "type": "text", "text": format!("Question {index}: why does `handler_{index}` return early when the cache is cold?") }],
+        }),
+        assistant(&json!([
+            { "type": "text", "text": format!("Let me check `src/module{index}.rs` first.") },
+            { "type": "toolCall", "id": call, "name": tool, "arguments": arguments },
+        ])),
+        json!({
+            "role": "toolResult",
+            "toolCallId": call,
+            "toolName": tool,
+            "isError": index.is_multiple_of(17),
+            "timestamp": 0,
+            "content": [{ "type": "text", "text": output }],
+        }),
+        assistant(&json!([{ "type": "text", "text": format!(
+            "## Finding {index}\n\nThe handler returns early because the **cache** is checked before the lock is \
+             taken, so a cold cache skips the refill. Three things follow:\n\n\
+             - the first request after a restart always misses;\n\
+             - `refill()` runs once per worker, not once per process;\n\
+             - the metric `cache_cold_{index}` counts the misses.\n\n\
+             A fix takes the lock first:\n\n\
+             ```rust\nfn handler_{index}(cache: &Cache) -> Result<Value> {{\n    let guard = cache.lock()?;\n    \
+             if guard.is_cold() {{\n        guard.refill()?;\n    }}\n    Ok(guard.get({index}))\n}}\n```\n\n\
+             After that change the early return only happens on a real error."
+        ) }])),
+    ]
+}
+
+/// `messages` messages of history (whole turns).
+fn history(messages: usize) -> Vec<AgentMessage> {
+    (0..messages.div_ceil(4))
+        .flat_map(turn)
+        .take(messages)
+        .map(|message| serde_json::from_value(message).expect("a valid agent message"))
+        .collect()
+}
+
+fn frame(value: &Value) -> RpcNotification {
+    serde_json::from_value(value.clone()).expect("a valid omp frame")
+}
+
+/// omp's frames that open a streamed reply with an empty text block.
+fn stream_start() -> Vec<RpcNotification> {
+    vec![
+        frame(
+            &json!({ "type": "message_start", "messageId": STREAM_ID, "message": assistant(&json!([])) }),
+        ),
+        frame(&json!({
+            "type": "message_update",
+            "messageId": STREAM_ID,
+            "message": { "role": "assistant" },
+            "assistantMessageEvent": { "type": "text_start", "contentIndex": 0, "block": { "type": "text", "text": "" } },
+        })),
+    ]
+}
+
+fn text_delta(delta: &str) -> RpcNotification {
+    frame(&json!({
+        "type": "message_update",
+        "messageId": STREAM_ID,
+        "message": { "role": "assistant" },
+        "assistantMessageEvent": { "type": "text_delta", "contentIndex": 0, "delta": delta },
+    }))
+}
+
+/// omp's frames that end the streamed reply with `text`.
+fn stream_end(text: &str) -> Vec<RpcNotification> {
+    vec![
+        frame(&json!({
+            "type": "message_update",
+            "messageId": STREAM_ID,
+            "message": { "role": "assistant" },
+            "assistantMessageEvent": { "type": "text_end", "contentIndex": 0, "content": text, "block": { "type": "text" } },
+        })),
+        frame(&json!({
+            "type": "message_end",
+            "messageId": STREAM_ID,
+            "message": assistant(&json!([{ "type": "text", "text": text }])),
+        })),
+    ]
+}
+
+/// The streamed reply, cut into deltas of a few characters like a model's tokens: prose, lists and code blocks.
+fn streamed_deltas(count: usize) -> Vec<String> {
+    let source = "The streamed answer walks through the change step by step, with `inline code`, **bold** words \
+                  and a list:\n\n- first, the reducer keeps the transcript;\n- then, the view model indexes it;\n\
+                  - last, the rows render.\n\n```ts\nexport function sum(values: readonly number[]): number {\n  \
+                  return values.reduce((total, value) => total + value, 0);\n}\n```\n\nAnd a closing paragraph \
+                  that keeps going for a while so the message grows well past a screen.\n\n";
+    let chars: Vec<char> = source.chars().collect();
+    let mut deltas = Vec::with_capacity(count);
+    let mut at = 0;
+    for index in 0..count {
+        let size = 3 + index % 5;
+        deltas.push(
+            (0..size)
+                .map(|offset| chars[(at + offset) % chars.len()])
+                .collect(),
+        );
+        at += size;
+    }
+    deltas
+}
+
+/// Installs the probe for every later page load and reloads the page under it.
+async fn install_probe(journey: &Journey) -> anyhow::Result<()> {
+    let cdp = journey.driver.cdp();
+    cdp.send_raw(
+        "Page.addScriptToEvaluateOnNewDocument",
+        json!({ "source": PROBE }),
+    )
+    .await?;
+    cdp.send_raw("Performance.enable", json!({})).await?;
+    journey.driver.refresh().await?;
+    journey.connected().await
+}
+
+/// Creates a thread in a new workspace through the protocol (the launcher's next run plays it); returns its id.
+async fn create_thread(journey: &Journey, workspace: &str) -> anyhow::Result<String> {
+    let mut connection = journey.connect().await?;
+    let thread = connection
+        .call::<ThreadsCreate>(CreateThreadParams {
+            title: None,
+            workspace: ThreadWorkspace::New(CreateWorkspaceParams {
+                name: Some(workspace.to_owned()),
+                link: None,
+            }),
+            model: None,
+            thinking_level: None,
+            approval_mode: None,
+            prompt: None,
+        })
+        .await?;
+    connection.close().await?;
+    until_present(journey, &row(&thread.id)).await?;
+    Ok(thread.id)
+}
+
+/// Waits until `css` matches. Queries in the page each time: an element handle goes stale when React replaces the node
+/// (the virtualized list re-renders its items as they are measured).
+async fn until_present(journey: &Journey, css: &str) -> anyhow::Result<()> {
+    journey
+        .until(css, async |page| {
+            Ok((page.count(css).await? > 0).then_some(()))
+        })
+        .await
+}
+
+/// Clicks the first element matching `css` in the page (no element handle to go stale).
+async fn click(journey: &Journey, css: &str) -> anyhow::Result<()> {
+    until_present(journey, css).await?;
+    journey
+        .eval(
+            "document.querySelector(arguments[0]).click();",
+            vec![json!(css)],
+        )
+        .await?;
+    Ok(())
+}
+
+/// The selector of thread `id`'s transcript items.
+fn items_of(id: &str) -> String {
+    format!("{TRANSCRIPT}[data-thread-id=\"{id}\"] [data-testid=transcript-item]")
+}
+
+/// Clicks thread `id`'s row in the page and measures until `shown` (a CSS selector) is in the DOM, and until the
+/// frame after it: `(in_dom_ms, painted_ms)`.
+async fn open_timed(journey: &Journey, id: &str, shown: &str) -> anyhow::Result<(f64, f64)> {
+    let script = "const [rowCss, itemCss, done] = arguments;
+        const started = performance.now();
+        const check = () => {
+          if (document.querySelector(itemCss) === null) { return false; }
+          const inDom = performance.now() - started;
+          requestAnimationFrame(() => setTimeout(() => done([inDom, performance.now() - started]), 0));
+          return true;
+        };
+        const observer = new MutationObserver(() => { if (check()) { observer.disconnect(); } });
+        observer.observe(document.body, { childList: true, subtree: true });
+        document.querySelector(rowCss).click();";
+    let value = journey
+        .driver
+        .execute_async(script, vec![json!(row(id)), json!(shown)])
+        .await?
+        .json()
+        .clone();
+    Ok(serde_json::from_value(value)?)
+}
+
+/// What the transcript keeps in the DOM.
+#[derive(Debug)]
+struct Dom {
+    items: u64,
+    nodes: u64,
+    page: u64,
+}
+
+fn number(value: &Value, key: &str) -> f64 {
+    value[key].as_f64().unwrap_or_default()
+}
+
+fn count(value: &Value, key: &str) -> u64 {
+    value[key].as_u64().unwrap_or_default()
+}
+
+async fn dom(journey: &Journey) -> anyhow::Result<Dom> {
+    let value = journey
+        .eval(
+            "const t = document.querySelector(arguments[0]);
+             return { items: t.querySelectorAll('[data-testid=transcript-item]').length,
+                      nodes: t.querySelectorAll('*').length,
+                      page: document.getElementsByTagName('*').length };",
+            vec![json!(TRANSCRIPT)],
+        )
+        .await?;
+    Ok(Dom {
+        items: count(&value, "items"),
+        nodes: count(&value, "nodes"),
+        page: count(&value, "page"),
+    })
+}
+
+/// What the probe recorded.
+#[derive(Debug)]
+struct Recording {
+    commits: u64,
+    /// Component renders by transcript item key (`outside` for the rest).
+    renders: BTreeMap<String, u64>,
+    /// Component renders outside the transcript items, by component name.
+    outside: BTreeMap<String, u64>,
+    /// Components rendered per commit (when renders are tracked).
+    commit_sizes: Vec<u64>,
+    /// `requestAnimationFrame` timestamps (ms).
+    frames: Vec<f64>,
+    /// Durations of the long tasks (ms).
+    long_tasks: Vec<f64>,
+    /// WebSocket messages handled: count, total and longest ms.
+    messages: (u64, f64, f64),
+    /// Per key press: ms from the key to the task after the next frame.
+    keys: Vec<f64>,
+    /// Keyboard and input events of 16 ms or more (Chromium's event timing): name and duration.
+    slow_events: Vec<(String, f64)>,
+}
+
+impl Recording {
+    fn from_json(value: &Value) -> Self {
+        let list = |key: &str| value[key].as_array().cloned().unwrap_or_default();
+        let counts = |key: &str| {
+            value[key]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(name, count)| (name.clone(), count.as_u64().unwrap_or_default()))
+                .collect()
+        };
+        let messages = &value["messages"];
+        Self {
+            commits: count(value, "commits"),
+            renders: counts("renders"),
+            outside: counts("outside"),
+            commit_sizes: list("commitSizes")
+                .iter()
+                .filter_map(Value::as_u64)
+                .collect(),
+            frames: list("frames").iter().filter_map(Value::as_f64).collect(),
+            long_tasks: list("longTasks")
+                .iter()
+                .map(|task| number(task, "duration"))
+                .collect(),
+            messages: (
+                count(messages, "count"),
+                number(messages, "total"),
+                number(messages, "max"),
+            ),
+            keys: list("keys").iter().filter_map(Value::as_f64).collect(),
+            slow_events: list("events")
+                .iter()
+                .map(|event| {
+                    (
+                        event["name"].as_str().unwrap_or_default().to_owned(),
+                        number(event, "duration"),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+async fn start_recording(driver: &WebDriver, track_renders: bool) -> anyhow::Result<()> {
+    driver
+        .execute(
+            "window.__omfpPerf.start(arguments[0]);",
+            vec![json!(track_renders)],
+        )
+        .await?;
+    Ok(())
+}
+
+async fn stop_recording(driver: &WebDriver) -> anyhow::Result<Recording> {
+    let value = driver
+        .execute("return window.__omfpPerf.stop();", Vec::new())
+        .await?;
+    Ok(Recording::from_json(value.json()))
+}
+
+/// Opens the streamed reply and waits until its row shows.
+async fn open_stream(journey: &Journey, process: &FakeProcess) -> anyhow::Result<()> {
+    process.emit(stream_start());
+    until_present(journey, STREAMING).await?;
+    Ok(())
+}
+
+/// Ends the streamed reply and waits until its row is gone (the message joined the transcript).
+async fn close_stream(
+    journey: &Journey,
+    process: &FakeProcess,
+    deltas: &[String],
+) -> anyhow::Result<()> {
+    process.emit(stream_end(&deltas.concat()));
+    journey.gone(STREAMING).await
+}
+
+/// Waits until the streaming row's text ends with the end of `text` (whitespace aside).
+async fn until_streamed(journey: &Journey, text: &str) -> anyhow::Result<()> {
+    let tail: String = text
+        .chars()
+        .filter(|c| c.is_alphanumeric())
+        .rev()
+        .take(12)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    journey
+        .until("the streamed text", async |page| {
+            let shown: String = page
+                .text(STREAMING)
+                .await?
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect();
+            Ok(shown.ends_with(&tail).then_some(()))
+        })
+        .await
+}
+
+/// Scrolls the transcript to its top as the user would (a wheel up unpins it) and waits until item 0 shows.
+async fn scroll_to_top(journey: &Journey) -> anyhow::Result<()> {
+    journey
+        .eval(
+            "const t = document.querySelector(arguments[0]);
+             t.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true }));
+             t.scrollTop = 0;",
+            vec![json!(TRANSCRIPT)],
+        )
+        .await?;
+    journey
+        .until("the first item", async |page| {
+            let first = page
+                .count(&format!("{TRANSCRIPT} [data-index=\"0\"]"))
+                .await?;
+            Ok((first == 1).then_some(()))
+        })
+        .await
+}
+
+/// Goes back to the bottom with `End` and waits until the view is pinned there.
+async fn scroll_to_bottom(journey: &Journey) -> anyhow::Result<()> {
+    until_present(journey, TRANSCRIPT).await?;
+    journey
+        .eval(
+            "document.querySelector(arguments[0]).focus();",
+            vec![json!(TRANSCRIPT)],
+        )
+        .await?;
+    journey.keys(Key::End).await?;
+    journey
+        .until("the pinned transcript", async |page| {
+            let pinned = page.attr(TRANSCRIPT, "data-pinned").await?;
+            Ok((pinned.as_deref() == Some("true")).then_some(()))
+        })
+        .await
+}
+
+// spec: TST-052, UI-190, UI-191
+#[tokio::test(flavor = "multi_thread")]
+async fn a_long_transcript_keeps_a_bounded_dom_and_a_delta_rerenders_only_the_streaming_row()
+-> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(history(10_000)));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    install_probe(&journey).await?;
+    let thread = create_thread(&journey, "long").await?;
+    click(&journey, &row(&thread)).await?;
+    until_present(&journey, &items_of(&thread)).await?;
+
+    // At the bottom, at the top: a bounded window of the 10,000 messages (UI-190).
+    let bottom = dom(&journey).await?;
+    scroll_to_top(&journey).await?;
+    let top = dom(&journey).await?;
+    for (place, dom) in [("bottom", &bottom), ("top", &top)] {
+        assert!(
+            dom.items <= MAX_ITEMS && dom.nodes <= MAX_NODES,
+            "at the {place}: {dom:?}"
+        );
+    }
+    scroll_to_bottom(&journey).await?;
+
+    // Each delta commits and renders the streaming row only (UI-191).
+    let process = launcher.process(0);
+    open_stream(&journey, &process).await?;
+    start_recording(&journey.driver, true).await?;
+    let deltas = streamed_deltas(20);
+    for count in 1..=deltas.len() {
+        process.emit(vec![text_delta(&deltas[count - 1])]);
+        until_streamed(&journey, &deltas[..count].concat()).await?;
+    }
+    let recording = stop_recording(&journey.driver).await?;
+    let items: Vec<&String> = recording
+        .renders
+        .keys()
+        .filter(|key| *key != "outside")
+        .collect();
+    assert_eq!(items, ["streaming"], "renders: {:?}", recording.renders);
+    assert!(
+        recording.commits >= 20,
+        "one commit per delta at least: {recording:?}"
+    );
+    close_stream(&journey, &process, &deltas).await?;
+    journey.finish("transcript performance").await
+}
+
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "benchmark counts stay far below 2^52"
+)]
+fn float(count: u64) -> f64 {
+    count as f64
+}
+
+/// Count, mean, median, 95th percentile and maximum of `values`.
+fn stats(values: &mut [f64]) -> String {
+    if values.is_empty() {
+        return "none".to_owned();
+    }
+    values.sort_by(f64::total_cmp);
+    let last = values.len() - 1;
+    let at = |percent: usize| values[(last * percent).div_ceil(100)];
+    let mean = values.iter().sum::<f64>() / float(values.len() as u64);
+    format!(
+        "n={} mean={mean:.2} p50={:.2} p95={:.2} max={:.2}",
+        values.len(),
+        at(50),
+        at(95),
+        at(100)
+    )
+}
+
+/// Frames late by at least one vsync (60 Hz): the sum, over frame intervals, of the vsyncs skipped.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a rounded, positive number of vsyncs"
+)]
+fn dropped_frames(frames: &[f64]) -> u64 {
+    const VSYNC_MS: f64 = 1000.0 / 60.0;
+    frames
+        .windows(2)
+        .map(|pair| ((pair[1] - pair[0]) / VSYNC_MS).round().max(1.0) as u64 - 1)
+        .sum()
+}
+
+fn report(name: &str, recording: &Recording, events: u64) {
+    let mut intervals: Vec<f64> = recording
+        .frames
+        .windows(2)
+        .map(|pair| pair[1] - pair[0])
+        .collect();
+    let mut long = recording.long_tasks.clone();
+    let long_total: f64 = long.iter().sum();
+    eprintln!("{name}:");
+    eprintln!("  frame interval ms: {}", stats(&mut intervals));
+    eprintln!("  dropped frames: {}", dropped_frames(&recording.frames));
+    eprintln!(
+        "  long tasks: {} (total {long_total:.0} ms) {}",
+        long.len(),
+        stats(&mut long)
+    );
+    eprintln!("  commits: {}", recording.commits);
+    if !recording.keys.is_empty() {
+        let mut keys = recording.keys.clone();
+        eprintln!("  key to next frame ms: {}", stats(&mut keys));
+        eprintln!(
+            "  keyboard/input events of 16 ms or more: {:?}",
+            recording.slow_events
+        );
+    }
+    if events > 0 {
+        let (handled, total, max) = recording.messages;
+        eprintln!(
+            "  events: {events}, commits/event {:.2}; ws messages {handled} mean {:.3} ms max {max:.2} ms",
+            float(recording.commits) / float(events),
+            total / float(handled.max(1)),
+        );
+    }
+    if !recording.commit_sizes.is_empty() {
+        let mut sizes: Vec<f64> = recording.commit_sizes.iter().copied().map(float).collect();
+        eprintln!("  components rendered per commit: {}", stats(&mut sizes));
+        eprintln!("  renders by item: {:?}", recording.renders);
+        let mut outside: Vec<(&String, &u64)> = recording.outside.iter().collect();
+        outside.sort_by(|a, b| b.1.cmp(a.1));
+        eprintln!(
+            "  most rendered outside the transcript: {:?}",
+            &outside[..outside.len().min(15)]
+        );
+    }
+}
+
+/// Main-thread time of the page from Chromium's own counters (seconds): script, layout, style, all tasks.
+async fn metrics(journey: &Journey) -> anyhow::Result<BTreeMap<String, f64>> {
+    let value = journey
+        .driver
+        .cdp()
+        .send_raw("Performance.getMetrics", json!({}))
+        .await?;
+    let mut metrics = BTreeMap::new();
+    for metric in value["metrics"].as_array().into_iter().flatten() {
+        if let (Some(name), Some(value)) = (metric["name"].as_str(), metric["value"].as_f64())
+            && matches!(
+                name,
+                "ScriptDuration" | "LayoutDuration" | "RecalcStyleDuration" | "TaskDuration"
+            )
+        {
+            metrics.insert(name.to_owned(), value);
+        }
+    }
+    Ok(metrics)
+}
+
+fn report_metrics(before: &BTreeMap<String, f64>, after: &BTreeMap<String, f64>, events: u64) {
+    let line: Vec<String> = after
+        .iter()
+        .map(|(name, value)| {
+            let spent = (value - before.get(name).copied().unwrap_or_default()) * 1000.0;
+            if events > 0 {
+                format!(
+                    "{name} {spent:.0} ms ({:.2} ms/event)",
+                    spent / float(events)
+                )
+            } else {
+                format!("{name} {spent:.0} ms")
+            }
+        })
+        .collect();
+    eprintln!("  main thread: {}", line.join(", "));
+}
+
+/// Starts Chromium's sampling profiler when `OMFP_PERF_PROFILE` is set.
+async fn start_profile(journey: &Journey) -> anyhow::Result<()> {
+    if std::env::var_os("OMFP_PERF_PROFILE").is_some() {
+        let cdp = journey.driver.cdp();
+        cdp.send_raw("Profiler.enable", json!({})).await?;
+        cdp.send_raw("Profiler.setSamplingInterval", json!({ "interval": 100 }))
+            .await?;
+        cdp.send_raw("Profiler.start", json!({})).await?;
+    }
+    Ok(())
+}
+
+/// Stops the profiler started by [`start_profile`] and prints the functions with the most self time.
+async fn report_profile(journey: &Journey) -> anyhow::Result<()> {
+    if std::env::var_os("OMFP_PERF_PROFILE").is_none() {
+        return Ok(());
+    }
+    let value = journey
+        .driver
+        .cdp()
+        .send_raw("Profiler.stop", json!({}))
+        .await?;
+    let profile = &value["profile"];
+    let mut frames = BTreeMap::new();
+    for node in profile["nodes"].as_array().into_iter().flatten() {
+        let frame = &node["callFrame"];
+        let url = frame["url"].as_str().unwrap_or_default();
+        let file = url.rsplit('/').next().unwrap_or_default();
+        let name = frame["functionName"].as_str().unwrap_or_default();
+        let label = format!(
+            "{} {file}:{}:{}",
+            if name.is_empty() { "(anonymous)" } else { name },
+            frame["lineNumber"].as_i64().unwrap_or_default() + 1,
+            frame["columnNumber"].as_i64().unwrap_or_default() + 1
+        );
+        frames.insert(node["id"].as_i64().unwrap_or_default(), label);
+    }
+    let mut self_time: BTreeMap<&str, f64> = BTreeMap::new();
+    let samples = profile["samples"].as_array().cloned().unwrap_or_default();
+    let deltas = profile["timeDeltas"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    for (sample, delta) in samples.iter().zip(deltas.iter().skip(1)) {
+        if let Some(label) = frames.get(&sample.as_i64().unwrap_or_default()) {
+            *self_time.entry(label).or_default() += delta.as_f64().unwrap_or_default() / 1000.0;
+        }
+    }
+    let mut top: Vec<(&str, f64)> = self_time.into_iter().collect();
+    top.sort_by(|a, b| b.1.total_cmp(&a.1));
+    eprintln!("  self time (ms):");
+    for (label, ms) in top.into_iter().take(25) {
+        eprintln!("    {ms:8.1}  {label}");
+    }
+    Ok(())
+}
+
+fn env_number(name: &str, default: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(default)
+}
+
+/// Scrolls from the top to the bottom over at most `frames` frames (one step per frame, the remaining distance
+/// spread over the frames left), recording; returns the recording and the frames used.
+async fn scroll_down(journey: &Journey, frames: u64) -> anyhow::Result<(Recording, u64)> {
+    let script = "const [css, frames, done] = arguments;
+        const t = document.querySelector(css);
+        const perf = window.__omfpPerf;
+        perf.start(false);
+        let frame = 0;
+        const step = () => {
+          const remaining = t.scrollHeight - t.clientHeight - t.scrollTop;
+          if (remaining <= 1 || frame >= frames) {
+            done([perf.stop(), frame]);
+            return;
+          }
+          t.scrollTop += Math.max(t.clientHeight / 2, remaining / (frames - frame));
+          frame += 1;
+          requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);";
+    let value = journey
+        .driver
+        .execute_async(script, vec![json!(TRANSCRIPT), json!(frames)])
+        .await?
+        .json()
+        .clone();
+    Ok((
+        Recording::from_json(&value[0]),
+        value[1].as_u64().unwrap_or_default(),
+    ))
+}
+
+/// Streams `deltas` at `rate` events per second, recording; returns the recording.
+async fn stream_timed(
+    journey: &Journey,
+    process: &FakeProcess,
+    deltas: &[String],
+    rate: u64,
+    track_renders: bool,
+) -> anyhow::Result<Recording> {
+    open_stream(journey, process).await?;
+    start_recording(&journey.driver, track_renders).await?;
+    let mut ticks = tokio::time::interval(Duration::from_micros(1_000_000 / rate.max(1)));
+    for delta in deltas {
+        ticks.tick().await;
+        process.emit(vec![text_delta(delta)]);
+    }
+    until_streamed(journey, &deltas.concat()).await?;
+    let recording = stop_recording(&journey.driver).await?;
+    close_stream(journey, process, deltas).await?;
+    Ok(recording)
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "benchmark: prints timings, asserts nothing"]
+async fn benchmark_transcript() -> anyhow::Result<()> {
+    let messages = usize::try_from(env_number("OMFP_PERF_MESSAGES", 10_000))?;
+    let rate = env_number("OMFP_PERF_RATE", 100);
+    let seconds = env_number("OMFP_PERF_SECONDS", 10);
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(history(messages)));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    journey
+        .driver
+        .set_script_timeout(Duration::from_secs(120))
+        .await?;
+    install_probe(&journey).await?;
+    let long = create_thread(&journey, "long").await?;
+    let other = create_thread(&journey, "other").await?;
+    eprintln!("transcript benchmark: {messages} messages, {rate} events/s for {seconds} s");
+
+    let (in_dom, painted) = open_timed(&journey, &long, &items_of(&long)).await?;
+    eprintln!("first open: items in the DOM after {in_dom:.0} ms, painted after {painted:.0} ms");
+    let bottom = dom(&journey).await?;
+    eprintln!(
+        "DOM at the bottom: {} items, {} transcript elements, {} page elements",
+        bottom.items, bottom.nodes, bottom.page
+    );
+
+    scroll_to_top(&journey).await?;
+    let top = dom(&journey).await?;
+    eprintln!(
+        "DOM at the top: {} items, {} transcript elements, {} page elements",
+        top.items, top.nodes, top.page
+    );
+    start_profile(&journey).await?;
+    let (recording, frames) = scroll_down(&journey, 600).await?;
+    report(
+        &format!("scroll top to bottom ({frames} frames)"),
+        &recording,
+        0,
+    );
+    report_profile(&journey).await?;
+    scroll_to_bottom(&journey).await?;
+
+    let empty = format!("{TRANSCRIPT}[data-thread-id=\"{other}\"]");
+    let (in_dom, painted) = open_timed(&journey, &other, &empty).await?;
+    eprintln!("switch away: items in the DOM after {in_dom:.0} ms, painted after {painted:.0} ms");
+    let (in_dom, painted) = open_timed(&journey, &long, &items_of(&long)).await?;
+    eprintln!("switch back: items in the DOM after {in_dom:.0} ms, painted after {painted:.0} ms");
+
+    let process = launcher.process(0);
+    let count = usize::try_from(rate * seconds)?;
+    let deltas = streamed_deltas(count);
+    let before = metrics(&journey).await?;
+    start_profile(&journey).await?;
+    let recording = stream_timed(&journey, &process, &deltas, rate, false).await?;
+    let after = metrics(&journey).await?;
+    report(
+        &format!("streaming {count} deltas at {rate}/s"),
+        &recording,
+        count as u64,
+    );
+    report_metrics(&before, &after, count as u64);
+    report_profile(&journey).await?;
+    let deltas = streamed_deltas(200);
+    let recording = stream_timed(&journey, &process, &deltas, rate, true).await?;
+    report("streaming 200 deltas, renders tracked", &recording, 200);
+
+    journey.finish("transcript benchmark").await
+}

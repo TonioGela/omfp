@@ -12,6 +12,11 @@ local or remote) picks it up live.
    template uses `success` and `warning`).
 3. Run matugen, e.g. `matugen image ~/wallpaper.png` or `matugen color hex "#6750a4"`.
 
+Shells that run matugen for you and add your templates to theirs (DankMaterialShell and its forks, with "Run user
+templates") use absolute paths in `input_path`/`output_path` and do not pass `[config.custom_colors]` to user templates:
+there, delete the `--omfp-success`, `--omfp-on-success`, `--omfp-warning` and `--omfp-on-warning` lines from the
+template (omfp keeps its built-in status colors) or the whole template fails to render.
+
 Where the theme goes:
 
 - **Daemon on this machine**: the template's `output_path` is `~/.config/omfp/theme.css`

@@ -2,24 +2,29 @@
 //! found with [`omfp_daemon::discover`] or started in the background (ARC-003), or with `--connect` on another
 //! daemon. The window loads the daemon's own UI over http: no bundled assets, no Tauri IPC, no capabilities.
 
+use std::cell::Cell;
 use std::ffi::OsString;
 use std::fs::{File, TryLockError};
 use std::net::{SocketAddr, TcpListener};
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, bail};
 use clap::Parser as _;
+use gio::glib::{ToVariant as _, Variant};
 use omfp_daemon::config::{Cli, Config, default_config_file};
 use omfp_daemon::theme::default_theme_file;
 use omfp_daemon::watch::{self, WatchedFile};
 use omfp_protocol::Theme;
 use omfp_protocol::method::ThemeSet;
 use tauri::webview::{PermissionKind, PermissionResponse};
-use tauri::{Manager as _, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    Manager as _, Theme as WindowTheme, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 
 use crate::remote::{Connection, Target, default_data_dir, reachable, read_token, websocket_url};
 
@@ -457,16 +462,141 @@ fn lock_held(data_dir: &Path) -> std::io::Result<bool> {
     }
 }
 
-/// The page state the smoke check polls: the shell is connected and shows a view (as e2e's `connected()`).
+/// The page state the smoke check polls: the shell is connected and shows a view (as e2e's `connected()`), and the
+/// color scheme the page sees.
 const PROBE: &str = r#"(() => {
   const q = (s) => document.querySelector(s);
   return {
     ready: !!q("[data-testid=view]") && !q("[data-testid=connection-banner]"),
+    scheme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
     href: location.href,
     rtcPeerConnection: typeof RTCPeerConnection,
     notification: typeof Notification === "function" ? Notification.permission : "undefined",
   };
 })()"#;
+
+const PORTAL: &str = "org.freedesktop.portal.Desktop";
+const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
+const PORTAL_SETTINGS: &str = "org.freedesktop.portal.Settings";
+const APPEARANCE: &str = "org.freedesktop.appearance";
+const COLOR_SCHEME: &str = "color-scheme";
+
+/// The window theme for the settings portal's `org.freedesktop.appearance color-scheme` (UI-195): 1 prefers dark,
+/// 2 prefers light, 0 (no preference) and unknown values leave the toolkit's default.
+#[must_use]
+pub fn portal_theme(color_scheme: u32) -> Option<WindowTheme> {
+    match color_scheme {
+        1 => Some(WindowTheme::Dark),
+        2 => Some(WindowTheme::Light),
+        _ => None,
+    }
+}
+
+/// The `u` of a portal value however it is wrapped: `ReadOne` answers `(v)`, the older `Read` `(v)` holding a `v`,
+/// `SettingChanged` carries a `v`.
+#[must_use]
+pub fn portal_value(value: &Variant) -> Option<u32> {
+    if let Some(number) = value.get::<u32>() {
+        return Some(number);
+    }
+    if let Some(inner) = value.as_variant() {
+        return portal_value(&inner);
+    }
+    (value.is_container() && value.n_children() == 1)
+        .then(|| portal_value(&value.child_value(0)))
+        .flatten()
+}
+
+/// Follows the session's color scheme through the settings portal (UI-195): `WebKitGTK` 4.1 (GTK3) never reads it, so
+/// the page's `prefers-color-scheme` stayed light under a dark desktop. The window's theme (GTK's
+/// `gtk-application-prefer-dark-theme`, which `WebKitGTK` maps to `prefers-color-scheme`) is set from the portal's value
+/// at startup and on every `SettingChanged`. Without a session bus or portal nothing changes. Runs on the GTK main
+/// thread, whose main loop delivers the replies and signals; the subscription lasts as long as the returned value.
+fn follow_color_scheme(window: &WebviewWindow) -> Option<ColorScheme> {
+    let connection = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>).ok()?;
+    // Subscribed before reading, so no change between the read and the subscription is lost; a change that arrives
+    // before the read's answer wins over it.
+    let changed = Rc::new(Cell::new(false));
+    let subscription = connection.signal_subscribe(
+        Some(PORTAL),
+        Some(PORTAL_SETTINGS),
+        Some("SettingChanged"),
+        Some(PORTAL_PATH),
+        Some(APPEARANCE),
+        gio::DBusSignalFlags::NONE,
+        {
+            let window = window.clone();
+            let changed = Rc::clone(&changed);
+            move |_, _, _, _, _, parameters| {
+                if let Some((namespace, key, value)) = parameters.get::<(String, String, Variant)>()
+                    && namespace == APPEARANCE
+                    && key == COLOR_SCHEME
+                {
+                    changed.set(true);
+                    let _ = window.set_theme(portal_value(&value).and_then(portal_theme));
+                }
+            }
+        },
+    );
+    read_color_scheme(&connection, "ReadOne", {
+        let window = window.clone();
+        let connection = connection.clone();
+        move |value| match value {
+            Some(value) => apply_read(&window, &changed, &value),
+            // Portals before version 2 only have `Read`.
+            None => read_color_scheme(&connection, "Read", move |value| {
+                if let Some(value) = value {
+                    apply_read(&window, &changed, &value);
+                }
+            }),
+        }
+    });
+    Some(ColorScheme {
+        connection,
+        subscription: Some(subscription),
+    })
+}
+
+fn read_color_scheme(
+    connection: &gio::DBusConnection,
+    method: &str,
+    done: impl FnOnce(Option<Variant>) + 'static,
+) {
+    connection.call(
+        Some(PORTAL),
+        PORTAL_PATH,
+        PORTAL_SETTINGS,
+        method,
+        Some(&(APPEARANCE, COLOR_SCHEME).to_variant()),
+        None,
+        gio::DBusCallFlags::NONE,
+        -1,
+        None::<&gio::Cancellable>,
+        move |reply| done(reply.ok()),
+    );
+}
+
+fn apply_read(window: &WebviewWindow, changed: &Cell<bool>, value: &Variant) {
+    if !changed.get()
+        && let Some(theme) = portal_value(value).and_then(portal_theme)
+    {
+        let _ = window.set_theme(Some(theme));
+    }
+}
+
+/// The portal subscription of [`follow_color_scheme`].
+struct ColorScheme {
+    connection: gio::DBusConnection,
+    subscription: Option<gio::SignalSubscriptionId>,
+}
+
+impl Drop for ColorScheme {
+    fn drop(&mut self) {
+        if let Some(subscription) = self.subscription.take() {
+            self.connection.signal_unsubscribe(subscription);
+        }
+    }
+}
 
 /// Opens the window and runs the event loop until it closes.
 fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::Result<i32> {
@@ -482,15 +612,17 @@ fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::R
             _ => PermissionResponse::Default,
         })
         .build()?;
+    let _color_scheme = follow_color_scheme(&window);
     if smoke.is_some() {
-        smoke_check(window);
+        smoke_check(window, std::env::var("OMFP_SMOKE_SCHEME").ok());
     }
     Ok(app.run_return(|_, _| {}))
 }
 
-/// Polls [`PROBE`] every 100 ms; once the shell is ready prints `OMFP_SMOKE_READY <state>` and closes the window
-/// like the user would (exit 0), else exits 1 after [`SMOKE_DEADLINE`] with the last state.
-fn smoke_check(window: WebviewWindow) {
+/// Polls [`PROBE`] every 100 ms; once the shell is ready (and the page's color scheme is `scheme`, when given:
+/// `OMFP_SMOKE_SCHEME`) prints `OMFP_SMOKE_READY <state>` and closes the window like the user would (exit 0), else
+/// exits 1 after [`SMOKE_DEADLINE`] with the last state.
+fn smoke_check(window: WebviewWindow, scheme: Option<String>) {
     std::thread::spawn(move || {
         let deadline = Instant::now() + SMOKE_DEADLINE;
         let mut last = String::new();
@@ -505,8 +637,12 @@ fn smoke_check(window: WebviewWindow) {
                 break;
             }
             if let Ok(json) = receiver.recv_timeout(Duration::from_secs(2)) {
-                let ready = serde_json::from_str::<serde_json::Value>(&json)
-                    .is_ok_and(|state| state["ready"] == true);
+                let ready = serde_json::from_str::<serde_json::Value>(&json).is_ok_and(|state| {
+                    state["ready"] == true
+                        && scheme
+                            .as_ref()
+                            .is_none_or(|scheme| state["scheme"] == **scheme)
+                });
                 last = json;
                 if ready {
                     println!("OMFP_SMOKE_READY {last}");
@@ -708,6 +844,28 @@ mod tests {
         );
         assert!(connect_base("ws://host:7420").is_err());
         assert!(connect_base("http://").is_err());
+    }
+
+    // spec: UI-195
+    #[test]
+    fn the_portal_color_scheme_picks_the_window_theme() {
+        assert_eq!(portal_theme(1), Some(WindowTheme::Dark));
+        assert_eq!(portal_theme(2), Some(WindowTheme::Light));
+        // No preference, or a value the portal may add later: the toolkit's default.
+        assert_eq!(portal_theme(0), None);
+        assert_eq!(portal_theme(3), None);
+
+        // `ReadOne` answers `(v)`, `Read` `(v)` holding a `v`, `SettingChanged` carries the `v`.
+        let read_one = (1u32.to_variant(),).to_variant();
+        let read = (Variant::from_variant(&2u32.to_variant()),).to_variant();
+        assert_eq!(portal_value(&read_one), Some(1));
+        assert_eq!(portal_value(&read), Some(2));
+        assert_eq!(
+            portal_value(&Variant::from_variant(&0u32.to_variant())),
+            Some(0)
+        );
+        assert_eq!(portal_value(&"dark".to_variant()), None);
+        assert_eq!(portal_value(&(1u32, 2u32).to_variant()), None);
     }
 
     // spec: TST-033

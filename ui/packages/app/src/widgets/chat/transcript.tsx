@@ -7,22 +7,18 @@
 
 import type { ThreadState } from "@omfp/core";
 import {
-  type TranscriptItem as Item,
   isScrollUpKey,
   transcriptItems as items,
   keyScrollTop,
-  messageView,
   mountScrollTop,
   type NavCommand,
   navTarget,
-  noticeRow,
   type PinEvent,
   pinReducer,
+  type TranscriptRowContent as RowContent,
+  transcriptRowContent as rowContent,
   SCOPE_ATTRIBUTE,
-  streamingView,
   strings,
-  systemMessage,
-  systemNotice,
   useAnnounce,
   useCommand,
   useVirtualizer,
@@ -30,11 +26,11 @@ import {
 } from "omfp/sdk";
 import {
   type KeyboardEvent,
+  memo,
   type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -44,6 +40,7 @@ import { measurementsKey, pinKey, useSelectedThread } from "./state.ts";
 
 /** Height assumed for an item before it is measured. */
 const ESTIMATED_ITEM_PX = 120;
+const estimateSize = () => ESTIMATED_ITEM_PX;
 /** Items rendered beyond each edge of the viewport. */
 const OVERSCAN = 6;
 
@@ -103,19 +100,23 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
   const pinned = useRef(pin.pinned);
   pinned.current = pin.pinned;
   const dispatch = useCallback((event: PinEvent) => setPin((previous) => pinReducer(previous, event)), [setPin]);
-  const rows = useMemo(() => items(state), [state]);
+  // The same list (and so the same item keys) while only the streaming reply changes (UI-191).
+  const rows = items(state);
   // Mounting returns to where the user had scrolled up to, else to the bottom. Until the content is tall enough to
   // reach that position (items are measured after they render), the target is re-applied and the clamped scroll
   // events it causes are not stored; any user scrolling ends the restore.
   const restoring = useRef<number | undefined>(mountScrollTop(pin));
   const [measurements, setMeasurements] = useWindowState(measurementsKey(threadId));
+  const [initialMeasurements] = useState(() => [...measurements]);
+  // A new `getItemKey` makes the virtualizer lay out every item again: keep it while the rows stay the same.
+  const getItemKey = useCallback((index: number) => rows[index]?.key ?? index, [rows]);
   const virtualizer = useVirtualizer({
-    initialMeasurementsCache: [...measurements],
+    initialMeasurementsCache: initialMeasurements,
     count: rows.length,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => ESTIMATED_ITEM_PX,
+    estimateSize,
     overscan: OVERSCAN,
-    getItemKey: (index) => rows[index]?.key ?? index,
+    getItemKey,
     ...(restoring.current === undefined ? {} : { initialOffset: restoring.current }),
   });
   // Unmounting (a thread switch) keeps the measured sizes for the next mount.
@@ -244,7 +245,8 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
         <div className="omfp-transcript__list" style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((virtual) => {
             const row = rows[virtual.index];
-            return row === undefined ? null : (
+            const content = row === undefined ? undefined : rowContent(state, row);
+            return row === undefined || content === undefined ? null : (
               <div
                 key={virtual.key}
                 ref={virtualizer.measureElement}
@@ -262,7 +264,7 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
                   transform: `translateY(${virtual.start}px)`,
                 }}
               >
-                <Row threadId={threadId} state={state} row={row} />
+                <Row cardKey={`${threadId}/${row.key}`} content={content} />
               </div>
             );
           })}
@@ -279,33 +281,14 @@ function NavRegistration({ id, title, run }: { id: NavCommand; title: string; ru
   return null;
 }
 
-function Row({ threadId, state, row }: { threadId: string; state: ThreadState; row: Item }) {
-  const cardKey = `${threadId}/${row.key}`;
-  switch (row.kind.type) {
-    case "message": {
-      const message = state.transcript[row.kind.index]?.message;
-      const system = message === undefined ? undefined : systemMessage(message);
-      return system === undefined ? (
-        <MessageRow cardKey={cardKey} view={messageView(state, row.kind.index)} streaming={false} />
-      ) : (
-        <SystemRowView cardKey={cardKey} row={system} />
-      );
-    }
-    case "notice": {
-      const notice = state.notices[row.kind.index];
-      if (notice === undefined) {
-        return null;
-      }
-      const system = systemNotice(notice.frame);
-      return system === undefined ? (
-        <NoticeRowView cardKey={cardKey} row={noticeRow(notice.frame)} />
-      ) : (
-        <SystemRowView cardKey={cardKey} row={system} />
-      );
-    }
-    case "streaming": {
-      const view = streamingView(state);
-      return view === undefined ? null : <MessageRow cardKey={cardKey} view={view} streaming />;
-    }
+/** One row; renders again only when its content changes (a streaming delta changes the streaming row's only). */
+const Row = memo(function Row({ cardKey, content }: { cardKey: string; content: RowContent }) {
+  switch (content.type) {
+    case "message":
+      return <MessageRow cardKey={cardKey} view={content.view} streaming={content.streaming} />;
+    case "system":
+      return <SystemRowView cardKey={cardKey} row={content.row} />;
+    case "notice":
+      return <NoticeRowView cardKey={cardKey} row={content.row} />;
   }
-}
+});

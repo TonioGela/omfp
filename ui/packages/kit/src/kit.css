@@ -2281,6 +2281,67 @@
     animation: omfp-pop var(--omfp-dur-2) var(--omfp-ease);
   }
 
+  /* Mode-line notice (UI-193): at the right end, never over content; the tone colors the mark and the text. */
+  .omfp-modeline__notice {
+    --notice-tone: var(--omfp-primary);
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 0.4em;
+    box-sizing: border-box;
+    block-size: calc(var(--omfp-status-h) - 2 * var(--omfp-s1));
+    min-inline-size: 0;
+    max-inline-size: 50%;
+    padding: 0 var(--omfp-s2);
+    border: none;
+    border-radius: var(--omfp-r-chip);
+    font: inherit;
+    white-space: nowrap;
+    color: var(--notice-tone);
+    background: color-mix(in oklab, var(--notice-tone) 10%, transparent);
+    cursor: pointer;
+    animation: omfp-pop var(--omfp-dur-2) var(--omfp-ease);
+  }
+
+  .omfp-modeline__notice[data-tone="attention"] {
+    --notice-tone: var(--omfp-warn);
+  }
+
+  .omfp-modeline__notice[data-tone="error"] {
+    --notice-tone: var(--omfp-error);
+  }
+
+  .omfp-modeline__notice[data-tone="ok"] {
+    --notice-tone: var(--omfp-ok);
+  }
+
+  .omfp-modeline__notice:is([data-hovered], .is-hover) {
+    background: color-mix(in oklab, var(--notice-tone) 18%, transparent);
+  }
+
+  .omfp-modeline__notice-mark {
+    flex: none;
+  }
+
+  .omfp-modeline__notice-title {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-modeline__notice-body,
+  .omfp-modeline__notice-more,
+  .omfp-modeline__notice > .omfp-kbd {
+    flex: none;
+  }
+
+  .omfp-modeline__notice-more {
+    font-variant-numeric: tabular-nums;
+    color: var(--omfp-on-surface-variant);
+  }
+
   .omfp-cmd {
     display: flex;
     flex: 1;
@@ -2836,7 +2897,8 @@
     .omfp-row,
     .omfp-reasoning__head,
     .omfp-search__clear,
-    .omfp-tabs__panel
+    .omfp-tabs__panel,
+    .omfp-modeline__notice
   ):is([data-focus-visible], .is-focus),
   :is(.omfp-row, .omfp-path-link, .omfp-log, .omfp-markdown a, .omfp-live):focus-visible,
   .omfp-live.is-focus,
@@ -2952,6 +3014,11 @@
 
   :root[data-motion="full"] .omfp-mode-pill {
     animation: omfp-mode 240ms var(--omfp-ease);
+  }
+
+  :root[data-motion="full"] .omfp-modeline__notice-mark {
+    display: inline-block;
+    animation: omfp-bounce 0.45s var(--omfp-ease) 2;
   }
 
   :root[data-motion="full"] .omfp-caret {

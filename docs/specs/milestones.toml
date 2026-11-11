@@ -456,6 +456,8 @@ requirements = [
   # Many windows on one daemon, a browser on the same daemon
   "UI-004",
   "UI-005",
+  # The window follows the desktop's color scheme from the settings portal
+  "UI-195",
   # The theme file of this machine pushed to a daemon reached with --connect
   "UI-091",
   # Live voice in the desktop window: omp's live_start (WebKitGTK has no WebRTC, S-09)
@@ -466,4 +468,37 @@ requirements = [
   "TST-051",
   "UI-188",
   "UI-189",
+]
+
+[M8]
+status = "done"
+requirements = [
+  "UI-081",
+  "UI-082",
+  "UI-083",
+  "DMN-111",
+  "PRT-055",
+  "PRT-056",
+  "PRT-057",
+  "TST-060",
+]
+
+[M8b]
+status = "done"
+requirements = [
+  # In-window notices (mode line) and the widget SDK notify
+  "UI-192",
+  "UI-193",
+  "UI-194",
+  # Contrast guard for user themes
+  "UI-196",
+]
+
+[M9]
+status = "in-progress"
+requirements = [
+  # Performance (S-06 on the React UI)
+  "TST-052",
+  "UI-190",
+  "UI-191",
 ]

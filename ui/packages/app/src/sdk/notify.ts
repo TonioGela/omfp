@@ -1,0 +1,109 @@
+/**
+ * Notices (UI-096, UI-192, UI-194): one way for the frame (a thread that starts needing the user, fails or finishes a
+ * turn) and for widgets (`useNotify`) to tell the user something. {@link Notices.notify} hands each notice to the
+ * route the frame attached: a system notification while the window has no focus, else a notice in the mode line
+ * (`NOTICES`), never about the thread the user is on. Notices in the mode line expire after {@link NOTICE_MS}; visiting
+ * their thread clears them.
+ */
+
+import { useCallback } from "react";
+import { useHost } from "./host.tsx";
+import { type WindowStore, windowKey } from "./window-store.ts";
+
+/** A thread awaiting the user, a failed thread, a finished turn, or anything a widget says. */
+export type NoticeTone = "attention" | "failed" | "finished" | "info";
+
+/** What a widget passes to `notify`. */
+export interface NoticeRequest {
+  /** What it is about, e.g. a thread title. */
+  readonly title: string;
+  /** What happened. */
+  readonly body: string;
+  /** The thread it is about: opening the notice selects it, visiting it clears the notice. */
+  readonly threadId?: string;
+}
+
+export interface Notice extends NoticeRequest {
+  /** Unique in this window. */
+  readonly id: number;
+  readonly tone: NoticeTone;
+}
+
+/** The notices shown in this window's mode line, oldest first. */
+export const NOTICES = windowKey<readonly Notice[]>("notices", []);
+
+/** How long a notice stays in the mode line. */
+export const NOTICE_MS = 8000;
+
+/** Where a notice goes; the frame attaches one (`frame/notifier.tsx`). */
+export type NoticeRoute = (notice: Notice) => void;
+
+export interface NoticeTimers {
+  setTimeout(run: () => void, ms: number): void;
+}
+
+const globalTimers: NoticeTimers = {
+  setTimeout: (run, ms) => {
+    globalThis.setTimeout(run, ms);
+  },
+};
+
+export class Notices {
+  readonly #window: WindowStore;
+  readonly #timers: NoticeTimers;
+  #route: NoticeRoute | undefined;
+  #next = 1;
+
+  constructor(window: WindowStore, timers: NoticeTimers = globalTimers) {
+    this.#window = window;
+    this.#timers = timers;
+  }
+
+  /** Routes notices (one route at a time); returns the detach. Without a route, notices go to the mode line. */
+  route(route: NoticeRoute): () => void {
+    this.#route = route;
+    return () => {
+      if (this.#route === route) {
+        this.#route = undefined;
+      }
+    };
+  }
+
+  /** The one entry point: the frame's thread events and widgets' `notify` both come here. */
+  notify(request: NoticeRequest, tone: NoticeTone = "info"): void {
+    const notice: Notice = { ...request, id: this.#next++, tone };
+    if (this.#route === undefined) {
+      this.show(notice);
+    } else {
+      this.#route(notice);
+    }
+  }
+
+  /** Puts a notice in the mode line until it expires, is opened or its thread is visited. */
+  show(notice: Notice): void {
+    this.#window.set(NOTICES, (notices) => [...notices, notice]);
+    this.#timers.setTimeout(() => this.dismiss(notice.id), NOTICE_MS);
+  }
+
+  dismiss(id: number): void {
+    this.#window.set(NOTICES, (notices) =>
+      notices.some((notice) => notice.id === id) ? notices.filter((notice) => notice.id !== id) : notices,
+    );
+  }
+
+  /** Clears the notices about a thread (the user is on it). */
+  clearThread(threadId: string): void {
+    this.#window.set(NOTICES, (notices) =>
+      notices.some((notice) => notice.threadId === threadId)
+        ? notices.filter((notice) => notice.threadId !== threadId)
+        : notices,
+    );
+  }
+}
+
+/** `notify({ title, body, threadId? })`: a notice in this window's mode line, or a system notification while the
+ * window has no focus (UI-194). */
+export function useNotify(): (request: NoticeRequest) => void {
+  const { notices } = useHost();
+  return useCallback((request: NoticeRequest) => notices.notify(request), [notices]);
+}

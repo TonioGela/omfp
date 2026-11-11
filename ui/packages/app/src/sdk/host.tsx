@@ -13,6 +13,7 @@ import { type FilePoll, intervalPoll } from "./files.ts";
 import { type FrameScheduler, FrameStore, type ModelSource } from "./frame-store.ts";
 import { browserLiveMedia, LiveClient, type LiveMedia } from "./live.ts";
 import { browserImporter, type Importer, WidgetModules } from "./modules.ts";
+import { Notices, type NoticeTimers } from "./notify.ts";
 import { type ReportTimers, WidgetReporter } from "./reports.ts";
 import { type KeyValueStorage, WindowStore } from "./window-store.ts";
 
@@ -101,6 +102,8 @@ export interface OmfpHost {
   readonly filePoll: FilePoll;
   /** This window's live voice session (UI-180..UI-186). */
   readonly live: LiveClient;
+  /** Notices to the user: the mode line or a system notification (UI-192, UI-194). */
+  readonly notices: Notices;
 }
 
 export interface HostOptions {
@@ -112,6 +115,8 @@ export interface HostOptions {
   readonly importer?: Importer;
   /** How widget reports are batched; default: the global timers. */
   readonly reportTimers?: ReportTimers;
+  /** When mode-line notices expire; default: the global timers. */
+  readonly noticeTimers?: NoticeTimers;
   /** How open files are checked for changes; default: every 2 s (tests pass a manual one). */
   readonly filePoll?: FilePoll;
   /** The browser APIs of live voice; default: the browser's (tests pass a fake peer and microphone). */
@@ -142,6 +147,7 @@ export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHo
       window,
       media: options.liveMedia ?? browserLiveMedia(options.local ?? false),
     }),
+    notices: new Notices(window, options.noticeTimers),
   };
 }
 

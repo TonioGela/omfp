@@ -17,7 +17,8 @@ export interface PinState {
   readonly pinned: boolean;
   /** The user holds the scrollbar or touches the list: scroll events reflect their intent. */
   readonly dragging: boolean;
-  /** Last scroll position, restored when the list mounts again unpinned. */
+  /** Last scroll position while unpinned, restored when the list mounts again unpinned. Pinned, the list follows the
+   * bottom and the position is not stored: a layout scroll while streaming then changes nothing (no render, UI-191). */
   readonly scrollTop: number;
 }
 
@@ -42,7 +43,8 @@ export function pinReducer(state: PinState, event: PinEvent): PinState {
   switch (event.type) {
     case "scroll": {
       const atBottom = event.scrollHeight - event.scrollTop - event.clientHeight <= PIN_THRESHOLD_PX;
-      next = { ...state, scrollTop: event.scrollTop, pinned: atBottom || (state.pinned && !state.dragging) };
+      const pinned = atBottom || (state.pinned && !state.dragging);
+      next = { ...state, scrollTop: pinned ? state.scrollTop : event.scrollTop, pinned };
       break;
     }
     case "userScrollUp":

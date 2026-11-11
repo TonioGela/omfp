@@ -1,0 +1,118 @@
+/*
+ * Fixture theme of the `/kit` gallery (UI-173, UI-196): a user's matugen theme from the Dux "Solarized" preset, copied
+ * as it was reported. Its light `secondary`/`tertiary` (#eee8d5) sit on #fdf6e3 at 1.14:1 and its dark ones (#33646e)
+ * on #12262b at 2.38:1; `error` and the dark `outline` are under their thresholds too, so it is the contrast guard's
+ * case: the gallery shows what the guard overrides. Do not "fix" it.
+ */
+:root {
+  --omfp-primary: #2c4a56;
+  --omfp-on-primary: #ebe6c2;
+  --omfp-primary-container: #586875;
+  --omfp-on-primary-container: #fdf6e3;
+  --omfp-secondary: #eee8d5;
+  --omfp-on-secondary: #ebe6c2;
+  --omfp-secondary-container: #eee8d5;
+  --omfp-on-secondary-container: #002b36;
+  --omfp-tertiary: #eee8d5;
+  --omfp-on-tertiary: #ebe6c2;
+  --omfp-tertiary-container: #eee8d5;
+  --omfp-on-tertiary-container: #002b36;
+  --omfp-error: #df4141;
+  --omfp-on-error: #ffffff;
+  --omfp-error-container: #f9dedc;
+  --omfp-on-error-container: #410e0b;
+  --omfp-surface: #fdf6e3;
+  --omfp-on-surface: #002b36;
+  --omfp-surface-variant: #eee8d5;
+  --omfp-on-surface-variant: #002b36;
+  --omfp-surface-container-lowest: #fdf6e3;
+  --omfp-surface-container-low: #fdf6e3;
+  --omfp-surface-container: #fdf6e3;
+  --omfp-surface-container-high: #eee8d5;
+  --omfp-surface-container-highest: #fdf6e3;
+  --omfp-surface-dim: #fdf6e3;
+  --omfp-surface-bright: #fdf6e3;
+  --omfp-inverse-surface: #12262b;
+  --omfp-inverse-on-surface: #ebe6c2;
+  --omfp-inverse-primary: #2ba8b0;
+  --omfp-outline: #586875;
+  --omfp-outline-variant: #eee8d5;
+  --omfp-shadow: #000000;
+  --omfp-scrim: #000000;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-color-scheme="light"]) {
+    --omfp-primary: #2ba8b0;
+    --omfp-on-primary: #051617;
+    --omfp-primary-container: #125a61;
+    --omfp-on-primary-container: #ebe6c2;
+    --omfp-secondary: #33646e;
+    --omfp-on-secondary: #051617;
+    --omfp-secondary-container: #183238;
+    --omfp-on-secondary-container: #ebe6c2;
+    --omfp-tertiary: #33646e;
+    --omfp-on-tertiary: #051617;
+    --omfp-tertiary-container: #183238;
+    --omfp-on-tertiary-container: #ebe6c2;
+    --omfp-error: #de5249;
+    --omfp-on-error: #601410;
+    --omfp-error-container: #8c1d18;
+    --omfp-on-error-container: #f9dedc;
+    --omfp-surface: #12262b;
+    --omfp-on-surface: #ebe6c2;
+    --omfp-surface-variant: #125a61;
+    --omfp-on-surface-variant: #ffffff;
+    --omfp-surface-container-lowest: #0d1b1f;
+    --omfp-surface-container-low: #12262b;
+    --omfp-surface-container: #12262b;
+    --omfp-surface-container-high: #183238;
+    --omfp-surface-container-highest: #1f3e45;
+    --omfp-surface-dim: #0d1b1f;
+    --omfp-surface-bright: #1f3e45;
+    --omfp-inverse-surface: #fdf6e3;
+    --omfp-inverse-on-surface: #002b36;
+    --omfp-inverse-primary: #2c4a56;
+    --omfp-outline: #234e57;
+    --omfp-outline-variant: #125a61;
+    --omfp-shadow: #000000;
+    --omfp-scrim: #000000;
+  }
+}
+
+:root[data-color-scheme="dark"] {
+  --omfp-primary: #2ba8b0;
+  --omfp-on-primary: #051617;
+  --omfp-primary-container: #125a61;
+  --omfp-on-primary-container: #ebe6c2;
+  --omfp-secondary: #33646e;
+  --omfp-on-secondary: #051617;
+  --omfp-secondary-container: #183238;
+  --omfp-on-secondary-container: #ebe6c2;
+  --omfp-tertiary: #33646e;
+  --omfp-on-tertiary: #051617;
+  --omfp-tertiary-container: #183238;
+  --omfp-on-tertiary-container: #ebe6c2;
+  --omfp-error: #de5249;
+  --omfp-on-error: #601410;
+  --omfp-error-container: #8c1d18;
+  --omfp-on-error-container: #f9dedc;
+  --omfp-surface: #12262b;
+  --omfp-on-surface: #ebe6c2;
+  --omfp-surface-variant: #125a61;
+  --omfp-on-surface-variant: #ffffff;
+  --omfp-surface-container-lowest: #0d1b1f;
+  --omfp-surface-container-low: #12262b;
+  --omfp-surface-container: #12262b;
+  --omfp-surface-container-high: #183238;
+  --omfp-surface-container-highest: #1f3e45;
+  --omfp-surface-dim: #0d1b1f;
+  --omfp-surface-bright: #1f3e45;
+  --omfp-inverse-surface: #fdf6e3;
+  --omfp-inverse-on-surface: #002b36;
+  --omfp-inverse-primary: #2c4a56;
+  --omfp-outline: #234e57;
+  --omfp-outline-variant: #125a61;
+  --omfp-shadow: #000000;
+  --omfp-scrim: #000000;
+}

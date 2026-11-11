@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { type AgentMessage, emptyThreadState, type NoticeFrame, type ThreadState } from "@omfp/core";
-import { items, messageView, streamingView } from "../../src/vm/transcript.ts";
+import {
+  type AgentMessage,
+  emptyThreadState,
+  type JsonObject,
+  type NoticeFrame,
+  reduce,
+  type ThreadEvent,
+  type ThreadState,
+} from "@omfp/core";
+import { items, messageView, rowContent, streamingView } from "../../src/vm/transcript.ts";
 import { fixture, fixtureUntil, isFrame } from "../widgets/chat/fixtures.ts";
 
 function kinds(state: ThreadState): string[] {
@@ -105,5 +113,61 @@ describe("transcript items", () => {
       { type: "text", text: "look" },
       { type: "image", mime: "image/jpeg", data: "AAAA" },
     ]);
+  });
+});
+
+/** omp's `message_update` frame for the reply being streamed. */
+function update(assistantMessageEvent: JsonObject): ThreadEvent {
+  return {
+    kind: "omp",
+    frame: { type: "message_update", messageId: "live", message: { role: "assistant" }, assistantMessageEvent },
+  };
+}
+
+/** The finished tool-call fixture, then a reply streaming a finished text block and a second one growing. */
+function streamingStates(): [ThreadState, ThreadState] {
+  const opened = [
+    { kind: "omp", frame: { type: "message_start", messageId: "live", message: { role: "assistant", content: [] } } },
+    update({ type: "text_start", contentIndex: 0, block: { type: "text", text: "" } }),
+    update({ type: "text_delta", contentIndex: 0, delta: "First block." }),
+    update({ type: "text_end", contentIndex: 0, content: "First block.", block: { type: "text" } }),
+    update({ type: "text_start", contentIndex: 1, block: { type: "text", text: "" } }),
+    update({ type: "text_delta", contentIndex: 1, delta: "Second" }),
+  ] satisfies ThreadEvent[];
+  const before = opened.reduce(reduce, fixture("bash_tool_call"));
+  return [before, reduce(before, update({ type: "text_delta", contentIndex: 1, delta: " half" }))];
+}
+
+describe("streaming cost", () => {
+  // spec: UI-191
+  test("a delta keeps the item list and the content of every row but the streaming one", () => {
+    const [before, after] = streamingStates();
+    expect(items(after)).toBe(items(before));
+    const rows = items(after);
+    expect(rows.at(-1)?.kind.type).toBe("streaming");
+    for (const row of rows.slice(0, -1)) {
+      expect(rowContent(after, row)).toBe(rowContent(before, row));
+    }
+    const streaming = rows.at(-1);
+    expect(streaming && rowContent(after, streaming)).not.toBe(streaming && rowContent(before, streaming));
+  });
+
+  // spec: UI-191
+  test("a delta changes the growing block of the streaming reply only", () => {
+    const [before, after] = streamingStates();
+    const [done, growing] = streamingView(after)?.blocks ?? [];
+    const [doneBefore, growingBefore] = streamingView(before)?.blocks ?? [];
+    expect(done).toBe(doneBefore);
+    expect(growing).toEqual({ type: "text", text: "Second half" });
+    expect(growingBefore).toEqual({ type: "text", text: "Second" });
+  });
+
+  // spec: UI-191
+  test("a finished message keeps its view until its tool run or result changes", () => {
+    const state = fixture("bash_tool_call");
+    const view = messageView(state, 1);
+    expect(messageView({ ...state, settled: !state.settled }, 1)).toBe(view);
+    const tools = state.tools.map((run) => ({ ...run, status: "failed" as const }));
+    expect(messageView({ ...state, tools }, 1)).not.toBe(view);
   });
 });

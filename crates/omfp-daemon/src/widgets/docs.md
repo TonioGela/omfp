@@ -34,7 +34,9 @@ Layout nodes: a reference (`"omfp:chat"`), `[reference, props]`, or `[container,
 container is `row`, `col`, `tabs` or `stack` and `props.sizes` (optional) gives one positive flex weight per child.
 Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue and composer), `omfp:transcript`,
 `omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes` (changed files and diffs of the workspace's
-repositories), `omfp:file` (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
+repositories), `omfp:subagents` (the selected thread's subagents, their transcripts, steer and cancel), `omfp:todos`
+(its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:file`
+(`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
 `HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Props every widget accepts: `instance` (a string naming the instance for `useStored` and `useJob`;
 default: the reference) and `title` (a tab's label; default: the built-in's name, else the reference).
@@ -92,6 +94,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useThreadActions()` | `select`, `rename`, `archive`, `stop`, `restart`, … for threads. |
 | `useCommand(command)` | Registers a `:` command or key binding target while mounted. |
 | `useAnnounce()` | `announce(message)` for screen readers. |
+| `useNotify()` | `notify({ title, body, threadId? })`: tells the user something without covering anything. While the window has focus it is a notice at the right end of the mode line (`◆ title body`, `g n` or a click opens it, gone after 8 s); while it has not, a system notification (when the user allowed them; `[ui] notifications = "never"` shows neither). With `threadId`, opening it selects that thread, visiting the thread clears it, and nothing is shown about the thread the user is on. Use it for results worth a look (a build turned red, a long job finished), not for every update. |
 | `useSettings()` | The daemon's UI settings. |
 | `useFile(path, { follow? })` | `{ status, file, error, reload, save }`: a file of the current workspace (`workspaces.read_file`: `file.content`, `file.hash`, `file.head`, …). `status` is `"loading"`, `"ready"`, `"missing"` or `"error"`. With `follow` (default `true`) it is checked every 2 s and on every git status change. `save(content, expectedHash?)` writes it only if the file still has that hash (default: the one read) and resolves to `{ ok: true, file }` or `{ ok: false, conflict, error }`. |
 | `useLive()` | `[live, snapshot]`: this window's live voice session (M6). `live.start(threadId)` opens the microphone and a WebRTC call relayed to omp's realtime voice (`thread.live_connect`), or, without WebRTC on the daemon's machine (`#local=1`, the desktop app), omp's own session (`thread.live_start`, the spectrum then draws omp's levels), `live.end()`, `live.endThread(threadId)` (any window's session), `live.toggleMute()`, `live.source()` (the audio for `Spectrum`), `live.support()` (`"webrtc"`, `"host"`, `"insecure"`, `"unsupported"`); `snapshot.local` is the session (`idle`, `starting`, `running`, `failed`). The thread's `state.live` has omp's phase and transcript. |

@@ -179,6 +179,8 @@
               pkgs.libsoup_3
               # TLS for `omfp desktop --connect https://…`: GIO loads glib-networking from GIO_EXTRA_MODULES (env below)
               pkgs.glib-networking
+              # A private session bus with a stub settings portal for the desktop tests (UI-195)
+              pkgs.dbus
             ];
 
             env = {

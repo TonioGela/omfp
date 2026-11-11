@@ -3,6 +3,7 @@
 import { describe, expect, test } from "bun:test";
 import { emptyThreadState, type ThreadState } from "@omfp/core";
 import {
+  costLabel,
   decodeModels,
   decodeSession,
   decodeThinkingLevels,
@@ -58,7 +59,7 @@ describe("header", () => {
   // spec: UI-030, UI-011
   test("the header shows model, thinking, context and the workspace chips", () => {
     const workspaces = [workspace("w1", [repo("w1", "fe", "main")])];
-    const view = headerView(thread("t", "checkout", "w1"), undefined, details(), workspaces);
+    const view = headerView(thread("t", "checkout", "w1"), details(), workspaces);
     expect(view.model).toBe("anthropic/opus");
     expect(view.models).toEqual([
       { value: "anthropic/opus", label: "Opus (anthropic)" },
@@ -69,33 +70,27 @@ describe("header", () => {
     expect(view.context).toBe("42% of 200k");
     expect(view.chips.map((chip) => chip.label)).toEqual(["w1", "fe:main"]);
     expect(view.action).toBe("stop");
-    expect(view.cost).toBeUndefined();
   });
 
   // spec: UI-030
   test("an unnamed thread shows the placeholder title; process state decides stop or restart", () => {
-    const unnamed = headerView(thread("t", "", "w"), undefined, NO_DETAILS, []);
+    const unnamed = headerView(thread("t", "", "w"), NO_DETAILS, []);
     expect([unnamed.title, unnamed.placeholder]).toEqual(["New thread", true]);
-    const failed = headerView(
-      thread("t", "x", "w", { process: { state: "failed", message: "boom" } }),
-      undefined,
-      NO_DETAILS,
-      [],
-    );
+    const failed = headerView(thread("t", "x", "w", { process: { state: "failed", message: "boom" } }), NO_DETAILS, []);
     expect([failed.status, failed.failure, failed.action, failed.placeholder]).toEqual([
       "failed",
       "boom",
       "restart",
       false,
     ]);
-    const terminal = headerView(thread("t", "x", "w", { process: { state: "terminal" } }), undefined, NO_DETAILS, []);
+    const terminal = headerView(thread("t", "x", "w", { process: { state: "terminal" } }), NO_DETAILS, []);
     expect(terminal.action).toBeUndefined();
   });
 
   // spec: UI-026
   test("an archived thread's header offers unarchive", () => {
-    expect(headerView(thread("t", "x", "w", { archivedAt: 4 }), undefined, NO_DETAILS, []).archived).toBe(true);
-    expect(headerView(thread("t", "x", "w"), undefined, NO_DETAILS, []).archived).toBe(false);
+    expect(headerView(thread("t", "x", "w", { archivedAt: 4 }), NO_DETAILS, []).archived).toBe(true);
+    expect(headerView(thread("t", "x", "w"), NO_DETAILS, []).archived).toBe(false);
   });
 
   // spec: UI-030
@@ -103,7 +98,8 @@ describe("header", () => {
     expect(sessionCost(withCosts())).toBe(0);
     expect(formatCost(sessionCost(withCosts(0.0125, 0.0125)))).toBe("$0.0250");
     expect(formatCost(12.5)).toBe("$12.50");
-    expect(headerView(thread("t", "x", "w"), withCosts(0.5), NO_DETAILS, []).cost).toBe("$0.5000");
+    expect(costLabel(withCosts(0.5))).toBe("$0.5000");
+    expect([costLabel(withCosts()), costLabel(undefined)]).toEqual([undefined, undefined]);
   });
 
   // spec: UI-030

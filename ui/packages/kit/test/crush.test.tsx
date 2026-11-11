@@ -22,6 +22,7 @@ import {
   MenuItem,
   Meter,
   ModeLine,
+  ModeNotice,
   ModeSegment,
   motionLevel,
   PathField,
@@ -524,6 +525,32 @@ describe("shell", () => {
       "title",
       "error",
     ]);
+  });
+
+  // spec: UI-193
+  test("a mode-line notice sits after the segments with its tone, count and key chip, and opens on press", async () => {
+    const user = userEvent.setup();
+    const onPress = mock(() => undefined);
+    render(
+      <ModeLine
+        mode="normal"
+        data-testid="line"
+        notice={<ModeNotice tone="error" title="flaky" body="failed" more={2} kbd="g n" onPress={onPress} />}
+      >
+        <ModeSegment kind="title">Fix it</ModeSegment>
+      </ModeLine>,
+    );
+    const line = screen.getByTestId("line");
+    expect([...line.children].map((child) => child.className)).toEqual([
+      "omfp-mode-pill",
+      "omfp-modeline__segments",
+      "omfp-modeline__notice",
+    ]);
+    const notice = screen.getByRole("button", { name: "flaky failed +2" });
+    expect(notice.getAttribute("data-tone")).toBe("error");
+    expect(notice.querySelector("kbd")?.textContent).toBe("g n");
+    await user.click(notice);
+    expect(onPress).toHaveBeenCalledTimes(1);
   });
 
   // spec: UI-168

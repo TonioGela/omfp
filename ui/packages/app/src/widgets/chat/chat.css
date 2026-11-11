@@ -180,10 +180,24 @@
     border-radius: var(--omfp-r-card);
   }
 
+  /* A streaming text block is a column of Markdown chunks (UI-191) spaced like the blocks of one document. */
+  .omfp-markdown-stream > .omfp-markdown + .omfp-markdown {
+    margin-block-start: 0.7em;
+  }
+
+  .omfp-markdown-stream > .omfp-markdown + .omfp-markdown:has(> :is(h1, h2, h3, h4, h5, h6):first-child) {
+    margin-block-start: 1em;
+  }
+
   /* The stream caret follows the last streamed character (UI-147); no tail effect on the text. */
-  .omfp-message[data-streaming="true"] .omfp-msg__body > .omfp-markdown:last-child > :last-child:not(ul, ol)::after,
   .omfp-message[data-streaming="true"]
     .omfp-msg__body
+    > .omfp-markdown-stream:last-child
+    > .omfp-markdown:last-child
+    > :last-child:not(ul, ol)::after,
+  .omfp-message[data-streaming="true"]
+    .omfp-msg__body
+    > .omfp-markdown-stream:last-child
     > .omfp-markdown:last-child
     > :is(ul, ol):last-child
     > li:last-child::after {
@@ -200,11 +214,13 @@
   :root[data-motion="full"]
     .omfp-message[data-streaming="true"]
     .omfp-msg__body
+    > .omfp-markdown-stream:last-child
     > .omfp-markdown:last-child
     > :last-child:not(ul, ol)::after,
   :root[data-motion="full"]
     .omfp-message[data-streaming="true"]
     .omfp-msg__body
+    > .omfp-markdown-stream:last-child
     > .omfp-markdown:last-child
     > :is(ul, ol):last-child
     > li:last-child::after {
