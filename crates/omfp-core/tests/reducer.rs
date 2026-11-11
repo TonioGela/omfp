@@ -6,7 +6,9 @@ use common::{assistant_text, event, message_text, omp, streaming_text};
 use omfp_core::wire::{
     AssistantContent, ExtensionUiRequest, NotifyType, PromptStatus, SubagentLifecycleStatus,
 };
-use omfp_core::{NoticeFrame, ProcessState, QueueState, ThreadState, ToolStatus, replay};
+use omfp_core::{
+    NoticeFrame, OpenFileRequest, ProcessState, QueueState, ThreadState, ToolStatus, replay,
+};
 use serde_json::{Value, json};
 
 fn user_message(text: &str) -> Value {
@@ -1024,6 +1026,31 @@ fn a_session_without_owner_or_process_is_closed() {
         process(json!({ "state": "stopped" })),
     ]);
     assert_eq!(stopped.live, None);
+}
+
+// spec: DMN-060, TST-010
+#[test]
+fn the_last_open_file_request_is_kept_with_its_window_and_survives_the_process() {
+    let state = replay(&[
+        process(json!({ "state": "running" })),
+        event(
+            json!({ "kind": "open_file", "id": "o1", "connection": 3, "path": "src/a.rs", "line": 12 }),
+        ),
+        event(
+            json!({ "kind": "open_file", "id": "o2", "connection": 4, "path": "b.md", "line": null }),
+        ),
+        process(json!({ "state": "stopped" })),
+    ]);
+
+    assert_eq!(
+        state.open_file,
+        Some(OpenFileRequest {
+            id: "o2".into(),
+            connection: 4,
+            path: "b.md".into(),
+            line: None,
+        })
+    );
 }
 
 // spec: DMN-104

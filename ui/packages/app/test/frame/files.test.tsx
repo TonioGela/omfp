@@ -1,4 +1,5 @@
-/** L4: opening files in the frame (UI-115, UI-116) and vim's mode on the mode line (UI-112), over a fake client. */
+/** L4: opening files in the frame (UI-115, UI-116, DMN-060) and vim's mode on the mode line (UI-112), over a fake
+ * client. */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ViewsState } from "@omfp/protocol";
@@ -291,6 +292,39 @@ describe("opening paths", () => {
       line: 7,
       jump: 1,
     });
+  });
+});
+
+describe("files the agent opens", () => {
+  // spec: UI-116, DMN-060
+  test("the window an `open_file` request names opens the file at its line, once", async () => {
+    const test = setup();
+    test.client.thread("t1", []);
+    test.client.threadEvents("t1", { kind: "open_file", id: "o1", connection: 2, path: "fe/other.rs", line: 1 });
+    test.flush();
+    expect(tabs()).toEqual([]);
+
+    // This window is connection 1 (the fake `system.hello`).
+    const request = { kind: "open_file", id: "o2", connection: 1, path: "fe/src/lib.rs", line: 12 } as const;
+    test.client.threadEvents("t1", request);
+    test.flush();
+    expect(tabs()).toEqual(["Chat", "lib.rs"]);
+    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({
+      path: "fe/src/lib.rs",
+      line: 12,
+      jump: 1,
+    });
+
+    // The thread's snapshot still carries the request (followed again, a resync): it is not opened twice.
+    await test.user.click(screen.getByTestId("file-tab-close"));
+    test.client.thread("t1", [request]);
+    test.flush();
+    expect(tabs()).toEqual([]);
+
+    test.client.threadEvents("t1", { ...request, id: "o3", path: "fe/README.md", line: null });
+    test.flush();
+    expect(tabs()).toEqual(["Chat", "README.md"]);
+    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({ path: "fe/README.md", jump: 1 });
   });
 });
 

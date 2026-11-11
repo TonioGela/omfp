@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::event::{LiveOwner, ProcessState, SessionInfo};
+use crate::event::{LiveOwner, OpenFileRequest, ProcessState, SessionInfo};
 use crate::wire::{
     AgentMessage, AssistantMessage, AutoCompactionEndEvent, AutoCompactionStartEvent,
     AutoRetryEndEvent, AutoRetryStartEvent, AvailableSlashCommand, ExtensionError,
@@ -49,6 +49,9 @@ pub struct ThreadState {
     pub live: Option<LiveSession>,
     /// Readable message of the failure the last live session ended on (DMN-104); cleared when the next one opens.
     pub live_error: Option<String>,
+    /// The last file the agent asked a window to open (`open_file` event, DMN-060); the window it names opens each
+    /// request once.
+    pub open_file: Option<OpenFileRequest>,
 }
 
 impl Default for ThreadState {
@@ -69,6 +72,7 @@ impl Default for ThreadState {
             notices: Vec::new(),
             live: None,
             live_error: None,
+            open_file: None,
         }
     }
 }

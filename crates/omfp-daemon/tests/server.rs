@@ -1397,6 +1397,67 @@ async fn closing_the_owning_connection_stops_its_live_session() {
     )));
 }
 
+// spec: DMN-060
+#[tokio::test(flavor = "multi_thread")]
+async fn open_file_reaches_the_window_last_used_on_the_thread_and_fails_without_one() {
+    let daemon = daemon(&[]).await;
+    daemon.launcher.push_run(fixture("text_reply"));
+    let (mut web, web_number) = numbered(&daemon, "omfp/web").await;
+    let (mut desktop, desktop_number) = numbered(&daemon, "omfp/desktop").await;
+    let thread = create_thread(&mut web).await;
+    let supervisor = daemon.handle.supervisor();
+    assert_eq!(
+        supervisor.open_file(&thread, "notes.md", Some(3)),
+        Err(omfp_daemon::supervisor::NO_WINDOW.to_owned()),
+        "no window watches the thread yet"
+    );
+    let opened = |path: &'static str| {
+        move |state: &omfp_core::ThreadState| {
+            state
+                .open_file
+                .as_ref()
+                .is_some_and(|request| request.path == path)
+        }
+    };
+
+    let mut web_view = Follower::snapshot(&mut web, &thread, None).await;
+    let mut desktop_view = Follower::snapshot(&mut desktop, &thread, None).await;
+    supervisor.open_file(&thread, "notes.md", Some(3)).unwrap();
+    web_view.until(&mut web, opened("notes.md")).await;
+    let request = web_view.state.open_file.clone().unwrap();
+    assert_eq!(
+        (request.connection, request.line),
+        (desktop_number, Some(3)),
+        "the window that subscribed last"
+    );
+
+    web.ok(
+        "thread.prompt",
+        json!({ "threadId": thread, "text": "say hi" }),
+    )
+    .await;
+    supervisor.open_file(&thread, "src/lib.rs", None).unwrap();
+    desktop_view.until(&mut desktop, opened("src/lib.rs")).await;
+    assert_eq!(
+        desktop_view.state.open_file.clone().unwrap().connection,
+        web_number,
+        "the window that prompted last"
+    );
+
+    for client in [&mut web, &mut desktop] {
+        client
+            .ok(
+                "unsubscribe",
+                json!({ "topic": format!("thread/{thread}") }),
+            )
+            .await;
+    }
+    assert_eq!(
+        supervisor.open_file(&thread, "notes.md", None),
+        Err(omfp_daemon::supervisor::NO_WINDOW.to_owned())
+    );
+}
+
 // spec: DMN-101, DMN-102, DMN-104
 #[tokio::test(flavor = "multi_thread")]
 async fn live_errors_have_their_codes_and_readable_messages() {

@@ -283,7 +283,7 @@ fn delegation_script() -> Vec<Step> {
     ]
 }
 
-// spec: AGT-029, DMN-106, DMN-107, DMN-108
+// spec: AGT-029, DMN-106, DMN-107, DMN-108, DMN-060
 #[tokio::test(flavor = "multi_thread")]
 async fn the_main_agent_delegates_a_widget_to_the_widget_builder_which_checks_it_through_the_daemon()
  {
@@ -312,7 +312,12 @@ async fn the_main_agent_delegates_a_widget_to_the_widget_builder_which_checks_it
 
     let requests = fake.requests();
     let parent = offered_tools(&requests[0]);
-    for tool in ["task", "omfp_widget_check", "omfp_view_add"] {
+    for tool in [
+        "task",
+        "omfp_open_file",
+        "omfp_widget_check",
+        "omfp_view_add",
+    ] {
         assert!(
             parent.contains(&tool.to_owned()),
             "{tool} is a direct tool of the main agent: {parent:?}"

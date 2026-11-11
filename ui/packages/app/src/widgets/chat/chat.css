@@ -211,7 +211,8 @@
     animation: omfp-blink 0.9s steps(1) infinite;
   }
 
-  /* Tool cards (UI-163): the kit's card; the app's bodies sit in padded sections. */
+  /* Tool cards (UI-163): the kit's card; the app's bodies sit in padded sections split by the kit's labelled rules
+     (UI-187). */
   .omfp-tool__arg {
     display: inline-flex;
     align-items: center;
@@ -256,8 +257,14 @@
     font-size: var(--omfp-fs-xs);
   }
 
-  .omfp-tool-card__section + .omfp-tool-card__section {
-    border-block-start: var(--omfp-bw) dashed var(--omfp-rule);
+  /* Code in a section is flat, like the kit's code right in a card's body: the card's border and labelled rules
+     frame it (UI-187). */
+  .omfp-tool-card__section > .omfp-code--block,
+  .omfp-tool-card__preview > .omfp-code--block {
+    padding: var(--omfp-s1) 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
   }
 
   .omfp-tool-card__section h4 {
@@ -557,8 +564,13 @@
     opacity: var(--omfp-disabled);
   }
 
-  .omfp-interaction__title {
+  /* The title's first line sits on the border (UI-187); the rest follows in the body. */
+  .omfp-interaction__detail {
+    margin: 0;
+    font-size: var(--omfp-fs-sm);
+    font-weight: var(--omfp-fw-strong);
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 
   .omfp-interaction__message {

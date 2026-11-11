@@ -1216,24 +1216,142 @@
     background: var(--omfp-warn);
   }
 
+  /* Border boxes (UI-187): the title sits on the top border like a fieldset legend (`╭─ title ─────╮`), metadata may
+     sit at its right end (`─ 0:42 ─╮`), and labelled rules split the body (`├─ Output ─────┤`). The top border is
+     drawn in pieces around the title (the corners and the line between), so it never runs under the text whatever the
+     backgrounds; below the line the title takes the box's own background (`--bbox-bg`). A box sets its line color
+     (`--bbox-line`), style (`--bbox-style`) and background from tokens. */
+  .omfp-bbox {
+    --bbox-line: var(--omfp-card-border);
+    --bbox-style: solid;
+    --bbox-bg: var(--omfp-card-bg);
+    --bbox-mid: calc(var(--omfp-row-h) / 2);
+    --bbox-label-bg: linear-gradient(to bottom, transparent var(--bbox-mid), var(--bbox-bg) var(--bbox-mid));
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    border-radius: var(--omfp-r-card);
+  }
+
+  .omfp-bbox__head {
+    display: grid;
+    grid-template-columns: var(--omfp-s3) minmax(0, max-content) minmax(var(--omfp-s3), 1fr) auto var(--omfp-s3);
+    align-items: start;
+    min-block-size: var(--omfp-row-h);
+  }
+
+  .omfp-bbox__head::before,
+  .omfp-bbox__head::after,
+  .omfp-bbox__line {
+    content: "";
+    grid-row: 1;
+    align-self: stretch;
+    margin-block-start: var(--bbox-mid);
+    border-block-start: var(--omfp-bw) var(--bbox-style) var(--bbox-line);
+    background: var(--bbox-bg);
+  }
+
+  .omfp-bbox__head::before {
+    grid-column: 1;
+    border-inline-start: var(--omfp-bw) var(--bbox-style) var(--bbox-line);
+    border-start-start-radius: var(--omfp-r-card);
+  }
+
+  .omfp-bbox__line {
+    grid-column: 3;
+  }
+
+  .omfp-bbox__head::after {
+    grid-column: 5;
+    border-inline-end: var(--omfp-bw) var(--bbox-style) var(--bbox-line);
+    border-start-end-radius: var(--omfp-r-card);
+  }
+
+  .omfp-bbox__label,
+  .omfp-bbox__end {
+    grid-row: 1;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    margin: 0;
+    padding: calc((var(--omfp-row-h) - 1lh) / 2) var(--omfp-s1);
+    background: var(--bbox-label-bg);
+  }
+
+  .omfp-bbox__label {
+    grid-column: 2;
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-xs);
+    font-weight: var(--omfp-fw-medium);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-bbox__end {
+    grid-column: 4;
+  }
+
+  .omfp-bbox__body {
+    --bbox-pad-x: var(--omfp-s3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+    padding: var(--omfp-s2) var(--bbox-pad-x);
+    border: var(--omfp-bw) var(--bbox-style) var(--bbox-line);
+    border-block-start: 0;
+    border-end-start-radius: var(--omfp-r-card);
+    border-end-end-radius: var(--omfp-r-card);
+    background: var(--bbox-bg);
+  }
+
+  /* A labelled rule spans the body from border to border. */
+  .omfp-bbox__rule {
+    display: flex;
+    align-items: center;
+    margin: 0 calc(-1 * var(--bbox-pad-x));
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-medium);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-bbox__rule::before,
+  .omfp-bbox__rule::after {
+    content: "";
+    border-block-start: var(--omfp-bw) var(--bbox-style) var(--bbox-line);
+  }
+
+  .omfp-bbox__rule::before {
+    flex: none;
+    inline-size: var(--omfp-s3);
+  }
+
+  .omfp-bbox__rule::after {
+    flex: 1;
+  }
+
+  .omfp-bbox__rule-label {
+    padding-inline: var(--omfp-s1);
+  }
+
   /* Live voice (UI-182): the panel, the spectrum (a canvas whose colors script reads from the role tokens) and its
    * static meter below motion `full`. The user's voice leads with `tertiary`, the assistant's with `primary`. */
   .omfp-live {
-    display: grid;
-    gap: var(--omfp-s2);
-    padding: var(--omfp-s3) var(--omfp-s4);
-    border: var(--omfp-bw) solid var(--omfp-rule);
-    border-radius: var(--omfp-r-card);
-    background: var(--omfp-surface-container-low);
+    --bbox-line: var(--omfp-rule);
+    --bbox-bg: var(--omfp-surface-container-low);
+  }
+
+  .omfp-live__body {
+    --bbox-pad-x: var(--omfp-s4);
+    padding-block: var(--omfp-s1) var(--omfp-s3);
   }
 
   .omfp-live[data-status="error"] {
-    border-color: color-mix(in oklab, var(--omfp-error) 45%, transparent);
+    --bbox-line: color-mix(in oklab, var(--omfp-error) 45%, transparent);
   }
 
   /* Its keys work only while it has the focus (UI-182): a primary border says so. */
   .omfp-live:focus {
-    border-color: color-mix(in oklab, var(--omfp-primary) 55%, transparent);
+    --bbox-line: color-mix(in oklab, var(--omfp-primary) 55%, transparent);
   }
 
   .omfp-spectrum {
@@ -1780,27 +1898,36 @@
     color: var(--omfp-on-surface-variant);
   }
 
-  /* Tool cards (UI-163): a glyph status, the head toggling the body, a dashed separator. */
+  /* Tool cards (UI-163): a glyph status, the head toggling the body. Collapsed or without a body the card is one row
+     in its border; while the body shows it is a border box (UI-187): the head on the top border, labelled rules
+     between the body's sections. */
   .omfp-tool {
+    --bbox-line: var(--omfp-card-border);
     min-inline-size: 0;
     overflow: hidden;
-    border: var(--omfp-bw) solid var(--omfp-card-border);
+    border: var(--omfp-bw) solid var(--bbox-line);
     border-radius: var(--omfp-r-card);
     background: var(--omfp-card-bg);
   }
 
   .omfp-tool[data-status="running"] {
-    border-color: color-mix(in oklab, var(--omfp-primary) 60%, transparent);
+    --bbox-line: color-mix(in oklab, var(--omfp-primary) 60%, transparent);
   }
 
   .omfp-tool[data-status="failed"] {
-    border-color: color-mix(in oklab, var(--omfp-error) 55%, transparent);
+    --bbox-line: color-mix(in oklab, var(--omfp-error) 55%, transparent);
+  }
+
+  .omfp-tool.omfp-bbox {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: none;
   }
 
   .omfp-tool__head {
     display: flex;
     align-items: center;
-    gap: var(--omfp-s2);
     box-sizing: border-box;
     inline-size: 100%;
     block-size: var(--omfp-row-h);
@@ -1814,12 +1941,34 @@
     outline: none;
   }
 
+  .omfp-tool__head.omfp-bbox__head {
+    display: grid;
+    padding: 0;
+  }
+
   button.omfp-tool__head {
     cursor: pointer;
   }
 
-  button.omfp-tool__head:is([data-hovered], .is-hover) {
+  button.omfp-tool__head:not(.omfp-bbox__head):is([data-hovered], .is-hover) {
     background: var(--omfp-hover);
+  }
+
+  .omfp-tool__label {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+  }
+
+  .omfp-tool__label.omfp-bbox__label {
+    border-radius: var(--omfp-r-chip);
+    color: var(--omfp-on-surface);
+  }
+
+  button.omfp-tool__head:is([data-hovered], .is-hover) .omfp-tool__label.omfp-bbox__label {
+    background: linear-gradient(var(--omfp-hover), var(--omfp-hover)), var(--bbox-label-bg);
   }
 
   .omfp-tool__name {
@@ -1852,7 +2001,10 @@
   }
 
   .omfp-tool__body {
-    border-block-start: var(--omfp-bw) dashed var(--omfp-rule);
+    --bbox-pad-x: 0px;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
   }
 
   .omfp-tool__body > .omfp-code--block {
@@ -1901,27 +2053,28 @@
     color: var(--omfp-primary);
   }
 
-  /* Approval and ask cards (UI-164): dashed warn, `◆` before the title. */
+  /* Approval and ask cards (UI-164): a dashed warn border box (UI-187), `◆` before the title on the border, the step
+     and the countdown at its right end. */
   .omfp-request {
-    display: flex;
-    flex-direction: column;
-    gap: var(--omfp-s3);
-    padding: var(--omfp-s3) var(--omfp-s4);
-    border: var(--omfp-bw) dashed color-mix(in oklab, var(--omfp-warn) 70%, transparent);
-    border-radius: var(--omfp-r-card);
-    background: transparent;
+    --bbox-line: color-mix(in oklab, var(--omfp-warn) 70%, transparent);
+    --bbox-style: dashed;
+    --bbox-bg: transparent;
   }
 
   .omfp-request__head {
-    display: flex;
-    align-items: center;
-    gap: var(--omfp-s2);
     font-size: var(--omfp-fs-sm);
   }
 
+  .omfp-request__body {
+    --bbox-pad-x: var(--omfp-s4);
+    gap: var(--omfp-s3);
+    padding-block: var(--omfp-s3);
+  }
+
   .omfp-request__title {
-    min-inline-size: 0;
+    font-size: var(--omfp-fs-sm);
     font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-on-surface);
   }
 
   .omfp-request__glyph {
@@ -1932,7 +2085,6 @@
     display: inline-flex;
     align-items: center;
     gap: var(--omfp-s2);
-    margin-inline-start: auto;
     font-size: var(--omfp-fs-2xs);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -2713,20 +2865,32 @@
       omfp-flow 2s ease-in-out infinite alternate;
   }
 
-  :root[data-motion="full"] .omfp-tool[data-status="running"] {
+  /* A boxed card breathes with its body, the line of its top border being drawn in pieces around the head. */
+  :root[data-motion="full"] .omfp-tool[data-status="running"]:not(.omfp-bbox),
+  :root[data-motion="full"] .omfp-tool.omfp-bbox[data-status="running"] > .omfp-tool__body {
     animation: omfp-breathe 1.6s ease-in-out infinite;
   }
 
-  :root[data-motion="full"] .omfp-tool[data-status="running"] .omfp-tool__head {
+  :root[data-motion="full"] .omfp-tool[data-status="running"] {
+    --tool-shimmer: linear-gradient(
+      100deg,
+      transparent 20%,
+      color-mix(in oklab, var(--omfp-primary) 20%, transparent) 45%,
+      color-mix(in oklab, var(--omfp-tertiary) 22%, transparent) 55%,
+      transparent 80%
+    );
+  }
+
+  :root[data-motion="full"] .omfp-tool[data-status="running"]:not(.omfp-bbox) .omfp-tool__head {
+    background: var(--tool-shimmer) 0 0 / 250% 100%;
+    animation: omfp-shimmer 1.5s linear infinite;
+  }
+
+  /* On the border only the title shimmers, over the box's background below the line. */
+  :root[data-motion="full"] .omfp-tool.omfp-bbox[data-status="running"] .omfp-tool__label {
     background:
-      linear-gradient(
-        100deg,
-        transparent 20%,
-        color-mix(in oklab, var(--omfp-primary) 20%, transparent) 45%,
-        color-mix(in oklab, var(--omfp-tertiary) 22%, transparent) 55%,
-        transparent 80%
-      )
-      0 0 / 250% 100%;
+      var(--tool-shimmer) 0 0 / 250% 100%,
+      var(--bbox-label-bg);
     animation: omfp-shimmer 1.5s linear infinite;
   }
 

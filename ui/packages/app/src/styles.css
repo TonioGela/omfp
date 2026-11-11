@@ -877,15 +877,11 @@
     color: var(--omfp-primary);
   }
 
+  /* The side boxes' titles sit on their top border (UI-187). */
   .omfp-workspace h3 {
-    padding-inline: var(--omfp-s1);
     font-size: var(--omfp-fs-2xs);
     font-weight: var(--omfp-fw-regular);
     color: var(--omfp-primary);
-  }
-
-  .omfp-workspace h3::before {
-    content: "╭─ ";
   }
 
   .omfp-workspace ul {
@@ -897,9 +893,7 @@
   }
 
   .omfp-workspace__current,
-  .omfp-workspace__header,
-  .omfp-workspace__repos,
-  .omfp-workspace__add {
+  .omfp-workspace__header {
     display: flex;
     flex-direction: column;
     gap: var(--omfp-s1);

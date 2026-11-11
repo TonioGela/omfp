@@ -50,7 +50,7 @@ Requirements traced for this milestone are listed in `milestones.toml`.
 
 ## M1 — Headless daemon (done)
 
-Scope: DMN-001..072 except host tools beyond `open_in_editor` and PR workspaces (DMN-022, after S-08); PRT-001..034;
+Scope: DMN-001..072 except host tools beyond `open_in_editor` (now `omfp_open_file`) and PR workspaces (DMN-022, after S-08); PRT-001..034;
 JSON Schemas for protocol methods (AGT-007); ThreadState reducer for messages, tools, queue, process state, interactions;
 spike S-07; the single `omfp` binary with the `daemon` subcommand (D-15). At the end of M1 the project is renamed to
 **omfp** (crates, binary, docs).
@@ -191,8 +191,8 @@ Moved out by the scope check:
 - PR repositories (DMN-024 `pr`, S-08) → "Later": worktrees and similar are the agent's job, the agent can run
   `gh pr checkout` or `git fetch origin pull/N/head` itself, and GitHub cannot be tested offline; pending a user
   decision.
-- `open_in_editor` (DMN-060/061) → M7: it is only useful from a desktop window on the daemon's machine; without the
-  desktop it can only return an error.
+- `open_in_editor` (DMN-060/061) → M7: it was only useful from a desktop window on the daemon's machine; without the
+  desktop it could only return an error. It later became `omfp_open_file`, which opens the file in omfp itself.
 
 Acceptance: E2E-06 (the agent edits a file → `omfp:changes` shows the diff); every specialized card has
 fixture-driven tests for success, error and streaming states; highlighting follows the theme (light, dark, a custom
@@ -216,7 +216,7 @@ theme's primary color in light, dark and a custom theme. A tool run's end also r
 arguments their subject shows (and a `write`'s content) out of the argument summary. Known gaps: the `write` card shows
 the written content, not a diff (omp sends no old text); the edit card
 is covered by fixtures, but the journey edits with `write` because a hashline `edit` needs the file's tag from a
-`read`; grep results list file paths as text (opening them waits for `open_in_editor`, M7).
+`read`; grep results list file paths as text (they became clickable in M5c, UI-116).
 
 ## M5b — Widget loop and views file (done)
 
@@ -328,9 +328,9 @@ requests deterministic).
 ## M7 — Desktop
 
 Scope: ARC-003, DMN-004, UI-004, UI-005, TST-033, `omfp desktop` with Tauri 2 (D-18): finds or starts the local daemon
-in the background and opens one more window on it (D-15/D-16), or with `--connect <url>` opens a window on a remote daemon; watches the client-side theme file and pushes it (UI-091); spike S-04 (Tauri on NixOS, webkitgtk) first;
-`open_in_editor` (DMN-060/061: `$VISUAL`/`$EDITOR` from a desktop window on the daemon's machine, a clear error from
-the web; moved from M5, where it could only have been an error).
+in the background and opens one more window on it (D-15/D-16), or with `--connect <url>` opens a window on a remote daemon; watches the client-side theme file and pushes it (UI-091); spike S-04 (Tauri on NixOS, webkitgtk) first.
+`open_in_editor`, moved here from M5, is no longer part of M7: it became `omfp_open_file` (DMN-060), which opens the
+file in the omfp window the user last used on the thread, web and desktop alike, with no external editor.
 
 Acceptance: desktop smoke test passes under `xvfb-run`; a second `omfp desktop` opens another window on the same daemon,
 each window selecting a different thread; a browser attaches to the same daemon and sees the same threads.

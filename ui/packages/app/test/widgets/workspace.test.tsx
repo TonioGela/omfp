@@ -72,6 +72,21 @@ describe("omfp:workspace", () => {
     expect(screen.queryByTestId("refresh-workspace")).toBeNull();
   });
 
+  // spec: UI-025, UI-187
+  test("the side boxes are titled on their top border: Repositories and Add repository", () => {
+    setup();
+    const repos = screen.getByRole("region", { name: "Repositories" });
+    const add = screen.getByRole("region", { name: "Add repository" });
+    expect(add).toBe(screen.getByTestId("add-repo"));
+    for (const box of [repos, add]) {
+      expect(box.classList.contains("omfp-bbox")).toBe(true);
+      expect(box.querySelector(".omfp-bbox__head > h3.omfp-bbox__label")?.textContent).toBe(
+        box === repos ? "Repositories" : "Add repository",
+      );
+    }
+    expect(within(repos).getAllByTestId("workspace-repo").length).toBe(3);
+  });
+
   // spec: UI-025, UI-023
   test("without a selected thread it shows the draft thread's workspace, else none", () => {
     setup((host) => host.window.set(DRAFT_THREAD, { workspaceId: "w2" }));

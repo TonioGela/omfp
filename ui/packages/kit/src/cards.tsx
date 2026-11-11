@@ -1,9 +1,81 @@
-/** Tool cards (UI-163), approval and ask cards with their resolved line (UI-164). */
+/**
+ * Border boxes with their title on the top border and labelled rules (UI-187), tool cards (UI-163), approval and ask
+ * cards with their resolved line (UI-164).
+ */
 import { type HTMLAttributes, type ReactNode, type Ref, useId } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { cx } from "./class.ts";
 import { Icon } from "./icons.tsx";
 import { StateMark } from "./marks.tsx";
+
+/** The heading level of a border box's title or a rule's label. */
+export type BoxHeadingLevel = 2 | 3 | 4 | 5 | 6;
+
+/** The line of a box's top border after its title, up to the end part or the right corner. */
+function BorderLine() {
+  return <span className="omfp-bbox__line" aria-hidden="true" />;
+}
+
+export interface BorderBoxProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
+  /** The title, set on the top border like a fieldset legend. */
+  title: ReactNode;
+  /** A heading of this level holds the title; a plain span without one. */
+  level?: BoxHeadingLevel;
+  /** The title element's id, e.g. for `aria-labelledby`. */
+  titleId?: string;
+  /** Metadata at the right end of the top border (`─ 1/2 ⏱ 0:42 ─╮`). */
+  end?: ReactNode;
+  /** Class of the body under the title. */
+  bodyClassName?: string;
+  /** The box's `<section>` (React 19 passes it as a prop). */
+  ref?: Ref<HTMLElement> | undefined;
+  children?: ReactNode;
+}
+
+/**
+ * A box whose title sits on its top border (UI-187): `╭─ title ──────╮`, the line never under the text; the body below
+ * has the box's border on its sides and bottom.
+ */
+export function BorderBox({
+  title,
+  level,
+  titleId,
+  end,
+  bodyClassName,
+  className,
+  children,
+  ...props
+}: BorderBoxProps) {
+  const Title = level === undefined ? "span" : (`h${level}` as const);
+  return (
+    <section {...props} className={cx("omfp-bbox", className)}>
+      <div className="omfp-bbox__head">
+        <Title id={titleId} className="omfp-bbox__label">
+          {title}
+        </Title>
+        <BorderLine />
+        {end !== undefined && <span className="omfp-bbox__end">{end}</span>}
+      </div>
+      <div className={cx("omfp-bbox__body", bodyClassName)}>{children}</div>
+    </section>
+  );
+}
+
+export interface BoxRuleProps extends Omit<HTMLAttributes<HTMLHeadingElement>, "children"> {
+  /** The section's name, on the rule (`├─ Output ──┤`). */
+  label: ReactNode;
+  level?: BoxHeadingLevel;
+}
+
+/** A labelled rule across a border box's body, opening its next section (UI-187): `├─ Output ──────┤`. */
+export function BoxRule({ label, level = 4, className, ...props }: BoxRuleProps) {
+  const Heading = `h${level}` as const;
+  return (
+    <Heading {...props} className={cx("omfp-bbox__rule", className)}>
+      <span className="omfp-bbox__rule-label">{label}</span>
+    </Heading>
+  );
+}
 
 /** Where a tool call is. */
 export type ToolStatus = "running" | "done" | "failed";
@@ -27,8 +99,9 @@ export interface ToolCardProps extends Omit<HTMLAttributes<HTMLElement>, "title"
 
 /**
  * A tool call (UI-163): a head with the status mark (`●` ok or error, the braille spinner while running), the name,
- * the main argument and metadata; the head toggles the body (no chevron). Running cards shimmer and breathe at motion
- * `full`.
+ * the main argument and metadata; the head toggles the body (no chevron). While the body shows, the head sits on the
+ * card's top border (UI-187) and the body's sections are split by `BoxRule`s; collapsed or without a body the card is
+ * one row. Running cards shimmer and breathe at motion `full`.
  */
 export function ToolCard({
   status,
@@ -44,19 +117,24 @@ export function ToolCard({
 }: ToolCardProps) {
   const bodyId = useId();
   const hasBody = children !== undefined && children !== null && children !== false;
+  const boxed = hasBody && expanded;
   const head = (
     <>
-      <StateMark state={status} />
-      <span className="omfp-tool__name">{name}</span>
-      {arg !== undefined && <span className="omfp-tool__arg">{arg}</span>}
-      {meta !== undefined && <span className="omfp-tool__meta">{meta}</span>}
+      <span className={cx("omfp-tool__label", boxed && "omfp-bbox__label")}>
+        <StateMark state={status} />
+        <span className="omfp-tool__name">{name}</span>
+        {arg !== undefined && <span className="omfp-tool__arg">{arg}</span>}
+        {meta !== undefined && <span className="omfp-tool__meta">{meta}</span>}
+      </span>
+      {boxed && <BorderLine />}
     </>
   );
+  const headClass = cx("omfp-tool__head", boxed && "omfp-bbox__head");
   return (
-    <section {...props} className={cx("omfp-tool", className)} data-status={status}>
+    <section {...props} className={cx("omfp-tool", boxed && "omfp-bbox", className)} data-status={status}>
       {hasBody ? (
         <AriaButton
-          className="omfp-tool__head"
+          className={headClass}
           aria-expanded={expanded}
           aria-controls={bodyId}
           onPress={() => onExpandedChange?.(!expanded)}
@@ -65,12 +143,12 @@ export function ToolCard({
           {head}
         </AriaButton>
       ) : (
-        <div className="omfp-tool__head" data-testid={headTestId}>
+        <div className={headClass} data-testid={headTestId}>
           {head}
         </div>
       )}
       {hasBody && (
-        <div id={bodyId} className="omfp-tool__body" hidden={!expanded}>
+        <div id={bodyId} className={cx("omfp-tool__body", boxed && "omfp-bbox__body")} hidden={!expanded}>
           {expanded && children}
         </div>
       )}
@@ -118,7 +196,10 @@ export interface InteractionCardProps extends Omit<HTMLAttributes<HTMLElement>, 
   children?: ReactNode;
 }
 
-/** A pending approval or `ask` question (UI-164): a dashed warn card titled with `◆`. */
+/**
+ * A pending approval or `ask` question (UI-164): a dashed warn box whose `◆` title sits on its top border (UI-187),
+ * the step and countdown at the border's right end.
+ */
 export function InteractionCard({
   title,
   meta,
@@ -129,16 +210,17 @@ export function InteractionCard({
   ...props
 }: InteractionCardProps) {
   return (
-    <section {...props} className={cx("omfp-request", className)}>
-      <header className="omfp-request__head">
-        <span className="omfp-request__title">
+    <section {...props} className={cx("omfp-request", "omfp-bbox", className)}>
+      <header className="omfp-request__head omfp-bbox__head">
+        <span className="omfp-request__title omfp-bbox__label">
           <span className="omfp-request__glyph" aria-hidden="true">
             ◆{" "}
           </span>
           {title}
         </span>
+        <BorderLine />
         {(meta !== undefined || countdown !== undefined) && (
-          <span className="omfp-request__meta">
+          <span className="omfp-request__meta omfp-bbox__end">
             {meta}
             {countdown !== undefined && (
               <span className="omfp-request__countdown" data-low={low || undefined}>
@@ -149,7 +231,7 @@ export function InteractionCard({
           </span>
         )}
       </header>
-      {children}
+      <div className="omfp-request__body omfp-bbox__body">{children}</div>
     </section>
   );
 }

@@ -10,6 +10,7 @@
 import type { Workspace } from "@omfp/protocol";
 import {
   Badge,
+  BorderBox,
   Button,
   ConfirmDialog,
   EmptyState,
@@ -195,8 +196,13 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
   const [confirming, setConfirming] = useState<RepoRow | undefined>(undefined);
   const remove = (name: string) => void attempt(() => call("workspaces.remove_repo", { workspaceId: row.id, name }));
   return (
-    <section className="omfp-workspace__repos" aria-labelledby="omfp-workspace-repos">
-      <h3 id="omfp-workspace-repos">{text.repos}</h3>
+    <BorderBox
+      className="omfp-workspace__repos"
+      aria-labelledby="omfp-workspace-repos"
+      title={text.repos}
+      level={3}
+      titleId="omfp-workspace-repos"
+    >
       {row.repos.length === 0 ? (
         <EmptyState icon="folder-git-2" title={text.noRepo} />
       ) : (
@@ -272,7 +278,7 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
         confirmTestId="confirm-remove-repo"
         cancelTestId="cancel-remove-repo"
       />
-    </section>
+    </BorderBox>
   );
 }
 
@@ -305,8 +311,14 @@ function AddRepository({ workspaceId }: { workspaceId: string }): ReactNode {
     }
   };
   return (
-    <section className="omfp-workspace__add" aria-labelledby="omfp-workspace-add" data-testid="add-repo">
-      <h3 id="omfp-workspace-add">{text.addRepository}</h3>
+    <BorderBox
+      className="omfp-workspace__add"
+      aria-labelledby="omfp-workspace-add"
+      data-testid="add-repo"
+      title={text.addRepository}
+      level={3}
+      titleId="omfp-workspace-add"
+    >
       <RadioGroup
         className="omfp-workspace__kinds"
         label={text.addKind}
@@ -358,6 +370,6 @@ function AddRepository({ workspaceId }: { workspaceId: string }): ReactNode {
           {text.add}
         </Button>
       </div>
-    </section>
+    </BorderBox>
   );
 }

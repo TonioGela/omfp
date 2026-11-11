@@ -26,7 +26,6 @@ export const chat = {
   tool: {
     fallbackName: "tool",
     label: (name: string) => `Tool ${name}`,
-    arguments: "Arguments",
     result: "Result",
     status: {
       composing: "writing arguments",

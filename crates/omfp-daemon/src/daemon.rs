@@ -196,6 +196,12 @@ impl DaemonHandle {
         format!("http://{addr}/#token={}", self.token.expose())
     }
 
+    /// The agent supervisor: what the host tools of every thread act through (DMN-060).
+    #[must_use]
+    pub fn supervisor(&self) -> &Supervisor {
+        &self.supervisor
+    }
+
     /// Stops the daemon (DMN-005): connections close, every omp process and every job stops (at most 10 s),
     /// `daemon.json` is removed and the data directory unlocked.
     pub async fn shutdown(self) -> anyhow::Result<()> {

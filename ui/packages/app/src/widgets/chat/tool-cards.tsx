@@ -3,7 +3,7 @@
  * show omp's error first (UI-052); code is highlighted when its language is known (UI-090).
  */
 
-import { Badge, Button, Chip, Code, Diff, PathLink } from "omfp/kit";
+import { Badge, BoxRule, Button, Chip, Code, Diff, PathLink } from "omfp/kit";
 import {
   ansiRuns,
   type OpenFileOptions,
@@ -162,21 +162,27 @@ function WriteContent({ content, language }: { content: string; language: string
   );
 }
 
-/** The body of a specialized card. */
+/** The body of a specialized card; its sections are split by labelled rules on the card's border (UI-187). */
 export function ToolBody({ card }: { card: ToolCard }): ReactNode {
   const { view } = card;
   const openFile = useOpenFile();
   switch (view.kind) {
     case "bash":
       return (
-        <div className="omfp-tool-card__section">
-          {view.cwd !== undefined && <p className="omfp-tool-card__meta">{text.cwd(view.cwd)}</p>}
-          {view.output === undefined || view.output === "" ? (
-            <p className="omfp-tool-card__meta">{text.noOutput}</p>
-          ) : (
-            <AnsiOutput output={view.output} />
-          )}
-        </div>
+        <>
+          <div className="omfp-tool-card__section">
+            {view.cwd !== undefined && <p className="omfp-tool-card__meta">{text.cwd(view.cwd)}</p>}
+            <Code code={view.command} block language="bash" data-testid="tool-command" />
+          </div>
+          <BoxRule label={text.output} />
+          <div className="omfp-tool-card__section">
+            {view.output === undefined || view.output === "" ? (
+              <p className="omfp-tool-card__meta">{text.noOutput}</p>
+            ) : (
+              <AnsiOutput output={view.output} />
+            )}
+          </div>
+        </>
       );
     case "read":
       return (
@@ -316,14 +322,15 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
       return (
         <>
           <div className="omfp-tool-card__section">
-            <h4>{text.arguments}</h4>
             <Code code={card.args} block data-testid="tool-args" />
           </div>
           {card.result !== undefined && (
-            <div className="omfp-tool-card__section">
-              <h4>{text.result}</h4>
-              <Code code={card.result} block data-testid="tool-result" />
-            </div>
+            <>
+              <BoxRule label={text.result} />
+              <div className="omfp-tool-card__section">
+                <Code code={card.result} block data-testid="tool-result" />
+              </div>
+            </>
           )}
         </>
       );

@@ -9,6 +9,7 @@
  */
 import { type HTMLAttributes, type ReactNode, type Ref, useEffect, useRef, useState } from "react";
 import { Meter as AriaMeter } from "react-aria-components";
+import { BorderBox } from "./cards.tsx";
 import { cx } from "./class.ts";
 import { Kbd } from "./kbd.tsx";
 import { type MotionLevel, useMotionLevel } from "./motion.ts";
@@ -394,10 +395,12 @@ export interface LiveHint {
   readonly label: string;
 }
 
-export interface LivePanelProps extends HTMLAttributes<HTMLElement> {
+export interface LivePanelProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   /** The panel's element, e.g. to focus it so its keys work. */
   ref?: Ref<HTMLElement> | undefined;
   status: LiveStatus;
+  /** The title on the panel's top border (UI-187). */
+  title: ReactNode;
   /** The status word after the dot (`listening`). */
   statusLabel: string;
   /** The spectrum (or nothing, when this window holds no audio). */
@@ -415,11 +418,13 @@ export interface LivePanelProps extends HTMLAttributes<HTMLElement> {
 }
 
 /**
- * The live panel (UI-182): spectrum, the transcript lines in the prose family (the user's in `on-surface-variant`),
- * then the status line `● listening · spc mute · esc end` in the code family, its dot in the status's role.
+ * The live panel (UI-182): its title on the top border (UI-187), the spectrum, the transcript lines in the prose
+ * family (the user's in `on-surface-variant`), then the status line `● listening · spc mute · esc end` in the code
+ * family, its dot in the status's role.
  */
 export function LivePanel({
   status,
+  title,
   statusLabel,
   spectrum,
   lines = [],
@@ -431,7 +436,13 @@ export function LivePanel({
   ...props
 }: LivePanelProps) {
   return (
-    <section {...props} className={cx("omfp-live", className)} data-status={status}>
+    <BorderBox
+      {...props}
+      title={title}
+      className={cx("omfp-live", className)}
+      bodyClassName="omfp-live__body"
+      data-status={status}
+    >
       {spectrum}
       {message === undefined ? (
         lines.length > 0 && (
@@ -471,6 +482,6 @@ export function LivePanel({
         ))}
         {actions !== undefined && <span className="omfp-live__actions">{actions}</span>}
       </div>
-    </section>
+    </BorderBox>
   );
 }

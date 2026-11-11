@@ -11,7 +11,7 @@ mod state;
 mod stream;
 
 pub use ask::validate_ask_answers;
-pub use event::{LiveOwner, ProcessState, Resolution, SessionInfo, ThreadEvent};
+pub use event::{LiveOwner, OpenFileRequest, ProcessState, Resolution, SessionInfo, ThreadEvent};
 pub use live::live_error_message;
 pub use reducer::replay;
 pub use state::{

@@ -133,6 +133,8 @@ function InteractionCard({ threadId, request, first }: { threadId: string; reque
   const [answered, onRespond] = useRespond(threadId, request.id);
   const shownAt = useShownAt(interactionKey(threadId, request.id));
   const heading = title(request);
+  // The first line sits on the card's border (UI-187); the rest (an approval's command) opens the body.
+  const [headline = heading, ...details] = heading.split("\n");
   const timeout = timeoutMs(request);
   const body = { disabled: answered, onRespond };
   const cardRef = useRef<HTMLElement>(null);
@@ -150,9 +152,14 @@ function InteractionCard({ threadId, request, first }: { threadId: string; reque
       data-kind={request.method}
       aria-busy={answered}
       aria-label={heading}
-      title={<span className="omfp-interaction__title">{heading}</span>}
+      title={<span className="omfp-interaction__title">{headline}</span>}
       meta={timeout === undefined ? undefined : <Countdown timeout={timeout} shownAt={shownAt} />}
     >
+      {details.length > 0 && (
+        <p className="omfp-interaction__detail" data-testid="interaction-detail">
+          {details.join("\n")}
+        </p>
+      )}
       {request.method === "select" && <SelectBody request={request} {...body} />}
       {request.method === "confirm" && <ConfirmBody request={request} {...body} />}
       {request.method === "input" && <InputBody request={request} {...body} />}

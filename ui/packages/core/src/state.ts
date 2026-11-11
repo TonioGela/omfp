@@ -4,7 +4,7 @@
  * fields, `null` for empty `Option`s, maps as plain objects.
  */
 
-import type { LiveOwner, ProcessState, SessionInfo } from "./event.ts";
+import type { LiveOwner, OpenFileRequest, ProcessState, SessionInfo } from "./event.ts";
 import type { JsonValue } from "./json.ts";
 import type {
   AgentMessage,
@@ -65,6 +65,9 @@ export interface ThreadState {
   live: LiveSession | null;
   /** Readable message of the failure the last live session ended on (DMN-104); cleared when the next one opens. */
   live_error: string | null;
+  /** The last file the agent asked a window to open (`open_file` event, DMN-060); the window it names opens each
+   * request once. */
+  open_file: OpenFileRequest | null;
 }
 
 /** A live voice session (PRT-052). */
@@ -201,5 +204,6 @@ export function emptyThreadState(): ThreadState {
     notices: [],
     live: null,
     live_error: null,
+    open_file: null,
   };
 }

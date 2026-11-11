@@ -15,8 +15,8 @@ use std::time::Duration;
 
 use omfp_core::wire::LitTrue;
 use omfp_core::{
-    LiveOwner, ProcessState, Resolution, ThreadEvent, ThreadState, live_error_message,
-    validate_ask_answers,
+    LiveOwner, OpenFileRequest, ProcessState, Resolution, ThreadEvent, ThreadState,
+    live_error_message, validate_ask_answers,
 };
 use omfp_protocol::InteractionResponse;
 use omp_rpc::{
@@ -75,6 +75,10 @@ const LIVE_NOT_STARTED: &[&str] = &[
 
 /// omp's `live_mute` failure without a session.
 const LIVE_NO_SESSION: &str = "No live session is active";
+
+/// What `omfp_open_file` answers when no window shows its thread (DMN-060).
+pub const NO_WINDOW: &str = "No omfp window shows this thread, so the file cannot be opened: give the user its path \
+                             instead, or ask them to open the thread in omfp and try again.";
 
 /// Supervisor settings.
 #[derive(Debug, Clone)]
@@ -250,7 +254,9 @@ struct Actor {
     live: Mutex<Option<Live>>,
     /// Makes check-forward-record of an answer atomic (DMN-051).
     answers: Mutex<()>,
-    watchers: AtomicUsize,
+    /// Connections watching the thread (PRT-025), one entry per subscription, the one the user last used on it last
+    /// (DMN-060).
+    watchers: Mutex<Vec<u64>>,
     last_activity: Mutex<Instant>,
     /// A root sync was asked while the agent was busy (omp refuses `/add-dir` while streaming); it runs once the
     /// session settles (DMN-029).
@@ -277,7 +283,7 @@ impl Actor {
             lifecycle: tokio::sync::Mutex::new(()),
             live: Mutex::new(None),
             answers: Mutex::new(()),
-            watchers: AtomicUsize::new(0),
+            watchers: Mutex::new(Vec::new()),
             last_activity: Mutex::new(Instant::now()),
             roots_pending: AtomicBool::new(false),
             titled: AtomicBool::new(false),
@@ -307,7 +313,7 @@ impl Actor {
     /// Running, settled, without pending requests and unwatched since at least `timeout` (DMN-034).
     fn is_idle(&self, timeout: Duration, now: Instant) -> bool {
         lock(&self.live).is_some()
-            && self.watchers.load(Ordering::SeqCst) == 0
+            && lock(&self.watchers).is_empty()
             && self.log.with_state(|state| {
                 state.process == ProcessState::Running
                     && state.settled
@@ -370,6 +376,7 @@ impl std::fmt::Debug for Supervisor {
 /// Counts a client watching a thread while alive (PRT-025).
 pub struct WatchGuard {
     actor: Arc<Actor>,
+    connection: u64,
 }
 
 impl std::fmt::Debug for WatchGuard {
@@ -380,7 +387,14 @@ impl std::fmt::Debug for WatchGuard {
 
 impl Drop for WatchGuard {
     fn drop(&mut self) {
-        self.actor.watchers.fetch_sub(1, Ordering::SeqCst);
+        let mut watchers = lock(&self.actor.watchers);
+        if let Some(index) = watchers
+            .iter()
+            .rposition(|watcher| *watcher == self.connection)
+        {
+            watchers.remove(index);
+        }
+        drop(watchers);
         // The idle timeout counts from the moment the last client left.
         self.actor.touch();
     }
@@ -463,18 +477,49 @@ impl Supervisor {
         Ok(Arc::clone(&self.actor(id).await?.log))
     }
 
-    /// Marks the thread as watched until the guard drops (PRT-025).
-    pub async fn watch(&self, id: &str) -> Result<WatchGuard> {
+    /// Marks the thread as watched by connection `connection` until the guard drops (PRT-025); it becomes the
+    /// window the user last used on the thread (DMN-060).
+    pub async fn watch(&self, id: &str, connection: u64) -> Result<WatchGuard> {
         let actor = self.actor(id).await?;
-        actor.watchers.fetch_add(1, Ordering::SeqCst);
-        Ok(WatchGuard { actor })
+        lock(&actor.watchers).push(connection);
+        Ok(WatchGuard { actor, connection })
+    }
+
+    /// Connection `connection` sent thread `id` something on the user's behalf: if it watches the thread, it becomes
+    /// the window the user last used on it (DMN-060).
+    pub fn used(&self, id: &str, connection: u64) {
+        if let Some(actor) = self.lookup(id) {
+            let mut watchers = lock(&actor.watchers);
+            if let Some(index) = watchers.iter().rposition(|watcher| *watcher == connection) {
+                let watcher = watchers.remove(index);
+                watchers.push(watcher);
+            }
+        }
     }
 
     /// Number of clients watching the thread (PRT-025).
     #[must_use]
     pub fn watchers(&self, id: &str) -> usize {
         self.lookup(id)
-            .map_or(0, |actor| actor.watchers.load(Ordering::SeqCst))
+            .map_or(0, |actor| lock(&actor.watchers).len())
+    }
+
+    /// Asks the window the user last used on thread `id` to open `path` at `line` (DMN-060): an `open_file` event
+    /// naming its connection, which the window acts on. Without a window watching the thread the error tells the
+    /// agent what to do instead.
+    pub fn open_file(&self, id: &str, path: &str, line: Option<u64>) -> Result<(), String> {
+        let actor = self.lookup(id).ok_or(NO_WINDOW)?;
+        let connection = lock(&actor.watchers).last().copied().ok_or(NO_WINDOW)?;
+        self.push(
+            &actor,
+            ThreadEvent::OpenFile(OpenFileRequest {
+                id: new_id(),
+                connection,
+                path: path.to_owned(),
+                line,
+            }),
+        );
+        Ok(())
     }
 
     /// Whether the thread has a live omp process.
@@ -1181,13 +1226,9 @@ impl Supervisor {
             }
         }
 
-        let log = Arc::clone(&actor.log);
         let widget_host = lock(&self.inner.widget_host).clone();
         let tools = host_tools::thread_tools(
-            spec.cwd.clone(),
-            Arc::new(move |event| {
-                log.push(event);
-            }),
+            self.file_opener(&actor.id),
             self.title_setter(&actor.id),
             &thread.workspace_id,
             widget_host,
@@ -1249,6 +1290,17 @@ impl Supervisor {
             warn!(thread = %actor.id, %error, "cannot remove stale roots");
         }
         Ok(process)
+    }
+
+    /// What the thread's `omfp_open_file` host tool calls (DMN-060): [`Self::open_file`] on this thread. It holds the
+    /// supervisor weakly (the tools live as long as the process it owns).
+    fn file_opener(&self, id: &str) -> host_tools::OpenFile {
+        let inner = Arc::downgrade(&self.inner);
+        let id = id.to_owned();
+        Arc::new(move |path: &str, line: Option<u64>| {
+            let inner = Weak::upgrade(&inner).ok_or("the daemon is shutting down")?;
+            Self { inner }.open_file(&id, path, line)
+        })
     }
 
     /// What the thread's `set_thread_title` host tool calls (DMN-060): stores a set title, refreshes the index and

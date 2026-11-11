@@ -3,6 +3,8 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import {
+  BorderBox,
+  BoxRule,
   Button,
   Card,
   Checkbox,
@@ -401,6 +403,56 @@ describe("ToolCard", () => {
     render(<ToggledTool body={false} />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByTestId("tool-head").textContent).toBe("bashls -la1.2s");
+    expect(screen.getByTestId("tool").classList.contains("omfp-bbox")).toBe(false);
+  });
+
+  // spec: UI-163, UI-187
+  test("while the body shows, the whole head sits on the top border; collapsed, the card is one row again", async () => {
+    const user = userEvent.setup();
+    render(<ToggledTool body />);
+    const tool = screen.getByTestId("tool");
+    const head = screen.getByRole("button", { expanded: false });
+    expect(tool.classList.contains("omfp-bbox")).toBe(false);
+    expect(head.querySelector(".omfp-bbox__line")).toBeNull();
+    await user.click(head);
+    expect(tool.classList.contains("omfp-bbox")).toBe(true);
+    expect(head.classList.contains("omfp-bbox__head")).toBe(true);
+    expect(head.querySelector(".omfp-bbox__label")?.textContent).toBe("bashls -la1.2s");
+    expect(head.querySelector(".omfp-bbox__line")?.getAttribute("aria-hidden")).toBe("true");
+    expect(tool.querySelector(".omfp-tool__body")?.classList.contains("omfp-bbox__body")).toBe(true);
+    expect(screen.getByTestId("tool-head")).toBe(head);
+    await user.click(head);
+    expect(tool.classList.contains("omfp-bbox")).toBe(false);
+  });
+});
+
+describe("BorderBox", () => {
+  // spec: UI-187
+  test("the title is a heading on the top border, the end part after the line, the body under it", () => {
+    render(
+      <BorderBox title="Repositories" level={3} titleId="repos" end="0:42" aria-labelledby="repos" data-testid="box">
+        <span data-testid="content">rows</span>
+      </BorderBox>,
+    );
+    const box = screen.getByRole("region", { name: "Repositories" });
+    expect(box).toBe(screen.getByTestId("box"));
+    const head = box.querySelector(".omfp-bbox__head");
+    expect([...(head?.children ?? [])].map((part) => part.className)).toEqual([
+      "omfp-bbox__label",
+      "omfp-bbox__line",
+      "omfp-bbox__end",
+    ]);
+    expect(screen.getByRole("heading", { level: 3 }).id).toBe("repos");
+    expect(head?.querySelector(".omfp-bbox__end")?.textContent).toBe("0:42");
+    expect(screen.getByTestId("content").parentElement?.className).toBe("omfp-bbox__body");
+  });
+
+  // spec: UI-187
+  test("a labelled rule is a heading that opens the next section", () => {
+    render(<BoxRule label="Output" data-testid="rule" />);
+    const rule = screen.getByRole("heading", { level: 4, name: "Output" });
+    expect(rule).toBe(screen.getByTestId("rule"));
+    expect(rule.className).toBe("omfp-bbox__rule");
   });
 });
 
@@ -418,6 +470,22 @@ describe("approval and ask cards", () => {
     expect(resolved.getAttribute("data-outcome")).toBe("denied");
     expect(resolved.querySelector("[data-icon=x]")).not.toBeNull();
     expect(resolved.textContent).toBe("Run a command?Deny");
+  });
+
+  // spec: UI-164, UI-187
+  test("the `◆` title sits on the top border, the step and countdown at its right end", () => {
+    render(
+      <InteractionCard title="Run a command?" meta="1/2" countdown="0:42" data-testid="card">
+        <button type="button">Approve</button>
+      </InteractionCard>,
+    );
+    const card = screen.getByTestId("card");
+    expect(card.classList.contains("omfp-bbox")).toBe(true);
+    expect(card.querySelector(".omfp-bbox__label")?.textContent).toBe("◆ Run a command?");
+    expect(card.querySelector(".omfp-bbox__end")?.textContent).toBe("1/20:42");
+    expect(screen.getByRole("button", { name: "Approve" }).parentElement?.classList.contains("omfp-bbox__body")).toBe(
+      true,
+    );
   });
 });
 

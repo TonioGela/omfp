@@ -56,6 +56,7 @@ export function LiveVoicePanel({ threadId, state }: { threadId: string; state: T
     ref: panelRef,
     tabIndex: 0,
     "aria-label": text.panel,
+    title: text.panel,
     "data-testid": "live-panel",
     "data-view": view.kind,
     onKeyDown,

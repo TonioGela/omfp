@@ -5,7 +5,7 @@
  */
 
 import { arrayOf, type Decoder, decodeOrUndefined, Invalid } from "./decode.ts";
-import { liveOwner, processState, resolution, sessionInfo, type ThreadEvent } from "./event.ts";
+import { liveOwner, openFileRequest, processState, resolution, sessionInfo, type ThreadEvent } from "./event.ts";
 import { isObject, type JsonValue, withKey, withoutKey } from "./json.ts";
 import { liveErrorMessage } from "./live.ts";
 import type {
@@ -409,6 +409,10 @@ export function reduce(state: ThreadState, event: ThreadEvent): ThreadState {
       }
       const owner = decodeOrUndefined(liveOwner, value.owner);
       return owner === undefined ? state : { ...state, live: { owner, phase: null, transcript: [] }, live_error: null };
+    }
+    case "open_file": {
+      const request = decodeOrUndefined(openFileRequest, value);
+      return request === undefined ? state : { ...state, open_file: request };
     }
     case "unknown":
       return value.raw === undefined ? state : notice(state, { type: "unknown", data: value.raw as JsonValue });

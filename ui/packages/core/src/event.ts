@@ -41,6 +41,18 @@ export interface LiveOwner {
   connection: number;
 }
 
+/**
+ * A file the agent asked to open with the `omfp_open_file` host tool (DMN-060): the window on connection `connection`
+ * (the `connection` of its `system.hello` result, PRT-051), the one the user last used on the thread, opens `path` (as
+ * the agent wrote it) at `line`, as a click on the path does. `id` tells one request from the next.
+ */
+export interface OpenFileRequest {
+  id: string;
+  connection: number;
+  path: string;
+  line: number | null;
+}
+
 /** One input of the thread reducer, discriminated by `kind`. */
 export type ThreadEvent =
   /** A frame from omp that is not a command response. */
@@ -56,6 +68,8 @@ export type ThreadEvent =
    * never started (`null`, DMN-101). omp's `live_*` frames arrive as `omp` events.
    */
   | { kind: "live_session"; owner: LiveOwner | null }
+  /** The daemon asks one window to open a file for the agent (DMN-060). */
+  | ({ kind: "open_file" } & OpenFileRequest)
   /** A frame omp-rpc could not decode, or a response nobody waited for (DMN-042). */
   | { kind: "unknown"; raw: JsonValue };
 
@@ -94,13 +108,26 @@ export const resolution = record<Resolution>({
   client: str,
 });
 
-/** A `u64` connection number. */
-const connectionNumber: Decoder<number> = (value) => {
+/** A `u64`: a connection number, a line. */
+const u64: Decoder<number> = (value) => {
   const decoded = int(value);
   if (decoded < 0) {
-    throw new Invalid("negative connection number");
+    throw new Invalid("negative u64");
   }
   return decoded;
 };
 
-export const liveOwner = record<LiveOwner>({ client: str, connection: connectionNumber });
+export const liveOwner = record<LiveOwner>({ client: str, connection: u64 });
+
+const openFileFields = record<{ id: string; connection: number; path: string; line?: number }>({
+  id: str,
+  connection: u64,
+  path: str,
+  line: optional(u64),
+});
+
+/** An `open_file` event's request; a missing `line` is `null`, as the Rust state serializes it. */
+export const openFileRequest: Decoder<OpenFileRequest> = (value) => {
+  const { id, connection, path, line } = openFileFields(value);
+  return { id, connection, path, line: line ?? null };
+};

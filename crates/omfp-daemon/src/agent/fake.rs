@@ -72,9 +72,9 @@ impl FakeRun {
         Self::from_jsonl(&text).map_err(std::io::Error::other)
     }
 
-    /// Parses fixture lines (`omfp_core::ThreadEvent` as JSON): `history` gives the startup, `process` events are the
-    /// daemon's own and skipped, omp frames are split into segments at each turn start (`agent_start` after the
-    /// startup or after `session_settled`) and after each `interaction_resolved`.
+    /// Parses fixture lines (`omfp_core::ThreadEvent` as JSON): `history` gives the startup, `process`, `live_session`
+    /// and `open_file` events are the daemon's own and skipped, omp frames are split into segments at each turn start
+    /// (`agent_start` after the startup or after `session_settled`) and after each `interaction_resolved`.
     pub fn from_jsonl(text: &str) -> Result<Self, String> {
         let mut run = Self::fresh();
         run.segments.push_back(Vec::new());
@@ -117,6 +117,7 @@ impl FakeRun {
                 ThreadEvent::InteractionResolved { .. } => run.segments.push_back(Vec::new()),
                 ThreadEvent::Process { .. }
                 | ThreadEvent::LiveSession { .. }
+                | ThreadEvent::OpenFile(_)
                 | ThreadEvent::Unknown { .. } => {}
             }
         }

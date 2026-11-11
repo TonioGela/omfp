@@ -1,22 +1,15 @@
 //! Tools the daemon provides to omp (DMN-060..064), registered at launch through `omp-rpc`'s
 //! `ClientOptions::tools`.
 
-use std::fmt::Write as _;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use omfp_core::ThreadEvent;
-use omp_rpc::{
-    ExtensionUiRequest, HostTool, HostToolError, HostToolOutput, OpenUrlUiRequest, RpcNotification,
-    ToolLoadMode,
-};
+use omp_rpc::{HostTool, HostToolError, HostToolOutput, ToolLoadMode};
 use serde_json::{Map, Value, json};
 
-use crate::store::new_id;
 use crate::widgets::layout::{Addition, Place};
 
-/// Name of the tool that opens a file for the user.
-pub const OPEN_IN_EDITOR: &str = "open_in_editor";
+/// Name of the tool that opens a file in omfp for the user (DMN-060).
+pub const OPEN_FILE: &str = "omfp_open_file";
 
 /// Name of the tool that renames the agent's thread (DMN-073).
 pub const SET_THREAD_TITLE: &str = "set_thread_title";
@@ -30,8 +23,12 @@ pub const VIEW_ADD: &str = "omfp_view_add";
 /// Longest title `set_thread_title` accepts, in characters.
 pub const MAX_TITLE_CHARS: usize = 200;
 
-/// Receives the events a host tool adds to its thread.
-pub type Emit = Arc<dyn Fn(ThreadEvent) + Send + Sync>;
+/// Opens a file (`path` as the agent wrote it, at `line`) in the window the user last used on the thread; the error,
+/// e.g. no window shows the thread, goes back to the agent (DMN-060).
+pub type Opener = dyn Fn(&str, Option<u64>) -> Result<(), String> + Send + Sync;
+
+/// The [`Opener`] of a thread's `omfp_open_file` tool.
+pub type OpenFile = Arc<Opener>;
 
 /// Stores a title the agent set for its thread; the error goes back to the agent.
 pub type SetTitle = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
@@ -50,19 +47,17 @@ pub trait WidgetHost: Send + Sync {
     fn add_to_view(&self, workspace_id: &str, addition: &Addition<'_>) -> Result<String, String>;
 }
 
-/// The host tools of one thread: `cwd` (omp's working directory, the thread's workspace folder, DMN-030) resolves
-/// relative paths, `emit` delivers the presentation events to the thread's clients, `set_title` renames the thread,
-/// and `widgets` (absent in tests that need no widget tools) backs the widget tools of workspace `workspace_id`.
+/// The host tools of one thread: `opener` opens files in the user's window, `set_title` renames the thread, and
+/// `widgets` (absent in tests that need no widget tools) backs the widget tools of workspace `workspace_id`.
 /// Every tool is `essential`: a direct tool of the agent, not only an `xd://` device (DMN-106).
 #[must_use]
 pub fn thread_tools(
-    cwd: PathBuf,
-    emit: Emit,
+    opener: OpenFile,
     set_title: SetTitle,
     workspace_id: &str,
     widgets: Option<Arc<dyn WidgetHost>>,
 ) -> Vec<HostTool> {
-    let mut tools = vec![open_in_editor(cwd, emit), set_thread_title(set_title)];
+    let mut tools = vec![open_file(opener), set_thread_title(set_title)];
     if let Some(host) = widgets {
         tools.push(widget_check(workspace_id.to_owned(), Arc::clone(&host)));
         tools.push(view_add(workspace_id.to_owned(), host));
@@ -271,49 +266,44 @@ pub fn run_set_thread_title(
     )))
 }
 
-/// `open_in_editor { path, line? }`: asks the user's UI to open a file (an `open_url` presentation event with a
-/// `file://` URL, `#L<line>` when a line is given).
+/// `omfp_open_file { path, line? }`: opens a file in omfp, in the window the user last used on the thread, as a click
+/// on its path does (DMN-060).
 #[must_use]
-pub fn open_in_editor(cwd: PathBuf, emit: Emit) -> HostTool {
-    let parameters = json!({
+pub fn open_file(open: OpenFile) -> HostTool {
+    let parameters = schema(&json!({
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
-                "description": "File to open; relative paths start at the working directory."
+                "description": "File to open: relative to the workspace folder (or one of its repositories), absolute inside it, or a bare or partial name the user's window looks up."
             },
-            "line": { "type": "integer", "minimum": 1, "description": "Line to show." }
+            "line": { "type": "integer", "minimum": 1, "description": "Line to scroll to." }
         },
         "required": ["path"],
         "additionalProperties": false
-    })
-    .as_object()
-    .cloned()
-    .unwrap_or_default();
+    }));
     HostTool::new(
-        OPEN_IN_EDITOR,
-        "Opens a file in the user's editor so they can look at it or edit it.",
+        OPEN_FILE,
+        "Opens a file for the user in omfp, as a file tab of the window they last used on this thread, as if they \
+         clicked its path. Fails when no omfp window shows this thread.",
         parameters,
-        move |arguments, context| {
-            run_open_in_editor(&arguments, || context.is_cancelled(), &cwd, &*emit)
-        },
+        move |arguments, context| run_open_file(&arguments, || context.is_cancelled(), &*open),
     )
-    .label("Open in editor")
+    .label("Open file")
 }
 
-/// The body of [`open_in_editor`], without the `omp-rpc` context. Bad arguments and cancellation become tool errors
-/// (`isError: true`), never panics (DMN-061).
-pub fn run_open_in_editor(
+/// The body of [`open_file`], without the `omp-rpc` context. Bad arguments, cancellation and a thread no window
+/// shows become tool errors (`isError: true`), never panics (DMN-061).
+pub fn run_open_file(
     arguments: &Map<String, Value>,
     is_cancelled: impl Fn() -> bool,
-    cwd: &Path,
-    emit: &dyn Fn(ThreadEvent),
+    open: impl Fn(&str, Option<u64>) -> Result<(), String>,
 ) -> Result<HostToolOutput, HostToolError> {
     if is_cancelled() {
         return Err("cancelled".into());
     }
     let path = match arguments.get("path") {
-        Some(Value::String(path)) if !path.trim().is_empty() => Path::new(path),
+        Some(Value::String(path)) if !path.trim().is_empty() => path.trim(),
         _ => return Err("`path` must be a non-empty string".into()),
     };
     let line = match arguments.get("line") {
@@ -323,40 +313,14 @@ pub fn run_open_in_editor(
             None => return Err("`line` must be a positive integer".into()),
         },
     };
-    let path = cwd.join(path);
-    let mut url = file_url(&path);
-    let mut shown = path.display().to_string();
-    if let Some(line) = line {
-        let _ = write!(url, "#L{line}");
-        let _ = write!(shown, ":{line}");
-    }
     if is_cancelled() {
         return Err("cancelled".into());
     }
-    emit(ThreadEvent::Omp {
-        frame: RpcNotification::ExtensionUiRequest(ExtensionUiRequest::OpenUrl(OpenUrlUiRequest {
-            id: new_id(),
-            url,
-            launch_url: None,
-            instructions: Some(format!("Open {shown} in the editor")),
-        })),
-    });
+    open(path, line)?;
+    let shown = line.map_or_else(|| path.to_owned(), |line| format!("{path}:{line}"));
     Ok(HostToolOutput::Text(format!(
-        "Asked the user's editor to open {shown}."
+        "Opened {shown} in the user's omfp window."
     )))
-}
-
-/// `file://` URL of an absolute path, percent-encoding everything but unreserved characters and `/`.
-fn file_url(path: &Path) -> String {
-    let mut url = String::from("file://");
-    for byte in path.to_string_lossy().bytes() {
-        if byte.is_ascii_alphanumeric() || b"/-._~".contains(&byte) {
-            url.push(char::from(byte));
-        } else {
-            let _ = write!(url, "%{byte:02X}");
-        }
-    }
-    url
 }
 
 #[cfg(test)]
@@ -372,52 +336,61 @@ mod tests {
         map
     }
 
-    fn run(arguments: Value, cancelled: bool) -> (Result<String, String>, Vec<ThreadEvent>) {
-        let events = Mutex::new(Vec::new());
-        let result = run_open_in_editor(
+    /// What an opener was asked to open: paths and lines.
+    type Opened = Vec<(String, Option<u64>)>;
+
+    /// Runs `omfp_open_file` with an opener that records its calls and fails with `refusal` when given.
+    fn run(
+        arguments: Value,
+        cancelled: bool,
+        refusal: Option<&str>,
+    ) -> (Result<String, String>, Opened) {
+        let opened = Mutex::new(Vec::new());
+        let result = run_open_file(
             &args(arguments),
             || cancelled,
-            Path::new("/ws/checkout"),
-            &|event| events.lock().unwrap().push(event),
+            |path: &str, line| {
+                opened.lock().unwrap().push((path.to_owned(), line));
+                refusal.map_or(Ok(()), |refusal| Err(refusal.to_owned()))
+            },
         );
         let result = match result {
             Ok(HostToolOutput::Text(text)) => Ok(text),
             Ok(other) => panic!("unexpected output {other:?}"),
             Err(error) => Err(error.to_string()),
         };
-        (result, events.into_inner().unwrap())
-    }
-
-    fn opened_url(events: &[ThreadEvent]) -> String {
-        match events {
-            [
-                ThreadEvent::Omp {
-                    frame: RpcNotification::ExtensionUiRequest(ExtensionUiRequest::OpenUrl(open)),
-                },
-            ] => open.url.clone(),
-            other => panic!("expected one open_url event, got {other:?}"),
-        }
+        (result, opened.into_inner().unwrap())
     }
 
     // spec: DMN-060
     #[test]
-    fn asks_the_ui_to_open_the_file_at_a_line() {
-        let (result, events) = run(json!({ "path": "/repo/src/main.rs", "line": 12 }), false);
+    fn opens_the_path_as_written_at_a_line() {
+        let (result, opened) = run(json!({ "path": " src/main.rs ", "line": 12 }), false, None);
 
         assert_eq!(
             result.unwrap(),
-            "Asked the user's editor to open /repo/src/main.rs:12."
+            "Opened src/main.rs:12 in the user's omfp window."
         );
-        assert_eq!(opened_url(&events), "file:///repo/src/main.rs#L12");
+        assert_eq!(opened, [("src/main.rs".to_owned(), Some(12))]);
+
+        let (result, opened) = run(json!({ "path": "theme.ts", "line": null }), false, None);
+        assert_eq!(
+            result.unwrap(),
+            "Opened theme.ts in the user's omfp window."
+        );
+        assert_eq!(opened, [("theme.ts".to_owned(), None)]);
     }
 
-    // spec: DMN-060
+    // spec: DMN-060, DMN-061
     #[test]
-    fn relative_paths_start_at_the_workspace_folder_and_are_url_encoded() {
-        let (result, events) = run(json!({ "path": "notes/a b.md" }), false);
+    fn a_thread_no_window_shows_is_a_tool_error_with_the_openers_reason() {
+        let (result, _) = run(
+            json!({ "path": "a.rs" }),
+            false,
+            Some("no omfp window shows this thread"),
+        );
 
-        assert!(result.is_ok());
-        assert_eq!(opened_url(&events), "file:///ws/checkout/notes/a%20b.md");
+        assert_eq!(result, Err("no omfp window shows this thread".to_owned()));
     }
 
     // spec: DMN-061
@@ -426,38 +399,34 @@ mod tests {
         for arguments in [
             json!({}),
             json!({ "path": "" }),
+            json!({ "path": " " }),
             json!({ "path": 3 }),
             json!({ "path": "a.rs", "line": 0 }),
             json!({ "path": "a.rs", "line": "x" }),
         ] {
-            let (result, events) = run(arguments.clone(), false);
+            let (result, opened) = run(arguments.clone(), false, None);
             assert!(result.is_err(), "{arguments}");
-            assert_eq!(events, Vec::new());
+            assert_eq!(opened, Vec::new());
         }
     }
 
     // spec: DMN-061
     #[test]
     fn a_cancelled_call_does_nothing_and_reports_an_error() {
-        let (result, events) = run(json!({ "path": "/repo/a.rs" }), true);
+        let (result, opened) = run(json!({ "path": "/repo/a.rs" }), true, None);
 
         assert_eq!(result, Err("cancelled".to_owned()));
-        assert_eq!(events, Vec::new());
+        assert_eq!(opened, Vec::new());
     }
 
     // spec: DMN-060
     #[test]
     fn the_tools_are_registered_with_their_schemas() {
-        let tools = thread_tools(
-            "/home".into(),
-            Arc::new(|_| {}),
-            Arc::new(|_| Ok(())),
-            "01WS",
-            None,
-        );
+        let tools = thread_tools(Arc::new(|_, _| Ok(())), Arc::new(|_| Ok(())), "01WS", None);
         let definitions: Vec<_> = tools.iter().map(HostTool::definition).collect();
 
-        assert_eq!(definitions[0].name, OPEN_IN_EDITOR);
+        assert_eq!(definitions[0].name, OPEN_FILE);
+        assert_eq!(definitions[0].label.as_deref(), Some("Open file"));
         assert_eq!(definitions[0].parameters["required"], json!(["path"]));
         assert_eq!(definitions[1].name, SET_THREAD_TITLE);
         assert_eq!(definitions[1].parameters["required"], json!(["title"]));
@@ -520,8 +489,7 @@ mod tests {
     fn the_widget_tools_are_registered_and_reach_the_widget_host_of_the_threads_workspace() {
         let host = Arc::new(FakeWidgets::default());
         let tools = thread_tools(
-            "/home".into(),
-            Arc::new(|_| {}),
+            Arc::new(|_, _| Ok(())),
             Arc::new(|_| Ok(())),
             "01WS",
             Some(Arc::clone(&host) as Arc<dyn WidgetHost>),
@@ -530,10 +498,7 @@ mod tests {
             .iter()
             .map(|tool| tool.definition().name.as_str())
             .collect();
-        assert_eq!(
-            names,
-            [OPEN_IN_EDITOR, SET_THREAD_TITLE, WIDGET_CHECK, VIEW_ADD]
-        );
+        assert_eq!(names, [OPEN_FILE, SET_THREAD_TITLE, WIDGET_CHECK, VIEW_ADD]);
         for tool in &tools {
             assert_eq!(
                 tool.definition().load_mode,

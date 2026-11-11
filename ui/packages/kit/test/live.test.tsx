@@ -139,10 +139,11 @@ describe("Spectrum", () => {
 });
 
 describe("LivePanel", () => {
-  // spec: UI-182
-  test("spectrum, the latest line per role, then the status line with its key chips", () => {
+  // spec: UI-182, UI-187
+  test("title on the border, spectrum, the latest line per role, then the status line with its key chips", () => {
     render(
       <LivePanel
+        title="Live voice"
         status="listening"
         statusLabel="listening"
         spectrum={<div data-testid="bars" />}
@@ -159,6 +160,7 @@ describe("LivePanel", () => {
     );
     const panel = screen.getByTestId("live");
     expect(panel.dataset.status).toBe("listening");
+    expect(panel.querySelector(".omfp-bbox__head .omfp-bbox__label")?.textContent).toBe("Live voice");
     expect(screen.getByTestId("bars")).toBeDefined();
     expect([...panel.querySelectorAll(".omfp-live__line")].map((line) => line.getAttribute("data-role"))).toEqual([
       "user",
@@ -172,6 +174,7 @@ describe("LivePanel", () => {
   test("a failure replaces the lines, as an alert", () => {
     render(
       <LivePanel
+        title="Live voice"
         status="error"
         statusLabel="error"
         lines={[{ role: "user", text: "hidden" }]}

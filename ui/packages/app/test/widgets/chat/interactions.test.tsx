@@ -42,12 +42,14 @@ function request(frame: Record<string, unknown>): ThreadEvent {
 const base = () => fixtureEvents("text_reply");
 
 describe("interactions", () => {
-  // spec: UI-070
+  // spec: UI-070, UI-164, UI-187
   test("an approval select renders inline at the bottom of the transcript and takes the focus", async () => {
     const { client } = renderThread(<ChatWidget />, approval().pending);
     const card = screen.getByTestId("interaction");
     expect(card.dataset.kind).toBe("select");
     expect(card.closest('[data-testid="transcript"]')).not.toBeNull();
+    expect(card.querySelector(".omfp-bbox__head > .omfp-bbox__label")?.textContent).toBe("◆ Allow tool: bash");
+    expect(within(card).getByTestId("interaction-detail").textContent).toBe("Command: echo approved-run");
     const options = within(card).getAllByTestId("interaction-option");
     expect(options.map((option) => option.textContent)).toEqual(["Approve", "Approve bash for this session", "Deny"]);
     expect(document.activeElement === options[0]).toBe(true);

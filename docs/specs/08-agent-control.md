@@ -44,7 +44,7 @@ One tool registry in the daemon, several adapters:
 
 | Adapter | Reaches | Notes |
 | --- | --- | --- |
-| **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for `open_in_editor` (DMN-060). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
+| **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for `omfp_open_file`, `set_thread_title` and the widget tools (DMN-060). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
 | **MCP server** (Streamable HTTP at `/mcp`, bearer token per thread) | threads in terminal mode, omp sessions outside omfp, other MCP-capable agents | Only needed for omp sessions not run by the daemon (RPC threads get host tools); configured in the user's own `mcp.json`, since the daemon writes nothing into workspaces (D-11). S-07 verified that a project `.omp/mcp.json` is honored and its headers are sent. |
 | **Host URI scheme** `omfp://` (`set_host_uri_schemes`) | RPC threads | State for the agent's `read` tool: `omfp://threads`, `omfp://threads/<id>`, `omfp://ui/…`. |
 | **SDK** | widgets | The same API from inside a widget, as React hooks (below). |

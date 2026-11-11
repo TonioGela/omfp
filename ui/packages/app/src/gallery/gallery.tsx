@@ -10,6 +10,8 @@ import {
   ActionRow,
   ApprovalCommand,
   Badge,
+  BorderBox,
+  BoxRule,
   Brand,
   Button,
   Card,
@@ -920,10 +922,12 @@ const PATCH = `@@ -1,5 +1,6 @@ export function Button
  export function Button() {}
 `;
 
+const LS_OUTPUT = "app\nclient\ncore\nkit\nprotocol";
+
 function ToolCards() {
   const [open, setOpen] = useState(true);
   return (
-    <Section title="Tool cards" note="UI-163">
+    <Section title="Tool cards" note="UI-163 · UI-187 · expanded: head on the border">
       <ToolCard status="running" name="bash" arg="bun test packages/kit" meta="4.2s" expanded={false}>
         <span />
       </ToolCard>
@@ -942,7 +946,14 @@ function ToolCards() {
         expanded={open}
         onExpandedChange={setOpen}
       >
-        <Code block code={"app\nclient\ncore\nkit\nprotocol"} />
+        <Code block code="ls -la ui/packages" language="bash" />
+        <BoxRule label="Output" />
+        <Code block code={LS_OUTPUT} />
+      </ToolCard>
+      <ToolCard status="running" name="bash" arg="bun test packages/kit" meta="4.2s" expanded>
+        <Code block code="bun test packages/kit" language="bash" />
+        <BoxRule label="Output" />
+        <Code block code={"bun test v1.4.0\n✓ kit styles [3.1ms]"} />
       </ToolCard>
       <ToolCard
         status="failed"
@@ -955,7 +966,12 @@ function ToolCards() {
         }
         expanded
       >
+        <Code block code="cargo xtask spec-trace" language="bash" />
+        <BoxRule label="Output" />
         <Code block code="error: UI-174 is not cited by any test" />
+      </ToolCard>
+      <ToolCard status="done" name="write" arg="docs/notes.md" meta="3 lines" expanded>
+        <Code block code={"# Notes\n\n- the title sits on the border"} language="markdown" />
       </ToolCard>
       <ToolCard status="done" name="todo" arg="3 items" expanded>
         <TodoList
@@ -976,6 +992,24 @@ function ToolCards() {
         <Diff patch={PATCH} language="ts" />
       </ToolCard>
       <ToolCard status="done" name="glob" arg="**/*.css" meta="no body" />
+    </Section>
+  );
+}
+
+/** Boxes with their title on the top border and labelled rules (UI-187). */
+function BorderBoxes() {
+  return (
+    <Section title="Border box" note="UI-187 · title on the border, labelled rule">
+      <BorderBox title="Repositories" level={3}>
+        A box whose title sits on its top border; the line never runs under the text.
+      </BorderBox>
+      <BorderBox title="Run a command?" end="0:42">
+        Metadata may sit at the right end of the border.
+        <BoxRule label="Output" />A labelled rule opens the next section.
+      </BorderBox>
+      <BorderBox title="A long title wraps where the border runs out of room; the line follows its first line">
+        Body
+      </BorderBox>
     </Section>
   );
 }
@@ -1356,6 +1390,7 @@ function LiveVoice() {
     <Section title="Live voice" note="UI-182 · UI-184 · spectrum at full, meter below" wide>
       <div className="omfp-gallery__pair">
         <LivePanel
+          title="Live voice"
           status="listening"
           statusLabel="listening"
           spectrum={<Spectrum motion="full" source={USER_VOICE} status="listening" label="Voice level" />}
@@ -1363,6 +1398,7 @@ function LiveVoice() {
           hints={LIVE_KEYS}
         />
         <LivePanel
+          title="Live voice"
           status="speaking"
           statusLabel="speaking"
           spectrum={<Spectrum motion="full" source={ASSISTANT_VOICE} status="speaking" label="Voice level" />}
@@ -1373,6 +1409,7 @@ function LiveVoice() {
       </div>
       <div className="omfp-gallery__pair">
         <LivePanel
+          title="Live voice"
           status="muted"
           statusLabel="muted"
           spectrum={<Spectrum motion="full" source={USER_VOICE} status="muted" label="Voice level" />}
@@ -1380,6 +1417,7 @@ function LiveVoice() {
           hints={[{ keys: "spc", label: "unmute" }, LIVE_KEYS[1] ?? { keys: "esc", label: "end" }]}
         />
         <LivePanel
+          title="Live voice"
           status="connecting"
           statusLabel="connecting"
           spectrum={<Spectrum source={SILENT_SOURCE} status="connecting" label="Voice level" />}
@@ -1388,6 +1426,7 @@ function LiveVoice() {
       </div>
       <div className="omfp-gallery__pair">
         <LivePanel
+          title="Live voice"
           status="working"
           statusLabel="working"
           lines={LIVE_LINES.slice(1)}
@@ -1399,6 +1438,7 @@ function LiveVoice() {
           }
         />
         <LivePanel
+          title="Live voice"
           status="error"
           statusLabel="error"
           message="live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
@@ -1771,6 +1811,7 @@ export function Gallery({ search }: { search: string }) {
         <Empties />
         <Cards />
         <ToolCards />
+        <BorderBoxes />
         <Interactions />
         <Diffs />
         <CodeDemo />

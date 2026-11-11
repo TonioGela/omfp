@@ -8,8 +8,9 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{SinkExt, StreamExt};
 use omfp_core::LiveOwner;
 use omfp_protocol::{
-    Call, ErrorBody, ErrorCode, EventFrame, HelloResult, LiveConnected, Request, Response,
-    ServerFrame, SubscribeParams, SubscribeResult, Topic, TopicEvent, decode_request,
+    BashParams, BtwParams, Call, ErrorBody, ErrorCode, EventFrame, HelloResult, LiveConnectParams,
+    LiveConnected, MessageParams, PromptParams, Request, RespondParams, Response, ServerFrame,
+    SubscribeParams, SubscribeResult, ThreadRef, Topic, TopicEvent, decode_request,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -253,6 +254,9 @@ impl Connection {
             send(&self.out, Outbound::response(id, Err(error))).await;
             return;
         }
+        if let Some(thread_id) = driven_thread(&call) {
+            self.app.services.supervisor.used(thread_id, self.number);
+        }
         match call {
             Call::SystemHello(_) => {
                 let error = bad_request("system.hello was already sent on this connection");
@@ -340,7 +344,7 @@ impl Connection {
             Topic::Thread(thread_id) => {
                 let watched = async {
                     let log = services.supervisor.thread_log(thread_id).await?;
-                    let guard = services.supervisor.watch(thread_id).await?;
+                    let guard = services.supervisor.watch(thread_id, self.number).await?;
                     Ok((log, guard))
                 }
                 .await
@@ -478,6 +482,22 @@ impl Connection {
                 let _ = dropped.send((topic, generation));
             }
         })
+    }
+}
+
+/// The thread a request sends something to on the user's behalf (a message, a shell command, an answer, an abort or
+/// a live session): the window that sent it is the one the user last used on that thread (DMN-060).
+fn driven_thread(call: &Call) -> Option<&str> {
+    match call {
+        Call::ThreadPrompt(PromptParams { thread_id, .. })
+        | Call::ThreadSteer(MessageParams { thread_id, .. })
+        | Call::ThreadFollowUp(MessageParams { thread_id, .. })
+        | Call::ThreadAbort(ThreadRef { thread_id })
+        | Call::ThreadBash(BashParams { thread_id, .. })
+        | Call::ThreadBtw(BtwParams { thread_id, .. })
+        | Call::InteractionRespond(RespondParams { thread_id, .. })
+        | Call::ThreadLiveConnect(LiveConnectParams { thread_id, .. }) => Some(thread_id),
+        _ => None,
     }
 }
 

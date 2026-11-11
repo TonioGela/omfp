@@ -57,6 +57,17 @@ pub struct LiveOwner {
     pub connection: u64,
 }
 
+/// A file the agent asked to open with the `omfp_open_file` host tool (DMN-060): the window on connection
+/// `connection` (the `system.hello` number, PRT-051), the one the user last used on the thread, opens `path` (as the
+/// agent wrote it) at `line`, as a click on the path does. `id` tells one request from the next.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenFileRequest {
+    pub id: String,
+    pub connection: u64,
+    pub path: String,
+    pub line: Option<u64>,
+}
+
 /// One input of the thread reducer.
 #[allow(clippy::large_enum_variant)] // Mirrors omp-rpc's unboxed frame unions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,6 +88,8 @@ pub enum ThreadEvent {
     /// The daemon opened a live voice session for `owner` before forwarding `live_connect` (DMN-100), or closed one
     /// omp never started (`None`, DMN-101). omp's `live_*` frames arrive as [`ThreadEvent::Omp`].
     LiveSession { owner: Option<LiveOwner> },
+    /// The daemon asks one window to open a file for the agent (DMN-060).
+    OpenFile(OpenFileRequest),
     /// A frame `omp-rpc` could not decode, or a response nobody waited for (DMN-042).
     Unknown { raw: Value },
 }

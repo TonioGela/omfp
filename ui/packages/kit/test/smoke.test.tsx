@@ -5,6 +5,8 @@ import {
   ActionRow,
   ApprovalCommand,
   Badge,
+  BorderBox,
+  BoxRule,
   Brand,
   Button,
   Card,
@@ -212,6 +214,8 @@ const CASES: readonly Case[] = [
   { name: "ToolCard", element: <ToolCard {...FORWARDED} status="done" name="bash" />, base: "omfp-tool" },
   { name: "TodoList", element: <TodoList {...FORWARDED} items={[]} />, base: "omfp-todo" },
   { name: "InteractionCard", element: <InteractionCard {...FORWARDED} title="Run?" />, base: "omfp-request" },
+  { name: "BorderBox", element: <BorderBox {...FORWARDED} title="Repositories" />, base: "omfp-bbox" },
+  { name: "BoxRule", element: <BoxRule {...FORWARDED} label="Output" />, base: "omfp-bbox__rule" },
   { name: "ApprovalCommand", element: <ApprovalCommand {...FORWARDED} command="ls" />, base: "omfp-request__code" },
   {
     name: "ResolvedLine",
@@ -259,7 +263,7 @@ const CASES: readonly Case[] = [
 ];
 
 describe("kit components", () => {
-  // spec: UI-093, UI-131, UI-157, UI-160, UI-161, UI-163, UI-164, UI-167, UI-168, UI-169, UI-170, UI-171, UI-172
+  // spec: UI-093, UI-131, UI-157, UI-160, UI-161, UI-163, UI-164, UI-167, UI-168, UI-169, UI-170, UI-171, UI-172, UI-187
   test.each(CASES.map((c) => [c.name, c] as const))("%s renders and forwards id, className, data-*", (_name, c) => {
     render(c.element);
     const root = screen.getByTestId("subject");

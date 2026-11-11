@@ -91,6 +91,21 @@ describe("bash card", () => {
     expect(output.querySelector("span")?.className).toBe("omfp-ansi-fg-blue omfp-ansi-bold");
     expect(element.textContent).toContain("in /tmp");
   });
+
+  // spec: UI-050, UI-163, UI-187
+  test("open: the head on the border, the whole command, then the output under an `Output` rule", async () => {
+    const element = await open(card("bash_tool_call", "call_bash_1"));
+    expect(element.querySelector(".omfp-tool")?.classList.contains("omfp-bbox")).toBe(true);
+    const body = element.querySelector(".omfp-tool__body");
+    expect([...(body?.children ?? [])].map((part) => part.className)).toEqual([
+      "omfp-tool-card__section",
+      "omfp-bbox__rule",
+      "omfp-tool-card__section",
+    ]);
+    expect(byTestId(element, "tool-command").textContent).toBe("echo tool-output-123");
+    expect(within(element).getByRole("heading", { level: 4, name: "Output" })).toBeDefined();
+    expect(body?.children[2]?.contains(byTestId(element, "tool-output"))).toBe(true);
+  });
 });
 
 describe("read card", () => {

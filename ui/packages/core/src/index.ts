@@ -4,7 +4,7 @@
  */
 
 export { validateAskAnswers } from "./ask.ts";
-export type { LiveOwner, ProcessState, Resolution, SessionInfo, ThreadEvent } from "./event.ts";
+export type { LiveOwner, OpenFileRequest, ProcessState, Resolution, SessionInfo, ThreadEvent } from "./event.ts";
 export type { JsonObject, JsonValue } from "./json.ts";
 export { liveErrorMessage } from "./live.ts";
 export { dialogId, reduce, replay } from "./reducer.ts";

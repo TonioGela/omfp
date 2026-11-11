@@ -95,6 +95,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `presentation` | `notify`, `setStatus`, `setWidget`, `set_editor_text`, `open_url`, `setTitle` (DMN-053) |
 | `thread_meta` | Title, model, thinking level, branch, git summary changed |
 | `live_session` | `{ owner: { client, connection } \| null }`: the daemon opened a live session for that connection (before forwarding `live_connect`), or closed one omp never started (M6, DMN-100, DMN-101); omp's own `live_phase`, `live_transcript`, `live_levels` and `live_end` frames arrive as `omp` events |
+| `open_file` | `{ id, connection, path, line }`: the agent's `omfp_open_file` asks the window on that connection (PRT-051) to open `path` at `line` (`null` for none); the state keeps the last request as `open_file`, and the window opens each `id` once (DMN-060, UI-116) |
 | `unknown` | Unknown omp frame (DMN-042) |
 
 ## Methods

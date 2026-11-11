@@ -18,6 +18,11 @@ export { Card, type CardCollapsible, type CardProps, type CardTone } from "./car
 export {
   ApprovalCommand,
   type ApprovalCommandProps,
+  BorderBox,
+  type BorderBoxProps,
+  type BoxHeadingLevel,
+  BoxRule,
+  type BoxRuleProps,
   InteractionActions,
   type InteractionActionsProps,
   InteractionCard,

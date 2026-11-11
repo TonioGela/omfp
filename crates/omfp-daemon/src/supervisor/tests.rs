@@ -12,7 +12,7 @@ use super::*;
 use crate::agent::{FakeCall, FakeLauncher, FakeReply, FakeRun};
 use crate::event_log::Start;
 use crate::git::{FakeGit, Git};
-use crate::host_tools::{OPEN_IN_EDITOR, SET_THREAD_TITLE, run_set_thread_title};
+use crate::host_tools::{OPEN_FILE, SET_THREAD_TITLE, run_set_thread_title};
 use crate::store::Store;
 use crate::threads::NewThread;
 use crate::workspaces::{NewWorkspace, Workspaces};
@@ -217,7 +217,7 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
         "the daemon's omp extension root ships the widget-builder agent"
     );
     assert_eq!(launch.spec.env, [("OMFP_TEST".into(), Some("1".into()))]);
-    assert_eq!(launch.tools, [OPEN_IN_EDITOR, SET_THREAD_TITLE]);
+    assert_eq!(launch.tools, [OPEN_FILE, SET_THREAD_TITLE]);
     // The session is stored once omp opened it (DMN-032), and its roots are the flags (DMN-029).
     assert!(h.threads.get(&id).unwrap().omp_session_id.is_some());
     assert_eq!(h.threads.roots(&id).unwrap(), launch.spec.add_dirs);
@@ -238,35 +238,54 @@ async fn every_launch_registers_the_omfp_host_uri_scheme_next_to_the_tools() {
     assert_eq!(launches.len(), 2);
     for launch in launches {
         assert_eq!(launch.uris, ["omfp"]);
-        assert_eq!(launch.tools, [OPEN_IN_EDITOR, SET_THREAD_TITLE]);
+        assert_eq!(launch.tools, [OPEN_FILE, SET_THREAD_TITLE]);
     }
 }
 
 // spec: DMN-060
 #[tokio::test]
-async fn host_tool_events_reach_the_thread() {
+async fn open_file_asks_the_window_last_used_on_the_thread_and_fails_without_one() {
     let h = harness(|_| {});
     let id = h.thread();
-    h.supervisor.start(&id).await.unwrap();
     let log = h.log(&id).await;
-    let cwd = h.launcher.launches()[0].spec.cwd.clone();
-    let emit: host_tools::Emit = {
-        let log = Arc::clone(&log);
-        Arc::new(move |event| {
-            log.push(event);
-        })
-    };
+    let opened = || log.with_state(|state| state.open_file.clone());
 
-    host_tools::run_open_in_editor(
-        json!({ "path": "notes.md" }).as_object().unwrap(),
-        || false,
-        &cwd,
-        &*emit,
-    )
-    .unwrap();
+    assert_eq!(
+        h.supervisor.open_file(&id, "notes.md", None),
+        Err(NO_WINDOW.to_owned())
+    );
+    assert_eq!(opened(), None, "nothing to open without a window");
 
-    let url = log.with_state(|state| state.presentation.open_url.clone().unwrap().url);
-    assert!(url.ends_with("/workspace/notes.md"), "{url}");
+    let first = h.supervisor.watch(&id, 1).await.unwrap();
+    let second = h.supervisor.watch(&id, 2).await.unwrap();
+    h.supervisor.open_file(&id, "src/a.rs", Some(12)).unwrap();
+    let request = opened().unwrap();
+    assert_eq!(
+        (request.connection, request.path.as_str(), request.line),
+        (2, "src/a.rs", Some(12)),
+        "the window that subscribed last"
+    );
+
+    h.supervisor.used(&id, 1);
+    h.supervisor.used(&id, 7);
+    h.supervisor.open_file(&id, "b.md", None).unwrap();
+    let next = opened().unwrap();
+    assert_eq!(
+        (next.connection, next.path.as_str(), next.line),
+        (1, "b.md", None),
+        "the watching window that drove the thread last; an unwatching one does not count"
+    );
+    assert_ne!(next.id, request.id, "each request has its own id");
+
+    drop(first);
+    h.supervisor.open_file(&id, "c.md", None).unwrap();
+    assert_eq!(opened().unwrap().connection, 2, "the last used window left");
+
+    drop(second);
+    assert_eq!(
+        h.supervisor.open_file(&id, "c.md", None),
+        Err(NO_WINDOW.to_owned())
+    );
 }
 
 // spec: DMN-033
@@ -658,7 +677,7 @@ async fn the_reaper_stops_only_idle_settled_unwatched_threads() {
     for id in [&idle, &watched, &busy] {
         h.supervisor.start(id).await.unwrap();
     }
-    let guard = h.supervisor.watch(&watched).await.unwrap();
+    let guard = h.supervisor.watch(&watched, 1).await.unwrap();
     assert_eq!(h.supervisor.watchers(&watched), 1);
     h.launcher.process(2).emit(vec![agent_start()]);
     h.wait(&busy, "the turn start", |state| !state.settled)
@@ -945,18 +964,18 @@ async fn live_connect_starts_omp_records_the_owner_and_relays_the_answer() {
     assert_eq!(answer.voice, "sol");
     assert_eq!(answer.sdp_answer, crate::agent::answer_for(OFFER));
     assert_eq!(live_offers(&h.launcher.process(0)), vec![OFFER.to_owned()]);
-    h.wait(&id, "the call's transcript", |state| {
-        state
-            .live
-            .as_ref()
-            .is_some_and(|live| live.transcript.len() == 2)
+    // Partials arrive first: wait for both lines' finals, not just for two lines.
+    h.wait(&id, "the call's final transcript", |state| {
+        state.live.as_ref().is_some_and(|live| {
+            live.transcript.len() == 2 && live.transcript.iter().all(|line| line.r#final)
+        })
     })
     .await;
     let state = h.log(&id).await.with_state(Clone::clone);
     let live = state.live.clone().unwrap();
     assert_eq!(live.owner, owner(4));
     assert_eq!(live_phase(&state), Some("listening"));
-    assert!(live.transcript.iter().all(|line| line.r#final));
+    assert_eq!(live.transcript.len(), 2);
 }
 
 // spec: DMN-105
