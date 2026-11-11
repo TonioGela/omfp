@@ -105,7 +105,7 @@ fn local_url(data_dir: &Path) -> anyhow::Result<String> {
     Ok(format!("ws://{}/api/ws", reachable(info.addr)))
 }
 
-fn reachable(addr: SocketAddr) -> SocketAddr {
+pub(crate) fn reachable(addr: SocketAddr) -> SocketAddr {
     match addr.ip() {
         IpAddr::V4(ip) if ip.is_unspecified() => {
             SocketAddr::new(Ipv4Addr::LOCALHOST.into(), addr.port())
@@ -118,7 +118,7 @@ fn reachable(addr: SocketAddr) -> SocketAddr {
 }
 
 /// The owner's token from `<data-dir>/token` (DMN-003); never created here.
-fn read_token(data_dir: &Path) -> anyhow::Result<String> {
+pub(crate) fn read_token(data_dir: &Path) -> anyhow::Result<String> {
     let path = DataDir::new(data_dir).token();
     let token = std::fs::read_to_string(&path).with_context(|| {
         format!(

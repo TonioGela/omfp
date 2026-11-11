@@ -21,8 +21,9 @@ use omfp_core::{
 use omfp_protocol::InteractionResponse;
 use omp_rpc::{
     AnswersUiResponse, CancelUiResponse, ConfirmUiResponse, ExtensionUiRequest,
-    ExtensionUiResponse, LiveConnectCommand, LiveConnectResult, LiveMuteCommand, PromptCommand,
-    RpcAgentEvent, RpcNotification, SetSessionNameCommand, ValueUiResponse,
+    ExtensionUiResponse, LiveConnectCommand, LiveConnectResult, LiveLevelsEvent, LiveMuteCommand,
+    LiveStartCommand, LiveStartResult, PromptCommand, RpcAgentEvent, RpcNotification,
+    SetSessionNameCommand, ValueUiResponse,
 };
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, watch};
@@ -65,7 +66,7 @@ const READ_ONLY_TOOLS: &[&str] = &[
     "lsp",
 ];
 
-/// omp's `live_connect` failures that come before a session exists: no `live_end` follows them (S-09).
+/// omp's `live_connect`/`live_start` failures that come before a session exists: no `live_end` follows them (S-09).
 const LIVE_NOT_STARTED: &[&str] = &[
     "live_connect requires a non-empty sdpOffer",
     "End dictation before starting live voice",
@@ -75,6 +76,9 @@ const LIVE_NOT_STARTED: &[&str] = &[
 
 /// omp's `live_mute` failure without a session.
 const LIVE_NO_SESSION: &str = "No live session is active";
+
+/// How many `live_levels` a slow subscriber may miss before it skips to the latest (DMN-110).
+const LEVELS_BUFFER: usize = 8;
 
 /// What `omfp_open_file` answers when no window shows its thread (DMN-060).
 pub const NO_WINDOW: &str = "No omfp window shows this thread, so the file cannot be opened: give the user its path \
@@ -238,7 +242,7 @@ struct Live {
     ended: watch::Receiver<bool>,
 }
 
-/// The live voice session of a thread, from `thread.live_connect` until it ends (DMN-101).
+/// The live voice session of a thread, from `thread.live_connect` or `thread.live_start` until it ends (DMN-101).
 struct VoiceSlot {
     /// Tells a session from the next one on the same thread.
     id: u64,
@@ -267,6 +271,8 @@ struct Actor {
     title_task: Mutex<Option<JoinHandle<()>>>,
     /// The live voice session (DMN-101).
     voice: Mutex<Option<VoiceSlot>>,
+    /// omp's `live_levels`, which bypass the log (DMN-110).
+    levels: broadcast::Sender<LiveLevelsEvent>,
 }
 
 impl Actor {
@@ -289,6 +295,7 @@ impl Actor {
             titled: AtomicBool::new(false),
             title_task: Mutex::new(None),
             voice: Mutex::new(None),
+            levels: broadcast::channel(LEVELS_BUFFER).0,
         }
     }
 
@@ -771,8 +778,8 @@ impl Supervisor {
         Ok(())
     }
 
-    /// Starts a live voice session for `owner` on the client's peer (DMN-100): one per thread (DMN-101), recorded as a
-    /// `live_session` event before omp gets the offer. Returns omp's SDP answer once the call is signaled.
+    /// Starts a live voice session for `owner` on the client's peer (DMN-100). Returns omp's SDP answer once the call
+    /// is signaled.
     pub async fn live_connect(
         &self,
         id: &str,
@@ -782,6 +789,51 @@ impl Supervisor {
         if sdp_offer.trim().is_empty() {
             return Err(SupervisorError::EmptyOffer);
         }
+        let answer = self
+            .open_live(id, owner, |instructions| {
+                OmpCall::LiveConnect(LiveConnectCommand {
+                    sdp_offer,
+                    voice: None,
+                    instructions: Some(instructions),
+                })
+            })
+            .await?;
+        serde_json::from_value(answer).map_err(|error| {
+            SupervisorError::Internal(format!("unexpected live_connect answer: {error}"))
+        })
+    }
+
+    /// Starts a live voice session for `owner` on the daemon machine's microphone and speakers (DMN-109). Returns the
+    /// voice once omp records.
+    pub async fn live_start(&self, id: &str, owner: LiveOwner) -> Result<String> {
+        let answer = self
+            .open_live(id, owner, |instructions| {
+                OmpCall::LiveStart(LiveStartCommand {
+                    voice: None,
+                    instructions: Some(instructions),
+                })
+            })
+            .await?;
+        serde_json::from_value::<LiveStartResult>(answer)
+            .map(|started| started.voice)
+            .map_err(|error| {
+                SupervisorError::Internal(format!("unexpected live_start answer: {error}"))
+            })
+    }
+
+    /// omp's `live_levels` of the thread's `live_start` sessions, which never reach its log (DMN-110).
+    pub async fn live_levels(&self, id: &str) -> Result<broadcast::Receiver<LiveLevelsEvent>> {
+        Ok(self.actor(id).await?.levels.subscribe())
+    }
+
+    /// Opens the thread's one live session (DMN-101) for `owner`: starts omp when needed, records the owner as a
+    /// `live_session` event, then sends omp the command `call` builds from the live instructions (DMN-105).
+    async fn open_live(
+        &self,
+        id: &str,
+        owner: LiveOwner,
+        call: impl FnOnce(String) -> OmpCall,
+    ) -> Result<Value> {
         let actor = self.actor(id).await?;
         let slot = self.inner.voice_ids.fetch_add(1, Ordering::SeqCst);
         {
@@ -820,37 +872,28 @@ impl Supervisor {
             .log
             .with_state(|state| crate::live_context::live_instructions(&title, state));
         self.push(&actor, ThreadEvent::LiveSession { owner: Some(owner) });
-        let call = OmpCall::LiveConnect(LiveConnectCommand {
-            sdp_offer,
-            voice: None,
-            instructions: Some(instructions),
-        });
+        let call = call(instructions);
         let answer = blocking(move || process.call(call)).await?;
         actor.touch();
-        match answer {
-            Ok(value) => serde_json::from_value(value).map_err(|error| {
-                SupervisorError::Internal(format!("unexpected live_connect answer: {error}"))
-            }),
-            Err(error) => {
-                match &error {
-                    // omp refused before a session existed: no `live_end` will close it.
-                    omp_rpc::Error::Command { error, .. }
-                        if LIVE_NOT_STARTED.iter().any(|known| error.contains(known)) =>
-                    {
-                        if actor.release_voice(slot) {
-                            self.push(&actor, ThreadEvent::LiveSession { owner: None });
-                        }
-                    }
-                    // The session started and failed: omp's `live_end` frees the slot.
-                    omp_rpc::Error::Command { .. } => {}
-                    // The process is gone, and the session with it.
-                    _ => {
-                        actor.release_voice(slot);
+        answer.map_err(|error| {
+            match &error {
+                // omp refused before a session existed: no `live_end` will close it.
+                omp_rpc::Error::Command { error, .. }
+                    if LIVE_NOT_STARTED.iter().any(|known| error.contains(known)) =>
+                {
+                    if actor.release_voice(slot) {
+                        self.push(&actor, ThreadEvent::LiveSession { owner: None });
                     }
                 }
-                Err(live_failure(error))
+                // The session started and failed: omp's `live_end` frees the slot.
+                omp_rpc::Error::Command { .. } => {}
+                // The process is gone, and the session with it.
+                _ => {
+                    actor.release_voice(slot);
+                }
             }
-        }
+            live_failure(error)
+        })
     }
 
     /// Stops the thread's live voice session (DMN-102); a thread whose omp does not run has none, and omp succeeds
@@ -1089,6 +1132,14 @@ impl Supervisor {
     }
 
     fn push(&self, actor: &Actor, event: ThreadEvent) {
+        // Up to ten a second for the spectrum only: they bypass the log, the state and catch-up (DMN-110).
+        if let ThreadEvent::Omp {
+            frame: RpcNotification::LiveLevels(levels),
+        } = event
+        {
+            let _ = actor.levels.send(levels);
+            return;
+        }
         // Read-only tools cannot change files: skip the `git status` of a full scan after them (DMN-023).
         let tool_end = matches!(
             &event,

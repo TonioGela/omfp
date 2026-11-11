@@ -19,7 +19,7 @@ import { browserNotifications } from "./frame/notifications.ts";
 import { Gallery } from "./gallery/gallery.tsx";
 import { isGalleryPath } from "./gallery/params.ts";
 import { createHost, type OmfpHost, OmfpProvider } from "./sdk/index.ts";
-import { TOKEN_KEY, takeToken } from "./vm/token.ts";
+import { fragmentLocal, TOKEN_KEY, takeToken } from "./vm/token.ts";
 
 /** The client name recorded as provenance (PRT-033). */
 const CLIENT_NAME = "omfp/web";
@@ -86,7 +86,9 @@ function Connection({ token, onToken }: { token: string; onToken: (token: string
 function openHost(token: string): { host: OmfpHost; client: Client } {
   const client = connect({ connector: webSocketConnector(socketUrl()), token, client: CLIENT_NAME });
   const storage = pageStorage();
-  return { host: createHost(client, storage === undefined ? {} : { storage }), client };
+  // `#local=1`: this window runs on the daemon's machine (`omfp desktop`, UI-188).
+  const local = fragmentLocal(window.location.hash);
+  return { host: createHost(client, storage === undefined ? { local } : { storage, local }), client };
 }
 
 const container = document.getElementById("root");

@@ -4,8 +4,9 @@
  *
  * The spectrum is a row of {@link SPECTRUM_BARS} log-spaced bars on a canvas, the microphone and the remote voice
  * mixed (the louder one wins each bar, each with its own gradient), drawn every animation frame from Web Audio
- * analysers ({@link AnalyserSource}); colors are the theme's role tokens. Below motion `full` it is a static level
- * meter refreshed four times a second (UI-145).
+ * analysers ({@link AnalyserSource}), or from omp's levels alone in a `live_start` session ({@link LevelsSource});
+ * colors are the theme's role tokens. Below motion `full` it is a static level meter refreshed four times a second
+ * (UI-145).
  */
 import { type HTMLAttributes, type ReactNode, type Ref, useEffect, useRef, useState } from "react";
 import { Meter as AriaMeter } from "react-aria-components";
@@ -24,7 +25,7 @@ const METER_MS = 250;
 /** How often the canvas reads the theme's colors again (a theme or scheme change needs no event). */
 const COLORS_MS = 500;
 
-/** What a live session shows: omp's phases, `speaking` derived on the client (UI-184), and `idle`. */
+/** What a live session shows: omp's phases, `speaking` derived on the client for `live_connect` (UI-184), and `idle`. */
 export type LiveStatus = "idle" | "connecting" | "listening" | "working" | "speaking" | "muted" | "error";
 
 /** RMS levels of the microphone and the remote voice in [0, 1]. */
@@ -124,6 +125,68 @@ export class AnalyserSource implements SpectrumSource {
       out[bar] = (peak / 255) ** 1.6;
     }
     return tap.rms();
+  }
+}
+
+/** How fast the levels source follows omp's levels (ms, time constant): omp sends at most ten a second. */
+const LEVELS_EASE_MS = 60;
+
+/** The voice band's shape over the bars (0..1): most energy in the low middle, never flat zero. */
+function voiceProfile(bar: number): number {
+  const x = bar / (SPECTRUM_BARS - 1);
+  return 0.35 + 0.65 * Math.exp(-(((x - 0.3) / 0.25) ** 2));
+}
+
+/** A slow ripple (0.6..1) so steady levels still move like speech. */
+function ripple(bar: number, now: number): number {
+  return 0.8 + 0.2 * Math.sin(now / 90 + bar * 0.9) * Math.sin(now / 210 - bar * 0.37);
+}
+
+/**
+ * The bars from levels alone (UI-189): omp's `live_levels` of a `live_start` session, where omp owns the audio and
+ * sends only the RMS of the microphone and the speaker (S-09). Each voice's level, eased between omp's frames, is
+ * spread over a voice-shaped profile with a slow ripple.
+ */
+export class LevelsSource implements SpectrumSource {
+  #target: Levels = { mic: 0, remote: 0 };
+  #shown: Levels = { mic: 0, remote: 0 };
+  #at = 0;
+
+  /** The latest levels, at `now` (ms). */
+  set(levels: Levels, now: number): void {
+    this.#ease(now);
+    this.#target = levels;
+  }
+
+  read(mic: Float32Array, remote: Float32Array, now: number): Levels {
+    const levels = this.levels(now);
+    const micScale = Math.min(1, Math.sqrt(levels.mic) * 1.5);
+    const remoteScale = Math.min(1, Math.sqrt(levels.remote) * 1.5);
+    for (let bar = 0; bar < SPECTRUM_BARS; bar++) {
+      const shape = voiceProfile(bar);
+      mic[bar] = micScale * shape * ripple(bar, now);
+      remote[bar] = remoteScale * shape * ripple(bar + SPECTRUM_BARS / 2, now);
+    }
+    return levels;
+  }
+
+  levels(now: number): Levels {
+    this.#ease(now);
+    return this.#shown;
+  }
+
+  #ease(now: number): void {
+    const elapsed = now - this.#at;
+    if (elapsed <= 0) {
+      return;
+    }
+    this.#at = now;
+    const keep = Math.exp(-elapsed / LEVELS_EASE_MS);
+    const { mic, remote } = this.#target;
+    this.#shown = {
+      mic: mic + (this.#shown.mic - mic) * keep,
+      remote: remote + (this.#shown.remote - remote) * keep,
+    };
   }
 }
 

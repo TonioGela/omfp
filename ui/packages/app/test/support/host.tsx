@@ -17,6 +17,7 @@ import {
   type ParamsOf,
   type ResultOf,
   type Topic,
+  type TransientFrame,
   threadTopic,
   type ViewsEvent,
   type ViewsState,
@@ -83,6 +84,24 @@ export class FakeClient implements SdkClient {
     this.unsubscribed.push(topic);
     this.model.untrack(topic);
     this.notify();
+  }
+
+  readonly #transient = new Set<(frame: TransientFrame) => void>();
+
+  onTransient(listener: (frame: TransientFrame) => void): () => void {
+    this.#transient.add(listener);
+    return () => {
+      this.#transient.delete(listener);
+    };
+  }
+
+  /** Delivers a transient frame (PRT-054) to the listeners, as the session does for a followed topic. */
+  transient(frame: TransientFrame): void {
+    if (this.model.topic(frame.topic) !== undefined) {
+      for (const listener of [...this.#transient]) {
+        listener(frame);
+      }
+    }
   }
 
   /** Calls to `method` so far. */

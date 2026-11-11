@@ -50,6 +50,7 @@ flowchart BT
 | TST-013 | Contract tests MUST fail fast with a clear message if `omp --version` differs from the pinned version (DMN-001). |
 | TST-014 | L1 fakes MUST be driven by the same fixture format as TST-012, so a fake never invents frames omp does not send. |
 | TST-015 | The fake launcher MUST play omp's live voice sequence (M6) with frames the pinned omp sends (the no-credential sequence of the contract tests, the phases, transcripts and end of the real call recorded in S-09): `live_connect` answers a canned SDP answer after `connecting` and `listening` (plus any scripted frames), or fails like omp after a session started (`connecting`, `error`, `live_end { error }`, `error`); `live_mute` moves to `muted`/`listening` and fails without a session; `live_stop` ends an active session with `live_end`. |
+| TST-051 | (M7) The fake launcher MUST play `live_start` like `live_connect` (TST-015) and answer `{ voice }`; its scripted frames may hold `live_levels` and a `speaking` phase, as the pinned omp sends for `live_start` sessions. |
 
 ## Fake LLM (`fake-llm`)
 
@@ -104,7 +105,7 @@ refuses and records every connection. The discovery requests fail at once, so ru
 | TST-030 | Transport suite: the client's transport (the TypeScript client's WebSocket transport, the only one, UI-001) MUST pass hello, auth failure, subscribe/snapshot, replay and reconnect tests under `bun test` against a real daemon (`crates/omfp-daemon/examples/test_daemon.rs`, fake launcher and fake git, started by `just test-ts`). |
 | TST-031 | Components get `data-testid` attributes for L4/L5 selectors; tests never select by CSS class or text that is likely to change. |
 | TST-032 | HTML snapshots of the TypeScript component tests MUST be normalized (generated ids and timestamps stripped) so they only change when markup really changes. |
-| TST-033 | The desktop build has a smoke test: start with `OMFP_SMOKE=1` under a virtual X server, connect to the in-process daemon, render the shell, exit 0. |
+| TST-033 | The desktop build has a smoke test: `omfp desktop` with `OMFP_SMOKE=1` under a virtual X server (`xvfb-run`, never the user's display) starts an in-process daemon (DMN-004), opens the window on it and polls the page with `eval_with_callback` every 100 ms until the shell is connected and shows a view (`[data-testid=view]` without `[data-testid=connection-banner]`, e2e's `connected()`); it then prints `OMFP_SMOKE_READY <state>`, closes the window like the user and exits 0, or exits 1 after 60 s. `OMFP_SMOKE=local` does the same on the local daemon, found or started in the background: a second test runs it twice on one data directory and checks that the first window's daemon outlives it and that the second window reuses it (ARC-003, UI-005). |
 
 ## End-to-end scenarios (L5)
 
@@ -142,6 +143,7 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 | `just test-ts` | `bun run test` in `ui/`: L0 TypeScript (the reducer against the golden states, client session/model tests), L4 (view models, kit and app component tests with the happy-dom preload), the client transport suite against the test daemon |
 | `just gen-ts` / `just gen-states` | regenerate the TypeScript protocol types (`ui/packages/protocol/src/generated.ts`) / the golden reducer states (`fixtures/states/<version>/`); `just test` fails while either is stale |
 | `just test-e2e` | L5 (builds the release web bundle first, `just build-web`) |
+| `just test-desktop` | the `omfp` crate with `--features desktop`: the desktop unit tests and the window tests of TST-033 under `xvfb-run`, one at a time (builds the release web bundle first) |
 | `just mutants` | `cargo mutants` on `omfp-core`, `omfp-protocol`, `fake-llm`, `xtask` (`--in-diff` for changed code) |
 | `just cov` | `cargo llvm-cov` report |
 | `just ci` | everything above + `spec-trace`, `clippy -D warnings`, `fmt --check`, `cargo deny check` |

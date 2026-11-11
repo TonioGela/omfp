@@ -7,22 +7,50 @@
 import type { LiveLine, LivePhase, ThreadState } from "@omfp/core";
 import type { LiveLineView, LiveStatus } from "@omfp/kit";
 
-/** Whether this browser can hold a live session (UI-180): a secure context, WebRTC and a microphone API. */
-export type LiveSupport = "available" | "insecure" | "unsupported";
+/**
+ * How this window can hold a live session (UI-180, UI-188): `webrtc` — its own microphone and a WebRTC peer
+ * (`live_connect`; a secure context, WebRTC and a microphone API); `host` — omp's own session on the daemon's machine
+ * (`live_start`), for a window without WebRTC on that machine (the desktop app on a local daemon, `#local=1`);
+ * otherwise why it cannot.
+ */
+export type LiveSupport = "webrtc" | "host" | "insecure" | "unsupported";
 
-/** This window's own session (at most one): the browser half of `live_connect`. */
+/** What {@link liveSupport} looks at. */
+export interface LiveEnvironment {
+  /** `isSecureContext`: the browser gives the microphone only to localhost, 127.0.0.1 or HTTPS. */
+  readonly secure: boolean;
+  /** `RTCPeerConnection` and `navigator.mediaDevices.getUserMedia` exist. */
+  readonly webrtc: boolean;
+  /** The window runs on the daemon's machine (`#local=1`). */
+  readonly local: boolean;
+}
+
+/** The window's live path (UI-188): WebRTC where it works, else omp's own session on the daemon's machine. */
+export function liveSupport({ secure, webrtc, local }: LiveEnvironment): LiveSupport {
+  if (webrtc && secure) {
+    return "webrtc";
+  }
+  if (local) {
+    return "host";
+  }
+  return webrtc ? "insecure" : "unsupported";
+}
+
+/** This window's own session (at most one): the browser half of `live_connect`, or omp's `live_start` session. */
 export type LocalLive =
   | { readonly kind: "idle" }
-  /** Microphone, peer and offer, then `thread.live_connect` until its answer is applied. */
+  /** Microphone, peer and offer, then `thread.live_connect` until its answer is applied; or `thread.live_start`. */
   | { readonly kind: "starting"; readonly threadId: string }
   | {
       readonly kind: "running";
       readonly threadId: string;
-      /** The peer reached `connected` (UI-181: omp's phase shows only from then on). */
+      /** `peer`: this window's microphone and peer (`live_connect`); `host`: omp's own audio (`live_start`). */
+      readonly mode: "peer" | "host";
+      /** The peer reached `connected` (UI-181: omp's phase shows only from then on); always for `host`. */
       readonly connected: boolean;
-      /** The remote voice is audible (UI-184). */
+      /** The remote voice is audible (UI-184); never for `host`, where omp reports `speaking` itself (UI-189). */
       readonly speaking: boolean;
-      /** The local track is disabled (UI-183). */
+      /** Muted: the local track is disabled (UI-183), or omp's microphone (`host`). */
       readonly muted: boolean;
     }
   /** The start failed before a session ran (microphone, peer, or the daemon's refusal), until dismissed. */
@@ -136,5 +164,5 @@ export function micButton(threadId: string, state: LiveState, local: LocalLive, 
   if (ownHere || state.live !== null) {
     return { kind: "end" };
   }
-  return support === "available" ? { kind: "start" } : { kind: "unavailable", reason: support };
+  return support === "webrtc" || support === "host" ? { kind: "start" } : { kind: "unavailable", reason: support };
 }

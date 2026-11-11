@@ -1269,3 +1269,157 @@ async fn the_reaper_keeps_a_process_with_a_live_session() {
     .await;
     reaper.abort();
 }
+
+/// The `live_start` calls a fake process received, with their instructions.
+fn live_starts(process: &crate::agent::FakeProcess) -> Vec<Option<String>> {
+    process
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            FakeCall::Call(OmpCall::LiveStart(start)) => Some(start.instructions),
+            _ => None,
+        })
+        .collect()
+}
+
+// spec: DMN-109, DMN-105, TST-051
+#[tokio::test]
+async fn live_start_starts_omp_records_the_owner_and_relays_the_voice() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher.script_live(crate::agent::FakeLive::connect(vec![
+        crate::agent::live_phase(omp_rpc::LivePhase::Speaking),
+    ]));
+
+    let voice = h.supervisor.live_start(&id, owner(4)).await.unwrap();
+
+    assert_eq!(voice, "sol");
+    h.wait(&id, "omp's speaking phase", |state| {
+        live_phase(state) == Some("speaking")
+    })
+    .await;
+    let state = h.log(&id).await.with_state(Clone::clone);
+    assert_eq!(state.live.map(|live| live.owner), Some(owner(4)));
+    let state = h.log(&id).await.with_state(Clone::clone);
+    assert_eq!(
+        live_starts(&h.launcher.process(0)),
+        vec![Some(crate::live_context::live_instructions("t", &state))]
+    );
+    assert_eq!(live_offers(&h.launcher.process(0)), Vec::<String>::new());
+}
+
+// spec: DMN-109, DMN-101
+#[tokio::test]
+async fn live_start_and_live_connect_share_the_threads_one_session() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.supervisor.live_start(&id, owner(1)).await.unwrap();
+
+    let error = h
+        .supervisor
+        .live_connect(&id, owner(2), OFFER.into())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, SupervisorError::LiveActive { .. }),
+        "{error:?}"
+    );
+    let error = h.supervisor.live_start(&id, owner(2)).await.unwrap_err();
+    assert!(
+        matches!(error, SupervisorError::LiveActive { .. }),
+        "{error:?}"
+    );
+    assert_eq!(live_starts(&h.launcher.process(0)).len(), 1);
+    assert_eq!(live_offers(&h.launcher.process(0)).len(), 0);
+
+    h.supervisor.live_stop(&id).await.unwrap();
+    h.wait(&id, "the end of the session", |state| state.live.is_none())
+        .await;
+    h.supervisor
+        .live_connect(&id, owner(3), OFFER.into())
+        .await
+        .expect("a new session once omp ended the first");
+}
+
+// spec: DMN-109, DMN-103
+#[tokio::test]
+async fn a_closed_connection_stops_its_live_start_session() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.supervisor.live_start(&id, owner(1)).await.unwrap();
+
+    h.supervisor.release_live(1).await;
+
+    h.wait(&id, "the stop", |state| state.live.is_none()).await;
+    assert!(!h.launcher.process(0).live_active());
+}
+
+// spec: DMN-109, DMN-104, TST-051
+#[tokio::test]
+async fn a_failed_live_start_reads_like_live_connect() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher
+        .script_live(crate::agent::FakeLive::no_credential());
+
+    let error = h.supervisor.live_start(&id, owner(1)).await.unwrap_err();
+
+    let SupervisorError::Live { message, omp } = &error else {
+        panic!("{error:?}");
+    };
+    assert_eq!(omp, crate::agent::NO_CREDENTIAL);
+    assert!(message.contains("/login openai-codex"), "{message}");
+    h.wait(&id, "the end of the session", |state| {
+        state.live.is_none() && state.live_error.as_deref() == Some(message.as_str())
+    })
+    .await;
+    h.launcher.script_live(crate::agent::FakeLive::default());
+    h.supervisor
+        .live_start(&id, owner(1))
+        .await
+        .expect("omp's `live_end` freed the thread");
+}
+
+// spec: DMN-110, TST-051
+#[tokio::test]
+async fn live_levels_reach_the_levels_stream_and_never_the_log() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher.script_live(crate::agent::FakeLive::connect(vec![
+        crate::agent::live_levels(0.25, 0.5),
+        crate::agent::live_levels(0.125, 0.0),
+        crate::agent::live_phase(omp_rpc::LivePhase::Speaking),
+    ]));
+    let mut levels = h.supervisor.live_levels(&id).await.unwrap();
+
+    h.supervisor.live_start(&id, owner(1)).await.unwrap();
+
+    h.wait(&id, "omp's speaking phase", |state| {
+        live_phase(state) == Some("speaking")
+    })
+    .await;
+    let level = |input, output| omp_rpc::LiveLevelsEvent { input, output };
+    assert_eq!(levels.recv().await.unwrap(), level(0.25, 0.5));
+    assert_eq!(levels.recv().await.unwrap(), level(0.125, 0.0));
+    let log = h.log(&id).await;
+    let Start::Replay(events) = log
+        .subscribe(Some(&crate::event_log::Position {
+            epoch: log.position().epoch,
+            seq: 0,
+        }))
+        .start
+    else {
+        panic!("the epoch's events are all kept");
+    };
+    let frames: Vec<String> = events
+        .iter()
+        .filter_map(|sequenced| match &sequenced.event {
+            ThreadEvent::Omp { .. } => serde_json::to_value(&sequenced.event)
+                .ok()
+                .and_then(|value| value["frame"]["type"].as_str().map(str::to_owned)),
+            _ => None,
+        })
+        .filter(|kind| kind.starts_with("live_"))
+        .collect();
+    assert_eq!(frames, ["live_phase", "live_phase", "live_phase"]);
+}

@@ -6,6 +6,7 @@ import type { ConnectionStatus } from "@omfp/client";
 import { announcement, banner } from "../../src/vm/connection.ts";
 import {
   chooseToken,
+  fragmentLocal,
   fragmentToken,
   fragmentWithoutToken,
   TOKEN_KEY,
@@ -89,5 +90,24 @@ describe("token", () => {
     expect(replaced).toEqual(["/?x=1#thread=t1"]);
     expect(takeToken(page(""))).toBe("abc");
     expect(replaced).toHaveLength(1);
+  });
+
+  // spec: UI-188
+  test("`local=1` marks a window on the daemon's machine; it stays in the address bar and is never stored", () => {
+    expect(fragmentLocal("#token=abc&local=1")).toBe(true);
+    expect(fragmentLocal("#local=1")).toBe(true);
+    expect(fragmentLocal("#token=abc")).toBe(false);
+    expect(fragmentLocal("#local=0")).toBe(false);
+    expect(fragmentLocal("#local=10")).toBe(false);
+    const stored = new Map<string, string>();
+    const replaced: string[] = [];
+    const page: TokenPage = {
+      location: { hash: "#token=abc&local=1", pathname: "/", search: "" },
+      history: { replaceState: (_data, _unused, url) => replaced.push(String(url)) },
+      storage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
+    };
+    expect(takeToken(page)).toBe("abc");
+    expect(replaced).toEqual(["/#local=1"]);
+    expect([...stored.keys()]).toEqual([TOKEN_KEY]);
   });
 });

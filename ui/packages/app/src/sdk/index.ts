@@ -35,7 +35,7 @@
  * | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file tab (UI-115) |
  * | `useMissingFile(path, missing, options)` | finds the file a path that does not exist names (`workspaces.find_file`): one opens in its place, several open the frame's picker (UI-117) |
  * | `useFileTabs(workspaceId)` | this window's file tabs of a workspace, `select` and `close` |
- * | `useLive()` | `[live, snapshot]`: this window's live voice session (start, end, mute, spectrum source, UI-180..UI-186) |
+ * | `useLive()` | `[live, snapshot]`: this window's live voice session (start, end, mute, spectrum source, UI-180..UI-189) |
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
  * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,

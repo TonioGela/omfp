@@ -1858,6 +1858,37 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "thread.live_start": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one thread.",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadRef",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`thread.live_start` result: the voice omp uses once the host's session records (PRT-053, DMN-109).",
+      "properties": {
+        "voice": {
+          "description": "The realtime voice omp uses.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "voice"
+      ],
+      "title": "LiveStarted",
+      "type": "object"
+    }
+  },
   "thread.live_stop": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

@@ -12,7 +12,7 @@ only be reachable from the human UI.
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; M5d Crush, M6 live voice and M6b widget builder done; next: M7 desktop, M8 subagents);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; M5d Crush, M6 live voice, M6b widget builder and M7 desktop done; next: M8 subagents);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -32,7 +32,7 @@ only be reachable from the human UI.
 
 ```sh
 nix develop                      # or: nix develop -c sh -c '<command>'
-just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-ts, test-contract, test-e2e, deny
+just ci                          # lint, check-versions, spec-trace, check-wasm, test, test-ts, test-contract, test-e2e, test-desktop, deny
 just test                        # fast Rust tests (no omp process)
 just test-ts                     # `bun run test` in ui/ (reducer goldens, client, kit + app component tests; transport suite against a fake-launcher daemon)
 just test-contract               # contract tests against the pinned omp + fake LLM
@@ -41,8 +41,10 @@ just gen-states                  # golden reducer states fixtures/states/<ver>/ 
 just gen-ts                      # ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas
 just gen-bun-nix                 # ui/bun.nix from ui/bun.lock (bun2nix), after every JS dependency change
 just test-e2e                    # L5 journeys: builds the web bundle, headless Chromium + daemon + omp + fake LLM
+just test-desktop                # `omfp --features desktop`: desktop unit tests + the Tauri window under xvfb-run (TST-033)
 just build-web                   # release bundle of the TypeScript UI into ui/packages/app/dist (`bun run build`)
 just serve [daemon args]         # try the app: release bundle + `omfp daemon` with your HOME, ~/.omp, default data dir
+just desktop [desktop args]      # try the desktop app: one more window on your local daemon (started in the background)
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
 cargo xtask check-versions       # omp / omp-rpc pins agree
 ```
@@ -68,9 +70,12 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       check, widget folders and versions, oxc transpiling and the `/widgets/<key>/…` route, copies;
                       widgets/docs.md is `omfp://docs/widgets`), WebSocket server (polling of watched workspaces:
                       server/services/polls.rs; the `views/<id>` topic: server/services/views.rs);
-                      `omfp_daemon::{start, run, discover}` back `omfp daemon` (and later `omfp desktop`);
+                      `omfp_daemon::{start, run, discover}` back `omfp daemon` and `omfp desktop`;
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
-crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI)
+crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI), and with
+                      the `desktop` feature (Tauri 2, WebKitGTK) `desktop` (desktop.rs: find or start the background
+                      daemon, the window on its own UI, the theme push of `--connect`, the `OMFP_SMOKE` check;
+                      build.rs, tauri.conf.json, icons/ with the icon's HTML source; tests/desktop_smoke.rs, TST-033)
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
@@ -143,6 +148,11 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 
 - Browsers in tests, spikes and smoke checks always run **headless** (Chromium `--headless=new`; WebKitGTK under
   `xvfb-run`), never on the user's display: a visible window can be disturbed by the mouse and changes results.
+- The desktop window (`--features desktop`) is plain `cargo build`: no Tauri CLI, no JS, no IPC, no capabilities.
+  `tauri-build` rewrites `crates/omfp/gen/schemas/` on every build (gitignored) and needs `crates/omfp/icons/icon.png`
+  (RGBA). WebKitGTK has no `RTCPeerConnection` (the desktop's live voice uses omp's `live_start`, S-09) and keys
+  `localStorage` by origin, port included. Parallel `xvfb-run -a` can pick the same display: `just test-desktop` runs
+  one test at a time.
 - `convco` does not build from nixpkgs, so commitizen checks commit messages.
 - `typos` skips `fixtures/` (streamed deltas split words).
 - Component tests need a DOM: `bun run test` (in `ui/`) preloads `ui/test/dom.ts` (happy-dom) only for

@@ -15,10 +15,12 @@ nix develop          # or: direnv allow (.envrc contains `use flake`)
 | Testing | `cargo-nextest`, `cargo-insta`, `cargo-llvm-cov`, `cargo-mutants`, `cargo-deny`, `bacon` |
 | TypeScript (`ui/`) | `bun` 1.4.4 (runtime, package manager, test runner), `bun2nix` 2.1.2 (patched, see below), `biome` 2.6.5 (format and lint; from nixpkgs because the npm build is a glibc binary NixOS cannot run); `typescript` 7.0.2 (native `tsc`) and `@types/bun` come from `ui/bun.lock` through `ui/bun.nix` |
 | E2E / smoke (Linux) | `chromium`, `chromedriver`, `xvfb-run` |
+| Desktop (Linux, M7) | `pkg-config`, `webkitgtk_4_1` (WebKitGTK 2.54, ABI 4.1; GTK3, GLib, cairo come through its `.pc` files), `libsoup_3`, `glib-networking` (TLS for `omfp desktop --connect https://…`). No Tauri CLI and no libxdo/appindicator: `cargo build -p omfp --features desktop` is enough (S-04) |
 | Utilities | `just`, `git`, `jq`, `websocat`, `nixfmt` |
 
 Environment set by the shell: `RUST_SRC_PATH`, `OMFP_BUN_CACHE` (the Bun install cache of `ui/`'s dependencies, built by
-Nix from `ui/bun.nix`); on Linux also `CHROME_BIN`.
+Nix from `ui/bun.nix`); on Linux also `CHROME_BIN` and `GIO_EXTRA_MODULES` (glib-networking's GIO modules: listing the
+package in the shell does not set it, and WebKitGTK shows "TLS support is not available" without it).
 
 Known workarounds:
 
@@ -26,12 +28,15 @@ Known workarounds:
   `lockfileVersion == 1`; versions 2 and 3 parse unchanged. The flake applies the open upstream PR
   nix-community/bun2nix#110 (commit `0456acb`) with `fetchpatch`. Drop it once the PR is released and the input moves
   to that bun2nix (or an omp upgrade, ENV-020, brings it).
+- The desktop window (M7) needs no variable under Xvfb or headless weston. With NVIDIA's proprietary driver on Wayland,
+  WebKitGTK is known to show a blank window (untested: the S-04 machine has an AMD GPU): run it with
+  `WEBKIT_DISABLE_DMABUF_RENDERER=1`; it is not set by default.
 
 | ID | Requirement |
 | --- | --- |
 | ENV-001 | Every tool needed by `just ci` MUST come from the dev shell; nothing is installed with `cargo install`, `npm` or downloaded by tools at run time. The JavaScript dependencies of `ui/` come from Nix too: `bun2nix` turns `ui/bun.lock` into `ui/bun.nix` (`just gen-bun-nix`, committed; `just check-bun-nix`, run by `just ui-install`, fails when it is stale), Nix builds Bun's install cache from it (`OMFP_BUN_CACHE`), and `just ui-install` runs `bun install --frozen-lockfile --offline` against that cache. |
 | ENV-002 | `flake.lock` pins every input. `nixpkgs` and `rust-overlay` are updated deliberately, in their own commits, with `just ci` green. |
-| ENV-003 | Supported dev systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. Linux-only tools (Chromium, chromedriver, xvfb) are excluded on macOS. |
+| ENV-003 | Supported dev systems: `x86_64-linux`, `aarch64-linux`, `aarch64-darwin`. Linux-only tools (Chromium, chromedriver, xvfb, WebKitGTK and the desktop window) are excluded on macOS. |
 
 ## Version pinning
 

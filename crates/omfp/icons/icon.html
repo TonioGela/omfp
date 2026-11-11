@@ -1,0 +1,47 @@
+<!doctype html>
+<!-- The desktop icon (M7): the brand mark `◆` in the Synth gradient (dark primary → tertiary, UI-139) on the dark
+     surface. Rendered headlessly into icon.png (RGBA, which Tauri needs), from the repository root in the dev shell:
+     $CHROME_BIN --headless=new --hide-scrollbars --window-size=512,512 --default-background-color=00000000 \
+       - -screenshot=crates/omfp/icons/icon.png crates/omfp/icons/icon.html   (without the space in `- -screenshot`) -->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      @font-face {
+        font-family: "Commit Mono";
+        font-weight: 700;
+        src: url(../../../ui/packages/kit/fonts/commit-mono-latin-700-normal.woff2);
+      }
+      html,
+      body {
+        margin: 0;
+        width: 512px;
+        height: 512px;
+        background: transparent;
+        overflow: hidden;
+      }
+      .tile {
+        position: absolute;
+        inset: 16px;
+        border-radius: 112px;
+        background: #12131a;
+        display: grid;
+        place-items: center;
+      }
+      .mark {
+        --p: #44d8f0;
+        --t: #c6c0ff;
+        --e: color-mix(in oklab, var(--t) 68%, #e2e1ec);
+        display: inline-block;
+        font: 700 600px/0.62 "Commit Mono", "DejaVu Sans Mono", monospace;
+        background: linear-gradient(135deg, var(--p) 30%, var(--t) 66%, var(--e) 85%);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="tile"><span class="mark">◆</span></div>
+  </body>
+</html>

@@ -569,6 +569,14 @@ pub struct LiveConnected {
     pub voice: String,
 }
 
+/// `thread.live_start` result: the voice omp uses once the host's session records (PRT-053, DMN-109).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveStarted {
+    /// The realtime voice omp uses.
+    pub voice: String,
+}
+
 /// `thread.live_mute` params (PRT-050, DMN-102).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

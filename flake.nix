@@ -173,6 +173,12 @@
               pkgs.chromedriver
               # Desktop smoke test under a virtual X server
               pkgs.xvfb-run
+              # Desktop (M7, S-04): Tauri 2 on WebKitGTK 4.1 (GTK3, GLib, cairo come through webkitgtk's .pc files)
+              pkgs.pkg-config
+              pkgs.webkitgtk_4_1
+              pkgs.libsoup_3
+              # TLS for `omfp desktop --connect https://…`: GIO loads glib-networking from GIO_EXTRA_MODULES (env below)
+              pkgs.glib-networking
             ];
 
             env = {
@@ -181,6 +187,8 @@
             }
             // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
               CHROME_BIN = lib.getExe pkgs.chromium;
+              # Adding glib-networking to `packages` does not set it: the shell's GIO_EXTRA_MODULES holds only dconf.
+              GIO_EXTRA_MODULES = "${pkgs.glib-networking}/lib/gio/modules";
             };
 
             shellHook = ''

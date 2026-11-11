@@ -22,7 +22,7 @@ flowchart LR
 | S-01 | Does `omp-rpc` (tag of the pinned omp) compile for `wasm32-unknown-unknown`? If not: fork with an optional `client` feature, or vendor the generated `wire.rs` with a script that copies it from the tag. | ARC-011 | **Done (M0):** compiles as-is; `omfp-core` depends on it directly. |
 | S-02 | omp against `fake-llm`: custom `openai-completions` provider streams text and tool calls; which `config.yml` keys make a run offline and deterministic (catalog refresh, update check, title, memory, advisor); how to detect stray network access. | TST-020/021, 06 fake LLM section | **Done (M0):** text round trip works; background catalog discovery cannot be disabled, so tests run behind a deny proxy with a list of known discovery hosts (06). |
 | S-03 | Code highlighting in the web bundle and the desktop webview: candidate libraries, bundle size and speed on a 5k-line file. | UI-090 | **Done (M5):** highlight.js 11.12 core through lowlight 3.3, each grammar a lazily `import()`ed chunk, `hljs-*` classes colored by the theme's role tokens in kit.css (light, dark, matugen and hand-written themes apply without rebuilding), tokens rendered as React elements (no `dangerouslySetInnerHTML`), Markdown fences through react-markdown's `code` component (not `rehype-highlight`, which bundles 37 grammars). Measured (Bun 1.4.4 minify + splitting, gzip): lowlight 10 KiB in the main chunk, 0.3–4 KiB per grammar, 40 KiB for 30 languages; Shiki 4.6 (JavaScript regex engine, CSS-variables theme) 56 KiB core, 1–40 KiB per grammar (ruby 182 KiB), 313 KiB for 30. On a 5k-line TypeScript file lowlight takes 44 ms in Chromium 157 and 51 ms in WebKitGTK 2.54, Shiki 242 ms and 1.7 s; hast → React 5 ms vs 108 ms. Shiki's finer TextMate scopes collapse onto our ~12 role colors anyway. The app bundle was 276 KiB gzip of the 3 MiB budget before M5. |
-| S-04 | Tauri 2 desktop on NixOS in the dev shell: window opens (webkitgtk), the web bundle connects to the local daemon, xterm.js works in the webview. | UI-001, TRM-021 | |
+| S-04 | Tauri 2 desktop on NixOS in the dev shell: window opens (webkitgtk), the web bundle connects to the local daemon, xterm.js works in the webview. | UI-001, TRM-021 | **Done (M7):** works with Tauri 2.12 on nixpkgs WebKitGTK 2.54 (ABI 4.1) behind a `desktop` feature of `omfp` (without it the binary links no WebKit and keeps its size; with it +10.9 MB, +12.6 s clean release build). The dev shell needs only `pkg-config`, `webkitgtk_4_1`, `libsoup_3`, plus `glib-networking` with an explicit `GIO_EXTRA_MODULES` for `https://` ("TLS support is not available" without it); no Tauri CLI, no JS: `build.rs` (`tauri_build::build()`), a minimal `tauri.conf.json` (no windows, `csp: null`) and an RGBA `icons/icon.png`. A window on the daemon's own `http://127.0.0.1:<port>/#token=…` runs the real app (WebSocket, fonts, `/theme.css`, import map, kit, sdk, CodeMirror with vim), connected 234–423 ms after opening; `isSecureContext` is true, `RTCPeerConnection` is missing (S-09: the desktop uses omp's `live_start`), notifications are denied unless the window allows them in its permission handler. Tauri injects its IPC into the remote page but its ACL refuses every command without capabilities, so `--connect` pages get no native access. WebKit keys `localStorage` by origin, port included: a random daemon port loses it at every restart, so ARC-003 binds the configured port first. One process per window (≈266 MiB PSS each, ≈115 MiB for an extra window in one process) avoids single-instance IPC (D-Bus) and confines a WebKit crash to its window. The detached daemon (own process group, stdin `/dev/null`, log file) survives the window, Ctrl-C and terminal hangup; two windows started at once end on one daemon (the data directory's lock decides). Smoke test: `eval_with_callback` polling until the shell is connected, 4.9 s under `xvfb-run` (3 s of it Xvfb), 1.8–2.0 s under headless weston; no DMABUF/compositing variable needed. `cargo deny` with `omfp/desktop` passes (only advisory: unmaintained `proc-macro-error`, transitive). The xterm.js part was dropped with the terminal (deferred). |
 | S-05 | `dx` 0.7.10 + nixpkgs `wasm-bindgen-cli` 0.2.130: pin `wasm-bindgen = "=0.2.130"` in the workspace and check `dx build --platform web` uses the shell's binary without downloading another. | 01 | **Done (M0):** `dx build -p omfp-ui --platform web` uses the shell's wasm-bindgen; nothing downloaded. dx 0.7.10 panics on glob `default-members`, so the workspace sets none. |
 | S-06 | Transcript virtualization in Dioxus with variable-height items, streaming at the bottom. | UI-042 | **Done (M2):** in headless Chromium 157 a 10,000-message transcript keeps 7–13 items (≈150–400 nodes) in the DOM: unmeasured items count as 120 px, measured heights come from `onresize` per item, two spacers stand for the rest. Bottom pinning holds through streaming; only user scrolling (wheel up, ArrowUp/PageUp/Home, pointer or touch drag) unpins — layout-driven scroll events must not, or the bottom is lost while streaming — and reaching the bottom pins again. The container exposes `data-pinned`. |
 | S-07 | Multi-workspace threads: `/add-dir` and `/remove-dir` over RPC (idle and busy); repo-level context files (`AGENTS.md`) and rules picked up from `--add-dir` roots when cwd is the thread home; injecting a per-thread MCP server through `<home>/.omp/mcp.json` (08). | DMN-029, DMN-030, 08 | **Done (M1):** `/add-dir` over RPC is a local command (no model turn) that adds the root live; `AGENTS.md` of every `--add-dir` root reaches the model, but only when the session is bound at launch (`--session-dir … --continue`, DMN-030); `<home>/.omp/mcp.json` is honored and its headers are sent. `/add-dir` while the thread is busy is still unverified against real omp (DMN-029). |
@@ -325,15 +325,40 @@ agent starts the builder in the background, the builder writes the widget and re
 daemon, and the main agent places it from the follow-up turn (the fake LLM's `any_order` steps make the concurrent
 requests deterministic).
 
-## M7 — Desktop
+## M7 — Desktop (done)
 
 Scope: ARC-003, DMN-004, UI-004, UI-005, TST-033, `omfp desktop` with Tauri 2 (D-18): finds or starts the local daemon
-in the background and opens one more window on it (D-15/D-16), or with `--connect <url>` opens a window on a remote daemon; watches the client-side theme file and pushes it (UI-091); spike S-04 (Tauri on NixOS, webkitgtk) first.
+in the background and opens one more window on it (D-15/D-16), or with `--connect <url>` opens a window on a remote daemon; watches the client-side theme file and pushes it (UI-091); live voice in the desktop window through omp's `live_start`, since WebKitGTK has no WebRTC (S-09); spike S-04 (Tauri on NixOS, webkitgtk) first.
 `open_in_editor`, moved here from M5, is no longer part of M7: it became `omfp_open_file` (DMN-060), which opens the
 file in the omfp window the user last used on the thread, web and desktop alike, with no external editor.
 
 Acceptance: desktop smoke test passes under `xvfb-run`; a second `omfp desktop` opens another window on the same daemon,
 each window selecting a different thread; a browser attaches to the same daemon and sees the same threads.
+
+Result: `omfp desktop [--connect URL] [--token T] [--data-dir D] [-- daemon args]` is the `omfp` binary built with
+its `desktop` feature (Tauri 2.12 on WebKitGTK 4.1, S-04; without the feature nothing links WebKit), one window per
+process (D-16). Without `--connect` it resolves the data directory and bind address as `omfp daemon` would (command
+line, then the config file), finds the running daemon with `discover`, or starts `omfp daemon` detached: its own
+process group, stdin `/dev/null`, output appended to `<data-dir>/daemon.log`, reaped by a thread while the window
+lives; on the configured or default `127.0.0.1:7420` first, so the window's origin and `localStorage` survive daemon
+restarts, and on a random port of the same interface only when that port is taken (never replacing an explicit
+`--bind`; ARC-003 amended). The window loads the daemon's own UI at `http://<addr>/#token=…&local=1` with no assets,
+no IPC and no capabilities, keeps its web storage in `<data-dir>/webview`, allows the UI's notifications, and the
+command prints the browser URL with the token (UI-004). With `--connect`, the window opens `<url>/#token=…` without
+`local=1`, and the theme file of this machine (`$XDG_CONFIG_HOME/omfp/theme.css`) is followed and sent to that daemon
+with `theme.set` (removal clears it); a local daemon follows the file itself (UI-091). Live voice picks its path per
+window (UI-188): `live_connect` where WebRTC exists, else omp's own `thread.live_start` session when `local=1` says the
+window runs on the daemon's machine (DMN-109, PRT-053), its spectrum drawn from omp's `live_levels`, which the daemon
+relays as transient frames outside the event log (DMN-110, PRT-054, UI-189), else the mic button says why; the fake
+launcher plays `live_start` (TST-051). The smoke test (TST-033) runs the window under `xvfb-run` with `OMFP_SMOKE=1`
+on an in-process daemon (DMN-004) and polls the page with `eval_with_callback` until the shell is connected, then
+closes the window; a second test runs `OMFP_SMOKE=local` twice on one data directory: the first window's background
+daemon outlives it and the second window reuses it (UI-005). `just test-desktop` runs them in `just ci`, `just lint`
+adds the desktop clippy run, `cargo deny` checks the Tauri crates, and `just desktop` tries it. The dev shell gains
+`pkg-config`, `webkitgtk_4_1`, `libsoup_3`, `glib-networking` and `GIO_EXTRA_MODULES`; the icon is the `◆` mark in the
+Synth gradient, rendered headlessly from `crates/omfp/icons/icon.html`. Screenshots (`/tmp/omfp-desktop-*.png`): two
+desktop windows on one daemon showing different threads, and Chromium on the same daemon with the same threads.
+Packaging the flake's `omfp` package (wrapped with glib-networking, bundled `web/` and `omp`) is left to M9.
 
 ## M8 — Subagents, tree, goal
 

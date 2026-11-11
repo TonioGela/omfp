@@ -1397,6 +1397,76 @@ async fn closing_the_owning_connection_stops_its_live_session() {
     )));
 }
 
+// spec: DMN-109, PRT-053, DMN-110, PRT-054
+#[tokio::test(flavor = "multi_thread")]
+async fn live_start_relays_the_voice_and_levels_reach_every_subscriber_as_transient_frames() {
+    use omfp_daemon::agent::{FakeLive, live_levels, live_phase};
+    let daemon = daemon(&[]).await;
+    let (mut desktop, desktop_number) = numbered(&daemon, "omfp/desktop").await;
+    let (mut web, _) = numbered(&daemon, "omfp/web").await;
+    let thread = create_thread(&mut desktop).await;
+    let topic = format!("thread/{thread}");
+    let mut follower = Follower::snapshot(&mut web, &thread, None).await;
+    daemon.launcher.script_live(FakeLive::connect(vec![
+        live_levels(0.25, 0.5),
+        live_phase(omp_rpc::LivePhase::Speaking),
+    ]));
+
+    let started = desktop
+        .ok("thread.live_start", json!({ "threadId": thread }))
+        .await;
+
+    assert_eq!(started, json!({ "voice": "sol" }));
+    assert_eq!(
+        web.transient(&topic).await,
+        json!({
+            "type": "transient",
+            "topic": topic,
+            "event": { "kind": "live_levels", "input": 0.25, "output": 0.5 }
+        })
+    );
+    follower
+        .until(&mut web, |state| {
+            state
+                .live
+                .as_ref()
+                .and_then(|live| live.phase)
+                .is_some_and(|phase| phase == omp_rpc::LivePhase::Speaking)
+        })
+        .await;
+    let live = follower.state.live.clone().unwrap();
+    assert_eq!(live.owner.connection, desktop_number);
+    assert_eq!(live.owner.client, "omfp/desktop");
+}
+
+// spec: DMN-109, DMN-103, DMN-101
+#[tokio::test(flavor = "multi_thread")]
+async fn a_live_start_session_is_the_threads_one_and_stops_with_its_connection() {
+    let daemon = daemon(&[]).await;
+    let (mut owner, _) = numbered(&daemon, "omfp/desktop").await;
+    let (mut watcher, _) = numbered(&daemon, "omfp/web").await;
+    let thread = create_thread(&mut owner).await;
+    owner
+        .ok("thread.live_start", json!({ "threadId": thread }))
+        .await;
+    let busy = watcher
+        .call(
+            "thread.live_connect",
+            json!({ "threadId": thread, "sdpOffer": OFFER }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(busy["code"], "conflict", "{busy}");
+    let mut follower = Follower::snapshot(&mut watcher, &thread, None).await;
+
+    drop(owner);
+
+    follower
+        .until(&mut watcher, |state| state.live.is_none())
+        .await;
+    assert!(!daemon.launcher.process(0).live_active());
+}
+
 // spec: DMN-060
 #[tokio::test(flavor = "multi_thread")]
 async fn open_file_reaches_the_window_last_used_on_the_thread_and_fails_without_one() {

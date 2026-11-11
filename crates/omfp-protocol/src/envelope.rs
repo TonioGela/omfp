@@ -294,6 +294,21 @@ pub enum ServerFrame {
     ResyncRequired {
         topic: Topic,
     },
+    /// A momentary value of a topic, outside its event stream (PRT-054): no `seq`, not replayed, not part of the
+    /// topic's state; dropped rather than queued when the client falls behind.
+    Transient {
+        topic: Topic,
+        event: TransientEvent,
+    },
+}
+
+/// The `event` of a transient frame (PRT-054).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum TransientEvent {
+    /// omp's `live_levels` of a `live_start` session on `thread/<id>` (DMN-110): microphone (`input`) and speaker
+    /// (`output`) RMS in [0, 1], at most ten a second.
+    LiveLevels { input: f64, output: f64 },
 }
 
 /// One event of a topic (PRT-022).

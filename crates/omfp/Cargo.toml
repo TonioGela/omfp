@@ -1,6 +1,6 @@
 [package]
 name = "omfp"
-description = "The `omfp` binary (D-15): `omfp daemon` runs the daemon, `omfp theme set` sets the UI theme."
+description = "The `omfp` binary (D-15): `omfp daemon` runs the daemon, `omfp theme set` sets the UI theme, `omfp desktop` opens a desktop window."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -18,6 +18,10 @@ name = "omfp"
 path = "src/main.rs"
 doc = false
 
+[features]
+# `omfp desktop` (M7): links WebKitGTK through Tauri; daemon-only builds leave it off.
+desktop = ["dep:tauri", "dep:tauri-build"]
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
@@ -25,11 +29,16 @@ futures.workspace = true
 omfp-daemon.workspace = true
 omfp-protocol.workspace = true
 serde_json.workspace = true
+tauri = { workspace = true, optional = true }
 tokio.workspace = true
 tokio-tungstenite.workspace = true
 
+[build-dependencies]
+tauri-build = { workspace = true, optional = true }
+
 [dev-dependencies]
 omfp-core.workspace = true
+rustix.workspace = true
 tempfile.workspace = true
 
 [lints]

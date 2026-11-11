@@ -1515,6 +1515,36 @@ expression: type_schemas()
     "title": "Topic",
     "type": "string"
   },
+  "TransientEvent": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "The `event` of a transient frame (PRT-054).",
+    "oneOf": [
+      {
+        "description": "omp's `live_levels` of a `live_start` session on `thread/<id>` (DMN-110): microphone (`input`) and speaker\n(`output`) RMS in [0, 1], at most ten a second.",
+        "properties": {
+          "input": {
+            "format": "double",
+            "type": "number"
+          },
+          "kind": {
+            "const": "live_levels",
+            "type": "string"
+          },
+          "output": {
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "input",
+          "output"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "TransientEvent"
+  },
   "ViewsEvent": {
     "$defs": {
       "WidgetInfo": {

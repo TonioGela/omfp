@@ -3,7 +3,7 @@
  *
  * - `generated.ts`: params, results, DTOs, topic events and errors, generated from the daemon's JSON Schemas by
  *   `just gen-ts` (AGT-007), with the `Methods` table (method name → params and result types).
- * - `envelope.ts`: request, response, event and `resync_required` frames.
+ * - `envelope.ts`: request, response, event, `resync_required` and transient frames.
  * - `topic.ts`: topic names.
  */
 

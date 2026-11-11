@@ -1,4 +1,5 @@
-//! The `omfp` binary (D-15): `omfp daemon` runs the daemon (02-daemon), `omfp theme set` sets the UI theme (UI-091).
+//! The `omfp` binary (D-15): `omfp daemon` runs the daemon (02-daemon), `omfp theme set` sets the UI theme (UI-091),
+//! `omfp desktop` opens a desktop window (feature `desktop`, M7).
 
 use std::process::ExitCode;
 
@@ -19,6 +20,10 @@ enum Command {
     /// The UI theme of a daemon (UI-091).
     #[command(subcommand)]
     Theme(omfp::theme::Command),
+    /// Opens a desktop window on the local daemon, starting it in the background if needed (D-15, D-16), or with
+    /// `--connect` on another daemon.
+    #[cfg(feature = "desktop")]
+    Desktop(omfp::desktop::Args),
 }
 
 fn main() -> ExitCode {
@@ -31,6 +36,11 @@ fn main() -> ExitCode {
         Command::Theme(command) => {
             report("omfp theme", block_on(omfp::theme::run(command)).map(Some))
         }
+        #[cfg(feature = "desktop")]
+        Command::Desktop(args) => match omfp::desktop::run(&args) {
+            Ok(code) => ExitCode::from(u8::try_from(code).unwrap_or(1)),
+            Err(error) => report("omfp desktop", Err(error)),
+        },
     }
 }
 

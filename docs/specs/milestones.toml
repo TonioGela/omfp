@@ -445,3 +445,25 @@ requirements = [
   "DMN-108",
   "AGT-029",
 ]
+
+[M7]
+status = "done"
+requirements = [
+  # `omfp desktop`: find or start the background daemon, the window on its UI, the in-process daemon of the smoke test
+  "ARC-003",
+  "DMN-004",
+  "TST-033",
+  # Many windows on one daemon, a browser on the same daemon
+  "UI-004",
+  "UI-005",
+  # The theme file of this machine pushed to a daemon reached with --connect
+  "UI-091",
+  # Live voice in the desktop window: omp's live_start (WebKitGTK has no WebRTC, S-09)
+  "DMN-109",
+  "DMN-110",
+  "PRT-053",
+  "PRT-054",
+  "TST-051",
+  "UI-188",
+  "UI-189",
+]

@@ -1,6 +1,6 @@
 /**
- * Frames on the WebSocket (mirrors `omfp_protocol::envelope`): client requests, and daemon responses, events and
- * `resync_required`. Hand-written: their serde forms are custom, so they have no JSON Schema.
+ * Frames on the WebSocket (mirrors `omfp_protocol::envelope`): client requests, and daemon responses, events,
+ * `resync_required` and transient frames. Hand-written: their serde forms are custom, so they have no JSON Schema.
  */
 
 import type { ThreadEvent } from "@omfp/core";
@@ -11,6 +11,7 @@ import type {
   MethodName,
   ParamsOf,
   Topic,
+  TransientEvent,
   ViewsEvent,
   WorkspaceEvent,
 } from "./generated.ts";
@@ -38,8 +39,14 @@ export type EventFrame = { type: "event"; topic: Topic; epoch: string; seq: numb
 /** The client's queue overflowed: the topic was dropped and must be resubscribed (PRT-023). */
 export type ResyncRequired = { type: "resync_required"; topic: Topic };
 
+/**
+ * A momentary value of a topic outside its event stream (PRT-054): no `seq`, not replayed, not part of the topic's
+ * state, dropped when the client falls behind. A thread's `live_levels` (DMN-110).
+ */
+export type TransientFrame = { type: "transient"; topic: Topic; event: TransientEvent };
+
 /** A frame from the daemon. */
-export type ServerFrame = Response | EventFrame | ResyncRequired;
+export type ServerFrame = Response | EventFrame | ResyncRequired | TransientFrame;
 
 /** A request frame for `method`. */
 export function request<M extends MethodName>(id: string, method: M, params: ParamsOf<M>): Request<M> {

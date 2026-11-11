@@ -1,6 +1,7 @@
 /**
  * The protocol session (03-protocol): `system.hello` with the token (PRT-001, PRT-002), request/response correlation
- * by id (PRT-010), subscriptions resumed from their `{epoch, seq}` (PRT-020..024), and reconnect with exponential
+ * by id (PRT-010), subscriptions resumed from their `{epoch, seq}` (PRT-020..024), transient frames handed to their
+ * listeners outside the model (PRT-054), and reconnect with exponential
  * backoff capped at 10 s (UI-003). A refused token (`unauthorized`, close 4401) or protocol version
  * (`version_mismatch`, close 4426, PRT-004) stops the client instead of retrying.
  *
@@ -18,6 +19,7 @@ import {
   type Response,
   type ResultOf,
   type Topic,
+  type TransientFrame,
 } from "@omfp/protocol";
 import { ChangeHub, Changes } from "./changes.ts";
 import { decodeHelloResult, decodeServerFrame, decodeSubscribeResult } from "./decode.ts";
@@ -189,6 +191,7 @@ export class Client {
   #attempt = 0;
   #cancelRetry: (() => void) | undefined;
   #stopped = false;
+  readonly #transient = new Set<(frame: TransientFrame) => void>();
 
   /** Starts connecting at once; see {@link connect}. */
   constructor(options: ClientOptions) {
@@ -245,6 +248,17 @@ export class Client {
         }
       });
     });
+  }
+
+  /**
+   * Calls `listener` with every transient frame (PRT-054) of a followed topic until the returned function is called.
+   * Transient frames never touch the model: no revision, no dirty set, no replay after a reconnect.
+   */
+  onTransient(listener: (frame: TransientFrame) => void): () => void {
+    this.#transient.add(listener);
+    return () => {
+      this.#transient.delete(listener);
+    };
   }
 
   /** Follows `topic`: subscribed now if connected, and resubscribed from its last position after every reconnect. */
@@ -476,6 +490,13 @@ export class Client {
         return undefined;
       case "resync_required":
         this.#resync(link, frame.topic);
+        return undefined;
+      case "transient":
+        if (this.#model.topic(frame.topic) !== undefined) {
+          for (const listener of [...this.#transient]) {
+            listener(frame);
+          }
+        }
         return undefined;
     }
   }

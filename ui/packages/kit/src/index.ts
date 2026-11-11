@@ -125,6 +125,7 @@ export {
   AnalyserSource,
   bandEdges,
   type Levels,
+  LevelsSource,
   type LiveHint,
   type LiveLineView,
   LivePanel,

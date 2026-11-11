@@ -106,7 +106,7 @@ export const chat = {
     /** After the `ctrl+c` key chip. */
     interruptHint: "again to abort",
   },
-  /** Live voice (UI-180..UI-186). */
+  /** Live voice (UI-180..UI-189). */
   live: {
     start: "Start live voice",
     end: "End live voice",
@@ -129,7 +129,8 @@ export const chat = {
     /** Why the mic button cannot start a session (UI-180). */
     insecure:
       "live voice needs a secure page: the browser gives the microphone only to localhost, 127.0.0.1 or HTTPS; open omfp on one of those",
-    unsupported: "live voice needs WebRTC and a microphone, which this browser does not offer",
+    unsupported:
+      "live voice needs WebRTC and a microphone, which this window does not offer; live voice in the desktop app needs the daemon on this machine",
     microphone: (reason: string) => `live voice could not open the microphone: ${reason}`,
     peer: (reason: string) => `live voice could not set up the call: ${reason}`,
     stopFailed: (reason: string) => `live voice could not end the session: ${reason}`,

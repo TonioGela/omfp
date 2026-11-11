@@ -238,7 +238,7 @@ The live panel (UI-182) sits above the queue chips and the composer: a border bo
 top border, `surface-container-low`, a 1 px `rule` border (error 45 % on a failure), radius `r-card`, body padding
 `s1 s4 s3`, its rows `s2` apart. On top of the body the **spectrum**: 64 bars over
 the panel's width, log-spaced from 70 Hz to 9 kHz, 3rem tall, mirrored around the middle, at least 6 % of the height;
-each bar shows the louder voice: the user's (the microphone) with a `tertiary` → `primary` gradient across the width,
+in a `live_start` session (UI-189) the bars come from omp's levels alone, spread over a voice-shaped profile; each bar shows the louder voice: the user's (the microphone) with a `tertiary` → `primary` gradient across the width,
 the assistant's (the remote track) with `primary` → `tertiary` (UI-134: `tertiary` is the user's voice); a muted
 microphone draws `outline`, idle and error stay flat in `outline-variant`. The canvas reads the role tokens of the
 theme (no literal colors) and runs only at motion `full`; below it the spectrum is a static meter: a 0.5rem pill track

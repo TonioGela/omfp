@@ -1,6 +1,6 @@
 //! The daemon the TypeScript client's transport suite runs against (`just test-ts`, TST-030): an in-process daemon on
 //! `127.0.0.1:0` with the fake omp launcher and fake git (as in the native L2 tests) and the data directory given as
-//! the only argument.
+//! the only argument. Live voice sessions send one `live_levels` frame (a `live_start` session's, DMN-110).
 //!
 //! It prints `<websocket url> <token>` on one line and serves until SIGINT or SIGTERM.
 
@@ -8,7 +8,7 @@ use std::io::Write as _;
 use std::sync::Arc;
 
 use clap::Parser;
-use omfp_daemon::agent::FakeLauncher;
+use omfp_daemon::agent::{FakeLauncher, FakeLive, live_levels};
 use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
 use omfp_daemon::{Ports, start_with};
@@ -29,8 +29,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "--workspaces-root",
         &workspaces,
     ])?;
+    let launcher = FakeLauncher::new();
+    launcher.script_live(FakeLive::connect(vec![live_levels(0.25, 0.5)]));
     let ports = Ports {
-        launcher: Arc::new(FakeLauncher::new()),
+        launcher: Arc::new(launcher),
         git: Arc::new(FakeGit::new()),
         omp_program: "omp".into(),
         omp_version: omfp_core::OMP_VERSION.into(),

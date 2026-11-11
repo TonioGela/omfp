@@ -16,16 +16,17 @@ use omp_rpc::{
     GetAvailableModelsResult, GetAvailableThinkingLevelsCommand, GetAvailableThinkingLevelsResult,
     GetStateCommand, GetSubagentMessagesCommand, GetSubagentsCommand, GetSubagentsResult,
     GetTreeCommand, GoalCommand, HostTool, HostUri, LiveConnectCommand, LiveMuteCommand,
-    LiveMuteResult, LiveStopCommand, NavigateTreeCommand, PromoteQueuedMessageCommand,
-    PromptCommand, RemoveQueuedMessageCommand, RpcInbound, SetLabelCommand, SetModelCommand,
-    SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
+    LiveMuteResult, LiveStartCommand, LiveStartResult, LiveStopCommand, NavigateTreeCommand,
+    PromoteQueuedMessageCommand, PromptCommand, RemoveQueuedMessageCommand, RpcInbound,
+    SetLabelCommand, SetModelCommand, SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand,
+    SteerSubagentCommand,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub use fake::{
     FakeCall, FakeLaunch, FakeLauncher, FakeLive, FakeProcess, FakeReply, FakeRun, Gate,
-    NO_CREDENTIAL, answer_for, live_end, live_phase, live_transcript,
+    NO_CREDENTIAL, answer_for, live_end, live_levels, live_phase, live_transcript,
 };
 
 use crate::omp::{LaunchSpec, OmpProcess, StartError, Startup};
@@ -62,6 +63,8 @@ pub enum OmpCall {
     SetSessionName(SetSessionNameCommand),
     /// Starts a live voice session on the client's peer (DMN-100).
     LiveConnect(LiveConnectCommand),
+    /// Starts a live voice session on the daemon machine's microphone and speakers (DMN-109).
+    LiveStart(LiveStartCommand),
     /// Stops the live voice session, if any (DMN-102).
     LiveStop,
     /// Sets the live voice mute (DMN-102).
@@ -98,6 +101,7 @@ impl OmpCall {
             Self::State => "get_state",
             Self::SetSessionName(_) => "set_session_name",
             Self::LiveConnect(_) => "live_connect",
+            Self::LiveStart(_) => "live_start",
             Self::LiveStop => "live_stop",
             Self::LiveMute(_) => "live_mute",
         }
@@ -337,6 +341,7 @@ impl AgentProcess for OmpAgent {
             OmpCall::State => self.run(&GetStateCommand {}),
             OmpCall::SetSessionName(command) => self.run(command),
             OmpCall::LiveConnect(command) => self.run(command),
+            OmpCall::LiveStart(command) => self.run_as(command, |voice| LiveStartResult { voice }),
             OmpCall::LiveStop => self.run(&LiveStopCommand {}),
             OmpCall::LiveMute(command) => self.run_as(command, |muted| LiveMuteResult { muted }),
         }

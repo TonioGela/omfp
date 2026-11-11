@@ -2,8 +2,8 @@
 //! no-credential failure of the contract tests, and the phases, transcripts and end of the real call of spike S-09.
 
 use omp_rpc::{
-    LiveConnectCommand, LiveEndEvent, LiveMuteCommand, LivePhase, LivePhaseEvent, LiveRole,
-    LiveTranscriptEvent, RpcNotification,
+    LiveConnectCommand, LiveEndEvent, LiveLevelsEvent, LiveMuteCommand, LivePhase, LivePhaseEvent,
+    LiveRole, LiveStartCommand, LiveTranscriptEvent, RpcNotification,
 };
 use serde_json::{Value, json};
 
@@ -15,14 +15,14 @@ pub const NO_CREDENTIAL: &str = "No Codex OAuth credential is available for a li
 /// omp's `live_mute` failure without a session.
 const NO_SESSION: &str = "No live session is active";
 
-/// omp's `live_connect` failure while a session is connecting, active or closing.
+/// omp's `live_connect`/`live_start` failure while a session is connecting, active or closing.
 const ALREADY_ACTIVE: &str = "A live session is already active";
 
-/// How the fake answers `live_connect`; see [`super::FakeLauncher::script_live`].
+/// How the fake answers `live_connect` and `live_start`; see [`super::FakeLauncher::script_live`].
 #[derive(Debug, Clone, PartialEq)]
 pub enum FakeLive {
     /// omp signaled the call: it sends `connecting` and `listening`, then `frames`, and answers `{ voice, sdpAnswer }`
-    /// with [`answer_for`] the offer.
+    /// with [`answer_for`] the offer (`live_connect`) or `{ voice }` (`live_start`).
     Connect {
         voice: String,
         frames: Vec<RpcNotification>,
@@ -98,6 +98,21 @@ pub fn end(error: Option<&str>) -> RpcNotification {
     })
 }
 
+/// A `live_levels` frame: microphone and speaker RMS (`live_start` sessions only).
+#[must_use]
+pub fn levels(input: f64, output: f64) -> RpcNotification {
+    RpcNotification::LiveLevels(LiveLevelsEvent { input, output })
+}
+
+/// omp's failure of `command`.
+fn failed(command: &str, error: &str) -> omp_rpc::Error {
+    omp_rpc::Error::Command {
+        command: command.into(),
+        error: error.into(),
+        code: None,
+    }
+}
+
 /// The fake's SDP answer to `offer`: the offer as the answering side (`a=setup:active`, no candidates). The browser
 /// accepts it as an answer, but no peer stands behind it: the connection never gets past ICE checking.
 #[must_use]
@@ -127,18 +142,33 @@ impl FakeProcess {
         command: &LiveConnectCommand,
         script: FakeLive,
     ) -> Result<Value, omp_rpc::Error> {
-        let failed = |error: &str| omp_rpc::Error::Command {
-            command: "live_connect".into(),
-            error: error.into(),
-            code: None,
-        };
         if command.sdp_offer.trim().is_empty() {
-            return Err(failed("live_connect requires a non-empty sdpOffer"));
+            return Err(failed(
+                "live_connect",
+                "live_connect requires a non-empty sdpOffer",
+            ));
         }
+        let voice = self.live_open("live_connect", script)?;
+        Ok(json!({ "voice": voice, "sdpAnswer": answer_for(&command.sdp_offer) }))
+    }
+
+    /// `live_start`: as `live_connect`, but omp owns the host's audio, so the scripted frames may hold `live_levels`
+    /// and a `speaking` phase (TST-051).
+    pub(super) fn live_start(
+        &self,
+        _command: &LiveStartCommand,
+        script: FakeLive,
+    ) -> Result<Value, omp_rpc::Error> {
+        let voice = self.live_open("live_start", script)?;
+        Ok(json!({ "voice": voice }))
+    }
+
+    /// Opens the session of `command` as `script` says; returns the voice.
+    fn live_open(&self, command: &str, script: FakeLive) -> Result<String, omp_rpc::Error> {
         {
             let mut live = lock(&self.shared.live);
             if live.is_some() {
-                return Err(failed(ALREADY_ACTIVE));
+                return Err(failed(command, ALREADY_ACTIVE));
             }
             *live = Some(false);
         }
@@ -149,7 +179,7 @@ impl FakeProcess {
                     phase(LivePhase::Listening),
                 ]);
                 self.emit(frames);
-                Ok(json!({ "voice": voice, "sdpAnswer": answer_for(&command.sdp_offer) }))
+                Ok(voice)
             }
             FakeLive::Fail { error } => {
                 lock(&self.shared.live).take();
@@ -159,7 +189,7 @@ impl FakeProcess {
                     end(Some(&error)),
                     phase(LivePhase::Error),
                 ]);
-                Err(failed(&error))
+                Err(failed(command, &error))
             }
         }
     }

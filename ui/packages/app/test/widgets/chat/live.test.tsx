@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { CallError } from "@omfp/client";
 import type { ThreadEvent } from "@omfp/core";
+import { threadTopic } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import type { Levels, SpectrumSource } from "omfp/kit";
 import {
@@ -67,7 +68,7 @@ class FakeLink implements LiveLink {
 
 /** The browser's live voice APIs, driven by the test: support, the microphone, the peer's states and the clock. */
 class FakeMedia implements LiveMedia {
-  supported: LiveSupport = "available";
+  supported: LiveSupport = "webrtc";
   openError: Error | undefined;
   readonly links: FakeLink[] = [];
   time = 1000;
@@ -114,7 +115,7 @@ interface Live extends TestHost {
 /** `omfp:composer` on {@link THREAD} (and {@link OTHER} in the index), with a fake peer and microphone. */
 function renderLive(history: readonly ThreadEvent[] = fixtureEvents("text_reply"), supported?: LiveSupport): Live {
   const media = new FakeMedia();
-  media.supported = supported ?? "available";
+  media.supported = supported ?? "webrtc";
   const test = testHost(new FakeClient(), { liveMedia: media });
   test.client.connected();
   test.client.index({ threads: [summary(THREAD), summary(OTHER)] });
@@ -136,7 +137,7 @@ const session = (connection: number, client = "omfp/web"): ThreadEvent => ({
   kind: "live_session",
   owner: { client, connection },
 });
-const phase = (value: "connecting" | "listening" | "working" | "muted" | "error"): ThreadEvent => ({
+const phase = (value: "connecting" | "listening" | "working" | "speaking" | "muted" | "error"): ThreadEvent => ({
   kind: "omp",
   frame: { type: "live_phase", phase: value },
 });
@@ -449,5 +450,111 @@ describe("live voice", () => {
     expect(live.client.callsTo("thread.live_stop").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
     expect(live.media.link.closed).toBe(true);
     expect(screen.getByRole("alert").textContent).toBe("live voice could not set up the call: bad answer");
+  });
+});
+
+describe("live voice on the daemon's machine", () => {
+  /** omp's levels of the thread, as a transient frame (PRT-054). */
+  const levels = (live: Live, input: number, output: number, threadId = THREAD) =>
+    act(() =>
+      live.client.transient({
+        type: "transient",
+        topic: threadTopic(threadId),
+        event: { kind: "live_levels", input, output },
+      }),
+    );
+
+  /** Presses the mic button; the daemon opens the session and omp answers once it records. */
+  async function startHost(live: Live): Promise<void> {
+    await press(mic());
+    live.events(session(1), phase("connecting"));
+    const [call] = live.client.callsTo("thread.live_start");
+    await act(async () => call?.resolve({ voice: "sol" }));
+    live.events(phase("listening"));
+  }
+
+  // spec: UI-188, UI-189
+  test("without WebRTC the mic starts omp's own session: live_start, no microphone, no peer, omp's phases", async () => {
+    const live = renderLive(fixtureEvents("text_reply"), "host");
+    expect(mic().dataset.live).toBe("start");
+    await press(mic());
+    expect(live.client.callsTo("thread.live_start").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
+    expect(live.client.callsTo("thread.live_connect")).toEqual([]);
+    expect(live.media.links).toEqual([]);
+    expect(status()).toBe("connecting");
+    live.events(session(1), phase("connecting"));
+    const [call] = live.client.callsTo("thread.live_start");
+    await act(async () => call?.resolve({ voice: "sol" }));
+    expect(status()).toBe("connecting");
+    // No peer to wait for: omp's phase shows as omp reports it, `speaking` included.
+    live.events(phase("listening"));
+    expect(status()).toBe("listening");
+    live.events(phase("speaking"));
+    expect(status()).toBe("speaking");
+    act(() => live.host.live.noteLevels({ mic: 0, remote: 0 }));
+    expect(status()).toBe("speaking");
+    live.events(phase("listening"));
+    act(() => live.host.live.noteLevels({ mic: 0, remote: 0.5 }));
+    expect(status()).toBe("listening");
+  });
+
+  // spec: UI-189, DMN-110
+  test("the spectrum draws omp's levels of this thread", async () => {
+    const live = renderLive(fixtureEvents("text_reply"), "host");
+    // The spectrum's canvas reads on the page's clock: the levels arrive on it too.
+    live.media.time = performance.now();
+    await startHost(live);
+    levels(live, 0.2, 0.4);
+    levels(live, 0.9, 0.9, OTHER);
+    const later = performance.now() + 1000;
+    const shown = live.host.live.source().levels(later);
+    expect(shown.mic).toBeCloseTo(0.2, 3);
+    expect(shown.remote).toBeCloseTo(0.4, 3);
+    document.documentElement.dataset.motion = "none";
+    live.events(phase("working"));
+    expect(screen.getByRole("meter", { name: "Voice level" })).toBeDefined();
+
+    await key(panel(), "Escape");
+    expect(live.host.live.source().levels(later)).toEqual({ mic: 0, remote: 0 });
+  });
+
+  // spec: UI-189, UI-183, UI-185
+  test("Space mutes omp's microphone with live_mute and Esc ends the session with live_stop", async () => {
+    const live = renderLive(fixtureEvents("text_reply"), "host");
+    await startHost(live);
+    expect(document.activeElement).toBe(panel());
+    await key(panel(), " ");
+    expect(live.client.callsTo("thread.live_mute").map((call) => call.params)).toEqual([
+      { threadId: THREAD, muted: true },
+    ]);
+    live.events(phase("muted"));
+    expect(status()).toBe("muted");
+    await key(panel(), "Escape");
+    expect(live.client.callsTo("thread.live_stop").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
+    expect(screen.queryByTestId("live-panel")).toBeNull();
+  });
+
+  // spec: UI-188, UI-186
+  test("a refused live_start shows the daemon's readable message", async () => {
+    const live = renderLive(fixtureEvents("text_reply"), "host");
+    await press(mic());
+    const [call] = live.client.callsTo("thread.live_start");
+    const message = "live voice failed: Failed to open the default speaker: no Linux playback backend available";
+    await act(async () => call?.reject(new CallError({ kind: "daemon", error: { code: "omp_error", message } })));
+    expect(panel().dataset.view).toBe("error");
+    expect(screen.getByRole("alert").textContent).toBe(message);
+    expect(mic().dataset.live).toBe("start");
+  });
+
+  // spec: UI-188, UI-180
+  test("without WebRTC away from the daemon's machine the mic only says why", async () => {
+    const live = renderLive(fixtureEvents("text_reply"), "unsupported");
+    expect(mic().dataset.live).toBe("unavailable");
+    const reason = document.getElementById(mic().getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toContain("live voice in the desktop app needs the daemon on this machine");
+    await press(mic());
+    expect(live.client.callsTo("thread.live_start")).toEqual([]);
+    expect(live.client.callsTo("thread.live_connect")).toEqual([]);
+    expect(screen.getByRole("alert").textContent).toContain("needs the daemon on this machine");
   });
 });

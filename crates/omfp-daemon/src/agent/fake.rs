@@ -18,8 +18,8 @@ use serde_json::{Value, json};
 use tokio::sync::watch;
 
 pub use live::{
-    FakeLive, NO_CREDENTIAL, answer_for, end as live_end, phase as live_phase,
-    transcript as live_transcript,
+    FakeLive, NO_CREDENTIAL, answer_for, end as live_end, levels as live_levels,
+    phase as live_phase, transcript as live_transcript,
 };
 
 use super::{AgentLauncher, AgentProcess, Launched, Lease, OmpCall, PromptAdmission};
@@ -212,7 +212,7 @@ struct Script {
     /// Answers of the next title generations (DMN-073); without one a generation fails.
     titles: VecDeque<Result<String, String>>,
     title_requests: Vec<TitleRequest>,
-    /// How every later `live_connect` goes (TST-015).
+    /// How every later `live_connect` or `live_start` goes (TST-015, TST-051).
     live: FakeLive,
 }
 
@@ -307,8 +307,8 @@ impl FakeLauncher {
         lock(&self.script).title_requests.clone()
     }
 
-    /// Plays `live` for every later `live_connect` without a scripted [`FakeReply`]; by default a call connects
-    /// without further frames ([`FakeLive::default`]).
+    /// Plays `live` for every later `live_connect` or `live_start` without a scripted [`FakeReply`]; by default a
+    /// call connects without further frames ([`FakeLive::default`]).
     pub fn script_live(&self, live: FakeLive) {
         lock(&self.script).live = live;
     }
@@ -526,6 +526,10 @@ impl AgentProcess for FakeAgent {
             OmpCall::LiveConnect(connect) => {
                 let script = lock(&process.shared.script).live.clone();
                 process.live_connect(connect, script)
+            }
+            OmpCall::LiveStart(start) => {
+                let script = lock(&process.shared.script).live.clone();
+                process.live_start(start, script)
             }
             OmpCall::LiveMute(mute) => process.live_mute(mute),
             OmpCall::LiveStop => Ok(process.live_stop()),

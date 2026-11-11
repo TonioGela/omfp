@@ -2,9 +2,11 @@
 //! canned SDP answer is no real peer, so the peer never connects and the panel stays `connecting` (the states after
 //! `connected` are the component tests' job, UI-181..UI-184). The journey checks the UI states and the commands omp
 //! receives, not audio. Screenshots of the panel states land in `/tmp/omfp-live-*.png` (or `OMFP_SCREENSHOT_DIR`).
+//! A second journey plays the desktop's path (UI-188): a page without WebRTC on the daemon's machine (`#local=1`)
+//! starts omp's own session (`live_start`).
 
 use e2e::Journey;
-use omfp_daemon::agent::{FakeCall, FakeLauncher, FakeLive, OmpCall};
+use omfp_daemon::agent::{FakeCall, FakeLauncher, FakeLive, OmpCall, live_levels, live_phase};
 use omfp_protocol::LiveConnectParams;
 use omfp_protocol::method::ThreadLiveConnect;
 use thirtyfour::prelude::*;
@@ -13,7 +15,7 @@ const PANEL: &str = "[data-testid=live-panel]";
 const LOGIN: &str = "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try \
                      again";
 
-/// The live commands the thread's omp received, in order: `connect`, `mute <bool>`, `stop`.
+/// The live commands the thread's omp received, in order: `connect`, `start`, `mute <bool>`, `stop`.
 fn live_calls(launcher: &FakeLauncher) -> Vec<String> {
     launcher
         .process(0)
@@ -21,6 +23,7 @@ fn live_calls(launcher: &FakeLauncher) -> Vec<String> {
         .into_iter()
         .filter_map(|call| match call {
             FakeCall::Call(OmpCall::LiveConnect(_)) => Some("connect".to_owned()),
+            FakeCall::Call(OmpCall::LiveStart(_)) => Some("start".to_owned()),
             FakeCall::Call(OmpCall::LiveMute(command)) => {
                 Some(format!("mute {}", command.muted.unwrap_or_default()))
             }
@@ -141,4 +144,41 @@ async fn live_voice_from_the_mic_button_mute_end_and_the_login_message() -> anyh
     journey.screenshot("live-error").await?;
 
     journey.finish("live voice").await
+}
+
+// spec: E2E-14, UI-188, UI-189
+#[tokio::test(flavor = "multi_thread")]
+async fn without_webrtc_on_the_daemons_machine_the_mic_starts_omps_own_session()
+-> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.script_live(FakeLive::connect(vec![
+        live_levels(0.2, 0.3),
+        live_phase(omfp_core::wire::LivePhase::Speaking),
+    ]));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    journey.connected().await?;
+    // The desktop's page: `#local=1` (the token is stored by now), and no WebRTC as in WebKitGTK.
+    journey
+        .eval("location.hash = 'local=1'; location.reload();", Vec::new())
+        .await?;
+    journey.connected().await?;
+    journey
+        .eval("delete window.RTCPeerConnection;", Vec::new())
+        .await?;
+    journey.create_thread("desktop voice").await?;
+
+    journey.click("[data-testid=live-mic]").await?;
+    until_calls(&journey, &launcher, &["start"]).await?;
+    // omp's own phases, `speaking` included (UI-189).
+    until_panel(&journey, "own", "speaking").await?;
+    journey.until_focused("live-panel").await?;
+    journey.screenshot("live-host-speaking").await?;
+
+    journey.keys(" ").await?;
+    until_calls(&journey, &launcher, &["start", "mute true"]).await?;
+    journey.keys(Key::Escape).await?;
+    until_calls(&journey, &launcher, &["start", "mute true", "stop"]).await?;
+    journey.gone(PANEL).await?;
+
+    journey.finish("live voice on the daemon's machine").await
 }

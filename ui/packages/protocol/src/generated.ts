@@ -456,6 +456,12 @@ export type LiveMuted = {
   muted: boolean;
 };
 
+/** `thread.live_start` result: the voice omp uses once the host's session records (PRT-053, DMN-109). */
+export type LiveStarted = {
+  /** The realtime voice omp uses. */
+  voice: string;
+};
+
 /** `thread.steer` / `thread.follow_up` params. */
 export type MessageParams = {
   images?: unknown[];
@@ -892,6 +898,18 @@ export type TopicParams = {
   topic: Topic;
 };
 
+/** The `event` of a transient frame (PRT-054). */
+export type TransientEvent =
+  /**
+   * omp's `live_levels` of a `live_start` session on `thread/<id>` (DMN-110): microphone (`input`) and speaker
+   * (`output`) RMS in [0, 1], at most ten a second.
+   */
+  | {
+    input: number;
+    kind: "live_levels";
+    output: number;
+  };
+
 /** The `[ui]` table of the config file; an absent value is the default (UI-097). */
 export type UiSettings = {
   density?: Density | null;
@@ -1154,6 +1172,7 @@ export interface Methods {
   "thread.restart": { params: ThreadRef; result: Empty };
   "thread.stop": { params: ThreadRef; result: Empty };
   "thread.live_connect": { params: LiveConnectParams; result: LiveConnected };
+  "thread.live_start": { params: ThreadRef; result: LiveStarted };
   "thread.live_stop": { params: ThreadRef; result: Empty };
   "thread.live_mute": { params: LiveMuteParams; result: LiveMuted };
   "interaction.respond": { params: RespondParams; result: Empty };
@@ -1229,6 +1248,7 @@ export const METHODS: readonly MethodName[] = [
   "thread.restart",
   "thread.stop",
   "thread.live_connect",
+  "thread.live_start",
   "thread.live_stop",
   "thread.live_mute",
   "interaction.respond",

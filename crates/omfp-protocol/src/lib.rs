@@ -22,19 +22,19 @@ pub use dto::{
 };
 pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, ProtocolError, Request, Response,
-    ServerFrame, TopicEvent, ViewsEvent, WorkspaceEvent, decode_request,
+    ServerFrame, TopicEvent, TransientEvent, ViewsEvent, WorkspaceEvent, decode_request,
 };
 pub use method::{Call, METHODS, Method, method_schemas};
 pub use params::{
     AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CopyWidgetParams,
     CreateThreadParams, CreateWorkspaceParams, Empty, FindFileParams, ForkParams, GoalParams,
     HelloParams, HelloResult, InteractionResponse, JobRef, LabelParams, ListTerminalsParams,
-    LiveConnectParams, LiveConnected, LiveMuteParams, LiveMuted, MessageParams, NavigateParams,
-    OpenTerminalParams, OpenTerminalResult, PathCompletions, Position, PromptBehavior,
-    PromptParams, PromptResult, QueueMessageParams, ReadFileParams, RemoveRepoParams,
-    RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions, ReportWidgetsParams,
-    ResizeTerminalParams, RespondParams, SearchThreadsParams, SetModelParams, SetSettingsParams,
-    SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
+    LiveConnectParams, LiveConnected, LiveMuteParams, LiveMuted, LiveStarted, MessageParams,
+    NavigateParams, OpenTerminalParams, OpenTerminalResult, PathCompletions, Position,
+    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, ReadFileParams,
+    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
+    ReportWidgetsParams, ResizeTerminalParams, RespondParams, SearchThreadsParams, SetModelParams,
+    SetSettingsParams, SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
     SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
     SuggestReposParams, TerminalList, TerminalRef, ThreadGit, ThreadRef, ThreadSearchResult,
     ThreadSearchResults, ThreadWorkspace, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,

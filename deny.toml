@@ -1,5 +1,7 @@
 [graph]
 all-features = false
+# `omfp desktop` (M7): check the Tauri/WebKitGTK crates too.
+features = ["omfp/desktop"]
 
 [advisories]
 # Vulnerabilities fail; unmaintained crates are only reported for direct workspace dependencies.

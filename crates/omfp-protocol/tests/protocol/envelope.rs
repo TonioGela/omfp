@@ -5,8 +5,8 @@ use std::path::Path;
 use omfp_core::{ProcessState, ThreadEvent};
 use omfp_protocol::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, JobStream, MAX_FRAME_BYTES,
-    PROTOCOL_VERSION, Response, ServerFrame, Topic, TopicEvent, ViewsEvent, WidgetInfo,
-    WidgetSource, WorkspaceEvent,
+    PROTOCOL_VERSION, Response, ServerFrame, Topic, TopicEvent, TransientEvent, ViewsEvent,
+    WidgetInfo, WidgetSource, WorkspaceEvent,
 };
 use serde_json::{Value, json};
 
@@ -297,6 +297,28 @@ fn resync_required_frame() {
         json!({ "type": "resync_required", "topic": format!("thread/{THREAD_ID}") })
     );
     insta::assert_json_snapshot!("resync_required", golden);
+}
+
+// spec: PRT-054, DMN-110
+#[test]
+fn transient_frame_carries_live_levels_without_a_position() {
+    let frame = ServerFrame::Transient {
+        topic: Topic::Thread(THREAD_ID.to_owned()),
+        event: TransientEvent::LiveLevels {
+            input: 0.25,
+            output: 0.5,
+        },
+    };
+    let golden = round_trip(&frame);
+    assert_eq!(
+        golden,
+        json!({
+            "type": "transient",
+            "topic": format!("thread/{THREAD_ID}"),
+            "event": { "kind": "live_levels", "input": 0.25, "output": 0.5 }
+        })
+    );
+    insta::assert_json_snapshot!("transient_live_levels", golden);
 }
 
 // spec: TST-012

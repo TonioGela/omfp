@@ -5,7 +5,7 @@
  */
 
 import type { CallMethod } from "@omfp/client";
-import type { ParamsOf, ResultOf, Topic } from "@omfp/protocol";
+import type { ParamsOf, ResultOf, Topic, TransientFrame } from "@omfp/protocol";
 import { createContext, type ReactNode, useContext } from "react";
 import { strings } from "../strings/index.ts";
 import { CommandRegistry } from "./commands.ts";
@@ -21,6 +21,8 @@ export interface SdkClient extends ModelSource {
   call<M extends CallMethod>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>>;
   subscribe(topic: Topic): void;
   unsubscribe(topic: Topic): void;
+  /** Transient frames of followed topics (PRT-054) until the returned function is called. */
+  onTransient(listener: (frame: TransientFrame) => void): () => void;
 }
 
 /** Topics followed while at least one widget needs them. */
@@ -114,6 +116,8 @@ export interface HostOptions {
   readonly filePoll?: FilePoll;
   /** The browser APIs of live voice; default: the browser's (tests pass a fake peer and microphone). */
   readonly liveMedia?: LiveMedia;
+  /** The window runs on the daemon's machine (`#local=1`, UI-188): without WebRTC it starts omp's own live session. */
+  readonly local?: boolean;
 }
 
 /** A host over `client`; call `host.frames.start()` to follow the model. */
@@ -131,7 +135,13 @@ export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHo
     modules: new WidgetModules(options.importer ?? browserImporter, strings.widgets.noDefaultExport),
     reports: new WidgetReporter({ report: (params) => client.call("widgets.report", params) }, options.reportTimers),
     filePoll: options.filePoll ?? intervalPoll,
-    live: new LiveClient({ client, frames, topics, window, media: options.liveMedia ?? browserLiveMedia }),
+    live: new LiveClient({
+      client,
+      frames,
+      topics,
+      window,
+      media: options.liveMedia ?? browserLiveMedia(options.local ?? false),
+    }),
   };
 }
 

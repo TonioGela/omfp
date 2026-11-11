@@ -18,6 +18,11 @@ test-contract:
 test-e2e: build-web
     cargo nextest run -p e2e
 
+# spec: TST-033 — the desktop window (`--features desktop`, WebKitGTK) under `xvfb-run`: the smoke test and the
+# background daemon shared by two windows; one test at a time, as parallel `xvfb-run -a` can pick the same display
+test-desktop: build-web
+    cargo nextest run -p omfp --features desktop --test-threads 1
+
 # Re-record omp fixtures under fixtures/omp/<version>/ (TST-012)
 record-fixtures:
     OMFP_RECORD_FIXTURES=1 just test-contract
@@ -70,11 +75,24 @@ build-web: ui-install
 serve *args: build-web
     cargo run --release -p omfp -- daemon --static-dir ui/packages/app/dist {{ args }}
 
+# Try the desktop app (M7): one more window on the local daemon of your default data dir, which is started in the
+# background with the release web bundle when none runs; arguments go to `omfp desktop`, e.g. `just desktop --connect
+# https://host` (then no local daemon)
+desktop *args: build-web
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case " {{ args }} " in
+        *" --connect"*) daemon=() ;;
+        *) daemon=(-- --static-dir "$PWD/ui/packages/app/dist") ;;
+    esac
+    cargo run --release -p omfp --features desktop -- desktop {{ args }} "${daemon[@]}"
+
 # Formatting and lints (Rust; TypeScript: Biome format + lint, then `tsc` in strict mode)
 lint: ui-install
     cargo fmt --all --check
     cargo clippy --workspace --exclude e2e --all-targets -- -D warnings
     cargo clippy -p e2e --all-targets --no-deps -- -D warnings
+    cargo clippy -p omfp --features desktop --all-targets -- -D warnings
     cd ui && biome ci .
     cd ui && bun run check
 
@@ -99,4 +117,4 @@ cov:
     cargo llvm-cov nextest --workspace --exclude e2e --html -E 'not binary(/^contract_/)'
 
 # Everything a change must pass
-ci: lint check-versions spec-trace check-wasm test test-ts test-contract test-e2e deny
+ci: lint check-versions spec-trace check-wasm test test-ts test-contract test-e2e test-desktop deny

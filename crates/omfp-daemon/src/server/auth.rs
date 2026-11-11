@@ -106,6 +106,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.restart"
         | "thread.stop"
         | "thread.live_connect"
+        | "thread.live_start"
         | "thread.live_stop"
         | "thread.live_mute"
         | "interaction.respond"

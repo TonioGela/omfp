@@ -3,6 +3,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import {
   bandEdges,
   type Levels,
+  LevelsSource,
   LivePanel,
   meterValue,
   SPECTRUM_BARS,
@@ -92,6 +93,49 @@ describe("spectrum bars", () => {
     expect(meterValue("speaking", { mic: 0, remote: 1 })).toBe(100);
     expect(meterValue("muted", { mic: 0.5, remote: 0 })).toBe(0);
     expect(meterValue("idle", { mic: 0.5, remote: 0.5 })).toBe(0);
+  });
+});
+
+describe("levels source", () => {
+  function bars(source: LevelsSource, now: number) {
+    const mic = new Float32Array(SPECTRUM_BARS);
+    const remote = new Float32Array(SPECTRUM_BARS);
+    const levels = source.read(mic, remote, now);
+    return { levels, mic: [...mic], remote: [...remote] };
+  }
+
+  // spec: UI-189
+  test("silent until omp sends levels, then each voice's bars follow its level", () => {
+    const source = new LevelsSource();
+    const silent = bars(source, 0);
+    expect(silent.levels).toEqual({ mic: 0, remote: 0 });
+    expect([...silent.mic, ...silent.remote].every((bar) => bar === 0)).toBe(true);
+
+    source.set({ mic: 0.2, remote: 0 }, 0);
+    // Eased between omp's frames (at most ten a second): settled well within a second.
+    const settled = bars(source, 1000);
+    expect(settled.levels.mic).toBeCloseTo(0.2, 3);
+    expect(settled.levels.remote).toBeCloseTo(0, 3);
+    expect(Math.max(...settled.mic)).toBeGreaterThan(0.2);
+    expect(Math.max(...settled.mic)).toBeLessThanOrEqual(1);
+    expect(settled.remote.every((bar) => bar < 1e-3)).toBe(true);
+    // The bars move between frames of the same level, like speech.
+    expect(bars(source, 1050).mic).not.toEqual(settled.mic);
+
+    source.set({ mic: 0, remote: 0.3 }, 1000);
+    const later = bars(source, 2000);
+    expect(later.levels.remote).toBeCloseTo(0.3, 3);
+    expect(Math.max(...later.remote)).toBeGreaterThan(Math.max(...settled.mic));
+    expect(source.levels(2000)).toEqual(later.levels);
+  });
+
+  // spec: UI-189
+  test("a new level is eased toward between omp's frames", () => {
+    const source = new LevelsSource();
+    source.set({ mic: 0.4, remote: 0 }, 0);
+    const early = source.levels(30).mic;
+    expect(early).toBeGreaterThan(0);
+    expect(early).toBeLessThan(0.4);
   });
 });
 

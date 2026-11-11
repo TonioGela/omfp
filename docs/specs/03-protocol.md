@@ -37,6 +37,7 @@ sequenceDiagram
   "error": { "code": "omp_error", "message": "…", "ompCode": "session_busy", "details": { … } } }
 { "type": "event", "topic": "thread/01J…", "epoch": "e7", "seq": 1289, "event": { "kind": "omp", "frame": { … } } }
 { "type": "resync_required", "topic": "thread/01J…" }
+{ "type": "transient", "topic": "thread/01J…", "event": { "kind": "live_levels", "input": 0.12, "output": 0.3 } }
 ```
 
 | ID | Requirement |
@@ -94,7 +95,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `interaction_opened` / `interaction_closed` | Pending interactive request opened / answered / cancelled (DMN-050..052) |
 | `presentation` | `notify`, `setStatus`, `setWidget`, `set_editor_text`, `open_url`, `setTitle` (DMN-053) |
 | `thread_meta` | Title, model, thinking level, branch, git summary changed |
-| `live_session` | `{ owner: { client, connection } \| null }`: the daemon opened a live session for that connection (before forwarding `live_connect`), or closed one omp never started (M6, DMN-100, DMN-101); omp's own `live_phase`, `live_transcript`, `live_levels` and `live_end` frames arrive as `omp` events |
+| `live_session` | `{ owner: { client, connection } \| null }`: the daemon opened a live session for that connection (before forwarding `live_connect` or `live_start`), or closed one omp never started (M6, DMN-100, DMN-101, DMN-109); omp's own `live_phase`, `live_transcript` and `live_end` frames arrive as `omp` events, its `live_levels` as transient frames (PRT-054) |
 | `open_file` | `{ id, connection, path, line }`: the agent's `omfp_open_file` asks the window on that connection (PRT-051) to open `path` at `line` (`null` for none); the state keeps the last request as `open_file`, and the window opens each `id` once (DMN-060, UI-116) |
 | `unknown` | Unknown omp frame (DMN-042) |
 
@@ -133,6 +134,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `thread.git` | `threadId` | `{ workspaceId, repos }`: the status of every repository of the thread's workspace (convenience over `workspaces.status`) |
 | `thread.restart` / `thread.stop` | `threadId` | `{}` |
 | `thread.live_connect` | `threadId`, `sdpOffer` (the browser peer's SDP offer: one sendrecv Opus track plus an `oai-events` data channel) | `{ sdpAnswer, voice }` once omp signaled the call (DMN-100); `conflict` while the thread has a live session (DMN-101) |
+| `thread.live_start` | `threadId` | `{ voice }` once omp's own session on the daemon's machine records (M7, DMN-109); `conflict` while the thread has a live session (DMN-101) |
 | `thread.live_stop` | `threadId` | `{}`; succeeds without a session and never starts omp (DMN-102) |
 | `thread.live_mute` | `threadId`, `muted` | `{ muted }`; `conflict` without a live session (DMN-102) |
 | `interaction.respond` | `threadId`, `interactionId`, `response` (`value` \| `confirmed` \| `cancelled` \| `answers`) | `{}` or `already_resolved` |
@@ -161,7 +163,9 @@ record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 | PRT-034 | Authorization MUST be resolved once per connection into a `Principal` and checked in one place (a method → permission table), so scoped principals (per-thread agent tokens, [08](08-agent-control.md)) can be added without touching method handlers. Today there is one principal: the owner token. |
 | PRT-050 | The live voice methods (M6) MUST have exactly these shapes: `thread.live_connect { threadId, sdpOffer }` → `{ sdpAnswer, voice }`, `thread.live_stop { threadId }` → `{}`, `thread.live_mute { threadId, muted }` → `{ muted }`; they need the `Drive` permission. |
 | PRT-051 | The `system.hello` result MUST carry `connection`, a number naming this connection, unique while the daemon runs: a window compares it with a live session's `owner.connection` to know whether the session (and its audio peer) is its own. |
-| PRT-052 | The thread state MUST carry the live session (`live`, `null` when none) and the readable message of the last live failure (`live_error`): a `live_session` event with an owner starts a session `{ owner, phase: null, transcript: [] }` and clears `live_error`; `live_phase` sets `phase` while a session exists (the `error` phase omp repeats after `live_end` is ignored); `live_transcript` keeps one line `{ role, turn, text, final }` per role and turn in order of first appearance, a later frame replacing the line's text until a `final` one (later frames of a final line are ignored); `live_levels` changes nothing (client-side levels, S-09); `live_end` and `live_session { owner: null }` clear the session, `live_end` setting `live_error` to the readable message of its `error` (DMN-104) or `null`; a process leaving `starting`/`running` clears the session. |
+| PRT-052 | The thread state MUST carry the live session (`live`, `null` when none) and the readable message of the last live failure (`live_error`): a `live_session` event with an owner starts a session `{ owner, phase: null, transcript: [] }` and clears `live_error`; `live_phase` sets `phase` while a session exists (the `error` phase omp repeats after `live_end` is ignored); `live_transcript` keeps one line `{ role, turn, text, final }` per role and turn in order of first appearance, a later frame replacing the line's text until a `final` one (later frames of a final line are ignored); `live_levels` changes nothing (the daemon sends them as transient frames, DMN-110, PRT-054); `live_end` and `live_session { owner: null }` clear the session, `live_end` setting `live_error` to the readable message of its `error` (DMN-104) or `null`; a process leaving `starting`/`running` clears the session. |
+| PRT-053 | `thread.live_start { threadId }` (M7) MUST answer `{ voice }` and need the `Drive` permission, like the other live voice methods (PRT-050). |
+| PRT-054 | A **transient frame** `{ type: "transient", topic, event }` carries a momentary value of a topic outside its event stream: it has no `seq`, is never replayed nor part of a snapshot, goes only to the connections subscribed to the topic when it happens, and is dropped (no `resync_required`) when a client's queue is full. Its `event` is a `TransientEvent`, tagged by `kind`; the only one is `live_levels { input, output }` on `thread/<id>` (DMN-110). A client hands transient frames of the topics it follows to their listeners (`Client.onTransient`) and never folds them into its model. |
 
 ## Views and jobs (M4)
 

@@ -194,6 +194,30 @@ describe("session", () => {
     expect(rig.client.model.thread(THREAD)?.state).toEqual(state);
   });
 
+  // spec: PRT-054, DMN-110
+  test("transient frames of a followed topic reach their listeners and never the model", () => {
+    const [rig, server] = following();
+    const seen: unknown[] = [];
+    const stop = rig.client.onTransient((frame) => seen.push(frame));
+    const revision = rig.client.model.revision;
+    const levels = (topic: string, input: unknown) => ({
+      type: "transient",
+      topic,
+      event: { kind: "live_levels", input, output: 0.5 },
+    });
+
+    server.send(levels(THREAD_TOPIC, 0.25));
+    server.send(levels(threadTopic("01OTHER"), 0.25));
+    server.send(levels(THREAD_TOPIC, 3));
+    server.send({ type: "transient", topic: INDEX_TOPIC, event: { kind: "live_levels", input: 0, output: 0 } });
+    stop();
+    server.send(levels(THREAD_TOPIC, 0.75));
+
+    expect(seen).toEqual([levels(THREAD_TOPIC, 0.25)]);
+    expect(rig.client.model.revision).toBe(revision);
+    expect(subscribes(server.frames())).toEqual([]);
+  });
+
   // spec: PRT-022
   test("a gap in the stream resubscribes without position", () => {
     const [rig, server] = following();

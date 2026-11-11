@@ -9,8 +9,9 @@ use futures::{SinkExt, StreamExt};
 use omfp_core::LiveOwner;
 use omfp_protocol::{
     BashParams, BtwParams, Call, ErrorBody, ErrorCode, EventFrame, HelloResult, LiveConnectParams,
-    LiveConnected, MessageParams, PromptParams, Request, RespondParams, Response, ServerFrame,
-    SubscribeParams, SubscribeResult, ThreadRef, Topic, TopicEvent, decode_request,
+    LiveConnected, LiveStarted, MessageParams, PromptParams, Request, RespondParams, Response,
+    ServerFrame, SubscribeParams, SubscribeResult, ThreadRef, Topic, TopicEvent, TransientEvent,
+    decode_request,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -181,12 +182,17 @@ enum Watch {
 struct Subscribed {
     generation: u64,
     task: JoinHandle<()>,
+    /// Forwards the topic's transient frames (PRT-054): a thread's `live_levels` (DMN-110).
+    transient: Option<JoinHandle<()>>,
     _watch: Option<Watch>,
 }
 
 impl Drop for Subscribed {
     fn drop(&mut self) {
         self.task.abort();
+        if let Some(transient) = &self.transient {
+            transient.abort();
+        }
     }
 }
 
@@ -300,6 +306,23 @@ impl Connection {
                     send(&out, Outbound::response(id, result)).await;
                 });
             }
+            Call::ThreadLiveStart(ThreadRef { thread_id }) => {
+                // Owned like a `live_connect` session (DMN-109, DMN-103).
+                let owner = LiveOwner {
+                    client: self.principal.client().to_owned(),
+                    connection: self.number,
+                };
+                let supervisor = self.app.services.supervisor.clone();
+                let out = self.out.clone();
+                tokio::spawn(async move {
+                    let result = supervisor
+                        .live_start(&thread_id, owner)
+                        .await
+                        .map_err(supervisor_error)
+                        .and_then(|voice| to_value(&LiveStarted { voice }));
+                    send(&out, Outbound::response(id, result)).await;
+                });
+            }
             call => {
                 // Requests run concurrently; responses may arrive out of order (PRT-010).
                 let services = self.app.services.clone();
@@ -325,6 +348,7 @@ impl Connection {
         self.generation += 1;
         let generation = self.generation;
         let services = &self.app.services;
+        let mut transient = None;
         let started = match &topic {
             Topic::Index => {
                 let subscription = services.index.subscribe(since.as_ref());
@@ -344,13 +368,14 @@ impl Connection {
             Topic::Thread(thread_id) => {
                 let watched = async {
                     let log = services.supervisor.thread_log(thread_id).await?;
+                    let levels = services.supervisor.live_levels(thread_id).await?;
                     let guard = services.supervisor.watch(thread_id, self.number).await?;
-                    Ok((log, guard))
+                    Ok((log, levels, guard))
                 }
                 .await
                 .map_err(supervisor_error);
                 match watched {
-                    Ok((log, guard)) => {
+                    Ok((log, levels, guard)) => {
                         let subscription = log.subscribe(since.as_ref());
                         let task = self
                             .start(
@@ -362,6 +387,11 @@ impl Connection {
                                 generation,
                             )
                             .await;
+                        transient = Some(tokio::spawn(forward_levels(
+                            topic.clone(),
+                            levels,
+                            self.out.clone(),
+                        )));
                         Ok((task, Some(Watch::Thread { _guard: guard })))
                     }
                     Err(error) => Err((id, error)),
@@ -430,6 +460,7 @@ impl Connection {
                     Subscribed {
                         generation,
                         task,
+                        transient,
                         _watch: watch,
                     },
                 );
@@ -496,7 +527,8 @@ fn driven_thread(call: &Call) -> Option<&str> {
         | Call::ThreadBash(BashParams { thread_id, .. })
         | Call::ThreadBtw(BtwParams { thread_id, .. })
         | Call::InteractionRespond(RespondParams { thread_id, .. })
-        | Call::ThreadLiveConnect(LiveConnectParams { thread_id, .. }) => Some(thread_id),
+        | Call::ThreadLiveConnect(LiveConnectParams { thread_id, .. })
+        | Call::ThreadLiveStart(ThreadRef { thread_id }) => Some(thread_id),
         _ => None,
     }
 }
@@ -521,6 +553,35 @@ fn event_frame<E: Clone>(
         seq: sequenced.seq,
         event: event(sequenced.event.clone()),
     }))
+}
+
+/// Sends a thread's `live_levels` as transient frames (PRT-054, DMN-110): a value the client cannot take now is
+/// dropped, and a lagging stream skips to the latest, since only the latest levels matter.
+async fn forward_levels(
+    topic: Topic,
+    mut levels: broadcast::Receiver<omp_rpc::LiveLevelsEvent>,
+    out: mpsc::Sender<Outbound>,
+) {
+    loop {
+        match levels.recv().await {
+            Ok(levels) => {
+                let frame = ServerFrame::Transient {
+                    topic: topic.clone(),
+                    event: TransientEvent::LiveLevels {
+                        input: levels.input,
+                        output: levels.output,
+                    },
+                };
+                if let Some(frame) = Outbound::frame(&frame)
+                    && let Err(mpsc::error::TrySendError::Closed(_)) = out.try_send(frame)
+                {
+                    return;
+                }
+            }
+            Err(broadcast::error::RecvError::Lagged(_)) => {}
+            Err(broadcast::error::RecvError::Closed) => return,
+        }
+    }
 }
 
 /// Sends the replayed events, then live ones in order (PRT-022). When the outbound queue is full or the live stream

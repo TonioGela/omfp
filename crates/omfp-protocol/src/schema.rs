@@ -6,7 +6,9 @@ use schemars::schema_for;
 use serde_json::{Map, Value};
 
 use crate::dto::{IndexSnapshot, JobState, RepoStatus, ViewsState};
-use crate::envelope::{ErrorBody, ErrorCode, IndexEvent, JobEvent, ViewsEvent, WorkspaceEvent};
+use crate::envelope::{
+    ErrorBody, ErrorCode, IndexEvent, JobEvent, TransientEvent, ViewsEvent, WorkspaceEvent,
+};
 use crate::topic::Topic;
 
 /// Schemas keyed by type name; each schema's `title` is that name.
@@ -22,6 +24,7 @@ pub fn type_schemas() -> Value {
         ("ViewsEvent", schema_for!(ViewsEvent)),
         ("JobState", schema_for!(JobState)),
         ("JobEvent", schema_for!(JobEvent)),
+        ("TransientEvent", schema_for!(TransientEvent)),
         ("ErrorCode", schema_for!(ErrorCode)),
         ("ErrorBody", schema_for!(ErrorBody)),
     ];

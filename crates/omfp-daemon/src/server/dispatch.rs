@@ -90,7 +90,8 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         | Call::Subscribe(_)
         | Call::Unsubscribe(_)
         | Call::WidgetsReport(_)
-        | Call::ThreadLiveConnect(_) => Err(bad_request("handled by the connection")),
+        | Call::ThreadLiveConnect(_)
+        | Call::ThreadLiveStart(_) => Err(bad_request("handled by the connection")),
         Call::ReposSuggest(params) => {
             let workspaces = Arc::clone(&services.workspaces);
             let query = params.query.unwrap_or_default();

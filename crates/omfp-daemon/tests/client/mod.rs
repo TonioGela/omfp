@@ -141,6 +141,21 @@ impl Client {
         }
     }
 
+    /// The next transient frame of `topic` (PRT-054); the frames before it stay unread.
+    pub async fn transient(&mut self, topic: &str) -> Value {
+        let mut skipped = Vec::new();
+        loop {
+            let frame = self.frame().await;
+            if frame["type"] == "transient" && frame["topic"] == topic {
+                for earlier in skipped.into_iter().rev() {
+                    self.buffered.push_front(earlier);
+                }
+                return frame;
+            }
+            skipped.push(frame);
+        }
+    }
+
     /// Reads one text frame; `None` once closed.
     async fn read(&mut self) -> Option<Value> {
         loop {

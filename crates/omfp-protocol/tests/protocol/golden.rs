@@ -8,18 +8,19 @@ use omfp_protocol::{
     FileCandidates, FileContent, FileDiff, FileKind, FileMatch, FileWritten, FindFileParams,
     ForkParams, GoalParams, HelloParams, HelloResult, IndexSnapshot, InteractionResponse, JobInfo,
     JobRef, JobStatus, LabelParams, ListTerminalsParams, LiveConnectParams, LiveConnected,
-    LiveMuteParams, LiveMuted, METHODS, MessageParams, Method, NavigateParams, OpenTerminalParams,
-    OpenTerminalResult, PROTOCOL_VERSION, PathCompletions, PathEntry, Position, PromptBehavior,
-    PromptParams, PromptResult, QueueMessageParams, ReadFileParams, RemoveRepoParams,
-    RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions, ReportWidgetsParams, Request,
-    ResizeTerminalParams, RespondParams, Response, SearchThreadsParams, SeenRepository,
-    ServerFrame, SetModelParams, SetSettingsParams, SetThinkingParams, SetViewsParams,
-    SetWidgetStateParams, StartJobParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
-    SubscribeParams, SubscribeResult, SuggestReposParams, TerminalInfo, TerminalKind, TerminalList,
-    TerminalRef, Theme, ThreadGit, ThreadRef, ThreadSearchResult, ThreadSearchResults,
-    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied,
-    WidgetJobReport, WidgetReport, WidgetReportState, WidgetSource, WorkspaceDiffParams,
-    WorkspaceRef, WriteFileParams, decode_request, method,
+    LiveMuteParams, LiveMuted, LiveStarted, METHODS, MessageParams, Method, NavigateParams,
+    OpenTerminalParams, OpenTerminalResult, PROTOCOL_VERSION, PathCompletions, PathEntry, Position,
+    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, ReadFileParams,
+    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
+    ReportWidgetsParams, Request, ResizeTerminalParams, RespondParams, Response,
+    SearchThreadsParams, SeenRepository, ServerFrame, SetModelParams, SetSettingsParams,
+    SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
+    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
+    SuggestReposParams, TerminalInfo, TerminalKind, TerminalList, TerminalRef, Theme, ThreadGit,
+    ThreadRef, ThreadSearchResult, ThreadSearchResults, ThreadWorkspace, Topic, TopicParams,
+    UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied, WidgetJobReport, WidgetReport,
+    WidgetReportState, WidgetSource, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
+    decode_request, method,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -533,6 +534,43 @@ fn subagent_examples() -> Vec<(&'static str, Value)> {
     ]
 }
 
+fn live_examples() -> Vec<(&'static str, Value)> {
+    vec![
+        example::<method::ThreadLiveConnect>(
+            LiveConnectParams {
+                thread_id: THREAD_ID.to_owned(),
+                sdp_offer: "v=0\r\no=- 46117 2 IN IP4 127.0.0.1\r\n…".to_owned(),
+            },
+            &LiveConnected {
+                sdp_answer: "v=0\r\no=- 7215 1 IN IP4 0.0.0.0\r\n…".to_owned(),
+                voice: "sol".to_owned(),
+            },
+        ),
+        example::<method::ThreadLiveStart>(
+            thread_ref(),
+            &LiveStarted {
+                voice: "sol".to_owned(),
+            },
+        ),
+        example::<method::ThreadLiveStop>(thread_ref(), &Empty {}),
+        example::<method::ThreadLiveMute>(
+            LiveMuteParams {
+                thread_id: THREAD_ID.to_owned(),
+                muted: true,
+            },
+            &LiveMuted { muted: true },
+        ),
+        example::<method::InteractionRespond>(
+            RespondParams {
+                thread_id: THREAD_ID.to_owned(),
+                interaction_id: "ui-7".to_owned(),
+                response: InteractionResponse::Confirmed(true),
+            },
+            &Empty {},
+        ),
+    ]
+}
+
 fn tool_examples() -> Vec<(&'static str, Value)> {
     vec![
         example::<method::ThreadGoal>(
@@ -606,32 +644,6 @@ fn tool_examples() -> Vec<(&'static str, Value)> {
         ),
         example::<method::ThreadRestart>(thread_ref(), &Empty {}),
         example::<method::ThreadStop>(thread_ref(), &Empty {}),
-        example::<method::ThreadLiveConnect>(
-            LiveConnectParams {
-                thread_id: THREAD_ID.to_owned(),
-                sdp_offer: "v=0\r\no=- 46117 2 IN IP4 127.0.0.1\r\n…".to_owned(),
-            },
-            &LiveConnected {
-                sdp_answer: "v=0\r\no=- 7215 1 IN IP4 0.0.0.0\r\n…".to_owned(),
-                voice: "sol".to_owned(),
-            },
-        ),
-        example::<method::ThreadLiveStop>(thread_ref(), &Empty {}),
-        example::<method::ThreadLiveMute>(
-            LiveMuteParams {
-                thread_id: THREAD_ID.to_owned(),
-                muted: true,
-            },
-            &LiveMuted { muted: true },
-        ),
-        example::<method::InteractionRespond>(
-            RespondParams {
-                thread_id: THREAD_ID.to_owned(),
-                interaction_id: "ui-7".to_owned(),
-                response: InteractionResponse::Confirmed(true),
-            },
-            &Empty {},
-        ),
     ]
 }
 
@@ -861,6 +873,28 @@ fn live_methods_have_the_shapes_of_the_spec() {
     assert_eq!(method::ThreadLiveStop::NAME, "thread.live_stop");
 }
 
+// spec: PRT-053
+#[test]
+fn live_start_has_the_shape_of_the_spec() {
+    let start = Request::new(
+        "c1",
+        method::ThreadLiveStart::call(ThreadRef {
+            thread_id: THREAD_ID.to_owned(),
+        }),
+    );
+    assert_eq!(
+        serde_json::to_value(&start).unwrap(),
+        json!({ "type": "request", "id": "c1", "method": "thread.live_start", "params": { "threadId": THREAD_ID } })
+    );
+    assert_eq!(
+        serde_json::to_value(LiveStarted {
+            voice: "sol".to_owned()
+        })
+        .unwrap(),
+        json!({ "voice": "sol" })
+    );
+}
+
 #[test]
 fn a_finished_job_carries_its_exit() {
     let status = JobStatus::Exited {
@@ -892,6 +926,7 @@ fn every_method_has_a_golden_request_and_response() {
         tree_examples(),
         subagent_examples(),
         tool_examples(),
+        live_examples(),
         terminal_examples(),
         theme_examples(),
         ui_settings_examples(),

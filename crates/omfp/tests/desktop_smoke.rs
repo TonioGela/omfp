@@ -1,0 +1,137 @@
+//! Desktop tests (M7) of the real `omfp desktop` window under a virtual X server, never the user's display. They need
+//! the release web bundle (`just build-web`) and `xvfb-run`; `just test-desktop` runs them one at a time (each
+//! `xvfb-run -a` picks a free display, which races when two start at once).
+#![cfg(feature = "desktop")]
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+
+use rustix::process::{Pid, Signal, kill_process};
+
+fn web_bundle() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ui/packages/app/dist")
+}
+
+/// `omfp desktop <args>` under `xvfb-run` with `OMFP_SMOKE=<smoke>` and a temporary home.
+fn desktop(home: &Path, smoke: &str, args: &[&str]) -> Output {
+    let output = Command::new("xvfb-run")
+        .args(["-a", "-s", "-screen 0 1280x800x24"])
+        .arg(env!("CARGO_BIN_EXE_omfp"))
+        .arg("desktop")
+        .args(args)
+        .env("OMFP_SMOKE", smoke)
+        .env("HOME", home)
+        .env_remove("XDG_DATA_HOME")
+        .env_remove("XDG_CONFIG_HOME")
+        // Never the user's display.
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
+        .env("GDK_BACKEND", "x11")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success() && stdout.contains("OMFP_SMOKE_READY"),
+        "omfp desktop failed ({}):\n{stdout}\n{stderr}",
+        output.status
+    );
+    output
+}
+
+// spec: TST-033, DMN-004
+#[test]
+fn the_desktop_window_renders_the_shell_under_a_virtual_x_server() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let workspaces = dir.path().join("workspaces");
+    desktop(
+        dir.path(),
+        "1",
+        &[
+            "--data-dir",
+            data.to_str().unwrap(),
+            "--",
+            "--static-dir",
+            web_bundle().to_str().unwrap(),
+            "--workspaces-root",
+            workspaces.to_str().unwrap(),
+        ],
+    );
+    // The in-process daemon stopped with the window.
+    assert_eq!(omfp_daemon::discover(&data).unwrap(), None);
+}
+
+/// Stops the background daemon of a test, also when the test fails.
+struct Daemon(i32);
+
+impl Drop for Daemon {
+    fn drop(&mut self) {
+        if let Some(pid) = Pid::from_raw(self.0) {
+            let _ = kill_process(pid, Signal::TERM);
+        }
+    }
+}
+
+// spec: ARC-003, UI-004, UI-005
+#[test]
+fn a_second_window_reuses_the_background_daemon_that_outlives_the_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let workspaces = dir.path().join("workspaces");
+    let web = web_bundle();
+    let args = [
+        "--data-dir",
+        data.to_str().unwrap(),
+        "--",
+        "--static-dir",
+        web.to_str().unwrap(),
+        "--workspaces-root",
+        workspaces.to_str().unwrap(),
+        // A random port: the default one may be the user's daemon.
+        "--bind",
+        "127.0.0.1:0",
+    ];
+
+    let first = desktop(dir.path(), "local", &args);
+    // The first window closed; its background daemon still runs (D-16).
+    let info = omfp_daemon::discover(&data)
+        .unwrap()
+        .expect("the daemon outlives the window");
+    let daemon = Daemon(i32::try_from(info.pid).unwrap());
+    let stderr = String::from_utf8_lossy(&first.stderr);
+    assert!(
+        stderr.contains(&format!("started the daemon (pid {})", info.pid)),
+        "{stderr}"
+    );
+    assert!(
+        std::fs::read_to_string(data.join("daemon.log"))
+            .unwrap()
+            .contains("omfp daemon listening on")
+    );
+    // UI-004: the URL a browser opens on the same daemon, with its token.
+    let token = std::fs::read_to_string(data.join("token")).unwrap();
+    let url = format!("omfp desktop: http://{}/#token={}", info.addr, token.trim());
+    assert!(
+        String::from_utf8_lossy(&first.stdout).contains(&url),
+        "{url}"
+    );
+
+    let second = desktop(dir.path(), "local", &args);
+    let stderr = String::from_utf8_lossy(&second.stderr);
+    assert!(
+        stderr.contains(&format!("found the daemon (pid {})", info.pid)),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("started the daemon"), "{stderr}");
+    assert!(String::from_utf8_lossy(&second.stdout).contains(&url));
+    assert_eq!(omfp_daemon::discover(&data).unwrap(), Some(info));
+
+    // SIGTERM stops it cleanly (DMN-005): its data directory's lock is free once it exited.
+    drop(daemon);
+    std::fs::File::open(data.join("daemon.lock"))
+        .unwrap()
+        .lock_shared()
+        .unwrap();
+    assert_eq!(omfp_daemon::discover(&data).unwrap(), None);
+}

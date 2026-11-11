@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { OMP_VERSION } from "@omfp/core";
-import { INDEX_TOPIC, PROTOCOL_VERSION, type Topic, threadTopic } from "@omfp/protocol";
+import { INDEX_TOPIC, PROTOCOL_VERSION, type Topic, type TransientFrame, threadTopic } from "@omfp/protocol";
 import {
   CallError,
   type Client,
@@ -391,6 +391,33 @@ describe("transport suite", () => {
       } finally {
         owner.close();
         watcher.close();
+      }
+    },
+    TEST_MS,
+  );
+
+  // spec: TST-030, PRT-053, PRT-054, DMN-109, DMN-110
+  test(
+    "live voice on the daemon's machine",
+    async () => {
+      const owner = client("suite/live-start");
+      const levels = new Promise<TransientFrame>((resolve) => owner.onTransient(resolve));
+      try {
+        const thread = await createThread(owner, "live start");
+        const topic = threadTopic(thread);
+        owner.subscribe(topic);
+        await until(owner, "the thread", (model) => live(model, topic, "snapshot"));
+
+        expect(await owner.call("thread.live_start", { threadId: thread })).toEqual({ voice: "sol" });
+        await until(owner, "the listening session", (model) => model.thread(thread)?.state.live?.phase === "listening");
+        expect(await within("the levels", () => describeModel(owner.model), levels)).toEqual({
+          type: "transient",
+          topic,
+          event: { kind: "live_levels", input: 0.25, output: 0.5 },
+        });
+        expect(await owner.call("thread.live_stop", { threadId: thread })).toEqual({});
+      } finally {
+        owner.close();
       }
     },
     TEST_MS,

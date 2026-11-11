@@ -2,6 +2,9 @@
  * The access token on the web (UI-002): `omfp daemon` prints the UI's URL with `#token=…`; the page reads it, keeps it
  * in `localStorage`, and removes it from the address bar (`history.replaceState`) so it does not end up in history,
  * bookmarks or screen shares. Fragments never reach the server (PRT-002).
+ *
+ * `omfp desktop` adds `local=1` when the daemon runs on the window's machine (UI-188): it stays in the address bar and
+ * is never stored, since it belongs to that window, not to the daemon's origin.
  */
 
 /** `localStorage` key of the access token. */
@@ -16,6 +19,11 @@ export function fragmentToken(fragment: string): string | undefined {
     }
   }
   return undefined;
+}
+
+/** Whether the fragment says the window runs on the daemon's machine (`local=1`, UI-188). */
+export function fragmentLocal(fragment: string): boolean {
+  return parameters(fragment).includes("local=1");
 }
 
 /** The fragment without its `token` parameter: `""` when nothing else is left, else `#` and the other parameters. */

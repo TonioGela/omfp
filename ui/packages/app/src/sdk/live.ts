@@ -1,16 +1,18 @@
 /**
- * Live voice in the browser (UI-180..UI-186, spike S-09): {@link LiveClient} holds this window's one session — the
- * browser half of omp's `live_connect`: the microphone, a WebRTC peer whose offer the daemon relays
- * (`thread.live_connect`), the remote voice on an `<audio>` element and the analysers the spectrum draws. omp cannot
- * see the peer, so the window sends `thread.live_stop` when the peer fails or closes, on the end key, on a thread switch
- * and on unload (UI-185). The browser parts sit behind {@link LiveMedia}, which tests replace.
+ * Live voice in the window (UI-180..UI-189, spike S-09): {@link LiveClient} holds this window's one session. Where the
+ * window has WebRTC it is the browser half of omp's `live_connect`: the microphone, a WebRTC peer whose offer the
+ * daemon relays (`thread.live_connect`), the remote voice on an `<audio>` element and the analysers the spectrum draws.
+ * The desktop webview has no WebRTC: on the daemon's machine (`#local=1`) the window starts omp's own session instead
+ * (`thread.live_start`: omp's microphone and speakers), and the spectrum draws omp's `live_levels` (transient frames,
+ * PRT-054). The window sends `thread.live_stop` when its peer fails or closes, on the end key, on a thread switch and on
+ * unload (UI-185). The browser parts sit behind {@link LiveMedia}, which tests replace.
  */
 
 import { CallError } from "@omfp/client";
-import { AnalyserSource, type Levels, SILENT_SOURCE, type SpectrumSource, Tap } from "@omfp/kit";
+import { AnalyserSource, type Levels, LevelsSource, SILENT_SOURCE, type SpectrumSource, Tap } from "@omfp/kit";
 import { threadTopic } from "@omfp/protocol";
 import { strings } from "../strings/index.ts";
-import { IDLE, type LiveSupport, type LocalLive } from "../vm/live.ts";
+import { IDLE, type LiveSupport, type LocalLive, liveSupport } from "../vm/live.ts";
 import type { FrameStore } from "./frame-store.ts";
 import type { SdkClient, TopicRefs } from "./host.tsx";
 import { SELECTED_THREAD } from "./keys.ts";
@@ -21,16 +23,24 @@ const SPEAKING_LEVEL = 0.015;
 /** … and for this long after (UI-184). */
 const SPEAKING_HOLD_MS = 350;
 
+/** What the window holds while its session is open. */
+interface LiveHold {
+  /** What the spectrum draws. */
+  readonly source: SpectrumSource;
+  /** Enables or disables the local track (UI-183); nothing is local for `live_start`. */
+  setMuted(muted: boolean): void;
+  /** Releases what the session holds. */
+  close(): void;
+}
+
 /** The browser half of one session, open: the microphone and a peer that sends it, with its offer. */
-export interface LiveLink {
+export interface LiveLink extends LiveHold {
   /** The peer's SDP offer (one sendrecv Opus audio track and the `oai-events` data channel). */
   readonly offer: string;
   /** The analysers of the microphone and (once it arrives) the remote voice. */
   readonly source: SpectrumSource;
   /** Applies omp's SDP answer. */
   answer(sdp: string): Promise<void>;
-  /** Enables or disables the local track (UI-183). */
-  setMuted(muted: boolean): void;
   /** Closes the peer, the microphone, the remote audio and the analysers. */
   close(): void;
 }
@@ -48,6 +58,7 @@ export class LiveOpenError extends Error {
 
 /** The browser APIs of a session; {@link browserLiveMedia} in the app, a fake in tests. */
 export interface LiveMedia {
+  /** How this window holds a session (UI-188). */
   support(): LiveSupport;
   /** Opens the microphone and a peer sending it; `onState` gets the peer's `connectionState` changes. */
   open(onState: (state: RTCPeerConnectionState) => void): Promise<LiveLink>;
@@ -86,8 +97,8 @@ export class LiveClient {
   readonly #media: LiveMedia;
   #snapshot: LiveSnapshot = { local: IDLE, dismissed: {} };
   readonly #listeners = new Set<() => void>();
-  /** The open session's link, and what it holds while open. */
-  #link: LiveLink | undefined;
+  /** What the open session holds (its peer, or the levels of omp's session), and what it retains while open. */
+  #link: LiveHold | undefined;
   #release: (() => void)[] = [];
   /** The thread state showed this window's session: from then on its absence means it ended. */
   #seen = false;
@@ -116,18 +127,23 @@ export class LiveClient {
     return this.#media.support();
   }
 
-  /** What the spectrum draws: the open session's analysers, else silence. */
+  /** What the spectrum draws: the open session's analysers or omp's levels, else silence. */
   source(): SpectrumSource {
     return this.#link?.source ?? SILENT_SOURCE;
   }
 
   /**
-   * Starts a session on `threadId` (UI-181): microphone, peer and offer, `thread.live_connect`, then omp's answer.
-   * Ends this window's other session first. A failure shows in the panel (UI-186).
+   * Starts a session on `threadId`: microphone, peer and offer, `thread.live_connect`, then omp's answer (UI-181);
+   * without WebRTC on the daemon's machine, `thread.live_start` (UI-188). Ends this window's other session first. A
+   * failure shows in the panel (UI-186).
    */
   async start(threadId: string): Promise<void> {
     const support = this.#media.support();
-    if (support !== "available") {
+    if (support === "host") {
+      await this.#startHost(threadId);
+      return;
+    }
+    if (support !== "webrtc") {
       this.#set({ kind: "failed", threadId, message: strings.chat.live[support] });
       return;
     }
@@ -176,7 +192,44 @@ export class LiveClient {
       return;
     }
     if (this.#link === link) {
-      this.#set({ kind: "running", threadId, connected: this.#connected, speaking: false, muted: false });
+      this.#set({ kind: "running", threadId, mode: "peer", connected: this.#connected, speaking: false, muted: false });
+      this.#check();
+    }
+  }
+
+  /**
+   * Starts omp's own session on the daemon's machine (`thread.live_start`, UI-188): no microphone or peer here; the
+   * spectrum draws the thread's `live_levels` (UI-189).
+   */
+  async #startHost(threadId: string): Promise<void> {
+    this.end();
+    const starting: LocalLive = { kind: "starting", threadId };
+    this.#set(starting);
+    this.#seen = false;
+    const source = new LevelsSource();
+    const topic = threadTopic(threadId);
+    const link: LiveHold = {
+      source,
+      setMuted: () => {},
+      close: this.#client.onTransient((frame) => {
+        if (frame.topic === topic && frame.event.kind === "live_levels") {
+          source.set({ mic: frame.event.input, remote: frame.event.output }, this.#media.now());
+        }
+      }),
+    };
+    this.#open(threadId, link);
+    try {
+      await this.#client.call("thread.live_start", { threadId });
+    } catch (error) {
+      if (this.#link === link) {
+        this.#close();
+        this.#set({ kind: "failed", threadId, message: failureMessage(error) });
+      }
+      return;
+    }
+    if (this.#link === link) {
+      // omp answers once it records: its phases show from now on, `speaking` included.
+      this.#set({ kind: "running", threadId, mode: "host", connected: true, speaking: false, muted: false });
       this.#check();
     }
   }
@@ -203,7 +256,7 @@ export class LiveClient {
     }
   }
 
-  /** Mutes or unmutes this window's running session (UI-183): the local track, then `thread.live_mute`. */
+  /** Mutes or unmutes this window's running session (UI-183): the local track (if any), then `thread.live_mute`. */
   toggleMute(): void {
     const local = this.#snapshot.local;
     if (local.kind !== "running") {
@@ -219,11 +272,11 @@ export class LiveClient {
 
   /**
    * The levels the spectrum read (every frame, or four times a second below motion `full`): `speaking` while the
-   * remote voice is audible (UI-184; omp reports no `speaking` phase for `live_connect`).
+   * remote voice is audible (UI-184; omp reports no `speaking` phase for `live_connect`, but does for `live_start`).
    */
   readonly noteLevels = (levels: Levels): void => {
     const local = this.#snapshot.local;
-    if (local.kind !== "running") {
+    if (local.kind !== "running" || local.mode === "host") {
       return;
     }
     const now = this.#media.now();
@@ -246,7 +299,7 @@ export class LiveClient {
     this.#emit();
   }
 
-  #open(threadId: string, link: LiveLink): void {
+  #open(threadId: string, link: LiveHold): void {
     this.#link = link;
     const unload = () => this.end();
     window.addEventListener("pagehide", unload);
@@ -330,82 +383,86 @@ export class LiveClient {
   }
 }
 
-/** The browser's {@link LiveMedia}: `getUserMedia`, `RTCPeerConnection`, an `<audio>` element and Web Audio. */
-export const browserLiveMedia: LiveMedia = {
-  support() {
-    if (!window.isSecureContext) {
-      return "insecure";
-    }
-    return typeof RTCPeerConnection === "function" && navigator.mediaDevices?.getUserMedia !== undefined
-      ? "available"
-      : "unsupported";
-  },
+/**
+ * The browser's {@link LiveMedia}: `getUserMedia`, `RTCPeerConnection`, an `<audio>` element and Web Audio; `local`
+ * says the window runs on the daemon's machine (`#local=1`), where a window without WebRTC uses omp's own session.
+ */
+export function browserLiveMedia(local: boolean): LiveMedia {
+  return {
+    support: () =>
+      liveSupport({
+        secure: window.isSecureContext,
+        webrtc: typeof RTCPeerConnection === "function" && navigator.mediaDevices?.getUserMedia !== undefined,
+        local,
+      }),
+    now: () => performance.now(),
+    open: openPeer,
+  };
+}
 
-  now: () => performance.now(),
-
-  async open(onState) {
-    let microphone: MediaStream;
-    try {
-      microphone = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-    } catch (error) {
-      throw new LiveOpenError("microphone", failureMessage(error));
+/** Opens the microphone and a peer sending it (`live_connect`). */
+async function openPeer(onState: (state: RTCPeerConnectionState) => void): Promise<LiveLink> {
+  let microphone: MediaStream;
+  try {
+    microphone = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (error) {
+    throw new LiveOpenError("microphone", failureMessage(error));
+  }
+  const source = new AnalyserSource();
+  const context = new AudioContext();
+  const peer = new RTCPeerConnection();
+  const audio = new Audio();
+  const close = () => {
+    peer.close();
+    for (const track of microphone.getTracks()) {
+      track.stop();
     }
-    const source = new AnalyserSource();
-    const context = new AudioContext();
-    const peer = new RTCPeerConnection();
-    const audio = new Audio();
-    const close = () => {
-      peer.close();
-      for (const track of microphone.getTracks()) {
-        track.stop();
-      }
-      audio.pause();
-      audio.srcObject = null;
-      source.mic?.disconnect();
-      source.remote?.disconnect();
-      void context.close();
+    audio.pause();
+    audio.srcObject = null;
+    source.mic?.disconnect();
+    source.remote?.disconnect();
+    void context.close();
+  };
+  try {
+    // Not awaited: without a user activation `resume` waits for one; the analysers stay silent until then.
+    void context.resume().catch(() => undefined);
+    source.mic = new Tap(context, context.createMediaStreamSource(microphone));
+    const [track] = microphone.getAudioTracks();
+    if (track === undefined) {
+      throw new Error("the microphone has no audio track");
+    }
+    peer.addTransceiver(track, { direction: "sendrecv", streams: [microphone] });
+    // omp's realtime model talks over the `oai-events` channel; the browser only has to open it.
+    peer.createDataChannel("oai-events");
+    peer.addEventListener("track", (event) => {
+      const stream = event.streams[0] ?? new MediaStream([event.track]);
+      // Chromium feeds a remote WebRTC stream into Web Audio only while a media element plays it.
+      audio.autoplay = true;
+      audio.srcObject = stream;
+      void audio.play().catch(() => undefined);
+      source.remote = new Tap(context, context.createMediaStreamSource(stream));
+    });
+    peer.addEventListener("connectionstatechange", () => onState(peer.connectionState));
+    await peer.setLocalDescription(await peer.createOffer());
+    const offer = peer.localDescription?.sdp;
+    if (offer === undefined || offer === "") {
+      throw new Error("the browser made no SDP offer");
+    }
+    return {
+      offer,
+      source,
+      answer: (sdp) => peer.setRemoteDescription({ type: "answer", sdp }),
+      setMuted(muted) {
+        for (const local of microphone.getAudioTracks()) {
+          local.enabled = !muted;
+        }
+      },
+      close,
     };
-    try {
-      // Not awaited: without a user activation `resume` waits for one; the analysers stay silent until then.
-      void context.resume().catch(() => undefined);
-      source.mic = new Tap(context, context.createMediaStreamSource(microphone));
-      const [track] = microphone.getAudioTracks();
-      if (track === undefined) {
-        throw new Error("the microphone has no audio track");
-      }
-      peer.addTransceiver(track, { direction: "sendrecv", streams: [microphone] });
-      // omp's realtime model talks over the `oai-events` channel; the browser only has to open it.
-      peer.createDataChannel("oai-events");
-      peer.addEventListener("track", (event) => {
-        const stream = event.streams[0] ?? new MediaStream([event.track]);
-        // Chromium feeds a remote WebRTC stream into Web Audio only while a media element plays it.
-        audio.autoplay = true;
-        audio.srcObject = stream;
-        void audio.play().catch(() => undefined);
-        source.remote = new Tap(context, context.createMediaStreamSource(stream));
-      });
-      peer.addEventListener("connectionstatechange", () => onState(peer.connectionState));
-      await peer.setLocalDescription(await peer.createOffer());
-      const offer = peer.localDescription?.sdp;
-      if (offer === undefined || offer === "") {
-        throw new Error("the browser made no SDP offer");
-      }
-      return {
-        offer,
-        source,
-        answer: (sdp) => peer.setRemoteDescription({ type: "answer", sdp }),
-        setMuted(muted) {
-          for (const local of microphone.getAudioTracks()) {
-            local.enabled = !muted;
-          }
-        },
-        close,
-      };
-    } catch (error) {
-      close();
-      throw new LiveOpenError("peer", failureMessage(error));
-    }
-  },
-};
+  } catch (error) {
+    close();
+    throw new LiveOpenError("peer", failureMessage(error));
+  }
+}

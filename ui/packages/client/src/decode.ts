@@ -23,6 +23,7 @@ import {
   type SubscribeResult,
   type Theme,
   type TopicEvent,
+  type TransientEvent,
   type ViewsEvent,
   type ViewsState,
   type WidgetInfo,
@@ -216,7 +217,24 @@ function decodeTopicEvent(topic: ParsedTopic, event: unknown): Decoded<TopicEven
   return checkKind(table, event) ? { ok: true, value: event as TopicEvent } : invalid(`not a ${topic.kind} event`);
 }
 
-/** Decodes a JSON-parsed daemon frame (PRT-010, PRT-022, PRT-023). */
+/** A level in [0, 1]. */
+function isLevel(value: unknown): value is number {
+  return typeof value === "number" && value >= 0 && value <= 1;
+}
+
+/** Decodes the `event` of a transient frame (PRT-054): `live_levels` only on a thread topic (DMN-110). */
+function decodeTransientEvent(topic: ParsedTopic, event: unknown): Decoded<TransientEvent> {
+  if (!isObject(event) || event.kind !== "live_levels" || topic.kind !== "thread") {
+    return invalid(`not a transient event of ${topic.kind}`);
+  }
+  const { input, output } = event;
+  if (!isLevel(input) || !isLevel(output)) {
+    return invalid("`live_levels` needs `input` and `output` in [0, 1]");
+  }
+  return { ok: true, value: { kind: "live_levels", input, output } };
+}
+
+/** Decodes a JSON-parsed daemon frame (PRT-010, PRT-022, PRT-023, PRT-054). */
 export function decodeServerFrame(value: unknown): Decoded<ServerFrame> {
   if (!isObject(value)) {
     return invalid("a frame must be a JSON object");
@@ -258,6 +276,15 @@ export function decodeServerFrame(value: unknown): Decoded<ServerFrame> {
         return invalid("`resync_required` needs a valid `topic`");
       }
       return { ok: true, value: { type: "resync_required", topic } };
+    }
+    case "transient": {
+      const { topic } = value;
+      const parsed = typeof topic === "string" ? parseTopic(topic) : undefined;
+      if (typeof topic !== "string" || parsed === undefined) {
+        return invalid("a transient frame needs a valid `topic`");
+      }
+      const event = decodeTransientEvent(parsed, value.event);
+      return event.ok ? { ok: true, value: { type: "transient", topic, event: event.value } } : event;
     }
     default:
       return invalid("unknown frame `type`");
