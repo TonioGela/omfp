@@ -1073,4 +1073,53 @@
       transform: translateX(250%);
     }
   }
+
+  /* CodeMirror (S-13): the editor fills its box and scrolls inside it; its colors come from editor/theme.ts. */
+  .omfp-code-editor,
+  .omfp-code-diff {
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    overflow: hidden;
+    border: 1px solid var(--omfp-outline-variant);
+    border-radius: var(--omfp-radius-sm);
+  }
+
+  .omfp-code-editor__view,
+  .omfp-code-diff__view {
+    flex: 1;
+    min-block-size: 0;
+    overflow: auto;
+  }
+
+  .omfp-code-editor__view > .cm-editor,
+  .omfp-code-diff__view .cm-editor {
+    block-size: 100%;
+  }
+
+  .omfp-code-diff__view .cm-mergeView {
+    block-size: 100%;
+    overflow: auto;
+  }
+
+  /* A file path that opens the file (UI-116): inline, like the text around it, underlined on hover and focus. */
+  .omfp-path-link {
+    padding: 0;
+    border: none;
+    font: inherit;
+    color: var(--omfp-primary);
+    text-align: start;
+    background: none;
+    cursor: pointer;
+  }
+
+  .omfp-path-link:hover,
+  .omfp-path-link:focus-visible {
+    text-decoration: underline;
+  }
+
+  .omfp-path-link:focus-visible {
+    outline: 2px solid var(--omfp-primary);
+    outline-offset: 1px;
+  }
 }

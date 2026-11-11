@@ -9,6 +9,7 @@ import type { ParamsOf, ResultOf, Topic } from "@omfp/protocol";
 import { createContext, type ReactNode, useContext } from "react";
 import { strings } from "../strings/index.ts";
 import { CommandRegistry } from "./commands.ts";
+import { type FilePoll, intervalPoll } from "./files.ts";
 import { type FrameScheduler, FrameStore, type ModelSource } from "./frame-store.ts";
 import { browserImporter, type Importer, WidgetModules } from "./modules.ts";
 import { type ReportTimers, WidgetReporter } from "./reports.ts";
@@ -93,6 +94,8 @@ export interface OmfpHost {
   readonly modules: WidgetModules;
   /** This window's widget reports to the daemon (AGT-026). */
   readonly reports: WidgetReporter;
+  /** How open files are checked for changes (`useFile`, UI-110). */
+  readonly filePoll: FilePoll;
 }
 
 export interface HostOptions {
@@ -104,6 +107,8 @@ export interface HostOptions {
   readonly importer?: Importer;
   /** How widget reports are batched; default: the global timers. */
   readonly reportTimers?: ReportTimers;
+  /** How open files are checked for changes; default: every 2 s (tests pass a manual one). */
+  readonly filePoll?: FilePoll;
 }
 
 /** A host over `client`; call `host.frames.start()` to follow the model. */
@@ -117,6 +122,7 @@ export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHo
     announcer: new Announcer(),
     modules: new WidgetModules(options.importer ?? browserImporter, strings.widgets.noDefaultExport),
     reports: new WidgetReporter({ report: (params) => client.call("widgets.report", params) }, options.reportTimers),
+    filePoll: options.filePoll ?? intervalPoll,
   };
 }
 

@@ -318,3 +318,25 @@ requirements = [
   # End-to-end journey
   "E2E-10",
 ]
+
+[M5c]
+status = "done"
+requirements = [
+  # Daemon: files of a workspace (item 3)
+  "DMN-089",
+  "DMN-090",
+  # Followed files settle before they apply (item 6)
+  "DMN-091",
+  # File viewer and editor, opening, clickable paths (item 3)
+  "UI-110",
+  "UI-111",
+  "UI-112",
+  "UI-113",
+  "UI-114",
+  "UI-115",
+  "UI-116",
+  # SDK
+  "AGT-027",
+  # End-to-end journey
+  "E2E-13",
+]

@@ -6,18 +6,22 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { SELECTED_THREAD } from "../../../src/sdk/index.ts";
+import { type OmfpHost, OPEN_FILES, SELECTED_THREAD } from "../../../src/sdk/index.ts";
 import type { ToolCard } from "../../../src/vm/tool.ts";
-import { ToolCardView } from "../../../src/widgets/chat/message.tsx";
+import { MessageRow, ToolCardView } from "../../../src/widgets/chat/message.tsx";
 import { card, streaming } from "../../support/cards.ts";
 import { repo, thread, workspace } from "../../support/fixtures.ts";
 import { renderWithHost, testHost } from "../../support/host.tsx";
 
 afterEach(cleanup);
 
+/** The host of the last {@link show}. */
+let shownHost: OmfpHost | undefined;
+
 /** Renders `toolCard` in workspace `w1` (folder `/work/w1`, whose repository `src` holds the fixtures' files). */
 function show(toolCard: ToolCard): HTMLElement {
   const test = testHost();
+  shownHost = test.host;
   test.client.connected();
   test.client.index({
     workspaces: [workspace("w1", [{ ...repo("w1", "src", "main"), kind: "clone" }])],
@@ -307,5 +311,78 @@ describe("task card", () => {
     const element = show(card("task_tool_call", "call_task_2"));
     expect(byTestId(element, "tool-error").textContent).toContain('Unknown agent "no-such-agent"');
     expect(byTestId(element, "subagent").dataset.status).toBe("pending");
+  });
+});
+
+describe("opening files from cards", () => {
+  /** The files the last shown card opened. */
+  const opened = () => shownHost?.window.get(OPEN_FILES).w1?.tabs.map(({ path, line, diff }) => ({ path, line, diff }));
+
+  // spec: UI-116
+  test("a read's path opens the file at its first line, without toggling the card; the card carries it for g f", async () => {
+    const element = show(card("read_tool_calls", "call_read_1"));
+    expect([element.dataset.omfpPath, element.dataset.omfpLine]).toEqual(["src/lib.rs", "1"]);
+    await userEvent.click(byTestId(element, "tool-path-open"));
+    expect(opened()).toEqual([{ path: "src/lib.rs", line: 1, diff: undefined }]);
+    expect(within(element).getByTestId("toggle").getAttribute("aria-expanded")).toBe("false");
+  });
+
+  // spec: UI-116
+  test("an edit's and a write's path open the file against HEAD", async () => {
+    await userEvent.click(byTestId(show(card("edit_tool_calls", "call_edit_1")), "tool-path-open"));
+    expect(opened()).toEqual([{ path: "src/lib.rs", line: undefined, diff: true }]);
+    cleanup();
+    const write = show(streaming("write_tool_calls", "call_write_1"));
+    expect(write.dataset.omfpDiff).toBe("");
+    await userEvent.click(byTestId(write, "tool-path-open"));
+    expect(opened()).toEqual([{ path: "notes.md", line: undefined, diff: true }]);
+  });
+
+  // spec: UI-116
+  test("paths in the assistant's Markdown open the file; the user's text stays plain", async () => {
+    const test = testHost();
+    test.client.connected();
+    test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "cards", "w1")] });
+    test.host.window.set(SELECTED_THREAD, "t1");
+    shownHost = test.host;
+    renderWithHost(
+      <>
+        <MessageRow
+          cardKey="m1"
+          streaming={false}
+          view={{
+            role: "assistant",
+            label: "Assistant",
+            blocks: [{ type: "text", text: "Changed `src/lib.rs:4`." }],
+            error: undefined,
+            steering: false,
+          }}
+        />
+        <MessageRow
+          cardKey="m2"
+          streaming={false}
+          view={{
+            role: "user",
+            label: "You",
+            blocks: [{ type: "text", text: "`src/lib.rs`" }],
+            error: undefined,
+            steering: false,
+          }}
+        />
+      </>,
+      test,
+    );
+    test.flush();
+    const links = screen.getAllByTestId("path-link");
+    expect(links.map((link) => link.textContent)).toEqual(["src/lib.rs:4"]);
+    await userEvent.click(links[0] as HTMLElement);
+    expect(opened()).toEqual([{ path: "src/lib.rs", line: 4, diff: undefined }]);
+  });
+
+  // spec: UI-116
+  test("each file of a grep result opens", async () => {
+    const grep = await open(card("search_tool_calls", "call_grep_1"));
+    await userEvent.click(within(byTestId(grep, "tool-file")).getByTestId("path-link"));
+    expect(opened()).toEqual([{ path: "src/lib.rs", line: undefined, diff: undefined }]);
   });
 });

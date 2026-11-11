@@ -1,11 +1,11 @@
 /** L4: `omfp:changes` over a fake client. */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import type { GitStatus } from "@omfp/protocol";
+import type { FileContent, GitStatus } from "@omfp/protocol";
 import { workspaceTopic } from "@omfp/protocol";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type OmfpHost, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { type OmfpHost, OPEN_FILES, SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { ChangesWidget } from "../../src/widgets/changes/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { renderWithHost, type TestHost, testHost } from "../support/host.tsx";
@@ -30,6 +30,16 @@ const STATUS: GitStatus = {
   files: [{ path: "src/lib.rs", oldPath: null, status: "modified", additions: 1, deletions: 1 }],
 };
 
+/** What `workspaces.read_file` answers: the file now (the patch's new side). */
+let current: FileContent = {
+  path: "fe/src/lib.rs",
+  kind: "text",
+  size: 33,
+  hash: "h1",
+  content: "fn one() {}\nfn two() -> u8 { 2 }\n",
+  repo: "fe",
+};
+
 function setup(select: (host: OmfpHost) => void = (host) => host.window.set(SELECTED_THREAD, "t1")) {
   const base = testHost();
   base.client.answers.set("workspaces.status", () => STATUS);
@@ -37,6 +47,7 @@ function setup(select: (host: OmfpHost) => void = (host) => host.window.set(SELE
   base.client.answers.set("workspaces.diff", () => ({
     files: [{ path: "src/lib.rs", patch: PATCH, truncated: false }],
   }));
+  base.client.answers.set("workspaces.read_file", () => current);
   select(base.host);
   const test = renderWithHost(<ChangesWidget />, base);
   test.client.connected();
@@ -86,20 +97,56 @@ describe("omfp:changes", () => {
     expect(within(repoSection("be")).queryByTestId("changes-file")).toBeNull();
   });
 
-  // spec: UI-080, UI-090
-  test("a file expands to its highlighted diff", async () => {
+  // spec: UI-080
+  test("a file expands to the whole file against its text before the change, in the unified merge view", async () => {
     const test = setup();
     pushStatus(test, STATUS);
     await test.user.click(within(repoSection("fe")).getByTestId("changes-file-toggle"));
     expect(test.client.callsTo("workspaces.diff").map((call) => call.params)).toEqual([
       { workspaceId: "w1", repo: "fe", path: "src/lib.rs" },
     ]);
-    const diff = await screen.findByTestId("changes-diff");
-    expect(diff.getAttribute("aria-label")).toBe("Diff of src/lib.rs");
-    expect([...diff.querySelectorAll("[data-kind=add]")].map((row) => row.textContent)).toEqual([
-      "2+fn two() -> u8 { 2 }",
+    expect(test.client.callsTo("workspaces.read_file").map((call) => call.params)).toEqual([
+      { workspaceId: "w1", path: "fe/src/lib.rs" },
     ]);
-    await waitFor(() => expect(diff.querySelector("[data-kind=add] .hljs-keyword")?.textContent).toBe("fn"));
+    const diff = await screen.findByTestId("changes-diff");
+    expect([diff.dataset.view, diff.dataset.layout, diff.getAttribute("aria-label")]).toEqual([
+      "merge",
+      "unified",
+      "Diff of src/lib.rs",
+    ]);
+    await waitFor(() => expect(diff.querySelector(".cm-deletedChunk")?.textContent).toContain("fn two() {}"));
+    expect(diff.querySelector(".cm-changedLine")?.textContent).toBe("fn two() -> u8 { 2 }");
+  });
+
+  // spec: UI-080, UI-090
+  test("a file the patch does not fit (binary, changed since) shows the highlighted patch", async () => {
+    current = { path: "fe/src/lib.rs", kind: "binary", size: 9, hash: "h2", repo: "fe" };
+    try {
+      const test = setup();
+      pushStatus(test, STATUS);
+      await test.user.click(within(repoSection("fe")).getByTestId("changes-file-toggle"));
+      const diff = await screen.findByTestId("changes-diff");
+      expect(diff.dataset.view).toBe("patch");
+      expect([...diff.querySelectorAll("[data-kind=add]")].map((row) => row.textContent)).toEqual([
+        "2+fn two() -> u8 { 2 }",
+      ]);
+      await waitFor(() => expect(diff.querySelector("[data-kind=add] .hljs-keyword")?.textContent).toBe("fn"));
+    } finally {
+      current = { ...current, kind: "text", content: "fn one() {}\nfn two() -> u8 { 2 }\n" };
+    }
+  });
+
+  // spec: UI-116
+  test("a changed file's path opens it in a file tab against HEAD, without expanding it", async () => {
+    const test = setup();
+    pushStatus(test, STATUS);
+    const file = within(repoSection("fe")).getByTestId("changes-file");
+    expect([file.dataset.omfpPath, file.dataset.omfpDiff]).toEqual(["fe/src/lib.rs", ""]);
+    await test.user.click(within(file).getByTestId("changes-open"));
+    expect(test.host.window.get(OPEN_FILES).w1?.tabs).toEqual([
+      { path: "fe/src/lib.rs", line: undefined, diff: true, seq: 1 },
+    ]);
+    expect(test.client.callsTo("workspaces.diff")).toEqual([]);
   });
 
   // spec: UI-080

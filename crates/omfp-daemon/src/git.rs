@@ -101,6 +101,10 @@ pub trait Git: Send + Sync + std::fmt::Debug {
     /// `git diff <base_ref>...HEAD` plus uncommitted and untracked changes, as one patch (DMN-026). Without a base
     /// ref, only the uncommitted and untracked changes.
     fn diff(&self, dir: &Path, base_ref: Option<&str>) -> Result<String>;
+
+    /// The bytes of the file `path` (relative to `dir`, inside a working tree) at `HEAD` (DMN-089); `None` when
+    /// `HEAD` does not have it as a file or there is no `HEAD` yet.
+    fn show_head(&self, dir: &Path, path: &str) -> Result<Option<Vec<u8>>>;
 }
 
 /// [`Git`] over the `git` executable. Output is parsed in machine formats, so user configuration (colors, pagers,
@@ -378,6 +382,22 @@ impl Git for GitCli {
             patch.push_str(&String::from_utf8_lossy(&output.stdout));
         }
         Ok(patch)
+    }
+
+    fn show_head(&self, dir: &Path, path: &str) -> Result<Option<Vec<u8>>> {
+        // `./` makes the path relative to `dir` rather than to the top of the working tree.
+        let object = format!("HEAD:./{path}");
+        let args = ["rev-parse", "--verify", "--quiet", object.as_str()];
+        let output = self.output(dir, &args)?;
+        let id = match output.status.code() {
+            Some(0) => line(&output.stdout),
+            Some(1) => return Ok(None),
+            _ => return Err(failed(&args, &output)),
+        };
+        if self.run_line(dir, &["cat-file", "-t", id.as_str()])? != "blob" {
+            return Ok(None);
+        }
+        self.run(dir, &["cat-file", "blob", id.as_str()]).map(Some)
     }
 }
 

@@ -2,9 +2,10 @@
 
 import { Card, Code, Disclosure, Markdown } from "omfp/kit";
 import type { MessageBlock as Block, MessageView, NoticeRow, MessageRole as Role, SystemRow } from "omfp/sdk";
-import { expandedByDefault, formatDuration, strings, type ToolCard } from "omfp/sdk";
+import { expandedByDefault, formatDuration, strings, type ToolCard, useOpenFile } from "omfp/sdk";
+import { useCallback } from "react";
 import { useExpanded } from "./state.ts";
-import { ToolBody, ToolSubject } from "./tool-cards.tsx";
+import { fileTarget, ToolBody, ToolSubject } from "./tool-cards.tsx";
 
 const text = strings.chat;
 
@@ -41,10 +42,16 @@ export function MessageRow({ cardKey, view, streaming }: { cardKey: string; view
 }
 
 function BlockView({ cardKey, role, block }: { cardKey: string; role: Role; block: Block }) {
+  const openFile = useOpenFile();
+  // Paths in the assistant's text open the file (UI-116).
+  const openPath = useCallback(
+    (reference: { path: string; line: number | undefined }) => openFile(reference.path, { line: reference.line }),
+    [openFile],
+  );
   switch (block.type) {
     case "text":
       return role === "assistant" ? (
-        <Markdown text={block.text} data-testid="markdown" />
+        <Markdown text={block.text} data-testid="markdown" onOpenPath={openPath} />
       ) : (
         <div className="omfp-message__plain omfp-prose" data-testid="plain-text">
           {block.text}
@@ -95,8 +102,13 @@ function RecordBlock({ cardKey, summary, json }: { cardKey: string; summary: str
  * shape show their specialized body, others the fallback's arguments and result. */
 export function ToolCardView({ cardKey, card }: { cardKey: string; card: ToolCard }) {
   const [expanded, setExpanded] = useExpanded(cardKey, expandedByDefault(card));
+  // `g f` on the focused card opens its file (UI-116).
+  const target = fileTarget(card.view);
   return (
     <Card
+      data-omfp-path={target?.path}
+      data-omfp-line={target?.open.line}
+      data-omfp-diff={target?.open.diff === true ? "" : undefined}
       className="omfp-tool-card"
       data-testid="tool-card"
       data-tool={card.name}

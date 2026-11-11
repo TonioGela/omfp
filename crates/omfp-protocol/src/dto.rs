@@ -319,6 +319,62 @@ pub struct FileDiff {
     pub truncated: bool,
 }
 
+/// What a file of a workspace holds, as `workspaces.read_file` shows it (DMN-089).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FileKind {
+    /// UTF-8 text without NUL bytes.
+    Text,
+    /// An image by its extension (`png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`, `ico`, `svg`).
+    Image,
+    /// Anything else: named, never shown.
+    Binary,
+}
+
+/// A file of a workspace (DMN-089).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FileContent {
+    /// Relative to the workspace folder, `..` resolved (symbolic links kept as they are).
+    pub path: String,
+    pub kind: FileKind,
+    /// Size in bytes.
+    pub size: u64,
+    /// Hex SHA-1 of the file's bytes: the `expectedHash` of `workspaces.write_file`.
+    pub hash: String,
+    /// The `knownHash` of the request still matches: no `content` and no `head`.
+    #[serde(default)]
+    pub unchanged: bool,
+    /// `text`: the text (its first 2 MiB, cut at a line end, when `truncated`); `image`: the bytes in base64 (absent
+    /// over 8 MiB); absent for `binary` and when `unchanged`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// The text was cut (DMN-089's cap).
+    #[serde(default)]
+    pub truncated: bool,
+    /// The MIME type of an image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime: Option<String>,
+    /// The name of the workspace repository holding the file; absent outside every repository.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repo: Option<String>,
+    /// The file's text at `HEAD` of that repository; absent for a file `HEAD` does not have (new, untracked), for
+    /// binary, truncated or `unchanged` files and outside repositories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head: Option<String>,
+}
+
+/// The result of `workspaces.write_file` (DMN-090).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FileWritten {
+    /// Relative to the workspace folder.
+    pub path: String,
+    /// Hex SHA-1 of the written bytes.
+    pub hash: String,
+    pub size: u64,
+}
+
 /// What runs in a terminal (05-terminal).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

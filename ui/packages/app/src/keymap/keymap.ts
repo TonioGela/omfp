@@ -32,6 +32,8 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   // On the focused row or workspace section of the left column (UI-020, UI-022).
   { mode: "normal", keys: "d d", command: "nav.delete" },
   { mode: "normal", keys: "z a", command: "nav.toggleSection" },
+  // The path of the focused element (a path link, a tool card, a changed file) in a file tab (UI-116).
+  { mode: "normal", keys: "g f", command: "file.open" },
   { mode: "normal", keys: "i", command: "composer.focus" },
   { mode: "normal", keys: ":", command: "cmdline.open" },
   { mode: "normal", keys: "Space a", command: "thread.nextAttention" },

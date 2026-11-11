@@ -1,0 +1,237 @@
+# 09 — Visual design: Crush
+
+The look of omfp, binding for the shell, the kit (`omfp/kit`, UI-093) and the `/kit` gallery. It refines UI-091
+(tokens and themes), UI-094 (fonts and density) and UI-097 (`[ui]` settings); where they disagree on a default, this
+document wins (D-20). The direction is called **Crush**, after Charm's terminal UI of the same name: monospace chrome
+with a few box-drawing glyphs, bold accents, gradients built from the theme's own roles, and motion as the identity —
+while long reading stays in a serif face and every effect can be switched off.
+
+## Reference look
+
+The design lab (a throw-away React page outside the repo) produced the reference screenshots below, at the defaults
+of this document (Synth palette, 17 px root, compact, motion `full`). Screenshot tests (UI-174) compare against the
+`/kit` page, not against these files; they are the look to aim for when a requirement leaves room.
+
+| Screenshot | Shows |
+| --- | --- |
+| [crush-default-main-light.png](design/crush-default-main-light.png) | Main screen, light: left column, transcript, tool cards, right panel, mode line |
+| [crush-default-main-dark.png](design/crush-default-main-dark.png) | Main screen, dark |
+| [crush-default-top-light.png](design/crush-default-top-light.png) | Top of the main screen, light: brand, workspace sections, chat header |
+| [crush-default-top-dark.png](design/crush-default-top-dark.png) | Top of the main screen, dark |
+| [crush-default-gallery-light.png](design/crush-default-gallery-light.png) | Component gallery, light |
+| [crush-default-gallery-dark.png](design/crush-default-gallery-dark.png) | Component gallery, dark |
+
+## Principles
+
+| ID | Requirement |
+| --- | --- |
+| UI-120 | omfp has **one visual style, Crush**, implemented in our own CSS (D-10, D-20): no CSS framework, no component library styles. Themes change colors and fonts through tokens only (UI-091); they never change layout, glyphs or motion definitions. |
+| UI-121 | **Two families, two jobs.** Text read as text — assistant and user message prose, Markdown, thinking text, ask option descriptions, the composer's input — uses the prose family (serif). Everything else — chrome (buttons, tabs, rows, titles, labels), metadata (times, counts, paths, branches, token meters) and code (code blocks, inline code, tool arguments and output, diffs, logs, the command line) — uses the code family (monospace). There is no third, sans-serif family: `--omfp-font-ui` is an alias of `--omfp-font-code` (this replaces the sans-serif interface of UI-094). |
+| UI-122 | **Glyph vocabulary.** Glyphs are text in the code family, colored by tokens, never images: `◆` marks an identity or a call for attention — the brand (`◆ omfp`), the chat title, the assistant's name in the transcript, the title of an approval or ask card, and the *awaiting* thread state; `▸` marks the current choice or a closed disclosure — the user's name in the transcript, the selected tab, the selected command-line completion, a collapsed workspace or thinking block (`▾` once open); `●` is a finished tool call (success or error by color); `○` an idle thread; a braille spinner (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) a running thread or tool; `╭─` opens a titled group — the command menu (`╭─ commands`) and gallery section titles. `·` separates mode-line segments and `@` prefixes the daemon host. No other decorative glyph is used; Lucide icons (UI-131) cover the rest. |
+| UI-123 | **Gradients only where listed** (UI-135): gradient text on the brand, the chat title, the current workspace's name, the assistant's name and gallery titles; gradient fills on the primary button, the selected tab's indicator, the `INSERT` and `COMMAND` mode pills, the command-line prompt, the stream caret, progress fills and meters; gradient hairlines under the chat header and above the mode line; a gradient border on the composer in insert mode; the soft gradient (`--omfp-grad-soft`) as the selection background of rows, files and completions; the 2 px vertical bar of the selected left-column row. Anything else is a flat role color. |
+| UI-124 | **Motion is the identity, never a requirement.** Every animation is listed in the motion catalogue (UI-146) with the levels that keep it; at motion `none` (UI-145) the UI is fully static and loses no information: every animated state also has a static form (glyph, color or text). |
+
+## Tokens
+
+All design tokens live in **one namespace, `--omfp-*`**, next to the Material 3 color roles of UI-091; the lab's
+`--ds-*` names are renamed on import (`--ds-fs-sm` → `--omfp-fs-sm`, `--ds-s3` → `--omfp-s3`, `--ds-r-card` →
+`--omfp-r-card`, and so on: drop the `ds-` prefix, keep the rest). The kit's earlier ad-hoc tokens
+(`--omfp-radius-*`, `--omfp-font-size-*`, `--omfp-row-height`, `--omfp-line-height*`) are replaced by the ones below,
+with no aliases. Tokens are declared in the `omfp-tokens` cascade layer; the kit and the shell read them in
+`omfp-kit`, so a theme (UI-091) overrides any of them without `!important`.
+
+| ID | Requirement |
+| --- | --- |
+| UI-125 | Every length, size, color, duration and easing used by the shell or the kit MUST come from the `--omfp-*` tokens listed in this section (or be a `color-mix()` / `calc()` of them); the only literals allowed in component CSS are hairlines and glyph strokes (`1px`, `2px`), `999px` for pills, `50%` for round marks and percentages inside `color-mix()`. |
+| UI-126 | **Type scale.** Sizes are in `rem` (UI-094), so the root size (`[ui] font_size`, default **17 px**, UI-144) scales all of them. Values and their size at 17 px are in the type table below; weights are `--omfp-fw-regular: 400`, `--omfp-fw-medium: 600`, `--omfp-fw-strong: 700` (the bundled faces have no 500, UI-141); line heights are `--omfp-lh-ui: 1.4`, `--omfp-lh-prose: 1.5`, `--omfp-lh-code: 1.5`. Labels keep their case (`--omfp-label-case: none`, `--omfp-label-track: 0`). The type scale does not change with density. |
+| UI-127 | **Spacing.** `--omfp-unit: 0.25rem`; `--omfp-density` is `1` in compact (the default) and `1.3` in normal (`[ui] density`, UI-097); the steps `--omfp-s1`…`--omfp-s6` and `--omfp-s8` are `unit × n × density` (values in the spacing table below). Paddings, gaps and margins use only these steps. |
+| UI-128 | **Layout sizes** (layout table below): row, control and message-gap heights scale with density; the frame sizes (columns, bars, gutter, reading measure) do not. |
+| UI-129 | **Radii and borders.** Radii: `--omfp-r-ctl: 0.375rem` (buttons, fields, selects), `--omfp-r-row: 0.375rem` (rows, menu items), `--omfp-r-chip: 0.3125rem` (chips, badges, key chips, inline code), `--omfp-r-card: 0.625rem` (cards, popovers, dialogs, code blocks, the composer); pills (mode, counts, progress tracks) are `999px`. Borders are `--omfp-bw: 1px`; rules are `--omfp-rule` (`outline-variant` at 80 %) and `--omfp-rule-strong` (`outline-variant`). Borders are **solid** except: the body separator of a tool card, the border of approval and ask cards, queued-message chips, ghost chips, empty-state boxes and gallery size separators, which are **dashed** — dashed means "pending, provisional or placeholder". Accent bars (selected row, user message, code block, thinking text) are `2px` solid. |
+| UI-130 | **Surfaces and elevation.** Crush is flat: elevation is shown by surface role and a primary-tinted border, not by grey shadows. `--omfp-app-bg: surface`; `--omfp-side-bg` and `--omfp-bar-bg: surface-container-lowest` (left column, mode line); cards, fields and controls are transparent on their parent (`--omfp-card-bg`, `--omfp-field-bg`, `--omfp-ctl-bg`); `--omfp-code-bg: surface-container-low`; popovers, menus, dialogs and toasts use `--omfp-pop-bg` (`surface-container-low` in light, `surface-container` in dark), `--omfp-pop-border` (primary 45 % into `outline-variant`) and `--omfp-pop-shadow` (a 1 px primary ring at 8 % plus `0 0.75rem 2rem` primary at 14 %) — the only shadow in the UI; key chips sit on `surface-container`. The modal scrim is `scrim` at 36 %. |
+| UI-131 | **Icons** are Lucide, stroked with `currentColor`: `--omfp-ic: 0.875rem` (state marks, toolbar icons), `--omfp-ic-sm: 0.8125rem` (inside small controls, fields, rows, menus), `0.75rem` for inline metadata icons, `1.5rem` for empty states; stroke `--omfp-ic-stroke: 2` (empty states 0.8×, checkbox check 3). Where a glyph of UI-122 has the job (state marks, tool status, disclosure), the icon is not shown. |
+| UI-132 | **Focus ring**: one rule for every focusable element of the kit — `outline: var(--omfp-focus-w) solid var(--omfp-focus-color)` with `--omfp-focus-w: 1px`, `--omfp-focus-off: 1px`, `--omfp-focus-color: primary`, plus the glow `--omfp-focus-glow` (`0 0 0 3px` primary at 22 % and `0 0 0.9rem` primary at 40 %). It shows on `:focus-visible` only (fields: `:focus-within`), and keeps its static form at every motion level; only the pulsing glow (UI-146) is motion. |
+| UI-133 | **Interactive states**, the same for every component: hover `--omfp-hover` (primary at 8 % over the element), pressed `--omfp-press` (primary at 15 %) plus a `translateY(1px)` on buttons; selected `--omfp-sel-bg: var(--omfp-grad-soft)` with `--omfp-sel-fg: on-surface`; disabled `opacity: --omfp-disabled` (`0.42`) with `cursor: not-allowed`, no hover; invalid uses `error`; busy shows a spinner (braille glyph or spinning icon) and keeps the label. Transitions on color, border and transform use `--omfp-dur-1: 110ms`; larger changes `--omfp-dur-2: 220ms`; easing `--omfp-ease: cubic-bezier(0.2, 0.7, 0.2, 1)`. |
+
+### Type scale
+
+| Token | rem | px at 17 px root | Used for |
+| --- | --- | --- | --- |
+| `--omfp-fs-2xs` | 0.6875 | 11.7 | Metadata, key chips, mode line, badges' counts, file diffs in the panel, logs |
+| `--omfp-fs-xs` | 0.75 | 12.75 | Small buttons, chips, badges, workspace heads, tool card heads, mono fields |
+| `--omfp-fs-sm` | 0.78125 | 13.3 | Buttons, rows, fields, menus, tabs, dialog text |
+| `--omfp-fs-md` | 0.8125 | 13.8 | Body default, brand, dialog titles |
+| `--omfp-fs-lg` | 0.9375 | 15.9 | Chat title |
+| `--omfp-fs-xl` | 1.125 | 19.1 | Gallery page title |
+| `--omfp-fs-prose` | 1 | 17 | Message prose, composer input (thinking text at 0.92×) |
+| `--omfp-fs-code` | 0.78125 | 13.3 | Code blocks, tool output, diffs, command previews |
+
+### Spacing
+
+| Token | Compact (density 1) | Normal (density 1.3) |
+| --- | --- | --- |
+| `--omfp-s1` | 0.25rem (4.25 px) | 0.325rem (5.5 px) |
+| `--omfp-s2` | 0.5rem (8.5 px) | 0.65rem (11.05 px) |
+| `--omfp-s3` | 0.75rem (12.75 px) | 0.975rem (16.6 px) |
+| `--omfp-s4` | 1rem (17 px) | 1.3rem (22.1 px) |
+| `--omfp-s5` | 1.25rem (21.25 px) | 1.625rem (27.6 px) |
+| `--omfp-s6` | 1.5rem (25.5 px) | 1.95rem (33.15 px) |
+| `--omfp-s8` | 2rem (34 px) | 2.6rem (44.2 px) |
+
+### Layout sizes
+
+| Token | Compact | Normal | Scales with density |
+| --- | --- | --- | --- |
+| `--omfp-row-h` (rows, menu items, tool card heads) | 1.5rem (25.5 px) | 1.95rem (33.15 px) | yes |
+| `--omfp-ctl-h` (buttons, fields) | 1.75rem (29.75 px) | 2.275rem (38.7 px) | yes |
+| `--omfp-ctl-h-sm` (small buttons, selects, chips) | 1.4375rem (24.4 px) | 1.869rem (31.8 px) | yes |
+| `--omfp-msg-gap` (between transcript items) | 1.25rem | 1.625rem | yes |
+| `--omfp-side-w` (left column) | 17rem | 17rem | no |
+| `--omfp-panel-w` (right panel) | 22rem | 22rem | no |
+| `--omfp-bar-h` (panel tab bar) | 2.125rem | 2.125rem | no |
+| `--omfp-status-h` (mode line) | 1.625rem | 1.625rem | no |
+| `--omfp-gutter` (transcript side padding) | 2rem | 2rem | no |
+| `--omfp-measure` (transcript and composer width) | 50rem | 50rem | no |
+
+## Color
+
+| ID | Requirement |
+| --- | --- |
+| UI-134 | Every color is a Material 3 role token (UI-091), `--omfp-success` / `--omfp-warning`, or a `color-mix(in oklab, …)` of them; no literal color appears outside theme files. Roles keep their M3 meaning: `primary` is the accent (actions, running, selection, the insert mode), `tertiary` the second accent (user's voice, command mode, inline code, key chips), `secondary-container` neutral counts, `error` failures and destructive actions, `on-surface-variant` secondary text, `outline` hover borders and `outline-variant` rules. |
+| UI-135 | **Gradients** are built from roles only: `--omfp-grad-end` = tertiary 68 % mixed with `on-surface`; `--omfp-grad` = `linear-gradient(90deg, primary, tertiary 62%, grad-end)`; `--omfp-grad-loop` (for animated text and progress, drawn at 200 % width) = primary → tertiary 30 % → grad-end 50 % → tertiary 70 % → primary; `--omfp-grad-soft` = primary at 16 % → tertiary at 10 % (selection); the command mode reverses `--omfp-grad`. The end stop pulled toward `on-surface` is the **close-hue fallback**: when a theme's primary and tertiary are close (common with matugen tonal-spot schemes), the gradient still visibly moves in lightness and the text stays readable; no theme needs to define gradient tokens. Gradient text MUST reach WCAG AA 4.5:1 against its background at every stop for the Synth palette and the gallery's matugen theme (checked by the gallery tests, UI-174). |
+| UI-136 | **Success and warning** have no M3 role: omfp defines `--omfp-success` / `--omfp-warning` (and `on-` variants) in the base tokens for light and dark, themes MAY override them, and the kit uses them only through `--omfp-ok` = success 85 % into `surface` and `--omfp-warn` = warning 85 % into `surface`, so they take on the theme's surface tint. A matugen theme that does not define them keeps omfp's values. |
+| UI-137 | **Status colors.** Thread and tool states: running = `primary`; awaiting the user = `--omfp-warn`; failed = `error`; unread = `primary` (bold title); idle = `outline`. Approval and ask cards use `--omfp-warn` (border at 70 %, `◆` glyph); finished tool calls `--omfp-ok` (●) or `error`; the token meter turns `--omfp-warn` above its threshold; a dirty repo and modified files are `--omfp-warn`, added files `--omfp-ok`, deleted files `error`; exit codes: 0 = `--omfp-ok` on ok 12 %, non-zero = `error` on error 12 %. |
+| UI-138 | **Diff, syntax and terminal colors.** Diff: added lines `--omfp-ok` at 12 % background with text = ok 70 % into `on-surface`; removed lines `error` at 11 % with text = error 70 % into `on-surface`; hunk headers `on-surface-variant`. Syntax (highlight.js classes, UI-090): keywords and built-ins `primary`, titles `tertiary`, strings `--omfp-ok`, numbers `--omfp-warn`, attributes and variables `secondary`, comments `on-surface-variant` italic, punctuation `outline`. ANSI: red `error`, green `--omfp-ok`, yellow `--omfp-warn`, blue `primary`, magenta `tertiary`, cyan primary 55 % into ok, dim `on-surface-variant`, bold weight 700. Text selection is primary at 28 %. |
+| UI-139 | **Built-in palette: Synth** (cyan → indigo), an M3 tonal-spot scheme generated from chosen hues; the built-in theme follows `prefers-color-scheme` (light and dark both MUST be supported) with the manual override of UI-091. Its exact role values are in the Synth table below; light and dark MUST match it. |
+| UI-140 | **matugen.** A user theme (UI-091) is CSS setting any `--omfp-*` role; matugen output (any scheme, light + dark) is used through the template in `contrib/matugen/` (UI-091), which writes the 34 roles of the Synth table for both schemes; nothing else is needed: gradients, hover, selection, focus, diff and status colors are derived (UI-135, UI-136). |
+
+### Synth palette
+
+| Role | Light | Dark |
+| --- | --- | --- |
+| `primary` | `#006876` | `#44d8f0` |
+| `on-primary` | `#ffffff` | `#00363e` |
+| `primary-container` | `#9fefff` | `#004e59` |
+| `on-primary-container` | `#004e59` | `#9fefff` |
+| `secondary` | `#4d616c` | `#b4cad6` |
+| `on-secondary` | `#ffffff` | `#1f333d` |
+| `secondary-container` | `#d0e6f3` | `#364954` |
+| `on-secondary-container` | `#364954` | `#d0e6f3` |
+| `tertiary` | `#584aca` | `#c6c0ff` |
+| `on-tertiary` | `#ffffff` | `#28069c` |
+| `tertiary-container` | `#e4dfff` | `#402eb2` |
+| `on-tertiary-container` | `#402eb2` | `#e4dfff` |
+| `error` | `#ba1a1a` | `#ffb4ab` |
+| `on-error` | `#ffffff` | `#690005` |
+| `error-container` | `#ffdad6` | `#93000a` |
+| `on-error-container` | `#93000a` | `#ffdad6` |
+| `surface` | `#faf8ff` | `#12131a` |
+| `on-surface` | `#1a1b23` | `#e2e1ec` |
+| `surface-variant` | `#dce2f2` | `#404753` |
+| `on-surface-variant` | `#404753` | `#c0c7d5` |
+| `surface-container-lowest` | `#ffffff` | `#0c0e15` |
+| `surface-container-low` | `#f3f2fd` | `#1a1b23` |
+| `surface-container` | `#eeedf8` | `#1e1f27` |
+| `surface-container-high` | `#e8e7f2` | `#282a31` |
+| `surface-container-highest` | `#e2e1ec` | `#33343c` |
+| `surface-dim` | `#dad9e4` | `#12131a` |
+| `surface-bright` | `#faf8ff` | `#373941` |
+| `inverse-surface` | `#2f3038` | `#e2e1ec` |
+| `inverse-on-surface` | `#f1f0fa` | `#2f3038` |
+| `inverse-primary` | `#44d8f0` | `#006876` |
+| `outline` | `#717785` | `#8a919f` |
+| `outline-variant` | `#c0c7d5` | `#404753` |
+| `shadow` | `#000000` | `#000000` |
+| `scrim` | `#000000` | `#000000` |
+
+Status roles are not part of Synth; they keep omfp's base values: `success` `#2e6a2e` / `#8fd88a`, `on-success`
+`#ffffff` / `#00390a`, `warning` `#8a5100` / `#ffb868`, `on-warning` `#ffffff` / `#4a2800` (light / dark).
+
+## Fonts and reading
+
+| ID | Requirement |
+| --- | --- |
+| UI-141 | omfp **bundles** two families, latin subset, WOFF2, SIL OFL 1.1, served by the daemon with the UI bundle: **IBM Plex Serif** (prose) — `ibm-plex-serif-latin-{400-normal,400-italic,600-normal,700-normal}.woff2`; **Commit Mono** (code, chrome, metadata) — `commit-mono-latin-{400-normal,400-italic,600-normal,700-normal}.woff2`. Both licence texts (`ibm-plex-serif-OFL.txt`, `commit-mono-OFL.txt`) ship next to the fonts and are listed in the app's third-party notices. No other weight is bundled, so the kit uses only 400, 600 and 700 (UI-126). |
+| UI-142 | The faces are declared with `@font-face` (`font-display: swap`, one rule per file, `font-weight` and `font-style` as in the file name) in the token stylesheet; the defaults are `--omfp-font-prose: "IBM Plex Serif", ui-serif, Georgia, serif` and `--omfp-font-code: "Commit Mono", ui-monospace, monospace`, with `--omfp-font-ui: var(--omfp-font-code)` (UI-121). The browser loads a face only when text uses it; nothing is preloaded. |
+| UI-143 | `[ui] fonts` (UI-097) overrides `prose`, `ui` and `code` with a CSS family list that replaces the token value as given (the user's own fallbacks included); an override that names an installed or theme-declared font needs no bundled file. Overriding `code` also changes the chrome, since `ui` follows `code` unless it is set too. |
+| UI-144 | **Reading.** The default root size is **17 px** (`[ui] font_size`, UI-097); prose is set at `--omfp-fs-prose` with line height 1.5, ragged right (`text-align: start`, never justified, no automatic hyphenation), and paragraphs, lists and headings in prose are at most **70ch** wide (about 70 characters per line); code blocks, tool cards and tables keep the full transcript measure. Message headings are prose at 1.15em, weight 700, `h2` in `primary`. |
+
+## Motion
+
+| ID | Requirement |
+| --- | --- |
+| UI-145 | `[ui] motion` (`full` default, `reduced`, `none`; live like every `[ui]` setting, `:set motion=…`) sets `data-motion` on `<html>`. The effective level is the setting capped by the system: `prefers-reduced-motion: reduce` behaves as `none`. `full` runs every effect of the catalogue; `reduced` keeps only the state indicators (spinners, indeterminate progress) and the short UI feedback (popover, dialog and toast entrances, color transitions), with a steady caret; `none` disables every animation and transition (`animation: none`, `transition: none`) and makes scrolling instant. Effects driven by script (count-up, smooth scroll) MUST read the effective level, not only the setting. |
+| UI-146 | Every animation of the shell and the kit is one row of the motion catalogue below, with its trigger, duration, easing and the levels that keep it; adding an effect means adding a row. |
+| UI-147 | There is **no streaming-text effect**: streamed text appears as it arrives, without fading or coloring its tail. While an assistant message streams, a **block caret** (0.5em × 1.05em, filled with `--omfp-grad`, primary glow) follows the last character; it blinks at `full` and is steady at `reduced`; at `none` it is steady too. |
+
+### Motion catalogue
+
+| Effect | Trigger | Duration / easing | full | reduced | none |
+| --- | --- | --- | --- | --- | --- |
+| Braille spinner (`⠋…⠏`, 10 frames) | Running thread or tool state mark | 0.8 s, `steps(1)`, infinite | ✓ | ✓ | static `⠋` |
+| Icon spin | Busy button (`is-spinning`), running state shown as icon | 0.7 s `--omfp-ease` once / 1 s linear infinite | ✓ | ✓ | — |
+| Indeterminate progress | Progress without a value | 1.4 s `--omfp-ease`, infinite | ✓ | ✓ | static 35 % bar |
+| Color, border, transform transitions | Hover, press, focus, selection, insert mode | `--omfp-dur-1` (110 ms) `--omfp-ease` | ✓ | ✓ | — |
+| Determinate progress / meter fill | Value change | 120 ms linear / `--omfp-dur-2` `--omfp-ease` | ✓ | ✓ | — |
+| Pop-in (fade + 2 px rise + 0.98 scale) | Popover, select list, command menu, dialog open; status-line message | `--omfp-dur-1` / `--omfp-dur-2` `--omfp-ease` | ✓ | ✓ | — |
+| Scrim fade | Modal dialog open | `--omfp-dur-2` `--omfp-ease` | ✓ | ✓ | — |
+| Toast slide-in (0.75rem rise + fade) | Toast shown | `--omfp-dur-2` `--omfp-ease` | ✓ | ✓ | — |
+| Caret blink | Assistant message streaming | 0.9 s `steps(1)`, infinite | ✓ | steady | steady |
+| Gradient flow (`--omfp-grad-loop` sliding) | Always on the brand, chat title, current workspace name, gallery titles | 6 s `ease-in-out`, infinite alternate | ✓ | — | — |
+| Progress flow (gradient fill sliding) | Determinate or indeterminate progress | 2 s `ease-in-out`, infinite alternate | ✓ | — | — |
+| Tool shimmer (diagonal primary/tertiary band) | Tool card running, on its head | 1.5 s linear, infinite | ✓ | — | — |
+| Tool breathe (primary glow) | Tool card running | 1.6 s `ease-in-out`, infinite | ✓ | — | — |
+| Slide-in (fade + 0.375rem from the left) | New message, tool card, approval/ask card, resolved line | 260 ms `--omfp-ease` | ✓ | — | — |
+| Completion stagger | Command menu items appear | 180 ms `--omfp-ease`, +20 ms per item up to 100 ms | ✓ | — | — |
+| Focus glow pulse | Focused control, focused field, composer in insert mode | 2.2 s `ease-in-out`, infinite | ✓ | — | — |
+| Attention flash (warn 24 % background, twice) | A thread row starts awaiting the user or fails | 0.9 s `--omfp-ease` × 2 | ✓ | — | — |
+| State bounce (rise + 1.25 scale) | Same, on the row's state mark | 0.45 s `--omfp-ease` × 4 | ✓ | — | — |
+| Badge pop (scale + ring) | A state badge changes | 0.7 s `--omfp-ease` | ✓ | — | — |
+| Mode pill (rise + blur in) | Keymap mode changes (UI-098) | 240 ms `--omfp-ease` | ✓ | — | — |
+| Count-up (from 0) | Diff stats `+n −m` first shown | 700 ms, script | ✓ | — | — |
+| Row hover gradient (primary 10 % → transparent) | Hover on an unselected left-column row | instant | ✓ | flat `--omfp-hover` | flat `--omfp-hover` |
+| Smooth scroll | Transcript follows new output | browser `smooth` | ✓ | ✓ | instant |
+
+## Key chips
+
+| ID | Requirement |
+| --- | --- |
+| UI-148 | Keys are shown as **key chips**: lowercase words in the code family at `--omfp-fs-2xs` — `spc`, `enter`, `esc`, `tab`, `alt+enter`, `ctrl+c`, `shift+tab`, letters as typed (`i`, `G`), sequences separated by a space inside one chip (`d d`, `spc n`), commands with their colon (`:rescan`) — never symbol glyphs (`␣`, `⏎`, `⌥`, `⌘`), whose height differs per font. The chip is `inline-block`, `min-inline-size: 1.6em`, padding `0.36em 0.4em`, `line-height: 1`, `text-box: trim-both ex alphabetic` so the label is optically centred whatever the font's metrics, and its baseline is the text baseline so it lines up with the sentence around it; color `tertiary`, border 1 px tertiary at 40 %, background `surface-container`, radius `--omfp-r-chip`. Inside a button the chip takes the button's text color on a transparent background. The keymap's labels (UI-095) are the source of the chip text, so a rebinding (`[keymap]`, UI-097) updates every chip. |
+
+## Components
+
+Every component below exists in the kit with exactly these states and is shown on `/kit` (UI-173). "States" always
+include the common states of UI-133 where they apply; the rows list what is specific.
+
+| ID | Requirement |
+| --- | --- |
+| UI-149 | **Button.** Variants: *primary* (`--omfp-grad` fill, `on-primary` text; hover and pressed mix each gradient stop 14 % / 28 % toward `on-primary`), *secondary* (transparent, `rule-strong` border, `on-surface`; hover border `outline`, background on-surface 6 %), *quiet* (no border, `on-surface-variant`; hover `--omfp-hover` and `on-surface`), *danger* (transparent, `error` text, error 45 % border; hover error 10 %; pressed filled `error` / `on-error`). Sizes: default (`--omfp-ctl-h`, `fs-sm`, icon `ic`), small (`--omfp-ctl-h-sm`, `fs-xs`, icon `ic-sm`), and icon-only square at either size (an accessible label is REQUIRED). Optional leading icon and trailing key chip (UI-148). States: default, hover, pressed, focus, disabled, busy (spinning icon, label kept). Text is code family, weight 600. |
+| UI-150 | **Text input (field).** Height `--omfp-ctl-h`, transparent, `rule-strong` border, radius `r-ctl`, optional leading `ic-sm` icon in `on-surface-variant` and trailing key chip; text `fs-sm`, the *mono* variant (paths, commands) `fs-xs`. Placeholder `on-surface-variant` at 78 %. States: default, hover (border `outline`), focus (border and ring `primary`), invalid (border `error`, with an error line below: `ic-sm` alert icon + `fs-xs` `error` text), disabled. The multi-line variant is the composer (UI-172). |
+| UI-151 | **Path field.** A mono field with a folder icon and a `tab` chip; typing shows a listbox popover of matching paths under it (directory part `on-surface-variant`, matched part `primary` bold); `↑`/`↓` move the selection (soft gradient), `tab` completes, `enter` accepts. States: empty, typing with completions, no match (listbox hidden), invalid path (error line), disabled. |
+| UI-152 | **Select.** A small control (`--omfp-ctl-h-sm`, `fs-xs`, code family) showing an optional label in `on-surface-variant`, the value and a chevron; opening shows a listbox popover anchored under it, at least as wide as the control (min 9rem). Options are `row-h` rows with a check column (`primary` check on the selected one), label (matched text `primary` bold) and optional metadata at `fs-2xs`. States: closed, hover, open (border `primary`), focus, disabled; options: default, hover, selected, disabled. |
+| UI-153 | **Checkbox and radio.** A box of `fs-md + 0.125rem` with a 1.5 px `outline` border, radius 0.6× `r-ctl` (radio round); checked and mixed fill `primary` with an `on-primary` check (stroke 3) or dash; the checked radio is a `primary` ring around a dot. Label `fs-sm`. States: unchecked, checked, mixed (checkbox), hover (border `on-surface`), focus (ring on the box), disabled. |
+| UI-154 | **Tabs.** Code family `fs-sm` weight 600, `on-surface-variant`; hover `on-surface`; the selected tab is `primary` weight 700, prefixed with `▸` (the glyph's space is reserved on every tab so labels do not shift) and underlined by a 2 px `--omfp-grad` indicator on the bar's bottom rule. States: default, hover, selected, focus, disabled. |
+| UI-155 | **Menu.** A popover (UI-130), 15rem wide, of `row-h` items: `ic-sm` icon, label, trailing key chip; separators are 1 px `rule` lines across the popover; destructive items are `error` (text and icon). States per item: default, hover, focus, disabled; the menu opens with the pop-in (UI-146). |
+| UI-156 | **Dialog.** Modal, centred, `min(26rem, 92%)` wide, padding `s5`, pop surface and border, radius `r-card`, over the scrim; title `fs-md` weight 700, text `fs-sm` `on-surface-variant`, actions right-aligned (`quiet` cancel with an `esc` chip, then `secondary` or `primary`/`danger` confirm with an `enter` chip). Focus is trapped (UI-092) and starts on the confirm action, or on the cancel action for destructive dialogs. States: open, confirming (confirm button busy), error (error line above the actions). |
+| UI-157 | **Chips, badges and marks.** *Chip* (`ctl-h-sm`, `fs-xs`, code family, 1 px border primary 30 % into `rule`, `primary` icon, optional `×` remove button): attachments, workspace repos, filters; *ghost chip* (dashed, `on-surface-variant`): an "add" placeholder. *Badge* (thread or tool state: transparent, 1 px border in its color at 45 %, state glyph + word, `fs-xs`): running, awaiting, failed, unread, idle, with the badge pop on change. *Count* (pill, `secondary-container` / `on-secondary-container`, `fs-2xs`). *Exit code* (UI-137). *Kind* marks for repos (`fs-2xs` with a 0.75rem icon: worktree `tertiary`, clone `secondary`, link `on-surface-variant`). *State mark* (an `ic`-sized cell showing the glyph of UI-122 in its status color). |
+| UI-158 | **Progress and meter.** Progress: optional head (label `on-surface-variant`, value in tabular code digits), a 0.25rem pill track (on-surface 10 %) and a fill in `--omfp-grad-loop` (flowing at `full`, UI-146); indeterminate shows a 35 % fill travelling. Meter (token usage in the mode line): 3.5rem × 0.25rem bar, `--omfp-grad` fill, `--omfp-warn` when above its threshold, with the `used/total` numbers beside it. States: determinate (0 %, partial, 100 %), indeterminate, high (meter). |
+| UI-159 | **Log.** A bordered code-background card (`r-card`, `card-border`), `fs-2xs` code family, one line per entry: timestamp `on-surface-variant` at 80 %, a 4ch level column (`info` `primary`, `warn` `--omfp-warn`, `err` `error` bold), message; lines do not wrap and the card scrolls both ways, sticking to the bottom while new lines arrive unless the user scrolled up. States: empty (one muted "no output" line), streaming, scrolled up. |
+| UI-160 | **Toasts.** Stacked bottom-right (`s5` from the edges, 22rem wide, newest at the bottom, gap `s2`), pop surface, border, shadow and radius; a leading `ic` icon (`primary` info, `--omfp-ok` success, `error` failure; failure also tints the border error 45 %), text `fs-sm`, an optional action button and a quiet `×`. Variants: info, success, error, with action. A toast is also announced in the live region (UI-092); info and success dismiss themselves, errors stay until closed. |
+| UI-161 | **Empty states.** A dashed `rule-strong` box (`r-card`, padding `s5 s3`, centred) with a 1.5rem icon in `on-surface-variant` (stroke 0.8×), a title `fs-sm` weight 700 and a hint `fs-xs` `on-surface-variant`, usually naming the key or command that fills it (with key chips); the empty chat is the same without a border, 20vh from the top. Used for: no thread, empty workspace, no changes, no files, empty log, no search result. |
+| UI-162 | **Cards.** The base card is transparent with a 1 px `card-border` (`rule`), radius `r-card`, overflow clipped; a head row (`row-h`, code family `fs-xs`) and a body separated by a 1 px rule. Cards never use a shadow (UI-130). |
+| UI-163 | **Tool cards.** A card whose head shows a status mark (`●` `--omfp-ok` done, `●` `error` failed, braille spinner `primary` running), the tool name in `primary` weight 700, the main argument in code `fs-xs` `on-surface-variant` (ellipsis), and right-aligned tabular metadata (duration, exit code, line counts) at `fs-2xs`; the head toggles the body (no chevron icon; a head without a body is not clickable). The head/body separator is **dashed**. Running: border primary 60 %, shimmer and breathe (UI-146). Failed: border error 55 %. States: running, done collapsed, done expanded, failed, without body. Bodies are tool renderers ([04](04-ui.md#tool-cards)): output (`ansi`), diff (UI-165), todo list (`●` mark per item: done `--omfp-ok` with strike-through, active `primary`, pending `on-surface-variant`). |
+| UI-164 | **Approval and ask cards.** A card with a **dashed** border in `--omfp-warn` at 70 %, transparent background, padding `s3 s4`; the head shows `◆` in `--omfp-warn` before the title (weight 700) and right-aligned metadata (step `n/m`, countdown with a 0.75rem clock icon, turning `error` when low). Approval shows the command in a code-background block prefixed with a muted `$`, then actions (`primary` approve with `enter`, `secondary` approve-always, `danger` deny with `esc`). Ask shows its options as checkbox or radio rows (option label in the code family, description in prose italic `on-surface-variant`) and a free-text field when allowed. Once answered, the card is replaced by a **resolved line** (`fs-xs`, `ic-sm` check `--omfp-ok` or x `error`, the question with ellipsis and the answer in `on-surface` weight 600). States: pending, countdown low, submitting, resolved (approved, denied, answered). |
+| UI-165 | **Diff.** A grid of non-wrapping code lines (`fs-code`, line height 1.5, horizontal scroll), colors of UI-138, hunk headers muted; in the right panel's file diff the lines are `fs-2xs` under a `row-h` head (`fs-2xs`: path, `+n −m`). Diff stats `+n −m` use `--omfp-ok` and `error` and count up at `full`. States: added only, removed only, mixed, empty ("no changes"), binary ("binary file"). |
+| UI-166 | **Code.** Code blocks: code background, 1 px `rule` border with a 2 px `primary` left edge, radius `r-card`, padding `s3 s4`, `fs-code`, line height 1.5, no wrapping, the language in the top-right corner at `fs-2xs` muted, syntax colors of UI-138; they span the full transcript measure (not the 70ch prose limit). Inline code: code family at 0.82em, `tertiary` on tertiary 10 %, radius `r-chip`, padding `0.08em 0.32em`. |
+| UI-167 | **Mode line** (UI-098): `status-h` tall, `bar-bg`, a primary → tertiary → transparent hairline at 60 % on its top edge instead of a border; at its left the **mode pill** (`999px`, code family `fs-2xs` weight 700, tracking 0.06em): `NORMAL` on `surface-container-highest` / `on-surface`, `INSERT` on `--omfp-grad` / `on-primary`, `COMMAND` on the reversed gradient / `on-tertiary`, entering with the mode-pill motion; then segments (thread title in `on-surface` with ellipsis, state, model, token meter, transient message) separated by a `·` in `rule-strong`, tabular code `fs-2xs` `on-surface-variant`; a transient message is `on-surface` (error: `error`). States: each mode, with message, with error message, narrow (segments drop from the right). |
+| UI-168 | **Command line** (UI-095): replaces the mode line's segments while in `COMMAND` mode; a `:` prompt filled with `--omfp-grad` (gradient text), the input in code `fs-xs` with a `tertiary` caret. Completions open above it as a popover titled `╭─ commands` (`fs-2xs` `primary`), `min(30rem, 70%)` wide, `row-h` items with the command (matched part `tertiary` bold, min 13em) and its description `on-surface-variant`; the selected item has the soft gradient and a `▸` before the command; a footer row lists the keys (`tab`, `enter`, `esc` chips). States: empty, typing with completions, no completion, error (message in the mode line after `enter`). |
+| UI-169 | **Left column rows.** Thread rows are `row-h`, radius `r-row`, padding `0 s2`: state mark, title (`fs-sm`, ellipsis), right-aligned metadata (relative time, `fs-2xs` tabular, `on-surface-variant`; `--omfp-warn` when awaiting, `error` when failed) that is replaced by a delete `×` on hover and focus. Unread titles are weight 700. Selected: soft gradient background, title `primary` weight 700, a 2 px primary → tertiary bar at the left edge (inset 0.25rem top and bottom). Hover: the row hover gradient at `full`, flat `--omfp-hover` otherwise. A row that starts awaiting or fails flashes and bounces at `full` (UI-146). Action rows ("new thread", `fs-xs`, `primary` icon) and archived rows (`fs-xs`, muted, indented) share the row. States: idle, running, awaiting, failed, unread, selected, hover, focus, fresh. |
+| UI-170 | **Workspace sections.** A head row (`row-h`, code family `fs-xs`, `on-surface-variant`) with a `▾`/`▸` disclosure glyph in `primary` (no chevron icon), the workspace name (weight 700, `on-surface`; the current workspace's name in flowing gradient text), its path (`fs-2xs`, 80 % opacity, ellipsis) and the thread count (`fs-2xs`); the section's threads follow, then its action rows; sections are `s3` apart. The column's top shows the brand (`◆ omfp` in gradient text, `fs-md` weight 700) and `@host` (`fs-2xs` muted); the "+ workspace" path field (UI-151) opens below the last section. States: expanded, collapsed, current, empty (an empty-state hint row), hover, focus. |
+| UI-171 | **Transcript messages.** Each message has a name line (`fs-xs`, code family, weight 700): the assistant's `◆` and name in gradient text, the user's `▸` and name in `tertiary`; the user's body has a 2 px `tertiary` left border and `s3` padding. Bodies are prose (UI-144). Thinking blocks are a `row-h` head (`▸`/`▾` in `tertiary`, italic label, `fs-2xs` metadata) that expands to prose italic at 0.92× in `on-surface-variant` with a 2 px `rule` left border. Items are `--omfp-msg-gap` apart and slide in at `full`. The chat header shows `◆` and the thread title (`fs-lg` weight 700, flowing gradient text) over a primary → tertiary → transparent hairline. States: user, assistant streaming (caret, UI-147), assistant done, thinking collapsed, thinking open, error message. |
+| UI-172 | **Composer.** A card-radius box with a `field-border` border, transparent; the input is prose (`fs-prose`, line height 1.5, padding `s3 s3 s1`) with a `primary` caret; below it a bar with attachment chips, hints (key chips at `fs-2xs`) and the send button (`primary`, `enter` chip). Insert mode (UI-098) replaces the border with a 1 px `--omfp-grad` border and adds the focus glow pulse at `full`. Queued follow-up and steering messages show above it as dashed chips (border primary 40 %) labelled `follow-up` (`primary`) or `steer` (`tertiary`). States: normal mode, insert mode, with draft, with queue, busy (send becomes abort), disabled. |
+
+## Gallery
+
+| ID | Requirement |
+| --- | --- |
+| UI-173 | The UI MUST serve a **`/kit` gallery page** rendering every component of this document (UI-149..UI-172, plus key chips and the glyph vocabulary) in every state it lists, side by side, with sizes (default and small) and both densities, and a token sheet (type scale, spacing, radii, all color roles and derived colors with their contrast against their background). Hover, pressed and focus states are rendered statically (forced state classes), so the page is deterministic. It takes `?scheme=light\|dark`, `?theme=synth\|<matugen fixture>`, `?density=`, `?motion=` and `?fs=` parameters; the repo keeps at least one real matugen output as a fixture theme. |
+| UI-174 | Screenshot tests render `/kit` at motion `none` in light and dark for Synth and for the matugen fixture theme (four combinations at least, at 17 px compact), and compare them with checked-in baselines; the same run checks the WCAG AA contrast of text roles and gradient text (UI-135). |

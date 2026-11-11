@@ -12,7 +12,7 @@ only be reachable from the human UI.
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5 and M2b done; next: M6 live voice, M7 desktop, M8 subagents);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; next: M6 live voice, M7 desktop, M8 subagents);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -58,7 +58,8 @@ crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wa
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs),
                       supervisor (launch in the workspace folder, root sync), agent conventions (conventions.rs),
                       event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
-                      workspaces/scan.rs, cheap change check in workspaces/fingerprint.rs, add/remove repo,
+                      workspaces/scan.rs, cheap change check in workspaces/fingerprint.rs, reading and writing
+                      workspace files with a hash check in workspaces/files.rs, add/remove repo,
                       suggestions of seen repositories), path completion (fs_complete.rs), conversation search over
                       session files (search.rs), threads, git port + FakeGit, host tools and the `omfp://` host URIs,
                       jobs (jobs.rs: shell commands of a workspace, `job/<id>`), widgets (widgets.rs: views manifest
@@ -78,10 +79,11 @@ ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked aga
 ui/packages/client    @omfp/client: WebSocket transport, session (hello, subscriptions, reconnect), model
 ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css, kit.css)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
-                      widget hooks useStored/useJob/useToolRun, module loading, window reports to the daemon), vm
+                      widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
-                      omfp/sdk, omfp/kit), frame (left column, view switcher, layout editing), view (layout tree,
-                      edits, reference resolution, widget slot), keymap, theme, strings; build.ts → dist/
+                      omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
+                      column, view switcher, layout editing, floating file panel), view (layout tree, edits, reference
+                      resolution, widget slot, the `main` slot's file tabs), keymap, theme, strings; build.ts → dist/
                       (`just build-web`: import map, widget-exports.json, builtin-widgets/)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)

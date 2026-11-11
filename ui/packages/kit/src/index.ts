@@ -55,6 +55,15 @@ export {
 } from "./dialog.tsx";
 export { Diff, type DiffLine, type DiffLineKind, type DiffProps, parsePatch } from "./diff.tsx";
 export {
+  CodeDiff,
+  type CodeDiffLayout,
+  type CodeDiffProps,
+  CodeEditor,
+  type CodeEditorHandle,
+  type CodeEditorProps,
+  type VimMode,
+} from "./editor.tsx";
+export {
   type DataAttributes,
   type FieldTexts,
   SearchField,
@@ -76,6 +85,14 @@ export {
 } from "./layout.tsx";
 export { Code, type CodeProps, Markdown, type MarkdownProps } from "./markdown.tsx";
 export { type PathCompletion, PathField, type PathFieldProps, type PathSuggestion } from "./path-field.tsx";
+export {
+  linkReference,
+  type OpenPath,
+  PathLink,
+  type PathLinkProps,
+  type PathReference,
+  pathReference,
+} from "./paths.tsx";
 export { LiveRegion, type LiveRegionProps, Log, type LogProps, Progress, type ProgressProps } from "./status.tsx";
 export {
   Tab,

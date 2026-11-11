@@ -726,6 +726,105 @@ async fn workspaces_status_publishes_the_fresh_status_of_every_repository_on_the
     assert_eq!(event["event"]["repos"][0]["status"]["dirty"], true);
 }
 
+// spec: DMN-089, DMN-090
+#[tokio::test(flavor = "multi_thread")]
+async fn a_written_file_republishes_the_workspace_status_and_a_stale_write_is_a_conflict() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let app = daemon.external_repo("app");
+    std::fs::write(app.join("notes.md"), "one\n").unwrap();
+    daemon.git.commit_file(&app, "notes.md", b"zero\n");
+    let workspace = client.ok("workspaces.create", json!({ "link": app })).await;
+    let id = workspace["id"].as_str().unwrap().to_owned();
+    let topic = format!("workspace/{id}");
+    client.ok("subscribe", json!({ "topic": topic })).await;
+
+    let read = client
+        .ok(
+            "workspaces.read_file",
+            json!({ "workspaceId": id, "path": "notes.md" }),
+        )
+        .await;
+    assert_eq!(read["path"], "app/notes.md");
+    assert_eq!(read["kind"], "text");
+    assert_eq!(read["content"], "one\n");
+    assert_eq!(read["repo"], "app");
+    assert_eq!(read["head"], "zero\n");
+    let hash = read["hash"].as_str().unwrap().to_owned();
+
+    // What git would now report: the write's rescan publishes it, as after an agent's edit.
+    daemon.git.set_dirty(&app, true);
+    let written = client
+        .ok(
+            "workspaces.write_file",
+            json!({ "workspaceId": id, "path": "app/notes.md", "content": "two\n", "expectedHash": hash }),
+        )
+        .await;
+    assert_eq!(written["path"], "app/notes.md");
+    assert_eq!(written["size"], 4);
+    assert_eq!(
+        std::fs::read_to_string(app.join("notes.md")).unwrap(),
+        "two\n"
+    );
+    let event = client.event(&topic).await;
+    assert_eq!(
+        event["event"]["repos"][0]["status"]["dirty"], true,
+        "{event}"
+    );
+
+    let stale = client
+        .call(
+            "workspaces.write_file",
+            json!({ "workspaceId": id, "path": "app/notes.md", "content": "three\n", "expectedHash": hash }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(stale["code"], "conflict", "{stale}");
+    let exists = client
+        .call(
+            "workspaces.write_file",
+            json!({ "workspaceId": id, "path": "app/notes.md", "content": "three\n" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(exists["code"], "conflict", "{exists}");
+    assert_eq!(
+        std::fs::read_to_string(app.join("notes.md")).unwrap(),
+        "two\n"
+    );
+
+    let unchanged = client
+        .ok(
+            "workspaces.read_file",
+            json!({ "workspaceId": id, "path": "app/notes.md", "knownHash": written["hash"] }),
+        )
+        .await;
+    assert_eq!(unchanged["unchanged"], true);
+    assert_eq!(unchanged.get("content"), None);
+    for (path, code) in [
+        ("../outside.md", "bad_request"),
+        ("app", "bad_request"),
+        ("missing.md", "not_found"),
+    ] {
+        let error = client
+            .call(
+                "workspaces.read_file",
+                json!({ "workspaceId": id, "path": path }),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error["code"], code, "{path}: {error}");
+    }
+    let no_folder = client
+        .call(
+            "workspaces.write_file",
+            json!({ "workspaceId": id, "path": "app/docs/new.md", "content": "x" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(no_folder["code"], "not_found", "{no_folder}");
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_index_follows_thread_process_changes() {
     let daemon = daemon(&[]).await;

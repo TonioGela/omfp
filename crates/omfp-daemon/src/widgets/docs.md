@@ -34,7 +34,9 @@ Layout nodes: a reference (`"omfp:chat"`), `[reference, props]`, or `[container,
 container is `row`, `col`, `tabs` or `stack` and `props.sizes` (optional) gives one positive flex weight per child.
 Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue and composer), `omfp:transcript`,
 `omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes` (changed files and diffs of the workspace's
-repositories). Props every widget accepts: `instance` (a string naming the instance for `useStored` and `useJob`;
+repositories), `omfp:file` (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
+`HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
+written to `views.json`. Props every widget accepts: `instance` (a string naming the instance for `useStored` and `useJob`;
 default: the reference) and `title` (a tab's label; default: the built-in's name, else the reference).
 
 ## Imports
@@ -91,6 +93,8 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useCommand(command)` | Registers a `:` command or key binding target while mounted. |
 | `useAnnounce()` | `announce(message)` for screen readers. |
 | `useSettings()` | The daemon's UI settings. |
+| `useFile(path, { follow? })` | `{ status, file, error, reload, save }`: a file of the current workspace (`workspaces.read_file`: `file.content`, `file.hash`, `file.head`, …). `status` is `"loading"`, `"ready"`, `"missing"` or `"error"`. With `follow` (default `true`) it is checked every 2 s and on every git status change. `save(content, expectedHash?)` writes it only if the file still has that hash (default: the one read) and resolves to `{ ok: true, file }` or `{ ok: false, conflict, error }`. |
+| `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file of the current workspace in a tab next to the chat (the view's `tabs` with `"id": "main"`), else in a floating panel; `diff: true` shows it against `HEAD`. |
 | `SELECTED_THREAD` | Window key of the selected thread id (`useWindowState(SELECTED_THREAD)`). |
 
 The SDK also exports the view models and strings the built-in widgets use; read a copied built-in to see them.
@@ -110,6 +114,9 @@ The SDK also exports the view models and strings the built-in widgets use; read 
 | `Code` | Code: `code`, `block`, `language` (a name or file extension; highlights a block). |
 | `Diff` | A unified patch (`git diff` output) as numbered lines: `patch`, `language` (highlighting). |
 | `languageOfPath` | `languageOfPath("src/lib.rs")` → `"rust"`: the language to pass to `Code` or `Diff`. |
+| `CodeEditor` | CodeMirror with vim bindings: `value`, `path` (picks the language), `readOnly`, `line`, `onSave(text)` (`:w`, Ctrl-S), `onDirtyChange`, `onRequestEdit` (`i` while read-only). Loaded on first use. |
+| `CodeDiff` | Two texts compared with CodeMirror: `original`, `value`, `path`, `layout` (`"unified"` or `"split"`). |
+| `PathLink` | An inline button opening a file path: `reference` (`{ path, line }`), `onOpen` (e.g. from `useOpenFile()`). |
 | `Tabs` | Tabs with `TabList`, `Tab` and `TabPanel`. |
 | `ListBox` | A selectable list with `ListBoxItem`. |
 | `Menu` | A menu with `MenuItem` and `MenuTrigger`. |

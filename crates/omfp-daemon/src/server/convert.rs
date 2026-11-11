@@ -59,11 +59,16 @@ pub(crate) fn workspace_error(error: WorkspaceError) -> ErrorBody {
         | WorkspaceError::InvalidName(_)
         | WorkspaceError::IsRoot(_)
         | WorkspaceError::Unsupported(_)
+        | WorkspaceError::OutsideFolder(_)
+        | WorkspaceError::IsADirectory(_)
         | WorkspaceError::Git(GitError::NotARepository(_)) => ErrorCode::BadRequest,
-        WorkspaceError::NoSuchRepo { .. } => ErrorCode::NotFound,
+        WorkspaceError::NoSuchRepo { .. }
+        | WorkspaceError::NoSuchFile(_)
+        | WorkspaceError::NoSuchFolder(_) => ErrorCode::NotFound,
         WorkspaceError::Dirty(_)
         | WorkspaceError::EntryExists(_)
-        | WorkspaceError::HasThreads(_) => ErrorCode::Conflict,
+        | WorkspaceError::HasThreads(_)
+        | WorkspaceError::FileChanged(_) => ErrorCode::Conflict,
         WorkspaceError::Git(_) => ErrorCode::GitError,
         WorkspaceError::Store(_) | WorkspaceError::Io(_) => ErrorCode::Internal,
     };

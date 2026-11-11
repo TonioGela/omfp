@@ -31,10 +31,13 @@
  * | `useHost()` | the host itself (registry, window store), for frame-level code |
  * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
  * | `useSetSettings()` | `settings.set(patch)`: merges `ui`/`keymap` into the config file; failures go to `ERRORS` |
+ * | `useFile(path, { follow? })` | a workspace file (`workspaces.read_file`), followed, with `reload` and `save(content, expectedHash?)` (AGT-027) |
+ * | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file tab (UI-115) |
+ * | `useFileTabs(workspaceId)` | this window's file tabs of a workspace, `select` and `close` |
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
  * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,
- * `RENAMING_THREAD`, `ERRORS`. A widget is a
+ * `RENAMING_THREAD`, `ERRORS`, `OPEN_FILES` (persisted), `EDITOR_MODE`. A widget is a
  * {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own scoped commands.
  */
 
@@ -67,6 +70,19 @@ export {
   slashSuggestions,
   steerModifier,
 } from "../vm/composer.ts";
+export {
+  closeTab,
+  type FileTab,
+  type FileTabs,
+  fileName,
+  fileTabId,
+  NO_FILE_TABS,
+  type OpenFileOptions,
+  type OpenFiles,
+  openTab,
+  originalFromPatch,
+  workspaceFilePath,
+} from "../vm/files.ts";
 export {
   decodeModels,
   decodeSession,
@@ -161,6 +177,22 @@ export {
   useThreadActions,
 } from "./actions.ts";
 export { type Command, CommandRegistry, SCOPE_ATTRIBUTE, scopesAt } from "./commands.ts";
+export {
+  EDITOR_MODE,
+  errorCode,
+  FILE_POLL_MS,
+  type FileLoadStatus,
+  type FilePoll,
+  type FileState,
+  type FileTabsState,
+  intervalPoll,
+  OPEN_FILES,
+  openFile,
+  type SaveResult,
+  useFile,
+  useFileTabs,
+  useOpenFile,
+} from "./files.ts";
 export {
   animationFrame,
   emptyDirty,

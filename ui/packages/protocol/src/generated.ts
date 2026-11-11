@@ -128,6 +128,35 @@ export type FileChange = {
   status: FileStatus;
 };
 
+/** A file of a workspace (DMN-089). */
+export type FileContent = {
+  /**
+   * `text`: the text (its first 2 MiB, cut at a line end, when `truncated`); `image`: the bytes in base64 (absent
+   * over 8 MiB); absent for `binary` and when `unchanged`.
+   */
+  content?: string | null;
+  /** Hex SHA-1 of the file's bytes: the `expectedHash` of `workspaces.write_file`. */
+  hash: string;
+  /**
+   * The file's text at `HEAD` of that repository; absent for a file `HEAD` does not have (new, untracked), for
+   * binary, truncated or `unchanged` files and outside repositories.
+   */
+  head?: string | null;
+  kind: FileKind;
+  /** The MIME type of an image. */
+  mime?: string | null;
+  /** Relative to the workspace folder, `..` resolved (symbolic links kept as they are). */
+  path: string;
+  /** The name of the workspace repository holding the file; absent outside every repository. */
+  repo?: string | null;
+  /** Size in bytes. */
+  size: number;
+  /** The text was cut (DMN-089's cap). */
+  truncated?: boolean;
+  /** The `knownHash` of the request still matches: no `content` and no `head`. */
+  unchanged?: boolean;
+};
+
 /** Unified diff of one file. */
 export type FileDiff = {
   patch: string;
@@ -136,8 +165,26 @@ export type FileDiff = {
   truncated: boolean;
 };
 
+/** What a file of a workspace holds, as `workspaces.read_file` shows it (DMN-089). */
+export type FileKind =
+  /** UTF-8 text without NUL bytes. */
+  | "text"
+  /** An image by its extension (`png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`, `ico`, `svg`). */
+  | "image"
+  /** Anything else: named, never shown. */
+  | "binary";
+
 /** Kind of change to a file. */
 export type FileStatus = "added" | "modified" | "deleted" | "renamed" | "untracked";
+
+/** The result of `workspaces.write_file` (DMN-090). */
+export type FileWritten = {
+  /** Hex SHA-1 of the written bytes. */
+  hash: string;
+  /** Relative to the workspace folder. */
+  path: string;
+  size: number;
+};
 
 /** CSS `font-family` values overriding the font tokens; absent ones keep the theme's. */
 export type FontSettings = {
@@ -434,6 +481,18 @@ export type QueueMessageParams = {
   message: string;
   queue?: unknown;
   threadId: string;
+};
+
+/** `workspaces.read_file` params (DMN-089). */
+export type ReadFileParams = {
+  /**
+   * The `hash` the client already shows: while the file still has it, the result is `unchanged` and carries
+   * neither its content nor its `HEAD` text.
+   */
+  knownHash?: string | null;
+  /** Relative to the workspace folder (else to one of its repositories), or absolute inside the workspace folder. */
+  path: string;
+  workspaceId: string;
 };
 
 /** `workspaces.remove_repo` params (DMN-025). */
@@ -951,6 +1010,20 @@ export type WorkspaceRepo = ({
     kind: "clone";
   });
 
+/** `workspaces.write_file` params (DMN-090). */
+export type WriteFileParams = {
+  /** The new text of the file (UTF-8). */
+  content: string;
+  /**
+   * The `hash` of the file the text was based on: a file that no longer has it is `conflict`. Absent: the file
+   * must not exist yet.
+   */
+  expectedHash?: string | null;
+  /** As in `workspaces.read_file`, without the fallback to the repositories. */
+  path: string;
+  workspaceId: string;
+};
+
 /** Params and result type of every method (PRT-010). */
 export interface Methods {
   "system.hello": { params: HelloParams; result: HelloResult };
@@ -966,6 +1039,8 @@ export interface Methods {
   "workspaces.remove_repo": { params: RemoveRepoParams; result: Workspace };
   "workspaces.status": { params: RepoRef; result: GitStatus };
   "workspaces.diff": { params: WorkspaceDiffParams; result: DiffPage };
+  "workspaces.read_file": { params: ReadFileParams; result: FileContent };
+  "workspaces.write_file": { params: WriteFileParams; result: FileWritten };
   "threads.create": { params: CreateThreadParams; result: ThreadSummary };
   "threads.update": { params: UpdateThreadParams; result: ThreadSummary };
   "threads.archive": { params: ThreadRef; result: Empty };
@@ -1035,6 +1110,8 @@ export const METHODS: readonly MethodName[] = [
   "workspaces.remove_repo",
   "workspaces.status",
   "workspaces.diff",
+  "workspaces.read_file",
+  "workspaces.write_file",
   "threads.create",
   "threads.update",
   "threads.archive",

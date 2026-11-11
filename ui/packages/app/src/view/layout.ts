@@ -5,7 +5,7 @@
  * error instead (AGT-011).
  */
 
-import type { WidgetProps } from "../sdk/index.ts";
+import type { FileTab, WidgetProps } from "../sdk/index.ts";
 import { isObject } from "../sdk/json.ts";
 
 export type ContainerKind = "row" | "col" | "tabs" | "stack";
@@ -100,4 +100,27 @@ export function containsWidget(tree: LayoutTree, names: readonly string[]): bool
   return tree.kind === "widget"
     ? names.includes(tree.name)
     : tree.children.some((child) => containsWidget(child, names));
+}
+
+/** The `id` of the `tabs` container where files open (UI-115). */
+export const MAIN_SLOT = "main";
+
+/** The widget a file tab shows. */
+export const FILE_WIDGET = "omfp:file";
+
+/** Whether the view has the `tabs` container files open in; without one they open in a floating panel (UI-115). */
+export function hasMainSlot(tree: LayoutTree): boolean {
+  return (
+    tree.kind !== "widget" && ((tree.kind === "tabs" && tree.props.id === MAIN_SLOT) || tree.children.some(hasMainSlot))
+  );
+}
+
+/** The props of the `omfp:file` widget of an open file tab (`jump` repeats the jump to `line` when reopened). */
+export function fileProps(tab: FileTab): WidgetProps {
+  return {
+    path: tab.path,
+    ...(tab.line === undefined ? {} : { line: tab.line }),
+    ...(tab.diff === true ? { diff: true } : {}),
+    jump: tab.seq,
+  };
 }

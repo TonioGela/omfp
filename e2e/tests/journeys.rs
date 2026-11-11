@@ -1258,10 +1258,11 @@ async fn a_file_the_agent_edits_shows_its_diff_in_the_changes_widget() -> anyhow
     journey
         .click(&format!("{entry} [data-testid=changes-file-toggle]"))
         .await?;
+    // The diff is the CodeMirror merge view of the whole file (UI-080).
     let added = journey
         .until("the diff's added line", async |page| {
             let rows = page
-                .texts("[data-testid=changes-diff] [data-kind=add]")
+                .texts("[data-testid=changes-diff][data-view=merge] .cm-content .cm-changedLine")
                 .await?;
             Ok((!rows.is_empty()).then_some(rows))
         })

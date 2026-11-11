@@ -85,8 +85,9 @@ impl Services {
     }
 
     /// The rescan (a change reaches the index and the live threads' roots), then the git status published on
-    /// `workspace/<id>`; also what a tool run's end triggers (`spawn_rescans`).
-    pub(super) async fn full_scan(&self, id: &str) -> Result<(), ErrorBody> {
+    /// `workspace/<id>`; also what a tool run's end triggers (`spawn_rescans`) and a written file
+    /// (`workspaces.write_file`, DMN-090).
+    pub(crate) async fn full_scan(&self, id: &str) -> Result<(), ErrorBody> {
         self.rescan(id).await?;
         self.workspace_status(id).await?;
         Ok(())

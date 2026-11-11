@@ -42,6 +42,8 @@ const SHARED: readonly Shared[] = [
 const BUILTINS: readonly { name: string; folder: string; part?: { file: string; exportName: string } }[] = [
   { name: "header", folder: "header" },
   { name: "workspace", folder: "workspace" },
+  { name: "changes", folder: "changes" },
+  { name: "file", folder: "file" },
   { name: "chat", folder: "chat" },
   { name: "transcript", folder: "chat", part: { file: "transcript.tsx", exportName: "TranscriptWidget" } },
   { name: "interactions", folder: "chat", part: { file: "interactions.tsx", exportName: "InteractionsWidget" } },

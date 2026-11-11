@@ -5,18 +5,32 @@
  * `col` get splitters; each change goes to `onEdit`, and the view then renders what the daemon pushes back.
  */
 
-import { Button, Menu, MenuItem, MenuTrigger, Popover, Tab, TabList, TabPanel, Tabs, Toolbar } from "@omfp/kit";
+import {
+  Button,
+  IconButton,
+  Menu,
+  MenuItem,
+  MenuTrigger,
+  Popover,
+  Tab,
+  TabList,
+  TabPanel,
+  Tabs,
+  Toolbar,
+} from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
 import { Fragment, type KeyboardEvent, type PointerEvent, type ReactNode, useMemo, useRef, useState } from "react";
+import { fileName, fileTabId, useFileTabs } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { type LayoutEdit, type Place, RESIZE_STEP, resizeSizes } from "./edit.ts";
-import type { LayoutTree } from "./layout.ts";
+import { FILE_WIDGET, fileProps, type LayoutTree, MAIN_SLOT } from "./layout.ts";
 import type { WidgetRegistry } from "./resolve.ts";
 import { WidgetSlot } from "./slot.tsx";
 import type { ResolvedView } from "./views.ts";
 
 const text = strings.shell.frame;
 const layoutText = strings.shell.layout;
+const filesText = strings.shell.files;
 
 export interface ViewRendererProps {
   readonly view: ResolvedView;
@@ -101,6 +115,9 @@ function Node({ tree, path, scope }: { tree: LayoutTree; path: string; scope: Sc
     );
   }
   if (tree.kind === "tabs") {
+    if (tree.props.id === MAIN_SLOT) {
+      return <MainTabs tree={tree} path={path} scope={scope} />;
+    }
     const children = tree.children.map((child, index) => ({ child, path: `${path}.${index}` }));
     const [only] = children;
     if (only !== undefined && children.length === 1) {
@@ -131,6 +148,90 @@ function Node({ tree, path, scope }: { tree: LayoutTree; path: string; scope: Sc
     );
   }
   return <Cells tree={tree} path={path} scope={scope} />;
+}
+
+/**
+ * The `tabs` container with `"id": "main"` (UI-115): its own children, then this window's open files of the workspace
+ * as tabs (`omfp:file`), the selected one window-local too. One tab alone needs no tab bar.
+ */
+function MainTabs({
+  tree,
+  path,
+  scope,
+}: {
+  tree: Exclude<LayoutTree, { kind: "widget" }>;
+  path: string;
+  scope: Scope;
+}): ReactNode {
+  const files = useFileTabs(scope.workspaceId);
+  const own = tree.children.map((child, index) => ({ child, id: `${path}.${index}` }));
+  const ids = [...own.map(({ id }) => id), ...files.tabs.map((tab) => fileTabId(tab.path))];
+  const selected = files.active !== undefined && ids.includes(files.active) ? files.active : ids[0];
+  const [only] = own;
+  if (only !== undefined && ids.length === 1) {
+    return (
+      <div className="omfp-view__tabs" data-layout="tabs" data-path={path} data-slot={MAIN_SLOT}>
+        <div className="omfp-view__panel">
+          <Node tree={only.child} path={only.id} scope={scope} />
+        </div>
+      </div>
+    );
+  }
+  const activeFile = files.tabs.find((tab) => fileTabId(tab.path) === selected);
+  return (
+    <Tabs
+      className="omfp-view__tabs"
+      data-layout="tabs"
+      data-path={path}
+      data-slot={MAIN_SLOT}
+      {...(selected === undefined ? {} : { selectedKey: selected })}
+      onSelectionChange={(key) => files.select(String(key))}
+    >
+      <div className="omfp-view__tabbar">
+        <TabList aria-label={text.views}>
+          {[
+            ...own.map(({ child, id }) => (
+              <Tab key={id} id={id} data-testid="view-tab">
+                {nodeTitle(child)}
+              </Tab>
+            )),
+            ...files.tabs.map((tab) => (
+              <Tab key={fileTabId(tab.path)} id={fileTabId(tab.path)} data-testid="file-tab" data-file={tab.path}>
+                <span title={tab.path}>{fileName(tab.path)}</span>
+              </Tab>
+            )),
+          ]}
+        </TabList>
+        {activeFile !== undefined && (
+          <IconButton
+            label={filesText.close(fileName(activeFile.path))}
+            icon="×"
+            onPress={() => files.close(activeFile.path)}
+            data-testid="file-tab-close"
+          />
+        )}
+      </div>
+      {own.map(({ child, id }) => (
+        <TabPanel key={id} id={id} className="omfp-view__panel">
+          <Node tree={child} path={id} scope={scope} />
+        </TabPanel>
+      ))}
+      {files.tabs.map((tab) => (
+        <TabPanel key={fileTabId(tab.path)} id={fileTabId(tab.path)} className="omfp-view__panel">
+          <div className="omfp-view__item">
+            <WidgetSlot
+              reference={FILE_WIDGET}
+              props={fileProps(tab)}
+              path={fileTabId(tab.path)}
+              workspaceId={scope.workspaceId}
+              views={scope.views}
+              registry={scope.registry}
+            />
+          </div>
+        </TabPanel>
+      ))}
+    </Tabs>
+  );
 }
 
 /** A `row`, `col` or `stack`: its children side by side, stacked or layered; splitters between them in edit mode. */

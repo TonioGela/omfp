@@ -1,6 +1,6 @@
 //! In-memory [`Git`] for component tests (L1). Repositories are real directories registered with
-//! [`FakeGit::add_repo`]; branches, worktrees and dirtiness are simulated. `worktree_add`/`worktree_remove` create and
-//! delete the worktree directory, like git does.
+//! [`FakeGit::add_repo`]; branches, worktrees, dirtiness and the files of `HEAD` ([`FakeGit::commit_file`]) are
+//! simulated. `worktree_add`/`worktree_remove` create and delete the worktree directory, like git does.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -19,6 +19,8 @@ struct FakeRepo {
     cloned_from: Option<String>,
     /// Linked worktree path → checked-out branch.
     worktrees: BTreeMap<PathBuf, String>,
+    /// The files of `HEAD`, by path relative to the root; shared by the linked worktrees.
+    committed: BTreeMap<PathBuf, Vec<u8>>,
 }
 
 #[derive(Debug, Default)]
@@ -117,6 +119,15 @@ impl FakeGit {
             state.dirty.insert(dir);
         } else {
             state.dirty.remove(&dir);
+        }
+    }
+
+    /// Records `contents` as the file `path` (relative to `root`) at `HEAD` of the repository at `root`; the working
+    /// tree is not touched.
+    pub fn commit_file(&self, root: &Path, path: &str, contents: &[u8]) {
+        if let Some(repo) = self.state().repos.get_mut(&canonical(root)) {
+            repo.committed
+                .insert(PathBuf::from(path), contents.to_vec());
         }
     }
 
@@ -338,5 +349,17 @@ impl Git for FakeGit {
 
     fn diff(&self, dir: &Path, _base_ref: Option<&str>) -> Result<String> {
         self.main_root(dir).map(|_| String::new())
+    }
+
+    fn show_head(&self, dir: &Path, path: &str) -> Result<Option<Vec<u8>>> {
+        let state = self.state();
+        let (root, worktree) = state
+            .locate(dir)
+            .ok_or_else(|| GitError::NotARepository(dir.to_owned()))?;
+        let inside = canonical(dir)
+            .strip_prefix(worktree.unwrap_or(root))
+            .map(Path::to_owned)
+            .unwrap_or_default();
+        Ok(state.repos[root].committed.get(&inside.join(path)).cloned())
     }
 }

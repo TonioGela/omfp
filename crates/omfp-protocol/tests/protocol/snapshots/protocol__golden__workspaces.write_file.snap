@@ -1,0 +1,27 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "workspaces.write_file",
+    "params": {
+      "content": "use std::fmt;\n",
+      "expectedHash": "3f786850e387550fdab836ed7e6dc881de23001b",
+      "path": "shop-frontend/src/checkout.rs",
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "hash": "89e6c98d92887913cadf06b2adb97f26cde4849b",
+      "path": "shop-frontend/src/checkout.rs",
+      "size": 14
+    },
+    "type": "response"
+  }
+}

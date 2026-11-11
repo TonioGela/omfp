@@ -14,6 +14,7 @@ import { type Binding, DEFAULT_BINDINGS, mergeBindings } from "../keymap/keymap.
 import {
   ACTIVE_VIEW,
   DRAFT_THREAD,
+  EDITOR_MODE,
   SELECTED_THREAD,
   useHost,
   useSettings,
@@ -24,7 +25,7 @@ import {
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { useAppearance, useUserTheme } from "../theme/theme.ts";
-import { containsWidget } from "../view/layout.ts";
+import { containsWidget, hasMainSlot } from "../view/layout.ts";
 import { BUILTIN_WIDGETS, INTERACTION_WIDGETS } from "../view/registry.ts";
 import { ViewRenderer } from "../view/render.tsx";
 import { resolveWidget, type WidgetRegistry } from "../view/resolve.ts";
@@ -35,6 +36,7 @@ import { ThreadsWidget } from "../widgets/threads/index.ts";
 import { CommandLine } from "./command-line.tsx";
 import { GlobalCommands } from "./commands.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
+import { FloatingFile } from "./floating-file.tsx";
 import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
 import { ModeLine, useMode } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
@@ -86,6 +88,7 @@ export function Frame({
   useAppearance();
   useUserTheme();
   const mode = useMode();
+  const [editorMode] = useWindowState(EDITOR_MODE);
   const viewIds = views.views.map((candidate) => candidate.id);
   return (
     <div className="omfp-app" data-testid="app" data-mode={mode}>
@@ -140,7 +143,10 @@ export function Frame({
               onEdit={editing ? write : undefined}
             />
           )}
-          <ModeLine mode={mode} />
+          {view !== undefined && !hasMainSlot(view.tree) && (
+            <FloatingFile workspaceId={workspaceId} views={state} registry={registry} />
+          )}
+          <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} />
         </div>
       </main>
       {view !== undefined && <SafetyNet view={view} workspaceId={workspaceId} views={state} registry={registry} />}

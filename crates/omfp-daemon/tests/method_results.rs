@@ -21,17 +21,19 @@ use omfp_protocol::method::{
     ThreadState, ThreadSteer, ThreadStop, ThreadSubagentCancel, ThreadSubagentMessages,
     ThreadSubagentSteer, ThreadSubagents, ThreadThinkingLevels, ThreadTree, ThreadsArchive,
     ThreadsCreate, ThreadsDelete, ThreadsSearch, ThreadsUnarchive, ThreadsUpdate, Unsubscribe,
-    WorkspacesAddRepo, WorkspacesCreate, WorkspacesDiff, WorkspacesRemove, WorkspacesRemoveRepo,
-    WorkspacesRescan, WorkspacesStatus, WorkspacesUpdate,
+    WorkspacesAddRepo, WorkspacesCreate, WorkspacesDiff, WorkspacesReadFile, WorkspacesRemove,
+    WorkspacesRemoveRepo, WorkspacesRescan, WorkspacesStatus, WorkspacesUpdate,
+    WorkspacesWriteFile,
 };
 use omfp_protocol::{
     AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CreateThreadParams,
     CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams, InteractionResponse,
-    LabelParams, MessageParams, NavigateParams, PromptParams, QueueMessageParams, RemoveRepoParams,
-    RemoveWorkspaceParams, RepoRef, RepoSource, RespondParams, SearchThreadsParams, SetModelParams,
-    SetThinkingParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
-    SubscribeResult, SuggestReposParams, Theme, ThreadRef, ThreadWorkspace, Topic, TopicParams,
-    UpdateThreadParams, UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef,
+    LabelParams, MessageParams, NavigateParams, PromptParams, QueueMessageParams, ReadFileParams,
+    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RespondParams,
+    SearchThreadsParams, SetModelParams, SetThinkingParams, SubagentMessagesParams, SubagentRef,
+    SubagentSteerParams, SubscribeParams, SubscribeResult, SuggestReposParams, Theme, ThreadRef,
+    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
+    WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
 };
 use tempfile::TempDir;
 
@@ -218,6 +220,25 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
             cursor: None,
         })
         .await;
+    let written = client
+        .typed::<WorkspacesWriteFile>(WriteFileParams {
+            workspace_id: workspace.id.clone(),
+            path: "repo/notes.md".into(),
+            content: "hi\n".into(),
+            expected_hash: None,
+        })
+        .await;
+    let read = client
+        .typed::<WorkspacesReadFile>(ReadFileParams {
+            workspace_id: workspace.id.clone(),
+            path: "notes.md".into(),
+            known_hash: None,
+        })
+        .await;
+    assert_eq!(
+        (read.path.as_str(), read.hash, read.content.as_deref()),
+        ("repo/notes.md", written.hash, Some("hi\n"))
+    );
     let emptied = client
         .typed::<WorkspacesRemoveRepo>(RemoveRepoParams {
             workspace_id: workspace.id.clone(),

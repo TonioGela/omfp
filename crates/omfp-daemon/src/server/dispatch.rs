@@ -82,6 +82,7 @@ fn repo_source(source: omfp_protocol::RepoSource) -> Result<RepoSource, ErrorBod
 }
 
 /// Runs a method for `principal`. Authorization already happened (PRT-034).
+#[allow(clippy::too_many_lines)] // One arm per method or group of methods.
 pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: Call) -> Reply {
     match call {
         Call::SystemHello(_)
@@ -150,7 +151,9 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
         | Call::WorkspacesAddRepo(_)
         | Call::WorkspacesRemoveRepo(_)
         | Call::WorkspacesStatus(_)
-        | Call::WorkspacesDiff(_)) => workspaces(services, principal, call).await,
+        | Call::WorkspacesDiff(_)
+        | Call::WorkspacesReadFile(_)
+        | Call::WorkspacesWriteFile(_)) => workspaces(services, principal, call).await,
         call @ (Call::ThreadsCreate(_)
         | Call::ThreadsUpdate(_)
         | Call::ThreadsArchive(_)
@@ -317,6 +320,40 @@ async fn workspaces(services: &Services, principal: &Principal, call: Call) -> R
                 params.path.as_deref(),
                 params.cursor.as_deref(),
             )?);
+        }
+        Call::WorkspacesReadFile(params) => {
+            return ok(&blocking(move || {
+                workspaces
+                    .read_file(
+                        &params.workspace_id,
+                        &params.path,
+                        params.known_hash.as_deref(),
+                    )
+                    .map_err(workspace_error)
+            })
+            .await?);
+        }
+        Call::WorkspacesWriteFile(params) => {
+            let id = params.workspace_id.clone();
+            let written = blocking(move || {
+                workspaces
+                    .write_file(
+                        &params.workspace_id,
+                        &params.path,
+                        &params.content,
+                        params.expected_hash.as_deref(),
+                    )
+                    .map_err(workspace_error)
+            })
+            .await?;
+            // Then, as after an agent's edit, the folder is rescanned and `workspace/<id>` gets the new git status.
+            let services = services.clone();
+            tokio::spawn(async move {
+                if let Err(error) = services.full_scan(&id).await {
+                    tracing::warn!(error = %error.message, "rescan after a file write failed");
+                }
+            });
+            return ok(&written);
         }
         _ => return Err(internal("not a workspace method")),
     };

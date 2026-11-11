@@ -3,6 +3,7 @@
  * of the view area like vim's, and announced through the live region when a key changed it (never the mouse).
  */
 
+import type { VimMode } from "@omfp/kit";
 import { type ReactNode, useEffect, useState } from "react";
 import { modeAt } from "../keymap/handler.ts";
 import type { Mode } from "../keymap/keymap.ts";
@@ -55,10 +56,12 @@ export function useMode(): Mode {
   return mode;
 }
 
-export function ModeLine({ mode }: { mode: Mode }): ReactNode {
+/** The keymap's mode, or vim's while a file editor has the focus (`vim`, UI-112). */
+export function ModeLine({ mode, vim }: { mode: Mode; vim?: VimMode | undefined }): ReactNode {
+  const shown = vim === undefined ? mode : vim === "insert" || vim === "replace" ? "insert" : "normal";
   return (
-    <div className="omfp-mode-line" data-testid="mode-line" data-mode={mode}>
-      {text.names[mode]}
+    <div className="omfp-mode-line" data-testid="mode-line" data-mode={shown} data-vim={vim}>
+      {vim === undefined ? text.names[mode] : text.vim[vim]}
     </div>
   );
 }

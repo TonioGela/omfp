@@ -81,6 +81,7 @@
 
   /* The view area right of the left column, with the mode line at its bottom (UI-098). */
   .omfp-frame__main {
+    position: relative;
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
@@ -272,6 +273,48 @@
   .omfp-view__panel {
     flex: 1 1 auto;
     display: flex;
+    min-block-size: 0;
+  }
+
+  /* The `main` slot's tab bar: its tabs, then the close button of the selected file tab (UI-115). */
+  .omfp-view__tabbar {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-space-2);
+    min-inline-size: 0;
+  }
+
+  .omfp-view__tabbar > .omfp-tabs__list {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow-x: auto;
+  }
+
+  /* A file in a view without a `main` slot floats over the view (UI-115). */
+  .omfp-floating-file {
+    position: absolute;
+    inset: var(--omfp-space-6) var(--omfp-space-6) calc(var(--omfp-space-6) + var(--omfp-row-height));
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--omfp-outline-variant);
+    border-radius: var(--omfp-radius-lg);
+    background: var(--omfp-surface);
+    box-shadow: 0 2px 6px var(--omfp-shadow);
+  }
+
+  .omfp-floating-file__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--omfp-space-1) var(--omfp-space-3);
+    border-block-end: 1px solid var(--omfp-outline-variant);
+  }
+
+  .omfp-floating-file__body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
     min-block-size: 0;
   }
 
@@ -835,5 +878,86 @@
     padding: var(--omfp-space-6);
     border-radius: var(--omfp-radius-lg);
     background: var(--omfp-surface-container);
+  }
+
+  /* `omfp:file` (UI-110..114): a bar with the path and actions over the editor, the diff or the notices. */
+  .omfp-file {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-space-2);
+    min-block-size: 0;
+    padding: var(--omfp-space-2) var(--omfp-space-3);
+  }
+
+  .omfp-file:focus-visible {
+    outline: 2px solid var(--omfp-primary);
+    outline-offset: -2px;
+  }
+
+  .omfp-file__bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--omfp-space-2);
+    flex-wrap: wrap;
+  }
+
+  .omfp-file__path {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-space-2);
+    min-inline-size: 0;
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-font-size-sm);
+    overflow-wrap: anywhere;
+  }
+
+  .omfp-file__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-space-2);
+  }
+
+  .omfp-file__notice {
+    margin: 0;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-file__notice[data-tone="warning"] {
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-file__notice[data-tone="error"] {
+    color: var(--omfp-error);
+  }
+
+  .omfp-file__editor,
+  .omfp-file__diff {
+    flex: 1 1 auto;
+  }
+
+  .omfp-file__editor[hidden] {
+    display: none;
+  }
+
+  .omfp-file__conflict {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-space-2);
+    flex: 1 1 auto;
+    min-block-size: 0;
+  }
+
+  .omfp-file__image {
+    overflow: auto;
+  }
+
+  .omfp-file__image img {
+    max-inline-size: 100%;
+  }
+
+  .omfp-changes__merge {
+    max-block-size: 60vh;
   }
 }

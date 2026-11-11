@@ -26,7 +26,7 @@ An application for working with many omp agents in parallel:
 ## Non-goals (for now)
 
 - Rewriting the omp TUI: TUI-only features are out of scope; a terminal handoff is designed but deferred (D-06).
-- A full code editor: we show diffs and files; editing happens in the user's editor ("open in editor").
+- An IDE (no LSP, debugger, refactoring): only quick edits, in the file viewer (`omfp:file`, M5c); real work stays in the user's editor ("open in editor").
 - Multi-user accounts and permissions. The daemon is personal (one OS user), protected by a token.
 - Agent control features (08) before the base is solid; only their constraints apply now.
 - Packaging and distribution (Nix derivations, installers): out of scope for this phase.

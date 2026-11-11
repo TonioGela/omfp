@@ -5,22 +5,26 @@
  * `workspaces.status` rescans the workspace and publishes the fresh status of every repository on the topic.
  */
 
-import type { FileDiff } from "@omfp/protocol";
-import { Diff, Disclosure, IconButton, languageOfPath } from "omfp/kit";
+import type { FileContent, FileDiff } from "@omfp/protocol";
+import { CodeDiff, Diff, Disclosure, IconButton, languageOfPath } from "omfp/kit";
 import {
   type ChangedFile,
   type ChangesRepo,
   changeRunsKey,
   changesView,
+  errorCode,
+  originalFromPatch,
   SELECTED_THREAD,
   strings,
   useCall,
   useCurrentWorkspaceId,
+  useOpenFile,
   useReportError,
   useThread,
   useWindowState,
   useWorkspace,
   type WidgetProps,
+  workspaceFilePath,
 } from "omfp/sdk";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -73,13 +77,29 @@ function Changes({ workspaceId }: { workspaceId: string }): ReactNode {
           {text.noRepos}
         </p>
       ) : (
-        repos.map((repo) => <RepoChanges key={repo.name} workspaceId={workspaceId} repo={repo} runs={runs} />)
+        repos.map((repo) => (
+          <RepoChanges
+            key={repo.name}
+            workspaceId={workspaceId}
+            repo={repo}
+            isRoot={workspace?.repos.find((candidate) => candidate.name === repo.name)?.isRoot === true}
+            runs={runs}
+          />
+        ))
       )}
     </section>
   );
 }
 
-function RepoChanges({ workspaceId, repo, runs }: { workspaceId: string; repo: ChangesRepo; runs: string }): ReactNode {
+interface RepoChangesProps {
+  readonly workspaceId: string;
+  readonly repo: ChangesRepo;
+  /** The repository is the workspace folder itself. */
+  readonly isRoot: boolean;
+  readonly runs: string;
+}
+
+function RepoChanges({ workspaceId, repo, isRoot, runs }: RepoChangesProps): ReactNode {
   return (
     <section className="omfp-changes__repo" data-testid="changes-repo" data-repo={repo.name} aria-label={repo.name}>
       <h3 className="omfp-changes__repo-head">
@@ -100,7 +120,13 @@ function RepoChanges({ workspaceId, repo, runs }: { workspaceId: string; repo: C
         <ul className="omfp-changes__files">
           {repo.files.map((file) => (
             <li key={file.path}>
-              <FileChanges workspaceId={workspaceId} repo={repo.name} file={file} runs={runs} />
+              <FileChanges
+                workspaceId={workspaceId}
+                repo={repo.name}
+                filePath={workspaceFilePath({ name: repo.name, isRoot }, file.path)}
+                file={file}
+                runs={runs}
+              />
             </li>
           ))}
         </ul>
@@ -109,24 +135,27 @@ function RepoChanges({ workspaceId, repo, runs }: { workspaceId: string; repo: C
   );
 }
 
-function FileChanges({
-  workspaceId,
-  repo,
-  file,
-  runs,
-}: {
-  workspaceId: string;
-  repo: string;
-  file: ChangedFile;
-  runs: string;
-}): ReactNode {
+interface FileChangesProps {
+  readonly workspaceId: string;
+  readonly repo: string;
+  /** The file's path in the workspace folder (what `workspaces.read_file` and `openFile` take). */
+  readonly filePath: string;
+  readonly file: ChangedFile;
+  readonly runs: string;
+}
+
+function FileChanges({ workspaceId, repo, filePath, file, runs }: FileChangesProps): ReactNode {
   const [expanded, setExpanded] = useState(false);
+  const openFile = useOpenFile();
   return (
     <Disclosure
       className="omfp-changes__file"
       data-testid="changes-file"
       data-path={file.path}
       data-status={file.status}
+      // `g f` on the focused file opens it against `HEAD` (UI-116).
+      data-omfp-path={filePath}
+      data-omfp-diff=""
       level={4}
       toggleTestId="changes-file-toggle"
       expanded={expanded}
@@ -136,7 +165,22 @@ function FileChanges({
           <span className="omfp-changes__status" data-status={file.status} title={text.statusLabel[file.status]}>
             {text.status[file.status]}
           </span>
-          <span className="omfp-changes__path">{file.path}</span>
+          {/* Inside the toggle: a pointer click opens the file without toggling, the keyboard uses `g f` (UI-116). */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: see above */}
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: see above */}
+          <span
+            className="omfp-changes__path omfp-path-link"
+            title={text.open(filePath)}
+            data-testid="changes-open"
+            onPointerDown={(event) => event.stopPropagation()}
+            onPointerUp={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              openFile(filePath, { diff: true });
+            }}
+          >
+            {file.path}
+          </span>
           {file.from !== undefined && <span className="omfp-changes__meta">{text.renamedFrom(file.from)}</span>}
           <span className="omfp-changes__counts" data-testid="changes-counts">
             {text.counts(file.additions, file.deletions)}
@@ -144,53 +188,108 @@ function FileChanges({
         </>
       }
     >
-      {expanded && <FileDiffView workspaceId={workspaceId} repo={repo} file={file} runs={runs} />}
+      {expanded && <FileDiffView workspaceId={workspaceId} repo={repo} filePath={filePath} file={file} runs={runs} />}
     </Disclosure>
   );
 }
 
-/** The diff of one file, read again whenever its status or the selected thread's ended runs change. */
+/** A file's diff and its text now (`undefined`: the file is gone). */
+interface Loaded {
+  readonly diff: FileDiff;
+  readonly current: FileContent | undefined;
+}
+
+/** The text the merge view shows: the whole file now, when it is text the daemon did not cut. */
+function currentText(current: FileContent | undefined): string | undefined {
+  if (current === undefined) {
+    return "";
+  }
+  return current.kind === "text" && current.truncated !== true && typeof current.content === "string"
+    ? current.content
+    : undefined;
+}
+
+/**
+ * The diff of one file, read again whenever its status or the selected thread's ended runs change: the whole file
+ * against its text before the change (the patch applied in reverse) in CodeMirror's unified merge view, else the
+ * patch itself (UI-080).
+ */
 function FileDiffView({
   workspaceId,
   repo,
+  filePath,
   file,
   runs,
 }: {
   workspaceId: string;
   repo: string;
+  filePath: string;
   file: ChangedFile;
   runs: string;
 }): ReactNode {
   const call = useCall();
   const reportError = useReportError();
-  const [diff, setDiff] = useState<FileDiff | undefined>(undefined);
+  const [loaded, setLoaded] = useState<Loaded | undefined>(undefined);
   const { path, status, additions, deletions } = file;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the status, counts and runs say when to read it again
   useEffect(() => {
     let live = true;
-    call("workspaces.diff", { workspaceId, repo, path })
-      .then((page) => {
+    const current = call("workspaces.read_file", { workspaceId, path: filePath }).catch((error: unknown) => {
+      if (errorCode(error) === "not_found") {
+        return undefined;
+      }
+      throw error;
+    });
+    Promise.all([call("workspaces.diff", { workspaceId, repo, path }), current])
+      .then(([page, now]) => {
         if (live) {
-          setDiff(page.files.find((entry) => entry.path === path) ?? { path, patch: "", truncated: false });
+          setLoaded({
+            diff: page.files.find((entry) => entry.path === path) ?? { path, patch: "", truncated: false },
+            current: now,
+          });
         }
       })
       .catch(reportError);
     return () => {
       live = false;
     };
-  }, [call, reportError, workspaceId, repo, path, status, additions, deletions, runs]);
-  if (diff === undefined) {
+  }, [call, reportError, workspaceId, repo, path, filePath, status, additions, deletions, runs]);
+  const merge = useMemo(() => {
+    const value = loaded === undefined ? undefined : currentText(loaded.current);
+    if (loaded === undefined || value === undefined || loaded.diff.truncated) {
+      return undefined;
+    }
+    const original = originalFromPatch(value, loaded.diff.patch);
+    return original === undefined ? undefined : { original, value };
+  }, [loaded]);
+  if (loaded === undefined) {
     return <p className="omfp-changes__empty">{text.loadingDiff}</p>;
+  }
+  if (merge !== undefined) {
+    return (
+      <CodeDiff
+        className="omfp-changes__merge"
+        original={merge.original}
+        value={merge.value}
+        path={path}
+        layout="unified"
+        aria-label={text.diffLabel(path)}
+        data-testid="changes-diff"
+        data-view="merge"
+        loading={<p className="omfp-changes__empty">{text.loadingDiff}</p>}
+      />
+    );
   }
   return (
     <>
       <Diff
-        patch={diff.patch}
+        patch={loaded.diff.patch}
         language={languageOfPath(path)}
         aria-label={text.diffLabel(path)}
         data-testid="changes-diff"
+        data-view="patch"
       />
-      {diff.truncated && <p className="omfp-changes__empty">{text.truncated}</p>}
+      {loaded.diff.truncated && <p className="omfp-changes__empty">{text.truncated}</p>}
     </>
   );
 }

@@ -13,11 +13,11 @@ mod schema;
 mod topic;
 
 pub use dto::{
-    CreatedBy, Density, DiffPage, FileChange, FileDiff, FileStatus, FontSettings, GitStatus,
-    IndexSnapshot, JobInfo, JobLine, JobState, JobStatus, JobStream, KeymapEntry, KeymapMode,
-    NotificationMode, PathEntry, Provenance, RepoKind, RepoStatus, SeenRepository, Settings,
-    TerminalInfo, TerminalKind, Theme, ThreadSummary, TitleSource, UiSettings, ViewsState,
-    WidgetInfo, WidgetSource, Workspace, WorkspaceRepo,
+    CreatedBy, Density, DiffPage, FileChange, FileContent, FileDiff, FileKind, FileStatus,
+    FileWritten, FontSettings, GitStatus, IndexSnapshot, JobInfo, JobLine, JobState, JobStatus,
+    JobStream, KeymapEntry, KeymapMode, NotificationMode, PathEntry, Provenance, RepoKind,
+    RepoStatus, SeenRepository, Settings, TerminalInfo, TerminalKind, Theme, ThreadSummary,
+    TitleSource, UiSettings, ViewsState, WidgetInfo, WidgetSource, Workspace, WorkspaceRepo,
 };
 pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, ProtocolError, Request, Response,
@@ -29,15 +29,15 @@ pub use params::{
     CreateThreadParams, CreateWorkspaceParams, Empty, ForkParams, GoalParams, HelloParams,
     HelloResult, InteractionResponse, JobRef, LabelParams, ListTerminalsParams, MessageParams,
     NavigateParams, OpenTerminalParams, OpenTerminalResult, PathCompletions, Position,
-    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, RemoveRepoParams,
-    RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions, ReportWidgetsParams,
-    ResizeTerminalParams, RespondParams, SearchThreadsParams, SetModelParams, SetSettingsParams,
-    SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
+    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, ReadFileParams,
+    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
+    ReportWidgetsParams, ResizeTerminalParams, RespondParams, SearchThreadsParams, SetModelParams,
+    SetSettingsParams, SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
     SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
     SuggestReposParams, TerminalList, TerminalRef, ThreadGit, ThreadRef, ThreadSearchResult,
     ThreadSearchResults, ThreadWorkspace, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
     WidgetCopied, WidgetJobReport, WidgetReport, WidgetReportState, WorkspaceDiffParams,
-    WorkspaceRef,
+    WorkspaceRef, WriteFileParams,
 };
 pub use schema::type_schemas;
 pub use topic::{Topic, TopicParseError};

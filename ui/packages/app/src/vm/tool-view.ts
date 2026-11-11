@@ -53,6 +53,8 @@ export type ToolView =
       readonly path: string;
       /** The selector of the path (`50-80`), else the lines omp returned (`1–9 of 9`). */
       readonly range: string | undefined;
+      /** The first line it read (the selector's, else the first line omp returned), where the file opens. */
+      readonly line: number | undefined;
       readonly language: string | undefined;
       readonly content: string | undefined;
       readonly directory: boolean;
@@ -272,6 +274,7 @@ export function toolView(
           (first !== undefined && last !== undefined && total !== undefined
             ? text.lines(first, last, total)
             : undefined),
+        line: selector === undefined ? first : Number(/^(?:raw:)?(\d+)/.exec(selector)?.[1] ?? first),
         language: languageOfPath(path),
         content: str(shown?.text) ?? output?.text,
         directory: details.isDirectory === true,

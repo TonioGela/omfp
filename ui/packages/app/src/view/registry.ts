@@ -4,6 +4,7 @@
 import type { WidgetComponent } from "../sdk/index.ts";
 import { ChangesWidget } from "../widgets/changes/index.ts";
 import { ChatWidget, ComposerWidget, InteractionsWidget, TranscriptWidget } from "../widgets/chat/index.ts";
+import { FileWidget } from "../widgets/file/index.ts";
 import { HeaderWidget } from "../widgets/header/index.ts";
 import { WorkspaceWidget } from "../widgets/workspace/index.ts";
 import type { WidgetRegistry } from "./resolve.ts";
@@ -16,6 +17,7 @@ export const BUILTIN_WIDGETS: WidgetRegistry = new Map<string, WidgetComponent>(
   ["omfp:transcript", TranscriptWidget],
   ["omfp:interactions", InteractionsWidget],
   ["omfp:composer", ComposerWidget],
+  ["omfp:file", FileWidget],
 ]);
 
 /** The built-ins that render the selected thread's pending interactions; without one of them in the view (a workspace

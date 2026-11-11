@@ -158,10 +158,58 @@ export const shell = {
       untracked: "untracked",
     },
     diffLabel: (path: string) => `Diff of ${path}`,
+    open: (path: string) => `Open ${path}`,
   },
-  /** The mode line (UI-098). */
+  /** The file viewer and editor (`omfp:file`, UI-110..114). */
+  file: {
+    noPath: "No file: give this widget a path prop.",
+    loading: "Reading the file…",
+    loadingEditor: "Loading the editor…",
+    missing: (path: string) => `${path} does not exist.`,
+    failed: (error: string) => `Cannot read the file: ${error}`,
+    label: (path: string) => `File ${path}`,
+    editorLabel: (path: string) => `Text of ${path}`,
+    diffLabel: (path: string) => `${path} against HEAD`,
+    conflictLabel: (path: string) => `${path} on disk against your text`,
+    edit: "Edit",
+    done: "Done",
+    save: "Save",
+    diff: "Diff",
+    unified: "Unified",
+    split: "Side by side",
+    layout: "Diff layout",
+    saved: (path: string) => `Saved ${path}`,
+    saveFailed: (error: string) => `Cannot save: ${error}`,
+    unsaved: "Unsaved changes: save with :w, or drop them with :q!",
+    changedOnDisk: "The file changed on disk since you started editing; saving will show both versions.",
+    truncated: (size: string) => `Only the beginning of this ${size} file is shown; it cannot be edited here.`,
+    binary: (size: string) => `Binary file (${size}), not shown.`,
+    imageTooLarge: (size: string) => `Image too large to show (${size}).`,
+    noRepository: "Not in a repository: there is no HEAD to compare with.",
+    newFile: "Not in HEAD yet: every line is new.",
+    conflict:
+      "The file changed on disk since you started editing. Left: the file now; right: your text. Nothing was written.",
+    keepEditing: "Keep editing",
+    overwrite: "Overwrite",
+    discard: "Discard mine",
+    size: (bytes: number) =>
+      bytes < 1024
+        ? `${bytes} B`
+        : bytes < 1024 * 1024
+          ? `${(bytes / 1024).toFixed(1)} KiB`
+          : `${(bytes / 1024 / 1024).toFixed(1)} MiB`,
+  },
+  /** File tabs of the `main` slot and the floating file panel (UI-115). */
+  files: {
+    tabs: "Files",
+    close: (name: string) => `Close ${name}`,
+    panel: (path: string) => `File ${path}`,
+    noWorkspace: (path: string) => `No workspace to open ${path} in`,
+  },
+  /** The mode line (UI-098); vim's modes while a file editor has the focus (UI-112). */
   mode: {
     names: { normal: "NORMAL", insert: "INSERT", cmdline: "COMMAND" },
+    vim: { normal: "NORMAL", insert: "INSERT", visual: "VISUAL", replace: "REPLACE" },
     announce: (name: string) => `${name} mode`,
   },
   frame: {
@@ -180,6 +228,7 @@ export const shell = {
       "omfp:composer": "Composer",
       "omfp:workspace": "Workspace",
       "omfp:changes": "Changes",
+      "omfp:file": "File",
     } as Readonly<Record<string, string>>,
   },
   layout: {
@@ -247,6 +296,7 @@ export const shell = {
     view: "Switch view (:view <id>), or :view reset to restore the default views.json",
     layout: "Edit the layout of the view (toggle)",
     widget: "Copy a widget into the workspace (:widget copy <reference> [<name>])",
+    open: "Open a file (:open <path>[:<line>]), or the focused path (g f)",
     next: "Next thread",
     prev: "Previous thread",
     top: "First thread",

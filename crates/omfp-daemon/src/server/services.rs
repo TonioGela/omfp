@@ -348,11 +348,12 @@ impl Services {
         }
     }
 
-    /// The file's first read (startup).
+    /// The file's first read (startup): it applies only when an immediate second read agrees, else the watcher
+    /// applies it once it settled (DMN-091).
     async fn first_read(path: PathBuf) -> Result<(WatchedFile, Option<Option<String>>), ErrorBody> {
         let mut file = WatchedFile::new(path);
         blocking(move || {
-            let change = file.poll();
+            let change = watch::first_read(&mut file);
             Ok((file, change))
         })
         .await

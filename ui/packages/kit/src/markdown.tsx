@@ -1,8 +1,9 @@
-import type { HTMLAttributes } from "react";
+import { type HTMLAttributes, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cx } from "./class.ts";
 import { Highlighted } from "./highlight.tsx";
+import { linkReference, type OpenPath, PathLink, pathReference } from "./paths.tsx";
 
 const REMARK_PLUGINS = [remarkGfm];
 
@@ -10,7 +11,7 @@ const FENCE_LANGUAGE = /(?:^|\s)language-(\S+)/;
 
 /** Links open in a new tab without leaking the referrer; fenced code with a language is highlighted (UI-090);
  * everything else keeps react-markdown's elements. */
-const COMPONENTS: Components = {
+const COMPONENTS = {
   a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
   pre: ({ node: _node, className, ...props }) => (
     <pre {...props} className={cx("omfp-code omfp-code--block", className)} />
@@ -27,21 +28,59 @@ const COMPONENTS: Components = {
       </code>
     );
   },
-};
+} satisfies Components;
+
+/** {@link COMPONENTS} where file paths open with `onOpen` (UI-116): inline code that reads as a path, and links to a
+ * relative path. A fenced block's text ends with a line break, so it never counts as inline code. */
+function withPaths(onOpen: OpenPath): Components {
+  const { a: Link, code: CodeElement } = COMPONENTS;
+  return {
+    ...COMPONENTS,
+    a: (props) => {
+      const reference = linkReference(props.href);
+      if (reference === undefined) {
+        return <Link {...props} />;
+      }
+      return (
+        <PathLink reference={reference} onOpen={onOpen}>
+          {props.children}
+        </PathLink>
+      );
+    },
+    code: (props) => {
+      const { children, className } = props;
+      const reference =
+        typeof children === "string" && !children.includes("\n") && className === undefined
+          ? pathReference(children)
+          : undefined;
+      if (reference === undefined) {
+        return <CodeElement {...props} />;
+      }
+      return (
+        <PathLink reference={reference} onOpen={onOpen}>
+          <code>{children}</code>
+        </PathLink>
+      );
+    },
+  };
+}
 
 export interface MarkdownProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
   /** Markdown source (CommonMark + GFM). */
   text: string;
+  /** Opens a file path the text names (inline code or a relative link, UI-116); without it paths stay text. */
+  onOpenPath?: OpenPath | undefined;
 }
 
 /**
  * Renders Markdown as prose (serif). Raw HTML in the source never becomes DOM: react-markdown without `rehype-raw`
  * drops it, and its URL filter removes `javascript:` links. Remote images and code-language classes are kept (UI-040).
  */
-export function Markdown({ text, className, ...props }: MarkdownProps) {
+export function Markdown({ text, className, onOpenPath, ...props }: MarkdownProps) {
+  const components = useMemo(() => (onOpenPath === undefined ? COMPONENTS : withPaths(onOpenPath)), [onOpenPath]);
   return (
     <div {...props} className={cx("omfp-prose omfp-markdown", className)}>
-      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={COMPONENTS}>
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
         {text}
       </ReactMarkdown>
     </div>

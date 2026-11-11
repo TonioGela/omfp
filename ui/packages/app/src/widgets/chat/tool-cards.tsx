@@ -3,9 +3,10 @@
  * show omp's error first (UI-052); code is highlighted when its language is known (UI-090).
  */
 
-import { Badge, Button, Chip, Code, Diff } from "omfp/kit";
+import { Badge, Button, Chip, Code, Diff, PathLink } from "omfp/kit";
 import {
   ansiRuns,
+  type OpenFileOptions,
   repoPath,
   type SubagentRun,
   strings,
@@ -13,23 +14,60 @@ import {
   type ToolCard,
   type ToolView,
   useCurrentWorkspaceId,
+  useOpenFile,
   useWorkspaces,
 } from "omfp/sdk";
 import { type ReactNode, useMemo, useState } from "react";
 
 const text = strings.chat.tool;
 
-/** A file path: relative to the workspace repository holding it, with that repository's chip. */
-export function FilePath({ path }: { path: string }): ReactNode {
+/**
+ * A file path: relative to the workspace repository holding it, with that repository's chip. With `open`, clicking the
+ * path opens the file (UI-116); in a card's header the path sits inside the collapse toggle, so it opens on a pointer
+ * click without toggling, and the keyboard reaches it with `g f` on the focused card (its `data-omfp-path`).
+ */
+export function FilePath({ path, open }: { path: string; open?: OpenFileOptions | undefined }): ReactNode {
   const workspaceId = useCurrentWorkspaceId();
   const workspace = useWorkspaces().get(workspaceId ?? "");
+  const openFile = useOpenFile();
   const shown = repoPath(path, workspace);
   return (
     <span className="omfp-tool-card__path" data-testid="tool-path" data-repo={shown.repo}>
       {shown.repo !== undefined && <Chip data-testid="tool-repo">{shown.repo}</Chip>}
-      <span className="omfp-tool-card__subject">{shown.path}</span>
+      {open === undefined ? (
+        <span className="omfp-tool-card__subject">{shown.path}</span>
+      ) : (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: inside the card's toggle button; the keyboard opens it with `g f`
+        // biome-ignore lint/a11y/noStaticElementInteractions: same
+        <span
+          className="omfp-tool-card__subject omfp-path-link"
+          data-testid="tool-path-open"
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerUp={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            openFile(path, open);
+          }}
+        >
+          {shown.path}
+        </span>
+      )}
     </span>
   );
+}
+
+/** Where a card's path opens (UI-116): `read` at its first line, `edit` and `write` against `HEAD`. */
+export function fileTarget(view: ToolView): { path: string; open: OpenFileOptions } | undefined {
+  switch (view.kind) {
+    case "read":
+      return view.directory ? undefined : { path: view.path, open: { line: view.line } };
+    case "write":
+      return { path: view.path, open: { diff: true } };
+    case "edit":
+      return view.path === undefined ? undefined : { path: view.path, open: { diff: true } };
+    default:
+      return undefined;
+  }
 }
 
 /** What the call is about, shown in the card's header: its command, file, query or URL. */
@@ -39,9 +77,8 @@ export function ToolSubject({ view }: { view: ToolView }): ReactNode {
       return <Subject>{view.command}</Subject>;
     case "read":
     case "write":
-      return <FilePath path={view.path} />;
     case "edit":
-      return view.path === undefined ? null : <FilePath path={view.path} />;
+      return view.path === undefined ? null : <FilePath path={view.path} open={fileTarget(view)?.open} />;
     case "fetch":
       return <Subject>{view.url}</Subject>;
     case "search":
@@ -126,6 +163,7 @@ function WriteContent({ content, language }: { content: string; language: string
 /** The body of a specialized card. */
 export function ToolBody({ card }: { card: ToolCard }): ReactNode {
   const { view } = card;
+  const openFile = useOpenFile();
   switch (view.kind) {
     case "bash":
       return (
@@ -212,7 +250,9 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
               <ul className="omfp-tool-card__files">
                 {view.files.map((file) => (
                   <li key={file.path} data-testid="tool-file">
-                    <FilePath path={file.path} />
+                    <PathLink reference={{ path: file.path, line: undefined }} onOpen={(ref) => openFile(ref.path)}>
+                      <FilePath path={file.path} />
+                    </PathLink>
                     {file.count !== undefined && <Badge>{file.count}</Badge>}
                   </li>
                 ))}

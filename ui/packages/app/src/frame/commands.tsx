@@ -6,12 +6,15 @@
  * (UI-106).
  */
 
+import { pathReference } from "@omfp/kit";
 import type { ReactNode } from "react";
 import {
   ACTIVE_VIEW,
   COLOR_SCHEME,
   type ColorScheme,
   currentWorkspaceId,
+  type OpenFileOptions,
+  openFile,
   RENAMING_THREAD,
   reportError,
   SELECTED_THREAD,
@@ -28,6 +31,23 @@ import { LAYOUT_EDIT } from "./layout.tsx";
 import { DENSITIES, parseSet, SET_KEYS } from "./set.ts";
 
 const SCHEMES: readonly ColorScheme[] = ["system", "light", "dark"];
+
+/** The path the focused element or its nearest ancestor carries for `g f` (`data-omfp-path`, UI-116). */
+function focusedPath(element: Element | null): { path: string; options: OpenFileOptions } | undefined {
+  const holder = element?.closest("[data-omfp-path]");
+  const path = holder?.getAttribute("data-omfp-path");
+  if (holder === null || holder === undefined || path === null || path === undefined || path === "") {
+    return undefined;
+  }
+  const line = Number(holder.getAttribute("data-omfp-line"));
+  return {
+    path,
+    options: {
+      line: Number.isInteger(line) && line > 0 ? line : undefined,
+      diff: holder.hasAttribute("data-omfp-diff"),
+    },
+  };
+}
 
 export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): ReactNode {
   const host = useHost();
@@ -60,6 +80,24 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
         host.commands.run("workspace.new", [], []);
       } else {
         actions.openDraft(workspaceId);
+      }
+    },
+  });
+  useCommand({
+    id: "file.open",
+    title: titles.open,
+    aliases: ["open"],
+    enabled: () => currentWorkspaceId(host) !== undefined,
+    // `:open <path>[:<line>]`, else the path the focused element (or an ancestor) carries (UI-116).
+    run: (args) => {
+      const typed = args.length === 0 ? undefined : pathReference(args.join(" "));
+      if (typed !== undefined) {
+        openFile(host, typed.path, { line: typed.line });
+        return;
+      }
+      const target = focusedPath(document.activeElement);
+      if (target !== undefined) {
+        openFile(host, target.path, target.options);
       }
     },
   });

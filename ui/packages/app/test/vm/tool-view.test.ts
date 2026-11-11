@@ -56,16 +56,19 @@ describe("read card", () => {
       kind: "read",
       path: "src/lib.rs",
       range: undefined,
+      line: undefined,
       language: "rust",
       content: undefined,
       directory: false,
     });
   });
 
-  // spec: UI-050, UI-051
+  // spec: UI-050, UI-051, UI-116
   test("success: the lines returned, without omp's line prefixes, and a directory listing", () => {
     const read = view(card("read_tool_calls", "call_read_1"), "read");
     expect(read.range).toBe("1–9 of 9");
+    // The file opens at the first line read.
+    expect(read.line).toBe(1);
     expect(read.content?.split("\n")[0]).toBe("//! Tool card fixture crate.");
     expect(read.content).not.toContain("#72CA");
     const listing = view(card("read_tool_calls", "call_read_3"), "read");

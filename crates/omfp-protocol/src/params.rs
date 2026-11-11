@@ -235,6 +235,34 @@ pub struct WorkspaceDiffParams {
     pub cursor: Option<String>,
 }
 
+/// `workspaces.read_file` params (DMN-089).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadFileParams {
+    pub workspace_id: String,
+    /// Relative to the workspace folder (else to one of its repositories), or absolute inside the workspace folder.
+    pub path: String,
+    /// The `hash` the client already shows: while the file still has it, the result is `unchanged` and carries
+    /// neither its content nor its `HEAD` text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub known_hash: Option<String>,
+}
+
+/// `workspaces.write_file` params (DMN-090).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WriteFileParams {
+    pub workspace_id: String,
+    /// As in `workspaces.read_file`, without the fallback to the repositories.
+    pub path: String,
+    /// The new text of the file (UTF-8).
+    pub content: String,
+    /// The `hash` of the file the text was based on: a file that no longer has it is `conflict`. Absent: the file
+    /// must not exist yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_hash: Option<String>,
+}
+
 /// The workspace of a new thread.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

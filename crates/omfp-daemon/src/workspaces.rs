@@ -1,9 +1,11 @@
 //! Workspace folders (02-daemon, "Workspaces and their repositories"): creating and removing workspaces, discovering
 //! their repositories (DMN-022) and suggesting the ones seen before (DMN-021), adding and removing repositories
-//! (DMN-024, DMN-025), their git status (DMN-026), and the cheap check that polls watched workspaces (DMN-023).
+//! (DMN-024, DMN-025), their git status (DMN-026), the cheap check that polls watched workspaces (DMN-023), and
+//! reading and writing their files (`files`, DMN-089, DMN-090).
 //!
 //! Calls are blocking; the server layer runs them on blocking tasks.
 
+mod files;
 mod fingerprint;
 mod scan;
 
@@ -11,6 +13,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
+pub use files::{IMAGE_CAP, TEXT_CAP};
 pub use fingerprint::{Fingerprint, fingerprint};
 pub use scan::{Discovered, RepoKind, scan};
 
@@ -42,6 +45,17 @@ pub enum WorkspaceError {
     HasThreads(String),
     #[error("{0} is not supported yet")]
     Unsupported(&'static str),
+    #[error("{0:?} is outside the workspace folder")]
+    OutsideFolder(String),
+    #[error("{0:?} is a directory")]
+    IsADirectory(String),
+    #[error("no file {0:?} in the workspace")]
+    NoSuchFile(String),
+    #[error("the folder of {0:?} does not exist (folders are not created)")]
+    NoSuchFolder(String),
+    /// The file is not the one the change was based on (DMN-090).
+    #[error("{0}")]
+    FileChanged(String),
     #[error(transparent)]
     Store(#[from] StoreError),
     #[error(transparent)]

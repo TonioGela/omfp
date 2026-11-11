@@ -3651,6 +3651,125 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "workspaces.read_file": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`workspaces.read_file` params (DMN-089).",
+      "properties": {
+        "knownHash": {
+          "description": "The `hash` the client already shows: while the file still has it, the result is `unchanged` and carries\nneither its content nor its `HEAD` text.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Relative to the workspace folder (else to one of its repositories), or absolute inside the workspace folder.",
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "path"
+      ],
+      "title": "ReadFileParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "FileKind": {
+          "description": "What a file of a workspace holds, as `workspaces.read_file` shows it (DMN-089).",
+          "oneOf": [
+            {
+              "const": "text",
+              "description": "UTF-8 text without NUL bytes.",
+              "type": "string"
+            },
+            {
+              "const": "image",
+              "description": "An image by its extension (`png`, `jpg`, `jpeg`, `gif`, `webp`, `avif`, `bmp`, `ico`, `svg`).",
+              "type": "string"
+            },
+            {
+              "const": "binary",
+              "description": "Anything else: named, never shown.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "A file of a workspace (DMN-089).",
+      "properties": {
+        "content": {
+          "description": "`text`: the text (its first 2 MiB, cut at a line end, when `truncated`); `image`: the bytes in base64 (absent\nover 8 MiB); absent for `binary` and when `unchanged`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hash": {
+          "description": "Hex SHA-1 of the file's bytes: the `expectedHash` of `workspaces.write_file`.",
+          "type": "string"
+        },
+        "head": {
+          "description": "The file's text at `HEAD` of that repository; absent for a file `HEAD` does not have (new, untracked), for\nbinary, truncated or `unchanged` files and outside repositories.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/FileKind"
+        },
+        "mime": {
+          "description": "The MIME type of an image.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "Relative to the workspace folder, `..` resolved (symbolic links kept as they are).",
+          "type": "string"
+        },
+        "repo": {
+          "description": "The name of the workspace repository holding the file; absent outside every repository.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size": {
+          "description": "Size in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "truncated": {
+          "default": false,
+          "description": "The text was cut (DMN-089's cap).",
+          "type": "boolean"
+        },
+        "unchanged": {
+          "default": false,
+          "description": "The `knownHash` of the request still matches: no `content` and no `head`.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "kind",
+        "size",
+        "hash"
+      ],
+      "title": "FileContent",
+      "type": "object"
+    }
+  },
   "workspaces.remove": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4475,6 +4594,65 @@ expression: method_schemas()
         "createdAt"
       ],
       "title": "Workspace",
+      "type": "object"
+    }
+  },
+  "workspaces.write_file": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`workspaces.write_file` params (DMN-090).",
+      "properties": {
+        "content": {
+          "description": "The new text of the file (UTF-8).",
+          "type": "string"
+        },
+        "expectedHash": {
+          "description": "The `hash` of the file the text was based on: a file that no longer has it is `conflict`. Absent: the file\nmust not exist yet.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "As in `workspaces.read_file`, without the fallback to the repositories.",
+          "type": "string"
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "path",
+        "content"
+      ],
+      "title": "WriteFileParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "The result of `workspaces.write_file` (DMN-090).",
+      "properties": {
+        "hash": {
+          "description": "Hex SHA-1 of the written bytes.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Relative to the workspace folder.",
+          "type": "string"
+        },
+        "size": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "hash",
+        "size"
+      ],
+      "title": "FileWritten",
       "type": "object"
     }
   }
