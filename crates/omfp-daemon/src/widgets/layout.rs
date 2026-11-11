@@ -1,0 +1,302 @@
+//! Adding a widget to a view of the manifest (`omfp_view_add`, DMN-064): a pure function over the manifest's JSON,
+//! with the same placement rules as the window's layout edits (UI-104: a cell added to a container with `sizes`
+//! weighs the mean of its siblings).
+
+use serde_json::{Map, Value, json};
+
+use super::{default_manifest, manifest};
+
+/// Where the widget goes in an existing view (DMN-064).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Place {
+    /// A tab of the `tabs` container whose `id` prop is `side`.
+    SideTab,
+    /// A tab of the `tabs` container whose `id` prop is `main`, after the conversation.
+    MainTab,
+    /// The end of the view's root container; a root widget becomes a `row` of both.
+    End,
+}
+
+impl Place {
+    /// `side-tab`, `main-tab` or `end`.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "side-tab" => Some(Self::SideTab),
+            "main-tab" => Some(Self::MainTab),
+            "end" => Some(Self::End),
+            _ => None,
+        }
+    }
+
+    fn slot(self) -> Option<&'static str> {
+        match self {
+            Self::SideTab => Some("side"),
+            Self::MainTab => Some("main"),
+            Self::End => None,
+        }
+    }
+}
+
+/// What to add, and where.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Addition<'a> {
+    /// The widget reference (`./widgets/<name>`, `user:<name>`, `omfp:<name>`).
+    pub reference: &'a str,
+    /// The node's props; an empty object adds the bare reference.
+    pub props: Map<String, Value>,
+    /// The view to change; `None` for the manifest's default view.
+    pub view: Option<&'a str>,
+    pub place: Place,
+}
+
+const CONTAINERS: [&str; 4] = ["row", "col", "tabs", "stack"];
+
+/// Whether `node` is a container (`[kind, props, ...children]`) rather than a widget.
+fn is_container(node: &Value) -> bool {
+    node.as_array()
+        .and_then(|items| items.first())
+        .and_then(Value::as_str)
+        .is_some_and(|kind| CONTAINERS.contains(&kind))
+}
+
+/// The instance of a widget node (AGT-010): its `instance` prop when it is a string, else its reference.
+fn instance_of(node: &Value) -> Option<String> {
+    match node {
+        Value::String(reference) => Some(reference.clone()),
+        Value::Array(items) => {
+            let reference = items.first()?.as_str()?;
+            Some(
+                items
+                    .get(1)
+                    .and_then(|props| props.get("instance"))
+                    .and_then(Value::as_str)
+                    .unwrap_or(reference)
+                    .to_owned(),
+            )
+        }
+        _ => None,
+    }
+}
+
+/// Every widget instance of `node`.
+fn instances(node: &Value, out: &mut Vec<String>) {
+    if is_container(node) {
+        for child in node.as_array().into_iter().flatten().skip(2) {
+            instances(child, out);
+        }
+    } else if let Some(instance) = instance_of(node) {
+        out.push(instance);
+    }
+}
+
+/// The `tabs` container of `node` whose `id` prop is `id`.
+fn find_slot<'a>(node: &'a mut Value, id: &str) -> Option<&'a mut Value> {
+    if !is_container(node) {
+        return None;
+    }
+    let is_slot = node[0] == "tabs" && node[1].get("id").and_then(Value::as_str) == Some(id);
+    if is_slot {
+        return Some(node);
+    }
+    node.as_array_mut()?
+        .iter_mut()
+        .skip(2)
+        .find_map(|child| find_slot(child, id))
+}
+
+fn round(value: f64) -> f64 {
+    (value * 10_000.0).round() / 10_000.0
+}
+
+/// Appends `child` to the container `node`; with `sizes`, it weighs the mean of its siblings.
+fn append(node: &mut Value, child: Value) {
+    if let Some(sizes) = node[1].get_mut("sizes").and_then(Value::as_array_mut) {
+        let weights: Vec<f64> = sizes.iter().filter_map(Value::as_f64).collect();
+        #[allow(clippy::cast_precision_loss)] // A handful of cells.
+        let mean = if weights.is_empty() {
+            1.0
+        } else {
+            round(weights.iter().sum::<f64>() / weights.len() as f64)
+        };
+        // Whole weights stay integers, as the window writes them (`2`, not `2.0`).
+        #[allow(clippy::cast_possible_truncation)]
+        let weight = if mean.fract() == 0.0 {
+            json!(mean as i64)
+        } else {
+            json!(mean)
+        };
+        sizes.push(weight);
+    }
+    if let Some(items) = node.as_array_mut() {
+        items.push(child);
+    }
+}
+
+/// The view `view` of `manifest` (else its default view) with `addition` added, and a sentence saying where it went.
+/// `manifest` is the valid manifest of the workspace, `None` without a file (the default manifest is used, DMN-088).
+pub fn add(manifest: Option<&Value>, addition: &Addition<'_>) -> Result<(Value, String), String> {
+    let mut manifest = manifest.cloned().unwrap_or_else(default_manifest);
+    let node = if addition.props.is_empty() {
+        json!(addition.reference)
+    } else {
+        json!([addition.reference, addition.props])
+    };
+    let instance = instance_of(&node).unwrap_or_default();
+    let view_id = match addition.view {
+        Some(view) => view.to_owned(),
+        None => manifest_default(&manifest)
+            .or_else(|| manifest.get("views")?.as_object()?.keys().min().cloned())
+            .ok_or("views.json has no views")?,
+    };
+    let views = manifest
+        .get_mut("views")
+        .and_then(Value::as_object_mut)
+        .ok_or("views.json has no views")?;
+    let said = if let Some(view) = views.get_mut(&view_id) {
+        let layout = view
+            .get_mut("layout")
+            .ok_or_else(|| format!("view {view_id:?} has no layout"))?;
+        let mut shown = Vec::new();
+        instances(layout, &mut shown);
+        if shown.contains(&instance) {
+            return Err(format!(
+                "view {view_id:?} already shows {instance}; give the new one another `instance` prop to add a second \
+                 one"
+            ));
+        }
+        match addition.place.slot() {
+            Some(slot) => {
+                let container = find_slot(layout, slot).ok_or_else(|| {
+                    format!(
+                        "view {view_id:?} has no `tabs` container with \"id\": \"{slot}\"; use where: \"end\", or \
+                         another view"
+                    )
+                })?;
+                append(container, node);
+                format!("as a tab of the {slot} tabs of view {view_id:?}")
+            }
+            None if is_container(layout) => {
+                append(layout, node);
+                format!("at the end of view {view_id:?}")
+            }
+            None => {
+                *layout = json!(["row", {}, layout.take(), node]);
+                format!("at the end of view {view_id:?}")
+            }
+        }
+    } else {
+        views.insert(view_id.clone(), json!({ "title": view_id, "layout": node }));
+        format!("as the new view {view_id:?}")
+    };
+    manifest::check(&manifest).map_err(|error| format!("the result would be invalid: {error}"))?;
+    Ok((manifest, said))
+}
+
+/// The manifest's `default` view id when it names one of its views.
+fn manifest_default(manifest: &Value) -> Option<String> {
+    let default = manifest.get("default")?.as_str()?;
+    manifest
+        .get("views")?
+        .get(default)
+        .map(|_| default.to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn addition(reference: &str, place: Place) -> Addition<'_> {
+        Addition {
+            reference,
+            props: Map::new(),
+            view: None,
+            place,
+        }
+    }
+
+    fn layout(manifest: &Value) -> &Value {
+        &manifest["views"]["default"]["layout"]
+    }
+
+    // spec: DMN-064, DMN-088
+    #[test]
+    fn without_a_file_the_default_view_gets_the_widget_as_a_side_tab() {
+        let (manifest, said) = add(None, &addition("./widgets/tests", Place::SideTab)).unwrap();
+        assert_eq!(
+            layout(&manifest)[3],
+            json!(["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "./widgets/tests"])
+        );
+        assert_eq!(said, "as a tab of the side tabs of view \"default\"");
+        assert_eq!(manifest["$schema"], "omfp://schemas/views.json");
+    }
+
+    // spec: DMN-064
+    #[test]
+    fn main_tabs_and_the_end_of_the_root_take_the_widget_with_its_props() {
+        let mut main = addition("user:clock", Place::MainTab);
+        main.props.insert("zone".to_owned(), json!("UTC"));
+        let (manifest, _) = add(None, &main).unwrap();
+        assert_eq!(
+            layout(&manifest)[2][3],
+            json!(["tabs", { "id": "main" }, "omfp:chat", ["user:clock", { "zone": "UTC" }]])
+        );
+
+        let (manifest, said) =
+            add(Some(&manifest), &addition("./widgets/tests", Place::End)).unwrap();
+        assert_eq!(
+            layout(&manifest)[1],
+            json!({ "sizes": [3, 1, 2] }),
+            "the mean weight"
+        );
+        assert_eq!(layout(&manifest)[4], json!("./widgets/tests"));
+        assert_eq!(said, "at the end of view \"default\"");
+    }
+
+    // spec: DMN-064
+    #[test]
+    fn a_root_widget_becomes_a_row_and_an_unknown_view_is_created() {
+        let manifest = json!({ "views": { "solo": { "layout": "omfp:chat" } } });
+        let (manifest, _) = add(Some(&manifest), &addition("./widgets/tests", Place::End)).unwrap();
+        assert_eq!(
+            manifest["views"]["solo"]["layout"],
+            json!(["row", {}, "omfp:chat", "./widgets/tests"])
+        );
+
+        let mut dashboard = addition("./widgets/tests", Place::SideTab);
+        dashboard.view = Some("dash");
+        let (manifest, said) = add(Some(&manifest), &dashboard).unwrap();
+        assert_eq!(
+            manifest["views"]["dash"],
+            json!({ "title": "dash", "layout": "./widgets/tests" })
+        );
+        assert_eq!(said, "as the new view \"dash\"");
+    }
+
+    // spec: DMN-064
+    #[test]
+    fn duplicates_and_missing_slots_are_refused_with_the_fix() {
+        let (manifest, _) = add(None, &addition("./widgets/tests", Place::SideTab)).unwrap();
+        let error = add(Some(&manifest), &addition("./widgets/tests", Place::End)).unwrap_err();
+        assert!(error.contains("already shows ./widgets/tests"), "{error}");
+        assert!(error.contains("`instance` prop"), "{error}");
+
+        let mut second = addition("./widgets/tests", Place::End);
+        second.props.insert("instance".to_owned(), json!("tests-2"));
+        assert!(add(Some(&manifest), &second).is_ok());
+
+        let plain =
+            json!({ "default": "a", "views": { "a": { "layout": ["row", {}, "omfp:chat"] } } });
+        let error = add(Some(&plain), &addition("./widgets/tests", Place::SideTab)).unwrap_err();
+        assert!(error.contains("\"id\": \"side\""), "{error}");
+        assert!(error.contains("where: \"end\""), "{error}");
+    }
+
+    #[test]
+    fn places_parse_from_their_names() {
+        assert_eq!(Place::parse("side-tab"), Some(Place::SideTab));
+        assert_eq!(Place::parse("main-tab"), Some(Place::MainTab));
+        assert_eq!(Place::parse("end"), Some(Place::End));
+        assert_eq!(Place::parse("left"), None);
+    }
+}

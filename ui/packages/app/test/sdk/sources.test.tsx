@@ -2,11 +2,13 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { JsonValue, ThreadEvent } from "@omfp/core";
-import { type JobInfo, type JobState, jobTopic, viewsTopic } from "@omfp/protocol";
+import { type JobInfo, type JobLine, type JobState, jobTopic, viewsTopic } from "@omfp/protocol";
 import { act, cleanup, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import {
   SELECTED_THREAD,
+  SlotReport,
+  SlotReportScope,
   type ToolRunTarget,
   useJob,
   useStored,
@@ -128,16 +130,24 @@ function info(id: string, status: JobInfo["status"] = { state: "running" }): Job
   return { id, workspaceId: WS, command: "make test", startedAt: 1, status };
 }
 
-function jobState(id: string, lines: string[], status?: JobInfo["status"]): JobState {
-  return { job: info(id, status), lines: lines.map((line) => ({ stream: "stdout", text: line })), dropped: 0 };
+function jobState(id: string, lines: JobLine[], status?: JobInfo["status"]): JobState {
+  return { job: info(id, status), lines, dropped: 0 };
 }
+
+const out = (text: string): JobLine => ({ stream: "stdout", text });
+const err = (text: string): JobLine => ({ stream: "stderr", text });
 
 function JobProbe() {
   const job = useJob("make test");
   return (
     <>
       <span data-testid="job">
-        {[job.running, job.exitCode, job.signal, job.lines.join("|")].map((part) => String(part)).join(" ")}
+        {[job.status, job.exitCode, job.signal, job.runs, job.startedAt, job.endedAt]
+          .map((part) => String(part))
+          .join(" ")}
+      </span>
+      <span data-testid="output">
+        {[job.lines, job.stdout, job.stderr].map((lines) => lines.join("|")).join(" / ")}
       </span>
       <button type="button" data-testid="restart" onClick={job.restart} />
       <button type="button" data-testid="kill" onClick={job.kill} />
@@ -145,9 +155,13 @@ function JobProbe() {
   );
 }
 
+const STORED = "job:make test";
+
 /** Renders the job probe with `stored` as the views state's values of the instance. */
-function renderJob(stored: Record<string, unknown> | undefined): TestHost {
-  const test = renderWithHost(inScope(<JobProbe />), testHost());
+function renderJob(stored: Record<string, unknown> | undefined, slot?: (test: TestHost) => SlotReport): TestHost {
+  const test = testHost();
+  const report = slot?.(test);
+  renderWithHost(inScope(<SlotReportScope value={report}>{<JobProbe />}</SlotReportScope>), test);
   if (stored !== undefined) {
     test.client.views(WS, { stored: { tests: stored } });
     test.flush();
@@ -157,8 +171,9 @@ function renderJob(stored: Record<string, unknown> | undefined): TestHost {
 
 describe("useJob", () => {
   // spec: AGT-019
-  test("without a stored job it starts one once the views state is known and stores its id", async () => {
+  test("without a stored job it starts one once the views state is known and stores its id and runs", async () => {
     const { client, flush } = renderJob(undefined);
+    expect(text("job")).toBe("pending null null 0 null null");
     expect(client.callsTo("jobs.start")).toEqual([]);
     client.views(WS);
     flush();
@@ -171,46 +186,59 @@ describe("useJob", () => {
     expect(only(client.callsTo("widgets.state_set")).params).toEqual({
       workspaceId: WS,
       instance: "tests",
-      key: "job:make test",
-      value: "01JOB",
+      key: STORED,
+      value: { id: "01JOB", runs: 1 },
     });
+    expect(text("job")).toBe("pending null null 0 null null");
 
-    client.viewsEvents(WS, { kind: "widget_stored", instance: "tests", key: "job:make test", value: "01JOB" });
+    client.viewsEvents(WS, { kind: "widget_stored", instance: "tests", key: STORED, value: { id: "01JOB", runs: 1 } });
     flush();
     expect(client.subscribed).toContain(jobTopic("01JOB"));
-    client.job(jobState("01JOB", ["one"]));
+    expect(text("job")).toBe("pending null null 1 null null");
+    client.job(jobState("01JOB", [out("one")]));
     client.jobEvents("01JOB", { kind: "job_output", stream: "stderr", text: "two" });
     flush();
-    expect(text("job")).toBe("true null null one|two");
+    expect(text("job")).toBe("running null null 1 1 null");
+    expect(text("output")).toBe("one|two / one / two");
     client.jobEvents("01JOB", { kind: "job_exited", code: 2, signal: null, endedAt: 5 });
     flush();
-    expect(text("job")).toBe("false 2 null one|two");
+    expect(text("job")).toBe("failed 2 null 1 1 5");
     expect(client.callsTo("jobs.start").length).toBe(1);
   });
 
   // spec: AGT-019
   test("a stored job is followed, running or finished, without starting another", () => {
-    const { client, flush } = renderJob({ "job:make test": "01OLD" });
-    client.job(jobState("01OLD", ["done"], { state: "exited", code: null, signal: 15, endedAt: 3 }));
+    const { client, flush } = renderJob({ [STORED]: { id: "01OLD", runs: 3 } });
+    client.job(jobState("01OLD", [out("done")], { state: "exited", code: null, signal: 15, endedAt: 3 }));
     flush();
-    expect(text("job")).toBe("false null 15 done");
+    expect(text("job")).toBe("failed null 15 3 1 3");
+    client.job(jobState("01OLD", [out("done")], { state: "exited", code: 0, signal: null, endedAt: 4 }));
+    flush();
+    expect(text("job")).toBe("succeeded 0 null 3 1 4");
     expect(client.callsTo("jobs.start")).toEqual([]);
   });
 
   // spec: AGT-019
-  test("a stored job the daemon no longer knows is replaced by a new one", () => {
-    const { client, flush } = renderJob({ "job:make test": "01GONE" });
+  test("a stored job the daemon no longer knows is replaced by a new one, counted as a run", async () => {
+    const { client, flush } = renderJob({ [STORED]: { id: "01GONE", runs: 2 } });
     expect(client.callsTo("jobs.start")).toEqual([]);
     client.failTopic(jobTopic("01GONE"), { code: "not_found", message: "no job 01GONE" });
     flush();
-    expect(only(client.callsTo("jobs.start")).params).toEqual({ workspaceId: WS, command: "make test" });
+    const start = only(client.callsTo("jobs.start"));
+    expect(start.params).toEqual({ workspaceId: WS, command: "make test" });
+    await act(async () => start.resolve(info("01NEW")));
+    expect(only(client.callsTo("widgets.state_set")).params).toMatchObject({
+      key: STORED,
+      value: { id: "01NEW", runs: 3 },
+    });
   });
 
   // spec: AGT-019
-  test("restart kills the running job, then starts and stores a new one; kill stops it", async () => {
-    const { client, flush } = renderJob({ "job:make test": "01JOB" });
+  test("restart kills the running job, then starts and stores a new one, pending meanwhile; kill stops it", async () => {
+    const { client, flush } = renderJob({ [STORED]: { id: "01JOB", runs: 1 } });
     client.job(jobState("01JOB", []));
     flush();
+    expect(text("job")).toBe("running null null 1 1 null");
 
     act(() => screen.getByTestId("kill").click());
     expect(only(client.callsTo("jobs.kill")).params).toEqual({ jobId: "01JOB" });
@@ -219,20 +247,60 @@ describe("useJob", () => {
     const kills = client.callsTo("jobs.kill");
     expect(kills.length).toBe(2);
     expect(client.callsTo("jobs.start")).toEqual([]);
+    expect(text("job")).toBe("pending null null 1 1 null");
     await act(async () => kills[1]?.resolve({}));
     const start = only(client.callsTo("jobs.start"));
     await act(async () => start.resolve(info("01NEW")));
-    expect(only(client.callsTo("widgets.state_set")).params).toMatchObject({ key: "job:make test", value: "01NEW" });
+    expect(only(client.callsTo("widgets.state_set")).params).toMatchObject({
+      key: STORED,
+      value: { id: "01NEW", runs: 2 },
+    });
+    client.viewsEvents(WS, { kind: "widget_stored", instance: "tests", key: STORED, value: { id: "01NEW", runs: 2 } });
+    client.job(jobState("01NEW", [], undefined));
+    flush();
+    expect(text("job")).toBe("running null null 2 1 null");
   });
 
   // spec: AGT-019
   test("restart of a finished job starts a new one without killing", () => {
-    const { client, flush } = renderJob({ "job:make test": "01JOB" });
+    const { client, flush } = renderJob({ [STORED]: { id: "01JOB", runs: 1 } });
     client.job(jobState("01JOB", [], { state: "exited", code: 0, signal: null, endedAt: 2 }));
     flush();
     act(() => screen.getByTestId("restart").click());
     expect(client.callsTo("jobs.kill")).toEqual([]);
     expect(client.callsTo("jobs.start").length).toBe(1);
+    expect(text("job")).toBe("pending 0 null 1 1 2");
+  });
+
+  // spec: AGT-019, AGT-026
+  test("the job is reported to the widget's slot with its last lines, and leaves it on unmount", () => {
+    let slot: SlotReport | undefined;
+    const test = renderJob({ [STORED]: { id: "01JOB", runs: 2 } }, ({ host }) => {
+      slot = new SlotReport(host.reports, {
+        reference: "./widgets/tests",
+        instance: "tests",
+        source: "workspace",
+        name: "tests",
+        modulePath: "/widgets/test/01W/tests/",
+      });
+      return slot;
+    });
+    const lines = Array.from({ length: 12 }, (_, index) => (index % 2 === 0 ? out : err)(`line ${index}`));
+    test.client.job(jobState("01JOB", lines));
+    test.flush();
+    expect(slot?.report().jobs).toEqual([
+      {
+        command: "make test",
+        status: "running",
+        exitCode: null,
+        signal: null,
+        runs: 2,
+        startedAt: 1,
+        tail: lines.slice(-10).map((line) => line.text),
+      },
+    ]);
+    cleanup();
+    expect(slot?.report().jobs).toEqual([]);
   });
 });
 

@@ -102,6 +102,17 @@ function Node({ tree, path, scope }: { tree: LayoutTree; path: string; scope: Sc
   }
   if (tree.kind === "tabs") {
     const children = tree.children.map((child, index) => ({ child, path: `${path}.${index}` }));
+    const [only] = children;
+    if (only !== undefined && children.length === 1) {
+      // One tab needs no tab bar (AGT-010): the default view's `main` slot holds the chat alone until files open.
+      return (
+        <div className="omfp-view__tabs" data-layout="tabs" data-path={path}>
+          <div className="omfp-view__panel">
+            <Node tree={only.child} path={only.path} scope={scope} />
+          </div>
+        </div>
+      );
+    }
     return (
       <Tabs className="omfp-view__tabs" data-layout="tabs" data-path={path}>
         <TabList aria-label={text.views}>

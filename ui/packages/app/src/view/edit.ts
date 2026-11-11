@@ -8,7 +8,7 @@
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { CONTAINER_KINDS, type ContainerKind, type LayoutNode, type Parsed } from "./layout.ts";
-import { DEFAULT_VIEW } from "./views.ts";
+import { DEFAULT_MANIFEST, DEFAULT_VIEW } from "./views.ts";
 
 /** Where a moved node goes relative to the target: before or after a node, or at the end of a container. */
 export type Place = "before" | "after" | "end";
@@ -279,11 +279,7 @@ export function manifestToWrite(source: ManifestSource, viewId: string, edit: La
     }
     return {
       ok: true,
-      value: {
-        $schema: "omfp://schemas/views.json",
-        default: DEFAULT_VIEW.id,
-        views: { [DEFAULT_VIEW.id]: { title: DEFAULT_VIEW.title, layout: layout.value } },
-      },
+      value: { ...DEFAULT_MANIFEST, views: { [DEFAULT_VIEW.id]: { title: DEFAULT_VIEW.title, layout: layout.value } } },
     };
   }
   const views = isObject(manifest) ? manifest.views : undefined;

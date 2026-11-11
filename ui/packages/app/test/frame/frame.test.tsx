@@ -8,10 +8,18 @@ import userEvent from "@testing-library/user-event";
 import { Frame, type FrameProps } from "../../src/frame/frame.tsx";
 import { LAYOUT_EDIT } from "../../src/frame/layout.tsx";
 import type { NotificationPort, ThreadNotification } from "../../src/frame/notifications.ts";
-import { ACTIVE_VIEW, DRAFT_THREAD, ERRORS, SELECTED_THREAD, type WidgetComponent } from "../../src/sdk/index.ts";
+import {
+  ACTIVE_VIEW,
+  DRAFT_THREAD,
+  ERRORS,
+  SELECTED_THREAD,
+  useCommand,
+  type WidgetComponent,
+} from "../../src/sdk/index.ts";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
+import { DEFAULT_MANIFEST } from "../../src/view/views.ts";
 import { thread, workspace } from "../support/fixtures.ts";
-import { type FakeClient, renderWithHost, testHost } from "../support/host.tsx";
+import { type FakeClient, ManualTimers, renderWithHost, testHost } from "../support/host.tsx";
 
 afterEach(() => {
   cleanup();
@@ -32,12 +40,24 @@ const registry: WidgetRegistry = new Map<string, WidgetComponent>([
   ["omfp:transcript", stub("transcript")],
 ]);
 
+/** A text field `i` (`composer.focus`) focuses. */
+const StubComposer: WidgetComponent = () => {
+  useCommand({ id: "composer.focus", title: "Focus", run: () => document.getElementById("stub-input")?.focus() });
+  return <textarea id="stub-input" data-testid="stub-input" />;
+};
+
 const threads: ThreadSummary[] = [thread("t1", "checkout", "w1"), thread("t2", "flaky", "w1")];
 
 function setup(props: FrameProps = {}, connect = true) {
   // Module widgets (workspace overrides) stay loading: these tests are about the frame.
-  const base = testHost(undefined, { importer: () => new Promise<unknown>(() => {}) });
-  for (const method of ["threads.archive", "threads.delete", "settings.set"] as const satisfies readonly CallMethod[]) {
+  const timers = new ManualTimers();
+  const base = testHost(undefined, { importer: () => new Promise<unknown>(() => {}), reportTimers: timers });
+  for (const method of [
+    "threads.archive",
+    "threads.delete",
+    "settings.set",
+    "widgets.report",
+  ] as const satisfies readonly CallMethod[]) {
     base.client.answers.set(method, () => ({}));
   }
   let clock = 0;
@@ -49,6 +69,12 @@ function setup(props: FrameProps = {}, connect = true) {
   test.flush();
   return {
     ...test,
+    timers,
+    /** Runs the report timers and gives the `widgets.report` params sent so far. */
+    reports: () => {
+      timers.run();
+      return test.client.callsTo("widgets.report").map((call) => call.params);
+    },
     user: userEvent.setup(),
     tick: (ms: number) => {
       clock += ms;
@@ -261,6 +287,27 @@ describe("frame", () => {
     client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1", { needsAttention: true }) });
     flush();
     expect(screen.getByTestId("live-region").textContent).toBe("checkout: idle. 1 thread awaits input");
+  });
+
+  // spec: UI-098
+  test("the mode line follows the focus; only key-caused mode changes are announced", async () => {
+    const { user } = setup({ registry: new Map([...registry, ["omfp:chat", StubComposer]]) });
+    const line = screen.getByTestId("mode-line");
+    const live = screen.getByTestId("live-region");
+    expect([line.textContent, screen.getByTestId("app").dataset.mode]).toEqual(["NORMAL", "normal"]);
+    press("i");
+    expect([line.textContent, screen.getByTestId("app").dataset.mode]).toEqual(["INSERT", "insert"]);
+    expect(live.textContent).toBe("INSERT mode");
+    press("Escape");
+    expect(line.textContent).toBe("NORMAL");
+    expect(live.textContent).toBe("NORMAL mode");
+    press(":");
+    expect(line.textContent).toBe("COMMAND");
+    press("Escape");
+    expect(line.textContent).toBe("NORMAL");
+    await user.click(screen.getByTestId("stub-input"));
+    expect(line.textContent).toBe("INSERT");
+    expect(live.textContent).toBe("NORMAL mode");
   });
 
   // spec: UI-096
@@ -512,6 +559,33 @@ describe("views of the current workspace", () => {
   });
 });
 
+describe("window reports", () => {
+  // spec: AGT-026
+  test("the window reports the workspace and views position it shows, and reports again after a reconnect", () => {
+    const test = setup();
+    expect(test.reports()).toEqual([{ workspaceId: null, views: null, widgets: [] }]);
+
+    act(() => test.host.window.set(SELECTED_THREAD, "t1"));
+    test.flush();
+    test.client.views("w1", {});
+    test.flush();
+    expect(test.reports().at(-1)).toEqual({ workspaceId: "w1", views: { epoch: "e1", seq: 0 }, widgets: [] });
+    test.client.viewsEvents("w1", { kind: "widget_stored", instance: "x", key: "k", value: 1 });
+    test.flush();
+    expect(test.reports().at(-1)).toEqual({ workspaceId: "w1", views: { epoch: "e1", seq: 1 }, widgets: [] });
+    const sent = test.reports().length;
+
+    act(() => test.client.model.setConnection({ kind: "reconnecting", attempt: 1, retryInMs: 500, error: "closed" }));
+    test.client.notify();
+    test.flush();
+    expect(test.reports().length).toBe(sent);
+    test.client.connected();
+    test.flush();
+    // The daemon forgot the closed connection's report: the same report goes out again.
+    expect(test.reports().slice(sent)).toEqual([{ workspaceId: "w1", views: { epoch: "e1", seq: 1 }, widgets: [] }]);
+  });
+});
+
 describe("layout editing", () => {
   /** The manifests written so far. */
   function written({ client }: { client: FakeClient }): unknown[] {
@@ -574,8 +648,8 @@ describe("layout editing", () => {
           layout: [
             "row",
             { sizes: [3, 1] },
-            ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"],
-            ["tabs", {}, "omfp:changes"],
+            ["col", {}, "omfp:workspace", "omfp:header", ["tabs", { id: "main" }, "omfp:chat"]],
+            ["tabs", { id: "side" }, "omfp:changes"],
           ],
         },
       },
@@ -594,7 +668,12 @@ describe("layout editing", () => {
         views: {
           default: {
             title: "Default",
-            layout: ["row", { sizes: [3, 1] }, ["col", {}, "omfp:header", "omfp:chat"], ["tabs", {}, "omfp:changes"]],
+            layout: [
+              "row",
+              { sizes: [3, 1] },
+              ["col", {}, "omfp:header", ["tabs", { id: "main" }, "omfp:chat"]],
+              ["tabs", { id: "side" }, "omfp:changes"],
+            ],
           },
         },
       },
@@ -709,5 +788,31 @@ describe("widget copy", () => {
       "./widgets/clock already exists",
       "Usage: :widget copy <reference> [<name>]",
     ]);
+  });
+
+  // spec: UI-107, DMN-088
+  test("`:view reset` writes the default manifest over the workspace's views.json, valid or not", async () => {
+    const { client, host, user } = setup();
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "view reset{Enter}");
+    expect(host.window.get(ERRORS)).toEqual(["No current workspace"]);
+    act(() => host.window.set(ERRORS, []));
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    client.views("w1", { manifest: null, error: "views: expected an object of views" });
+    client.answers.set("views.set", () => ({}));
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "view reset{Enter}");
+    expect(client.callsTo("views.set").map((call) => call.params)).toEqual([
+      { workspaceId: "w1", manifest: DEFAULT_MANIFEST },
+    ]);
+    await waitFor(() =>
+      expect(screen.getByTestId("live-region").textContent).toBe(".omfp/views.json reset to the default view"),
+    );
+    client.answers.delete("views.set");
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "view reset{Enter}");
+    const [, failing] = client.callsTo("views.set");
+    await act(async () => failing?.reject(new Error("disk full")));
+    expect(host.window.get(ERRORS)).toEqual(["disk full"]);
   });
 });

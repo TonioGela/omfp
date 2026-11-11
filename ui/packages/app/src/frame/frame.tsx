@@ -7,7 +7,7 @@
  */
 
 import { Select } from "@omfp/kit";
-import type { ViewsState } from "@omfp/protocol";
+import { type ViewsState, viewsTopic } from "@omfp/protocol";
 import { type ReactNode, useEffect, useMemo } from "react";
 import { createKeyHandler } from "../keymap/handler.ts";
 import { type Binding, DEFAULT_BINDINGS, mergeBindings } from "../keymap/keymap.ts";
@@ -17,6 +17,7 @@ import {
   SELECTED_THREAD,
   useHost,
   useSettings,
+  useSnapshot,
   useThreadSummary,
   useViews,
   useWindowState,
@@ -35,6 +36,7 @@ import { CommandLine } from "./command-line.tsx";
 import { GlobalCommands } from "./commands.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
 import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
+import { ModeLine, useMode } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
 import { ConnectionBanner, Errors, StatusLiveRegion } from "./status.tsx";
@@ -66,6 +68,7 @@ export function Frame({
 }: FrameProps): ReactNode {
   const workspaceId = useCurrentWorkspaceId();
   const state = useViews(workspaceId);
+  useWindowReports(workspaceId);
   const manifest = state?.manifest;
   const manifestError = state?.error;
   const views = useMemo(() => viewsOf(manifest, manifestError), [manifest, manifestError]);
@@ -82,9 +85,10 @@ export function Frame({
   useKeymap(bindings, now);
   useAppearance();
   useUserTheme();
+  const mode = useMode();
   const viewIds = views.views.map((candidate) => candidate.id);
   return (
-    <div className="omfp-app" data-testid="app">
+    <div className="omfp-app" data-testid="app" data-mode={mode}>
       <ConnectionBanner />
       {views.error !== undefined && (
         <div className="omfp-banner" data-tone="error" role="alert" data-testid="view-error">
@@ -126,15 +130,18 @@ export function Frame({
             <ThreadsWidget />
           </WidgetBoundary>
         </aside>
-        {view !== undefined && (
-          <ViewRenderer
-            view={view}
-            registry={registry}
-            workspaceId={workspaceId}
-            views={state}
-            onEdit={editing ? write : undefined}
-          />
-        )}
+        <div className="omfp-frame__main">
+          {view !== undefined && (
+            <ViewRenderer
+              view={view}
+              registry={registry}
+              workspaceId={workspaceId}
+              views={state}
+              onEdit={editing ? write : undefined}
+            />
+          )}
+          <ModeLine mode={mode} />
+        </div>
       </main>
       {view !== undefined && <SafetyNet view={view} workspaceId={workspaceId} views={state} registry={registry} />}
       <CommandLine bindings={bindings} />
@@ -163,6 +170,34 @@ function viewsOf(manifest: unknown, error: string | null | undefined): Views {
     return { ...resolveViews(undefined), error };
   }
   return resolveViews(manifest);
+}
+
+/**
+ * The window's widget reports (AGT-026): tells the reporter which workspace it shows and the views topic position it
+ * rendered, follows the window's console errors, and sends the report again on every new connection (the daemon
+ * forgets a closed connection's report, PRT-043).
+ */
+function useWindowReports(workspaceId: string | undefined): void {
+  const { reports } = useHost();
+  const position = useSnapshot((snapshot) =>
+    workspaceId === undefined
+      ? undefined
+      : snapshot.topics.find((topic) => topic.topic === viewsTopic(workspaceId))?.position,
+  );
+  const epoch = position?.epoch;
+  const seq = position?.seq;
+  useEffect(() => {
+    reports.show(workspaceId, epoch === undefined || seq === undefined ? undefined : { epoch, seq });
+  }, [reports, workspaceId, epoch, seq]);
+  useEffect(() => reports.watchConsole(window), [reports]);
+  const hello = useSnapshot((snapshot) =>
+    snapshot.connection.kind === "connected" ? snapshot.connection.hello : undefined,
+  );
+  useEffect(() => {
+    if (hello !== undefined) {
+      reports.resend();
+    }
+  }, [reports, hello]);
 }
 
 /** One global key handler for the window (UI-095). */

@@ -11,6 +11,7 @@ import { strings } from "../strings/index.ts";
 import { CommandRegistry } from "./commands.ts";
 import { type FrameScheduler, FrameStore, type ModelSource } from "./frame-store.ts";
 import { browserImporter, type Importer, WidgetModules } from "./modules.ts";
+import { type ReportTimers, WidgetReporter } from "./reports.ts";
 import { type KeyValueStorage, WindowStore } from "./window-store.ts";
 
 /** What the SDK needs from `@omfp/client`'s `Client` (tests pass a fake over a real `Model`). */
@@ -90,6 +91,8 @@ export interface OmfpHost {
   readonly announcer: Announcer;
   /** Workspace and user widget modules, imported once per URL (UI-105). */
   readonly modules: WidgetModules;
+  /** This window's widget reports to the daemon (AGT-026). */
+  readonly reports: WidgetReporter;
 }
 
 export interface HostOptions {
@@ -99,6 +102,8 @@ export interface HostOptions {
   readonly storage?: KeyValueStorage;
   /** How widget modules are imported; default: the browser's `import()` (tests pass a fake). */
   readonly importer?: Importer;
+  /** How widget reports are batched; default: the global timers. */
+  readonly reportTimers?: ReportTimers;
 }
 
 /** A host over `client`; call `host.frames.start()` to follow the model. */
@@ -111,6 +116,7 @@ export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHo
     commands: new CommandRegistry(),
     announcer: new Announcer(),
     modules: new WidgetModules(options.importer ?? browserImporter, strings.widgets.noDefaultExport),
+    reports: new WidgetReporter({ report: (params) => client.call("widgets.report", params) }, options.reportTimers),
   };
 }
 

@@ -51,7 +51,7 @@ pub enum Permission {
 pub fn permission(method: &str) -> Option<Permission> {
     use Permission::{Connect, Drive, Manage, Read, Terminal};
     Some(match method {
-        "system.hello" | "subscribe" | "unsubscribe" => Connect,
+        "system.hello" | "subscribe" | "unsubscribe" | "widgets.report" => Connect,
         "repos.suggest"
         | "fs.complete"
         | "threads.search"

@@ -56,10 +56,12 @@ The shell (D-18) is React too, so built-in widgets, agent widgets and the shell 
 binding rules are the table [Views and widgets (M4)](#views-and-widgets-m4) below; this section explains them.
 
 **Views manifest** — `<workspace>/.omfp/views.json` (every workspace is a folder the daemon made, D-11, DMN-020).
-Declarative, checked by the daemon, edited by the agent as a file and by the user from the UI (move, resize, hide,
-add, switch view), so both always edit the same thing. Without the file the window shows the default view (the
-conversation with the workspace and changes widgets as tabs on its right); the file is created only when the user or
-the agent changes the layout:
+Declarative, checked by the daemon, edited by the agent as a file (or with the `omfp_view_add` host tool) and by the
+user from the UI (move, resize, hide, add, switch view), so both always edit the same thing. Every workspace has the
+file: the daemon writes the default view into it when it creates the workspace, and at startup for older ones
+(DMN-088), and never rewrites it — it is the user's and the agent's; `:view reset` restores the current default. The
+default view is the header over the `tabs` slot `main` holding the conversation (reserved for opened files, which
+will open as tabs next to it), with the `tabs` slot `side` (workspace and changes widgets) on its right:
 
 ```jsonc
 {
@@ -73,8 +75,8 @@ the agent changes the layout:
     "work": {
       "title": "Work",
       "layout": ["row", { "sizes": [3, 1] },
-        ["col", {}, "omfp:header", "omfp:chat"],
-        ["tabs", {}, "omfp:workspace", ["./widgets/tests", { "command": "cargo nextest run" }]]]
+        ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]],
+        ["tabs", { "id": "side" }, "omfp:workspace", ["./widgets/tests", { "command": "cargo nextest run" }]]]
     }
   }
 }
@@ -102,7 +104,7 @@ SDK as hooks and its layout props as props:
   state is the same in every window and survives reconnects; helpers such as `useThreads()`, `useThread(id)`,
   `useWorkspace(id)`, `useIndex()`.
 - **Sources**: `useToolRun(toolCallId)` follows an omp tool run of the thread; `useJob(command)` runs a daemon job
-  (output lines, exit code, kill, restart).
+  (status, stdout and stderr lines, runs, exit code, kill, restart).
 - **Storage**: `useStored(key, initial)` — state kept by the daemon per widget instance, shared across windows and
   sessions.
 - **Kit and theme**: the React components of the shell (`omfp/kit`: cards, buttons, lists, tabs, progress, log,
@@ -118,10 +120,12 @@ export default function Tests({ command = "cargo nextest run" }: { command?: str
   const total = Number(job.lines.find((l) => /Starting \d+ tests/.test(l))?.match(/\d+/)?.[0]) || 1;
   const done = job.lines.filter((l) => /^\s*(PASS|FAIL)/.test(l)).length;
   return (
-    <Card title={job.running ? `Tests ${done}/${total}` : `Tests finished (exit ${job.exitCode})`}>
+    <Card title={job.status === "running" ? `Tests ${done}/${total}` : `Tests ${job.status} (exit ${job.exitCode})`}>
       <Progress value={done} max={total} label="Tests" />
       <Log lines={job.lines.slice(-10)} />
-      <Button onPress={job.running ? job.kill : job.restart}>{job.running ? "Stop" : "Run again"}</Button>
+      <Button onPress={job.status === "running" ? job.kill : job.restart}>
+        {job.status === "running" ? "Stop" : "Run again"}
+      </Button>
     </Card>
   );
 }
@@ -134,7 +138,7 @@ user, with no restrictions (full access, D-17):
 | Need | SDK | Daemon side |
 | --- | --- | --- |
 | Follow a command the agent runs with its `bash` tool | `useToolRun(toolCallId)` or `useToolRun({ match: /nextest/ })` (latest matching run in the thread) | omp's `tool_execution_update` frames in the thread topic; omp 18.18.6 streams the bash output's latest tail while the command runs (contract test, AGT-020) |
-| Run its own command | `useJob(command)` → `{ lines, exitCode, running, kill, restart }` | **jobs** (DMN-080, DMN-081): `jobs.start { workspaceId, command }`, topic `job/<id>`, `jobs.kill` |
+| Run its own command | `useJob(command)` → `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, kill, restart }` | **jobs** (DMN-080, DMN-081): `jobs.start { workspaceId, command }`, topic `job/<id>`, `jobs.kill` |
 | Share state with the agent | `useStored(key, initial)` | per-instance state in the daemon (DMN-086) |
 
 **Loading** — the daemon serves workspace and user widgets over HTTP as ES modules, transpiling TypeScript/JSX with
@@ -147,21 +151,25 @@ into the user library (`<data-dir>/widgets/<name>/`, by hand or by the agent). B
 `.omfp/widgets/` (`:widget copy omfp:workspace`) and changed; a workspace widget with the same name as a built-in
 replaces it in that workspace.
 
-**How agents learn it** — a short widgets note in the daemon's `--append-system-prompt` text (AGT-024) and two host
-URIs, `omfp://docs/widgets` (the SDK and kit reference) and `omfp://schemas/views.json` (the manifest schema), served
-to the thread's omp with `set_host_uri_schemes` (DMN-062).
+**How agents learn it** — a short widgets note in the daemon's `--append-system-prompt` text (AGT-024) and read-only
+host URIs served to the thread's omp with `set_host_uri_schemes` (DMN-062): `omfp://docs/widgets` (the SDK and kit
+reference), `omfp://schemas/views.json` (the manifest schema) and `omfp://widgets/builtin/<name>` (the built-ins'
+sources), so the agent never searches the filesystem. Two host tools close the loop without a browser:
+`omfp_widget_check { name }` (DMN-063) answers with the daemon's compile result and what the open windows report about
+the widget (AGT-026: errors, console errors, the rendered text, its jobs), and `omfp_view_add` (DMN-064) places a
+widget in a view without rewriting `views.json` by hand.
 
 **Later (not in M4)**: `useAgent(threadId?)` (messages or events to a thread), `useFile(path)` with
 `workspaces.read_file`, the host tools `omfp_widget_state`, `omfp_job_start` and `omfp_job_output` (the agent reads
 and writes widget state and starts jobs), `jobs.list`, job `cwd`/`env` options, `:widget save` and saving a widget to
-the user library from the UI, widgets in dashboards or windows outside the workspace view, dragging widgets with the
-pointer, and telling the agent about an invalid manifest it wrote (today only the window's banner shows it).
+the user library from the UI, widgets in dashboards or windows outside the workspace view, and dragging widgets with
+the pointer.
 
 ### Views and widgets (M4)
 
 | ID | Requirement |
 | --- | --- |
-| AGT-010 | **Views manifest**: `<workspace>/.omfp/views.json` is `{ "$schema"?: string, "default"?: <view id>, "views": { <id>: { "title"?: string, "layout": <node> } } }` with at least one view; unknown keys are ignored. A node is a widget reference (`"omfp:chat"`), `[reference, props]`, or `[container, props, ...children]` with `container` one of `row`, `col`, `tabs`, `stack`, at least one child, and `sizes` (when present) one positive number per child; props are objects. References are `omfp:<name>` (built-in), `./widgets/<name>` (the workspace's) and `user:<name>` (the user library); an unknown reference is not a manifest error, it shows an error in place of that widget. A widget instance is identified by its `instance` prop when it is a string, else by its reference. Views are listed in id order; `default` (else the first id) is the view a window opens. The daemon and the app apply the same rules (one shared case list, `fixtures/views/cases.json`). Without the file the window shows the default view, `["row", { "sizes": [3, 1] }, ["col", {}, "omfp:header", "omfp:chat"], ["tabs", {}, "omfp:workspace", "omfp:changes"]]` (M5 added the changes tab). A tab's label is the widget's `title` prop, else a built-in's own name ("Workspace", "Changes", …), else its reference. |
+| AGT-010 | **Views manifest**: `<workspace>/.omfp/views.json` is `{ "$schema"?: string, "default"?: <view id>, "views": { <id>: { "title"?: string, "layout": <node> } } }` with at least one view; unknown keys are ignored. A node is a widget reference (`"omfp:chat"`), `[reference, props]`, or `[container, props, ...children]` with `container` one of `row`, `col`, `tabs`, `stack`, at least one child, and `sizes` (when present) one positive number per child; props are objects. References are `omfp:<name>` (built-in), `./widgets/<name>` (the workspace's) and `user:<name>` (the user library); an unknown reference is not a manifest error, it shows an error in place of that widget. A widget instance is identified by its `instance` prop when it is a string, else by its reference. Views are listed in id order; `default` (else the first id) is the view a window opens. The daemon and the app apply the same rules (one shared case list, `fixtures/views/cases.json`). The **default manifest** (written into every workspace, DMN-088, and the window's fallback while the file is missing or invalid) is the view `default`, titled "Default": `["row", { "sizes": [3, 1] }, ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]], ["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes"]]`, every built-in an explicit `omfp:*` reference; the daemon's copy (`crates/omfp-daemon/src/widgets/default-views.json`) and the app's are checked equal by a test. The `tabs` container with `"id": "main"` is the slot reserved for opened files (they will open as window-local tabs after the conversation); the one with `"id": "side"` is where `omfp_view_add` puts side tabs (DMN-064). A `tabs` container with one child shows no tab bar. A tab's label is the widget's `title` prop, else a built-in's own name ("Workspace", "Changes", …), else its reference. |
 | AGT-011 | **Invalid manifest**: a `views.json` that cannot be read, is not JSON or breaks AGT-010 never breaks the window: the frame shows the default view and a banner with the error (its JSON path and reason); a fixed file recovers on the next push, without reload. |
 | AGT-012 | **Widget modules**: a widget is the folder `<workspace>/.omfp/widgets/<name>/` (`<name>` of ASCII letters, digits, `_`, `-`, `.` not first), entry `index.tsx`, `index.ts`, `index.jsx` or `index.js` (the first present); its default export is a React component receiving the node's props. It may import files of its own folder (relative paths, with or without extension, never leaving the folder) and only the specifiers `react`, `react/jsx-runtime`, `react-dom`, `omfp/sdk` and `omfp/kit`, which an import map in the page points at the app bundle's own modules (one React, one SDK). |
 | AGT-013 | **Live reload**: a widget is imported from a URL carrying its folder's version (DMN-084); when the views topic pushes a new version, the window imports that widget again and re-renders only it. State in `useStored` survives a reload, component-local state does not. |
@@ -170,13 +178,14 @@ pointer, and telling the agent about an invalid manifest it wrote (today only th
 | AGT-016 | **SDK** (`omfp/sdk`): the hooks of `ui/packages/app/src/sdk` (connection, index, threads, workspaces, any topic, every protocol method, window state, commands, announcements, thread actions, settings), plus `useWidget()` (instance, reference, workspace id), `useStored`, `useJob`, `useToolRun`, and the view models and strings the built-in widgets use. `omfp://docs/widgets` documents them; a test checks every name it lists is exported. |
 | AGT-017 | **Kit** (`omfp/kit`): the components of `@omfp/kit` (UI-093), including `Card`, `Button`, `Progress`, `Log`, `Markdown`, `Tabs`, `ListBox`, `Menu`, `Badge`, styled by the theme tokens (UI-091). |
 | AGT-018 | **`useStored(key, initial)`** → `[value, set, loaded]`: JSON state kept by the daemon per workspace, widget instance and key (DMN-086), the same in every window and pushed live, surviving reloads and daemon restarts; `set` takes a value or an updater, `null` deletes the key; `loaded` tells whether the workspace's views state has arrived (before, `value` is `initial`). |
-| AGT-019 | **`useJob(command)`** → `{ lines, running, exitCode, signal, restart, kill }`: the job's id is stored with `useStored` under `job:<command>`; while the instance has no job for the command (nothing stored, or the daemon no longer knows the stored job), the hook starts one (`jobs.start`); otherwise it follows the stored job, running or finished, so reloads, other windows and moving the widget never start a second one. `restart` kills a running job and starts a new one; `kill` stops it. |
+| AGT-019 | **`useJob(command)`** → `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, state, restart, kill }`: `status` is `pending` (no job known yet, or a start or restart on its way), `running`, `succeeded` (exit code 0) or `failed` (another exit code, or a signal); `lines` holds both outputs interleaved as they came, `stdout` and `stderr` each one's lines; `runs` counts the jobs this instance started for the command (a restart adds one) and `startedAt`/`endedAt` (ms) date the current job. The job's id and the runs are stored with `useStored` under `job:<command>` as `{ id, runs }`; while the instance has no job for the command (nothing stored, or the daemon no longer knows the stored job), the hook starts one (`jobs.start`); otherwise it follows the stored job, running or finished, so reloads, other windows and moving the widget never start a second one. `restart` kills a running job and starts a new one; `kill` stops it. |
 | AGT-020 | **`useToolRun(toolCallId \| { match, threadId? })`**: the tool run of a thread (the selected one by default) with that id, or the latest whose command (`arguments.command` when it is a string, else its JSON arguments) matches `match`: `{ toolCallId, toolName, status, output, lines, isError }`, where `output` is the latest partial output while it runs (omp 18.18.6 sends the bash output's latest tail in `tool_execution_update`, checked by a contract test) and the result's text once it ended. |
 | AGT-021 | **Built-ins are copyable**: every built-in widget (`omfp:header`, `omfp:chat`, `omfp:transcript`, `omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes`) is written like an agent widget — its folder's value imports are only `react`, `omfp/sdk`, `omfp/kit` and files of its own folder (checked by a test) — and the release bundle ships each one's source as a widget folder (`builtin-widgets/<name>/`). `:widget copy omfp:<name> [<new name>]` (`widgets.copy`, DMN-087) copies one into `.omfp/widgets/`; a `user:<name>` widget is copied the same way. |
 | AGT-022 | **Override**: in a workspace, `omfp:<name>` renders `./widgets/<name>` when that folder exists, so a copied built-in (or any widget of that name) replaces the original there. |
 | AGT-023 | **User library**: `user:<name>` is the folder `<data-dir>/widgets/<name>/`, filled by hand or by the agent; it is served, versioned, reloaded and listed like workspace widgets (in every workspace). |
-| AGT-024 | **Agent note**: the daemon's `--append-system-prompt` text (DMN-030) carries a short widgets note after the workspace conventions: where `views.json`, workspace widgets and the user library live, the allowed imports, a ten-line example widget, where the built-in sources are when the daemon serves a bundle, and "read `omfp://docs/widgets`" and `omfp://schemas/views.json`. |
+| AGT-024 | **Agent note**: the daemon's `--append-system-prompt` text (DMN-030) carries a short widgets note after the workspace conventions: where `views.json` (always present, DMN-088), workspace widgets and the user library live, the allowed imports, a ten-line example widget, the host URIs to read — `omfp://docs/widgets`, `omfp://schemas/views.json` and the built-in sources `omfp://widgets/builtin/<name>` (DMN-062; no filesystem path, so the agent never searches for them) — and the host tools that check a widget (`omfp_widget_check`, DMN-063) and place it in a view (`omfp_view_add`, DMN-064). |
 | AGT-025 | **Agent docs**: `omfp://docs/widgets` is the SDK and kit reference (hand-written Markdown in the repository, `crates/omfp-daemon/src/widgets/docs.md`) and `omfp://schemas/views.json` the manifest's JSON Schema; both are read-only host URIs of every thread (DMN-062), verified against omp 18.18.6 by a contract test. |
+| AGT-026 | **Window reports**: every window reports to the daemon over its connection (`widgets.report`, PRT-043), for each workspace or user widget instance of the view it shows: the import's state, the compile stand-in's, import's and error boundary's errors, console errors and uncaught errors whose stack names the widget's module (`<widgetBase>/<source>/<name>/`), a text snapshot of the widget's DOM, and its `useJob` jobs, with the `{ epoch, seq }` of the views topic it rendered. It reports again when any of that changes (at most every 250 ms) and reports `workspaceId: null` when it shows no workspace. `omfp_widget_check` reads these reports (DMN-063). |
 
 ## Permissions and limits
 

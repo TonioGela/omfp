@@ -13,22 +13,24 @@ const LAYOUT: LayoutNode = [
 ];
 
 /** The right-hand tabs of the default view. */
-const SIDE_TABS: LayoutNode = ["tabs", {}, "omfp:workspace", "omfp:changes"];
+const SIDE_TABS: LayoutNode = ["tabs", { id: "side" }, "omfp:workspace", "omfp:changes"];
+/** The default view's `main` tabs, holding the chat. */
+const MAIN_TABS: LayoutNode = ["tabs", { id: "main" }, "omfp:chat"];
 
 describe("move", () => {
   // spec: UI-103
   test("before or after another widget; a container left with one child stays, its sizes follow", () => {
     expect(moveNode(DEFAULT_VIEW.layout, "0.1", "before", "0.0.0")).toEqual({
       ok: true,
-      value: ["row", { sizes: [3] }, ["col", {}, SIDE_TABS, "omfp:header", "omfp:chat"]],
+      value: ["row", { sizes: [3] }, ["col", {}, SIDE_TABS, "omfp:header", MAIN_TABS]],
     });
     expect(moveNode(DEFAULT_VIEW.layout, "0.1.0", "before", "0.0.0")).toEqual({
       ok: true,
       value: [
         "row",
         { sizes: [3, 1] },
-        ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"],
-        ["tabs", {}, "omfp:changes"],
+        ["col", {}, "omfp:workspace", "omfp:header", MAIN_TABS],
+        ["tabs", { id: "side" }, "omfp:changes"],
       ],
     });
     expect(moveNode(LAYOUT, "0.0.0", "after", "0.1.1")).toEqual({
@@ -103,7 +105,7 @@ describe("resize", () => {
   test("a keyboard step moves 5 % of the container between two adjacent cells", () => {
     expect(resizeCells(DEFAULT_VIEW.layout, "0", 1, RESIZE_STEP)).toEqual({
       ok: true,
-      value: ["row", { sizes: [3.2, 0.8] }, ["col", {}, "omfp:header", "omfp:chat"], SIDE_TABS],
+      value: ["row", { sizes: [3.2, 0.8] }, ["col", {}, "omfp:header", MAIN_TABS], SIDE_TABS],
     });
     expect(resizeCells(["col", {}, "a", "b", "c"], "0", 2, -RESIZE_STEP)).toEqual({
       ok: true,
@@ -133,7 +135,7 @@ describe("add", () => {
     expect(addWidget(DEFAULT_VIEW.layout, "user:charts")).toEqual([
       "row",
       { sizes: [3, 1, 2] },
-      ["col", {}, "omfp:header", "omfp:chat"],
+      ["col", {}, "omfp:header", MAIN_TABS],
       SIDE_TABS,
       "user:charts",
     ]);
@@ -160,13 +162,7 @@ describe("manifest to write", () => {
         views: {
           default: {
             title: "Default",
-            layout: [
-              "row",
-              { sizes: [3, 1, 2] },
-              ["col", {}, "omfp:header", "omfp:chat"],
-              SIDE_TABS,
-              "omfp:transcript",
-            ],
+            layout: ["row", { sizes: [3, 1, 2] }, ["col", {}, "omfp:header", MAIN_TABS], SIDE_TABS, "omfp:transcript"],
           },
         },
       },

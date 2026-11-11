@@ -1,0 +1,52 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "widgets.report",
+    "params": {
+      "views": {
+        "epoch": "01EPOCH",
+        "seq": 4
+      },
+      "widgets": [
+        {
+          "console": [
+            "TypeError: x is undefined"
+          ],
+          "errors": [],
+          "instance": "./widgets/tests",
+          "jobs": [
+            {
+              "command": "make test",
+              "exitCode": null,
+              "runs": 1,
+              "signal": null,
+              "startedAt": 1700000000000,
+              "status": "running",
+              "tail": [
+                "PASS 1"
+              ]
+            }
+          ],
+          "name": "tests",
+          "reference": "./widgets/tests",
+          "source": "workspace",
+          "state": "rendered",
+          "text": "Tests 1/3",
+          "version": "3f2a"
+        }
+      ],
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {},
+    "type": "response"
+  }
+}

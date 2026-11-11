@@ -2,7 +2,8 @@
  * The global commands of the frame (UI-095), shared by the keymap and the `:` line: a draft thread in the current
  * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030), a rescan of the current
  * workspace (DMN-023), colour scheme (UI-091, window-local), density and `:set` (daemon settings, UI-094, UI-097), the
- * view switch (UI-101), layout editing (UI-103) and copying a widget into the workspace (UI-106).
+ * view switch (UI-101) and `:view reset` (UI-107), layout editing (UI-103) and copying a widget into the workspace
+ * (UI-106).
  */
 
 import type { ReactNode } from "react";
@@ -21,6 +22,7 @@ import {
   useWindowState,
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
+import { DEFAULT_MANIFEST } from "../view/views.ts";
 import { isArchived, nextNeedingAttention } from "../vm/threads.ts";
 import { LAYOUT_EDIT } from "./layout.tsx";
 import { DENSITIES, parseSet, SET_KEYS } from "./set.ts";
@@ -172,9 +174,22 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
     id: "view.switch",
     title: titles.view,
     aliases: ["view"],
-    args: () => viewIds,
-    run: ([view]) => {
-      if (view !== undefined && viewIds.includes(view)) {
+    args: () => [...viewIds, "reset"],
+    run: async ([view]) => {
+      if (view === "reset") {
+        // UI-107: the current default manifest replaces the workspace's views.json, valid or not.
+        const workspaceId = currentWorkspaceId(host);
+        if (workspaceId === undefined) {
+          reportError(host, strings.shell.layout.noWorkspace);
+          return;
+        }
+        try {
+          await host.client.call("views.set", { workspaceId, manifest: DEFAULT_MANIFEST });
+          host.announcer.announce(strings.shell.layout.reset);
+        } catch (error) {
+          reportError(host, error);
+        }
+      } else if (view !== undefined && viewIds.includes(view)) {
         host.window.set(ACTIVE_VIEW, view);
       } else if (view !== undefined) {
         reportError(host, strings.shell.layout.noView(view));

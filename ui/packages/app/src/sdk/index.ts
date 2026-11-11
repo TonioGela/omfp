@@ -15,8 +15,9 @@
  * | `useViews(id)` | the workspace's views manifest, widget folders and stored values, following `views/<id>` |
  * | `useWidget()` | the widget instance being rendered: `{ instance, reference, workspaceId }` |
  * | `useStored(key, initial)` | `[value, set, loaded]`: JSON kept by the daemon per workspace, instance and key (AGT-018) |
- * | `useJob(command)` | `{ lines, running, exitCode, signal, restart, kill }`: one daemon job per instance and command (AGT-019) |
+ * | `useJob(command)` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, restart, kill }`: one daemon job per instance and command (AGT-019) |
  * | `useToolRun(id \| { match, threadId? })` | a tool run of a thread with its live output (AGT-020) |
+ * | `useSlotReport()` | the report of the module widget slot being rendered (`widgets.report`, AGT-026); `undefined` in built-ins |
  * | `useTopic(topic)` | any topic's subscription state, followed while mounted |
  * | `useSnapshot(select)` | anything else from the per-frame model snapshot |
  * | `useCall()` | `call(method, params)`: every protocol method, typed |
@@ -222,6 +223,18 @@ export {
 } from "./modules.ts";
 export { type PathSources, usePathSources } from "./paths.ts";
 export {
+  JOB_TAIL,
+  REPORT_DELAY_MS,
+  type ReportSink,
+  type ReportTimers,
+  type SlotIdentity,
+  type SlotLoad,
+  SlotReport,
+  SlotReportScope,
+  useSlotReport,
+  WidgetReporter,
+} from "./reports.ts";
+export {
   DEFAULT_DENSITY,
   DEFAULT_FONT_SIZE,
   DEFAULT_NOTIFICATIONS,
@@ -232,6 +245,7 @@ export {
 } from "./settings.ts";
 export {
   type Job,
+  type JobRunStatus,
   type StoredUpdate,
   type ToolRunInfo,
   type ToolRunTarget,

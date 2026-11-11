@@ -7,18 +7,29 @@ import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { type LayoutNode, type LayoutTree, type Parsed, parseLayout, type View } from "./layout.ts";
 
-/** Header over the conversation, the workspace and changes widgets as tabs on the right; the frame renders the threads
- * column itself (UI-100). */
+/** Header over the `main` tabs with the conversation (the slot reserved for opened files), the workspace and changes
+ * widgets as the `side` tabs on the right; the frame renders the threads column itself (UI-100). */
 export const DEFAULT_VIEW: View = {
   id: "default",
   title: strings.shell.frame.defaultView,
   layout: [
     "row",
     { sizes: [3, 1] },
-    ["col", {}, "omfp:header", "omfp:chat"],
-    ["tabs", {}, "omfp:workspace", "omfp:changes"],
+    ["col", {}, "omfp:header", ["tabs", { id: "main" }, "omfp:chat"]],
+    ["tabs", { id: "side" }, "omfp:workspace", "omfp:changes"],
   ],
 };
+
+/**
+ * The default manifest (AGT-010): the daemon writes the same one into every workspace (DMN-088,
+ * `crates/omfp-daemon/src/widgets/default-views.json`, checked equal by a test); the window falls back to it while
+ * `views.json` is missing or invalid, and `:view reset` writes it (UI-107).
+ */
+export const DEFAULT_MANIFEST = {
+  $schema: "omfp://schemas/views.json",
+  default: DEFAULT_VIEW.id,
+  views: { [DEFAULT_VIEW.id]: { layout: DEFAULT_VIEW.layout, title: DEFAULT_VIEW.title } },
+} as const;
 
 /** A validated view: its layout as written (what layout edits change) and as a tree (what the renderer walks). */
 export interface ResolvedView {

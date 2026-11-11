@@ -1,13 +1,13 @@
 /** L4: the widget slot — reference resolution, module loading by versioned URL, and errors in place. */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import type { ViewsState, WidgetInfo } from "@omfp/protocol";
+import type { ReportWidgetsParams, ViewsState, WidgetInfo, WidgetReport } from "@omfp/protocol";
 import { act, cleanup, screen } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { OmfpProvider, useStored, useWidget, type WidgetComponent, type WidgetProps } from "../../src/sdk/index.ts";
 import { resolveWidget, type WidgetRegistry, widgetUrl } from "../../src/view/resolve.ts";
 import { WidgetSlot } from "../../src/view/slot.tsx";
-import { FakeClient, renderWithHost, type TestHost, testHost } from "../support/host.tsx";
+import { FakeClient, ManualTimers, renderWithHost, type TestHost, testHost } from "../support/host.tsx";
 
 afterEach(cleanup);
 
@@ -86,25 +86,40 @@ function Slots({ slots, state }: { slots: readonly Slot[]; state: ViewsState | u
 
 interface Rendered extends TestHost {
   readonly imports: Imports;
+  readonly timers: ManualTimers;
   rerender(slots: readonly Slot[], state: ViewsState | undefined): void;
+  unmount(): void;
+  /** Runs the report timers (after pending DOM observations) and gives the widgets of the last report. */
+  report(): Promise<WidgetReport[]>;
 }
 
 function renderSlots(slots: readonly Slot[], state: ViewsState | undefined): Rendered {
   const imports = new Imports();
+  const timers = new ManualTimers();
   const client = new FakeClient();
   client.connected();
-  const test = testHost(client, { importer: imports.importer });
+  client.answers.set("widgets.report", () => ({}));
+  const test = testHost(client, { importer: imports.importer, reportTimers: timers });
   test.host.frames.commit();
+  test.host.reports.show(WS, { epoch: "e1", seq: 1 });
   const { view } = renderWithHost(<Slots slots={slots} state={state} />, test);
   return {
     ...test,
     imports,
+    timers,
     rerender: (next, nextState) =>
       view.rerender(
         <OmfpProvider host={test.host}>
           <Slots slots={next} state={nextState} />
         </OmfpProvider>,
       ),
+    unmount: () => view.unmount(),
+    report: async () => {
+      await act(async () => {});
+      timers.run();
+      const reports = client.callsTo("widgets.report");
+      return (reports.at(-1)?.params as ReportWidgetsParams | undefined)?.widgets ?? [];
+    },
   };
 }
 
@@ -332,5 +347,93 @@ describe("widget slot", () => {
     const { imports } = renderSlots([{ reference: "./widgets/hello" }], undefined);
     expect(screen.getByTestId("widget-loading")).toBeDefined();
     expect(imports.urls).toEqual([]);
+  });
+});
+
+describe("slot reports", () => {
+  // spec: AGT-026, PRT-043
+  test("a module widget reports its import, version and rendered text; built-ins are not reported", async () => {
+    const { imports, report, rerender } = renderSlots(
+      [
+        { reference: "./widgets/hello", props: { who: "you" }, path: "0.0" },
+        { reference: "omfp:header", props: { label: "fine" }, path: "0.1" },
+      ],
+      views(folder("workspace", "hello", "v1")),
+    );
+    expect(await report()).toMatchObject([
+      { reference: "./widgets/hello", instance: "./widgets/hello", source: "workspace", name: "hello" },
+    ]);
+    expect((await report())[0]).toMatchObject({ state: "loading", version: null, errors: [], jobs: [] });
+
+    await imports.resolve("/widgets/test/01W/hello/v1/index.tsx", { default: Hello });
+    expect(await report()).toEqual([
+      {
+        reference: "./widgets/hello",
+        instance: "./widgets/hello",
+        source: "workspace",
+        name: "hello",
+        version: "v1",
+        state: "rendered",
+        errors: [],
+        console: [],
+        text: "hello you",
+        jobs: [],
+      },
+    ]);
+
+    // The text follows what the widget renders.
+    rerender(
+      [
+        { reference: "./widgets/hello", props: { who: "me" }, path: "0.0" },
+        { reference: "omfp:header", props: { label: "fine" }, path: "0.1" },
+      ],
+      views(folder("workspace", "hello", "v1")),
+    );
+    expect((await report())[0]?.text).toBe("hello me");
+
+    // While a new version loads, the previous one stays shown and the instance is loading.
+    rerender(
+      [{ reference: "./widgets/hello", props: { who: "me" }, path: "0.0" }],
+      views(folder("workspace", "hello", "v2")),
+    );
+    expect((await report())[0]).toMatchObject({ state: "loading", version: "v1" });
+    await imports.resolve("/widgets/test/01W/hello/v2/index.tsx", { default: Bye });
+    expect((await report())[0]).toMatchObject({ state: "rendered", version: "v2", text: "bye me" });
+  });
+
+  // spec: AGT-026, PRT-043
+  test("compile, load and render errors are reported with their messages", async () => {
+    const { imports, report } = renderSlots(
+      [
+        { reference: "./widgets/bad", path: "0.0" },
+        { reference: "./widgets/gone", path: "0.1" },
+        { reference: "user:broken", path: "0.2" },
+      ],
+      views(folder("workspace", "bad", "b1"), folder("workspace", "gone", "g1"), folder("user", "broken", "r1")),
+    );
+    await imports.resolve("/widgets/test/01W/bad/b1/index.tsx", {
+      compileError: { file: "parts/view.tsx", line: 3, column: 7, message: "Unexpected token" },
+      default: () => createElement("pre", null, "stand-in"),
+    });
+    await imports.reject("/widgets/test/01W/gone/g1/index.tsx", new Error("Failed to fetch"));
+    await imports.resolve("/widgets/test/user/broken/r1/index.tsx", { default: Broken });
+
+    expect((await report()).map(({ name, state, version, errors }) => ({ name, state, version, errors }))).toEqual([
+      { name: "bad", state: "compile_error", version: "b1", errors: ["parts/view.tsx:3:7: Unexpected token"] },
+      { name: "gone", state: "load_error", version: "g1", errors: ["Failed to fetch"] },
+      { name: "broken", state: "render_error", version: "r1", errors: ["boom"] },
+    ]);
+  });
+
+  // spec: AGT-026
+  test("an unmounted slot leaves the report", async () => {
+    const { imports, report, unmount } = renderSlots(
+      [{ reference: "./widgets/hello" }],
+      views(folder("workspace", "hello", "v1")),
+    );
+    await imports.resolve("/widgets/test/01W/hello/v1/index.tsx", { default: Hello });
+    expect((await report()).length).toBe(1);
+    unmount();
+    expect(await report()).toEqual([]);
   });
 });

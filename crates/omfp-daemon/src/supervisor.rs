@@ -82,8 +82,8 @@ pub struct SupervisorConfig {
     /// Generate thread titles with an omp print-mode run after the first message (DMN-073). Tests against the fake
     /// LLM turn it off so the extra model call does not take a scripted step.
     pub title_generation: bool,
-    /// `<static-dir>/builtin-widgets/` when the daemon serves a bundle with built-in widgets: the widgets note names
-    /// it (AGT-024).
+    /// `<static-dir>/builtin-widgets/` when the daemon serves a bundle with built-in widgets: the `omfp://` host URIs
+    /// serve their sources (DMN-062).
     pub builtin_widgets: Option<PathBuf>,
 }
 
@@ -300,6 +300,9 @@ struct Inner {
     tool_ends: broadcast::Sender<String>,
     /// Clients watching each workspace (subscribers of `workspace/<id>`), which polls it (DMN-023).
     workspace_watchers: Mutex<HashMap<String, usize>>,
+    /// Backs the widget host tools of every thread launched from now on (DMN-063, DMN-064); set by the server once
+    /// its services exist, dropped at shutdown (the services hold the supervisor too).
+    widget_host: Mutex<Option<Arc<dyn host_tools::WidgetHost>>>,
     shutting_down: AtomicBool,
 }
 
@@ -384,9 +387,15 @@ impl Supervisor {
                 changes: broadcast::channel(256).0,
                 tool_ends: broadcast::channel(256).0,
                 workspace_watchers: Mutex::new(HashMap::new()),
+                widget_host: Mutex::new(None),
                 shutting_down: AtomicBool::new(false),
             }),
         }
+    }
+
+    /// Gives the threads launched from now on the widget host tools (DMN-063, DMN-064).
+    pub fn set_widget_host(&self, host: Arc<dyn host_tools::WidgetHost>) {
+        *lock(&self.inner.widget_host) = Some(host);
     }
 
     /// Ids of threads whose agent finished a tool execution (`tool_execution_end`).
@@ -779,6 +788,7 @@ impl Supervisor {
     /// group. Gives up waiting after [`SHUTDOWN_GRACE`]. Later starts are refused.
     pub async fn shutdown(&self) {
         self.inner.shutting_down.store(true, Ordering::SeqCst);
+        lock(&self.inner.widget_host).take();
         let actors: Vec<Arc<Actor>> = lock(&self.inner.actors).values().cloned().collect();
         let stops = actors.iter().map(|actor| async move {
             let _lifecycle = actor.lifecycle.lock().await;
@@ -942,7 +952,6 @@ impl Supervisor {
                 &ws.path,
                 self.inner.config.agent_dir.as_deref(),
                 &data.widgets(),
-                self.inner.config.builtin_widgets.as_deref(),
             )),
             stderr_log: data.thread_log(&actor.id),
             env: self.inner.config.omp_env.clone(),
@@ -983,14 +992,17 @@ impl Supervisor {
         }
 
         let log = Arc::clone(&actor.log);
+        let widget_host = lock(&self.inner.widget_host).clone();
         let tools = host_tools::thread_tools(
             spec.cwd.clone(),
             Arc::new(move |event| {
                 log.push(event);
             }),
             self.title_setter(&actor.id),
+            &thread.workspace_id,
+            widget_host,
         );
-        let uris = match widgets::host_uris() {
+        let uris = match widgets::host_uris(self.inner.config.builtin_widgets.clone()) {
             Ok(uris) => uris,
             Err(error) => {
                 self.fail(actor, error.to_string(), String::new());

@@ -55,12 +55,13 @@ import { useJob } from "omfp/sdk";
 
 export default function Tests({ command = "make test" }: { command?: string }) {
   const job = useJob(command);
-  const done = job.lines.filter((line) => line.startsWith("ok")).length;
+  const done = job.stdout.filter((line) => line.startsWith("ok")).length;
+  const running = job.status === "running";
   return (
-    <Card title={job.running ? "Tests running" : `Tests finished (exit ${job.exitCode})`}>
+    <Card title={`Tests ${job.status} (run ${job.runs}${job.exitCode === null ? "" : `, exit ${job.exitCode}`})`}>
       <Progress label="Tests" value={done} max={20} />
       <Log lines={job.lines.slice(-10)} />
-      <Button onPress={job.running ? job.kill : job.restart}>{job.running ? "Stop" : "Run again"}</Button>
+      <Button onPress={running ? job.kill : job.restart}>{running ? "Stop" : "Run again"}</Button>
     </Card>
   );
 }
@@ -72,7 +73,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | --- | --- |
 | `useWidget()` | `{ instance, reference, workspaceId }` of the calling widget. |
 | `useStored(key, initial)` | `[value, set, loaded]`: JSON state the daemon keeps per workspace, widget instance and key, shared live by every window and kept across reloads and restarts. `set(value)` or `set((previous) => next)`; `set(null)` deletes the key. `loaded` is `false` while the state has not arrived yet (`value` is then `initial`). |
-| `useJob(command)` | `{ lines, running, exitCode, signal, restart, kill }` for `sh -c <command>` run by the daemon in the workspace folder. The first mount starts it; reloads, other windows and moving the widget follow the same job (its id is stored as `job:<command>`). `lines` are stdout and stderr lines; `restart()` kills a running job and starts a new one; `state` is the raw `job/<id>` state. |
+| `useJob(command)` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, state, restart, kill }` for `sh -c <command>` run by the daemon in the workspace folder. `status` is `"pending"` (no job yet, or a start or restart on its way), `"running"`, `"succeeded"` (exit code 0) or `"failed"` (another code, or a signal). The first mount starts the job; reloads, other windows and moving the widget follow the same job (stored as `job:<command>`: `{ id, runs }`). `lines` are stdout and stderr interleaved, `stdout` and `stderr` each one's lines; `runs` counts the jobs started (a restart adds one), `startedAt`/`endedAt` (ms) date the current one; `restart()` kills a running job and starts a new one; `state` is the raw `job/<id>` state. `omfp_widget_check` shows each job's status and last lines. |
 | `useToolRun(toolCallId)` | A tool run of the selected thread, or `useToolRun({ match: /nextest/, threadId? })` for the latest run whose command matches: `{ toolCallId, toolName, status, output, lines, isError }` or `undefined`. While a `bash` command runs, `output` is the latest tail omp streams. |
 | `useCall()` | `call(method, params)`: any daemon protocol method, e.g. `call("thread.prompt", { threadId, text })`. |
 | `useTopic(topic)` | Follows a topic (`index`, `thread/<id>`, `workspace/<id>`, `views/<id>`, `job/<id>`) while mounted; returns its subscription state. |

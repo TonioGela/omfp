@@ -175,6 +175,26 @@ describe("write card", () => {
     await waitFor(() => expect(content.querySelector(".hljs-section")?.textContent).toBe("# Notes"));
   });
 
+  // spec: UI-053
+  test("long content: the first 6 lines, then the whole content on demand", async () => {
+    const recorded = card("write_tool_calls", "call_write_1");
+    const content = `${Array.from({ length: 9 }, (_, at) => `line ${at + 1}`).join("\n")}\n`;
+    const element = await open({ ...recorded, view: { ...recorded.view, content } as ToolCard["view"] });
+    expect(byTestId(element, "tool-content").textContent).toBe("line 1\nline 2\nline 3\nline 4\nline 5\nline 6");
+    const more = byTestId(element, "tool-more");
+    expect([more.textContent, more.getAttribute("aria-expanded")]).toEqual(["… 3 more lines", "false"]);
+    await userEvent.click(more);
+    expect(byTestId(element, "tool-content").textContent).toBe(content);
+    await userEvent.click(byTestId(element, "tool-more"));
+    expect(byTestId(element, "tool-content").textContent).toEndWith("line 6");
+  });
+
+  // spec: UI-053
+  test("short content: no expander", async () => {
+    const element = await open(card("write_tool_calls", "call_write_1"));
+    expect(within(element).queryByTestId("tool-more")).toBeNull();
+  });
+
   // spec: UI-050, UI-051, UI-052
   test("error: writing over a directory", () => {
     expect(byTestId(show(card("write_tool_calls", "call_write_2")), "tool-error").textContent).toContain("EISDIR");

@@ -116,6 +116,11 @@ impl Services {
             .cloned()
     }
 
+    /// The position of `views/<id>` when a window follows it (DMN-063).
+    pub(crate) fn views_log_position(&self, id: &str) -> Option<crate::event_log::Position> {
+        self.views_log_entry(id).map(|log| log.position())
+    }
+
     /// Reads the workspace's manifest and widget folders again and publishes what changed on `views/<id>`, if the
     /// topic exists (DMN-082). A removed workspace's topic goes away.
     pub async fn refresh_views(&self, id: &str) {

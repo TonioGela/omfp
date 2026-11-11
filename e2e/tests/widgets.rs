@@ -23,10 +23,10 @@ const COMMAND = {command};
 
 export default function Tests() {{
   const job = useJob(COMMAND);
-  const done = job.lines.filter((line: string) => line.startsWith("PASS")).length;
+  const done = job.stdout.filter((line: string) => line.startsWith("PASS")).length;
   return (
-    <Card title={{job.running ? `{title} ${{done}}/3` : `{title} finished (exit ${{job.exitCode}})`}}>
-      <div data-testid="tests" data-done={{done}} data-running={{String(job.running)}}>
+    <Card title={{job.status === "running" ? `{title} ${{done}}/3` : `{title} ${{job.status}} (exit ${{job.exitCode}})`}}>
+      <div data-testid="tests" data-done={{done}} data-status={{job.status}}>
         <Progress label="{title}" value={{done}} max={{3}} />
         <Log lines={{job.lines}} />
       </div>
@@ -36,22 +36,6 @@ export default function Tests() {{
 "#,
         command = json!(JOB),
     )
-}
-
-/// The manifest the scripted agent writes: the default layout with the tests widget under the workspace widget.
-fn agent_manifest() -> Value {
-    json!({
-        "$schema": "omfp://schemas/views.json",
-        "default": "work",
-        "views": {
-            "work": {
-                "title": "Work",
-                "layout": ["row", { "sizes": [3, 1] },
-                    ["col", {}, "omfp:header", "omfp:chat"],
-                    ["col", {}, "omfp:workspace", "./widgets/tests"]]
-            }
-        }
-    })
 }
 
 /// The `data-done` count the tests widget shows, once it shows one.
@@ -72,26 +56,49 @@ fn open_gate(folder: &Path, n: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
-// spec: E2E-10, AGT-012, AGT-013, AGT-014, AGT-019, UI-105
+/// The text of the tool result answering `call_id`, from the first chat-completions request carrying it.
+fn tool_result(requests: &[Value], call_id: &str) -> String {
+    requests
+        .iter()
+        .filter_map(|request| request["messages"].as_array())
+        .flatten()
+        .find(|message| message["role"] == "tool" && message["tool_call_id"] == call_id)
+        .map_or_else(
+            || panic!("no result for {call_id} in {} requests", requests.len()),
+            |message| message["content"].as_str().unwrap_or_default().to_owned(),
+        )
+}
+
+fn assert_contains(text: &str, needles: &[&str]) {
+    for needle in needles {
+        assert!(text.contains(needle), "{needle:?} missing: {text}");
+    }
+}
+
+// spec: E2E-10, AGT-012, AGT-013, AGT-014, AGT-019, AGT-026, DMN-063, DMN-064, UI-105
 #[tokio::test(flavor = "multi_thread")]
 async fn an_agent_widget_follows_a_daemon_job_live_and_recovers_from_a_syntax_error()
 -> anyhow::Result<()> {
+    let check = |id: &str| {
+        Step::reply(Reply::tool_calls(vec![ToolCall::new(
+            id,
+            "omfp_widget_check",
+            json!({ "name": "tests" }),
+        )]))
+    };
     let journey = Journey::start(vec![
-        Step::reply(Reply::tool_calls(vec![
-            ToolCall::new(
-                "call_write_widget",
-                "write",
-                json!({ "path": ".omfp/widgets/tests/index.tsx", "content": tests_widget("Tests") }),
-            ),
-            ToolCall::new(
-                "call_write_views",
-                "write",
-                json!({
-                    "path": ".omfp/views.json",
-                    "content": serde_json::to_string_pretty(&agent_manifest())?,
-                }),
-            ),
-        ])),
+        Step::reply(Reply::tool_calls(vec![ToolCall::new(
+            "call_write_widget",
+            "write",
+            json!({ "path": ".omfp/widgets/tests/index.tsx", "content": tests_widget("Tests") }),
+        )])),
+        check("call_check_hidden"),
+        Step::reply(Reply::tool_calls(vec![ToolCall::new(
+            "call_view_add",
+            "omfp_view_add",
+            json!({ "widget": "./widgets/tests", "where": "end" }),
+        )])),
+        check("call_check_shown"),
         Step::reply(Reply::text("Added a tests widget.")),
     ])
     .await?;
@@ -103,11 +110,42 @@ async fn an_agent_widget_follows_a_daemon_job_live_and_recovers_from_a_syntax_er
         .await?;
     journey.screenshot("m4-default-view").await?;
 
-    // The agent writes the widget and the manifest: the widget appears live, its job started by the daemon.
+    // The agent writes the widget, checks it (it compiles; the window shows the workspace but not the widget), adds
+    // it to the view and checks again: the window rendered it and its job runs, started by the daemon.
     journey.send("add a tests widget").await?;
     journey.reply("Added a tests widget.").await?;
+    let requests = journey.fake.requests();
+    assert_contains(
+        &tool_result(&requests, "call_check_hidden"),
+        &[
+            "Widget ./widgets/tests (folder ",
+            "Daemon compile: every file compiles",
+            "1 window(s) show this workspace, but none shows ./widgets/tests",
+            "omfp_view_add",
+        ],
+    );
+    assert_contains(
+        &tool_result(&requests, "call_view_add"),
+        &["Added ./widgets/tests at the end of view \"default\" in .omfp/views.json"],
+    );
+    let shown = tool_result(&requests, "call_check_shown");
+    assert_contains(
+        &shown,
+        &[
+            "Daemon compile: every file compiles",
+            "Window 1 (",
+            "- ./widgets/tests: rendered (version ",
+            "  errors: none\n",
+            &format!("`{JOB}`: running, run 1"),
+            "Tests 0/3",
+        ],
+    );
+    assert!(
+        !shown.contains("after waiting"),
+        "the window settled: {shown}"
+    );
     journey
-        .element("[data-testid=view][data-view=work]")
+        .element("[data-testid=view][data-view=default] [data-widget=\"./widgets/tests\"]")
         .await?;
     tests_done(&journey, 0).await?;
     open_gate(&folder, 1)?;
@@ -132,9 +170,12 @@ async fn an_agent_widget_follows_a_daemon_job_live_and_recovers_from_a_syntax_er
     open_gate(&folder, 3)?;
     tests_done(&journey, 3).await?;
     journey
-        .until("the job to finish", async |page| {
+        .until("the job to succeed", async |page| {
             let css = "[data-widget=\"./widgets/tests\"] [data-testid=tests]";
-            Ok((page.attr(css, "data-running").await?.as_deref() == Some("false")).then_some(()))
+            Ok(
+                (page.attr(css, "data-status").await?.as_deref() == Some("succeeded"))
+                    .then_some(()),
+            )
         })
         .await?;
     journey.finish("E2E-10").await
@@ -249,7 +290,7 @@ fn references(layout: &Value) -> Vec<String> {
     }
 }
 
-// spec: E2E-12, UI-103, UI-104, UI-106, AGT-021, AGT-022
+// spec: E2E-12, UI-103, UI-104, UI-106, AGT-021, AGT-022, DMN-088
 #[tokio::test(flavor = "multi_thread")]
 async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_copy()
 -> anyhow::Result<()> {
@@ -257,10 +298,16 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
     journey.connected().await?;
     let thread = journey.create_thread("layout journey").await?;
     let folder = journey.workspace_folder(&thread).await?;
-    assert!(!folder.join(".omfp/views.json").exists());
+    // A new workspace has the default views.json (DMN-088).
+    let written: Value =
+        serde_json::from_str(&std::fs::read_to_string(folder.join(".omfp/views.json"))?)?;
+    assert_eq!(
+        references(&written["views"]["default"]["layout"]),
+        ["omfp:header", "omfp:chat", "omfp:workspace", "omfp:changes"]
+    );
 
-    // Edit mode: move the workspace widget (the default view's `0.1.0`, first tab next to the changes) before the
-    // header (`0.0.0`); the first change writes the default view with it.
+    // Edit mode: move the workspace widget (the default view's `0.1.0`, first tab of the side tabs next to the
+    // changes) before the header (`0.0.0`).
     journey.click("[data-testid=layout-edit]").await?;
     journey
         .element("[data-testid=widget-toolbar][data-path=\"0.1.0\"]")
@@ -275,8 +322,8 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
         json!([
             "row",
             { "sizes": [3, 1] },
-            ["col", {}, "omfp:workspace", "omfp:header", "omfp:chat"],
-            ["tabs", {}, "omfp:changes"]
+            ["col", {}, "omfp:workspace", "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]],
+            ["tabs", { "id": "side" }, "omfp:changes"]
         ])
     );
 

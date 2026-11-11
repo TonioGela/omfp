@@ -3,7 +3,7 @@
  * show omp's error first (UI-052); code is highlighted when its language is known (UI-090).
  */
 
-import { Badge, Chip, Code, Diff } from "omfp/kit";
+import { Badge, Button, Chip, Code, Diff } from "omfp/kit";
 import {
   ansiRuns,
   repoPath,
@@ -15,7 +15,7 @@ import {
   useCurrentWorkspaceId,
   useWorkspaces,
 } from "omfp/sdk";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 
 const text = strings.chat.tool;
 
@@ -93,6 +93,36 @@ function ToolError({ card }: { card: ToolCard }): ReactNode {
   );
 }
 
+/** Lines of a `write`'s content shown while it is collapsed (UI-053). */
+const WRITE_PREVIEW_LINES = 6;
+
+/** A `write`'s content: its first lines, expandable to the whole content (UI-053). */
+function WriteContent({ content, language }: { content: string; language: string | undefined }): ReactNode {
+  const [expanded, setExpanded] = useState(false);
+  const lines = content.split("\n");
+  if (lines.at(-1) === "") {
+    lines.pop();
+  }
+  const hidden = lines.length - WRITE_PREVIEW_LINES;
+  const shown = expanded || hidden <= 0 ? content : lines.slice(0, WRITE_PREVIEW_LINES).join("\n");
+  return (
+    <>
+      <Code code={shown} block language={language} data-testid="tool-content" />
+      {hidden > 0 && (
+        <Button
+          size="sm"
+          variant="quiet"
+          aria-expanded={expanded}
+          data-testid="tool-more"
+          onPress={() => setExpanded((open) => !open)}
+        >
+          {expanded ? text.fewerLines : text.moreLines(hidden)}
+        </Button>
+      )}
+    </>
+  );
+}
+
 /** The body of a specialized card. */
 export function ToolBody({ card }: { card: ToolCard }): ReactNode {
   const { view } = card;
@@ -164,9 +194,7 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
       return (
         <div className="omfp-tool-card__section">
           <ToolError card={card} />
-          {view.content !== undefined && (
-            <Code code={view.content} block language={view.language} data-testid="tool-content" />
-          )}
+          {view.content !== undefined && <WriteContent content={view.content} language={view.language} />}
         </div>
       );
     case "search":

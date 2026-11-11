@@ -221,6 +221,28 @@ export class ManualFrames {
   }
 }
 
+/** Report timers run by the test (`widgets.report` batching, AGT-026). */
+export class ManualTimers {
+  #pending: Array<() => void> = [];
+
+  readonly setTimeout = (run: () => void, _ms: number): void => {
+    this.#pending.push(run);
+  };
+
+  get pending(): number {
+    return this.#pending.length;
+  }
+
+  /** Runs the timers set so far. */
+  run(): void {
+    const pending = this.#pending;
+    this.#pending = [];
+    for (const run of pending) {
+      run();
+    }
+  }
+}
+
 export interface TestHost {
   readonly client: FakeClient;
   readonly host: OmfpHost;

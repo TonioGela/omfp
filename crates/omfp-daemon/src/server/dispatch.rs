@@ -84,9 +84,10 @@ fn repo_source(source: omfp_protocol::RepoSource) -> Result<RepoSource, ErrorBod
 /// Runs a method for `principal`. Authorization already happened (PRT-034).
 pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: Call) -> Reply {
     match call {
-        Call::SystemHello(_) | Call::Subscribe(_) | Call::Unsubscribe(_) => {
-            Err(bad_request("handled by the connection"))
-        }
+        Call::SystemHello(_)
+        | Call::Subscribe(_)
+        | Call::Unsubscribe(_)
+        | Call::WidgetsReport(_) => Err(bad_request("handled by the connection")),
         Call::ReposSuggest(params) => {
             let workspaces = Arc::clone(&services.workspaces);
             let query = params.query.unwrap_or_default();

@@ -169,11 +169,9 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
         "Answer in haiku.\n",
     )
     .unwrap();
-    let builtin = tempfile::tempdir().unwrap();
     let h = harness(|config| {
         config.omp_env = vec![("OMFP_TEST".into(), Some("1".into()))];
         config.agent_dir = Some(agent_dir.path().to_owned());
-        config.builtin_widgets = Some(builtin.path().to_owned());
     });
     let (ws, folder) = h.workspace();
     let external = h.external_repo("shop-frontend");
@@ -200,16 +198,11 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
         Some(
             format!(
                 "{}\n\nAnswer in haiku.",
-                conventions::daemon_text(
-                    "workspace",
-                    &folder,
-                    &h.data.widgets(),
-                    Some(builtin.path())
-                )
+                conventions::daemon_text("workspace", &folder, &h.data.widgets())
             )
             .as_str()
         ),
-        "the conventions, the widgets note (user library, built-in sources), then the user's file"
+        "the conventions, the widgets note (user library), then the user's file"
     );
     assert_eq!(
         launch.spec.session_dir,

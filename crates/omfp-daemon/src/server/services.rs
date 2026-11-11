@@ -5,6 +5,7 @@
 
 mod polls;
 mod views;
+mod widget_tools;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -30,6 +31,7 @@ use crate::watch::{self, WatchedFile};
 use crate::widgets::Widgets;
 use crate::workspaces::{WorkspaceView, Workspaces};
 use views::ViewsLog;
+use widget_tools::{ServicesWidgetHost, WidgetReports};
 
 /// Replaces `path` with `text` in one step (a temporary file renamed over it), so a reader never sees half a file;
 /// the parent directory is created when missing.
@@ -128,6 +130,8 @@ pub(crate) struct Services {
     views_logs: Arc<Mutex<HashMap<String, Arc<ViewsLog>>>>,
     /// Serializes views refreshes and widget state writes so their events never interleave.
     views_refresh: Arc<tokio::sync::Mutex<()>>,
+    /// Every window's latest widget report (AGT-026, PRT-043).
+    reports: Arc<WidgetReports>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -141,7 +145,8 @@ async fn blocking<T: Send + 'static>(
 }
 
 impl Services {
-    /// The services over the daemon's stores; every workspace is scanned first (DMN-023).
+    /// The services over the daemon's stores; every workspace is scanned first (DMN-023) and gets the default
+    /// `views.json` when its folder has none (DMN-088). The supervisor's threads get the widget host tools.
     pub async fn new(
         store: Arc<Store>,
         threads: Arc<Threads>,
@@ -174,17 +179,30 @@ impl Services {
             widgets,
             views_logs: Arc::new(Mutex::new(HashMap::new())),
             views_refresh: Arc::new(tokio::sync::Mutex::new(())),
+            reports: Arc::new(WidgetReports::new()),
         };
         let workspaces = Arc::clone(&services.workspaces);
         blocking(move || {
             for ws in workspaces.list().map_err(workspace_error)? {
-                if let Err(error) = workspaces.rescan(&ws.id) {
-                    warn!(workspace = %ws.id, %error, "cannot scan the workspace folder");
+                match workspaces.rescan(&ws.id) {
+                    Ok((view, _)) if view.repos.iter().any(|repo| repo.is_root) => {}
+                    Ok(_) if !ws.path.is_dir() => {}
+                    Ok(_) => {
+                        if let Err(error) = crate::widgets::write_default_manifest(&ws.path) {
+                            warn!(workspace = %ws.id, %error, "cannot write the default views.json");
+                        }
+                    }
+                    Err(error) => {
+                        warn!(workspace = %ws.id, %error, "cannot scan the workspace folder");
+                    }
                 }
             }
             Ok(())
         })
         .await?;
+        services
+            .supervisor
+            .set_widget_host(Arc::new(ServicesWidgetHost::new(services.clone())));
         services.refresh_index().await?;
         Ok(services)
     }

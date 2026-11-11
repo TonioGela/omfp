@@ -1,14 +1,17 @@
-//! Views and widgets (02-daemon "Views and widgets (M4)", 08 AGT-010..025): the views manifest of a workspace, the
-//! widget folders of the workspace and of the user library with their versions, serving widget files (TypeScript and
-//! JSX transpiled with oxc), copying widgets, and the read-only `omfp://` host URIs agents learn widgets from.
+//! Views and widgets (02-daemon "Views and widgets (M4)", 08 AGT-010..026): the views manifest of a workspace and its
+//! default, the widget folders of the workspace and of the user library with their versions, serving widget files
+//! (TypeScript and JSX transpiled with oxc), copying and checking widgets, and the read-only `omfp://` host URIs agents
+//! learn widgets from.
 //!
 //! Everything here is blocking file work; the server runs it on blocking tasks.
 
 pub mod compile;
 pub mod folders;
+pub mod layout;
 pub mod manifest;
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, PoisonError};
 use std::time::SystemTime;
@@ -26,10 +29,14 @@ use folders::{files, is_widget_name};
 pub const DOCS: &str = include_str!("widgets/docs.md");
 /// The JSON Schema of the views manifest, served as [`SCHEMA_URL`] (AGT-010, AGT-025).
 pub const VIEWS_SCHEMA: &str = include_str!("widgets/views.schema.json");
+/// The default manifest (AGT-010) as `views.set` writes it, written into every workspace (DMN-088).
+pub const DEFAULT_MANIFEST: &str = include_str!("widgets/default-views.json");
 /// Host URI of [`DOCS`] (DMN-062).
 pub const DOCS_URL: &str = "omfp://docs/widgets";
 /// Host URI of [`VIEWS_SCHEMA`] (DMN-062).
 pub const SCHEMA_URL: &str = "omfp://schemas/views.json";
+/// Host URI listing the built-in widgets; `<BUILTIN_URL>/<name>[/<path>]` reads their sources (DMN-062).
+pub const BUILTIN_URL: &str = "omfp://widgets/builtin";
 /// The host URI scheme of the daemon (DMN-062).
 pub const SCHEME: &str = "omfp";
 
@@ -48,36 +55,172 @@ pub fn workspace_widgets(workspace: &Path) -> PathBuf {
     workspace.join(OMFP_DIR).join("widgets")
 }
 
-/// What an `omfp://` URL reads (DMN-062): the docs, the schema, or an error naming both.
-pub fn read_uri(url: &str) -> Result<HostUriRead, String> {
-    match url.trim_end_matches('/') {
-        DOCS_URL => Ok(HostUriRead {
-            content: DOCS.to_owned(),
-            content_type: Some(HostUriResultContentType::TextMarkdown),
-            immutable: Some(true),
-            ..HostUriRead::default()
-        }),
+/// [`DEFAULT_MANIFEST`] as JSON (AGT-010).
+///
+/// # Panics
+/// Never: the file is checked by a test.
+#[must_use]
+pub fn default_manifest() -> Value {
+    serde_json::from_str(DEFAULT_MANIFEST).expect("the default manifest is JSON")
+}
+
+/// Writes the default manifest into `<workspace>/.omfp/views.json` unless a file is there (DMN-088): returns whether
+/// it wrote one. A file created meanwhile is never replaced (the default is linked in place, not renamed over it).
+pub fn write_default_manifest(workspace: &Path) -> std::io::Result<bool> {
+    let path = manifest_path(workspace);
+    if std::fs::symlink_metadata(&path).is_ok() {
+        return Ok(false);
+    }
+    let folder = workspace.join(OMFP_DIR);
+    std::fs::create_dir_all(&folder)?;
+    let staging = folder.join(format!(".views.json.{}.tmp", new_id()));
+    std::fs::write(&staging, DEFAULT_MANIFEST)?;
+    let linked = std::fs::hard_link(&staging, &path);
+    let _ = std::fs::remove_file(&staging);
+    match linked {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+fn markdown(content: String) -> HostUriRead {
+    HostUriRead {
+        content,
+        content_type: Some(HostUriResultContentType::TextMarkdown),
+        immutable: Some(true),
+        ..HostUriRead::default()
+    }
+}
+
+/// What an `omfp://` URL reads (DMN-062): the docs, the schema, the built-in widgets' sources from `builtin`
+/// (`<static-dir>/builtin-widgets/`, `None` without a bundle), or an error naming what there is.
+pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String> {
+    let url = url.trim_end_matches('/');
+    match url {
+        DOCS_URL => Ok(markdown(DOCS.to_owned())),
         SCHEMA_URL => Ok(HostUriRead {
             content: VIEWS_SCHEMA.to_owned(),
             content_type: Some(HostUriResultContentType::ApplicationJson),
             immutable: Some(true),
             ..HostUriRead::default()
         }),
-        _ => Err(format!(
-            "unknown omfp URL {url}: omfp serves {DOCS_URL} (the widget SDK and kit reference) and {SCHEMA_URL} (the \
-             views manifest schema)"
-        )),
+        BUILTIN_URL => Ok(markdown(list_builtins(builtin_folder(builtin)?))),
+        _ => match url
+            .strip_prefix(BUILTIN_URL)
+            .and_then(|rest| rest.strip_prefix('/'))
+        {
+            Some(rest) => read_builtin(builtin_folder(builtin)?, rest),
+            None => Err(format!(
+                "unknown omfp URL {url}: omfp serves {DOCS_URL} (the widget SDK and kit reference), {SCHEMA_URL} \
+                 (the views manifest schema), {BUILTIN_URL} (the built-in widgets) and {BUILTIN_URL}/<name>[/<path>] \
+                 (their sources)"
+            )),
+        },
     }
 }
 
-/// The host URI schemes of every thread (DMN-062): `omfp://`, read-only.
-pub fn host_uris() -> Result<Vec<HostUri>, omp_rpc::Error> {
-    let omfp = HostUri::new(SCHEME, |url, _context| read_uri(url).map_err(Into::into))?
-        .description(format!(
-            "omfp, the window the user works in: {DOCS_URL} documents widgets (SDK, kit, views); {SCHEMA_URL} is the \
-             JSON Schema of .omfp/views.json"
-        ))
-        .immutable(true);
+fn builtin_folder(builtin: Option<&Path>) -> Result<&Path, String> {
+    builtin.filter(|dir| dir.is_dir()).ok_or_else(|| {
+        "no built-in widget sources: this omfp daemon serves no web bundle".to_owned()
+    })
+}
+
+/// The built-in widget folders of `builtin`, by name.
+fn builtin_names(builtin: &Path) -> Vec<String> {
+    folders::scan(builtin, WidgetSource::Workspace)
+        .into_iter()
+        .map(|widget| widget.name)
+        .collect()
+}
+
+/// `omfp://widgets/builtin`: every built-in with its files.
+fn list_builtins(builtin: &Path) -> String {
+    let mut text = format!(
+        "# omfp built-in widgets\n\nEach is `omfp:<name>` in views.json. Read one's folder with {BUILTIN_URL}/<name> \
+         and a file with {BUILTIN_URL}/<name>/<path>. A workspace folder `.omfp/widgets/<name>/` replaces \
+         `omfp:<name>` in that workspace, so copy the files there to change one.\n\n"
+    );
+    for name in builtin_names(builtin) {
+        let files: Vec<String> = files(&builtin.join(&name))
+            .iter()
+            .map(|(relative, _)| compile::display(relative))
+            .collect();
+        let _ = writeln!(text, "- `omfp:{name}`: {}", files.join(", "));
+    }
+    text
+}
+
+/// `omfp://widgets/builtin/<name>` (the folder: files and the entry's source) or `…/<name>/<path>` (one file).
+fn read_builtin(builtin: &Path, rest: &str) -> Result<HostUriRead, String> {
+    let (name, path) = rest
+        .split_once('/')
+        .map_or((rest, None), |(name, path)| (name, Some(path)));
+    let names = builtin_names(builtin);
+    if !names.iter().any(|known| known == name) {
+        return Err(format!(
+            "no built-in widget {name:?}; the built-ins are {}",
+            names.join(", ")
+        ));
+    }
+    let folder = std::fs::canonicalize(builtin.join(name)).map_err(|error| error.to_string())?;
+    let read = |relative: &Path| {
+        resolve(&folder, relative)
+            .and_then(|file| std::fs::read_to_string(file).ok())
+            .ok_or_else(|| {
+                format!(
+                    "omfp:{name} has no file {}; read {BUILTIN_URL}/{name} for its files",
+                    compile::display(relative)
+                )
+            })
+    };
+    if let Some(path) = path {
+        let relative = relative_path(path)
+            .ok_or_else(|| format!("{path:?} is not a path inside the widget's folder"))?;
+        return Ok(HostUriRead {
+            content: read(&relative)?,
+            content_type: Some(HostUriResultContentType::TextPlain),
+            immutable: Some(true),
+            ..HostUriRead::default()
+        });
+    }
+    let mut text = format!(
+        "# omfp:{name}\n\nFiles (read one with {BUILTIN_URL}/{name}/<path>; write them into \
+         `.omfp/widgets/{name}/` to replace `omfp:{name}` in this workspace):\n\n"
+    );
+    for (relative, metadata) in files(&folder) {
+        let lines = std::fs::read_to_string(folder.join(&relative))
+            .map_or(0, |source| source.lines().count());
+        let _ = writeln!(
+            text,
+            "- {} ({lines} lines, {} bytes)",
+            compile::display(&relative),
+            metadata.len()
+        );
+    }
+    if let Some(entry) = folders::entry(&folder) {
+        let source = read(Path::new(entry))?;
+        let _ = write!(text, "\nEntry `{entry}`:\n\n```tsx\n{source}");
+        if !source.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str("```\n");
+    }
+    Ok(markdown(text))
+}
+
+/// The host URI schemes of every thread (DMN-062): `omfp://`, read-only; `builtin` is
+/// `<static-dir>/builtin-widgets/` when the daemon serves a bundle.
+pub fn host_uris(builtin: Option<PathBuf>) -> Result<Vec<HostUri>, omp_rpc::Error> {
+    let omfp = HostUri::new(SCHEME, move |url, _context| {
+        read_uri(url, builtin.as_deref()).map_err(Into::into)
+    })?
+    .description(format!(
+        "omfp, the window the user works in: {DOCS_URL} documents widgets (SDK, kit, views); {SCHEMA_URL} is the \
+         JSON Schema of .omfp/views.json; {BUILTIN_URL} lists the built-in widgets and {BUILTIN_URL}/<name> shows \
+         one's source"
+    ))
+    .immutable(true);
     Ok(vec![omfp])
 }
 
@@ -208,6 +351,63 @@ impl Widgets {
         }
         let bytes = std::fs::read(&file).ok()?;
         Some(Served::File { path: file, bytes })
+    }
+
+    /// The widget `name` of `workspace` (DMN-063): `./widgets/<name>`, `user:<name>`, or a bare name (the workspace's
+    /// folder, else the user library's); its source, folder name and folder, or why there is none.
+    pub fn locate(
+        &self,
+        workspace: &Path,
+        name: &str,
+    ) -> Result<(WidgetSource, String, PathBuf), String> {
+        let name = name.trim();
+        let workspace_widgets = workspace_widgets(workspace);
+        let candidates: Vec<(WidgetSource, &str, &Path)> = if let Some(folder) =
+            name.strip_prefix("./widgets/")
+        {
+            vec![(WidgetSource::Workspace, folder, &workspace_widgets)]
+        } else if let Some(folder) = name.strip_prefix("user:") {
+            vec![(WidgetSource::User, folder, &self.user_library)]
+        } else if name.starts_with("omfp:") {
+            return Err(format!(
+                "{name} is a built-in widget; check the workspace's copy (`./widgets/<name>`) instead, or read \
+                     its source at {BUILTIN_URL}/<name>"
+            ));
+        } else {
+            vec![
+                (WidgetSource::Workspace, name, &workspace_widgets),
+                (WidgetSource::User, name, &self.user_library),
+            ]
+        };
+        for (source, folder_name, library) in &candidates {
+            if !is_widget_name(folder_name) {
+                return Err(format!(
+                    "invalid widget name {folder_name:?}: ASCII letters, digits, `_`, `-` and `.` (not first)"
+                ));
+            }
+            let folder = library.join(folder_name);
+            if folder.is_dir() {
+                return Ok((*source, (*folder_name).to_owned(), folder));
+            }
+        }
+        let places: Vec<String> = candidates
+            .iter()
+            .map(|(_, folder_name, library)| library.join(folder_name).display().to_string())
+            .collect();
+        Err(format!(
+            "no widget {name}: no folder {}",
+            places.join(" nor ")
+        ))
+    }
+
+    /// Every compile error of the compiled files of `folder` (DMN-063, DMN-085), in path order.
+    #[must_use]
+    pub fn check(&self, folder: &Path) -> Vec<CompileError> {
+        files(folder)
+            .into_iter()
+            .filter(|(relative, _)| compile::is_compiled(relative))
+            .filter_map(|(relative, _)| self.compile(folder, &relative).err())
+            .collect()
     }
 
     /// The compiled file `relative` of `folder`, from the cache while its size and modification time stay.
@@ -364,34 +564,210 @@ mod tests {
 
     // spec: DMN-062, AGT-025
     #[test]
-    fn omfp_urls_read_the_docs_and_the_schema_and_name_both_otherwise() {
-        let docs = read_uri("omfp://docs/widgets").unwrap();
+    fn omfp_urls_read_the_docs_and_the_schema_and_name_what_there_is_otherwise() {
+        let docs = read_uri("omfp://docs/widgets", None).unwrap();
         assert_eq!(docs.content, DOCS);
         assert_eq!(
             docs.content_type,
             Some(HostUriResultContentType::TextMarkdown)
         );
-        let schema = read_uri("omfp://schemas/views.json").unwrap();
+        let schema = read_uri("omfp://schemas/views.json", None).unwrap();
         assert_eq!(schema.content, VIEWS_SCHEMA);
         let parsed: Value = serde_json::from_str(&schema.content).unwrap();
         assert_eq!(parsed["$id"], SCHEMA_URL);
 
-        let error = read_uri("omfp://docs/nothing").unwrap_err();
+        let error = read_uri("omfp://docs/nothing", None).unwrap_err();
         assert!(error.contains("omfp://docs/nothing"), "{error}");
-        assert!(
-            error.contains(DOCS_URL) && error.contains(SCHEMA_URL),
-            "{error}"
+        for url in [DOCS_URL, SCHEMA_URL, BUILTIN_URL] {
+            assert!(error.contains(url), "{url} missing: {error}");
+        }
+    }
+
+    /// A bundle's `builtin-widgets/` with `header` (two files) and `chat`.
+    fn builtin_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let header = dir.path().join("header");
+        std::fs::create_dir_all(&header).unwrap();
+        std::fs::write(
+            header.join("index.ts"),
+            "export { default } from \"./header.tsx\";\n",
+        )
+        .unwrap();
+        std::fs::write(
+            header.join("header.tsx"),
+            "export default function Header() {\n  return <h1>omfp</h1>;\n}\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("chat")).unwrap();
+        std::fs::write(dir.path().join("chat/index.ts"), "export {};\n").unwrap();
+        dir
+    }
+
+    // spec: DMN-062
+    #[test]
+    fn omfp_urls_serve_the_built_in_widgets_sources() {
+        let dir = builtin_dir();
+        let builtin = Some(dir.path());
+
+        let list = read_uri("omfp://widgets/builtin", builtin).unwrap();
+        assert_eq!(
+            list.content_type,
+            Some(HostUriResultContentType::TextMarkdown)
         );
+        assert!(
+            list.content.contains("- `omfp:chat`: index.ts\n"),
+            "{}",
+            list.content
+        );
+        assert!(
+            list.content
+                .contains("- `omfp:header`: header.tsx, index.ts\n"),
+            "{}",
+            list.content
+        );
+
+        let folder = read_uri("omfp://widgets/builtin/header/", builtin).unwrap();
+        assert!(
+            folder.content.contains("- header.tsx (3 lines"),
+            "{}",
+            folder.content
+        );
+        assert!(
+            folder.content.contains(
+                "Entry `index.ts`:\n\n```tsx\nexport { default } from \"./header.tsx\";\n```"
+            ),
+            "{}",
+            folder.content
+        );
+        assert!(
+            folder.content.contains(".omfp/widgets/header/"),
+            "{}",
+            folder.content
+        );
+
+        let file = read_uri("omfp://widgets/builtin/header/header.tsx", builtin).unwrap();
+        assert_eq!(file.content_type, Some(HostUriResultContentType::TextPlain));
+        assert!(file.content.starts_with("export default function Header()"));
+        let without_extension = read_uri("omfp://widgets/builtin/header/header", builtin).unwrap();
+        assert_eq!(without_extension.content, file.content);
+
+        for (url, needle) in [
+            (
+                "omfp://widgets/builtin/nothing",
+                "the built-ins are chat, header",
+            ),
+            (
+                "omfp://widgets/builtin/header/missing.ts",
+                "has no file missing.ts",
+            ),
+            (
+                "omfp://widgets/builtin/header/../chat/index.ts",
+                "not a path inside",
+            ),
+        ] {
+            let error = read_uri(url, builtin).unwrap_err();
+            assert!(error.contains(needle), "{url}: {error}");
+        }
+        let error = read_uri("omfp://widgets/builtin/header", None).unwrap_err();
+        assert!(error.contains("serves no web bundle"), "{error}");
     }
 
     // spec: DMN-062
     #[test]
     fn the_omfp_scheme_is_read_only() {
-        let uris = host_uris().unwrap();
+        let uris = host_uris(None).unwrap();
         assert_eq!(uris.len(), 1);
         assert_eq!(uris[0].scheme(), "omfp");
         assert!(!uris[0].writable());
         assert_eq!(uris[0].definition().immutable, Some(true));
+    }
+
+    // spec: AGT-010, DMN-088
+    #[test]
+    fn the_default_manifest_is_valid_written_as_views_set_writes_and_has_the_main_and_side_slots() {
+        let manifest = default_manifest();
+        assert_eq!(manifest::check(&manifest), Ok(()));
+        assert_eq!(manifest::to_text(&manifest), DEFAULT_MANIFEST);
+        assert_eq!(manifest["default"], "default");
+        assert_eq!(
+            manifest["views"]["default"]["layout"],
+            serde_json::json!([
+                "row",
+                { "sizes": [3, 1] },
+                ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]],
+                ["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes"]
+            ])
+        );
+    }
+
+    // spec: DMN-088
+    #[test]
+    fn the_default_manifest_is_written_once_and_never_over_a_file() {
+        let ws = tempfile::tempdir().unwrap();
+        assert!(write_default_manifest(ws.path()).unwrap());
+        let path = manifest_path(ws.path());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), DEFAULT_MANIFEST);
+
+        std::fs::write(&path, "{ \"mine\": true }").unwrap();
+        assert!(!write_default_manifest(ws.path()).unwrap());
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{ \"mine\": true }"
+        );
+        let left: Vec<_> = std::fs::read_dir(ws.path().join(".omfp"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(left, ["views.json"], "no staging file left");
+    }
+
+    // spec: DMN-063
+    #[test]
+    fn a_widget_is_located_by_reference_or_bare_name_and_checked_file_by_file() {
+        let ws = tempfile::tempdir().unwrap();
+        let library = tempfile::tempdir().unwrap();
+        let widgets = Widgets::new(library.path().to_owned(), None);
+        let tests = workspace_widgets(ws.path()).join("tests");
+        std::fs::create_dir_all(&tests).unwrap();
+        std::fs::write(
+            tests.join("index.tsx"),
+            "export default function T() { return <p>ok</p>; }\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(library.path().join("clock")).unwrap();
+
+        let (source, name, folder) = widgets.locate(ws.path(), "tests").unwrap();
+        assert_eq!((source, name.as_str()), (WidgetSource::Workspace, "tests"));
+        assert_eq!(folder, tests);
+        assert_eq!(
+            widgets.locate(ws.path(), "./widgets/tests").unwrap().2,
+            tests
+        );
+        let (source, _, _) = widgets.locate(ws.path(), "clock").unwrap();
+        assert_eq!(source, WidgetSource::User);
+        assert_eq!(widgets.locate(ws.path(), "user:clock").unwrap().1, "clock");
+        for (name, needle) in [
+            ("nothing", "no widget nothing"),
+            ("../x", "invalid widget name"),
+            ("omfp:chat", "built-in"),
+            ("user:tests", "no widget user:tests"),
+        ] {
+            let error = widgets.locate(ws.path(), name).unwrap_err();
+            assert!(error.contains(needle), "{name}: {error}");
+        }
+
+        assert_eq!(widgets.check(&tests), Vec::new());
+        std::fs::write(tests.join("lib.ts"), "export const = 1;\n").unwrap();
+        std::fs::write(
+            tests.join("other.tsx"),
+            "import x from \"lodash\";\nexport default x;\n",
+        )
+        .unwrap();
+        let errors = widgets.check(&tests);
+        let files: Vec<&str> = errors.iter().map(|error| error.file.as_str()).collect();
+        assert_eq!(files, ["lib.ts", "other.tsx"]);
+        assert_eq!(errors[0].line, Some(1));
+        assert!(errors[1].message.contains("lodash"), "{:?}", errors[1]);
     }
 
     #[test]

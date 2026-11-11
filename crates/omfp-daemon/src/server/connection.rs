@@ -79,6 +79,7 @@ pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>) {
         let (dropped_tx, dropped) = mpsc::unbounded_channel();
         let mut connection = Connection {
             app: Arc::clone(&app),
+            number: app.services.reports_connection(),
             principal,
             out: out.clone(),
             subscriptions: HashMap::new(),
@@ -86,8 +87,9 @@ pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>) {
             generation: 0,
         };
         connection.run(&mut stream, dropped).await;
-        // Closing the socket unsubscribes everything (PRT-024).
+        // Closing the socket unsubscribes everything (PRT-024) and forgets the window's widget report (PRT-043).
         connection.subscriptions.clear();
+        app.services.forget_widget_reports(connection.number);
     }
     drop(out);
     let _ = writer.await;
@@ -181,6 +183,8 @@ impl Drop for Subscribed {
 
 struct Connection {
     app: Arc<AppState>,
+    /// Names this connection's widget report (PRT-043).
+    number: u64,
     principal: Principal,
     out: mpsc::Sender<Outbound>,
     subscriptions: HashMap<Topic, Subscribed>,
@@ -251,6 +255,14 @@ impl Connection {
                 // Dropping the subscription stops its forwarder before the response is queued, so no event of the
                 // topic follows it (PRT-024).
                 self.subscriptions.remove(&params.topic);
+                let result = to_value(&omfp_protocol::Empty {});
+                send(&self.out, Outbound::response(id, result)).await;
+            }
+            Call::WidgetsReport(params) => {
+                // Kept per connection: a window replaces its own report (PRT-043).
+                self.app
+                    .services
+                    .report_widgets(self.number, self.principal.client(), params);
                 let result = to_value(&omfp_protocol::Empty {});
                 send(&self.out, Outbound::response(id, result)).await;
             }

@@ -8,7 +8,7 @@ into tests.
 flowchart LR
   M0[M0 Foundations] --> M1[M1 Headless daemon] --> M2[M2 Web UI MVP] --> M2b[M2b Workspace folders]
   M2b --> M3[M3 TypeScript UI] --> M4[M4 Widgets]
-  M4 --> M5[M5 Tools and changes]
+  M4 --> M5[M5 Tools and changes] --> M5b[M5b Widget loop and views file]
   M4 --> M6[M6 Live voice]
   M4 --> M7[M7 Desktop]
   M5 --> M8[M8 Subagents, tree, goal]
@@ -31,6 +31,7 @@ flowchart LR
 | S-10 | Workspace folders (D-11 revised): cwd = a non-git folder whose top-level entries are repos (real clones and symlinks to external repos); context files, roots, tools through symlinks, `--append-system-prompt`, `--config` overlays. | D-11, DMN-022..030 | **Done:** without `--add-dir` omp shows nothing about child repos (no context files, no roots); with `--add-dir <ws>/<name>` (symlink path) their `AGENTS.md` load and `<workspace-roots>` lists them under the symlink path, live `/add-dir` too; omp never resolves the symlink. `read`/`write`/`bash` through a symlink work and change the external target; no path refusal. Roots saved in a session are merged with the flags on `--continue`: dropping a flag does not detach, `/remove-dir` does. `--append-system-prompt` lands verbatim at the very end of the prompt and disables every `APPEND_SYSTEM.md` (user, cwd `.omp/`; a repo's `.omp/APPEND_SYSTEM.md` is never read). A `--config` overlay with `workspace.additionalDirectories` equals `--add-dir`. A non-git cwd causes no warning. Tests: `crates/omfp-daemon/tests/contract_workspace_folder.rs`. |
 | S-11 | Preact + `preact/compat` with React Aria Components: dialog (focus trap), menu, popover, combobox (`/` commands), tabs, listbox, virtualized list; keyboard, focus and portal event behaviour in Chromium and WebKitGTK; bundle size and streaming render cost vs React 19 on the same screens. | D-18, UI-092, UI-093 | **Done (M3):** React 19 chosen. Preact 10 crashes in React Aria's collection document (global `document` for DOM nodes); Preact 11 passes every check only with three workarounds on React Aria internals (missing `createElementNS`/`remove()` in its collection document, `{...e}` losing native keyboard event fields, effect cleanups after paint leaving the trigger `inert` on focus restore) and events inside portals do not bubble to JSX ancestors. React 19 passes every keyboard, focus, portal, `/` completion and virtualized-transcript check in headless Chromium 157 and WebKitGTK 2.54 (WebKitWebDriver + MiniBrowser under xvfb-run) with no workaround. Sizes (gzip): React 19 145 KB vs Preact 11 87 KB. Streaming 100 updates/s for 10 s: both 600 frames without long tasks; React uses 1.5–4× more script time, still with headroom. WebKitGTK does not scroll a focused container on PageUp: the transcript must handle PageUp/PageDown/Home/End itself. `bun build` needs no Node. |
 | S-12 | Loading agent widgets (M4): the daemon serves `<workspace>/.omfp/widgets/<name>/` as ES modules — TSX transpiled in Rust with `oxc` vs buildless `htm` modules —; one shared React through an import map; hot reload; errors in place. | M4, 08 | **Done:** both strategies pass all 17 checks in headless Chromium 157 and WebKitGTK 2.54 (import map with dynamic `import()`, one React instance with hooks and context shared, reload when a relative import changes, syntax/render/top-level/bad-import errors shown in place and recovered on the next save). Chosen: **oxc** (`=0.158.0` pinned: weekly breaking releases) for `.ts/.tsx/.jsx` with JSX via `react/jsx-runtime`, cached by mtime+size, ~0.15 ms per 200-line widget, compile errors as a stand-in module that renders line/column and exports `compileError`; `.js` (e.g. `htm`) served as-is by the same route. Cost: +3 MB stripped binary, 59 new crates, licences allowed. URLs carry a version hash (`/widgets/<name>/<version>/<file>`), not `?v=`, so relative imports and failed imports reload reliably; state kept outside the module (`useStored`) survives reloads, component-local state does not (React Refresh not tried). Reload after a push renders in under 20 ms; the 1 s poll dominates for edits outside agent tool calls. TypeScript elides unused-as-value imports, so a wrong kit import surfaces as an undefined variable unless imports are checked against the kit/sdk exports. |
+| S-13 | CodeMirror 6 for the file viewer/editor and diffs: React 19, theme from `--omfp-*` tokens, `@replit/codemirror-vim` next to the app keymap, `@codemirror/merge`, lazy chunks, big files, Chromium and WebKitGTK. | file viewer/editor | **Done:** all 15 checks pass in headless Chromium 157 and WebKitGTK 2.54. Nothing loads before the first open; first open costs ~147 KiB gzip (core 93 + vim/commands/search 55) plus 1–40 KiB per language (markdown ~70 with html/css), merge 9.6 KiB only for diffs. Token changes recolour the editor and merge views live. A 20k-line file keeps ~80 lines in the DOM, jumps to a line in ~20 ms. Vim: the editor must own Esc (an Esc that only cancels a pending operator otherwise leaks to the app keymap); Esc in plain normal mode hands focus back to the app; `:w`/Ctrl-S call the save callback; the app treats the editor as a text field, and the mode line should show vim's mode (`vim-mode-change`) while it has focus. `readOnly` keeps motions; `i` is intercepted to switch to editing. Side-by-side merge scrolls in its own container. All packages MIT, exact versions in the spike report; `bun build` only. |
 
 ## M0 — Foundations (done)
 
@@ -216,6 +217,18 @@ the written content, not a diff (omp sends no old text); the edit card
 is covered by fixtures, but the journey edits with `write` because a hashline `edit` needs the file's tag from a
 `read`; grep results list file paths as text (opening them waits for `open_in_editor`, M7).
 
+## M5b — Widget loop and views file (done)
+
+Scope (the user's second round of changes after M5): a mode line in the frame (UI-098); the agent checks and places
+widgets without a browser — window reports (AGT-026) behind the host tools `omfp_widget_check` (DMN-063) and
+`omfp_view_add` (DMN-064), built-in widget sources and docs as `omfp://` URIs named in the prompt note (DMN-062,
+AGT-024); `useJob` with a status, separate stdout and stderr and its runs (AGT-019); `views.json` always present in a
+workspace, written at creation and at startup, `:view reset` (DMN-088, UI-107; DMN-030 narrowed to repositories); the
+`write` card shows the first lines of the content (UI-053).
+
+Acceptance: E2E-10's scripted agent checks its widget with `omfp_widget_check` and adds it with `omfp_view_add`;
+headless screenshots of the mode line in both modes and of a collapsed `write` card.
+
 ## M6 — Live voice
 
 omp 18.18.6 exposes its `/live` realtime voice over RPC (`docs/rpc.md` → "Live Voice Sub-Protocol"): the realtime
@@ -290,4 +303,9 @@ refused while `Busy` (TRM-001).
 - Terminal widget over PTY jobs (see "Terminal (deferred)").
 - PR repositories (DMN-024 `pr`, spike S-08; moved out of M5): fetching a PR head into a worktree and tracking the PR.
   The agent can already do it with `gh pr checkout` or `git fetch origin pull/N/head`, and GitHub cannot be tested
-  offline; waiting for a user decision.
+  offline; the user decided to leave it to the agent (no UI).
+- Web content in widgets (idea, to discuss): sites that allow framing work today in an `<iframe>` (a dev server,
+  Storybook, Grafana); a daemon proxy (`/proxy/<port>/…`) would make `localhost` mean the daemon's machine when the
+  daemon is remote. Sites that refuse framing (Linear, GitHub, Google) need their API instead: a `useFetch` that goes
+  through the daemon (no CORS, keys kept by the daemon) so a widget can list and update Linear issues with the kit;
+  the real pages only in a desktop webview (M7).

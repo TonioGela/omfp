@@ -62,9 +62,12 @@ export function resolveWidget(
 
 /** The URL of a widget's entry (DMN-084): `<widgetBase>/<workspace id | user>/<name>/<version>/<entry>`. */
 export function widgetUrl(widgetBase: string, workspaceId: string, widget: WidgetInfo, entry: string): string {
+  return `${widgetModulePath(widgetBase, workspaceId, widget)}${encodeURIComponent(widget.version)}/${encodeURIComponent(entry)}`;
+}
+
+/** What every URL of a widget's modules starts with, whatever the version: `<widgetBase>/<workspace id | user>/<name>/`
+ * (stacks naming it are the widget's, AGT-026). */
+export function widgetModulePath(widgetBase: string, workspaceId: string, widget: WidgetInfo): string {
   const source = widget.source === "user" ? "user" : workspaceId;
-  return [source, widget.name, widget.version, entry].reduce(
-    (url, part) => `${url}/${encodeURIComponent(part)}`,
-    widgetBase,
-  );
+  return `${widgetBase}/${encodeURIComponent(source)}/${encodeURIComponent(widget.name)}/`;
 }

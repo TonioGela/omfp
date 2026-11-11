@@ -296,3 +296,25 @@ requirements = [
   # End-to-end journey
   "E2E-06",
 ]
+
+[M5b]
+status = "done"
+requirements = [
+  # Mode line (item 1)
+  "UI-098",
+  # write card preview (item 5)
+  "UI-053",
+  # Agent widget loop: reports, host tools, URIs, useJob
+  "AGT-019",
+  "AGT-024",
+  "AGT-026",
+  "DMN-062",
+  "DMN-063",
+  "DMN-064",
+  "PRT-043",
+  # views.json always present
+  "DMN-088",
+  "UI-107",
+  # End-to-end journey
+  "E2E-10",
+]

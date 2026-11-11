@@ -218,7 +218,6 @@ async fn a_thread_in_a_workspace_folder_sees_its_repositories_the_conventions_an
         "Full stack",
         &folder,
         &daemon.data.path().join("widgets"),
-        None,
     );
     assert!(
         system.ends_with(&format!("{daemon_text}\n\n{USER_APPEND}")),

@@ -2774,6 +2774,216 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "widgets.report": {
+    "params": {
+      "$defs": {
+        "Position": {
+          "description": "A position in a topic's event stream.",
+          "properties": {
+            "epoch": {
+              "type": "string"
+            },
+            "seq": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "epoch",
+            "seq"
+          ],
+          "type": "object"
+        },
+        "WidgetJobReport": {
+          "description": "A `useJob` job of a widget instance (AGT-019).",
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "exitCode": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "runs": {
+              "description": "How many jobs the instance started for the command.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "signal": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "startedAt": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "description": "`pending`, `running`, `succeeded` or `failed`.",
+              "type": "string"
+            },
+            "tail": {
+              "description": "The last output lines (stdout and stderr), oldest first.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "command",
+            "status",
+            "runs",
+            "tail"
+          ],
+          "type": "object"
+        },
+        "WidgetReport": {
+          "description": "One widget instance as a window shows it (PRT-043).",
+          "properties": {
+            "console": {
+              "description": "Console errors and uncaught errors whose stack names the widget's module, oldest first.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "errors": {
+              "description": "The compile stand-in's, import's and error boundary's errors (`file:line:column: message` when known).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "instance": {
+              "description": "The node's `instance` prop when it is a string, else its reference.",
+              "type": "string"
+            },
+            "jobs": {
+              "description": "Its `useJob` jobs (AGT-019).",
+              "items": {
+                "$ref": "#/$defs/WidgetJobReport"
+              },
+              "type": "array"
+            },
+            "name": {
+              "description": "The widget folder's name.",
+              "type": "string"
+            },
+            "reference": {
+              "description": "The view node's reference (`./widgets/tests`, `user:clock`, or `omfp:<name>` overridden by the workspace).",
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/WidgetSource"
+            },
+            "state": {
+              "$ref": "#/$defs/WidgetReportState"
+            },
+            "text": {
+              "description": "The text the widget renders.",
+              "type": "string"
+            },
+            "version": {
+              "description": "The folder version the window imported; `null` while nothing is imported.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "reference",
+            "instance",
+            "source",
+            "name",
+            "state",
+            "errors",
+            "console",
+            "text",
+            "jobs"
+          ],
+          "type": "object"
+        },
+        "WidgetReportState": {
+          "description": "Where a widget instance stands in a window (PRT-043).",
+          "enum": [
+            "loading",
+            "rendered",
+            "compile_error",
+            "load_error",
+            "render_error"
+          ],
+          "type": "string"
+        },
+        "WidgetSource": {
+          "description": "Where a widget folder lives (AGT-012, AGT-023).",
+          "oneOf": [
+            {
+              "const": "workspace",
+              "description": "`<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`.",
+              "type": "string"
+            },
+            {
+              "const": "user",
+              "description": "`<data-dir>/widgets/<name>/`, referenced as `user:<name>`.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.report` params (PRT-043, AGT-026): what this connection's window shows of a workspace's own widgets.",
+      "properties": {
+        "views": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Position"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The position of `views/<workspaceId>` the window rendered; `null` before that topic arrived."
+        },
+        "widgets": {
+          "description": "Every workspace and user widget instance of the view the window shows (built-ins are not reported).",
+          "items": {
+            "$ref": "#/$defs/WidgetReport"
+          },
+          "type": "array"
+        },
+        "workspaceId": {
+          "description": "The workspace whose view the window shows; `null` when it shows none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "widgets"
+      ],
+      "title": "ReportWidgetsParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
   "widgets.state_set": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

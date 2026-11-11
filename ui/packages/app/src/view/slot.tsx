@@ -1,14 +1,23 @@
 /**
  * The slot every widget of a view renders in (UI-105, AGT-013, AGT-014): it resolves the reference (built-in,
  * workspace override, workspace or user widget), imports module widgets from the daemon by versioned URL, provides the
- * {@link WidgetScope} the SDK's widget hooks read, and shows loading and every failure in the widget's place.
+ * {@link WidgetScope} the SDK's widget hooks read, shows loading and every failure in the widget's place, and reports
+ * module widgets to the daemon ({@link SlotReport}, AGT-026).
  */
 
-import type { ViewsState, WidgetInfo } from "@omfp/protocol";
-import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { type LoadedWidget, useHost, useSnapshot, type WidgetProps, WidgetScope } from "../sdk/index.ts";
+import type { ViewsState, WidgetInfo, WidgetReportState } from "@omfp/protocol";
+import { Component, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type LoadedWidget,
+  SlotReport,
+  SlotReportScope,
+  useHost,
+  useSnapshot,
+  type WidgetProps,
+  WidgetScope,
+} from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
-import { resolveWidget, type WidgetRegistry, widgetUrl } from "./resolve.ts";
+import { resolveWidget, type WidgetRegistry, widgetModulePath, widgetUrl } from "./resolve.ts";
 
 const text = strings.widgets;
 
@@ -92,11 +101,115 @@ function useWidgetModule(widget: WidgetInfo | undefined, workspaceId: string | u
   return shown?.folder === folder ? shown : undefined;
 }
 
+/** A module widget's load as reported (PRT-043): `loading` while the shown version is not the folder's current one. */
+function loadOf(widget: WidgetInfo, module: Shown | undefined): { state: WidgetReportState; error?: string } {
+  if (module === undefined || module.version !== widget.version) {
+    return { state: "loading" };
+  }
+  const { loaded } = module;
+  if (loaded.kind === "component") {
+    return { state: "rendered" };
+  }
+  const { error } = loaded;
+  const message =
+    error.file === undefined
+      ? error.message
+      : `${text.location(error.file, error.line, error.column)}: ${error.message}`;
+  return { state: error.kind === "compile" ? "compile_error" : "load_error", error: message };
+}
+
+/** The text a widget renders, as a reader sees it: line breaks between blocks, hidden parts left out. */
+function renderedText(element: HTMLElement | null): string {
+  // biome-ignore lint/performance/useDomNodeTextContent: the rendered text (blocks on their own lines) is what the agent reads; it is read at most once per report.
+  return element === null ? "" : element.innerText.trim();
+}
+
+/**
+ * The report of a module widget slot (AGT-026): part of the window's reports while mounted, following the widget's
+ * identity, load and rendered text (`element`'s); `undefined` for built-ins and unresolved references.
+ */
+function useModuleReport(
+  widget: WidgetInfo | undefined,
+  module: Shown | undefined,
+  reference: string,
+  instance: string,
+  workspaceId: string | undefined,
+  element: RefObject<HTMLDivElement | null>,
+): SlotReport | undefined {
+  const { reports } = useHost();
+  const base = useWidgetBase() ?? "";
+  const identity =
+    widget === undefined || workspaceId === undefined
+      ? undefined
+      : {
+          reference,
+          instance,
+          source: widget.source,
+          name: widget.name,
+          modulePath: widgetModulePath(base, workspaceId, widget),
+        };
+  const slot = useRef<SlotReport | undefined>(undefined);
+  if (identity === undefined) {
+    slot.current = undefined;
+  } else if (slot.current === undefined) {
+    slot.current = new SlotReport(reports, identity);
+  }
+  const report = slot.current;
+
+  useEffect(() => {
+    if (report === undefined) {
+      return;
+    }
+    report.text = () => renderedText(element.current);
+    reports.add(report);
+    const observer = new MutationObserver(() => report.changed());
+    if (element.current !== null) {
+      observer.observe(element.current, { childList: true, characterData: true, subtree: true });
+    }
+    return () => {
+      observer.disconnect();
+      reports.release(report);
+    };
+  }, [reports, report, element]);
+
+  const source = identity?.source;
+  const name = identity?.name;
+  const modulePath = identity?.modulePath;
+  useEffect(() => {
+    if (report !== undefined && source !== undefined && name !== undefined && modulePath !== undefined) {
+      const current = report.identity;
+      if (
+        current.reference !== reference ||
+        current.instance !== instance ||
+        current.source !== source ||
+        current.name !== name ||
+        current.modulePath !== modulePath
+      ) {
+        report.setIdentity({ reference, instance, source, name, modulePath });
+      }
+    }
+  }, [report, reference, instance, source, name, modulePath]);
+
+  const load = widget === undefined ? undefined : loadOf(widget, module);
+  const state = load?.state;
+  const error = load?.error;
+  const version = module?.version ?? null;
+  useEffect(() => {
+    if (report !== undefined && state !== undefined) {
+      report.setLoad({ state, version, errors: error === undefined ? [] : [error] });
+    }
+  }, [report, state, version, error]);
+  return report;
+}
+
 export function WidgetSlot({ reference, props, path, workspaceId, views, registry }: WidgetSlotProps): ReactNode {
   const instance = typeof props.instance === "string" ? props.instance : reference;
   const scope = useMemo(() => ({ instance, reference, workspaceId }), [instance, reference, workspaceId]);
   const resolved = resolveWidget(reference, workspaceId, views, registry);
-  const module = useWidgetModule(resolved.kind === "module" ? resolved.widget : undefined, workspaceId);
+  const widget = resolved.kind === "module" ? resolved.widget : undefined;
+  const module = useWidgetModule(widget, workspaceId);
+  const element = useRef<HTMLDivElement>(null);
+  const report = useModuleReport(widget, module, reference, instance, workspaceId, element);
 
   let body: ReactNode;
   switch (resolved.kind) {
@@ -116,7 +229,7 @@ export function WidgetSlot({ reference, props, path, workspaceId, views, registr
       body = <WidgetLoading reference={reference} />;
       break;
     case "module":
-      body = moduleBody(reference, props, module);
+      body = moduleBody(reference, props, module, report);
       break;
   }
   const moduleAttributes =
@@ -125,6 +238,7 @@ export function WidgetSlot({ reference, props, path, workspaceId, views, registr
       : {};
   return (
     <div
+      ref={element}
       className="omfp-widget"
       data-testid="widget"
       data-widget={reference}
@@ -132,12 +246,19 @@ export function WidgetSlot({ reference, props, path, workspaceId, views, registr
       data-path={path}
       {...moduleAttributes}
     >
-      <WidgetScope value={scope}>{body}</WidgetScope>
+      <WidgetScope value={scope}>
+        <SlotReportScope value={report}>{body}</SlotReportScope>
+      </WidgetScope>
     </div>
   );
 }
 
-function moduleBody(reference: string, props: WidgetProps, module: Shown | undefined): ReactNode {
+function moduleBody(
+  reference: string,
+  props: WidgetProps,
+  module: Shown | undefined,
+  report: SlotReport | undefined,
+): ReactNode {
   if (module === undefined) {
     return <WidgetLoading reference={reference} />;
   }
@@ -156,7 +277,7 @@ function moduleBody(reference: string, props: WidgetProps, module: Shown | undef
   const Widget = loaded.component;
   // A new version is a new boundary: a render error of the previous one does not stick (AGT-014).
   return (
-    <WidgetBoundary key={module.version} reference={reference}>
+    <WidgetBoundary key={module.version} reference={reference} report={report}>
       <Widget {...props} />
     </WidgetBoundary>
   );
@@ -194,6 +315,8 @@ export function WidgetError({ kind, title, location, message }: WidgetErrorProps
 interface BoundaryProps {
   /** The widget's reference, named in the error. */
   readonly reference: string;
+  /** The module widget slot's report, told about the error this boundary shows (AGT-026). */
+  readonly report?: SlotReport | undefined;
   readonly children: ReactNode;
 }
 
@@ -207,6 +330,16 @@ export class WidgetBoundary extends Component<BoundaryProps, BoundaryState> {
 
   static getDerivedStateFromError(error: unknown): BoundaryState {
     return { error: error instanceof Error ? error : new Error(String(error)) };
+  }
+
+  override componentDidCatch(error: unknown): void {
+    this.props.report?.setBoundary(error instanceof Error ? error.message : String(error));
+  }
+
+  override componentWillUnmount(): void {
+    if (this.state.error !== undefined) {
+      this.props.report?.setBoundary(undefined);
+    }
   }
 
   override render(): ReactNode {

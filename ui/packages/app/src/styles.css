@@ -79,6 +79,42 @@
     border-inline-end: 1px solid var(--omfp-outline-variant);
   }
 
+  /* The view area right of the left column, with the mode line at its bottom (UI-098). */
+  .omfp-frame__main {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    min-inline-size: 0;
+  }
+
+  .omfp-mode-line {
+    flex: 0 0 auto;
+    padding: 0 var(--omfp-space-3);
+    border-block-start: 1px solid var(--omfp-outline-variant);
+    background: var(--omfp-surface-container-low);
+    color: var(--omfp-on-surface-variant);
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-font-size-sm);
+    font-weight: 600;
+  }
+
+  .omfp-mode-line[data-mode="insert"] {
+    background: var(--omfp-primary-container);
+    color: var(--omfp-on-primary-container);
+  }
+
+  .omfp-mode-line[data-mode="cmdline"] {
+    background: var(--omfp-tertiary-container);
+    color: var(--omfp-on-tertiary-container);
+  }
+
+  /* The composer in insert mode (UI-098). */
+  .omfp-app[data-mode="insert"] .omfp-composer:focus-within .omfp-textarea {
+    border-color: var(--omfp-primary);
+    box-shadow: inset 0 0 0 1px var(--omfp-primary);
+  }
+
   .omfp-safety-net {
     border-block-start: 1px solid var(--omfp-outline-variant);
     background: var(--omfp-surface-container);

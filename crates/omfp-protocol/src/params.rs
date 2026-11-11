@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::dto::{
     KeymapEntry, PathEntry, RepoStatus, SeenRepository, TerminalInfo, TerminalKind, UiSettings,
+    WidgetSource,
 };
 use crate::topic::Topic;
 
@@ -698,6 +699,69 @@ pub struct SetWidgetStateParams {
     pub key: String,
     /// Any JSON value; `null` deletes the key.
     pub value: Value,
+}
+
+/// `widgets.report` params (PRT-043, AGT-026): what this connection's window shows of a workspace's own widgets.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportWidgetsParams {
+    /// The workspace whose view the window shows; `null` when it shows none.
+    pub workspace_id: Option<String>,
+    /// The position of `views/<workspaceId>` the window rendered; `null` before that topic arrived.
+    pub views: Option<Position>,
+    /// Every workspace and user widget instance of the view the window shows (built-ins are not reported).
+    pub widgets: Vec<WidgetReport>,
+}
+
+/// One widget instance as a window shows it (PRT-043).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetReport {
+    /// The view node's reference (`./widgets/tests`, `user:clock`, or `omfp:<name>` overridden by the workspace).
+    pub reference: String,
+    /// The node's `instance` prop when it is a string, else its reference.
+    pub instance: String,
+    pub source: WidgetSource,
+    /// The widget folder's name.
+    pub name: String,
+    /// The folder version the window imported; `null` while nothing is imported.
+    pub version: Option<String>,
+    pub state: WidgetReportState,
+    /// The compile stand-in's, import's and error boundary's errors (`file:line:column: message` when known).
+    pub errors: Vec<String>,
+    /// Console errors and uncaught errors whose stack names the widget's module, oldest first.
+    pub console: Vec<String>,
+    /// The text the widget renders.
+    pub text: String,
+    /// Its `useJob` jobs (AGT-019).
+    pub jobs: Vec<WidgetJobReport>,
+}
+
+/// Where a widget instance stands in a window (PRT-043).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WidgetReportState {
+    Loading,
+    Rendered,
+    CompileError,
+    LoadError,
+    RenderError,
+}
+
+/// A `useJob` job of a widget instance (AGT-019).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetJobReport {
+    pub command: String,
+    /// `pending`, `running`, `succeeded` or `failed`.
+    pub status: String,
+    pub exit_code: Option<i32>,
+    pub signal: Option<i32>,
+    /// How many jobs the instance started for the command.
+    pub runs: u32,
+    pub started_at: Option<i64>,
+    /// The last output lines (stdout and stderr), oldest first.
+    pub tail: Vec<String>,
 }
 
 /// `jobs.start` params (DMN-080).

@@ -502,6 +502,16 @@ export type RepoSuggestions = {
   repos: SeenRepository[];
 };
 
+/** `widgets.report` params (PRT-043, AGT-026): what this connection's window shows of a workspace's own widgets. */
+export type ReportWidgetsParams = {
+  /** The position of `views/<workspaceId>` the window rendered; `null` before that topic arrived. */
+  views?: Position | null;
+  /** Every workspace and user widget instance of the view the window shows (built-ins are not reported). */
+  widgets: WidgetReport[];
+  /** The workspace whose view the window shows; `null` when it shows none. */
+  workspaceId?: string | null;
+};
+
 /** `terminal.resize` params. */
 export type ResizeTerminalParams = {
   cols: number;
@@ -819,6 +829,45 @@ export type WidgetInfo = {
   version: string;
 };
 
+/** A `useJob` job of a widget instance (AGT-019). */
+export type WidgetJobReport = {
+  command: string;
+  exitCode?: number | null;
+  /** How many jobs the instance started for the command. */
+  runs: number;
+  signal?: number | null;
+  startedAt?: number | null;
+  /** `pending`, `running`, `succeeded` or `failed`. */
+  status: string;
+  /** The last output lines (stdout and stderr), oldest first. */
+  tail: string[];
+};
+
+/** One widget instance as a window shows it (PRT-043). */
+export type WidgetReport = {
+  /** Console errors and uncaught errors whose stack names the widget's module, oldest first. */
+  console: string[];
+  /** The compile stand-in's, import's and error boundary's errors (`file:line:column: message` when known). */
+  errors: string[];
+  /** The node's `instance` prop when it is a string, else its reference. */
+  instance: string;
+  /** Its `useJob` jobs (AGT-019). */
+  jobs: WidgetJobReport[];
+  /** The widget folder's name. */
+  name: string;
+  /** The view node's reference (`./widgets/tests`, `user:clock`, or `omfp:<name>` overridden by the workspace). */
+  reference: string;
+  source: WidgetSource;
+  state: WidgetReportState;
+  /** The text the widget renders. */
+  text: string;
+  /** The folder version the window imported; `null` while nothing is imported. */
+  version?: string | null;
+};
+
+/** Where a widget instance stands in a window (PRT-043). */
+export type WidgetReportState = "loading" | "rendered" | "compile_error" | "load_error" | "render_error";
+
 /** Where a widget folder lives (AGT-012, AGT-023). */
 export type WidgetSource =
   /** `<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`. */
@@ -962,6 +1011,7 @@ export interface Methods {
   "views.set": { params: SetViewsParams; result: Empty };
   "widgets.copy": { params: CopyWidgetParams; result: WidgetCopied };
   "widgets.state_set": { params: SetWidgetStateParams; result: Empty };
+  "widgets.report": { params: ReportWidgetsParams; result: Empty };
   "jobs.start": { params: StartJobParams; result: JobInfo };
   "jobs.kill": { params: JobRef; result: Empty };
 }
@@ -1030,6 +1080,7 @@ export const METHODS: readonly MethodName[] = [
   "views.set",
   "widgets.copy",
   "widgets.state_set",
+  "widgets.report",
   "jobs.start",
   "jobs.kill",
 ];

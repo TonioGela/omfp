@@ -100,11 +100,12 @@ fn names(view: &WorkspaceView) -> Vec<&str> {
     view.repos.iter().map(|repo| repo.name.as_str()).collect()
 }
 
-/// Entries of a directory, sorted.
+/// Entries of a workspace folder besides omfp's own `.omfp/` (DMN-088), sorted.
 fn entries(dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .filter(|name| name != ".omfp")
         .collect();
     names.sort();
     names
@@ -137,9 +138,9 @@ impl Env {
     }
 }
 
-// spec: DMN-020
+// spec: DMN-020, DMN-088
 #[test]
-fn a_new_workspace_is_a_folder_under_the_workspaces_root() {
+fn a_new_workspace_is_a_folder_under_the_workspaces_root_with_the_default_views() {
     let env = env();
 
     let view = env.create("Fix login!");
@@ -148,6 +149,10 @@ fn a_new_workspace_is_a_folder_under_the_workspaces_root() {
     assert_eq!(view.workspace.path, env.workspaces_root.join("fix-login"));
     assert_eq!(view.workspace.created_by, Provenance::User);
     assert!(view.workspace.path.is_dir());
+    assert_eq!(
+        std::fs::read_to_string(view.workspace.path.join(".omfp/views.json")).unwrap(),
+        omfp_daemon::widgets::DEFAULT_MANIFEST
+    );
     assert_eq!(view.repos, Vec::new());
     assert_eq!(
         env.workspaces.get(&view.workspace.id).unwrap(),

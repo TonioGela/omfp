@@ -226,6 +226,8 @@ methods! {
     WidgetsCopy = "widgets.copy" (params::CopyWidgetParams) -> params::WidgetCopied;
     /// Stores one key of a widget instance's state (DMN-086).
     WidgetsStateSet = "widgets.state_set" (params::SetWidgetStateParams) -> params::Empty;
+    /// Reports what this window shows of a workspace's widgets; replaces its previous report (PRT-043).
+    WidgetsReport = "widgets.report" (params::ReportWidgetsParams) -> params::Empty;
     /// Runs a shell command in the workspace folder as a job (DMN-080).
     JobsStart = "jobs.start" (params::StartJobParams) -> JobInfo;
     /// Kills a job's process group (DMN-081).

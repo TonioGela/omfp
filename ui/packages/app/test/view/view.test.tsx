@@ -10,7 +10,7 @@ import type { LayoutEdit } from "../../src/view/edit.ts";
 import { containsWidget, parseLayout } from "../../src/view/layout.ts";
 import { ViewRenderer } from "../../src/view/render.tsx";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
-import { DEFAULT_VIEW, type ResolvedView, resolveViews } from "../../src/view/views.ts";
+import { DEFAULT_MANIFEST, DEFAULT_VIEW, type ResolvedView, resolveViews } from "../../src/view/views.ts";
 import { renderWithHost } from "../support/host.tsx";
 
 afterEach(cleanup);
@@ -43,19 +43,30 @@ const CASES = FIXTURE.cases;
 
 describe("layouts", () => {
   // spec: UI-024, AGT-010
-  test("the default view is header over chat, with the workspace and changes as tabs; the threads column is the frame's", () => {
+  test("the default view is header over the main tabs with the chat, the side tabs on the right; the threads column is the frame's", () => {
     const { views, defaultId, error } = resolveViews(undefined);
     expect([defaultId, error, views.length]).toEqual(["default", undefined, 1]);
     expect(DEFAULT_VIEW.layout).toEqual([
       "row",
       { sizes: [3, 1] },
-      ["col", {}, "omfp:header", "omfp:chat"],
-      ["tabs", {}, "omfp:workspace", "omfp:changes"],
+      ["col", {}, "omfp:header", ["tabs", { id: "main" }, "omfp:chat"]],
+      ["tabs", { id: "side" }, "omfp:workspace", "omfp:changes"],
     ]);
     expect(DEFAULT_VIEW.title).toBe("Default");
     const tree = views[0]?.tree;
     expect(tree !== undefined && containsWidget(tree, ["omfp:chat"])).toBe(true);
     expect(tree !== undefined && containsWidget(tree, ["omfp:threads", "omfp:interactions"])).toBe(false);
+  });
+
+  // spec: AGT-010, DMN-088
+  test("the default manifest is the daemon's, which it writes into every workspace", () => {
+    const daemon: unknown = JSON.parse(
+      readFileSync(join(import.meta.dir, "../../../../../crates/omfp-daemon/src/widgets/default-views.json"), "utf8"),
+    );
+    expect(daemon).toEqual(DEFAULT_MANIFEST);
+    expect(resolveViews(DEFAULT_MANIFEST).views.map((view) => [view.id, view.title, view.layout])).toEqual([
+      [DEFAULT_VIEW.id, DEFAULT_VIEW.title, DEFAULT_VIEW.layout],
+    ]);
   });
 
   // spec: AGT-010, AGT-011
@@ -187,6 +198,17 @@ describe("renderer", () => {
   test("a built-in without a title prop is labelled with its own name", () => {
     show(["tabs", {}, "omfp:workspace", "omfp:changes", ["omfp:changes", { title: "Diffs" }]]);
     expect(screen.getAllByTestId("view-tab").map((tab) => tab.textContent)).toEqual(["Workspace", "Changes", "Diffs"]);
+  });
+
+  // spec: AGT-010
+  test("a tabs container with one child shows no tab bar, only that child", () => {
+    show(["tabs", { id: "main" }, ["omfp:named", { label: "chat" }]]);
+    expect(screen.queryAllByTestId("view-tab")).toEqual([]);
+    expect(screen.queryByRole("tablist")).toBeNull();
+    expect(screen.getByTestId("named").textContent).toBe("chat");
+    const tabs = document.querySelector("[data-layout=tabs]");
+    expect(tabs?.getAttribute("data-path")).toBe("0");
+    expect(screen.getByTestId("widget").dataset.path).toBe("0.0");
   });
 });
 

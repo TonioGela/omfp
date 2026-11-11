@@ -78,11 +78,11 @@ ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked aga
 ui/packages/client    @omfp/client: WebSocket transport, session (hello, subscriptions, reconnect), model
 ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css, kit.css)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
-                      widget hooks useStored/useJob/useToolRun, module loading), vm (view models), widgets (built-ins,
-                      each folder copyable: value imports only from react, omfp/sdk, omfp/kit), frame (left column,
-                      view switcher, layout editing), view (layout tree, edits, reference resolution, widget slot),
-                      keymap, theme, strings; build.ts → dist/ (`just build-web`: import map, widget-exports.json,
-                      builtin-widgets/)
+                      widget hooks useStored/useJob/useToolRun, module loading, window reports to the daemon), vm
+                      (view models), widgets (built-ins, each folder copyable: value imports only from react,
+                      omfp/sdk, omfp/kit), frame (left column, view switcher, layout editing), view (layout tree,
+                      edits, reference resolution, widget slot), keymap, theme, strings; build.ts → dist/
+                      (`just build-web`: import map, widget-exports.json, builtin-widgets/)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)

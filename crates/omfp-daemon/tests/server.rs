@@ -895,6 +895,14 @@ async fn a_theme_set_by_one_client_reaches_every_client_and_theme_css() {
     assert_eq!(theme_css(&daemon).await, "");
 }
 
+/// Replaces `file`'s content at once (a new file renamed over it), as editors and theme generators save: a plain
+/// `std::fs::write` truncates the file first, so the daemon's poll could read it half-written and push that.
+fn replace_file(file: &std::path::Path, content: &str) {
+    let next = file.with_extension("next");
+    std::fs::write(&next, content).unwrap();
+    std::fs::rename(&next, file).unwrap();
+}
+
 // spec: DMN-075
 #[tokio::test(flavor = "multi_thread")]
 async fn the_theme_file_is_read_at_startup_and_its_changes_are_pushed() {
@@ -909,7 +917,7 @@ async fn the_theme_file_is_read_at_startup_and_its_changes_are_pushed() {
         json!({ "css": "body { color: red; }" })
     );
 
-    std::fs::write(&file, "body { color: blue; }").unwrap();
+    replace_file(&file, "body { color: blue; }");
     assert_eq!(
         next_theme(&mut client).await,
         json!({ "css": "body { color: blue; }" })
@@ -917,7 +925,7 @@ async fn the_theme_file_is_read_at_startup_and_its_changes_are_pushed() {
     // The last change wins, from the method or from the file.
     client.ok("theme.set", json!({ "css": "body {}" })).await;
     assert_eq!(next_theme(&mut client).await, json!({ "css": "body {}" }));
-    std::fs::write(&file, "body { color: green; }").unwrap();
+    replace_file(&file, "body { color: green; }");
     assert_eq!(
         next_theme(&mut client).await,
         json!({ "css": "body { color: green; }" })
@@ -1158,12 +1166,12 @@ async fn config_file_changes_reach_every_window_and_an_invalid_file_keeps_the_se
         "no file yet: the defaults"
     );
 
-    std::fs::write(&file, "[ui]\nnotifications = \"never\"\n").unwrap();
+    replace_file(&file, "[ui]\nnotifications = \"never\"\n");
     assert_eq!(
         next_settings(&mut client).await,
         json!({ "ui": { "notifications": "never" }, "keymap": [], "error": null })
     );
-    std::fs::write(&file, "[ui]\nnotifications = \"sometimes\"\n").unwrap();
+    replace_file(&file, "[ui]\nnotifications = \"sometimes\"\n");
     let broken = next_settings(&mut client).await;
     assert_eq!(
         broken["ui"],
@@ -1176,11 +1184,10 @@ async fn config_file_changes_reach_every_window_and_an_invalid_file_keeps_the_se
         "{error}"
     );
     // `[daemon]` changes are not applied live (the log asks for a restart); `[ui]` ones are.
-    std::fs::write(
+    replace_file(
         &file,
         "[daemon]\nmax_processes = 2\n\n[ui]\ndensity = \"normal\"\n",
-    )
-    .unwrap();
+    );
     assert_eq!(
         next_settings(&mut client).await,
         json!({ "ui": { "density": "normal" }, "keymap": [], "error": null })

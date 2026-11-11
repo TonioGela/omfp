@@ -5,13 +5,14 @@
 
 import type { ToolRun, ToolStatus } from "@omfp/core";
 import { type JobState, jobTopic } from "@omfp/protocol";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { strings } from "../strings/index.ts";
 import { resultText } from "../vm/tool.ts";
 import { reportError } from "./actions.ts";
 import { useSnapshot, useThread, useTopic, useViews, useWindowState } from "./hooks.ts";
 import { useHost } from "./host.tsx";
 import { SELECTED_THREAD } from "./keys.ts";
+import { JOB_TAIL, useSlotReport } from "./reports.ts";
 import { useWidget } from "./widget.ts";
 
 /** A new value, or an updater of the current one; `null` deletes the key. */
@@ -52,15 +53,29 @@ export function useStored<T>(key: string, initial: T): [T, (update: StoredUpdate
   return [value, set, views !== undefined];
 }
 
+/** Where a {@link Job} stands: `pending` while no job is known yet or a start or restart is on its way, `succeeded`
+ * after exit code 0, `failed` after another exit code or a signal. */
+export type JobRunStatus = "pending" | "running" | "succeeded" | "failed";
+
 /** A daemon job of this widget instance (AGT-019). */
 export interface Job {
+  readonly status: JobRunStatus;
   /** Output lines (stdout and stderr interleaved as they came), oldest first; empty until the job is known. */
   readonly lines: readonly string[];
-  readonly running: boolean;
+  /** The standard output's lines. */
+  readonly stdout: readonly string[];
+  /** The standard error's lines. */
+  readonly stderr: readonly string[];
   /** The exit code once the job exited normally, else `null`. */
   readonly exitCode: number | null;
   /** The signal that ended the job, else `null`. */
   readonly signal: number | null;
+  /** How many jobs this instance started for the command (a restart adds one); 0 before the first. */
+  readonly runs: number;
+  /** When the current job started (ms since the epoch), `null` until it is known. */
+  readonly startedAt: number | null;
+  /** When the current job ended, `null` while it runs or is not known. */
+  readonly endedAt: number | null;
   /** The job as the daemon reports it (`job/<id>`), `undefined` until known. */
   readonly state: JobState | undefined;
   /** Kills the job when it runs, then starts a new one. */
@@ -69,55 +84,96 @@ export interface Job {
   kill(): void;
 }
 
+/** What {@link useJob} stores under `job:<command>`. */
+interface StoredJob {
+  readonly id: string;
+  readonly runs: number;
+}
+
+/** The stored value as a {@link StoredJob}; anything else is no job. */
+function storedJob(value: unknown): StoredJob | null {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+  const { id, runs } = value as { id?: unknown; runs?: unknown };
+  return typeof id === "string" ? { id, runs: typeof runs === "number" ? runs : 1 } : null;
+}
+
 const NO_LINES: readonly string[] = [];
 
+function statusOf(state: JobState | undefined): JobRunStatus {
+  const status = state?.job.status;
+  if (status === undefined) {
+    return "pending";
+  }
+  if (status.state === "running") {
+    return "running";
+  }
+  return status.code === 0 ? "succeeded" : "failed";
+}
+
 /**
- * Runs `command` in the workspace (`jobs.start`, DMN-080) once per widget instance: the job's id is stored with
- * {@link useStored} under `job:<command>`; while nothing is stored or the daemon no longer knows the stored job, a job
- * is started; otherwise the stored job is followed (`job/<id>`), running or finished, so reloads, other windows and
- * moving the widget never start a second one.
+ * Runs `command` in the workspace (`jobs.start`, DMN-080) once per widget instance: the job's id and the runs are
+ * stored with {@link useStored} under `job:<command>` as `{ id, runs }`; while nothing is stored or the daemon no
+ * longer knows the stored job, a job is started; otherwise the stored job is followed (`job/<id>`), running or
+ * finished, so reloads, other windows and moving the widget never start a second one. The job is part of the widget
+ * slot's report (AGT-026).
  */
 export function useJob(command: string): Job {
   const host = useHost();
   const { workspaceId } = useWidget();
-  const [jobId, setJobId, loaded] = useStored<string | null>(`job:${command}`, null);
+  const key = `job:${command}`;
+  const [value, setStored, loaded] = useStored<unknown>(key, null);
+  const stored = storedJob(value);
+  const jobId = stored?.id ?? null;
+  const runs = stored?.runs ?? 0;
   const topic = useTopic(jobId === null ? undefined : jobTopic(jobId));
   const state = useSnapshot((snapshot) => (jobId === null ? undefined : snapshot.jobs.get(jobId)));
   // The stored id (or `null`) a start was made for: no second start until the stored id changes.
   const startedFor = useRef<string | null | undefined>(undefined);
+  // The same, to render `pending` while the start is on its way.
+  const [starting, setStarting] = useState<string | null | undefined>(undefined);
 
   const start = useCallback(
-    (replacing: string | null) => {
+    (replacing: string | null, runsBefore: number) => {
       if (workspaceId === undefined) {
         return;
       }
       startedFor.current = replacing;
+      setStarting(replacing);
       host.client
         .call("jobs.start", { workspaceId, command })
-        .then((job) => setJobId(job.id))
-        .catch((error: unknown) => reportError(host, error));
+        .then((job) => setStored({ id: job.id, runs: runsBefore + 1 }))
+        .catch((error: unknown) => {
+          setStarting(undefined);
+          reportError(host, error);
+        });
     },
-    [host, workspaceId, command, setJobId],
+    [host, workspaceId, command, setStored],
   );
 
   const gone = topic?.sync.kind === "failed" && topic.sync.error.code === "not_found";
   useEffect(() => {
     if (loaded && (jobId === null || gone) && startedFor.current !== jobId) {
-      start(jobId);
+      start(jobId, runs);
     }
-  }, [loaded, jobId, gone, start]);
+  }, [loaded, jobId, gone, runs, start]);
 
   const running = state?.job.status.state === "running";
   const restart = useCallback(() => {
     if (jobId !== null && running) {
+      setStarting(jobId);
       host.client
         .call("jobs.kill", { jobId })
-        .then(() => start(jobId))
-        .catch((error: unknown) => reportError(host, error));
+        .then(() => start(jobId, runs))
+        .catch((error: unknown) => {
+          setStarting(undefined);
+          reportError(host, error);
+        });
     } else {
-      start(jobId);
+      start(jobId, runs);
     }
-  }, [host, jobId, running, start]);
+  }, [host, jobId, running, runs, start]);
   const kill = useCallback(() => {
     if (jobId !== null) {
       host.client.call("jobs.kill", { jobId }).catch((error: unknown) => reportError(host, error));
@@ -125,17 +181,43 @@ export function useJob(command: string): Job {
   }, [host, jobId]);
 
   const jobLines = state?.lines;
-  const lines = useMemo(() => jobLines?.map((line) => line.text) ?? NO_LINES, [jobLines]);
+  const output = useMemo(() => {
+    if (jobLines === undefined) {
+      return { lines: NO_LINES, stdout: NO_LINES, stderr: NO_LINES };
+    }
+    return {
+      lines: jobLines.map((line) => line.text),
+      stdout: jobLines.filter((line) => line.stream === "stdout").map((line) => line.text),
+      stderr: jobLines.filter((line) => line.stream === "stderr").map((line) => line.text),
+    };
+  }, [jobLines]);
   const status = state?.job.status;
-  return {
-    lines,
-    running,
-    exitCode: status?.state === "exited" ? (status.code ?? null) : null,
-    signal: status?.state === "exited" ? (status.signal ?? null) : null,
-    state,
-    restart,
-    kill,
-  };
+  const exited = status?.state === "exited" ? status : undefined;
+  const job = {
+    status: starting !== undefined && starting === jobId ? "pending" : statusOf(state),
+    exitCode: exited?.code ?? null,
+    signal: exited?.signal ?? null,
+    runs,
+    startedAt: state?.job.startedAt ?? null,
+    endedAt: exited?.endedAt ?? null,
+  } as const;
+
+  const slot = useSlotReport();
+  const tail = useMemo(() => output.lines.slice(-JOB_TAIL), [output.lines]);
+  useEffect(() => {
+    slot?.setJob(command, {
+      command,
+      status: job.status,
+      exitCode: job.exitCode,
+      signal: job.signal,
+      runs: job.runs,
+      startedAt: job.startedAt,
+      tail,
+    });
+  }, [slot, command, job.status, job.exitCode, job.signal, job.runs, job.startedAt, tail]);
+  useEffect(() => () => slot?.setJob(command, undefined), [slot, command]);
+
+  return { ...job, ...output, state, restart, kill };
 }
 
 /** Which tool run {@link useToolRun} follows. */

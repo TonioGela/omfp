@@ -190,9 +190,9 @@ impl Workspaces {
         Ok(self.store.workspaces()?)
     }
 
-    /// Creates a workspace: always a new folder `<root>/<slug>` (DMN-020). With `link`, that repository is checked
-    /// first (nothing is created unless it is a git root), then linked into the folder as [`Self::add_repo`] does; the
-    /// name then defaults to the repository's folder name.
+    /// Creates a workspace: always a new folder `<root>/<slug>` (DMN-020) holding the default `.omfp/views.json`
+    /// (DMN-088). With `link`, that repository is checked first (nothing is created unless it is a git root), then
+    /// linked into the folder as [`Self::add_repo`] does; the name then defaults to the repository's folder name.
     pub fn create(&self, new: NewWorkspace) -> Result<WorkspaceView> {
         self.store.check_provenance(&new.created_by)?;
         let target = new
@@ -233,10 +233,11 @@ impl Workspaces {
                 let entry = entry_name(&ws.path, None, &dir_name(target))?;
                 std::os::unix::fs::symlink(target, ws.path.join(entry))?;
             }
+            crate::widgets::write_default_manifest(&ws.path)?;
             Ok(self.store.insert_workspace(&ws)?)
         };
         if let Err(error) = filled() {
-            // The folder is new and holds at most the link (never followed).
+            // The folder is new and holds at most the link (never followed) and `.omfp/views.json`.
             let _ = std::fs::remove_dir_all(&ws.path);
             return Err(error);
         }

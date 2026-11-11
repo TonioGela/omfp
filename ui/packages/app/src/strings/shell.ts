@@ -159,6 +159,11 @@ export const shell = {
     },
     diffLabel: (path: string) => `Diff of ${path}`,
   },
+  /** The mode line (UI-098). */
+  mode: {
+    names: { normal: "NORMAL", insert: "INSERT", cmdline: "COMMAND" },
+    announce: (name: string) => `${name} mode`,
+  },
   frame: {
     views: "View",
     invalidView: (error: string) => `The view is invalid, showing the default view: ${error}`,
@@ -204,6 +209,7 @@ export const shell = {
     invalidManifest: "The layout cannot change while .omfp/views.json is invalid: fix the file first",
     loading: "The views of this workspace are still loading",
     noWorkspace: "No current workspace",
+    reset: ".omfp/views.json reset to the default view",
   },
   widgetCopy: {
     usage: "Usage: :widget copy <reference> [<name>]",
@@ -238,7 +244,7 @@ export const shell = {
     search: "Filter threads",
     deleteFocused: "Delete the focused thread or workspace…",
     toggleSection: "Collapse or expand the focused workspace",
-    view: "Switch view",
+    view: "Switch view (:view <id>), or :view reset to restore the default views.json",
     layout: "Edit the layout of the view (toggle)",
     widget: "Copy a widget into the workspace (:widget copy <reference> [<name>])",
     next: "Next thread",

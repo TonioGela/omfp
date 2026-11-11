@@ -264,6 +264,49 @@ async fn the_views_topic_carries_the_manifest_or_its_error_and_the_workspace_the
     assert_ne!(widgets["widgets"][1]["version"], version, "AGT-013");
 }
 
+// spec: DMN-088, AGT-010, PRT-043
+#[tokio::test(flavor = "multi_thread")]
+async fn a_new_workspace_has_the_default_views_and_a_window_reports_its_widgets() {
+    let daemon = Daemon::new().await;
+    let mut client = daemon.client().await;
+    let (id, folder) = workspace(&mut client).await;
+    assert_eq!(
+        std::fs::read_to_string(folder.join(".omfp/views.json")).unwrap(),
+        omfp_daemon::widgets::DEFAULT_MANIFEST
+    );
+    let state = views(&mut client, &id).await;
+    assert_eq!(state["manifest"], omfp_daemon::widgets::default_manifest());
+    assert_eq!(state["error"], Value::Null);
+
+    // A window's report is accepted on its own connection (session plumbing, no `Manage` needed).
+    let report = json!({
+        "workspaceId": id,
+        "views": { "epoch": "e", "seq": 1 },
+        "widgets": [{
+            "reference": "./widgets/tests", "instance": "./widgets/tests", "source": "workspace", "name": "tests",
+            "version": null, "state": "loading", "errors": [], "console": [], "text": "", "jobs": []
+        }]
+    });
+    assert_eq!(client.ok("widgets.report", report).await, json!({}));
+    assert_eq!(
+        client
+            .ok(
+                "widgets.report",
+                json!({ "workspaceId": null, "views": null, "widgets": [] })
+            )
+            .await,
+        json!({})
+    );
+    let error = client
+        .call(
+            "widgets.report",
+            json!({ "workspaceId": id, "widgets": [{ "state": "melted" }] }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "bad_request");
+}
+
 // spec: DMN-083, AGT-010
 #[tokio::test(flavor = "multi_thread")]
 async fn views_set_checks_writes_sorted_json_and_publishes_before_answering() {
