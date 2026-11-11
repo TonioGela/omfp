@@ -23,4 +23,6 @@
 </picture>
 
 <sub>This README is for humans. The slop lives in [docs/overview.md](docs/overview.md). Anything else: ask your agent how
-omfp works.</sub>
+omfp works.\*</sub>
+
+<sub>\* OK, this one is AI-generated too, but at least I read it.</sub>
