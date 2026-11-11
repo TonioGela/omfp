@@ -115,6 +115,27 @@ export function hasMainSlot(tree: LayoutTree): boolean {
   );
 }
 
+/** The area a phone shows while the threads are closed (UI-204). */
+export type Area = "chat" | "side";
+
+/**
+ * On a phone the view shows one area at a time (UI-204): when its root is a `row` of several cells, the cell with the
+ * conversation (the `main` slot, else `omfp:chat`, else the first) is the chat area and the others the side area;
+ * `undefined` when the view has no side area.
+ */
+export function chatCell(tree: LayoutTree): number | undefined {
+  if (tree.kind !== "row" || tree.children.length < 2) {
+    return undefined;
+  }
+  const main = tree.children.findIndex(hasMainSlot);
+  return main >= 0
+    ? main
+    : Math.max(
+        0,
+        tree.children.findIndex((child) => containsWidget(child, ["omfp:chat"])),
+      );
+}
+
 /** The props of the `omfp:file` widget of an open file tab (`jump` repeats the jump to `line` when reopened). */
 export function fileProps(tab: FileTab): WidgetProps {
   return {

@@ -2443,6 +2443,107 @@
     margin-inline-end: var(--omfp-s2);
   }
 
+  /* Help panel (UI-198): a modal border box (UI-187) on the pop surface; the filter stays, the sections scroll. */
+  .omfp-help-modal {
+    display: flex;
+    inline-size: min(46rem, 92%);
+    max-block-size: min(44rem, calc(100vh - 2 * var(--omfp-s4)));
+    overflow: hidden;
+  }
+
+  .omfp-help-dialog {
+    display: flex;
+    flex: 1;
+    min-inline-size: 0;
+    min-block-size: 0;
+    outline: none;
+  }
+
+  .omfp-help.omfp-bbox {
+    --bbox-bg: var(--omfp-pop-bg);
+    --bbox-line: var(--omfp-pop-border);
+    flex: 1;
+    min-block-size: 0;
+  }
+
+  .omfp-help .omfp-bbox__end {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s1);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-help__body.omfp-bbox__body {
+    flex: 1;
+    min-block-size: 0;
+    padding-inline: 0;
+  }
+
+  .omfp-help__filter {
+    padding-inline: var(--omfp-s3);
+  }
+
+  .omfp-help__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s2);
+    min-block-size: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .omfp-help__list .omfp-bbox__rule {
+    margin: 0;
+  }
+
+  .omfp-help__note,
+  .omfp-help__empty {
+    margin: var(--omfp-s1) 0 0;
+    padding-inline: var(--omfp-s3);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-help__rows {
+    display: flex;
+    flex-direction: column;
+    margin: var(--omfp-s1) 0 0;
+    padding-inline: var(--omfp-s3);
+  }
+
+  .omfp-help__row {
+    display: grid;
+    grid-template-columns: minmax(0, 13em) minmax(0, 1fr);
+    align-items: baseline;
+    gap: var(--omfp-s3);
+    padding-block: calc(var(--omfp-s1) / 2);
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-help__keys {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--omfp-s1);
+    min-inline-size: 0;
+  }
+
+  .omfp-help__args {
+    flex-basis: 100%;
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+    overflow-wrap: anywhere;
+  }
+
+  .omfp-help__description {
+    margin: 0;
+    min-inline-size: 0;
+    color: var(--omfp-on-surface);
+  }
+
   /* Left column (UI-169, UI-170): brand, workspace sections, rows. */
   .omfp-brand {
     display: flex;
@@ -2626,6 +2727,212 @@
     font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
     cursor: default;
+  }
+
+  /* Splitter (UI-206, UI-208): a 1 px `rule` hairline with a grab area of `s1` on each side; on hover, focus and while
+   * dragged a 3 px gradient bar covers the hairline. */
+  .omfp-splitter {
+    position: relative;
+    z-index: 2;
+    flex: 0 0 1px;
+    align-self: stretch;
+    background: var(--omfp-rule);
+    touch-action: none;
+    outline: none;
+  }
+
+  .omfp-splitter[aria-orientation="vertical"] {
+    cursor: col-resize;
+  }
+
+  .omfp-splitter[aria-orientation="horizontal"] {
+    cursor: row-resize;
+  }
+
+  .omfp-splitter::before,
+  .omfp-splitter::after {
+    content: "";
+    position: absolute;
+  }
+
+  .omfp-splitter[aria-orientation="vertical"]::before {
+    inset: 0 calc(-1 * var(--omfp-s1));
+  }
+
+  .omfp-splitter[aria-orientation="horizontal"]::before {
+    inset: calc(-1 * var(--omfp-s1)) 0;
+  }
+
+  .omfp-splitter::after {
+    background: var(--omfp-grad);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--omfp-dur-1) var(--omfp-ease);
+  }
+
+  .omfp-splitter[aria-orientation="vertical"]::after {
+    inset: 0 -1px;
+    background: linear-gradient(180deg, var(--omfp-primary), var(--omfp-tertiary) 62%, var(--omfp-grad-end));
+  }
+
+  .omfp-splitter[aria-orientation="horizontal"]::after {
+    inset: -1px 0;
+  }
+
+  .omfp-splitter:is(:hover, :focus-visible, .is-hover, .is-focus, [data-dragging])::after {
+    opacity: 1;
+  }
+
+  /* The left column folded into a strip (UI-201, UI-208): `◆`, the toggle, one state mark per thread needing the user
+   * or running; the selected one on the soft gradient. */
+  .omfp-strip {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--omfp-s2);
+    inline-size: calc(var(--omfp-ctl-h) + 2 * var(--omfp-s2));
+    min-block-size: 0;
+    padding-block: var(--omfp-s3);
+    border-inline-end: var(--omfp-bw) solid var(--omfp-rule);
+    background: var(--omfp-side-bg);
+  }
+
+  .omfp-strip__brand {
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-md);
+    font-weight: var(--omfp-fw-strong);
+    line-height: 1;
+  }
+
+  .omfp-strip__toggle[aria-expanded="true"] {
+    color: var(--omfp-primary);
+  }
+
+  .omfp-strip__threads {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--omfp-s1);
+    min-block-size: 0;
+    margin: 0;
+    padding: var(--omfp-s2) 0 0;
+    border-block-start: var(--omfp-bw) solid var(--omfp-rule);
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  .omfp-strip__threads:empty {
+    display: none;
+  }
+
+  .omfp-strip__thread {
+    display: inline-grid;
+    place-items: center;
+    inline-size: var(--omfp-ctl-h);
+    block-size: var(--omfp-ctl-h);
+    padding: 0;
+    border: 0;
+    border-radius: var(--omfp-r-row);
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .omfp-strip__thread:is([data-hovered], .is-hover) {
+    background: var(--omfp-hover);
+  }
+
+  .omfp-strip__thread[data-selected] {
+    background: var(--omfp-sel-bg);
+  }
+
+  .omfp-strip__thread:is([data-focus-visible], .is-focus) {
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: var(--omfp-focus-off);
+    box-shadow: var(--omfp-focus-glow);
+  }
+
+  /* The phone's bottom bar (UI-204, UI-208): equal 44 px buttons, icon over label; the shown area in `primary` with a
+   * 2 px gradient bar on its top edge. */
+  .omfp-areabar {
+    flex: none;
+    display: flex;
+    padding-block-end: env(safe-area-inset-bottom, 0);
+    border-block-start: var(--omfp-bw) solid var(--omfp-rule);
+    background: var(--omfp-side-bg);
+  }
+
+  .omfp-areabar__item {
+    position: relative;
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    min-block-size: max(44px, 3rem);
+    padding: var(--omfp-s1);
+    border: 0;
+    background: transparent;
+    color: var(--omfp-on-surface-variant);
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-2xs);
+    cursor: pointer;
+    outline: none;
+  }
+
+  .omfp-areabar__item .omfp-icon {
+    inline-size: var(--omfp-ic);
+    block-size: var(--omfp-ic);
+  }
+
+  .omfp-areabar__item:is([data-hovered], .is-hover) {
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-areabar__item[aria-pressed="true"] {
+    color: var(--omfp-primary);
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-areabar__item[aria-pressed="true"]::before {
+    content: "";
+    position: absolute;
+    inset-block-start: calc(-1 * var(--omfp-bw));
+    inset-inline: 25%;
+    block-size: 2px;
+    border-radius: 2px;
+    background: var(--omfp-grad);
+  }
+
+  .omfp-areabar__item:is([data-focus-visible], .is-focus) {
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: calc(-1 * var(--omfp-focus-w));
+  }
+
+  /* A dialog in a popover (UI-202): `╭─ title` in `primary` over its rows. */
+  .omfp-popdialog__dialog {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s2);
+    min-inline-size: 14rem;
+    max-inline-size: min(26rem, 92vw);
+    padding: var(--omfp-s1) var(--omfp-s2) var(--omfp-s2);
+    outline: none;
+  }
+
+  .omfp-popdialog__title {
+    margin: 0;
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-regular);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-popdialog__title::before {
+    content: "╭─ ";
   }
 
   /* Chat (UI-171): header, messages, thinking, the stream caret (UI-147). */

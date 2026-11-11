@@ -15,6 +15,9 @@ import {
   Diff,
   DiffStat,
   ExitCode,
+  HelpDialog,
+  HelpRow,
+  HelpSection,
   InteractionCard,
   Log,
   Markdown,
@@ -454,6 +457,36 @@ describe("BorderBox", () => {
     const rule = screen.getByRole("heading", { level: 4, name: "Output" });
     expect(rule).toBe(screen.getByTestId("rule"));
     expect(rule.className).toBe("omfp-bbox__rule");
+  });
+});
+
+describe("HelpDialog", () => {
+  // spec: UI-198, UI-187
+  test("a modal border box titled help, its sections on labelled rules; Escape asks to close", async () => {
+    const onClose = mock(() => {});
+    render(
+      <HelpDialog label="Keys and commands" filter={<input aria-label="Filter" />} end="esc" onClose={onClose}>
+        <HelpSection title="normal" note="vim keys">
+          <HelpRow keys={["spc a", "] a"]} description="Next thread needing attention" />
+          <HelpRow keys={[":theme"]} args="system | light | dark" description="Colour scheme" />
+        </HelpSection>
+      </HelpDialog>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Keys and commands" });
+    expect(dialog.querySelector(".omfp-bbox__label")?.textContent).toBe("help");
+    expect(dialog.querySelector(".omfp-bbox__end")?.textContent).toBe("esc");
+    expect(screen.getByRole("heading", { level: 3, name: "normal" }).className).toBe("omfp-bbox__rule");
+    expect([...dialog.querySelectorAll(".omfp-help__row")].map((row) => row.textContent)).toEqual([
+      "spc a] aNext thread needing attention",
+      ":themesystem | light | darkColour scheme",
+    ]);
+    expect([...dialog.querySelectorAll(".omfp-help__row kbd")].map((chip) => chip.className)).toEqual([
+      "omfp-kbd",
+      "omfp-kbd",
+      "omfp-kbd",
+    ]);
+    await userEvent.setup().keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 

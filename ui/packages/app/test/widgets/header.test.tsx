@@ -9,6 +9,7 @@ import { DELETE_THREAD, draftKey, SELECTED_THREAD } from "../../src/sdk/index.ts
 import { HeaderWidget } from "../../src/widgets/header/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { type FakeClient, renderWithHost, testHost } from "../support/host.tsx";
+import { installResizeObserver, resize } from "../support/resize.ts";
 
 afterEach(cleanup);
 
@@ -140,5 +141,49 @@ describe("omfp:header", () => {
     expect(screen.getByTestId("archive-thread").textContent).toBe("Unarchive");
     await user.click(screen.getByTestId("archive-thread"));
     expect(client.callsTo("threads.unarchive")).toHaveLength(1);
+  });
+
+  // spec: UI-202
+  test("narrower than 48rem the header is one row: title, state, model and a ⋯ popover with the rest", async () => {
+    const restore = installResizeObserver();
+    try {
+      const { client, user } = setup();
+      const header = screen.getByTestId("thread-header");
+      expect(screen.queryAllByTestId("header-more").length).toBe(0);
+      resize(header, 600);
+      expect(header.dataset.compact).toBe("true");
+      const inHeader = (testid: string) => within(header).queryAllByTestId(testid).length;
+      expect(
+        ["thread-title", "thread-state", "model-select", "header-more", "process-action", "archive-thread"].map(
+          inHeader,
+        ),
+      ).toEqual([1, 1, 1, 1, 0, 0]);
+      expect(["thinking-select", "workspace-chip", "rename-thread"].map(inHeader)).toEqual([0, 0, 0]);
+      await user.click(screen.getByTestId("header-more"));
+      const more = await screen.findByTestId("header-more-dialog");
+      expect(
+        ["rename-thread", "process-action", "archive-thread", "delete-thread", "thinking-select"].map(
+          (testid) => within(more).queryAllByTestId(testid).length,
+        ),
+      ).toEqual([1, 1, 1, 1, 1]);
+      expect(
+        within(more)
+          .getAllByTestId("workspace-chip")
+          .map((chip) => chip.textContent),
+      ).toEqual(["⌂w1", "fe:main"]);
+      await user.click(within(more).getByTestId("rename-thread"));
+      expect(screen.queryAllByTestId("header-more-dialog").length).toBe(0);
+      expect(within(header).queryAllByTestId("title-input").length).toBe(1);
+      await user.keyboard("{Escape}");
+      resize(header, 1000);
+      expect(header.dataset.compact).toBeUndefined();
+      expect(inHeader("process-action")).toBe(1);
+      resize(header, 600);
+      await user.click(screen.getByTestId("header-more"));
+      await user.click(within(await screen.findByTestId("header-more-dialog")).getByTestId("archive-thread"));
+      expect(client.callsTo("threads.archive").map((call) => call.params)).toEqual([{ threadId: "t1" }]);
+    } finally {
+      restore();
+    }
   });
 });

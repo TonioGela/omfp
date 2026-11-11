@@ -159,10 +159,13 @@ describe("renderer", () => {
     expect(widgets()).toEqual(["omfp:named", "omfp:named"]);
     expect(screen.getAllByTestId("widget").map((element) => element.dataset.path)).toEqual(["0.0", "0.1.0"]);
     expect(screen.getAllByTestId("named").map((element) => element.textContent)).toEqual(["first", "plain"]);
-    const cells = screen.getByTestId("view").querySelectorAll<HTMLElement>(":scope > [data-layout=row] > div");
+    const cells = screen
+      .getByTestId("view")
+      .querySelectorAll<HTMLElement>(":scope > [data-layout=row] > .omfp-view__cell");
     expect([...cells].map((cell) => cell.style.flexGrow)).toEqual(["2", "1"]);
-    expect(screen.queryAllByTestId("widget-toolbar")).toEqual([]);
-    expect(screen.queryAllByTestId("splitter")).toEqual([]);
+    expect(screen.queryAllByTestId("widget-toolbar").length).toBe(0);
+    // Splitters are always there (UI-206); only the toolbars wait for edit mode.
+    expect(screen.getAllByTestId("splitter").map((splitter) => splitter.dataset.path)).toEqual(["0"]);
   });
 
   // spec: UI-024, UI-092
@@ -203,7 +206,7 @@ describe("renderer", () => {
   // spec: AGT-010
   test("a tabs container with one child shows no tab bar, only that child", () => {
     show(["tabs", { id: "main" }, ["omfp:named", { label: "chat" }]]);
-    expect(screen.queryAllByTestId("view-tab")).toEqual([]);
+    expect(screen.queryAllByTestId("view-tab").length).toBe(0);
     expect(screen.queryByRole("tablist")).toBeNull();
     expect(screen.getByTestId("named").textContent).toBe("chat");
     const tabs = document.querySelector("[data-layout=tabs]");

@@ -114,6 +114,8 @@
     min-block-size: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* Pinning decides where the view goes (UI-042): no scroll anchoring moving it on layout. */
+    overflow-anchor: none;
     padding-inline: var(--omfp-gutter);
   }
 

@@ -27,6 +27,7 @@ import {
   type ViewsEvent,
   type ViewsState,
   type WidgetInfo,
+  type WorkspaceBinding,
   type WorkspaceEvent,
 } from "@omfp/protocol";
 import { isObject } from "./json.ts";
@@ -121,6 +122,19 @@ function isKeymapEntry(value: unknown): boolean {
   );
 }
 
+/** A `views/<id>` keymap (PRT-060): `[keymap]`-shaped entries with optional string `args`. */
+function isWorkspaceKeymap(value: unknown): value is WorkspaceBinding[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (entry) =>
+        isKeymapEntry(entry) &&
+        (entry.args === undefined ||
+          (Array.isArray(entry.args) && entry.args.every((arg: unknown) => typeof arg === "string"))),
+    )
+  );
+}
+
 function isSettings(value: unknown): value is Settings {
   return (
     isObject(value) &&
@@ -178,6 +192,7 @@ function isWidgetList(value: unknown): value is WidgetInfo[] {
 const VIEWS_EVENTS: Record<ViewsEvent["kind"], (event: Record<string, unknown>) => boolean> = {
   views_manifest: (event) => isOptionalString(event.error),
   views_widgets: (event) => isWidgetList(event.widgets),
+  views_keymap: (event) => isWorkspaceKeymap(event.keymap) && isOptionalString(event.error),
   widget_stored: (event) => typeof event.instance === "string" && typeof event.key === "string" && "value" in event,
 };
 
@@ -399,15 +414,18 @@ function isStoredMap(value: unknown): value is Record<string, Record<string, unk
   return isObject(value) && Object.values(value).every(isObject);
 }
 
-/** Decodes the state of a `views/<workspaceId>` snapshot (PRT-040); `manifest` and `error` default to `null`. */
+/** Decodes the state of a `views/<workspaceId>` snapshot (PRT-040, PRT-060); `manifest`, `error` and `keymapError`
+ * default to `null`, `keymap` to no bindings. */
 export function decodeViewsState(value: unknown): Decoded<ViewsState> {
   if (
     !isObject(value) ||
     !isOptionalString(value.error) ||
     !isWidgetList(value.widgets) ||
-    !isStoredMap(value.stored)
+    !isStoredMap(value.stored) ||
+    !(value.keymap === undefined || isWorkspaceKeymap(value.keymap)) ||
+    !isOptionalString(value.keymapError)
   ) {
-    return invalid("expected `{ manifest, error, widgets: { source, name, version, entry }[], stored }`");
+    return invalid("expected `{ manifest, error, widgets: { source, name, version, entry }[], stored, keymap? }`");
   }
   return {
     ok: true,
@@ -416,6 +434,8 @@ export function decodeViewsState(value: unknown): Decoded<ViewsState> {
       error: typeof value.error === "string" ? value.error : null,
       widgets: value.widgets,
       stored: value.stored,
+      keymap: value.keymap ?? [],
+      keymapError: typeof value.keymapError === "string" ? value.keymapError : null,
     },
   };
 }

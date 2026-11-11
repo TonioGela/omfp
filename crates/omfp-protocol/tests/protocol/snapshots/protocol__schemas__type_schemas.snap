@@ -1547,6 +1547,15 @@ expression: type_schemas()
   },
   "ViewsEvent": {
     "$defs": {
+      "KeymapMode": {
+        "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+        "enum": [
+          "normal",
+          "insert",
+          "cmdline"
+        ],
+        "type": "string"
+      },
       "WidgetInfo": {
         "description": "A widget folder the daemon serves (DMN-082).",
         "properties": {
@@ -1590,6 +1599,36 @@ expression: type_schemas()
             "type": "string"
           }
         ]
+      },
+      "WorkspaceBinding": {
+        "description": "One binding of a workspace's `.omfp/keymap.json` (UI-210, AGT-030): a `[keymap]` entry (UI-097) with optional\narguments.",
+        "properties": {
+          "args": {
+            "description": "Arguments passed to the command.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "command": {
+            "description": "Command id, built-in or registered by a widget (`useCommand`); `\"\"` removes the binding of `keys`.",
+            "type": "string"
+          },
+          "keys": {
+            "description": "Key sequence, e.g. `g g`, `Ctrl-d`, `Space t`.",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/$defs/KeymapMode",
+            "description": "`normal` when the file leaves it out."
+          }
+        },
+        "required": [
+          "mode",
+          "keys",
+          "command"
+        ],
+        "type": "object"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1636,6 +1675,32 @@ expression: type_schemas()
         "type": "object"
       },
       {
+        "description": "The workspace's `.omfp/keymap.json` changed (DMN-121): replaces `keymap` and `keymapError`. An invalid file\ncarries the last valid bindings with its error.",
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "keymap": {
+            "items": {
+              "$ref": "#/$defs/WorkspaceBinding"
+            },
+            "type": "array"
+          },
+          "kind": {
+            "const": "views_keymap",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "keymap"
+        ],
+        "type": "object"
+      },
+      {
         "description": "A widget stored a value (`null`: removed the key, DMN-086).",
         "properties": {
           "instance": {
@@ -1663,6 +1728,15 @@ expression: type_schemas()
   },
   "ViewsState": {
     "$defs": {
+      "KeymapMode": {
+        "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+        "enum": [
+          "normal",
+          "insert",
+          "cmdline"
+        ],
+        "type": "string"
+      },
       "WidgetInfo": {
         "description": "A widget folder the daemon serves (DMN-082).",
         "properties": {
@@ -1706,6 +1780,36 @@ expression: type_schemas()
             "type": "string"
           }
         ]
+      },
+      "WorkspaceBinding": {
+        "description": "One binding of a workspace's `.omfp/keymap.json` (UI-210, AGT-030): a `[keymap]` entry (UI-097) with optional\narguments.",
+        "properties": {
+          "args": {
+            "description": "Arguments passed to the command.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "command": {
+            "description": "Command id, built-in or registered by a widget (`useCommand`); `\"\"` removes the binding of `keys`.",
+            "type": "string"
+          },
+          "keys": {
+            "description": "Key sequence, e.g. `g g`, `Ctrl-d`, `Space t`.",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/$defs/KeymapMode",
+            "description": "`normal` when the file leaves it out."
+          }
+        },
+        "required": [
+          "mode",
+          "keys",
+          "command"
+        ],
+        "type": "object"
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1713,6 +1817,22 @@ expression: type_schemas()
     "properties": {
       "error": {
         "description": "Why the file is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or absent.",
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "keymap": {
+        "default": [],
+        "description": "The bindings of the workspace's `.omfp/keymap.json` (DMN-120, UI-210); an invalid file keeps the last valid\nones (DMN-121); empty without a file.",
+        "items": {
+          "$ref": "#/$defs/WorkspaceBinding"
+        },
+        "type": "array"
+      },
+      "keymapError": {
+        "default": null,
+        "description": "Why `.omfp/keymap.json` is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or\nabsent.",
         "type": [
           "string",
           "null"

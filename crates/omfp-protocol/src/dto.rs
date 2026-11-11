@@ -241,6 +241,22 @@ pub struct KeymapEntry {
     pub command: String,
 }
 
+/// One binding of a workspace's `.omfp/keymap.json` (UI-210, AGT-030): a `[keymap]` entry (UI-097) with optional
+/// arguments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceBinding {
+    /// `normal` when the file leaves it out.
+    pub mode: KeymapMode,
+    /// Key sequence, e.g. `g g`, `Ctrl-d`, `Space t`.
+    pub keys: String,
+    /// Command id, built-in or registered by a widget (`useCommand`); `""` removes the binding of `keys`.
+    pub command: String,
+    /// Arguments passed to the command.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+}
+
 /// The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -491,6 +507,14 @@ pub struct ViewsState {
     pub widgets: Vec<WidgetInfo>,
     /// What widgets stored with `useStored` (DMN-086): instance → key → value.
     pub stored: BTreeMap<String, BTreeMap<String, Value>>,
+    /// The bindings of the workspace's `.omfp/keymap.json` (DMN-120, UI-210); an invalid file keeps the last valid
+    /// ones (DMN-121); empty without a file.
+    #[serde(default)]
+    pub keymap: Vec<WorkspaceBinding>,
+    /// Why `.omfp/keymap.json` is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or
+    /// absent.
+    #[serde(default)]
+    pub keymap_error: Option<String>,
 }
 
 /// A job's process state (DMN-080).

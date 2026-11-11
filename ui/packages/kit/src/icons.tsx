@@ -55,6 +55,11 @@ const ICONS = {
     ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" }],
     ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" }],
   ],
+  ellipsis: [
+    ["circle", { cx: "12", cy: "12", r: "1" }],
+    ["circle", { cx: "19", cy: "12", r: "1" }],
+    ["circle", { cx: "5", cy: "12", r: "1" }],
+  ],
   file: [
     [
       "path",
@@ -121,12 +126,28 @@ const ICONS = {
     ["line", { x1: "8", x2: "16", y1: "12", y2: "12" }],
   ],
   "loader-circle": [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56" }]],
+  "message-square": [
+    [
+      "path",
+      {
+        d: "M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z",
+      },
+    ],
+  ],
   mic: [
     ["path", { d: "M12 19v3" }],
     ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2" }],
     ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3" }],
   ],
   minus: [["path", { d: "M5 12h14" }]],
+  "panel-left": [
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+    ["path", { d: "M9 3v18" }],
+  ],
+  "panel-right": [
+    ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2" }],
+    ["path", { d: "M15 3v18" }],
+  ],
   paperclip: [
     [
       "path",

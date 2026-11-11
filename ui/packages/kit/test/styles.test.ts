@@ -168,7 +168,7 @@ describe("kit styles", () => {
   test("gradients only where listed", () => {
     const GRADIENT = /var\(--omfp-grad(?:-loop)?\)/;
     const ALLOWED =
-      /grad-text|grad-flow|data-variant="primary"|tabs__tab\[data-selected\]::after|mode-pill|cmd__prompt|omfp-caret|progress__fill|gauge__fill|voice-meter__fill|compose\[data-mode="insert"\]|tool\[data-status="running"\]|@keyframes/;
+      /grad-text|grad-flow|data-variant="primary"|tabs__tab\[data-selected\]::after|mode-pill|cmd__prompt|omfp-caret|progress__fill|gauge__fill|voice-meter__fill|compose\[data-mode="insert"\]|tool\[data-status="running"\]|splitter::after|areabar__item\[aria-pressed="true"\]::before|@keyframes/;
     const misplaced = kitRules
       .filter((rule) => [...rule.declarations.values()].some((value) => GRADIENT.test(value)))
       .map((rule) => rule.selector)

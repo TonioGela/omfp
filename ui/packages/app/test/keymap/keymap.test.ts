@@ -57,7 +57,9 @@ describe("keymap", () => {
     expect(keyLabel("Shift-Tab")).toBe("shift+tab");
     expect(keyLabel("Alt-Enter")).toBe("alt+enter");
     expect(keyLabel("Ctrl-c")).toBe("ctrl+c");
-    expect(keyLabel("Ctrl-Shift-ArrowUp")).toBe("ctrl+shift+arrowup");
+    expect(keyLabel("Ctrl-Shift-ArrowUp")).toBe("ctrl+shift+up");
+    expect(keyLabel("ArrowDown")).toBe("down");
+    expect(keyLabel("PageDown")).toBe("pagedown");
     expect(keyLabel("Meta-k")).toBe("meta+k");
     expect(keyLabel("G")).toBe("G");
     expect(keyLabel("g g")).toBe("g g");

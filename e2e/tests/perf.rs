@@ -1,23 +1,34 @@
-//! Transcript performance (M9) in headless Chromium against a daemon on the fake launcher: a thread resumes a session
-//! of 10,000 messages (prose, Markdown with code blocks, tool calls with their results), and the test plays omp's
+//! Transcript and composer performance (M9) against a daemon on the fake launcher: a thread resumes a session of
+//! 10,000 messages (prose, Markdown with code blocks, tool calls with their results), and the test plays omp's
 //! streaming frames into it. A probe installed before the page's scripts (`perf/probe.js`) stands in for the React
-//! developer tools to count commits and component renders per transcript item, and records frames, long tasks and the time
-//! spent handling WebSocket messages.
+//! developer tools to count commits and component renders per transcript item, and records frames, long tasks, the
+//! time spent handling WebSocket messages, and per key press the time to the next frame and the event timing entries.
 //!
-//! The test asserts structure only (TST-052): the DOM stays bounded with 10,000 messages (UI-190) and a streamed delta
-//! re-renders the streaming row and no other transcript item (UI-191). The benchmark prints timings and asserts
-//! nothing; it is not part of `just ci`:
+//! The tests run in headless Chromium and assert structure only (TST-052): the DOM stays bounded with 10,000 messages
+//! (UI-190), a streamed delta re-renders the streaming row and no other transcript item (UI-191), and a key press in
+//! the composer renders the input and nothing else (UI-197). The benchmarks print timings and assert nothing; they
+//! are not part of `just ci`:
 //!
 //! ```sh
-//! just build-web && cargo test -p e2e --release --test perf -- --ignored --nocapture
+//! just build-web
+//! cargo test -p e2e --release --test perf benchmark_transcript -- --ignored --nocapture
+//! cargo test -p e2e --release --test perf benchmark_typing_chromium -- --ignored --nocapture
+//! OMFP_WEBKIT_WEBDRIVER=$(command -v WebKitWebDriver) \
+//!   cargo test -p e2e --release --test perf benchmark_typing_webkit -- --ignored --nocapture
 //! ```
 //!
-//! `OMFP_PERF_MESSAGES` (default 10000), `OMFP_PERF_RATE` (events per second, default 100) and `OMFP_PERF_SECONDS`
-//! (default 10) change its load; with `OMFP_PERF_PROFILE=1` it also prints the functions with the most self time
-//! while scrolling and streaming (Chromium's sampling profiler; build the bundle without `minify` for readable names,
-//! and point `OMFP_WEB_BUNDLE` at it).
+//! `OMFP_PERF_MESSAGES` (default 10000 for the transcript, 300 for typing), `OMFP_PERF_RATE` (events per second,
+//! default 100) and `OMFP_PERF_SECONDS` (default 10) change the load; with `OMFP_PERF_PROFILE=1` the transcript
+//! benchmark also prints the functions with the most self time while scrolling and streaming (Chromium's sampling
+//! profiler; build the bundle without `minify` for readable names, and point `OMFP_WEB_BUNDLE` at it). The `webkit`
+//! benchmark drives nixpkgs' `MiniBrowser` (the engine of `omfp desktop`) through `WebKitWebDriver` under `xvfb-run`,
+//! never the user's display, on a copy of the bundle whose `index.html` loads the probe (no CDP there).
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use e2e::{Journey, row};
@@ -31,6 +42,7 @@ use thirtyfour::prelude::*;
 const PROBE: &str = include_str!("perf/probe.js");
 const TRANSCRIPT: &str = "[data-testid=transcript]";
 const STREAMING: &str = "[data-testid=transcript-item][data-key=streaming]";
+const COMPOSER: &str = "[data-testid=composer-input]";
 /// The streamed reply's omp message id.
 const STREAM_ID: &str = "perf-stream";
 
@@ -38,6 +50,8 @@ const STREAM_ID: &str = "perf-stream";
 const MAX_ITEMS: u64 = 32;
 /// Elements under the transcript with 10,000 messages (UI-190).
 const MAX_NODES: u64 = 1500;
+/// Components one key press in the composer renders: the input with its React Aria field parts (UI-197).
+const MAX_RENDERS_PER_KEY: u64 = 24;
 
 fn assistant(content: &Value) -> Value {
     json!({
@@ -835,4 +849,446 @@ async fn benchmark_transcript() -> anyhow::Result<()> {
     report("streaming 200 deltas, renders tracked", &recording, 200);
 
     journey.finish("transcript benchmark").await
+}
+
+/// The text typed into the composer, one key at a time.
+const TYPED: &str = "the quick brown fox jumps over the lazy dog ";
+
+async fn eval_on(driver: &WebDriver, script: &str, args: Vec<Value>) -> anyhow::Result<Value> {
+    Ok(driver.execute(script, args).await?.json().clone())
+}
+
+/// Polls `script` (returning a boolean) in `driver`'s page until it is true; for the browsers without a [`Journey`].
+async fn until_true(
+    driver: &WebDriver,
+    what: &str,
+    script: &str,
+    args: Vec<Value>,
+) -> anyhow::Result<()> {
+    for _ in 0..1200 {
+        if eval_on(driver, script, args.clone()).await? == json!(true) {
+            return Ok(());
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    anyhow::bail!("timed out waiting for {what}")
+}
+
+async fn until_shown(driver: &WebDriver, css: &str) -> anyhow::Result<()> {
+    until_true(
+        driver,
+        css,
+        "return document.querySelector(arguments[0]) !== null;",
+        vec![json!(css)],
+    )
+    .await
+}
+
+async fn composer_length(driver: &WebDriver) -> anyhow::Result<u64> {
+    Ok(eval_on(
+        driver,
+        "const e = document.querySelector(arguments[0]); return e ? e.value.length : 0;",
+        vec![json!(COMPOSER)],
+    )
+    .await?
+    .as_u64()
+    .unwrap_or_default())
+}
+
+/// Types `count` keys into the composer, one WebDriver call each: `pause` apart, or (`None`) each once the previous
+/// one reached the input. Returns once every key is in the input.
+async fn type_keys(
+    driver: &WebDriver,
+    count: usize,
+    pause: Option<Duration>,
+) -> anyhow::Result<()> {
+    let start = composer_length(driver).await?;
+    let chars: Vec<char> = TYPED.chars().collect();
+    for (typed, index) in (1..).zip(0..count) {
+        driver
+            .find(By::Css(COMPOSER))
+            .await?
+            .send_keys(chars[index % chars.len()].to_string())
+            .await?;
+        match pause {
+            Some(pause) => tokio::time::sleep(pause).await,
+            None => {
+                until_true(
+                    driver,
+                    "the key in the composer",
+                    "return document.querySelector(arguments[0]).value.length >= arguments[1];",
+                    vec![json!(COMPOSER), json!(start + typed)],
+                )
+                .await?;
+            }
+        }
+    }
+    until_true(
+        driver,
+        "the typed keys",
+        "return document.querySelector(arguments[0]).value.length >= arguments[1];",
+        vec![json!(COMPOSER), json!(start + count as u64)],
+    )
+    .await
+}
+
+/// Opens thread `id` in `driver`'s page and puts the focus in its composer with a WebDriver click: the page gets the
+/// window's focus too (a script's `focus()` in an unfocused headless page fires no focus events, so the keymap would
+/// not enter insert mode). Waits until it has (`data-mode` of the frame).
+async fn open_composer(driver: &WebDriver, id: &str) -> anyhow::Result<()> {
+    until_shown(driver, &row(id)).await?;
+    eval_on(
+        driver,
+        "document.querySelector(arguments[0]).click();",
+        vec![json!(row(id))],
+    )
+    .await?;
+    until_shown(driver, &items_of(id)).await?;
+    until_shown(driver, COMPOSER).await?;
+    driver.find(By::Css(COMPOSER)).await?.click().await?;
+    // The page has the window's focus now; MiniBrowser's click may land elsewhere, so focus the input itself too.
+    eval_on(
+        driver,
+        "document.querySelector(arguments[0]).focus();",
+        vec![json!(COMPOSER)],
+    )
+    .await?;
+    until_shown(driver, "[data-testid=app][data-mode=insert]").await
+}
+
+// spec: TST-052, UI-197
+#[tokio::test(flavor = "multi_thread")]
+async fn a_key_press_in_the_composer_renders_the_input_only() -> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(history(300)));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    install_probe(&journey).await?;
+    let thread = create_thread(&journey, "typing").await?;
+    open_composer(&journey.driver, &thread).await?;
+    let keys = 10;
+    start_recording(&journey.driver, true).await?;
+    type_keys(&journey.driver, keys, None).await?;
+    let recording = stop_recording(&journey.driver).await?;
+    let items: Vec<&String> = recording
+        .renders
+        .keys()
+        .filter(|key| *key != "outside")
+        .collect();
+    assert_eq!(
+        items,
+        Vec::<&String>::new(),
+        "no transcript item renders: {recording:?}"
+    );
+    let rendered: u64 = recording.commit_sizes.iter().sum();
+    assert!(
+        rendered <= MAX_RENDERS_PER_KEY * keys as u64,
+        "{rendered} components rendered for {keys} keys, per commit {:?}: {:?}",
+        recording.commit_sizes,
+        recording.outside
+    );
+    journey.finish("composer typing").await
+}
+
+fn report_typing(name: &str, recording: &Recording, keys: usize, script_ms: Option<f64>) {
+    let keys = float(keys as u64);
+    let mut latency = recording.keys.clone();
+    let mut slow: Vec<f64> = recording
+        .slow_events
+        .iter()
+        .map(|(_, duration)| *duration)
+        .collect();
+    eprintln!("{name}:");
+    eprintln!("  key to next frame ms: {}", stats(&mut latency));
+    eprintln!(
+        "  keyboard/input events of 16 ms or more (event timing duration, input to paint): {}",
+        stats(&mut slow)
+    );
+    eprintln!(
+        "  commits/key {:.2}, long tasks {}{}",
+        float(recording.commits) / keys,
+        recording.long_tasks.len(),
+        script_ms
+            .map(|ms| format!(", script {:.2} ms/key", ms / keys))
+            .unwrap_or_default()
+    );
+    if !recording.commit_sizes.is_empty() {
+        let rendered: u64 = recording.commit_sizes.iter().sum();
+        let items: u64 = recording
+            .renders
+            .iter()
+            .filter(|(key, _)| *key != "outside")
+            .map(|(_, renders)| renders)
+            .sum();
+        eprintln!(
+            "  components rendered/key {:.1}, of them in transcript items {:.1}",
+            float(rendered) / keys,
+            float(items) / keys
+        );
+        let mut outside: Vec<(&String, &u64)> = recording.outside.iter().collect();
+        outside.sort_by(|a, b| b.1.cmp(a.1));
+        let top: Vec<String> = outside
+            .iter()
+            .take(20)
+            .map(|(name, renders)| format!("{name} {:.1}", float(**renders) / keys))
+            .collect();
+        eprintln!("  per key outside the transcript: {}", top.join(", "));
+    }
+}
+
+/// Moves the focus from the transcript into the composer `times` times; per move, the ms from `focus()` to the task
+/// after the next frame (the keymap enters insert mode, UI-098), and the components rendered.
+async fn focus_timed(driver: &WebDriver, times: usize) -> anyhow::Result<(Vec<f64>, u64)> {
+    start_recording(driver, true).await?;
+    let value = driver
+        .execute_async(
+            "const [transcript, composer, times, done] = arguments;
+             const frame = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+             const spent = [];
+             for (let i = 0; i < times; i++) {
+               document.querySelector(transcript).focus();
+               await frame(); await frame();
+               const started = performance.now();
+               document.querySelector(composer).focus();
+               await frame();
+               spent.push(performance.now() - started);
+             }
+             done(spent);",
+            vec![json!(TRANSCRIPT), json!(COMPOSER), json!(times)],
+        )
+        .await?
+        .json()
+        .clone();
+    let recording = stop_recording(driver).await?;
+    let spent = value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_f64)
+        .collect();
+    Ok((spent, recording.commit_sizes.iter().sum()))
+}
+
+/// Typing in thread `thread` of `driver`'s page, idle and while a reply streams at 100 events/s: 40 keys 120 ms
+/// apart timed (with Chromium's script time when `journey` gives CDP), then 20 keys with renders counted; and the
+/// focus moving into the composer.
+async fn typing_runs(
+    label: &str,
+    driver: &WebDriver,
+    journey: Option<&Journey>,
+    thread: &str,
+    launcher: &FakeLauncher,
+) -> anyhow::Result<()> {
+    open_composer(driver, thread).await?;
+    let (mut spent, rendered) = focus_timed(driver, 10).await?;
+    eprintln!(
+        "{label}, focus into the composer: ms to the next frame {}, components rendered/focus {:.0}",
+        stats(&mut spent),
+        float(rendered) / 10.0
+    );
+    let process = launcher.process(0);
+    let pause = Some(Duration::from_millis(120));
+    for busy in [false, true] {
+        let streaming = Arc::new(AtomicBool::new(busy));
+        let emitter = if busy {
+            process.emit(stream_start());
+            until_shown(driver, STREAMING).await?;
+            let streaming = Arc::clone(&streaming);
+            let process = process.clone();
+            Some(tokio::spawn(async move {
+                let mut ticks = tokio::time::interval(Duration::from_millis(10));
+                let mut sent = Vec::new();
+                for delta in streamed_deltas(100_000) {
+                    if !streaming.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    ticks.tick().await;
+                    process.emit(vec![text_delta(&delta)]);
+                    sent.push(delta);
+                }
+                sent
+            }))
+        } else {
+            None
+        };
+        let state = if busy { "streaming" } else { "idle" };
+        let before = match journey {
+            Some(journey) => metrics(journey).await?.get("ScriptDuration").copied(),
+            None => None,
+        };
+        start_recording(driver, false).await?;
+        type_keys(driver, 40, pause).await?;
+        let recording = stop_recording(driver).await?;
+        let after = match journey {
+            Some(journey) => metrics(journey).await?.get("ScriptDuration").copied(),
+            None => None,
+        };
+        let script = before
+            .zip(after)
+            .map(|(before, after)| (after - before) * 1000.0);
+        report_typing(
+            &format!("{label}, {state} thread, 40 keys 120 ms apart"),
+            &recording,
+            40,
+            script,
+        );
+        start_recording(driver, true).await?;
+        type_keys(driver, 20, pause).await?;
+        let recording = stop_recording(driver).await?;
+        report_typing(
+            &format!("{label}, {state} thread, 20 keys, renders counted"),
+            &recording,
+            20,
+            None,
+        );
+        if let Some(emitter) = emitter {
+            streaming.store(false, Ordering::Relaxed);
+            let sent = emitter.await?;
+            process.emit(stream_end(&sent.concat()));
+            until_true(
+                driver,
+                "the end of the stream",
+                "return document.querySelector(arguments[0]) === null;",
+                vec![json!(STREAMING)],
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "benchmark: prints timings, asserts nothing"]
+async fn benchmark_typing_chromium() -> anyhow::Result<()> {
+    let messages = usize::try_from(env_number("OMFP_PERF_MESSAGES", 300))?;
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(history(messages)));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    install_probe(&journey).await?;
+    let thread = create_thread(&journey, "typing").await?;
+    eprintln!("typing benchmark: {messages} messages");
+    typing_runs(
+        "chromium",
+        &journey.driver,
+        Some(&journey),
+        &thread,
+        &launcher,
+    )
+    .await?;
+    journey.finish("typing benchmark (chromium)").await
+}
+
+/// A copy of the web bundle at `source` in `into` whose `index.html` runs the probe before anything else (for
+/// browsers without CDP): the other entries are links to the original.
+fn probed_bundle(source: &Path, into: &Path) -> anyhow::Result<PathBuf> {
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        if entry.file_name() != "index.html" {
+            std::os::unix::fs::symlink(entry.path(), into.join(entry.file_name()))?;
+        }
+    }
+    let html = std::fs::read_to_string(source.join("index.html"))?;
+    std::fs::write(
+        into.join("index.html"),
+        html.replacen("<head>", &format!("<head>\n<script>{PROBE}</script>"), 1),
+    )?;
+    Ok(into.to_path_buf())
+}
+
+/// `WebKitWebDriver` (`OMFP_WEBKIT_WEBDRIVER`, else from `PATH`) under its own X server: `xvfb-run`, never the
+/// user's display. The whole process group is killed on drop.
+struct WebKitDriver {
+    child: Child,
+    url: String,
+    /// The `MiniBrowser` next to the driver (`libexec/webkit2gtk-4.1/`).
+    browser: PathBuf,
+}
+
+impl WebKitDriver {
+    async fn start() -> anyhow::Result<Self> {
+        use std::os::unix::process::CommandExt;
+        let driver = std::env::var_os("OMFP_WEBKIT_WEBDRIVER")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+                    .map(|dir| dir.join("WebKitWebDriver"))
+                    .find(|path| path.is_file())
+            })
+            .ok_or_else(|| anyhow::anyhow!("set OMFP_WEBKIT_WEBDRIVER to WebKitWebDriver"))?;
+        let browser = driver
+            .parent()
+            .and_then(Path::parent)
+            .map(|prefix| prefix.join("libexec/webkit2gtk-4.1/MiniBrowser"))
+            .filter(|path| path.is_file())
+            .ok_or_else(|| anyhow::anyhow!("no MiniBrowser next to {}", driver.display()))?;
+        let port = std::net::TcpListener::bind("127.0.0.1:0")?
+            .local_addr()?
+            .port();
+        let child = Command::new("xvfb-run")
+            .args(["-a", "-s", "-screen 0 1600x1200x24"])
+            .arg(&driver)
+            .arg(format!("--port={port}"))
+            .env_remove("DISPLAY")
+            .env_remove("WAYLAND_DISPLAY")
+            .env("GDK_BACKEND", "x11")
+            .process_group(0)
+            .spawn()?;
+        let started = Self {
+            child,
+            url: format!("http://127.0.0.1:{port}"),
+            browser,
+        };
+        for _ in 0..200 {
+            if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                return Ok(started);
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        anyhow::bail!("WebKitWebDriver did not start")
+    }
+}
+
+impl Drop for WebKitDriver {
+    fn drop(&mut self) {
+        let _ = Command::new("kill")
+            .arg("-TERM")
+            .arg(format!("-{}", self.child.id()))
+            .status();
+        let _ = self.child.wait();
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "benchmark: prints timings, asserts nothing"]
+async fn benchmark_typing_webkit() -> anyhow::Result<()> {
+    let messages = usize::try_from(env_number("OMFP_PERF_MESSAGES", 300))?;
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(history(messages)));
+    let scratch = tempfile::tempdir()?;
+    let bundle = probed_bundle(&e2e::web_bundle(), scratch.path())?;
+    let journey = Journey::start_fake_with_bundle(launcher.clone(), bundle).await?;
+    journey.connected().await?;
+    let thread = create_thread(&journey, "typing").await?;
+    let webkit = WebKitDriver::start().await?;
+    let mut caps = thirtyfour::Capabilities::new();
+    caps.set("browserName", "MiniBrowser")?;
+    caps.set(
+        "webkitgtk:browserOptions",
+        json!({ "binary": webkit.browser, "args": ["--automation"] }),
+    )?;
+    let driver = WebDriver::new(&webkit.url, caps).await?;
+    driver.set_window_rect(0, 0, 1400, 1000).await?;
+    driver.goto(journey.daemon().url()).await?;
+    until_true(
+        &driver,
+        "the page with the probe",
+        "return document.querySelector('[data-testid=view]') !== null && window.__omfpPerf !== undefined;",
+        Vec::new(),
+    )
+    .await?;
+    let agent = eval_on(&driver, "return navigator.userAgent;", Vec::new()).await?;
+    eprintln!("typing benchmark: {messages} messages, {agent}");
+    typing_runs("webkitgtk", &driver, None, &thread, &launcher).await?;
+    driver.quit().await?;
+    drop(webkit);
+    journey.finish("typing benchmark (webkitgtk)").await
 }

@@ -1,8 +1,10 @@
 /**
  * Renders a validated view (AGT-010): containers become flex rows and columns, tabs or stacked layers; each widget
- * renders in its own slot, so a failing widget shows its error in place and the rest of the window keeps working. In
- * this window's edit mode (UI-103) every widget gets a toolbar (reference, Move, Hide) and the cells of each `row` and
- * `col` get splitters; each change goes to `onEdit`, and the view then renders what the daemon pushes back.
+ * renders in its own slot, so a failing widget shows its error in place and the rest of the window keeps working.
+ * Splitters between the cells of each `row` and `col` resize them for this window (UI-206); in this window's edit mode
+ * (UI-103) they write the view's defaults instead, and every widget gets a toolbar (reference, Move, Hide); each change
+ * goes to `onEdit`, and the view then renders what the daemon pushes back. On a phone (UI-204) the view shows one area
+ * at a time and its rows as tabs, without splitters.
  */
 
 import {
@@ -20,13 +22,24 @@ import {
   Toolbar,
 } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
-import { Fragment, type KeyboardEvent, type PointerEvent, type ReactNode, useMemo, useRef, useState } from "react";
-import { fileName, fileTabId, useFileTabs } from "../sdk/index.ts";
+import { Fragment, type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
+import { fileName, fileTabId, useFileTabs, useWindowState } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
-import { type LayoutEdit, type Place, RESIZE_STEP, resizeSizes } from "./edit.ts";
-import { FILE_WIDGET, fileProps, type LayoutTree, MAIN_SLOT } from "./layout.ts";
+import { type LayoutEdit, type Place, resizeSizes } from "./edit.ts";
+import {
+  type Area,
+  chatCell,
+  containsWidget,
+  FILE_WIDGET,
+  fileProps,
+  hasMainSlot,
+  type LayoutTree,
+  MAIN_SLOT,
+} from "./layout.ts";
 import type { WidgetRegistry } from "./resolve.ts";
+import { effectiveSizes, PANE_SIZES, sizesKey, withSizes } from "./sizes.ts";
 import { WidgetSlot } from "./slot.tsx";
+import { Resizer } from "./splitter.tsx";
 import type { ResolvedView } from "./views.ts";
 
 const text = strings.shell.frame;
@@ -42,6 +55,8 @@ export interface ViewRendererProps {
   readonly views?: ViewsState | undefined;
   /** Edit mode (UI-103): writes a layout edit, resolving to whether it was written; absent outside edit mode. */
   readonly onEdit?: ((edit: LayoutEdit) => Promise<boolean>) | undefined;
+  /** On a phone (UI-204): the area shown; absent on wider frames. */
+  readonly area?: Area | undefined;
 }
 
 /** A place the Move menu offers. */
@@ -62,9 +77,12 @@ interface Scope {
   readonly targets: readonly MoveTarget[];
   /** Whether the view holds a single widget (which cannot be hidden). */
   readonly single: boolean;
+  readonly viewId: string;
+  /** On a phone: the area shown. */
+  readonly area: Area | undefined;
 }
 
-export function ViewRenderer({ view, registry, workspaceId, views, onEdit }: ViewRendererProps): ReactNode {
+export function ViewRenderer({ view, registry, workspaceId, views, onEdit, area }: ViewRendererProps): ReactNode {
   const targets = useMemo(() => moveTargets(view.tree, "0"), [view.tree]);
   const scope: Scope = {
     registry,
@@ -73,9 +91,17 @@ export function ViewRenderer({ view, registry, workspaceId, views, onEdit }: Vie
     onEdit,
     targets,
     single: view.tree.kind === "widget",
+    viewId: view.id,
+    area,
   };
   return (
-    <div className="omfp-view" data-testid="view" data-view={view.id} data-editing={onEdit !== undefined}>
+    <div
+      className="omfp-view"
+      data-testid="view"
+      data-view={view.id}
+      data-editing={onEdit !== undefined}
+      data-area={area}
+    >
       <Node tree={view.tree} path="0" scope={scope} />
     </div>
   );
@@ -235,7 +261,20 @@ function MainTabs({
   );
 }
 
-/** A `row`, `col` or `stack`: its children side by side, stacked or layered; splitters between them in edit mode. */
+/** Whether `tree` holds the conversation (the `main` slot or `omfp:chat`). */
+function holdsChat(tree: LayoutTree): boolean {
+  return hasMainSlot(tree) || containsWidget(tree, ["omfp:chat"]);
+}
+
+/** Widgets as tall as their content in a `col` (styles.css), which a splitter cannot resize. */
+const FIXED_WIDGETS = ["omfp:header"];
+
+/**
+ * A `row`, `col` or `stack`: its children side by side, stacked or layered, with a splitter between the cells of a
+ * `row` or `col`. A splitter resizes the cells for this window (kept by workspace, view and path; a double click goes
+ * back to the view's sizes), or in edit mode writes the view's sizes. On a phone the cells of a row are tabs (all
+ * mounted, one shown) and the view's root row shows the chat area or the side area (UI-204).
+ */
 function Cells({
   tree,
   path,
@@ -245,40 +284,92 @@ function Cells({
   path: string;
   scope: Scope;
 }): ReactNode {
-  const { sizes } = tree.props;
-  // A pointer drag's sizes, shown until the daemon pushes the written ones (or the write fails).
+  const { onEdit, area } = scope;
+  const key = sizesKey(scope.workspaceId, scope.viewId, path);
+  const [own, setOwn] = useWindowState(PANE_SIZES);
+  const count = tree.children.length;
+  const sizes = effectiveSizes(tree.props.sizes, onEdit === undefined ? own[key] : undefined, count);
+  // A pointer drag's sizes, shown until the new sizes arrive (the window's, or the daemon's push in edit mode).
   const [preview, setPreview] = useState<{ base: readonly number[] | undefined; sizes: readonly number[] }>();
   const shown = preview !== undefined && preview.base === sizes ? preview.sizes : sizes;
-  const { onEdit } = scope;
-  const resizable = onEdit !== undefined && (tree.kind === "row" || tree.kind === "col");
-  const written = sizes ?? tree.children.map(() => 1);
+  const current = sizes ?? tree.children.map(() => 1);
+  const phone = area !== undefined;
+  const resizable = !phone && (tree.kind === "row" || tree.kind === "col");
+  const fixed = (index: number) => {
+    const child = tree.children[index];
+    return tree.kind === "col" && child?.kind === "widget" && FIXED_WIDGETS.includes(child.name);
+  };
+  // Every `row` is tabs on a phone, and a `col` without the conversation (a header over the chat stays stacked).
+  const boxes = tree.kind === "col" && !holdsChat(tree);
+  const tabbed = phone && (tree.kind === "row" || boxes);
+  const chat = tabbed && path === "0" ? chatCell(tree) : undefined;
+  const indices = tree.children.map((_, index) => index);
+  const choices = chat === undefined ? indices : area === "chat" ? [chat] : indices.filter((index) => index !== chat);
+  const [picked, setPicked] = useState<number>();
+  const selected = picked !== undefined && choices.includes(picked) ? picked : (choices[0] ?? 0);
+  const resize = (index: number, delta: number) => {
+    if (onEdit === undefined) {
+      setPreview(undefined);
+      setOwn((previous) => withSizes(previous, key, resizeSizes(current, index, delta)));
+      return;
+    }
+    void onEdit({ kind: "resize", path, index, delta }).then((written) => {
+      if (written) {
+        // The window's own sizes would hide the new defaults once edit mode ends.
+        setOwn((previous) => withSizes(previous, key, undefined));
+      } else {
+        setPreview(undefined);
+      }
+    });
+  };
   return (
-    <div className={`omfp-view__${tree.kind}`} data-layout={tree.kind} data-path={path}>
+    <div
+      className={`omfp-view__${tree.kind}`}
+      data-layout={tree.kind}
+      data-path={path}
+      data-tabbed={tabbed || undefined}
+      data-boxes={(boxes && !tabbed) || undefined}
+    >
+      {tabbed && choices.length > 1 && (
+        <CellTabs tree={tree} path={path} choices={choices} selected={selected} onSelect={setPicked} />
+      )}
       {tree.children.map((child, index) => {
         const id = `${path}.${index}`;
+        const before = shown?.[index - 1] ?? 1;
+        const after = shown?.[index] ?? 1;
         return (
           <Fragment key={id}>
-            {resizable && index > 0 && (
-              <Splitter
-                kind={tree.kind === "row" ? "row" : "col"}
-                path={path}
-                index={index}
-                weights={shown ?? written}
+            {resizable && index > 0 && !fixed(index - 1) && !fixed(index) && (
+              <Resizer
+                orientation={tree.kind === "row" ? "vertical" : "horizontal"}
+                label={layoutText.splitter(tree.kind, path, index)}
+                value={(before / (before + after)) * 100}
+                data-testid="splitter"
+                data-path={path}
+                data-index={index}
                 onPreview={(delta) =>
                   setPreview(
-                    delta === undefined ? undefined : { base: sizes, sizes: resizeSizes(written, index, delta) },
+                    delta === undefined ? undefined : { base: sizes, sizes: resizeSizes(current, index, delta) },
                   )
                 }
-                onResize={(delta) => {
-                  void onEdit({ kind: "resize", path, index, delta }).then((written) => {
-                    if (!written) {
-                      setPreview(undefined);
-                    }
-                  });
-                }}
+                onResize={(delta) => resize(index, delta)}
+                onReset={
+                  onEdit === undefined
+                    ? () => {
+                        setPreview(undefined);
+                        setOwn((previous) => withSizes(previous, key, undefined));
+                      }
+                    : undefined
+                }
               />
             )}
-            <div className="omfp-view__cell" style={shown === undefined ? undefined : { flexGrow: shown[index] }}>
+            <div
+              className="omfp-view__cell"
+              id={tabbed ? cellId(id) : undefined}
+              role={tabbed ? "tabpanel" : undefined}
+              hidden={tabbed && index !== selected}
+              style={shown === undefined || tabbed ? undefined : { flexGrow: shown[index] }}
+            >
               <Node tree={child} path={id} scope={scope} />
             </div>
           </Fragment>
@@ -288,75 +379,66 @@ function Cells({
   );
 }
 
-interface SplitterProps {
-  readonly kind: "row" | "col";
-  readonly path: string;
-  /** Index of the cell after the splitter. */
-  readonly index: number;
-  readonly weights: readonly number[];
-  /** A drag in progress (`undefined`: none). */
-  readonly onPreview: (delta: number | undefined) => void;
-  /** A finished change: `delta` is the share of the container moved to the cell before the splitter. */
-  readonly onResize: (delta: number) => void;
+function cellId(path: string): string {
+  return `omfp-cell-${path.replaceAll(".", "-")}`;
 }
 
-/** Resizes two adjacent cells with the pointer or the arrow keys (5 % steps, UI-103). */
-function Splitter({ kind, path, index, weights, onPreview, onResize }: SplitterProps): ReactNode {
-  const drag = useRef<{ readonly start: number; readonly length: number }>(undefined);
-  const before = weights[index - 1] ?? 1;
-  const after = weights[index] ?? 1;
-  const position = (event: PointerEvent) => (kind === "row" ? event.clientX : event.clientY);
-  const delta = (event: PointerEvent) =>
-    drag.current === undefined ? 0 : (position(event) - drag.current.start) / drag.current.length;
+/**
+ * The tab bar of a container shown as tabs on a phone (UI-204): one tab per cell it may show, labelled like the
+ * `tabs` container's (UI-154); the arrow keys move between them.
+ */
+function CellTabs({
+  tree,
+  path,
+  choices,
+  selected,
+  onSelect,
+}: {
+  tree: Exclude<LayoutTree, { kind: "widget" }>;
+  path: string;
+  choices: readonly number[];
+  selected: number;
+  onSelect: (index: number) => void;
+}): ReactNode {
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
+    if (step === undefined) {
+      return;
+    }
+    event.preventDefault();
+    const next = choices[(choices.indexOf(selected) + step + choices.length) % choices.length] ?? selected;
+    onSelect(next);
+    event.currentTarget.querySelector<HTMLElement>(`[data-index="${next}"]`)?.focus();
+  };
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a focusable, adjustable separator (WAI-ARIA window splitter); <hr> cannot take focus or keys.
     <div
-      className="omfp-splitter"
-      role="separator"
-      tabIndex={0}
-      aria-orientation={kind === "row" ? "vertical" : "horizontal"}
-      aria-label={layoutText.splitter(kind, path, index)}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={Math.round((before / (before + after)) * 100)}
-      data-testid="splitter"
-      data-path={path}
-      data-index={index}
-      onKeyDown={(event: KeyboardEvent) => {
-        const step = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key];
-        if (step !== undefined) {
-          event.preventDefault();
-          onResize(step * RESIZE_STEP);
-        }
-      }}
-      onPointerDown={(event) => {
-        const box = event.currentTarget.parentElement?.getBoundingClientRect();
-        const length = box === undefined ? 0 : kind === "row" ? box.width : box.height;
-        if (length > 0) {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          drag.current = { start: position(event), length };
-        }
-      }}
-      onPointerMove={(event) => {
-        if (drag.current !== undefined) {
-          onPreview(delta(event));
-        }
-      }}
-      onPointerUp={(event) => {
-        const moved = delta(event);
-        drag.current = undefined;
-        if (moved === 0) {
-          onPreview(undefined);
-        } else {
-          onPreview(moved);
-          onResize(moved);
-        }
-      }}
-      onPointerCancel={() => {
-        drag.current = undefined;
-        onPreview(undefined);
-      }}
-    />
+      className="omfp-tabs__list omfp-view__celltabs"
+      role="tablist"
+      aria-label={strings.shell.responsive.tabs(tree.kind, path)}
+      onKeyDown={onKeyDown}
+    >
+      {choices.map((index) => {
+        const child = tree.children[index];
+        const id = `${path}.${index}`;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            className="omfp-tabs__tab"
+            aria-selected={index === selected}
+            aria-controls={cellId(id)}
+            tabIndex={index === selected ? 0 : -1}
+            data-selected={index === selected || undefined}
+            data-testid="cell-tab"
+            data-index={index}
+            onClick={() => onSelect(index)}
+          >
+            {child === undefined ? id : nodeTitle(child)}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

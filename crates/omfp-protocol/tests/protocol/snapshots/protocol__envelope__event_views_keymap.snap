@@ -1,0 +1,29 @@
+---
+source: crates/omfp-protocol/tests/protocol/envelope.rs
+expression: round_trip(&keymap)
+---
+{
+  "epoch": "e1",
+  "event": {
+    "error": "bindings[2].keys: expected a key sequence",
+    "keymap": [
+      {
+        "args": [
+          "unit"
+        ],
+        "command": "tests.run",
+        "keys": "Space t",
+        "mode": "normal"
+      },
+      {
+        "command": "",
+        "keys": "Ctrl-t",
+        "mode": "insert"
+      }
+    ],
+    "kind": "views_keymap"
+  },
+  "seq": 1,
+  "topic": "views/01JD8X3Q4T9V2W6Y5Z7A1B3C5E",
+  "type": "event"
+}

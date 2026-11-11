@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "omfp://schemas/keymap.json",
+  "title": "omfp workspace keymap",
+  "description": "<workspace>/.omfp/keymap.json: key bindings of this workspace (UI-210). They apply while it is a window's current workspace, over the default bindings and the daemon's [keymap] entries, one by one in file order: an entry replaces the binding with the same mode and keys, `\"command\": \"\"` removes it, any other entry is added. omfp reads the file and never writes it; an invalid one shows its error while the last valid bindings stay. Unknown keys are ignored.",
+  "type": "object",
+  "required": ["bindings"],
+  "properties": {
+    "$schema": { "type": "string", "description": "omfp://schemas/keymap.json" },
+    "bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/binding" }
+    }
+  },
+  "$defs": {
+    "binding": {
+      "type": "object",
+      "required": ["keys", "command"],
+      "properties": {
+        "mode": {
+          "enum": ["normal", "insert", "cmdline"],
+          "default": "normal",
+          "description": "normal: the focus is not in a text field; insert: a text field has it; cmdline: the `:` line is open."
+        },
+        "keys": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "Key tokens separated by spaces: a printable key is its character (`j`, `G`, `:`), other keys their name (`Space`, `Esc`, `Enter`, `Tab`, `PageDown`, …), prefixed by `Ctrl-`, `Alt-`, `Meta-` (and `Shift-` for non-printable keys), e.g. `g g`, `Space t`, `Ctrl-k`."
+        },
+        "command": {
+          "type": "string",
+          "description": "A command id: a built-in one (`:help` lists them) or one a widget registers with `useCommand` (it runs while the widget is shown); \"\" removes the binding of `keys` in `mode`."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Arguments passed to the command."
+        }
+      }
+    }
+  }
+}

@@ -132,6 +132,8 @@ struct Target {
     entry: Option<&'static str>,
     compile: Vec<CompileError>,
     manifest_error: Option<String>,
+    /// Why `.omfp/keymap.json` is refused (DMN-122); `None` when valid or absent.
+    keymap_error: Option<String>,
     /// A valid `views.json` exists and none of its views has the `main` slot (AGT-028).
     main_missing: bool,
 }
@@ -252,6 +254,12 @@ fn describe(target: &Target, windows: &[(Window, Option<String>)], waited: Durat
         let _ = writeln!(
             text,
             "views.json is invalid ({error}): windows show the default view until it is fixed."
+        );
+    }
+    if let Some(error) = &target.keymap_error {
+        let _ = writeln!(
+            text,
+            "keymap.json is invalid ({error}): windows keep its last valid bindings until it is fixed."
         );
     }
     if target.main_missing {
@@ -385,6 +393,10 @@ impl Services {
                 entry: folders::entry(&folder),
                 compile: widgets.check(&folder),
                 manifest_error,
+                keymap_error: crate::widgets::keymap::read(&crate::widgets::keymap::path(
+                    &workspace,
+                ))
+                .err(),
                 main_missing: manifest
                     .as_ref()
                     .is_some_and(|manifest| !layout::has_main_slot(manifest)),
@@ -626,7 +638,7 @@ mod tests {
         }
     }
 
-    // spec: DMN-063
+    // spec: DMN-063, DMN-122
     #[tokio::test]
     async fn without_windows_the_check_gives_the_compile_result_and_says_nothing_rendered() {
         let h = harness().await;
@@ -658,6 +670,16 @@ mod tests {
         assert!(text.contains("Daemon compile: 1 file(s) fail"), "{text}");
         assert!(text.contains("- lib.ts:1:"), "{text}");
         assert!(text.contains("views.json is invalid ("), "{text}");
+        assert!(!text.contains("keymap.json"), "no keymap: {text}");
+        write(&h.folder, ".omfp/keymap.json", "{ \"bindings\": [1] }");
+        let text = h.check(Duration::ZERO).await;
+        assert!(
+            text.contains(
+                "keymap.json is invalid (bindings[0]: expected an object with keys and command): windows keep \
+                 its last valid bindings until it is fixed."
+            ),
+            "{text}"
+        );
 
         let error = h
             .services
@@ -830,6 +852,62 @@ mod tests {
             view: None,
             place: Place::SideTab,
         }
+    }
+
+    // spec: DMN-120, DMN-121, PRT-060
+    #[tokio::test]
+    async fn the_views_topic_carries_the_workspace_keymap_and_an_invalid_file_keeps_the_last_valid_one()
+     {
+        use omfp_protocol::{KeymapMode, ViewsEvent, WorkspaceBinding};
+
+        let h = harness().await;
+        let file = h.folder.join(".omfp/keymap.json");
+        let log = h.services.views_log(&h.workspace).await.unwrap();
+        let keymap = || log.with_state(|state| (state.keymap.clone(), state.keymap_error.clone()));
+        assert_eq!(keymap(), (Vec::new(), None), "no file: no bindings");
+        let mut live = log.subscribe(Some(&log.position())).live;
+        let mut next = move || match live.try_recv().ok().map(|event| event.event.clone()) {
+            Some(ViewsEvent::ViewsKeymap { keymap, error }) => Some((keymap, error)),
+            _ => None,
+        };
+
+        let valid =
+            r#"{ "bindings": [{ "keys": "g t", "command": "tests.run", "args": ["unit"] }] }"#;
+        write(&h.folder, ".omfp/keymap.json", valid);
+        h.services.refresh_views(&h.workspace).await;
+        let bound = vec![WorkspaceBinding {
+            mode: KeymapMode::Normal,
+            keys: "g t".to_owned(),
+            command: "tests.run".to_owned(),
+            args: vec!["unit".to_owned()],
+        }];
+        assert_eq!(keymap(), (bound.clone(), None));
+        assert_eq!(next(), Some((bound.clone(), None)), "pushed on change");
+        h.services.refresh_views(&h.workspace).await;
+        assert_eq!(next(), None, "nothing changed, nothing pushed");
+
+        let invalid = r#"{ "bindings": [{ "keys": "", "command": "tests.run" }] }"#;
+        write(&h.folder, ".omfp/keymap.json", invalid);
+        h.services.refresh_views(&h.workspace).await;
+        let error = "bindings[0].keys: expected a key sequence such as \"Space t\"".to_owned();
+        assert_eq!(
+            next(),
+            Some((bound.clone(), Some(error.clone()))),
+            "the last valid bindings stay, with the error"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&file).unwrap(),
+            invalid,
+            "never rewritten"
+        );
+
+        std::fs::remove_file(&file).unwrap();
+        h.services.refresh_views(&h.workspace).await;
+        assert_eq!(
+            next(),
+            Some((Vec::new(), None)),
+            "a removed file drops them"
+        );
     }
 
     // spec: DMN-064, DMN-088

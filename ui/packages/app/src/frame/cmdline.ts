@@ -60,7 +60,7 @@ export function completions(text: string, commands: readonly Command[]): Complet
 }
 
 /** One command per id: the global one when several scopes register it. */
-function unique(commands: readonly Command[]): Command[] {
+export function unique(commands: readonly Command[]): Command[] {
   const byId = new Map<string, Command>();
   for (const command of commands) {
     const known = byId.get(command.id);

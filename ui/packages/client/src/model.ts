@@ -259,6 +259,8 @@ function applyViewsEvent(views: ViewsState, event: ViewsEvent): ViewsState {
       return { ...views, manifest: event.manifest ?? null, error: event.error ?? null };
     case "views_widgets":
       return { ...views, widgets: event.widgets };
+    case "views_keymap":
+      return { ...views, keymap: event.keymap, keymapError: event.error ?? null };
     case "widget_stored": {
       const keys = { ...views.stored[event.instance] };
       if (event.value === null) {
@@ -623,6 +625,7 @@ export class Model implements ModelView {
         break;
       case "views_manifest":
       case "views_widgets":
+      case "views_keymap":
       case "widget_stored": {
         const views = parsed?.kind === "views" ? this.#views.get(parsed.id) : undefined;
         if (parsed?.kind === "views" && views !== undefined) {

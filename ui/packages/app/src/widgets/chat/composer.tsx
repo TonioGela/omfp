@@ -61,10 +61,20 @@ import {
   useCall,
   useCommand,
   useHost,
+  useThread,
   useThreadActions,
   useWindowState,
 } from "omfp/sdk";
-import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import {
+  type ClipboardEvent,
+  type DragEvent,
+  type KeyboardEvent,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { LiveVoicePanel, MicButton } from "./live.tsx";
 import { testId, type WidgetProps } from "./props.ts";
 import { clearedDraftKey, PENDING_QUEUE, useClock, useSelectedThread } from "./state.ts";
@@ -84,11 +94,18 @@ export function ComposerWidget(_props: WidgetProps) {
   if (threadId === undefined || view === undefined) {
     return null;
   }
+  const { state } = view;
   return (
     <div className="omfp-composer-area">
-      <LiveVoicePanel threadId={threadId} state={view.state} />
-      <QueueChips threadId={threadId} state={view.state} />
-      <Composer key={threadId} threadId={threadId} state={view.state} />
+      <LiveVoicePanel threadId={threadId} state={state} />
+      <QueueChips threadId={threadId} state={state} />
+      <Composer
+        key={threadId}
+        threadId={threadId}
+        busy={isBusy(state)}
+        abortable={canAbort(state)}
+        commands={state.commands}
+      />
     </div>
   );
 }
@@ -312,8 +329,22 @@ function useThreadCommands(
   return missing ? fetched : known;
 }
 
-/** The composer of one thread; mount it with `key={threadId}`. */
-export function Composer({ threadId, state }: { threadId: string; state: ThreadState }) {
+/**
+ * The composer of one thread; mount it with `key={threadId}`. It takes the few facts of the thread state it needs,
+ * so a thread event (a streamed delta) does not render it again, and a key press renders the input but not the
+ * action bar (UI-197).
+ */
+export const Composer = memo(function Composer({
+  threadId,
+  busy,
+  abortable,
+  commands: known,
+}: {
+  threadId: string;
+  busy: boolean;
+  abortable: boolean;
+  commands: readonly AvailableSlashCommand[];
+}) {
   const host = useHost();
   const call = useCall();
   const announce = useAnnounce();
@@ -331,11 +362,9 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
   /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
   const [insert, setInsert] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const busy = isBusy(state);
-  const abortable = canAbort(state);
   const mode = sendMode(busy, steer);
   const other = alternative(mode);
-  const commands = useThreadCommands(threadId, state.commands);
+  const commands = useThreadCommands(threadId, known);
   const suggestions = slashSuggestions(draft.text, commands);
   const open = suggestions.length > 0 && !dismissed;
 
@@ -361,7 +390,7 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
       () => setDraft((previous) => restoreFailedPrompt(previous, message, images)),
     );
   };
-  const abort = () => {
+  const abort = useCallback(() => {
     call("thread.abort", { threadId }).then(
       (result) => {
         const { steering, followUp } = restoredTexts(result);
@@ -370,7 +399,11 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
       },
       () => announce(strings.chat.announce.abortFailed),
     );
-  };
+  }, [call, threadId, setDraft, announce]);
+  // The action bar gets one stable function that sends the latest draft.
+  const latestSend = useRef(send);
+  latestSend.current = send;
+  const sendLatest = useCallback((chosen: SendMode) => latestSend.current(chosen), []);
   const leave = () => {
     inputRef.current?.blur();
     document.querySelector<HTMLElement>(`[${SCOPE_ATTRIBUTE}="transcript"]`)?.focus();
@@ -573,51 +606,88 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
             </Menu>
           </Popover>
         </Autocomplete>
-        <ComposerBar>
-          <ComposerHint>
-            <Kbd>{keyLabel("Shift-Enter")}</Kbd> {text.hint.newline}
-          </ComposerHint>
-          <ComposerHint>
-            <Kbd>{keyLabel("Esc")}</Kbd> {abortable ? text.hint.abort : text.hint.leave}
-          </ComposerHint>
-          {interruptHint && abortable && (
-            <ComposerHint className="omfp-composer__interrupt" role="status" data-testid="interrupt-hint">
-              <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.interruptHint}
-            </ComposerHint>
-          )}
-          <span className="omfp-composer__spacer" />
-          <MicButton threadId={threadId} state={state} />
-          {abortable && (
-            <Button variant="danger" size="sm" icon={<Icon name="square" />} data-testid="abort" onPress={abort}>
-              {text.abort}
-            </Button>
-          )}
-          {other !== undefined && (
-            <Button
-              size="sm"
-              kbd={sendKey(other)}
-              data-testid="send-alternative"
-              data-mode={other}
-              onPress={() => send(other)}
-            >
-              {text.send[other]}
-            </Button>
-          )}
-          <Button
-            type="submit"
-            variant="primary"
-            size="sm"
-            icon={<Icon name="arrow-up" />}
-            kbd={sendKey(mode)}
-            data-testid="send"
-            data-mode={mode}
-          >
-            {text.send[mode]}
-          </Button>
-        </ComposerBar>
+        <ComposerActions
+          threadId={threadId}
+          abortable={abortable}
+          interruptHint={interruptHint}
+          mode={mode}
+          other={other}
+          onAbort={abort}
+          onSend={sendLatest}
+        />
       </KitComposer>
     </form>
   );
+});
+
+/** The hints and buttons under the input; memoized with stable callbacks, so typing does not render them (UI-197). */
+const ComposerActions = memo(function ComposerActions({
+  threadId,
+  abortable,
+  interruptHint,
+  mode,
+  other,
+  onAbort,
+  onSend,
+}: {
+  threadId: string;
+  abortable: boolean;
+  interruptHint: boolean;
+  mode: SendMode;
+  other: SendMode | undefined;
+  onAbort: () => void;
+  onSend: (mode: SendMode) => void;
+}) {
+  return (
+    <ComposerBar>
+      <ComposerHint>
+        <Kbd>{keyLabel("Shift-Enter")}</Kbd> {text.hint.newline}
+      </ComposerHint>
+      <ComposerHint>
+        <Kbd>{keyLabel("Esc")}</Kbd> {abortable ? text.hint.abort : text.hint.leave}
+      </ComposerHint>
+      {interruptHint && abortable && (
+        <ComposerHint className="omfp-composer__interrupt" role="status" data-testid="interrupt-hint">
+          <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.interruptHint}
+        </ComposerHint>
+      )}
+      <span className="omfp-composer__spacer" />
+      <ThreadMicButton threadId={threadId} />
+      {abortable && (
+        <Button variant="danger" size="sm" icon={<Icon name="square" />} data-testid="abort" onPress={onAbort}>
+          {text.abort}
+        </Button>
+      )}
+      {other !== undefined && (
+        <Button
+          size="sm"
+          kbd={sendKey(other)}
+          data-testid="send-alternative"
+          data-mode={other}
+          onPress={() => onSend(other)}
+        >
+          {text.send[other]}
+        </Button>
+      )}
+      <Button
+        type="submit"
+        variant="primary"
+        size="sm"
+        icon={<Icon name="arrow-up" />}
+        kbd={sendKey(mode)}
+        data-testid="send"
+        data-mode={mode}
+      >
+        {text.send[mode]}
+      </Button>
+    </ComposerBar>
+  );
+});
+
+/** The mic button follows the thread's state itself, so thread events render it alone. */
+function ThreadMicButton({ threadId }: { threadId: string }) {
+  const view = useThread(threadId);
+  return view === undefined ? null : <MicButton threadId={threadId} state={view.state} />;
 }
 
 /** Thumbnails of the attached images, each removable. */

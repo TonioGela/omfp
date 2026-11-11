@@ -86,6 +86,8 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
          {facts}\n\
          - After writing a widget call omfp_widget_check {{ name }} (compile errors, what open windows render); place it \
          with omfp_view_add {{ widget, where }} rather than rewriting views.json.\n\
+         - Keys: {display}/.omfp/keymap.json (schema omfp://schemas/keymap.json) binds keys to commands, built-in or a \
+         widget's useCommand, in windows showing this workspace; give a widget a command and bind it there.\n\
          - When something would read better as a visualization or controls (progress, a table, a chart, buttons), \
          propose a widget in one sentence and build it only after the user agrees.\n\
          - Once the user agrees, delegate the building: a `task` with `agent: \"{WIDGET_BUILDER}\"` and a complete brief \
@@ -209,7 +211,7 @@ mod tests {
         assert!(!text.ends_with('\n'));
     }
 
-    // spec: AGT-024, AGT-028, AGT-029
+    // spec: AGT-024, AGT-028, AGT-029, AGT-031
     #[test]
     fn the_widgets_note_says_where_widgets_live_what_they_import_and_how_to_check_and_place_them() {
         let library = Path::new("/data/omfp/widgets");
@@ -233,6 +235,7 @@ mod tests {
             "useJob(command)",
             "job.status",
             "read omfp://docs/widgets; schema omfp://schemas/views.json",
+            "- Keys: /ws/checkout/.omfp/keymap.json (schema omfp://schemas/keymap.json) binds keys to commands",
             "Keep the `[\"tabs\", {\"id\":\"main\"}, …\"omfp:chat\"]` slot",
         ] {
             assert!(text.contains(rule), "{rule:?} missing: {text}");
@@ -246,7 +249,7 @@ mod tests {
             example.lines().count() <= 11,
             "a ten-line example: {example}"
         );
-        assert!(text.lines().count() <= 26, "short: {text}");
+        assert!(text.lines().count() <= 27, "short: {text}");
         assert!(!text.ends_with('\n'));
     }
 

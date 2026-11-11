@@ -9,6 +9,8 @@ import "./gallery.css";
 import {
   ActionRow,
   ApprovalCommand,
+  AreaBar,
+  type AreaItem,
   Badge,
   BorderBox,
   BoxRule,
@@ -31,6 +33,9 @@ import {
   DiffStat,
   EmptyState,
   ExitCode,
+  HelpDialog,
+  HelpRow,
+  HelpSection,
   HintRow,
   Icon,
   IconButton,
@@ -64,15 +69,18 @@ import {
   SILENT_SOURCE,
   Spectrum,
   type SpectrumSource,
+  Splitter,
   StateBadge,
   StateMark,
   StreamCaret,
+  type StripItem,
   Tab,
   TabList,
   Tabs,
   TextField,
   Thinking,
   ThreadRow,
+  ThreadStrip,
   Toast,
   ToastRegion,
   type ToastTone,
@@ -1228,6 +1236,55 @@ function ModeLines() {
   );
 }
 
+function HelpPanels() {
+  const filter = (value: string) => (
+    <TextField
+      label="Filter keys and commands"
+      hideLabel
+      mono
+      icon={<Icon name="search" />}
+      placeholder="Filter by key or description"
+      defaultValue={value}
+    />
+  );
+  const end = (
+    <>
+      <Kbd>?</Kbd>
+      <Kbd>esc</Kbd>
+      <span>close</span>
+    </>
+  );
+  return (
+    <Section title="Help" note="UI-198 · ? or :help · type to filter" wide>
+      <HelpDialog inline label="Keys and commands" filter={filter("")} end={end}>
+        <HelpSection title="normal">
+          <HelpRow keys={["j"]} description="Next thread" />
+          <HelpRow keys={["g g"]} description="First thread" />
+          <HelpRow keys={["spc a", "] a", "alt+a"]} description="Next thread needing attention" />
+          <HelpRow keys={["?"]} description="Show every key and command (this help)" />
+        </HelpSection>
+        <HelpSection title="insert · composer">
+          <HelpRow keys={["esc"]} description="Leave the composer" />
+          <HelpRow keys={["ctrl+c"]} description="Clear the draft, or abort when it is empty (Ctrl-C)" />
+        </HelpSection>
+        <HelpSection
+          title="file editor · vim"
+          note="While the file editor has the focus, vim's own keys apply; the app keymap leaves them alone."
+        >
+          <HelpRow keys={[":w", "ctrl+s"]} description="Save the file" />
+        </HelpSection>
+        <HelpSection title="commands">
+          <HelpRow keys={[":theme"]} args="system | light | dark" description="Colour scheme (system, light, dark)" />
+          <HelpRow keys={[":search", ":filter"]} description="Filter threads" />
+        </HelpSection>
+      </HelpDialog>
+      <HelpDialog inline label="Keys and commands, no match" filter={filter("zzz")} end={end}>
+        <p className="omfp-help__empty">No key or command matches</p>
+      </HelpDialog>
+    </Section>
+  );
+}
+
 function LeftColumn() {
   return (
     <Section title="Left column" note="UI-169 · UI-170">
@@ -1253,6 +1310,65 @@ function LeftColumn() {
           <HintRow>No threads · spc n starts one</HintRow>
         </WorkspaceSection>
       </div>
+    </Section>
+  );
+}
+
+const STRIP_THREADS: readonly StripItem[] = [
+  { id: "awaiting", title: "Awaiting the user", state: "awaiting" },
+  { id: "running", title: "Running thread", state: "running", selected: true },
+  { id: "failed", title: "Failed thread", state: "failed" },
+];
+
+const AREAS: readonly AreaItem[] = [
+  { id: "threads", label: "Threads", icon: "panel-left" },
+  { id: "chat", label: "Chat", icon: "message-square" },
+  { id: "side", label: "Side", icon: "panel-right" },
+];
+
+/** The narrow and phone frame's parts (UI-208): splitters, the left column's strip and the phone's bottom bar. */
+function ResponsiveParts() {
+  const [open, setOpen] = useState(false);
+  const [area, setArea] = useState("chat");
+  return (
+    <Section title="Splitter · strip · area bar" note="UI-208 · UI-201 · UI-204 · UI-206">
+      <Line label="splitter">
+        {(["default", "hover", "dragging"] as const).map((state) => (
+          <div key={state} className="omfp-gallery__split">
+            <span className="omfp-gallery__pane">{state}</span>
+            <Splitter
+              orientation="vertical"
+              label={`Splitter, ${state}`}
+              value={50}
+              className={state === "hover" ? "is-hover" : undefined}
+              data-dragging={state === "dragging" || undefined}
+            />
+            <span className="omfp-gallery__pane" />
+          </div>
+        ))}
+      </Line>
+      <Line label="strip">
+        <ThreadStrip
+          aria-label="Threads column"
+          open={open}
+          onToggle={() => setOpen(!open)}
+          toggleLabel={open ? "Hide threads" : "Show threads"}
+          threads={STRIP_THREADS}
+          onSelect={() => undefined}
+        />
+        <ThreadStrip
+          aria-label="Threads column, open"
+          open
+          onToggle={() => undefined}
+          toggleLabel="Hide threads"
+          toggleClassName="is-focus"
+          threads={[]}
+          onSelect={() => undefined}
+        />
+      </Line>
+      <Line label="area bar">
+        <AreaBar label="Areas" items={AREAS} selected={area} onSelect={setArea} className="omfp-gallery__areabar" />
+      </Line>
     </Section>
   );
 }
@@ -1866,6 +1982,7 @@ export function Gallery({ search }: { search: string }) {
         <Logs />
         <Toasts />
         <ModeLines />
+        <HelpPanels />
         <Empties />
         <Cards />
         <ToolCards />
@@ -1874,6 +1991,7 @@ export function Gallery({ search }: { search: string }) {
         <Diffs />
         <CodeDemo />
         <LeftColumn />
+        <ResponsiveParts />
         <Transcript />
         <Composers />
         <LiveVoice />

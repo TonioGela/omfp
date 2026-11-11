@@ -9,8 +9,8 @@ import {
   pinReducer,
 } from "../../src/vm/virtual.ts";
 
-const scroll = (scrollTop: number, scrollHeight: number, clientHeight: number) =>
-  ({ type: "scroll", scrollTop, scrollHeight, clientHeight }) as const;
+const scroll = (scrollTop: number, scrollHeight: number, clientHeight: number, previousScrollTop?: number) =>
+  ({ type: "scroll", scrollTop, scrollHeight, clientHeight, previousScrollTop }) as const;
 
 describe("pinning", () => {
   // spec: UI-042
@@ -26,13 +26,25 @@ describe("pinning", () => {
 
   // spec: UI-042
   test("layout shifts keep the view pinned but dragging away unpins it", () => {
-    let state = pinReducer(INITIAL_PIN, scroll(1000, 4000, 600));
+    // Content grew under a pinned view: the position stays, the bottom moved away.
+    let state = pinReducer(INITIAL_PIN, scroll(1000, 4000, 600, 1000));
+    expect(state.pinned).toBe(true);
+    // Content shrank: the browser clamped the position to the new bottom.
+    state = pinReducer(state, scroll(800, 1400, 600, 1000));
     expect(state.pinned).toBe(true);
     state = pinReducer(state, { type: "drag", active: true });
     state = pinReducer(state, scroll(1000, 4000, 600));
     expect(state.pinned).toBe(false);
     state = pinReducer(state, scroll(3400, 4000, 600));
     expect(state.pinned).toBe(true);
+  });
+
+  // spec: UI-042
+  test("a scroll up away from the bottom unpins without any input event (WebKitGTK's scrollbar sends none)", () => {
+    const state = pinReducer(INITIAL_PIN, scroll(3000, 4000, 600, 3400));
+    expect([state.pinned, mountScrollTop(state)]).toEqual([false, 3000]);
+    // Up but still at the bottom (within the threshold): pinned.
+    expect(pinReducer(INITIAL_PIN, scroll(3390, 4000, 600, 3400)).pinned).toBe(true);
   });
 
   // spec: UI-042

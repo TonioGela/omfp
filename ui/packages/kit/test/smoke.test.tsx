@@ -23,6 +23,9 @@ import {
   Disclosure,
   EmptyState,
   ExitCode,
+  HelpDialog,
+  HelpRow,
+  HelpSection,
   HintRow,
   Icon,
   IconButton,
@@ -240,6 +243,17 @@ const CASES: readonly Case[] = [
     base: "omfp-cmdmenu__item",
     role: "option",
   },
+  {
+    name: "HelpDialog",
+    element: <HelpDialog {...FORWARDED} label="Keys" filter={null} inline />,
+    base: "omfp-help",
+  },
+  { name: "HelpSection", element: <HelpSection {...FORWARDED} title="normal" />, base: "omfp-help__section" },
+  {
+    name: "HelpRow",
+    element: <HelpRow {...FORWARDED} keys={["j"]} description="Next thread" />,
+    base: "omfp-help__row",
+  },
   { name: "Brand", element: <Brand {...FORWARDED} host="devbox" />, base: "omfp-brand" },
   {
     name: "WorkspaceSection",
@@ -270,7 +284,7 @@ const CASES: readonly Case[] = [
 ];
 
 describe("kit components", () => {
-  // spec: UI-093, UI-131, UI-157, UI-160, UI-161, UI-163, UI-164, UI-167, UI-168, UI-169, UI-170, UI-171, UI-172, UI-187, UI-193
+  // spec: UI-093, UI-131, UI-157, UI-160, UI-161, UI-163, UI-164, UI-167, UI-168, UI-169, UI-170, UI-171, UI-172, UI-187, UI-193, UI-198
   test.each(CASES.map((c) => [c.name, c] as const))("%s renders and forwards id, className, data-*", (_name, c) => {
     render(c.element);
     const root = screen.getByTestId("subject");

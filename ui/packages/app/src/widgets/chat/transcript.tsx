@@ -41,6 +41,7 @@ import { measurementsKey, pinKey, useSelectedThread } from "./state.ts";
 /** Height assumed for an item before it is measured. */
 const ESTIMATED_ITEM_PX = 120;
 const estimateSize = () => ESTIMATED_ITEM_PX;
+const neverAdjust = () => false;
 /** Items rendered beyond each edge of the viewport. */
 const OVERSCAN = 6;
 
@@ -99,7 +100,19 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
   const [pin, setPin] = useWindowState(pinKey(threadId));
   const pinned = useRef(pin.pinned);
   pinned.current = pin.pinned;
-  const dispatch = useCallback((event: PinEvent) => setPin((previous) => pinReducer(previous, event)), [setPin]);
+  // Updated as soon as an event changes it, not at the next render: a follow in between must not pull an unpinned
+  // view back to the bottom.
+  const dispatch = useCallback(
+    (event: PinEvent) =>
+      setPin((previous) => {
+        const next = pinReducer(previous, event);
+        pinned.current = next.pinned;
+        return next;
+      }),
+    [setPin],
+  );
+  /** Where the last scroll event or follow left the view; a scroll up from there unpins (UI-042). */
+  const lastScrollTop = useRef<number | undefined>(undefined);
   // The same list (and so the same item keys) while only the streaming reply changes (UI-191).
   const rows = items(state);
   // Mounting returns to where the user had scrolled up to, else to the bottom. Until the content is tall enough to
@@ -119,6 +132,9 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
     getItemKey,
     ...(restoring.current === undefined ? {} : { initialOffset: restoring.current }),
   });
+  // Pinned, the bottom is followed anyway: the virtualizer must not shift the scroll position when an item above
+  // changes size, so the only scrolls up away from the bottom are the user's.
+  virtualizer.shouldAdjustScrollPositionOnItemSizeChange = pin.pinned ? neverAdjust : undefined;
   // Unmounting (a thread switch) keeps the measured sizes for the next mount.
   useEffect(() => () => setMeasurements(virtualizer.measurementsCache), [setMeasurements, virtualizer]);
   const [current, setCurrent] = useState<number | undefined>(undefined);
@@ -137,6 +153,7 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
       // the view again.
       container.scrollTop = container.scrollHeight;
     }
+    lastScrollTop.current = container.scrollTop;
   }, []);
   const userScrolls = () => {
     restoring.current = undefined;
@@ -176,6 +193,10 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
     virtualizer.scrollToIndex(target, { align: "auto" });
     setCurrent(target);
   };
+  // The registrations get one stable function that runs the latest `navigate`, so a render does not render them.
+  const latestNavigate = useRef(navigate);
+  latestNavigate.current = navigate;
+  const runNav = useCallback((command: NavCommand) => latestNavigate.current(command), []);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const container = event.currentTarget;
@@ -217,7 +238,9 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
           return;
         }
         const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
-        dispatch({ type: "scroll", scrollTop, scrollHeight, clientHeight });
+        const previousScrollTop = lastScrollTop.current;
+        lastScrollTop.current = scrollTop;
+        dispatch({ type: "scroll", scrollTop, scrollHeight, clientHeight, previousScrollTop });
       }}
       onWheel={(event) => {
         userScrolls();
@@ -239,7 +262,7 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
       onTouchEnd={() => dispatch({ type: "drag", active: false })}
     >
       {NAV.map(({ id, title }) => (
-        <NavRegistration key={id} id={id} title={title} run={navigate} />
+        <NavRegistration key={id} id={id} title={title} run={runNav} />
       ))}
       <div ref={contentRef} className="omfp-transcript__content">
         <div className="omfp-transcript__list" style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
@@ -276,10 +299,18 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
 }
 
 /** Registers one transcript-scope navigation command while mounted. */
-function NavRegistration({ id, title, run }: { id: NavCommand; title: string; run: (command: NavCommand) => void }) {
+const NavRegistration = memo(function NavRegistration({
+  id,
+  title,
+  run,
+}: {
+  id: NavCommand;
+  title: string;
+  run: (command: NavCommand) => void;
+}) {
   useCommand({ id, title, scope: "transcript", run: () => run(id) });
   return null;
-}
+});
 
 /** One row; renders again only when its content changes (a streaming delta changes the streaming row's only). */
 const Row = memo(function Row({ cardKey, content }: { cardKey: string; content: RowContent }) {

@@ -4,8 +4,11 @@
  * container, S-11), and where `nav.*` commands go.
  *
  * Pinned: while streaming, growth keeps the view at the bottom. Only the user unpins it — wheel up, a scroll-up key,
- * a pointer drag away from the bottom — never a scroll event caused by layout (measured heights replacing estimates,
- * growing content). Reaching the bottom pins it again.
+ * a pointer drag away from the bottom, or any scroll that moves the view up away from the bottom (dragging the
+ * scrollbar in WebKitGTK, which sends no pointer events to the page) — never a scroll event caused by layout: while
+ * pinned, layout only moves the view down (growing content) or clamps it to the bottom (shrinking content), since the
+ * transcript turns off the virtualizer's scroll adjustments and the browser's scroll anchoring. Reaching the bottom
+ * pins it again.
  */
 
 /** The view counts as at the bottom within this distance. */
@@ -30,6 +33,8 @@ export type PinEvent =
       readonly scrollTop: number;
       readonly scrollHeight: number;
       readonly clientHeight: number;
+      /** The position before this scroll (the last scroll event's, or where following the bottom put it). */
+      readonly previousScrollTop: number | undefined;
     }
   /** Wheel up, a scroll-up key outside a form control, a navigation command moving up. */
   | { readonly type: "userScrollUp" }
@@ -43,7 +48,8 @@ export function pinReducer(state: PinState, event: PinEvent): PinState {
   switch (event.type) {
     case "scroll": {
       const atBottom = event.scrollHeight - event.scrollTop - event.clientHeight <= PIN_THRESHOLD_PX;
-      const pinned = atBottom || (state.pinned && !state.dragging);
+      const movedUp = event.previousScrollTop !== undefined && event.scrollTop < event.previousScrollTop - 1;
+      const pinned = atBottom || (state.pinned && !state.dragging && !movedUp);
       next = { ...state, scrollTop: pinned ? state.scrollTop : event.scrollTop, pinned };
       break;
     }

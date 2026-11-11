@@ -18,6 +18,9 @@ export interface Binding {
   readonly command: string;
   /** Arguments passed to the command. */
   readonly args?: readonly string[];
+  /** Where the binding comes from when it is not a default or a `[keymap]` entry: the current workspace's
+   * `.omfp/keymap.json` (UI-210). */
+  readonly source?: "workspace";
 }
 
 /** The defaults: vim-style navigation, `:` command line, `Space` leader (UI-095). */
@@ -38,6 +41,8 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { mode: "normal", keys: "g n", command: "notice.open" },
   { mode: "normal", keys: "i", command: "composer.focus" },
   { mode: "normal", keys: ":", command: "cmdline.open" },
+  // Every effective binding and `:` command, filterable (UI-198).
+  { mode: "normal", keys: "?", command: "help.open" },
   { mode: "normal", keys: "Space a", command: "thread.nextAttention" },
   { mode: "normal", keys: "] a", command: "thread.nextAttention" },
   { mode: "normal", keys: "Space n", command: "thread.new" },
@@ -48,6 +53,8 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { mode: "normal", keys: "Space d", command: "thread.delete" },
   { mode: "normal", keys: "Space s", command: "thread.stop" },
   { mode: "normal", keys: "Space R", command: "thread.restart" },
+  // The left column of the narrow layout, shown over the view or hidden again.
+  { mode: "normal", keys: "Space t", command: "threads.toggle" },
   { mode: "normal", keys: "Space :", command: "cmdline.open" },
   { mode: "insert", keys: "Esc", command: "focus.leave" },
   // In the composer: clear the draft, then abort; `u` restores the last cleared draft (UI-063). Elsewhere `Ctrl-c`
@@ -168,7 +175,15 @@ export function keysFor(bindings: readonly Binding[], command: string, mode: Mod
 }
 
 const MODIFIER = /^(Ctrl|Alt|Meta|Shift)-(?=.)/;
-const CHIP_NAMES: Readonly<Record<string, string>> = { Space: "spc", Escape: "esc" };
+/** Named keys whose chip is a shorter word than their lowercased name (`ArrowUp` → `up`). */
+const CHIP_NAMES: Readonly<Record<string, string>> = {
+  Space: "spc",
+  Escape: "esc",
+  ArrowUp: "up",
+  ArrowDown: "down",
+  ArrowLeft: "left",
+  ArrowRight: "right",
+};
 
 /**
  * The key chip label of a key sequence (UI-148): lowercase words (`spc`, `esc`, `enter`, `alt+enter`, `ctrl+c`),
@@ -190,11 +205,13 @@ export function keyLabel(keys: string): string {
     .join(" ");
 }
 
-/** One `[keymap]` entry of the daemon's settings (UI-097): `command: ""` removes the binding of `keys` in `mode`. */
+/** One `[keymap]` entry of the daemon's settings (UI-097), or of a workspace's `.omfp/keymap.json` with its `args`
+ * (UI-210): `command: ""` removes the binding of `keys` in `mode`. */
 export interface KeymapOverride {
   readonly mode: Mode;
   readonly keys: string;
   readonly command: string;
+  readonly args?: readonly string[];
 }
 
 /** `keys` with single spaces between tokens, as bindings are written. */
@@ -204,9 +221,14 @@ export function normalizeKeys(keys: string): string {
 
 /**
  * The defaults with `overrides` applied one by one (UI-097): an entry replaces the binding with the same mode and
- * keys (keeping its place), `""` removes it, any other entry is added after the defaults. Later entries win.
+ * keys (keeping its place), `""` removes it, any other entry is added after the defaults. Later entries win. The
+ * bindings an entry makes carry its `args` and `source`.
  */
-export function mergeBindings(defaults: readonly Binding[], overrides: readonly KeymapOverride[]): Binding[] {
+export function mergeBindings(
+  defaults: readonly Binding[],
+  overrides: readonly KeymapOverride[],
+  source?: Binding["source"],
+): Binding[] {
   let bindings: Binding[] = [...defaults];
   for (const override of overrides) {
     const keys = normalizeKeys(override.keys);
@@ -215,7 +237,13 @@ export function mergeBindings(defaults: readonly Binding[], overrides: readonly 
       bindings = bindings.filter((binding) => !same(binding));
       continue;
     }
-    const replacement: Binding = { mode: override.mode, keys, command: override.command };
+    const replacement: Binding = {
+      mode: override.mode,
+      keys,
+      command: override.command,
+      ...(override.args === undefined || override.args.length === 0 ? {} : { args: override.args }),
+      ...(source === undefined ? {} : { source }),
+    };
     const index = bindings.findIndex(same);
     if (index < 0) {
       bindings.push(replacement);
@@ -224,4 +252,17 @@ export function mergeBindings(defaults: readonly Binding[], overrides: readonly 
     }
   }
   return bindings;
+}
+
+/**
+ * The window's effective keymap (UI-210): the defaults, then the daemon's `[keymap]` entries (UI-097), then the
+ * current workspace's `.omfp/keymap.json` bindings, each layer applied with {@link mergeBindings}, so the workspace
+ * wins over the global entries and both over the defaults.
+ */
+export function effectiveBindings(
+  defaults: readonly Binding[],
+  global: readonly KeymapOverride[],
+  workspace: readonly KeymapOverride[],
+): Binding[] {
+  return mergeBindings(mergeBindings(defaults, global), workspace, "workspace");
 }

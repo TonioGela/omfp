@@ -223,6 +223,27 @@
     background: var(--omfp-side-bg);
   }
 
+  /* Splitters between two panes, the phone's bottom bar at a phone's width (UI-208). */
+  .omfp-gallery__split {
+    display: flex;
+    inline-size: 12rem;
+    block-size: 4rem;
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-ctl);
+    overflow: hidden;
+  }
+
+  .omfp-gallery__pane {
+    flex: 1 1 0;
+    padding: var(--omfp-s1) var(--omfp-s2);
+    color: var(--omfp-on-surface-variant);
+    font-size: var(--omfp-fs-2xs);
+  }
+
+  .omfp-gallery__areabar {
+    inline-size: 22rem;
+  }
+
   .omfp-gallery__transcript {
     display: flex;
     flex-direction: column;

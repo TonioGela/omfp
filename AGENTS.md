@@ -68,7 +68,7 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       session files (search.rs), threads, git port + FakeGit, host tools and the `omfp://` host URIs,
                       jobs (jobs.rs: shell commands of a workspace, `job/<id>`), widgets (widgets.rs: views manifest
                       check, widget folders and versions, oxc transpiling and the `/widgets/<key>/…` route, copies;
-                      widgets/docs.md is `omfp://docs/widgets`), WebSocket server (polling of watched workspaces:
+                      widgets/docs.md is `omfp://docs/widgets`; widgets/keymap.rs: the workspace `.omfp/keymap.json`), WebSocket server (polling of watched workspaces:
                       server/services/polls.rs; the `views/<id>` topic: server/services/views.rs);
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` and `omfp desktop`;
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
@@ -101,9 +101,11 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
                       column, mode line with the `:` line and file picker, view switcher, layout editing, floating
-                      file panel, toasts, dialogs), view (layout tree, edits, reference resolution, widget slot, the
-                      `main` slot's file tabs), gallery (the `/kit` page, UI-173: params, contrast measuring, the
-                      matugen-forest fixture theme), keymap, theme, strings; build.ts → dist/ (`just build-web`:
+                      file panel, toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
+                      bar, the left column's splitter), view (layout tree, edits, reference resolution, widget slot,
+                      the `main` slot's file tabs; sizes.ts and splitter.tsx: the window's splitter sizes), gallery
+                      (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme),
+                      keymap, theme, strings; build.ts → dist/ (`just build-web`:
                       import map, widget-exports.json, builtin-widgets/)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
@@ -160,6 +162,10 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   `packages/kit` and `packages/app` (their `bunfig.toml` does the same for a plain `bun test` inside them), because
   happy-dom replaces `WebSocket`, `fetch` and timers, which the client's transport suite needs from Bun. Never run the
   client tests with the preload.
+- Never pass DOM elements to `expect(…).toEqual`/`toBe` in component tests (`expect(queryAllByTestId(…)).toEqual([])`,
+  `expect(document.activeElement).toBe(el)`): when it fails, Bun's diff prints every own property of the element,
+  React's `__reactFiber$…` included, and walks the whole fiber graph — gigabytes of output within seconds, the OOM
+  killer then takes the session. Compare counts, test ids or text instead (`.length`, `getAttribute("data-testid")`).
 - The web bundle has no user theme: `build.ts` adds `<link rel="stylesheet" href="/theme.css" data-omfp-theme>` after
   the bundle's CSS; the daemon serves `/theme.css` (UI-091), and the app replaces the link with a
   `<style data-omfp-theme>` when the theme changes.

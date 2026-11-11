@@ -7,6 +7,7 @@
 
 pub mod compile;
 pub mod folders;
+pub mod keymap;
 pub mod layout;
 pub mod manifest;
 
@@ -97,7 +98,7 @@ fn markdown(content: String) -> HostUriRead {
     }
 }
 
-/// What an `omfp://` URL reads (DMN-062): the docs, the schema, the built-in widgets' sources from `builtin`
+/// What an `omfp://` URL reads (DMN-062, DMN-122): the docs, the schemas, the built-in widgets' sources from `builtin`
 /// (`<static-dir>/builtin-widgets/`, `None` without a bundle), or an error naming what there is.
 pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String> {
     let url = url.trim_end_matches('/');
@@ -105,6 +106,12 @@ pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String
         DOCS_URL => Ok(markdown(DOCS.to_owned())),
         SCHEMA_URL => Ok(HostUriRead {
             content: VIEWS_SCHEMA.to_owned(),
+            content_type: Some(HostUriResultContentType::ApplicationJson),
+            immutable: Some(true),
+            ..HostUriRead::default()
+        }),
+        keymap::SCHEMA_URL => Ok(HostUriRead {
+            content: keymap::SCHEMA.to_owned(),
             content_type: Some(HostUriResultContentType::ApplicationJson),
             immutable: Some(true),
             ..HostUriRead::default()
@@ -117,8 +124,10 @@ pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String
             Some(rest) => read_builtin(builtin_folder(builtin)?, rest),
             None => Err(format!(
                 "unknown omfp URL {url}: omfp serves {DOCS_URL} (the widget SDK and kit reference), {SCHEMA_URL} \
-                 (the views manifest schema), {BUILTIN_URL} (the built-in widgets), {BUILTIN_URL}/<name>[/<path>] \
-                 (their sources) and {CHECK_URL}/<name> (a widget's check report)"
+                 (the views manifest schema), {} (the workspace keymap schema), {BUILTIN_URL} (the built-in \
+                 widgets), {BUILTIN_URL}/<name>[/<path>] (their sources) and {CHECK_URL}/<name> (a widget's check \
+                 report)",
+                keymap::SCHEMA_URL
             )),
         },
     }
@@ -263,8 +272,10 @@ pub fn host_uris(
     })?
     .description(format!(
         "omfp, the window the user works in: {DOCS_URL} documents widgets (SDK, kit, views); {SCHEMA_URL} is the \
-         JSON Schema of .omfp/views.json; {BUILTIN_URL} lists the built-in widgets and {BUILTIN_URL}/<name> shows \
-         one's source; {CHECK_URL}/<name> checks a widget (compile errors, what open windows render)"
+         JSON Schema of .omfp/views.json and {} of .omfp/keymap.json; {BUILTIN_URL} lists the built-in widgets and \
+         {BUILTIN_URL}/<name> shows one's source; {CHECK_URL}/<name> checks a widget (compile errors, what open \
+         windows render)",
+        keymap::SCHEMA_URL
     ))
     .immutable(true);
     Ok(vec![omfp])
@@ -608,11 +619,19 @@ fn resolve(folder: &Path, relative: &Path) -> Option<PathBuf> {
 mod tests {
     use super::*;
 
-    // spec: DMN-062, AGT-025
+    // spec: DMN-062, AGT-025, DMN-122, AGT-031
     #[test]
     fn omfp_urls_read_the_docs_and_the_schema_and_name_what_there_is_otherwise() {
         let docs = read_uri("omfp://docs/widgets", None).unwrap();
         assert_eq!(docs.content, DOCS);
+        for section in [
+            "## Keys",
+            ".omfp/keymap.json",
+            "omfp://schemas/keymap.json",
+            "useCommand",
+        ] {
+            assert!(DOCS.contains(section), "{section:?} missing from the docs");
+        }
         assert_eq!(
             docs.content_type,
             Some(HostUriResultContentType::TextMarkdown)
@@ -624,9 +643,15 @@ mod tests {
 
         let error = read_uri("omfp://docs/nothing", None).unwrap_err();
         assert!(error.contains("omfp://docs/nothing"), "{error}");
-        for url in [DOCS_URL, SCHEMA_URL, BUILTIN_URL] {
+        for url in [DOCS_URL, SCHEMA_URL, keymap::SCHEMA_URL, BUILTIN_URL] {
             assert!(error.contains(url), "{url} missing: {error}");
         }
+        let schema = read_uri("omfp://schemas/keymap.json", None).unwrap();
+        assert_eq!(schema.content, keymap::SCHEMA);
+        assert_eq!(
+            schema.content_type,
+            Some(HostUriResultContentType::ApplicationJson)
+        );
     }
 
     /// A bundle's `builtin-widgets/` with `header` (two files) and `chat`.

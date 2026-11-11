@@ -492,6 +492,34 @@ requirements = [
   "UI-194",
   # Contrast guard for user themes
   "UI-196",
+  # Help panel
+  "UI-198",
+]
+
+[M8c]
+status = "done"
+requirements = [
+  # Narrow windows and phones, always-active splitters
+  "UI-200",
+  "UI-201",
+  "UI-202",
+  "UI-203",
+  "UI-204",
+  "UI-205",
+  "UI-206",
+  "UI-207",
+  "UI-208",
+  "UI-209",
+  # Workspace keymap (.omfp/keymap.json)
+  "UI-210",
+  "UI-211",
+  "UI-212",
+  "DMN-120",
+  "DMN-121",
+  "DMN-122",
+  "PRT-060",
+  "AGT-030",
+  "AGT-031",
 ]
 
 [M9]
@@ -501,4 +529,5 @@ requirements = [
   "TST-052",
   "UI-190",
   "UI-191",
+  "UI-197",
 ]

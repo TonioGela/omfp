@@ -9,7 +9,9 @@ use serde::ser::SerializeMap;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value, json};
 
-use crate::dto::{JobStream, RepoStatus, Settings, Theme, ThreadSummary, WidgetInfo, Workspace};
+use crate::dto::{
+    JobStream, RepoStatus, Settings, Theme, ThreadSummary, WidgetInfo, Workspace, WorkspaceBinding,
+};
 use crate::method::Call;
 use crate::topic::Topic;
 
@@ -417,6 +419,12 @@ pub enum ViewsEvent {
     },
     /// A widget folder appeared, changed or went away: replaces `widgets`.
     ViewsWidgets { widgets: Vec<WidgetInfo> },
+    /// The workspace's `.omfp/keymap.json` changed (DMN-121): replaces `keymap` and `keymapError`. An invalid file
+    /// carries the last valid bindings with its error.
+    ViewsKeymap {
+        keymap: Vec<WorkspaceBinding>,
+        error: Option<String>,
+    },
     /// A widget stored a value (`null`: removed the key, DMN-086).
     WidgetStored {
         instance: String,

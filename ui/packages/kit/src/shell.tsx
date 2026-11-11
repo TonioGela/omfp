@@ -1,11 +1,19 @@
 /**
  * The shell's pieces (UI-167..UI-170): the mode line with its mode pill, the command line and its completion menu,
- * the brand, workspace sections and the left column's rows. They are presentational: the app wires keys, focus and
- * data; forced state classes (`is-hover`, `is-focus`) render hover and focus statically (UI-173).
+ * the brand, workspace sections and the left column's rows, and the help panel (UI-198). They are presentational: the
+ * app wires keys, focus and data; forced state classes (`is-hover`, `is-focus`) render hover and focus statically
+ * (UI-173).
  */
 import type { HTMLAttributes, ReactNode } from "react";
-import { Button as AriaButton, type ButtonProps as AriaButtonProps } from "react-aria-components";
+import {
+  Button as AriaButton,
+  type ButtonProps as AriaButtonProps,
+  Dialog as AriaDialog,
+  Modal,
+  ModalOverlay,
+} from "react-aria-components";
 import { IconButton } from "./button.tsx";
+import { BorderBox, BoxRule } from "./cards.tsx";
 import { cx, withClass } from "./class.ts";
 import { Icon, type IconName } from "./icons.tsx";
 import { Kbd } from "./kbd.tsx";
@@ -324,4 +332,224 @@ export type HintRowProps = HTMLAttributes<HTMLDivElement>;
 /** The empty-state hint of an empty workspace section (UI-170). */
 export function HintRow({ className, ...props }: HintRowProps) {
   return <div {...props} className={cx("omfp-row omfp-hint-row", className)} />;
+}
+
+export interface HelpDialogProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
+  /** The title on the top border (`help` by default). */
+  title?: ReactNode;
+  /** The dialog's accessible name. */
+  label: string;
+  /** The filter field above the sections. */
+  filter: ReactNode;
+  /** Metadata at the right end of the top border (the closing keys). */
+  end?: ReactNode;
+  /** Escape, a click outside or the caller's own close key. */
+  onClose?: () => void;
+  /** Renders in place, without the modal overlay (the `/kit` gallery). */
+  inline?: boolean;
+  /** {@link HelpSection}s, or an empty-state line. */
+  children?: ReactNode;
+}
+
+/**
+ * The help panel (UI-198): a modal border box titled `help` on its top border (UI-187) with a filter field and the
+ * sections under it, which scroll on their own; Escape or a click outside closes it, and focus returns where it was.
+ */
+export function HelpDialog({
+  title = "help",
+  label,
+  filter,
+  end,
+  onClose,
+  inline = false,
+  className,
+  children,
+  ...props
+}: HelpDialogProps) {
+  const dialog = (
+    <AriaDialog aria-label={label} className="omfp-help-dialog">
+      <BorderBox
+        {...props}
+        title={title}
+        end={end}
+        className={cx("omfp-help", className)}
+        bodyClassName="omfp-help__body"
+      >
+        <div className="omfp-help__filter">{filter}</div>
+        <div className="omfp-help__list">{children}</div>
+      </BorderBox>
+    </AriaDialog>
+  );
+  if (inline) {
+    return <div className="omfp-modal omfp-help-modal">{dialog}</div>;
+  }
+  return (
+    <ModalOverlay
+      isOpen
+      isDismissable
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose?.();
+        }
+      }}
+      className="omfp-modal-overlay"
+    >
+      <Modal className="omfp-modal omfp-help-modal">{dialog}</Modal>
+    </ModalOverlay>
+  );
+}
+
+export interface HelpSectionProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
+  /** The label on the section's rule (`├─ normal ──┤`). */
+  title: ReactNode;
+  /** A line under the rule. */
+  note?: ReactNode;
+  /** {@link HelpRow}s. */
+  children?: ReactNode;
+}
+
+/** One group of the help panel: a labelled rule (UI-187), an optional note, then its rows. */
+export function HelpSection({ title, note, className, children, ...props }: HelpSectionProps) {
+  return (
+    <section {...props} className={cx("omfp-help__section", className)}>
+      <BoxRule label={title} level={3} />
+      {note !== undefined && <p className="omfp-help__note">{note}</p>}
+      <dl className="omfp-help__rows">{children}</dl>
+    </section>
+  );
+}
+
+export interface HelpRowProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
+  /** Key chip labels (UI-148): `spc n`, `ctrl+c`, `:rescan`. */
+  keys: readonly string[];
+  /** A command's argument values, after its chips. */
+  args?: string | undefined;
+  description: ReactNode;
+}
+
+/** One binding or command of the help panel: its key chips, then what it does. */
+export function HelpRow({ keys, args, description, className, ...props }: HelpRowProps) {
+  return (
+    <div {...props} className={cx("omfp-help__row", className)}>
+      <dt className="omfp-help__keys">
+        {keys.map((key) => (
+          <Kbd key={key}>{key}</Kbd>
+        ))}
+        {args !== undefined && <span className="omfp-help__args">{args}</span>}
+      </dt>
+      <dd className="omfp-help__description">{description}</dd>
+    </div>
+  );
+}
+
+/** A thread the strip shows: its state mark, its title as the accessible name. */
+export interface StripItem {
+  id: string;
+  title: string;
+  state: ThreadState;
+  selected?: boolean;
+}
+
+export interface ThreadStripProps extends Omit<HTMLAttributes<HTMLElement>, "onToggle" | "onSelect"> {
+  /** Whether the left column it stands for is open. */
+  open: boolean;
+  onToggle: () => void;
+  /** Accessible name of the toggle (show or hide the column). */
+  toggleLabel: string;
+  /** `id` of the column the toggle opens. */
+  controls?: string;
+  /** Threads needing the user and running ones. */
+  threads: readonly StripItem[];
+  onSelect: (id: string) => void;
+  /** Class names of the toggle (forced states in the gallery). */
+  toggleClassName?: string;
+}
+
+/**
+ * The left column folded into a strip (UI-201, UI-208): the brand's `◆`, the toggle that opens the column over the
+ * content, then one state mark per thread needing the user or running, each selecting its thread.
+ */
+export function ThreadStrip({
+  open,
+  onToggle,
+  toggleLabel,
+  controls,
+  threads,
+  onSelect,
+  toggleClassName,
+  className,
+  ...props
+}: ThreadStripProps) {
+  return (
+    <nav {...props} className={cx("omfp-strip", className)}>
+      <span className="omfp-strip__brand omfp-grad-text" aria-hidden="true">
+        ◆
+      </span>
+      <IconButton
+        className={cx("omfp-strip__toggle", toggleClassName)}
+        label={toggleLabel}
+        icon={<Icon name="panel-left" />}
+        aria-expanded={open}
+        {...(controls === undefined ? {} : { "aria-controls": controls })}
+        onPress={onToggle}
+        data-testid="left-toggle"
+      />
+      <ul className="omfp-strip__threads">
+        {threads.map((thread) => (
+          <li key={thread.id}>
+            <AriaButton
+              className="omfp-strip__thread"
+              aria-label={thread.title}
+              data-state={thread.state}
+              data-selected={thread.selected === true || undefined}
+              data-testid="strip-thread"
+              data-thread-id={thread.id}
+              onPress={() => onSelect(thread.id)}
+            >
+              <StateMark state={thread.state} />
+            </AriaButton>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/** An area of the phone layout's bottom bar. */
+export interface AreaItem {
+  id: string;
+  label: string;
+  icon: IconName;
+}
+
+export interface AreaBarProps extends Omit<HTMLAttributes<HTMLElement>, "onSelect"> {
+  /** Accessible name of the bar. */
+  label: string;
+  items: readonly AreaItem[];
+  selected: string;
+  onSelect: (id: string) => void;
+}
+
+/**
+ * The phone layout's bottom bar (UI-204, UI-208): one 44 px button per area (Threads · Chat · Side), icon over label;
+ * the shown area in `primary` with the gradient bar on its top edge.
+ */
+export function AreaBar({ label, items, selected, onSelect, className, ...props }: AreaBarProps) {
+  return (
+    <nav {...props} aria-label={label} className={cx("omfp-areabar", className)}>
+      {items.map((item) => (
+        <AriaButton
+          key={item.id}
+          className="omfp-areabar__item"
+          aria-pressed={item.id === selected}
+          data-testid="area-button"
+          data-area={item.id}
+          onPress={() => onSelect(item.id)}
+        >
+          <Icon name={item.icon} />
+          <span>{item.label}</span>
+        </AriaButton>
+      ))}
+    </nav>
+  );
 }

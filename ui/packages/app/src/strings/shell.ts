@@ -83,6 +83,9 @@ export const shell = {
     unarchive: "Unarchive",
     delete: "Delete…",
     noThread: "No thread selected",
+    /** The compact header's `⋯` button and the popover it opens (UI-202). */
+    more: "More thread actions",
+    moreTitle: "Thread",
   },
   deleteThread: {
     title: (title: string) => `Delete \u201c${title}\u201d?`,
@@ -335,6 +338,18 @@ export const shell = {
       "omfp:tree": "Tree",
     } as Readonly<Record<string, string>>,
   },
+  /** The narrow and mobile frame (UI-200..UI-205). */
+  responsive: {
+    strip: "Threads column",
+    showThreads: "Show threads",
+    hideThreads: "Hide threads",
+    areas: "Areas",
+    threads: "Threads",
+    chat: "Chat",
+    side: "Side",
+    leftSplitter: "Resize the threads column",
+    tabs: (container: string, path: string) => `${container} ${path}`,
+  },
   layout: {
     edit: "Edit layout",
     add: "Add widget",
@@ -389,7 +404,7 @@ export const shell = {
     archive: "Archive the thread",
     unarchive: "Unarchive the thread",
     delete: "Delete the thread…",
-    rename: "Rename the thread",
+    rename: "Rename the thread (:rename <title>, or in place without one)",
     stop: "Stop the thread's process",
     restart: "Restart the thread's process",
     nextAttention: "Next thread needing attention",
@@ -410,5 +425,43 @@ export const shell = {
     bottom: "Last thread",
     halfDown: "Half a page of threads down",
     halfUp: "Half a page of threads up",
+    help: "Show every key and command (this help)",
+    toggleThreads: "Show or hide the threads column (narrow window)",
+  },
+  /** The help panel (UI-198): the effective keymap by mode and the `:` commands. */
+  help: {
+    /** The title on the box's top border. */
+    title: "help",
+    label: "Keys and commands",
+    filter: "Filter keys and commands",
+    filterPlaceholder: "Filter by key or description",
+    noMatch: "No key or command matches",
+    close: "close",
+    sections: {
+      normal: "normal",
+      insert: "insert · composer",
+      transcript: "transcript",
+      cmdline: "command line",
+      editor: "file editor · vim",
+      commands: "commands",
+    },
+    /** Keys a widget handles itself, outside the keymap. */
+    keys: {
+      send: "Send the message (queued as a follow-up while the agent works)",
+      steer: "Steer the running turn with the message",
+      newline: "New line",
+      complete: "Complete the / command",
+      page: "Scroll a page up or down",
+      ends: "Scroll to the top or the bottom",
+      cmdComplete: "Complete the command or its argument",
+      cmdMove: "Move through the completions",
+      cmdRun: "Run the line (or the highlighted completion)",
+      cmdCancel: "Close the line",
+      vimEsc: "Back to vim's normal mode; in normal mode with nothing pending, leave the editor",
+      vimSave: "Save the file",
+      vimQuit: "Back to read-only (refused while there are unsaved changes)",
+      vimDrop: "Drop the changes and reload the file",
+    },
+    editorNote: "While the file editor has the focus, vim's own keys apply; the app keymap leaves them alone.",
   },
 } as const;

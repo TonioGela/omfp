@@ -32,13 +32,39 @@
 
   /* Frame. */
   /* The app fills the window and never scrolls it: an entrance that starts below the window (the mode pill's) would
-   * otherwise flash a window scrollbar that shifts every column while it plays. */
+   * otherwise flash a window scrollbar that shifts every column while it plays. On a phone it is as tall as the visual
+   * viewport (`--vvh`), so the composer stays above the keyboard (UI-205). */
   .omfp-app {
     display: flex;
     flex-direction: column;
-    block-size: 100%;
+    block-size: var(--vvh, 100%);
     min-block-size: 0;
     overflow: hidden;
+  }
+
+  /* A phone (UI-205): 44 px touch targets, a narrower gutter. */
+  .omfp-app[data-layout="mobile"] {
+    --omfp-ctl-h: max(44px, 1.75rem);
+    --omfp-ctl-h-sm: max(44px, 1.4375rem);
+    --omfp-row-h: max(44px, 1.5rem);
+    --omfp-bar-h: max(44px, 2.125rem);
+    --omfp-gutter: var(--omfp-s3);
+  }
+
+  /* Hover-only affordances are always there on touch screens (UI-205). */
+  @media (hover: none) {
+    .omfp-reveal,
+    .omfp-tree__actions {
+      opacity: 1;
+    }
+
+    .omfp-thread .omfp-row__delete {
+      display: inline-flex;
+    }
+
+    .omfp-thread:has(.omfp-row__delete) .omfp-row__meta {
+      display: none;
+    }
   }
 
   /* Banners (UI-003, AGT-011): a tinted row above the shell in the tone's color. */
@@ -105,6 +131,34 @@
     overflow: hidden;
     border-inline-end: var(--omfp-bw) solid var(--omfp-rule);
     background: var(--omfp-side-bg);
+  }
+
+  /* Narrow and phone frames (UI-201, UI-204): the left column opens over the content, right of the strip (narrow)
+   * or as the whole threads area (phone); closed, it is not shown (its widget stays mounted). */
+  .omfp-app:not([data-layout="wide"]) .omfp-shell {
+    position: relative;
+  }
+
+  .omfp-app:not([data-layout="wide"]) .omfp-frame__left {
+    position: absolute;
+    z-index: 5;
+    inset-block: 0;
+    inset-inline-start: 0;
+    inline-size: min(var(--omfp-side-w), 85%);
+  }
+
+  .omfp-app[data-layout="narrow"] .omfp-frame__left {
+    inset-inline-start: calc(var(--omfp-ctl-h) + 2 * var(--omfp-s2));
+    box-shadow: var(--omfp-pop-shadow);
+  }
+
+  .omfp-app[data-layout="mobile"] .omfp-frame__left {
+    inline-size: 100%;
+    border-inline-end: 0;
+  }
+
+  .omfp-app:not([data-layout="wide"]) .omfp-frame__left:not([data-open]) {
+    display: none;
   }
 
   .omfp-frame__threads {
@@ -233,6 +287,113 @@
 
   .omfp-view__row > .omfp-view__cell + .omfp-view__cell {
     border-inline-start: var(--omfp-bw) solid var(--omfp-rule);
+  }
+
+  /* A splitter's hairline replaces the rule between two cells (UI-206), and the left column's (UI-207). */
+  .omfp-view__row > .omfp-splitter + .omfp-view__cell,
+  .omfp-app[data-layout="wide"] .omfp-frame__left {
+    border-inline-start: 0;
+    border-inline-end: 0;
+  }
+
+  /* Side by side, a cell keeps a readable width (UI-203); the splitters stop there. */
+  .omfp-view__row:not([data-tabbed]) > .omfp-view__cell {
+    min-inline-size: min(16rem, 100%);
+  }
+
+  /* A column of boxes (no conversation in it): each cell at least as tall as its content, the column scrolls. */
+  .omfp-view__col[data-boxes] {
+    overflow-y: auto;
+  }
+
+  .omfp-view__col[data-boxes] > .omfp-view__cell {
+    min-block-size: min-content;
+  }
+
+  /* On a phone a row is tabs (UI-204): its tab bar, then the shown cell. */
+  .omfp-view__cell[hidden] {
+    display: none;
+  }
+
+  .omfp-view__row[data-tabbed],
+  .omfp-view__col[data-tabbed] {
+    flex-direction: column;
+  }
+
+  .omfp-view__row[data-tabbed] > .omfp-view__cell {
+    border-inline-start: 0;
+  }
+
+  .omfp-view__celltabs {
+    flex: none;
+    min-block-size: var(--omfp-bar-h);
+    padding-inline: var(--omfp-s2);
+    overflow-x: auto;
+  }
+
+  /* The compact chat header (UI-202): one row — title, state, model, `⋯` — and the popover of the rest. */
+  .omfp-thread-header[data-compact] {
+    gap: 0;
+    padding-block: var(--omfp-s2);
+  }
+
+  .omfp-thread-header[data-compact] .omfp-thread-header__top {
+    flex-wrap: nowrap;
+  }
+
+  .omfp-thread-header[data-compact] .omfp-thread-header__title {
+    flex: 1 1 auto;
+  }
+
+  .omfp-thread-header[data-compact] .omfp-state-badge {
+    flex: none;
+  }
+
+  .omfp-thread-header[data-compact] .omfp-thread-header__model {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    max-inline-size: 45%;
+  }
+
+  /* The model's name gives way (ellipsis) so the `⋯` always fits on the row. */
+  .omfp-thread-header[data-compact] .omfp-thread-header__model .omfp-select__button {
+    max-inline-size: 100%;
+  }
+
+  .omfp-thread-header[data-compact] .omfp-thread-header__model .omfp-select__value {
+    min-inline-size: 0;
+  }
+
+  .omfp-thread-header__more .omfp-thread-header__actions,
+  .omfp-thread-header__more .omfp-thread-header__lifecycle,
+  .omfp-thread-header__more .omfp-thread-header__chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s2);
+    margin: 0;
+  }
+
+  /* The full header (UI-202) keeps two rows: its chips give way (ellipsis) to the session controls instead of the bar
+   * wrapping onto a third row. */
+  .omfp-thread-header:not([data-compact]) .omfp-chat-header__bar {
+    flex-wrap: nowrap;
+  }
+
+  .omfp-thread-header:not([data-compact]) .omfp-chat-header__bar > .omfp-thread-header__chips {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    min-inline-size: 0;
+    overflow: hidden;
+  }
+
+  .omfp-thread-header:not([data-compact]) .omfp-chat-header__bar :is(.omfp-chip, .omfp-chip__label) {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+  }
+
+  .omfp-thread-header:not([data-compact]) .omfp-thread-header__session {
+    flex: none;
   }
 
   .omfp-view__col > .omfp-view__cell:has(> .omfp-view__item > .omfp-widget[data-widget="omfp:header"]) {
@@ -471,51 +632,6 @@
 
   .omfp-widget-toolbar__reference::before {
     content: "◆ ";
-  }
-
-  /* A splitter: a hairline that thickens into the primary color on hover and focus. */
-  .omfp-splitter {
-    position: relative;
-    flex: 0 0 var(--omfp-s1);
-    background: transparent;
-    touch-action: none;
-  }
-
-  .omfp-splitter::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    margin: auto;
-    background: var(--omfp-rule-strong);
-    transition: background var(--omfp-dur-1) var(--omfp-ease);
-  }
-
-  .omfp-splitter[aria-orientation="vertical"] {
-    cursor: col-resize;
-  }
-
-  .omfp-splitter[aria-orientation="vertical"]::after {
-    inline-size: 1px;
-  }
-
-  .omfp-splitter[aria-orientation="horizontal"] {
-    cursor: row-resize;
-  }
-
-  .omfp-splitter[aria-orientation="horizontal"]::after {
-    block-size: 1px;
-  }
-
-  .omfp-splitter:hover,
-  .omfp-splitter:focus-visible {
-    outline: none;
-  }
-
-  .omfp-splitter:hover::after,
-  .omfp-splitter:focus-visible::after {
-    inline-size: auto;
-    block-size: auto;
-    background: var(--omfp-grad);
   }
 
   /* The widget picker (UI-104): groups titled `╭─ <group>`, references as rows. */
@@ -1103,6 +1219,7 @@
     gap: var(--omfp-s3);
     padding: var(--omfp-s3);
     font-family: var(--omfp-font-code);
+    container-type: inline-size;
   }
 
   .omfp-workspace h2,
@@ -1245,6 +1362,30 @@
     white-space: nowrap;
     font-size: var(--omfp-fs-2xs);
     color: var(--omfp-on-surface-variant);
+  }
+
+  /* In a narrow side area a repository wraps instead of cutting its status and origin (UI-203). */
+  @container (max-width: 22rem) {
+    .omfp-workspace__repo {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-areas:
+        "name kind remove"
+        "git git git"
+        "branch branch branch"
+        "origin origin origin"
+        "shared shared shared";
+    }
+
+    .omfp-workspace__kind {
+      justify-self: start;
+    }
+
+    .omfp-workspace__git,
+    .omfp-workspace__origin {
+      justify-self: start;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
   }
 
   /* The Link/Clone switch of "add repository": a segmented control, the chosen kind in the soft gradient. */

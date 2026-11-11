@@ -1,6 +1,6 @@
 /** L4: the frame (banner, views, keymap, `:` line, theme, live region, notifications, dialogs) over a fake client. */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { CallMethod } from "@omfp/client";
 import type { Settings, ThreadSummary, ViewsState } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -23,6 +23,7 @@ import type { WidgetRegistry } from "../../src/view/resolve.ts";
 import { DEFAULT_MANIFEST } from "../../src/view/views.ts";
 import { thread, workspace } from "../support/fixtures.ts";
 import { type FakeClient, ManualTimers, renderWithHost, testHost } from "../support/host.tsx";
+import { installResizeObserver, resize } from "../support/resize.ts";
 
 afterEach(() => {
   cleanup();
@@ -802,7 +803,7 @@ describe("layout editing", () => {
     act(() => host.window.set(SELECTED_THREAD, "t1"));
     expect((toggle as HTMLButtonElement).disabled).toBe(false);
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    expect(screen.queryAllByTestId("widget-toolbar")).toEqual([]);
+    expect(screen.queryAllByTestId("widget-toolbar").length).toBe(0);
     await user.click(toggle);
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(host.window.get(LAYOUT_EDIT)).toBe(true);
@@ -811,11 +812,12 @@ describe("layout editing", () => {
       "omfp:chat",
       "omfp:workspace",
     ]);
-    expect(screen.getAllByTestId("splitter").length).toBe(2);
+    // The row's splitter; none under the header, which is as tall as its content (UI-206).
+    expect(screen.getAllByTestId("splitter").map((splitter) => splitter.dataset.path)).toEqual(["0"]);
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "layout{Enter}");
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    expect(screen.queryAllByTestId("widget-toolbar")).toEqual([]);
+    expect(screen.queryAllByTestId("widget-toolbar").length).toBe(0);
   });
 
   // spec: UI-103
@@ -1006,5 +1008,115 @@ describe("widget copy", () => {
     const [, failing] = client.callsTo("views.set");
     await act(async () => failing?.reject(new Error("disk full")));
     expect(host.window.get(ERRORS)).toEqual(["disk full"]);
+  });
+});
+
+describe("responsive frame", () => {
+  let restore = () => {};
+  beforeEach(() => {
+    restore = installResizeObserver();
+  });
+  afterEach(() => restore());
+
+  // spec: UI-200, UI-201, UI-207
+  test("a narrow frame folds the left column into a strip that opens over the view; Escape, a press outside or a pick closes it", async () => {
+    const { client, flush, host, user } = setup();
+    const app = screen.getByTestId("app");
+    const column = screen.getByTestId("left-column");
+    const open = () => column.dataset.open === "true";
+    expect(app.dataset.layout).toBe("wide");
+    expect([screen.queryAllByTestId("left-splitter").length, screen.queryAllByTestId("left-strip").length]).toEqual([
+      1, 0,
+    ]);
+    resize(app, 900);
+    expect(app.dataset.layout).toBe("narrow");
+    expect([screen.queryAllByTestId("left-splitter").length, screen.queryAllByTestId("left-strip").length]).toEqual([
+      0, 1,
+    ]);
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1", { needsAttention: true }) });
+    flush();
+    expect(screen.getAllByTestId("strip-thread").map((button) => button.dataset.threadId)).toEqual(["t2"]);
+    expect(open()).toBe(false);
+    await user.click(screen.getByTestId("left-toggle"));
+    expect(open()).toBe(true);
+    expect(screen.getByTestId("left-toggle").getAttribute("aria-expanded")).toBe("true");
+    press("Escape");
+    expect(open()).toBe(false);
+    // Closing gave the focus back to the strip's toggle (compared by test id: a failing diff of an element prints its
+    // whole React fiber graph); the keys work from anywhere.
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("left-toggle");
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+    press(" ");
+    press("t");
+    expect(open()).toBe(true);
+    act(() => {
+      fireEvent.pointerDown(screen.getByTestId("view"));
+    });
+    expect(open()).toBe(false);
+    await user.click(screen.getByTestId("left-toggle"));
+    expect(open()).toBe(true);
+    await user.click(screen.getByTestId("strip-thread"));
+    expect(host.window.get(SELECTED_THREAD)).toBe("t2");
+    expect(open()).toBe(false);
+    resize(app, 1400);
+    expect(app.dataset.layout).toBe("wide");
+    expect(screen.queryAllByTestId("left-strip").length).toBe(0);
+  });
+
+  // spec: UI-200, UI-204
+  test("a phone shows one area at a time from the bottom bar, without splitters; picking a thread goes back to the chat", async () => {
+    const { host, user } = setup();
+    const app = screen.getByTestId("app");
+    resize(app, 390);
+    expect(app.dataset.layout).toBe("mobile");
+    const areas = () =>
+      screen.getAllByTestId("area-button").map((button) => [button.dataset.area, button.getAttribute("aria-pressed")]);
+    expect(areas()).toEqual([
+      ["threads", "false"],
+      ["chat", "true"],
+      ["side", "false"],
+    ]);
+    expect([screen.queryAllByTestId("splitter").length, screen.queryAllByTestId("left-splitter").length]).toEqual([
+      0, 0,
+    ]);
+    expect(screen.getByTestId("view").dataset.area).toBe("chat");
+    await user.click(screen.getAllByTestId("area-button")[2] ?? document.body);
+    expect(screen.getByTestId("view").dataset.area).toBe("side");
+    expect(areas()[2]).toEqual(["side", "true"]);
+    await user.click(screen.getAllByTestId("area-button")[0] ?? document.body);
+    expect(screen.getByTestId("left-column").dataset.open).toBe("true");
+    expect(areas()[0]).toEqual(["threads", "true"]);
+    act(() => host.window.set(SELECTED_THREAD, "t1"));
+    expect(screen.getByTestId("left-column").dataset.open).toBeUndefined();
+    expect(screen.getByTestId("view").dataset.area).toBe("chat");
+    expect(areas()[1]).toEqual(["chat", "true"]);
+  });
+
+  // spec: UI-205
+  test("on a phone the app is as tall as the visual viewport, following the on-screen keyboard", () => {
+    const viewport = Object.assign(new EventTarget(), { height: 800 });
+    const original = Object.getOwnPropertyDescriptor(window, "visualViewport");
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    try {
+      setup();
+      const app = screen.getByTestId("app");
+      const height = () => document.documentElement.style.getPropertyValue("--vvh");
+      expect(height()).toBe("");
+      resize(app, 390);
+      expect(height()).toBe("800px");
+      viewport.height = 450;
+      act(() => {
+        viewport.dispatchEvent(new Event("resize"));
+      });
+      expect(height()).toBe("450px");
+      resize(app, 900);
+      expect(height()).toBe("");
+    } finally {
+      if (original === undefined) {
+        Reflect.deleteProperty(window, "visualViewport");
+      } else {
+        Object.defineProperty(window, "visualViewport", original);
+      }
+    }
   });
 });

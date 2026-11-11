@@ -1,16 +1,18 @@
 /**
  * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), the left column of
  * workspaces and threads (UI-100), the view of the current workspace with its switcher, error banner and layout
- * editing (UI-100..104, AGT-011), the keymap and `:` command line (UI-095), the safety net for pending interactions
- * (AGT-015), notices and notifications (UI-096, UI-192), the live region (UI-092), dialogs, the files the agent opens
- * (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything else is a widget of the view.
+ * editing (UI-100..104, AGT-011), the keymap, `:` command line (UI-095) and help panel (UI-198), the safety net for
+ * pending interactions (AGT-015), notices and notifications (UI-096, UI-192), the live region (UI-092), dialogs, the
+ * files the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything else is a widget of the
+ * view.
  */
 
-import { Select } from "@omfp/kit";
+import { Select, useWidthClass } from "@omfp/kit";
 import { type ViewsState, viewsTopic } from "@omfp/protocol";
-import { type ReactNode, useEffect, useMemo } from "react";
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react";
 import { createKeyHandler } from "../keymap/handler.ts";
-import { type Binding, DEFAULT_BINDINGS, mergeBindings } from "../keymap/keymap.ts";
+import { type Binding, DEFAULT_BINDINGS } from "../keymap/keymap.ts";
+import { KeymapError, useBindings } from "../keymap/workspace.tsx";
 import {
   ACTIVE_VIEW,
   DRAFT_THREAD,
@@ -25,7 +27,7 @@ import {
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { useAppearance, useUserTheme } from "../theme/theme.ts";
-import { containsWidget, hasMainSlot } from "../view/layout.ts";
+import { chatCell, containsWidget, hasMainSlot } from "../view/layout.ts";
 import { BUILTIN_WIDGETS, INTERACTION_WIDGETS } from "../view/registry.ts";
 import { ViewRenderer } from "../view/render.tsx";
 import { resolveWidget, type WidgetRegistry } from "../view/resolve.ts";
@@ -39,10 +41,21 @@ import { GlobalCommands } from "./commands.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
 import { FilePickerLine } from "./file-picker.tsx";
 import { FloatingFile } from "./floating-file.tsx";
+import { Help } from "./help.tsx";
 import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
 import { ModeLine, useMode } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
+import { breakpointOf, LEFT_OPEN, MOBILE_AREA } from "./responsive.ts";
+import {
+  Areas,
+  LEFT_COLUMN_ID,
+  LeftSplitter,
+  LeftStrip,
+  ToggleThreadsCommand,
+  useLeftDrawer,
+  useVisualViewport,
+} from "./responsive.tsx";
 import { ConnectionBanner, Errors, StatusLiveRegion } from "./status.tsx";
 
 export interface FrameProps {
@@ -84,29 +97,44 @@ export function Frame({
   const editing = layoutEdit && workspaceId !== undefined;
   const write = useLayoutWriter(workspaceId, state, view?.id ?? views.defaultId);
   const settings = useSettings();
-  // The daemon's `[keymap]` entries over the defaults, live (UI-097).
-  const bindings = useMemo(() => mergeBindings(defaults, settings.keymap), [defaults, settings.keymap]);
+  // The defaults < the daemon's `[keymap]` entries < the current workspace's `.omfp/keymap.json`, live (UI-097, UI-210).
+  const bindings = useBindings(defaults, settings.keymap, state);
   useKeymap(bindings, now);
   useAppearance();
   useUserTheme();
-  const mode = useMode();
-  const [editorMode] = useWindowState(EDITOR_MODE);
+  const appRef = useRef<HTMLDivElement>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  // The frame's own width picks the layout (UI-200).
+  const breakpoint = useWidthClass(appRef, breakpointOf);
+  useLeftDrawer(breakpoint, asideRef);
+  useVisualViewport(breakpoint);
+  const [leftOpen] = useWindowState(LEFT_OPEN);
+  const [area] = useWindowState(MOBILE_AREA);
+  const side = view !== undefined && chatCell(view.tree) !== undefined;
   const viewIds = views.views.map((candidate) => candidate.id);
   return (
-    <div className="omfp-app" data-testid="app" data-mode={mode}>
+    <div ref={appRef} className="omfp-app" data-testid="app" data-layout={breakpoint}>
       <ConnectionBanner />
       {views.error !== undefined && (
         <div className="omfp-banner" data-tone="error" role="alert" data-testid="view-error">
           {strings.shell.frame.invalidView(views.error)}
         </div>
       )}
+      <KeymapError views={state} />
       {settings.error !== null && settings.error !== undefined && (
         <div className="omfp-banner" data-tone="error" role="alert" data-testid="settings-error">
           {strings.shell.settings.error(settings.error)}
         </div>
       )}
       <main className="omfp-shell" data-testid="shell">
-        <aside className="omfp-frame__left" data-testid="left-column">
+        {breakpoint === "narrow" && <LeftStrip />}
+        <aside
+          ref={asideRef}
+          id={LEFT_COLUMN_ID}
+          className="omfp-frame__left"
+          data-testid="left-column"
+          data-open={(breakpoint !== "wide" && leftOpen) || undefined}
+        >
           <div className="omfp-frame__threads">
             <WidgetBoundary reference="omfp:threads">
               <ThreadsWidget />
@@ -137,6 +165,7 @@ export function Frame({
             )}
           </div>
         </aside>
+        {breakpoint === "wide" && <LeftSplitter aside={asideRef} />}
         <div className="omfp-frame__main">
           {view !== undefined && (
             <ViewRenderer
@@ -145,26 +174,49 @@ export function Frame({
               workspaceId={workspaceId}
               views={state}
               onEdit={editing ? write : undefined}
+              area={breakpoint === "mobile" ? (side ? area : "chat") : undefined}
             />
           )}
           {view !== undefined && !hasMainSlot(view.tree) && (
             <FloatingFile workspaceId={workspaceId} views={state} registry={registry} />
           )}
-          <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} bindings={bindings}>
-            <CommandLine bindings={bindings} />
-            <FilePickerLine />
-          </ModeLine>
+          <FrameModeLine appRef={appRef} bindings={bindings} />
         </div>
       </main>
+      {breakpoint === "mobile" && <Areas side={side} />}
+      <ToggleThreadsCommand breakpoint={breakpoint} />
       {view !== undefined && <SafetyNet view={view} workspaceId={workspaceId} views={state} registry={registry} />}
       <Errors />
       <StatusLiveRegion />
       <DeleteThreadDialog />
       <DeleteWorkspaceDialog />
+      <Help bindings={bindings} now={now} />
       <GlobalCommands viewIds={viewIds} />
       <Notifier port={notifications} hasFocus={hasFocus} focusWindow={focusWindow} />
       <AgentFiles />
     </div>
+  );
+}
+
+/** The mode line and the frame's `data-mode`: a mode change (focusing the composer) renders them, not the frame. */
+function FrameModeLine({
+  appRef,
+  bindings,
+}: {
+  appRef: RefObject<HTMLDivElement | null>;
+  bindings: readonly Binding[];
+}): ReactNode {
+  const mode = useMode();
+  const [editorMode] = useWindowState(EDITOR_MODE);
+  // After the frame's ref is set (a child's layout effect runs before it on mount).
+  useEffect(() => {
+    appRef.current?.setAttribute("data-mode", mode);
+  }, [appRef, mode]);
+  return (
+    <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} bindings={bindings}>
+      <CommandLine bindings={bindings} />
+      <FilePickerLine />
+    </ModeLine>
   );
 }
 

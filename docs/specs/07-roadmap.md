@@ -396,6 +396,21 @@ surfaces it sits on and moves only the failing ones in OKLab lightness toward `o
 for `outline`), plus the labels on filled buttons and pills; Synth and the matugen forest fixture are untouched, a Dux
 Solarized preset (`?theme=dux-solarized` in the gallery, from the user's theme) becomes readable in light and dark.
 
+## M8c — Narrow windows, splitters, workspace keys (done)
+
+Scope (user requests): omfp usable at half a desktop screen and on a phone; areas resizable without edit mode; key
+bindings an agent can add for one workspace; a help panel listing every key.
+
+Result: under ~1100 px of frame width the left column folds into a strip (`space t`) and the chat header keeps one row
+with the other actions in a `⋯` menu; under ~700 px one area at a time from a bottom bar (Threads · Chat · Side), view
+rows and box columns as tabs, 44 px targets, the composer above the virtual keyboard (UI-200..207, UI-209). Splitters
+between areas and next to the left column are always active, sized per window, reset by double click (UI-206, UI-208).
+`<workspace>/.omfp/keymap.json`, read and validated by the daemon and pushed on the views topic, binds keys to built-in or
+widget commands in that workspace only, over the global `[keymap]` (UI-210..212, DMN-120..122, PRT-060, AGT-030..031).
+`?` / `:help` lists every effective binding and `:` command with a filter (UI-198). A failing `toEqual` on React
+elements made Bun's diff walk the fiber graph to gigabytes and the OOM killer took the session down: tests compare
+counts, ids or text, never DOM elements (AGENTS.md).
+
 ## M9 — Hardening
 
 Scope:

@@ -4,9 +4,9 @@ use std::path::Path;
 
 use omfp_core::{ProcessState, ThreadEvent};
 use omfp_protocol::{
-    ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, JobStream, MAX_FRAME_BYTES,
+    ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, JobStream, KeymapMode, MAX_FRAME_BYTES,
     PROTOCOL_VERSION, Response, ServerFrame, Topic, TopicEvent, TransientEvent, ViewsEvent,
-    WidgetInfo, WidgetSource, WorkspaceEvent,
+    ViewsState, WidgetInfo, WidgetSource, WorkspaceBinding, WorkspaceEvent,
 };
 use serde_json::{Value, json};
 
@@ -242,6 +242,41 @@ fn views_event_frames() {
         round_trip(&stored)["event"],
         json!({ "kind": "widget_stored", "instance": "./widgets/tests", "key": "runs", "value": 3 })
     );
+}
+
+// spec: PRT-060
+#[test]
+fn views_keymap_event_frames_and_the_state_without_a_keymap() {
+    let topic = Topic::Views(WORKSPACE_ID.to_owned());
+    let keymap = event(
+        topic,
+        TopicEvent::Views(ViewsEvent::ViewsKeymap {
+            keymap: vec![
+                WorkspaceBinding {
+                    mode: KeymapMode::Normal,
+                    keys: "Space t".to_owned(),
+                    command: "tests.run".to_owned(),
+                    args: vec!["unit".to_owned()],
+                },
+                WorkspaceBinding {
+                    mode: KeymapMode::Insert,
+                    keys: "Ctrl-t".to_owned(),
+                    command: String::new(),
+                    args: Vec::new(),
+                },
+            ],
+            error: Some("bindings[2].keys: expected a key sequence".to_owned()),
+        }),
+    );
+    insta::assert_json_snapshot!("event_views_keymap", round_trip(&keymap));
+
+    // A state without the keymap fields (an older daemon) reads as no workspace bindings.
+    let state: ViewsState = serde_json::from_value(
+        json!({ "manifest": null, "error": null, "widgets": [], "stored": {} }),
+    )
+    .unwrap();
+    assert_eq!(state.keymap, Vec::new());
+    assert_eq!(state.keymap_error, None);
 }
 
 // spec: PRT-041

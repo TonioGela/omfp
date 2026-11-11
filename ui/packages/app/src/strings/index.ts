@@ -4,7 +4,8 @@
  */
 
 import { chat } from "./chat.ts";
+import { keys } from "./keys.ts";
 import { shell } from "./shell.ts";
 import { widgets } from "./widgets.ts";
 
-export const strings = { chat, shell, widgets } as const;
+export const strings = { chat, keys, shell, widgets } as const;

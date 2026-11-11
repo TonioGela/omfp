@@ -948,6 +948,15 @@ export type ViewsEvent =
     kind: "views_widgets";
     widgets: WidgetInfo[];
   }
+  /**
+   * The workspace's `.omfp/keymap.json` changed (DMN-121): replaces `keymap` and `keymapError`. An invalid file
+   * carries the last valid bindings with its error.
+   */
+  | {
+    error?: string | null;
+    keymap: WorkspaceBinding[];
+    kind: "views_keymap";
+  }
   /** A widget stored a value (`null`: removed the key, DMN-086). */
   | {
     instance: string;
@@ -960,6 +969,16 @@ export type ViewsEvent =
 export type ViewsState = {
   /** Why the file is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or absent. */
   error?: string | null;
+  /**
+   * The bindings of the workspace's `.omfp/keymap.json` (DMN-120, UI-210); an invalid file keeps the last valid
+   * ones (DMN-121); empty without a file.
+   */
+  keymap?: WorkspaceBinding[];
+  /**
+   * Why `.omfp/keymap.json` is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or
+   * absent.
+   */
+  keymapError?: string | null;
   /** The workspace's `.omfp/views.json` when it is a valid manifest (AGT-010); `null` without a file or when invalid. */
   manifest?: unknown;
   /** What widgets stored with `useStored` (DMN-086): instance → key → value. */
@@ -1046,6 +1065,21 @@ export type Workspace = {
   repos: WorkspaceRepo[];
   /** Threads living in the workspace, archived ones included, oldest first (DMN-027). */
   threadIds: string[];
+};
+
+/**
+ * One binding of a workspace's `.omfp/keymap.json` (UI-210, AGT-030): a `[keymap]` entry (UI-097) with optional
+ * arguments.
+ */
+export type WorkspaceBinding = {
+  /** Arguments passed to the command. */
+  args?: string[];
+  /** Command id, built-in or registered by a widget (`useCommand`); `""` removes the binding of `keys`. */
+  command: string;
+  /** Key sequence, e.g. `g g`, `Ctrl-d`, `Space t`. */
+  keys: string;
+  /** `normal` when the file leaves it out. */
+  mode: KeymapMode;
 };
 
 /** `workspaces.diff` params. */

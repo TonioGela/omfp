@@ -14,6 +14,7 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 - `<data-dir>/widgets/<name>/` — the user library, referenced as `user:<name>` in every workspace.
 - A workspace widget named like a built-in (`.omfp/widgets/chat/` for `omfp:chat`) replaces the built-in in that
   workspace. The built-ins' sources can be copied as a starting point (`:widget copy omfp:workspace` in the window).
+- `<workspace>/.omfp/keymap.json` — this workspace's key bindings (schema: `omfp://schemas/keymap.json`, see Keys).
 
 ```json
 {
@@ -40,6 +41,31 @@ repositories), `omfp:subagents` (the selected thread's subagents, their transcri
 `HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Props every widget accepts: `instance` (a string naming the instance for `useStored` and `useJob`;
 default: the reference) and `title` (a tab's label; default: the built-in's name, else the reference).
+
+## Keys
+
+`<workspace>/.omfp/keymap.json` binds keys to commands in the windows showing this workspace, over the default keys and
+the user's `[keymap]` config: entries apply in file order, an entry replaces the binding with the same mode and keys,
+and this file wins. omfp only reads it; while it is invalid, the window shows its error and keeps the last valid
+bindings. A binding runs a built-in command (`:help` lists the keys and commands) or one a widget registers with
+`useCommand` (it runs while the widget is shown), so a widget can ship a command and the key that runs it:
+
+```json
+{
+  "$schema": "omfp://schemas/keymap.json",
+  "bindings": [
+    { "keys": "Space T", "command": "tests.run" },
+    { "keys": "g l", "command": "view.switch", "args": ["logs"] },
+    { "mode": "insert", "keys": "Ctrl-t", "command": "tests.run" },
+    { "keys": "Space x", "command": "" }
+  ]
+}
+```
+
+`mode` is `normal` (the default: the focus is not in a text field), `insert` (a text field has it) or `cmdline` (the `:`
+line is open). `keys` are tokens separated by spaces: a printable key is its character (`j`, `G`, `:`), other keys
+their name (`Space`, `Esc`, `Enter`, `Tab`), prefixed by `Ctrl-`, `Alt-`, `Meta-` (`g g`, `Space t`, `Ctrl-k`). `args`
+are passed to the command's `run(args)`; `"command": ""` removes a binding.
 
 ## Imports
 
@@ -87,7 +113,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useThread(threadId)` | `{ state, closed }`: the thread's full state (transcript, tools, queue, pending interactions). |
 | `useWorkspaces()` | Workspaces by id. |
 | `useWorkspace(workspaceId)` | The workspace and its repositories' git status. |
-| `useViews(workspaceId)` | The workspace's views manifest, widget folders and stored state (the `views/<id>` topic). |
+| `useViews(workspaceId)` | The workspace's views manifest, keymap (`keymap`, `keymapError`), widget folders and stored state (the `views/<id>` topic). |
 | `useConnection()` | The connection status. |
 | `useWindowState(key)` | Window-local state; `SELECTED_THREAD` is the thread this window shows. |
 | `useCurrentWorkspaceId()` | The workspace this window works in: the selected thread's, else the draft thread's. |

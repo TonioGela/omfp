@@ -18,7 +18,7 @@ pub use dto::{
     JobLine, JobState, JobStatus, JobStream, KeymapEntry, KeymapMode, Motion, NotificationMode,
     PathEntry, Provenance, RepoKind, RepoStatus, SeenRepository, Settings, TerminalInfo,
     TerminalKind, Theme, ThreadSummary, TitleSource, UiSettings, ViewsState, WidgetInfo,
-    WidgetSource, Workspace, WorkspaceRepo,
+    WidgetSource, Workspace, WorkspaceBinding, WorkspaceRepo,
 };
 pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, ProtocolError, Request, Response,

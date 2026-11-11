@@ -208,7 +208,7 @@ describe("transcript", () => {
     if (inventory === undefined || mounted === undefined) {
       throw new Error("two system rows expected");
     }
-    expect(screen.queryAllByTestId("notice")).toEqual([]);
+    expect(screen.queryAllByTestId("notice").length).toBe(0);
     const full = within(inventory).getByTestId("system-text");
     expect(full.closest("[hidden]")).not.toBeNull();
     await userEvent.click(within(inventory).getByTestId("toggle"));

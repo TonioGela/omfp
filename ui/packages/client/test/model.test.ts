@@ -12,7 +12,9 @@ import {
   threadTopic,
   type ViewsState,
   viewsTopic,
+  type WorkspaceBinding,
 } from "@omfp/protocol";
+import { decodeServerFrame } from "../src/decode.ts";
 import { type Dirty, isDirtyEmpty, JOB_TEXT_LIMIT, Model, type ThreadView } from "../src/index.ts";
 import { FIXTURES, fixture, indexFrame, indexState, summary, threadFrame, workspace } from "./support.ts";
 
@@ -324,6 +326,8 @@ describe("model", () => {
       error: null,
       widgets: [{ source: "workspace", name: "tests", version: "v1", entry: "index.tsx" }],
       stored: { tests: { "job:make": "01JOB" } },
+      keymap: [],
+      keymapError: null,
     };
     expect(model.applySubscribed(topic, snapshot("v1", 0, state))).toEqual({ ok: true, mode: "snapshot" });
     expect(model.views.get("01W")).toEqual(state);
@@ -346,6 +350,8 @@ describe("model", () => {
       error: null,
       widgets: [{ source: "user", name: "clock", version: "u1", entry: null }],
       stored: { tests: { count: 3 }, other: { k: { a: [1] } } },
+      keymap: [],
+      keymapError: null,
     });
     expect([...model.takeDirty().views]).toEqual(["01W"]);
 
@@ -360,6 +366,39 @@ describe("model", () => {
     expect(model.untrack(topic)).toBe(true);
     expect(model.views.has("01W")).toBe(false);
     expect([...model.takeDirty().views]).toEqual(["01W"]);
+  });
+
+  // spec: PRT-060
+  test("a views topic keeps the workspace keymap; a snapshot without one has no bindings", () => {
+    const model = new Model();
+    const topic = viewsTopic("01W");
+    model.track(topic);
+    const older = { manifest: null, error: null, widgets: [], stored: {} };
+    expect(model.applySubscribed(topic, snapshot("v1", 0, older))).toEqual({ ok: true, mode: "snapshot" });
+    expect(model.views.get("01W")).toEqual({ ...older, keymap: [], keymapError: null });
+
+    const keymap: WorkspaceBinding[] = [
+      { mode: "normal", keys: "g t", command: "tests.run", args: ["unit"] },
+      { mode: "insert", keys: "Ctrl-t", command: "" },
+    ];
+    const changed: TopicEvent = { kind: "views_keymap", keymap, error: null };
+    expect(model.applyEvent({ type: "event", topic, epoch: "v1", seq: 1, event: changed })).toBe("applied");
+    expect(model.views.get("01W")?.keymap).toEqual(keymap);
+    const invalid: TopicEvent = { kind: "views_keymap", keymap, error: "bindings[0].keys: expected" };
+    expect(model.applyEvent({ type: "event", topic, epoch: "v1", seq: 2, event: invalid })).toBe("applied");
+    expect(model.views.get("01W")?.keymap).toEqual(keymap);
+    expect(model.views.get("01W")?.keymapError).toBe("bindings[0].keys: expected");
+
+    const frame = (bindings: unknown) => ({
+      type: "event",
+      topic,
+      epoch: "v1",
+      seq: 3,
+      event: { kind: "views_keymap", keymap: bindings, error: null },
+    });
+    expect(decodeServerFrame(frame(keymap)).ok).toBe(true);
+    expect(decodeServerFrame(frame([{ keys: "g t" }])).ok).toBe(false);
+    expect(decodeServerFrame(frame([{ mode: "normal", keys: "g t", command: "x", args: [1] }])).ok).toBe(false);
   });
 
   // spec: PRT-040
