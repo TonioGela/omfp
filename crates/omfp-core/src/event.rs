@@ -68,6 +68,17 @@ pub struct OpenFileRequest {
     pub line: Option<u64>,
 }
 
+/// A notification the agent sends the user with the `omfp_notify` host tool (DMN-125): the window on connection
+/// `connection`, the one the user last used on the thread, shows `title` and `body` as a notice about the thread
+/// (UI-215). `id` tells one request from the next.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NotifyRequest {
+    pub id: String,
+    pub connection: u64,
+    pub title: String,
+    pub body: String,
+}
+
 /// One input of the thread reducer.
 #[allow(clippy::large_enum_variant)] // Mirrors omp-rpc's unboxed frame unions.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -90,6 +101,8 @@ pub enum ThreadEvent {
     LiveSession { owner: Option<LiveOwner> },
     /// The daemon asks one window to open a file for the agent (DMN-060).
     OpenFile(OpenFileRequest),
+    /// The daemon asks one window to notify the user for the agent (DMN-125).
+    Notify(NotifyRequest),
     /// A frame `omp-rpc` could not decode, or a response nobody waited for (DMN-042).
     Unknown { raw: Value },
 }

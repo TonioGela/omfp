@@ -15,8 +15,8 @@ use std::time::Duration;
 
 use omfp_core::wire::LitTrue;
 use omfp_core::{
-    LiveOwner, OpenFileRequest, ProcessState, Resolution, SessionInfo, ThreadEvent, ThreadState,
-    live_error_message, validate_ask_answers,
+    LiveOwner, NotifyRequest, OpenFileRequest, ProcessState, Resolution, SessionInfo, ThreadEvent,
+    ThreadState, live_error_message, validate_ask_answers,
 };
 use omfp_protocol::InteractionResponse;
 use omp_rpc::{
@@ -92,6 +92,10 @@ const LEVELS_BUFFER: usize = 8;
 /// What `omfp_open_file` answers when no window shows its thread (DMN-060).
 pub const NO_WINDOW: &str = "No omfp window shows this thread, so the file cannot be opened: give the user its path \
                              instead, or ask them to open the thread in omfp and try again.";
+
+/// What `omfp_notify` answers when no window shows its thread (DMN-126).
+pub const NOTIFY_NO_WINDOW: &str = "No omfp window shows this thread, so the user cannot be notified: say it in your \
+                                    reply instead; they will read it when they open the thread.";
 
 /// Supervisor settings.
 #[derive(Debug, Clone)]
@@ -524,8 +528,7 @@ impl Supervisor {
     /// naming its connection, which the window acts on. Without a window watching the thread the error tells the
     /// agent what to do instead.
     pub fn open_file(&self, id: &str, path: &str, line: Option<u64>) -> Result<(), String> {
-        let actor = self.lookup(id).ok_or(NO_WINDOW)?;
-        let connection = lock(&actor.watchers).last().copied().ok_or(NO_WINDOW)?;
+        let (actor, connection) = self.last_window(id).ok_or(NO_WINDOW)?;
         self.push(
             &actor,
             ThreadEvent::OpenFile(OpenFileRequest {
@@ -536,6 +539,30 @@ impl Supervisor {
             }),
         );
         Ok(())
+    }
+
+    /// Asks the window the user last used on thread `id` to notify the user (DMN-125): a `notify` event naming its
+    /// connection, which the window shows as a notice about the thread (UI-215). Without a window watching the thread
+    /// the error tells the agent what to do instead (DMN-126).
+    pub fn notify(&self, id: &str, title: &str, body: &str) -> Result<(), String> {
+        let (actor, connection) = self.last_window(id).ok_or(NOTIFY_NO_WINDOW)?;
+        self.push(
+            &actor,
+            ThreadEvent::Notify(NotifyRequest {
+                id: new_id(),
+                connection,
+                title: title.to_owned(),
+                body: body.to_owned(),
+            }),
+        );
+        Ok(())
+    }
+
+    /// The thread's actor and the connection of the window the user last used on it, if any watches it (DMN-060).
+    fn last_window(&self, id: &str) -> Option<(Arc<Actor>, u64)> {
+        let actor = self.lookup(id)?;
+        let connection = lock(&actor.watchers).last().copied()?;
+        Some((actor, connection))
     }
 
     /// Whether the thread has a live omp process.
@@ -1324,6 +1351,7 @@ impl Supervisor {
         let widget_host = lock(&self.inner.widget_host).clone();
         let tools = host_tools::thread_tools(
             self.file_opener(&actor.id),
+            self.notifier(&actor.id),
             self.title_setter(&actor.id),
             &thread.workspace_id,
             widget_host,
@@ -1395,6 +1423,17 @@ impl Supervisor {
         Arc::new(move |path: &str, line: Option<u64>| {
             let inner = Weak::upgrade(&inner).ok_or("the daemon is shutting down")?;
             Self { inner }.open_file(&id, path, line)
+        })
+    }
+
+    /// What the thread's `omfp_notify` host tool calls (DMN-125): [`Self::notify`] on this thread, holding the
+    /// supervisor weakly like [`Self::file_opener`].
+    fn notifier(&self, id: &str) -> host_tools::Notify {
+        let inner = Arc::downgrade(&self.inner);
+        let id = id.to_owned();
+        Arc::new(move |title: &str, body: &str| {
+            let inner = Weak::upgrade(&inner).ok_or("the daemon is shutting down")?;
+            Self { inner }.notify(&id, title, body)
         })
     }
 

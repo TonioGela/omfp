@@ -410,6 +410,19 @@ describe("ToolCard", () => {
     expect(screen.getByTestId("tool").classList.contains("omfp-bbox")).toBe(false);
   });
 
+  // spec: UI-163, UI-216
+  test("a running tool card's mark uses omp's status spinner; a thread mark keeps the activity spinner", () => {
+    render(
+      <>
+        <ToolCard status="running" name="bash" data-testid="tool" />
+        <StateMark state="running" data-testid="mark" />
+      </>,
+    );
+    const toolMark = screen.getByTestId("tool").querySelector(".omfp-state-mark");
+    expect(toolMark?.getAttribute("data-spinner")).toBe("status");
+    expect(screen.getByTestId("mark").hasAttribute("data-spinner")).toBe(false);
+  });
+
   // spec: UI-163, UI-187
   test("while the body shows, the whole head sits on the top border; collapsed, the card is one row again", async () => {
     const user = userEvent.setup();

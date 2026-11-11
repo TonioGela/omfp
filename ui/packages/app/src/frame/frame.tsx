@@ -36,6 +36,7 @@ import { type ResolvedView, resolveViews, type Views } from "../view/views.ts";
 import { InteractionsWidget } from "../widgets/chat/index.ts";
 import { ThreadsWidget } from "../widgets/threads/index.ts";
 import { AgentFiles } from "./agent-files.tsx";
+import { AgentNotices } from "./agent-notices.tsx";
 import { CommandLine } from "./command-line.tsx";
 import { GlobalCommands } from "./commands.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
@@ -194,6 +195,7 @@ export function Frame({
       <GlobalCommands viewIds={viewIds} />
       <Notifier port={notifications} hasFocus={hasFocus} focusWindow={focusWindow} />
       <AgentFiles />
+      <AgentNotices />
     </div>
   );
 }

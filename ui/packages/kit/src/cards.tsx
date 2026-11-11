@@ -98,10 +98,10 @@ export interface ToolCardProps extends Omit<HTMLAttributes<HTMLElement>, "title"
 }
 
 /**
- * A tool call (UI-163): a head with the status mark (`●` ok or error, the braille spinner while running), the name,
- * the main argument and metadata; the head toggles the body (no chevron). While the body shows, the head sits on the
- * card's top border (UI-187) and the body's sections are split by `BoxRule`s; collapsed or without a body the card is
- * one row. Running cards shimmer and breathe at motion `full`.
+ * A tool call (UI-163): a head with the status mark (`●` ok or error, omp's status spinner while running, UI-216), the
+ * name, the main argument and metadata; the head toggles the body (no chevron). While the body shows, the head sits on
+ * the card's top border (UI-187) and the body's sections are split by `BoxRule`s; collapsed or without a body the card
+ * is one row. Running cards shimmer and breathe at motion `full`.
  */
 export function ToolCard({
   status,
@@ -121,7 +121,7 @@ export function ToolCard({
   const head = (
     <>
       <span className={cx("omfp-tool__label", boxed && "omfp-bbox__label")}>
-        <StateMark state={status} />
+        <StateMark state={status} spinner="status" />
         <span className="omfp-tool__name">{name}</span>
         {arg !== undefined && <span className="omfp-tool__arg">{arg}</span>}
         {meta !== undefined && <span className="omfp-tool__meta">{meta}</span>}

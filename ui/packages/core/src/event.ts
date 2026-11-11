@@ -53,6 +53,18 @@ export interface OpenFileRequest {
   line: number | null;
 }
 
+/**
+ * A notification the agent sends the user with the `omfp_notify` host tool (DMN-125): the window on connection
+ * `connection` (PRT-051), the one the user last used on the thread, shows `title` and `body` as a notice about the
+ * thread (UI-215). `id` tells one request from the next.
+ */
+export interface NotifyRequest {
+  id: string;
+  connection: number;
+  title: string;
+  body: string;
+}
+
 /** One input of the thread reducer, discriminated by `kind`. */
 export type ThreadEvent =
   /** A frame from omp that is not a command response. */
@@ -70,6 +82,8 @@ export type ThreadEvent =
   | { kind: "live_session"; owner: LiveOwner | null }
   /** The daemon asks one window to open a file for the agent (DMN-060). */
   | ({ kind: "open_file" } & OpenFileRequest)
+  /** The daemon asks one window to notify the user for the agent (DMN-125). */
+  | ({ kind: "notify" } & NotifyRequest)
   /** A frame omp-rpc could not decode, or a response nobody waited for (DMN-042). */
   | { kind: "unknown"; raw: JsonValue };
 
@@ -131,3 +145,6 @@ export const openFileRequest: Decoder<OpenFileRequest> = (value) => {
   const { id, connection, path, line } = openFileFields(value);
   return { id, connection, path, line: line ?? null };
 };
+
+/** A `notify` event's request (PRT-065). */
+export const notifyRequest = record<NotifyRequest>({ id: str, connection: u64, title: str, body: str });

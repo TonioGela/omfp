@@ -73,7 +73,8 @@ pub const WIDGET_BUILDER: &str = "widget-builder";
 
 /// The widgets note (AGT-024): where the views manifest, the workspace's widgets and the user library (`user_library`)
 /// live, the host URIs of the built-in sources, what a widget may import, the tools that check and place a widget, how
-/// to delegate building one to the `widget-builder` agent (AGT-029), an example, and where to read more.
+/// to delegate building one to the `widget-builder` agent (AGT-029), when to notify the user (AGT-032), an example, and
+/// where to read more.
 #[must_use]
 pub fn widgets_note(path: &Path, user_library: &Path) -> String {
     let display = path.display();
@@ -88,6 +89,8 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
          with omfp_view_add {{ widget, where }} rather than rewriting views.json.\n\
          - Keys: {display}/.omfp/keymap.json (schema omfp://schemas/keymap.json) binds keys to commands, built-in or a \
          widget's useCommand, in windows showing this workspace; give a widget a command and bind it there.\n\
+         - Notify the user with omfp_notify {{ title, body }} when a long task finished or you need them; once per \
+         occasion, never for progress.\n\
          - When something would read better as a visualization or controls (progress, a table, a chart, buttons), \
          propose a widget in one sentence and build it only after the user agrees.\n\
          - Once the user agrees, delegate the building: a `task` with `agent: \"{WIDGET_BUILDER}\"` and a complete brief \
@@ -211,7 +214,7 @@ mod tests {
         assert!(!text.ends_with('\n'));
     }
 
-    // spec: AGT-024, AGT-028, AGT-029, AGT-031
+    // spec: AGT-024, AGT-028, AGT-029, AGT-031, AGT-032
     #[test]
     fn the_widgets_note_says_where_widgets_live_what_they_import_and_how_to_check_and_place_them() {
         let library = Path::new("/data/omfp/widgets");
@@ -236,6 +239,8 @@ mod tests {
             "job.status",
             "read omfp://docs/widgets; schema omfp://schemas/views.json",
             "- Keys: /ws/checkout/.omfp/keymap.json (schema omfp://schemas/keymap.json) binds keys to commands",
+            "- Notify the user with omfp_notify { title, body } when a long task finished or you need them; once per \
+             occasion, never for progress.\n",
             "Keep the `[\"tabs\", {\"id\":\"main\"}, …\"omfp:chat\"]` slot",
         ] {
             assert!(text.contains(rule), "{rule:?} missing: {text}");
@@ -249,7 +254,7 @@ mod tests {
             example.lines().count() <= 11,
             "a ten-line example: {example}"
         );
-        assert!(text.lines().count() <= 27, "short: {text}");
+        assert!(text.lines().count() <= 28, "short: {text}");
         assert!(!text.ends_with('\n'));
     }
 

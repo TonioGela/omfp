@@ -63,6 +63,7 @@ impl ThreadState {
                 None => self.live = None,
             },
             ThreadEvent::OpenFile(request) => self.open_file = Some(request.clone()),
+            ThreadEvent::Notify(request) => self.notify = Some(request.clone()),
             ThreadEvent::Unknown { raw } => self.notice(NoticeFrame::Unknown(raw.clone())),
         }
     }

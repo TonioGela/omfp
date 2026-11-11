@@ -7,7 +7,8 @@ use omfp_core::wire::{
     AssistantContent, ExtensionUiRequest, NotifyType, PromptStatus, SubagentLifecycleStatus,
 };
 use omfp_core::{
-    NoticeFrame, OpenFileRequest, ProcessState, QueueState, ThreadState, ToolStatus, replay,
+    NoticeFrame, NotifyRequest, OpenFileRequest, ProcessState, QueueState, ThreadState, ToolStatus,
+    replay,
 };
 use serde_json::{Value, json};
 
@@ -1129,6 +1130,32 @@ fn the_last_open_file_request_is_kept_with_its_window_and_survives_the_process()
             line: None,
         })
     );
+}
+
+// spec: DMN-125, PRT-065, TST-010
+#[test]
+fn the_last_notify_request_is_kept_with_its_window_and_survives_the_process() {
+    let state = replay(&[
+        process(json!({ "state": "running" })),
+        event(
+            json!({ "kind": "notify", "id": "n1", "connection": 3, "title": "Tests", "body": "All green" }),
+        ),
+        event(
+            json!({ "kind": "notify", "id": "n2", "connection": 4, "title": "Deploy", "body": "Needs your OK" }),
+        ),
+        process(json!({ "state": "stopped" })),
+    ]);
+
+    assert_eq!(
+        state.notify,
+        Some(NotifyRequest {
+            id: "n2".into(),
+            connection: 4,
+            title: "Deploy".into(),
+            body: "Needs your OK".into(),
+        })
+    );
+    assert_eq!(state.open_file, None, "a notification opens no file");
 }
 
 // spec: DMN-104

@@ -494,6 +494,15 @@ requirements = [
   "UI-196",
   # Help panel
   "UI-198",
+  # Two braille spinners
+  "UI-216",
+  # omfp_notify agent tool
+  "DMN-125",
+  "DMN-126",
+  "DMN-127",
+  "PRT-065",
+  "UI-215",
+  "AGT-032",
 ]
 
 [M8c]

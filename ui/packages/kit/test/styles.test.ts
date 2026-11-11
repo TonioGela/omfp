@@ -137,6 +137,22 @@ describe("kit styles", () => {
     expect(css).not.toContain("prefers-reduced-motion");
   });
 
+  // spec: UI-122, UI-216
+  test("running marks: activity frames by default, omp's status frames on tool cards; both rest on their first frame", () => {
+    const frames = (name: string) =>
+      kitRules
+        .filter((rule) => rule.at[1] === `@keyframes ${name}`)
+        .map((rule) => [rule.selector, rule.declarations.get("content")]);
+    expect(frames("omfp-braille")).toEqual([..."⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"].map((glyph, index) => [`${index * 10}%`, `"${glyph}"`]));
+    expect(frames("omfp-status")).toEqual([..."⣾⣽⣻⢿⡿⣟⣯⣷"].map((glyph, index) => [`${index * 12.5}%`, `"${glyph}"`]));
+    const activity = findRule(kitRules, [LAYER], '.omfp-state-mark[data-state="running"]::before');
+    expect(activity.declarations.get("content")).toBe('"⠋"');
+    expect(activity.declarations.get("animation")).toBe("omfp-braille 0.8s steps(1) infinite");
+    const status = findRule(kitRules, [LAYER], '.omfp-state-mark[data-state="running"][data-spinner="status"]::before');
+    expect(status.declarations.get("content")).toBe('"⣾"');
+    expect(status.declarations.get("animation")).toBe("omfp-status 0.64s steps(1) infinite");
+  });
+
   // spec: UI-094, UI-121
   test("the prose family only in prose; chrome in the ui family (which is the code family), code in code", () => {
     const usages = kitRules.flatMap((rule) =>

@@ -1,9 +1,9 @@
 /**
- * Notices (UI-096, UI-192, UI-194): one way for the frame (a thread that starts needing the user, fails or finishes a
- * turn) and for widgets (`useNotify`) to tell the user something. {@link Notices.notify} hands each notice to the
- * route the frame attached: a system notification while the window has no focus, else a notice in the mode line
- * (`NOTICES`), never about the thread the user is on. Notices in the mode line expire after {@link NOTICE_MS}; visiting
- * their thread clears them.
+ * Notices (UI-096, UI-192, UI-194, UI-215): one way for the frame (a thread that starts needing the user, fails or
+ * finishes a turn, or whose agent calls `omfp_notify`) and for widgets (`useNotify`) to tell the user something.
+ * {@link Notices.notify} hands each notice to the route the frame attached: a system notification while the window has
+ * no focus, else a notice in the mode line (`NOTICES`), never about the thread the user is on unless asked (`onThread`).
+ * Notices in the mode line expire after {@link NOTICE_MS}; visiting their thread clears them.
  */
 
 import { useCallback } from "react";
@@ -27,6 +27,14 @@ export interface Notice extends NoticeRequest {
   /** Unique in this window. */
   readonly id: number;
   readonly tone: NoticeTone;
+  /** Shown even while the user is on its thread with focus: the thread's agent asked for it (UI-215). */
+  readonly onThread?: boolean | undefined;
+}
+
+/** How the frame passes a notice on. */
+export interface NoticeOptions {
+  /** Show it even while the user is on its thread with focus (UI-215). */
+  readonly onThread?: boolean | undefined;
 }
 
 /** The notices shown in this window's mode line, oldest first. */
@@ -69,9 +77,9 @@ export class Notices {
     };
   }
 
-  /** The one entry point: the frame's thread events and widgets' `notify` both come here. */
-  notify(request: NoticeRequest, tone: NoticeTone = "info"): void {
-    const notice: Notice = { ...request, id: this.#next++, tone };
+  /** The one entry point: the frame's thread events, its agents' `omfp_notify` and widgets' `notify` all come here. */
+  notify(request: NoticeRequest, tone: NoticeTone = "info", options: NoticeOptions = {}): void {
+    const notice: Notice = { ...request, id: this.#next++, tone, ...(options.onThread === true && { onThread: true }) };
     if (this.#route === undefined) {
       this.show(notice);
     } else {

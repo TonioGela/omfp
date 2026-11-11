@@ -154,6 +154,11 @@ const THREAD_EVENTS: Record<ThreadEvent["kind"], (event: Record<string, unknown>
   live_session: (event) => event.owner === undefined || isNullableObject(event.owner),
   open_file: (event) =>
     typeof event.id === "string" && typeof event.connection === "number" && typeof event.path === "string",
+  notify: (event) =>
+    typeof event.id === "string" &&
+    typeof event.connection === "number" &&
+    typeof event.title === "string" &&
+    typeof event.body === "string",
   unknown: (event) => "raw" in event,
 };
 
@@ -386,6 +391,7 @@ const THREAD_STATE_FIELDS: Record<keyof ThreadState, (field: unknown) => boolean
   live: isNullableObject,
   live_error: (field) => field === null || typeof field === "string",
   open_file: isNullableObject,
+  notify: isNullableObject,
 };
 
 /** Decodes the state of a `thread/<id>` snapshot: the daemon's `ThreadState` (PRT-021). */

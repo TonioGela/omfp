@@ -1,7 +1,7 @@
 /**
  * Small status marks (UI-157, UI-158, UI-165): state glyphs and badges, counts, exit codes, repository kinds, diff
  * stats and the token meter. Glyphs are text in the code family (UI-122), drawn by kit.css from `data-state`, so the
- * running spinner can cycle its braille frames at motion `full` and `reduced` and rest on `⠋` at `none`.
+ * running spinner can cycle its braille frames at motion `full` and `reduced` and rest on its first frame at `none`.
  */
 import { type HTMLAttributes, type ReactNode, useEffect, useState } from "react";
 import { Meter as AriaMeter } from "react-aria-components";
@@ -19,16 +19,21 @@ export interface StateMarkProps extends Omit<HTMLAttributes<HTMLSpanElement>, "c
   state: MarkState;
   /** Accessible name; without it the mark is decorative (the text next to it says the state). */
   label?: string;
+  /**
+   * The running spinner (UI-216): `activity` (`⠋…⠏`, threads and the header) or omp's `status` (`⣾…⣷`, tool cards).
+   */
+  spinner?: "activity" | "status";
 }
 
 /** The glyph of a state (UI-122) in its status color (UI-137), in an icon-sized cell. */
-export function StateMark({ state, label, className, ...props }: StateMarkProps) {
+export function StateMark({ state, label, spinner = "activity", className, ...props }: StateMarkProps) {
   return (
     <span
       {...(label === undefined ? { "aria-hidden": true } : { role: "img", "aria-label": label })}
       {...props}
       className={cx("omfp-state-mark", className)}
       data-state={state}
+      data-spinner={spinner === "status" ? spinner : undefined}
     />
   );
 }

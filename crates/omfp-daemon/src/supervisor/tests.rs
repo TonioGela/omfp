@@ -12,7 +12,7 @@ use super::*;
 use crate::agent::{FakeCall, FakeLauncher, FakeReply, FakeRun};
 use crate::event_log::Start;
 use crate::git::{FakeGit, Git};
-use crate::host_tools::{OPEN_FILE, SET_THREAD_TITLE, run_set_thread_title};
+use crate::host_tools::{NOTIFY, OPEN_FILE, SET_THREAD_TITLE, run_set_thread_title};
 use crate::store::Store;
 use crate::threads::NewThread;
 use crate::workspaces::{NewWorkspace, Workspaces};
@@ -217,14 +217,14 @@ async fn omp_starts_in_its_workspace_folder_with_one_add_dir_per_repository() {
         "the daemon's omp extension root ships the widget-builder agent"
     );
     assert_eq!(launch.spec.env, [("OMFP_TEST".into(), Some("1".into()))]);
-    assert_eq!(launch.tools, [OPEN_FILE, SET_THREAD_TITLE]);
+    assert_eq!(launch.tools, [OPEN_FILE, NOTIFY, SET_THREAD_TITLE]);
     // The session is stored once omp opened it (DMN-032), and its roots are the flags (DMN-029).
     assert!(h.threads.get(&id).unwrap().omp_session_id.is_some());
     assert_eq!(h.threads.roots(&id).unwrap(), launch.spec.add_dirs);
     assert_eq!(h.local_commands(), Vec::<String>::new());
 }
 
-// spec: DMN-062, AGT-025
+// spec: DMN-062, AGT-025, DMN-125
 #[tokio::test]
 async fn every_launch_registers_the_omfp_host_uri_scheme_next_to_the_tools() {
     let h = harness(|_| {});
@@ -238,7 +238,7 @@ async fn every_launch_registers_the_omfp_host_uri_scheme_next_to_the_tools() {
     assert_eq!(launches.len(), 2);
     for launch in launches {
         assert_eq!(launch.uris, ["omfp"]);
-        assert_eq!(launch.tools, [OPEN_FILE, SET_THREAD_TITLE]);
+        assert_eq!(launch.tools, [OPEN_FILE, NOTIFY, SET_THREAD_TITLE]);
     }
 }
 
@@ -285,6 +285,62 @@ async fn open_file_asks_the_window_last_used_on_the_thread_and_fails_without_one
     assert_eq!(
         h.supervisor.open_file(&id, "c.md", None),
         Err(NO_WINDOW.to_owned())
+    );
+}
+
+// spec: DMN-125, DMN-126
+#[tokio::test]
+async fn notify_reaches_the_window_last_used_on_the_thread_and_fails_without_one() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let log = h.log(&id).await;
+    let notified = || log.with_state(|state| state.notify.clone());
+
+    assert_eq!(
+        h.supervisor.notify(&id, "Tests", "All green"),
+        Err(NOTIFY_NO_WINDOW.to_owned())
+    );
+    assert_eq!(notified(), None, "nobody to notify without a window");
+
+    let first = h.supervisor.watch(&id, 1).await.unwrap();
+    let second = h.supervisor.watch(&id, 2).await.unwrap();
+    h.supervisor.notify(&id, "Tests", "All green").unwrap();
+    let request = notified().unwrap();
+    assert_eq!(
+        (
+            request.connection,
+            request.title.as_str(),
+            request.body.as_str()
+        ),
+        (2, "Tests", "All green"),
+        "the window that subscribed last"
+    );
+
+    h.supervisor.used(&id, 1);
+    h.supervisor.notify(&id, "Deploy", "Needs your OK").unwrap();
+    let next = notified().unwrap();
+    assert_eq!(
+        (next.connection, next.title.as_str()),
+        (1, "Deploy"),
+        "the window that drove the thread last"
+    );
+    assert_ne!(next.id, request.id, "each request has its own id");
+    assert_eq!(
+        log.with_state(|state| state.open_file.clone()),
+        None,
+        "a notification opens no file"
+    );
+
+    drop(first);
+    drop(second);
+    assert_eq!(
+        h.supervisor.notify(&id, "Late", "Nobody watches"),
+        Err(NOTIFY_NO_WINDOW.to_owned())
+    );
+    assert_eq!(
+        notified().unwrap().id,
+        next.id,
+        "nothing new without a window"
     );
 }
 

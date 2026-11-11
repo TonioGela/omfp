@@ -1033,7 +1033,8 @@
     color: var(--omfp-ok);
   }
 
-  /* State marks (UI-122, UI-137): the glyph in its status color; running cycles the braille spinner. */
+  /* State marks (UI-122, UI-137): the glyph in its status color; running cycles a braille spinner (UI-216): the
+     activity frames, or omp's status frames on tool cards. */
   .omfp-state-mark {
     display: inline-grid;
     flex: none;
@@ -1057,6 +1058,11 @@
   .omfp-state-mark[data-state="running"]::before {
     content: "⠋";
     animation: omfp-braille 0.8s steps(1) infinite;
+  }
+
+  .omfp-state-mark[data-state="running"][data-spinner="status"]::before {
+    content: "⣾";
+    animation: omfp-status 0.64s steps(1) infinite;
   }
 
   .omfp-state-mark[data-state="awaiting"] {
@@ -3333,7 +3339,7 @@
   }
 
   /* Motion (UI-145): `none` (also what prefers-reduced-motion gives, applied by the app) stops every animation and
-     transition, whatever rule set them; the braille spinner rests on its first frame. */
+     transition, whatever rule set them; the braille spinners rest on their first frame. */
   :root[data-motion="none"],
   :root[data-motion="none"] *,
   :root[data-motion="none"] *::before,
@@ -3385,6 +3391,40 @@
 
     90% {
       content: "⠏";
+    }
+  }
+
+  @keyframes omfp-status {
+    0% {
+      content: "⣾";
+    }
+
+    12.5% {
+      content: "⣽";
+    }
+
+    25% {
+      content: "⣻";
+    }
+
+    37.5% {
+      content: "⢿";
+    }
+
+    50% {
+      content: "⡿";
+    }
+
+    62.5% {
+      content: "⣟";
+    }
+
+    75% {
+      content: "⣯";
+    }
+
+    87.5% {
+      content: "⣷";
     }
   }
 

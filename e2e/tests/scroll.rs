@@ -189,6 +189,12 @@ async fn scrolling_up_while_a_tool_streams_output_stays_where_the_user_scrolled(
     journey.click(&row(&thread)).await?;
     journey.opened(&thread).await?;
 
+    // Opening the thread starts omp asynchronously: wait for the launch before driving it.
+    journey
+        .until("the thread's omp to start", async |_| {
+            Ok((!launcher.launches().is_empty()).then_some(()))
+        })
+        .await?;
     // A running bash call whose card the user expanded: its output grows the transcript.
     let process = launcher.process(0);
     process.emit(start_running());

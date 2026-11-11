@@ -2,8 +2,9 @@
  * Routes this window's notices (UI-096, UI-192, UI-194) as the daemon's `[ui] notifications` says (UI-097): with
  * `background` (default) a system notification while the window does not have focus, a mode-line notice while it
  * has; `always` adds the system notification while it has focus too; `never` shows neither. A notice about the
- * thread the user is on is dropped while the window has focus; visiting a thread clears its notices. Thread changes
- * become notices here (`notifications.ts`); widgets add theirs with `notify` (`sdk/notify.ts`).
+ * thread the user is on is dropped while the window has focus, unless its agent asked for it (`onThread`, UI-215);
+ * visiting a thread clears its notices. Thread changes become notices here (`notifications.ts`), agents' requests in
+ * `agent-notices.tsx`; widgets add theirs with `notify` (`sdk/notify.ts`).
  */
 
 import type { ThreadSummary } from "@omfp/protocol";
@@ -46,7 +47,12 @@ export function Notifier({ port, hasFocus, focusWindow }: NotifierProps): ReactN
           return;
         }
         const focused = hasFocus();
-        if (focused && notice.threadId !== undefined && notice.threadId === window.get(SELECTED_THREAD)) {
+        if (
+          focused &&
+          notice.onThread !== true &&
+          notice.threadId !== undefined &&
+          notice.threadId === window.get(SELECTED_THREAD)
+        ) {
           return;
         }
         const system =

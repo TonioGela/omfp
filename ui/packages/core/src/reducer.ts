@@ -5,7 +5,15 @@
  */
 
 import { arrayOf, type Decoder, decodeOrUndefined, Invalid } from "./decode.ts";
-import { liveOwner, openFileRequest, processState, resolution, sessionInfo, type ThreadEvent } from "./event.ts";
+import {
+  liveOwner,
+  notifyRequest,
+  openFileRequest,
+  processState,
+  resolution,
+  sessionInfo,
+  type ThreadEvent,
+} from "./event.ts";
 import { isObject, type JsonValue, withKey, withoutKey } from "./json.ts";
 import { liveErrorMessage } from "./live.ts";
 import type {
@@ -440,6 +448,10 @@ export function reduce(state: ThreadState, event: ThreadEvent): ThreadState {
     case "open_file": {
       const request = decodeOrUndefined(openFileRequest, value);
       return request === undefined ? state : { ...state, open_file: request };
+    }
+    case "notify": {
+      const request = decodeOrUndefined(notifyRequest, value);
+      return request === undefined ? state : { ...state, notify: request };
     }
     case "unknown":
       return value.raw === undefined ? state : notice(state, { type: "unknown", data: value.raw as JsonValue });

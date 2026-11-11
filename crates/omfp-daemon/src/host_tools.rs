@@ -11,6 +11,9 @@ use crate::widgets::layout::{Addition, Place};
 /// Name of the tool that opens a file in omfp for the user (DMN-060).
 pub const OPEN_FILE: &str = "omfp_open_file";
 
+/// Name of the tool that sends the user a notification about the thread (DMN-125).
+pub const NOTIFY: &str = "omfp_notify";
+
 /// Name of the tool that renames the agent's thread (DMN-073).
 pub const SET_THREAD_TITLE: &str = "set_thread_title";
 
@@ -23,12 +26,22 @@ pub const VIEW_ADD: &str = "omfp_view_add";
 /// Longest title `set_thread_title` accepts, in characters.
 pub const MAX_TITLE_CHARS: usize = 200;
 
+/// Longest title `omfp_notify` accepts, in characters (DMN-127).
+pub const MAX_NOTIFY_TITLE_CHARS: usize = 100;
+
+/// Longest body `omfp_notify` accepts, in characters (DMN-127).
+pub const MAX_NOTIFY_BODY_CHARS: usize = 500;
+
 /// Opens a file (`path` as the agent wrote it, at `line`) in the window the user last used on the thread; the error,
 /// e.g. no window shows the thread, goes back to the agent (DMN-060).
 pub type Opener = dyn Fn(&str, Option<u64>) -> Result<(), String> + Send + Sync;
 
 /// The [`Opener`] of a thread's `omfp_open_file` tool.
 pub type OpenFile = Arc<Opener>;
+
+/// Notifies the user (`title`, `body`) in the window they last used on the thread; the error, e.g. no window shows the
+/// thread, goes back to the agent (DMN-125, DMN-126).
+pub type Notify = Arc<dyn Fn(&str, &str) -> Result<(), String> + Send + Sync>;
 
 /// Stores a title the agent set for its thread; the error goes back to the agent.
 pub type SetTitle = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
@@ -47,17 +60,22 @@ pub trait WidgetHost: Send + Sync {
     fn add_to_view(&self, workspace_id: &str, addition: &Addition<'_>) -> Result<String, String>;
 }
 
-/// The host tools of one thread: `opener` opens files in the user's window, `set_title` renames the thread, and
-/// `widgets` (absent in tests that need no widget tools) backs the widget tools of workspace `workspace_id`.
-/// Every tool is `essential`: a direct tool of the agent, not only an `xd://` device (DMN-106).
+/// The host tools of one thread: `opener` opens files and `notifier` notifies the user in their window, `set_title`
+/// renames the thread, and `widgets` (absent in tests that need no widget tools) backs the widget tools of workspace
+/// `workspace_id`. Every tool is `essential`: a direct tool of the agent, not only an `xd://` device (DMN-106).
 #[must_use]
 pub fn thread_tools(
     opener: OpenFile,
+    notifier: Notify,
     set_title: SetTitle,
     workspace_id: &str,
     widgets: Option<Arc<dyn WidgetHost>>,
 ) -> Vec<HostTool> {
-    let mut tools = vec![open_file(opener), set_thread_title(set_title)];
+    let mut tools = vec![
+        open_file(opener),
+        notify(notifier),
+        set_thread_title(set_title),
+    ];
     if let Some(host) = widgets {
         tools.push(widget_check(workspace_id.to_owned(), Arc::clone(&host)));
         tools.push(view_add(workspace_id.to_owned(), host));
@@ -323,6 +341,79 @@ pub fn run_open_file(
     )))
 }
 
+/// `omfp_notify { title, body }`: a notification about the thread in the window the user last used on it (DMN-125).
+#[must_use]
+pub fn notify(notifier: Notify) -> HostTool {
+    let parameters = schema(&json!({
+        "type": "object",
+        "properties": {
+            "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_NOTIFY_TITLE_CHARS,
+                "description": "A few words: what it is about."
+            },
+            "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": MAX_NOTIFY_BODY_CHARS,
+                "description": "One or two sentences: what happened or what you need from the user."
+            }
+        },
+        "required": ["title", "body"],
+        "additionalProperties": false
+    }));
+    HostTool::new(
+        NOTIFY,
+        "Notifies the user about this thread in omfp: a notice in the window they last used on it, or a system \
+         notification while that window is in the background; opening it shows this thread. Use it when a long task \
+         finished or you need the user (a decision, an approval), at most once per occasion, never for progress. \
+         Fails when no omfp window shows this thread.",
+        parameters,
+        move |arguments, context| run_notify(&arguments, || context.is_cancelled(), &*notifier),
+    )
+    .label("Notify")
+}
+
+/// The body of [`notify`], without the `omp-rpc` context. Bad arguments, cancellation and a thread no window shows
+/// become tool errors (`isError: true`), never panics (DMN-061, DMN-126, DMN-127).
+pub fn run_notify(
+    arguments: &Map<String, Value>,
+    is_cancelled: impl Fn() -> bool,
+    notify: impl Fn(&str, &str) -> Result<(), String>,
+) -> Result<HostToolOutput, HostToolError> {
+    if is_cancelled() {
+        return Err("cancelled".into());
+    }
+    let title = bounded_text(arguments, "title", MAX_NOTIFY_TITLE_CHARS)?;
+    let body = bounded_text(arguments, "body", MAX_NOTIFY_BODY_CHARS)?;
+    if is_cancelled() {
+        return Err("cancelled".into());
+    }
+    notify(title, body)?;
+    Ok(HostToolOutput::Text(
+        "Notified the user in their omfp window.".to_owned(),
+    ))
+}
+
+/// The trimmed string argument `key`: not blank, at most `max` characters.
+fn bounded_text<'a>(
+    arguments: &'a Map<String, Value>,
+    key: &str,
+    max: usize,
+) -> Result<&'a str, HostToolError> {
+    match arguments.get(key) {
+        Some(Value::String(text)) if !text.trim().is_empty() => {
+            let text = text.trim();
+            if text.chars().count() > max {
+                return Err(format!("`{key}` must be at most {max} characters").into());
+            }
+            Ok(text)
+        }
+        _ => Err(format!("`{key}` must be a non-empty string").into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -419,22 +510,129 @@ mod tests {
         assert_eq!(opened, Vec::new());
     }
 
-    // spec: DMN-060
+    // spec: DMN-060, DMN-125
     #[test]
     fn the_tools_are_registered_with_their_schemas() {
-        let tools = thread_tools(Arc::new(|_, _| Ok(())), Arc::new(|_| Ok(())), "01WS", None);
+        let tools = thread_tools(
+            Arc::new(|_, _| Ok(())),
+            Arc::new(|_, _| Ok(())),
+            Arc::new(|_| Ok(())),
+            "01WS",
+            None,
+        );
         let definitions: Vec<_> = tools.iter().map(HostTool::definition).collect();
 
         assert_eq!(definitions[0].name, OPEN_FILE);
         assert_eq!(definitions[0].label.as_deref(), Some("Open file"));
         assert_eq!(definitions[0].parameters["required"], json!(["path"]));
-        assert_eq!(definitions[1].name, SET_THREAD_TITLE);
-        assert_eq!(definitions[1].parameters["required"], json!(["title"]));
+        assert_eq!(definitions[1].name, NOTIFY);
+        assert_eq!(definitions[1].label.as_deref(), Some("Notify"));
+        assert_eq!(
+            definitions[1].parameters["required"],
+            json!(["title", "body"])
+        );
+        assert_eq!(
+            (
+                &definitions[1].parameters["properties"]["title"]["maxLength"],
+                &definitions[1].parameters["properties"]["body"]["maxLength"]
+            ),
+            (
+                &json!(MAX_NOTIFY_TITLE_CHARS),
+                &json!(MAX_NOTIFY_BODY_CHARS)
+            )
+        );
+        for when in ["long task finished", "never for progress"] {
+            assert!(
+                definitions[1].description.contains(when),
+                "{when:?}: {}",
+                definitions[1].description
+            );
+        }
+        assert_eq!(definitions[2].name, SET_THREAD_TITLE);
+        assert_eq!(definitions[2].parameters["required"], json!(["title"]));
         assert_eq!(
             definitions.len(),
-            2,
+            3,
             "no widget tools without a widget host"
         );
+    }
+
+    /// Runs `omfp_notify` with a notifier that records its calls and fails with `refusal` when given.
+    fn notify_with(
+        arguments: Value,
+        cancelled: bool,
+        refusal: Option<&str>,
+    ) -> (Result<String, String>, Vec<(String, String)>) {
+        let sent = Mutex::new(Vec::new());
+        let result = run_notify(
+            &args(arguments),
+            || cancelled,
+            |title: &str, body: &str| {
+                sent.lock()
+                    .unwrap()
+                    .push((title.to_owned(), body.to_owned()));
+                refusal.map_or(Ok(()), |refusal| Err(refusal.to_owned()))
+            },
+        );
+        (text(result), sent.into_inner().unwrap())
+    }
+
+    // spec: DMN-125
+    #[test]
+    fn notify_sends_the_trimmed_title_and_body() {
+        let (result, sent) = notify_with(
+            json!({ "title": " Tests ", "body": " All 412 pass.\n" }),
+            false,
+            None,
+        );
+
+        assert_eq!(
+            result,
+            Ok("Notified the user in their omfp window.".to_owned())
+        );
+        assert_eq!(sent, [("Tests".to_owned(), "All 412 pass.".to_owned())]);
+    }
+
+    // spec: DMN-126, DMN-061
+    #[test]
+    fn notify_without_a_window_is_a_tool_error_with_the_notifiers_reason() {
+        let (result, _) = notify_with(
+            json!({ "title": "Tests", "body": "Done" }),
+            false,
+            Some("no omfp window shows this thread"),
+        );
+
+        assert_eq!(result, Err("no omfp window shows this thread".to_owned()));
+    }
+
+    // spec: DMN-127, DMN-061
+    #[test]
+    fn notify_refuses_bad_arguments_and_honours_cancellation() {
+        for arguments in [
+            json!({}),
+            json!({ "title": "Tests" }),
+            json!({ "body": "Done" }),
+            json!({ "title": " ", "body": "Done" }),
+            json!({ "title": "Tests", "body": "" }),
+            json!({ "title": 3, "body": "Done" }),
+            json!({ "title": "x".repeat(MAX_NOTIFY_TITLE_CHARS + 1), "body": "Done" }),
+            json!({ "title": "Tests", "body": "x".repeat(MAX_NOTIFY_BODY_CHARS + 1) }),
+        ] {
+            let (result, sent) = notify_with(arguments.clone(), false, None);
+            assert!(result.is_err(), "{arguments}");
+            assert_eq!(sent, Vec::new());
+        }
+        let (result, sent) = notify_with(
+            json!({ "title": "x".repeat(MAX_NOTIFY_TITLE_CHARS), "body": "x".repeat(MAX_NOTIFY_BODY_CHARS) }),
+            false,
+            None,
+        );
+        assert!(result.is_ok(), "the longest title and body pass");
+        assert_eq!(sent.len(), 1);
+
+        let (result, sent) = notify_with(json!({ "title": "Tests", "body": "Done" }), true, None);
+        assert_eq!(result, Err("cancelled".to_owned()));
+        assert_eq!(sent, Vec::new());
     }
 
     /// A widget host that records what the tools asked for.
@@ -484,11 +682,12 @@ mod tests {
         }
     }
 
-    // spec: DMN-060, DMN-063, DMN-064, DMN-106
+    // spec: DMN-060, DMN-063, DMN-064, DMN-106, DMN-125
     #[test]
     fn the_widget_tools_are_registered_and_reach_the_widget_host_of_the_threads_workspace() {
         let host = Arc::new(FakeWidgets::default());
         let tools = thread_tools(
+            Arc::new(|_, _| Ok(())),
             Arc::new(|_, _| Ok(())),
             Arc::new(|_| Ok(())),
             "01WS",
@@ -498,7 +697,10 @@ mod tests {
             .iter()
             .map(|tool| tool.definition().name.as_str())
             .collect();
-        assert_eq!(names, [OPEN_FILE, SET_THREAD_TITLE, WIDGET_CHECK, VIEW_ADD]);
+        assert_eq!(
+            names,
+            [OPEN_FILE, NOTIFY, SET_THREAD_TITLE, WIDGET_CHECK, VIEW_ADD]
+        );
         for tool in &tools {
             assert_eq!(
                 tool.definition().load_mode,
@@ -508,11 +710,11 @@ mod tests {
             );
         }
         assert_eq!(
-            tools[2].definition().parameters["required"],
+            tools[3].definition().parameters["required"],
             json!(["name"])
         );
         assert_eq!(
-            tools[3].definition().parameters["properties"]["where"]["enum"],
+            tools[4].definition().parameters["properties"]["where"]["enum"],
             json!(["side-tab", "main-tab", "end"])
         );
 
