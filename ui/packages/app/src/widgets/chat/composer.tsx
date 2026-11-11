@@ -65,6 +65,7 @@ import {
   useWindowState,
 } from "omfp/sdk";
 import { type ClipboardEvent, type DragEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { LiveVoicePanel, MicButton } from "./live.tsx";
 import { testId, type WidgetProps } from "./props.ts";
 import { clearedDraftKey, PENDING_QUEUE, useClock, useSelectedThread } from "./state.ts";
 
@@ -85,6 +86,7 @@ export function ComposerWidget(_props: WidgetProps) {
   }
   return (
     <div className="omfp-composer-area">
+      <LiveVoicePanel threadId={threadId} state={view.state} />
       <QueueChips threadId={threadId} state={view.state} />
       <Composer key={threadId} threadId={threadId} state={view.state} />
     </div>
@@ -583,6 +585,7 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
             </ComposerHint>
           )}
           <span className="omfp-composer__spacer" />
+          <MicButton threadId={threadId} state={state} />
           {abortable && (
             <Button variant="danger" size="sm" icon={<Icon name="square" />} data-testid="abort" onPress={abort}>
               {text.abort}

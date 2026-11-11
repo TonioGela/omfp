@@ -627,6 +627,7 @@ dependencies = [
  "clap",
  "fake-llm",
  "omfp",
+ "omfp-core",
  "omfp-daemon",
  "omfp-protocol",
  "omfp-testkit",

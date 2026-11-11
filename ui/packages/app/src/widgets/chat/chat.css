@@ -654,6 +654,11 @@
     margin-inline: auto;
   }
 
+  /* The live voice panel over the queue and the composer (UI-182). */
+  .omfp-composer-area > .omfp-live {
+    margin-block-end: var(--omfp-s2);
+  }
+
   .omfp-queue {
     display: flex;
     flex-wrap: wrap;

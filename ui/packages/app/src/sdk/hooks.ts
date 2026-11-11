@@ -26,6 +26,7 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { type Command, scopesAt } from "./commands.ts";
 import type { Snapshot } from "./frame-store.ts";
 import { type SdkClient, useHost } from "./host.tsx";
+import type { LiveClient, LiveSnapshot } from "./live.ts";
 import type { Update, WindowKey } from "./window-store.ts";
 
 /** `select` applied to the latest frame's snapshot; re-renders only when its result changes (by identity). */
@@ -150,4 +151,10 @@ export function useRunCommand(): (name: string, args?: readonly string[]) => boo
 export function useAnnounce(): (message: string) => void {
   const { announcer } = useHost();
   return useCallback((message: string) => announcer.announce(message), [announcer]);
+}
+
+/** This window's live voice session (UI-180..UI-186) and its latest snapshot. */
+export function useLive(): [LiveClient, LiveSnapshot] {
+  const { live } = useHost();
+  return [live, useSyncExternalStore(live.subscribe, live.getSnapshot)];
 }

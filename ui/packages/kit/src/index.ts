@@ -116,6 +116,25 @@ export {
   type TooltipProps,
   TooltipTrigger,
 } from "./layout.tsx";
+export {
+  AnalyserSource,
+  bandEdges,
+  type Levels,
+  type LiveHint,
+  type LiveLineView,
+  LivePanel,
+  type LivePanelProps,
+  type LiveStatus,
+  meterValue,
+  SILENT_SOURCE,
+  SPECTRUM_BARS,
+  Spectrum,
+  type SpectrumProps,
+  type SpectrumSource,
+  spectrumFrame,
+  Tap,
+  VoiceMeter,
+} from "./live.tsx";
 export { Code, type CodeProps, Markdown, type MarkdownProps } from "./markdown.tsx";
 export {
   Count,
@@ -138,7 +157,7 @@ export {
   type ThreadState,
   useCountUp,
 } from "./marks.tsx";
-export { type MotionLevel, motionLevel } from "./motion.ts";
+export { type MotionLevel, motionLevel, useMotionLevel } from "./motion.ts";
 export { type PathCompletion, PathField, type PathFieldProps, type PathSuggestion } from "./path-field.tsx";
 export {
   linkReference,

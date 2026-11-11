@@ -107,6 +107,34 @@ export const chat = {
     /** After the `ctrl+c` key chip. */
     interruptHint: "again to abort",
   },
+  /** Live voice (UI-180..UI-186). */
+  live: {
+    start: "Start live voice",
+    end: "End live voice",
+    panel: "Live voice",
+    level: "Voice level",
+    status: {
+      idle: "off",
+      connecting: "connecting",
+      listening: "listening",
+      working: "working",
+      speaking: "speaking",
+      muted: "muted",
+      error: "error",
+    },
+    /** Status line hints after their key chips. */
+    hint: { mute: "mute", unmute: "unmute", end: "end", dismiss: "dismiss" },
+    elsewhere: (client: string) => `in another window (${client})`,
+    endButton: "End",
+    dismiss: "Dismiss",
+    /** Why the mic button cannot start a session (UI-180). */
+    insecure:
+      "live voice needs a secure page: the browser gives the microphone only to localhost, 127.0.0.1 or HTTPS; open omfp on one of those",
+    unsupported: "live voice needs WebRTC and a microphone, which this browser does not offer",
+    microphone: (reason: string) => `live voice could not open the microphone: ${reason}`,
+    peer: (reason: string) => `live voice could not set up the call: ${reason}`,
+    stopFailed: (reason: string) => `live voice could not end the session: ${reason}`,
+  },
   queue: {
     label: "Queued messages",
     kind: { steering: "steer", "follow-up": "follow-up" },

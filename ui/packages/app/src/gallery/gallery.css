@@ -176,6 +176,10 @@
     font-size: var(--omfp-fs-sm);
   }
 
+  .omfp-gallery__meter {
+    inline-size: 10rem;
+  }
+
   .omfp-gallery__short-log {
     max-block-size: 4.5rem;
   }

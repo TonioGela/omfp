@@ -1,0 +1,453 @@
+/** L4: live voice in the chat (UI-180..UI-186): the mic button and the live panel, over a fake peer and microphone. */
+
+import { afterEach, describe, expect, test } from "bun:test";
+import { CallError } from "@omfp/client";
+import type { ThreadEvent } from "@omfp/core";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import type { Levels, SpectrumSource } from "omfp/kit";
+import {
+  type LiveLink,
+  type LiveMedia,
+  LiveOpenError,
+  type LiveSupport,
+  SELECTED_THREAD,
+} from "../../../src/sdk/index.ts";
+import { ComposerWidget } from "../../../src/widgets/chat/index.ts";
+import { FakeClient, renderWithHost, type TestHost, testHost } from "../../support/host.tsx";
+import { fixtureEvents, summary } from "./fixtures.ts";
+import { THREAD } from "./harness.tsx";
+
+const OTHER = "01U";
+const OFFER = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n";
+const ANSWER = "v=0\r\no=- 3 4 IN IP4 127.0.0.1\r\n";
+const LOGIN =
+  "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again";
+
+afterEach(() => {
+  cleanup();
+  delete document.documentElement.dataset.motion;
+});
+
+class FakeSource implements SpectrumSource {
+  read(mic: Float32Array, remote: Float32Array): Levels {
+    mic.fill(0);
+    remote.fill(0);
+    return { mic: 0, remote: 0 };
+  }
+
+  levels(): Levels {
+    return { mic: 0, remote: 0 };
+  }
+}
+
+/** One session's browser half: what the window did with the peer and the microphone. */
+class FakeLink implements LiveLink {
+  readonly offer = OFFER;
+  readonly source = new FakeSource();
+  readonly answers: string[] = [];
+  readonly muted: boolean[] = [];
+  closed = false;
+  answerError: Error | undefined;
+
+  async answer(sdp: string): Promise<void> {
+    if (this.answerError !== undefined) {
+      throw this.answerError;
+    }
+    this.answers.push(sdp);
+  }
+
+  setMuted(muted: boolean): void {
+    this.muted.push(muted);
+  }
+
+  close(): void {
+    this.closed = true;
+  }
+}
+
+/** The browser's live voice APIs, driven by the test: support, the microphone, the peer's states and the clock. */
+class FakeMedia implements LiveMedia {
+  supported: LiveSupport = "available";
+  openError: Error | undefined;
+  readonly links: FakeLink[] = [];
+  time = 1000;
+  #onState: ((state: RTCPeerConnectionState) => void) | undefined;
+
+  support(): LiveSupport {
+    return this.supported;
+  }
+
+  async open(onState: (state: RTCPeerConnectionState) => void): Promise<LiveLink> {
+    if (this.openError !== undefined) {
+      throw this.openError;
+    }
+    this.#onState = onState;
+    const link = new FakeLink();
+    this.links.push(link);
+    return link;
+  }
+
+  now(): number {
+    return this.time;
+  }
+
+  /** The latest peer's `connectionstatechange`. */
+  peer(state: RTCPeerConnectionState): void {
+    act(() => this.#onState?.(state));
+  }
+
+  get link(): FakeLink {
+    const link = this.links.at(-1);
+    if (link === undefined) {
+      throw new Error("no session was opened");
+    }
+    return link;
+  }
+}
+
+interface Live extends TestHost {
+  media: FakeMedia;
+  /** Applies thread events and commits the frame. */
+  events(...events: ThreadEvent[]): void;
+}
+
+/** `omfp:composer` on {@link THREAD} (and {@link OTHER} in the index), with a fake peer and microphone. */
+function renderLive(history: readonly ThreadEvent[] = fixtureEvents("text_reply"), supported?: LiveSupport): Live {
+  const media = new FakeMedia();
+  media.supported = supported ?? "available";
+  const test = testHost(new FakeClient(), { liveMedia: media });
+  test.client.connected();
+  test.client.index({ threads: [summary(THREAD), summary(OTHER)] });
+  test.host.window.set(SELECTED_THREAD, THREAD);
+  renderWithHost(<ComposerWidget />, test);
+  test.client.thread(THREAD, history);
+  test.flush();
+  return {
+    ...test,
+    media,
+    events: (...events) => {
+      test.client.threadEvents(THREAD, ...events);
+      test.flush();
+    },
+  };
+}
+
+const session = (connection: number, client = "omfp/web"): ThreadEvent => ({
+  kind: "live_session",
+  owner: { client, connection },
+});
+const phase = (value: "connecting" | "listening" | "working" | "muted" | "error"): ThreadEvent => ({
+  kind: "omp",
+  frame: { type: "live_phase", phase: value },
+});
+const line = (role: "user" | "assistant", turn: number, text: string, final: boolean): ThreadEvent => ({
+  kind: "omp",
+  frame: { type: "live_transcript", role, turn, text, final },
+});
+const end = (error?: string): ThreadEvent => ({
+  kind: "omp",
+  frame: error === undefined ? { type: "live_end" } : { type: "live_end", error },
+});
+
+const mic = () => screen.getByTestId("live-mic");
+const panel = () => screen.getByTestId("live-panel");
+const status = () => panel().dataset.status;
+
+async function press(element: HTMLElement): Promise<void> {
+  await act(async () => {
+    fireEvent.click(element);
+  });
+}
+
+async function key(element: Element, value: string): Promise<void> {
+  await act(async () => {
+    fireEvent.keyDown(element, { key: value });
+  });
+}
+
+/** Presses the mic button and lets the daemon open the session, as it does before answering (DMN-100). */
+async function start(live: Live): Promise<void> {
+  await press(mic());
+  live.events(session(1), phase("connecting"), phase("listening"));
+}
+
+/** Answers the pending `thread.live_connect`. */
+async function answer(live: Live): Promise<void> {
+  const [call] = live.client.callsTo("thread.live_connect");
+  await act(async () => call?.resolve({ sdpAnswer: ANSWER, voice: "sol" }));
+}
+
+async function connected(live: Live): Promise<void> {
+  await start(live);
+  await answer(live);
+  live.media.peer("connected");
+}
+
+describe("live voice", () => {
+  // spec: UI-180, UI-181
+  test("the mic button opens the microphone and a peer, sends its offer and applies omp's answer", async () => {
+    const live = renderLive();
+    expect(mic().dataset.live).toBe("start");
+    expect(screen.queryByTestId("live-panel")).toBeNull();
+    await press(mic());
+    expect(live.client.callsTo("thread.live_connect").map((call) => call.params)).toEqual([
+      { threadId: THREAD, sdpOffer: OFFER },
+    ]);
+    expect(status()).toBe("connecting");
+    expect(mic().dataset.live).toBe("end");
+    await answer(live);
+    expect(live.media.link.answers).toEqual([ANSWER]);
+    expect(live.media.link.closed).toBe(false);
+  });
+
+  // spec: UI-180
+  test("outside a secure context the mic button only says why: no microphone, no call", async () => {
+    const live = renderLive(fixtureEvents("text_reply"), "insecure");
+    expect(mic().dataset.live).toBe("unavailable");
+    const reason = document.getElementById(mic().getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toContain("localhost, 127.0.0.1 or HTTPS");
+    await press(mic());
+    expect(live.media.links).toEqual([]);
+    expect(live.client.callsTo("thread.live_connect")).toEqual([]);
+    expect(panel().dataset.view).toBe("error");
+    expect(screen.getByRole("alert").textContent).toContain("secure page");
+  });
+
+  // spec: UI-181
+  test("the panel shows connecting until the peer is connected, then omp's phase", async () => {
+    const live = renderLive();
+    await start(live);
+    expect(status()).toBe("connecting");
+    await answer(live);
+    // omp already listens, but the peer is not connected: what is said now is lost.
+    expect(status()).toBe("connecting");
+    live.media.peer("connecting");
+    expect(status()).toBe("connecting");
+    live.media.peer("connected");
+    expect(status()).toBe("listening");
+    live.events(phase("working"));
+    expect(status()).toBe("working");
+  });
+
+  // spec: UI-182
+  test("spectrum, the latest line per role and the status line with its keys", async () => {
+    document.documentElement.dataset.motion = "none";
+    const live = renderLive();
+    await connected(live);
+    live.events(
+      line("user", 1, "Ciao,", false),
+      line("user", 1, "Ciao, mi senti?", false),
+      line("assistant", 1, "Sì", false),
+      line("user", 1, "Ciao, mi senti? Dimmi solo sì", true),
+      line("assistant", 1, "Sì.", true),
+    );
+    expect(screen.getByRole("meter", { name: "Voice level" })).toBeDefined();
+    const lines = [...panel().querySelectorAll(".omfp-live__line")].map((node) => [
+      node.getAttribute("data-role"),
+      node.textContent,
+    ]);
+    expect(lines).toEqual([
+      ["user", "Ciao, mi senti? Dimmi solo sì"],
+      ["assistant", "Sì."],
+    ]);
+    expect(panel().querySelector(".omfp-live__status")?.textContent).toBe("●listening·spc mute·esc end");
+    live.events(line("user", 2, "E adesso?", false));
+    expect([...panel().querySelectorAll(".omfp-live__line")].map((node) => node.textContent)).toEqual([
+      "Sì.",
+      "E adesso?",
+    ]);
+  });
+
+  // spec: UI-182, UI-183
+  test("Space and Esc act only while the panel has the focus; it takes the focus when the session starts", async () => {
+    const live = renderLive();
+    await connected(live);
+    expect(document.activeElement).toBe(panel());
+    const input = screen.getByTestId("composer-input");
+    act(() => input.focus());
+    await key(input, " ");
+    await key(input, "Escape");
+    expect(live.client.callsTo("thread.live_mute")).toEqual([]);
+    expect(live.client.callsTo("thread.live_stop")).toEqual([]);
+    await key(panel(), " ");
+    expect(live.client.callsTo("thread.live_mute").map((call) => call.params)).toEqual([
+      { threadId: THREAD, muted: true },
+    ]);
+  });
+
+  // spec: UI-183
+  test("mute disables the local track and sends live_mute; the panel shows muted from the thread state", async () => {
+    const live = renderLive();
+    await connected(live);
+    await key(panel(), " ");
+    expect(live.media.link.muted).toEqual([true]);
+    expect(live.client.callsTo("thread.live_mute").map((call) => call.params)).toEqual([
+      { threadId: THREAD, muted: true },
+    ]);
+    expect(panel().textContent).toContain("unmute");
+    live.events(phase("muted"));
+    expect(status()).toBe("muted");
+    await key(panel(), " ");
+    expect(live.media.link.muted).toEqual([true, false]);
+    expect(live.client.callsTo("thread.live_mute").map((call) => call.params)).toEqual([
+      { threadId: THREAD, muted: true },
+      { threadId: THREAD, muted: false },
+    ]);
+    live.events(phase("listening"));
+    expect(status()).toBe("listening");
+  });
+
+  // spec: UI-184
+  test("speaking is derived from the remote voice's level, held briefly after it drops", async () => {
+    const live = renderLive();
+    await connected(live);
+    expect(status()).toBe("listening");
+    act(() => live.host.live.noteLevels({ mic: 0.3, remote: 0 }));
+    expect(status()).toBe("listening");
+    act(() => live.host.live.noteLevels({ mic: 0, remote: 0.2 }));
+    expect(status()).toBe("speaking");
+    live.media.time += 200;
+    act(() => live.host.live.noteLevels({ mic: 0, remote: 0 }));
+    expect(status()).toBe("speaking");
+    live.media.time += 200;
+    act(() => live.host.live.noteLevels({ mic: 0, remote: 0 }));
+    expect(status()).toBe("listening");
+    // omp's own phases win: a muted or working session is not shown speaking.
+    act(() => live.host.live.noteLevels({ mic: 0, remote: 0.2 }));
+    live.events(phase("working"));
+    expect(status()).toBe("working");
+  });
+
+  // spec: UI-185
+  test("Esc ends the session: live_stop, the peer and the microphone close, the panel goes", async () => {
+    const live = renderLive();
+    await connected(live);
+    await key(panel(), "Escape");
+    expect(live.client.callsTo("thread.live_stop").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
+    expect(live.media.link.closed).toBe(true);
+    // The daemon's `live_end` follows.
+    expect(screen.queryByTestId("live-panel")).toBeNull();
+    live.events(end());
+    expect(screen.queryByTestId("live-panel")).toBeNull();
+    expect(mic().dataset.live).toBe("start");
+  });
+
+  // spec: UI-185
+  test("a failed or closed peer sends live_stop: omp cannot see it", async () => {
+    for (const state of ["failed", "closed"] as const) {
+      const live = renderLive();
+      await connected(live);
+      live.media.peer(state);
+      expect(live.client.callsTo("thread.live_stop").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
+      expect(live.media.link.closed).toBe(true);
+      cleanup();
+    }
+  });
+
+  // spec: UI-185
+  test("switching threads and unloading the page end the session", async () => {
+    const live = renderLive();
+    await connected(live);
+    act(() => live.host.window.set(SELECTED_THREAD, OTHER));
+    expect(live.client.callsTo("thread.live_stop").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
+    expect(live.media.link.closed).toBe(true);
+
+    act(() => live.host.window.set(SELECTED_THREAD, THREAD));
+    // The thread's topic was released with the switch: the daemon answers it again.
+    live.client.thread(THREAD, fixtureEvents("text_reply"));
+    live.flush();
+    await connected(live);
+    act(() => {
+      window.dispatchEvent(new Event("pagehide"));
+    });
+    expect(live.client.callsTo("thread.live_stop")).toHaveLength(2);
+    expect(live.media.link.closed).toBe(true);
+  });
+
+  // spec: UI-185
+  test("when the state shows the session ended, the window closes its peer without stopping again", async () => {
+    const live = renderLive();
+    await connected(live);
+    live.events(phase("listening"), end());
+    expect(live.media.link.closed).toBe(true);
+    expect(live.client.callsTo("thread.live_stop")).toEqual([]);
+    expect(screen.queryByTestId("live-panel")).toBeNull();
+  });
+
+  // spec: UI-182
+  test("another window's session shows its state and an end button, no audio", async () => {
+    const live = renderLive();
+    live.events(session(2, "omfp/desktop"), phase("listening"), line("assistant", 1, "Sì.", true));
+    expect(panel().dataset.view).toBe("elsewhere");
+    expect(status()).toBe("listening");
+    expect(panel().textContent).toContain("in another window (omfp/desktop)");
+    expect(panel().textContent).toContain("Sì.");
+    expect(panel().querySelector(".omfp-spectrum, [role=meter]")).toBeNull();
+    expect(panel().querySelectorAll("kbd")).toHaveLength(0);
+    await key(panel(), " ");
+    expect(live.client.callsTo("thread.live_mute")).toEqual([]);
+    expect(mic().dataset.live).toBe("end");
+    await press(screen.getByTestId("live-end"));
+    expect(live.client.callsTo("thread.live_stop").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
+    expect(live.media.links).toEqual([]);
+  });
+
+  // spec: UI-186
+  test("a refused start shows the daemon's readable message until dismissed", async () => {
+    const live = renderLive();
+    await press(mic());
+    const [call] = live.client.callsTo("thread.live_connect");
+    await act(async () =>
+      call?.reject(
+        new CallError({
+          kind: "daemon",
+          error: {
+            code: "omp_error",
+            message: LOGIN,
+            details: { ompError: "No Codex OAuth credential is available for a live call." },
+          },
+        }),
+      ),
+    );
+    expect(panel().dataset.view).toBe("error");
+    expect(screen.getByRole("alert").textContent).toBe(LOGIN);
+    expect(live.media.link.closed).toBe(true);
+    expect(mic().dataset.live).toBe("start");
+    await press(screen.getByTestId("live-dismiss"));
+    expect(screen.queryByTestId("live-panel")).toBeNull();
+  });
+
+  // spec: UI-186
+  test("a session that ended on an error shows live_error; Esc on the panel dismisses it", async () => {
+    const live = renderLive(fixtureEvents("live_no_credential"));
+    expect(panel().dataset.view).toBe("error");
+    expect(screen.getByRole("alert").textContent).toBe(LOGIN);
+    await key(panel(), "Escape");
+    expect(screen.queryByTestId("live-panel")).toBeNull();
+    // The next failure shows again.
+    live.events(session(2), phase("error"), end("Codex live signaling failed (401): unauthorized"));
+    expect(screen.getByRole("alert").textContent).toBe(
+      "live voice: the `openai-codex` login was rejected; log in again with `/login openai-codex` in omp",
+    );
+  });
+
+  // spec: UI-186
+  test("a microphone the browser refuses shows why, and nothing reaches the daemon", async () => {
+    const live = renderLive();
+    live.media.openError = new LiveOpenError("microphone", "Permission denied");
+    await press(mic());
+    expect(screen.getByRole("alert").textContent).toBe("live voice could not open the microphone: Permission denied");
+    expect(live.client.callsTo("thread.live_connect")).toEqual([]);
+  });
+
+  // spec: UI-181, UI-186
+  test("an answer the peer rejects stops the session and says why", async () => {
+    const live = renderLive();
+    await start(live);
+    live.media.link.answerError = new Error("bad answer");
+    await answer(live);
+    expect(live.client.callsTo("thread.live_stop").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
+    expect(live.media.link.closed).toBe(true);
+    expect(screen.getByRole("alert").textContent).toBe("live voice could not set up the call: bad answer");
+  });
+});

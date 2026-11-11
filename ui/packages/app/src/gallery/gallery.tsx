@@ -36,7 +36,9 @@ import {
   InteractionCard,
   Kbd,
   KindMark,
+  type Levels,
   ListBox,
+  LivePanel,
   Log,
   type LogEntry,
   Markdown,
@@ -56,6 +58,9 @@ import {
   Select,
   SelectOption,
   Separator,
+  SILENT_SOURCE,
+  Spectrum,
+  type SpectrumSource,
   StateBadge,
   StateMark,
   StreamCaret,
@@ -70,6 +75,7 @@ import {
   type ToastTone,
   TodoList,
   ToolCard,
+  VoiceMeter,
   WorkspaceSection,
 } from "@omfp/kit";
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -1308,6 +1314,111 @@ function Composers() {
   );
 }
 
+/** A still voice for the gallery: fixed, speech-shaped bars (a low-mid hump and sibilants) and a fixed level. */
+class StillVoice implements SpectrumSource {
+  readonly #voice: "user" | "assistant";
+
+  constructor(voice: "user" | "assistant") {
+    this.#voice = voice;
+  }
+
+  read(mic: Float32Array, remote: Float32Array): Levels {
+    const out = this.#voice === "user" ? mic : remote;
+    (this.#voice === "user" ? remote : mic).fill(0);
+    const center = this.#voice === "user" ? 0.22 : 0.34;
+    for (let bar = 0; bar < out.length; bar++) {
+      const x = bar / (out.length - 1);
+      const hump = 0.78 * Math.exp(-((x - center) ** 2) / 0.012) + 0.32 * Math.exp(-((x - 0.62) ** 2) / 0.006);
+      out[bar] = Math.min(1, 0.04 + hump * (0.82 + 0.18 * Math.sin(bar * 1.7)));
+    }
+    return this.levels();
+  }
+
+  levels(): Levels {
+    return this.#voice === "user" ? { mic: 0.09, remote: 0 } : { mic: 0, remote: 0.16 };
+  }
+}
+
+const USER_VOICE = new StillVoice("user");
+const ASSISTANT_VOICE = new StillVoice("assistant");
+const LIVE_KEYS = [
+  { keys: "spc", label: "mute" },
+  { keys: "esc", label: "end" },
+];
+const LIVE_LINES = [
+  { role: "user", text: "Ciao, mi senti? Dimmi solo sì." },
+  { role: "assistant", text: "Sì, ti sento: dimmi pure." },
+] as const;
+
+/** The live panel in each state; the still voices draw the canvas at motion `full` (deterministic: fixed bars). */
+function LiveVoice() {
+  return (
+    <Section title="Live voice" note="UI-182 · UI-184 · spectrum at full, meter below" wide>
+      <div className="omfp-gallery__pair">
+        <LivePanel
+          status="listening"
+          statusLabel="listening"
+          spectrum={<Spectrum motion="full" source={USER_VOICE} status="listening" label="Voice level" />}
+          lines={LIVE_LINES.slice(0, 1)}
+          hints={LIVE_KEYS}
+        />
+        <LivePanel
+          status="speaking"
+          statusLabel="speaking"
+          spectrum={<Spectrum motion="full" source={ASSISTANT_VOICE} status="speaking" label="Voice level" />}
+          lines={LIVE_LINES}
+          hints={LIVE_KEYS}
+          className="is-focus"
+        />
+      </div>
+      <div className="omfp-gallery__pair">
+        <LivePanel
+          status="muted"
+          statusLabel="muted"
+          spectrum={<Spectrum motion="full" source={USER_VOICE} status="muted" label="Voice level" />}
+          lines={LIVE_LINES}
+          hints={[{ keys: "spc", label: "unmute" }, LIVE_KEYS[1] ?? { keys: "esc", label: "end" }]}
+        />
+        <LivePanel
+          status="connecting"
+          statusLabel="connecting"
+          spectrum={<Spectrum source={SILENT_SOURCE} status="connecting" label="Voice level" />}
+          hints={LIVE_KEYS}
+        />
+      </div>
+      <div className="omfp-gallery__pair">
+        <LivePanel
+          status="working"
+          statusLabel="working"
+          lines={LIVE_LINES.slice(1)}
+          note="in another window (omfp/web)"
+          actions={
+            <Button variant="danger" size="sm" icon={<Icon name="square" />}>
+              End
+            </Button>
+          }
+        />
+        <LivePanel
+          status="error"
+          statusLabel="error"
+          message="live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
+          hints={[{ keys: "esc", label: "dismiss" }]}
+          actions={<IconButton label="Dismiss" icon={<Icon name="x" />} />}
+        />
+      </div>
+      <Line label="meter">
+        <VoiceMeter source={USER_VOICE} status="listening" label="Microphone" className="omfp-gallery__meter" />
+        <VoiceMeter source={ASSISTANT_VOICE} status="speaking" label="Assistant" className="omfp-gallery__meter" />
+        <VoiceMeter source={USER_VOICE} status="muted" label="Muted" className="omfp-gallery__meter" />
+      </Line>
+      <Line label="mic">
+        <IconButton label="Start live voice" icon={<Icon name="mic" />} />
+        <IconButton label="End live voice" icon={<Icon name="mic" />} aria-pressed />
+      </Line>
+    </Section>
+  );
+}
+
 function DensityStrip() {
   return (
     <Section title="Density" note="UI-127 · UI-128 · compact and normal" wide>
@@ -1666,6 +1777,7 @@ export function Gallery({ search }: { search: string }) {
         <LeftColumn />
         <Transcript />
         <Composers />
+        <LiveVoice />
         <DensityStrip />
         <TokenSheet onMeasured={() => setMeasured(true)} />
       </div>

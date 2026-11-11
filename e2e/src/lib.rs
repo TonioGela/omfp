@@ -9,13 +9,16 @@
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, bail};
 use clap::Parser;
 use fake_llm::{FakeLlm, Script, Step};
 use omfp::remote::{Connection, Target};
+use omfp_daemon::agent::FakeLauncher;
 use omfp_daemon::config::{Cli, Config};
+use omfp_daemon::git::FakeGit;
 use omfp_daemon::{DaemonHandle, Ports, start_with};
 use omfp_protocol::method::ThreadsCreate;
 use omfp_protocol::{CreateThreadParams, CreateWorkspaceParams, ThreadWorkspace};
@@ -155,8 +158,18 @@ impl std::fmt::Debug for Journey {
 impl Journey {
     /// Starts everything with the model replying `steps` in order, then opens the UI with the token in the URL.
     pub async fn start(steps: Vec<Step>) -> anyhow::Result<Self> {
-        let started = Instant::now();
         require_pinned_omp();
+        Self::launch(steps, None).await
+    }
+
+    /// Starts a journey whose daemon runs `launcher` (the fake omp of `omfp_daemon::agent`, scripted by the test
+    /// through its clone) instead of omp: for what the pinned omp cannot do offline, e.g. a live voice call (E2E-14).
+    pub async fn start_fake(launcher: FakeLauncher) -> anyhow::Result<Self> {
+        Self::launch(Vec::new(), Some(launcher)).await
+    }
+
+    async fn launch(steps: Vec<Step>, launcher: Option<FakeLauncher>) -> anyhow::Result<Self> {
+        let started = Instant::now();
         let bundle = web_bundle();
         if !bundle.join("index.html").is_file() {
             bail!(
@@ -168,7 +181,7 @@ impl Journey {
         let proxy = DenyProxy::start().await?;
         let env = OmpEnv::new(&fake.base_url(), Some(&proxy))?;
         let data = tempfile::tempdir()?;
-        let daemon = start_daemon(&env, data.path(), &bundle).await?;
+        let daemon = start_daemon(&env, data.path(), &bundle, launcher).await?;
         let profile = tempfile::tempdir()?;
         let chromedriver = ChromeDriver::start()?;
         let driver = WebDriver::new(&chromedriver.url, chrome(profile.path())?).await?;
@@ -680,7 +693,12 @@ pub fn workspace_roots(prompt: &str) -> Vec<String> {
         .collect()
 }
 
-async fn start_daemon(env: &OmpEnv, data: &Path, bundle: &Path) -> anyhow::Result<DaemonHandle> {
+async fn start_daemon(
+    env: &OmpEnv,
+    data: &Path,
+    bundle: &Path,
+    launcher: Option<FakeLauncher>,
+) -> anyhow::Result<DaemonHandle> {
     let omp = omp_bin();
     let path = |path: &Path| path.to_string_lossy().into_owned();
     let cli = Cli::try_parse_from([
@@ -700,8 +718,20 @@ async fn start_daemon(env: &OmpEnv, data: &Path, bundle: &Path) -> anyhow::Resul
         path(&config_file(data)),
     ])?;
     let config = Config::from_cli(cli, None, None).map_err(anyhow::Error::msg)?;
-    let mut ports = Ports::resolve(&config)?;
-    ports.omp_env = env.env_overrides();
+    let ports = if let Some(launcher) = launcher {
+        Ports {
+            launcher: Arc::new(launcher),
+            git: Arc::new(FakeGit::new()),
+            omp_program: config.omp_bin.clone().unwrap_or_default(),
+            omp_version: omfp_core::OMP_VERSION.to_owned(),
+            omp_env: Vec::new(),
+            warnings: Vec::new(),
+        }
+    } else {
+        let mut ports = Ports::resolve(&config)?;
+        ports.omp_env = env.env_overrides();
+        ports
+    };
     start_with(config, ports).await
 }
 
@@ -728,6 +758,9 @@ fn chrome(profile: &Path) -> anyhow::Result<ChromeCapabilities> {
         "--disable-sync",
         "--disable-default-apps",
         "--proxy-server=http://127.0.0.1:9",
+        // A fake microphone, granted without a prompt (live voice, E2E-14).
+        "--use-fake-device-for-media-stream",
+        "--use-fake-ui-for-media-stream",
     ] {
         caps.add_arg(arg)?;
     }

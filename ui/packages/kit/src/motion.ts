@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 /** The motion levels of `[ui] motion` (UI-145). */
 export type MotionLevel = "full" | "reduced" | "none";
 
@@ -16,4 +18,21 @@ export function motionLevel(root: HTMLElement = document.documentElement): Motio
   const reduce =
     typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   return reduce ? "none" : "full";
+}
+
+/** {@link motionLevel}, re-rendering when `<html data-motion>` or the system preference changes. */
+export function useMotionLevel(): MotionLevel {
+  return useSyncExternalStore(subscribeMotion, () => motionLevel());
+}
+
+function subscribeMotion(onChange: () => void): () => void {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-motion"] });
+  const query =
+    typeof window.matchMedia === "function" ? window.matchMedia("(prefers-reduced-motion: reduce)") : undefined;
+  query?.addEventListener("change", onChange);
+  return () => {
+    observer.disconnect();
+    query?.removeEventListener("change", onChange);
+  };
 }

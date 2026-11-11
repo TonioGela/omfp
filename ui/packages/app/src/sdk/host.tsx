@@ -11,6 +11,7 @@ import { strings } from "../strings/index.ts";
 import { CommandRegistry } from "./commands.ts";
 import { type FilePoll, intervalPoll } from "./files.ts";
 import { type FrameScheduler, FrameStore, type ModelSource } from "./frame-store.ts";
+import { browserLiveMedia, LiveClient, type LiveMedia } from "./live.ts";
 import { browserImporter, type Importer, WidgetModules } from "./modules.ts";
 import { type ReportTimers, WidgetReporter } from "./reports.ts";
 import { type KeyValueStorage, WindowStore } from "./window-store.ts";
@@ -96,6 +97,8 @@ export interface OmfpHost {
   readonly reports: WidgetReporter;
   /** How open files are checked for changes (`useFile`, UI-110). */
   readonly filePoll: FilePoll;
+  /** This window's live voice session (UI-180..UI-186). */
+  readonly live: LiveClient;
 }
 
 export interface HostOptions {
@@ -109,20 +112,26 @@ export interface HostOptions {
   readonly reportTimers?: ReportTimers;
   /** How open files are checked for changes; default: every 2 s (tests pass a manual one). */
   readonly filePoll?: FilePoll;
+  /** The browser APIs of live voice; default: the browser's (tests pass a fake peer and microphone). */
+  readonly liveMedia?: LiveMedia;
 }
 
 /** A host over `client`; call `host.frames.start()` to follow the model. */
 export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHost {
+  const frames = new FrameStore(client, options.schedule);
+  const topics = new TopicRefs(client);
+  const window = new WindowStore(options.storage);
   return {
     client,
-    frames: new FrameStore(client, options.schedule),
-    topics: new TopicRefs(client),
-    window: new WindowStore(options.storage),
+    frames,
+    topics,
+    window,
     commands: new CommandRegistry(),
     announcer: new Announcer(),
     modules: new WidgetModules(options.importer ?? browserImporter, strings.widgets.noDefaultExport),
     reports: new WidgetReporter({ report: (params) => client.call("widgets.report", params) }, options.reportTimers),
     filePoll: options.filePoll ?? intervalPoll,
+    live: new LiveClient({ client, frames, topics, window, media: options.liveMedia ?? browserLiveMedia }),
   };
 }
 

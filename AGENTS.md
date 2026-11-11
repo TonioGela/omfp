@@ -12,7 +12,7 @@ only be reachable from the human UI.
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; M5d Crush in progress; next: M6 live voice, M7 desktop, M8 subagents);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; M5d Crush and M6 live voice done; next: M7 desktop, M8 subagents);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -73,8 +73,9 @@ crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
-e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process), the journeys and the widget journeys;
-                      kit_gallery.rs is the `/kit` screenshot and contrast test (UI-174), its baselines in
+e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process; `Journey::start_fake` runs it on the
+                      fake launcher, e.g. live.rs: live voice on a fake microphone, E2E-14), the journeys and the widget
+                      journeys; kit_gallery.rs is the `/kit` screenshot and contrast test (UI-174), its baselines in
                       tests/kit-baselines/
 ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + Biome (`just lint`), `bun run test`
 ui/packages/protocol  @omfp/protocol: generated protocol types + method table (generated.ts), envelope, topics
@@ -86,9 +87,11 @@ ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token 
                       (lucide-LICENSE.txt), motion.ts the effective motion level; marks.tsx (state marks, badges,
                       counts, meter), shell.tsx (mode line, command line and menu, brand, workspace sections, left
                       column rows), cards.tsx (tool, approval and ask cards), transcript.tsx (chat header, messages,
-                      composer), feedback.tsx (toasts, empty states), editor/ (CodeMirror and its theme)
+                      composer), feedback.tsx (toasts, empty states), live.tsx (live voice: spectrum, voice meter,
+                      live panel), editor/ (CodeMirror and its theme)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
-                      widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs), vm
+                      widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs, live.ts:
+                      the window's live voice session `LiveClient` and its browser `LiveMedia`), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
                       column, mode line with the `:` line and file picker, view switcher, layout editing, floating

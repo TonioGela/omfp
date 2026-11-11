@@ -408,7 +408,7 @@ requirements = [
 ]
 
 [M6]
-status = "in-progress"
+status = "done"
 requirements = [
   # Daemon: relay, one session per thread, stop and mute, stop on disconnect, readable errors
   "DMN-100",

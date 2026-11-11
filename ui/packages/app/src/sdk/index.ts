@@ -35,6 +35,7 @@
  * | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file tab (UI-115) |
  * | `useMissingFile(path, missing, options)` | finds the file a path that does not exist names (`workspaces.find_file`): one opens in its place, several open the frame's picker (UI-117) |
  * | `useFileTabs(workspaceId)` | this window's file tabs of a workspace, `select` and `close` |
+ * | `useLive()` | `[live, snapshot]`: this window's live voice session (start, end, mute, spectrum source, UI-180..UI-186) |
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
  * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,
@@ -117,6 +118,17 @@ export {
   title as interactionTitle,
   toggleOption,
 } from "../vm/interaction.ts";
+export {
+  IDLE as LIVE_IDLE,
+  type LivePanelView,
+  type LiveSupport,
+  type LocalLive,
+  liveLines,
+  livePanelView,
+  type MicButton,
+  micButton,
+  ownStatus,
+} from "../vm/live.ts";
 export { type NoticeRow, noticeRow } from "../vm/notice.ts";
 export {
   type PendingQueueOp,
@@ -224,6 +236,7 @@ export {
   useCommand,
   useConnection,
   useIndex,
+  useLive,
   useRunCommand,
   useSnapshot,
   useThread,
@@ -263,6 +276,15 @@ export {
   RENAMING_THREAD,
   SELECTED_THREAD,
 } from "./keys.ts";
+export {
+  browserLiveMedia,
+  LiveClient,
+  type LiveClientOptions,
+  type LiveLink,
+  type LiveMedia,
+  LiveOpenError,
+  type LiveSnapshot,
+} from "./live.ts";
 export {
   browserImporter,
   type Importer,

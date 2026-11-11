@@ -268,7 +268,7 @@ smooth-scroll rule that re-pinned the transcript, and a mode-pill animation that
 real app was compared with the reference shots in Synth light and dark; the matugen theme is covered by the gallery,
 not by app screenshots.
 
-## M6 — Live voice
+## M6 — Live voice (done)
 
 omp 18.18.6 exposes its `/live` realtime voice over RPC (`docs/rpc.md` → "Live Voice Sub-Protocol"): the realtime
 model talks with the user and delegates work into the thread as ordinary turns. `live_connect` takes a WebRTC SDP offer
@@ -285,6 +285,27 @@ disconnect; one live session per thread (omp allows one per process).
 Acceptance: tests for the command plumbing and frames (the realtime model itself cannot be faked offline, so the
 contract test covers the failure path and frame decoding); a manual check with a real OpenAI realtime key, recorded in
 the spike result.
+
+Result: the daemon relays `thread.live_connect` / `.live_stop` / `.live_mute` to the thread's omp, one session per
+thread, stopped when the owning connection closes or omp exits, with omp's failures as readable messages (DMN-100..104,
+PRT-050..052); the Rust and TS reducers keep the session's owner, phase and transcript per role and turn, checked
+against golden states of the recorded no-credential sequence, and the contract test covers that path and omp's cheap
+errors against the pinned omp (the realtime model cannot run offline). The fake launcher plays omp's live sequence
+(TST-015). In the browser the SDK's `LiveClient` (`useLive()`) holds the window's one session: the microphone, a peer
+with one sendrecv Opus track and the `oai-events` channel, the remote voice on an `<audio>` element and Web Audio
+analysers, behind an injectable `LiveMedia` so component tests drive the peer's `connectionstatechange`. The composer's
+mic button starts and ends a session (outside a secure context it starts nothing and says why); the live panel above
+the composer shows the kit's spectrum (64 log-spaced canvas bars from the analysers, role tokens only, a static meter
+below motion `full`), the latest line per role and `● listening · spc mute · esc end`, with the S-09 rules: `connecting`
+until the peer is connected, mute = disabled local track + `live_mute`, `speaking` derived from the remote level,
+`live_stop` on the end key, a failed or closed peer, a thread switch and unload, the peer closed once the state shows
+the end; another window's session shows with an end button and no audio; failures show the daemon's message
+(UI-180..UI-186, component tests on a fake peer for every state and transition). E2E-14 runs the mic button, the
+scripted transcript, mute, end, another client's session and the login message in headless Chromium with a fake
+microphone against a fake-launcher daemon; its canned answer never connects the peer, so the connected states are
+covered by the component tests only (screenshots in `/tmp/omfp-live-*.png`, the panel states in the `/kit` gallery).
+The real call (audio both ways, `listening`/`speaking` on a connected peer, mute heard on the other side) is to be
+verified by the user by hand on an `openai-codex` login; S-09 already did it with the prototype.
 
 ## M7 — Desktop
 

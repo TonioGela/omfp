@@ -130,6 +130,13 @@
     inline-size: var(--omfp-ctl-h-sm);
   }
 
+  /* A toggled icon button (the mic while a live session runs, UI-180). */
+  .omfp-icon-button[aria-pressed="true"] {
+    color: var(--omfp-primary);
+    border-color: color-mix(in oklab, var(--omfp-primary) 45%, transparent);
+    background: color-mix(in oklab, var(--omfp-primary) 12%, transparent);
+  }
+
   .omfp-button > .omfp-kbd {
     margin-inline-start: var(--omfp-s1);
     border-color: color-mix(in oklab, currentColor 40%, transparent);
@@ -1207,6 +1214,150 @@
 
   .omfp-gauge[data-high] .omfp-gauge__fill {
     background: var(--omfp-warn);
+  }
+
+  /* Live voice (UI-182): the panel, the spectrum (a canvas whose colors script reads from the role tokens) and its
+   * static meter below motion `full`. The user's voice leads with `tertiary`, the assistant's with `primary`. */
+  .omfp-live {
+    display: grid;
+    gap: var(--omfp-s2);
+    padding: var(--omfp-s3) var(--omfp-s4);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+    background: var(--omfp-surface-container-low);
+  }
+
+  .omfp-live[data-status="error"] {
+    border-color: color-mix(in oklab, var(--omfp-error) 45%, transparent);
+  }
+
+  /* Its keys work only while it has the focus (UI-182): a primary border says so. */
+  .omfp-live:focus {
+    border-color: color-mix(in oklab, var(--omfp-primary) 55%, transparent);
+  }
+
+  .omfp-spectrum {
+    position: relative;
+    block-size: 3rem;
+  }
+
+  .omfp-spectrum__canvas {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  .omfp-spectrum__probe {
+    position: absolute;
+    inline-size: 0;
+    block-size: 0;
+    overflow: hidden;
+  }
+
+  .omfp-voice-meter {
+    display: grid;
+    align-content: center;
+    block-size: 3rem;
+  }
+
+  .omfp-voice-meter__track {
+    display: block;
+    block-size: 0.5rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--omfp-on-surface) 10%, transparent);
+  }
+
+  .omfp-voice-meter__fill {
+    display: block;
+    block-size: 100%;
+    border-radius: inherit;
+    background: var(--omfp-grad);
+    transition: inline-size 120ms linear;
+  }
+
+  .omfp-voice-meter[data-voice="user"] .omfp-voice-meter__fill {
+    background: linear-gradient(90deg, var(--omfp-grad-end), var(--omfp-tertiary) 38%, var(--omfp-primary));
+  }
+
+  .omfp-voice-meter[data-status="muted"] .omfp-voice-meter__fill {
+    background: var(--omfp-outline);
+  }
+
+  .omfp-live__lines {
+    display: grid;
+    gap: var(--omfp-s1);
+  }
+
+  .omfp-live__line {
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-live__line[data-role="user"] {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-live__message {
+    margin: 0;
+    font-size: var(--omfp-fs-sm);
+    color: var(--omfp-error);
+  }
+
+  .omfp-live__status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5ch;
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-live__dot {
+    color: var(--omfp-outline);
+  }
+
+  .omfp-live[data-status="connecting"] .omfp-live__dot {
+    color: var(--omfp-warn);
+  }
+
+  .omfp-live[data-status="listening"] .omfp-live__dot {
+    color: var(--omfp-primary);
+  }
+
+  .omfp-live[data-status="speaking"] .omfp-live__dot {
+    color: var(--omfp-tertiary);
+  }
+
+  .omfp-live[data-status="working"] .omfp-live__dot {
+    color: var(--omfp-secondary);
+  }
+
+  .omfp-live[data-status="error"] .omfp-live__dot {
+    color: var(--omfp-error);
+  }
+
+  .omfp-live__state {
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-live__hint {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5ch;
+  }
+
+  .omfp-live__sep {
+    color: var(--omfp-rule-strong);
+  }
+
+  .omfp-live__actions {
+    display: inline-flex;
+    gap: var(--omfp-s2);
+    margin-inline-start: auto;
   }
 
   /* Code (UI-166), logs (UI-159) and diffs (UI-165): the code family. */
@@ -2535,7 +2686,8 @@
     .omfp-search__clear,
     .omfp-tabs__panel
   ):is([data-focus-visible], .is-focus),
-  :is(.omfp-row, .omfp-path-link, .omfp-log, .omfp-markdown a):focus-visible,
+  :is(.omfp-row, .omfp-path-link, .omfp-log, .omfp-markdown a, .omfp-live):focus-visible,
+  .omfp-live.is-focus,
   .omfp-select.is-focus .omfp-select__button,
   :is(.omfp-checkbox, .omfp-radio):is([data-focus-visible], .is-focus) :is(.omfp-checkbox__box, .omfp-radio__dot),
   .omfp-input-box:focus-within,

@@ -21,7 +21,8 @@ export type FixtureName =
   | "search_tool_calls"
   | "todo_tool_calls"
   | "web_tool_calls"
-  | "task_tool_call";
+  | "task_tool_call"
+  | "live_no_credential";
 
 /** The `ThreadEvent`s of `fixtures/threads/<omp>/<name>.jsonl`. */
 export function fixtureEvents(name: FixtureName): ThreadEvent[] {

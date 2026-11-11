@@ -1,6 +1,6 @@
 [package]
 name = "e2e"
-description = "End-to-end tests (WebDriver) against the web build: scenarios E2E-01..05, 08..13 (06-testing.md, L5)."
+description = "End-to-end tests (WebDriver) against the web build: scenarios E2E-01..05, 08..14 (06-testing.md, L5)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,6 +13,7 @@ clap.workspace = true
 fake-llm.workspace = true
 # The command line's protocol client (`omfp theme set`, calls the UI does not offer).
 omfp = { path = "../crates/omfp" }
+omfp-core.workspace = true
 omfp-daemon.workspace = true
 omfp-protocol.workspace = true
 omfp-testkit.workspace = true

@@ -94,6 +94,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useAnnounce()` | `announce(message)` for screen readers. |
 | `useSettings()` | The daemon's UI settings. |
 | `useFile(path, { follow? })` | `{ status, file, error, reload, save }`: a file of the current workspace (`workspaces.read_file`: `file.content`, `file.hash`, `file.head`, …). `status` is `"loading"`, `"ready"`, `"missing"` or `"error"`. With `follow` (default `true`) it is checked every 2 s and on every git status change. `save(content, expectedHash?)` writes it only if the file still has that hash (default: the one read) and resolves to `{ ok: true, file }` or `{ ok: false, conflict, error }`. |
+| `useLive()` | `[live, snapshot]`: this window's live voice session (M6). `live.start(threadId)` opens the microphone and a WebRTC call relayed to omp's realtime voice (`thread.live_connect`), `live.end()`, `live.endThread(threadId)` (any window's session), `live.toggleMute()`, `live.source()` (the audio for `Spectrum`), `live.support()` (`"available"`, `"insecure"`, `"unsupported"`); `snapshot.local` is the session (`idle`, `starting`, `running`, `failed`). The thread's `state.live` has omp's phase and transcript. |
 | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file of the current workspace in a tab next to the chat (the view's `tabs` with `"id": "main"`; keep that slot in your views), else as a tab of a floating panel; `diff: true` shows it against `HEAD`. A bare or partial name (`theme.ts`, `src/theme.ts`) that does not exist as given opens the file it names, or lets the user pick when several match. |
 | `useMissingFile(path, missing, { line?, diff? })` | For a widget showing a file: while `missing`, looks for the file `path` names (`workspaces.find_file`); one match opens in its place, several open the window's picker. Gives `"finding"`, `"opened"`, `"choosing"` or `"none"`. |
 | `SELECTED_THREAD` | Window key of the selected thread id (`useWindowState(SELECTED_THREAD)`). |
@@ -108,6 +109,8 @@ The SDK also exports the view models and strings the built-in widgets use; read 
 | `Button` | A button: `onPress`, `variant` (`primary`, `secondary`, `quiet`, `danger`), `size` (`sm`, `md`), `isDisabled`. |
 | `IconButton` | An icon-only button: `label`, `icon`, `onPress`. |
 | `Progress` | A progress bar: `label` (required), `value` (omit for indeterminate), `max` (default 100), `hideLabel`. |
+| `Spectrum` | The live voice spectrum: `source` (`useLive()[0].source()`), `status`, `label`; a static meter below motion `full`. |
+| `LivePanel` | The live voice panel: `status`, `statusLabel`, `spectrum`, `lines`, `message`, `hints`, `actions`. |
 | `Log` | Monospace lines that follow the end: `lines`. |
 | `Badge` | A small status label: `tone` (`default`, `primary`, `error`, `warning`, `success`). |
 | `Chip` | A compact labelled item: `tone`, `onRemove`. |
