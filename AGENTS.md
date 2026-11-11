@@ -114,8 +114,9 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   `--add-dir` root; it does not resolve symlinked roots, and tools write through symlinks. Roots saved in a session
   survive a restart without their flag: detach with `/remove-dir` (S-10).
 - `--append-system-prompt` disables every `APPEND_SYSTEM.md` (user and project); the daemon must concatenate them.
-- Tools offered by default: read, bash, edit, ask, eval, glob, grep, task, wait, todo, web_search, write (no `find`,
-  `ast_grep` or `fetch`: `read` fetches URLs). `edit` takes hashline input whose `[path#TAG]` needs a prior `read`.
+- Tools offered by default: read, bash, edit, ask, eval, glob, grep, task, wait, todo, web_search, write (`find`,
+  `ast_grep` and `ast_edit` exist but are off by default — `find.enabled`, `astGrep.enabled`, `astEdit.enabled` —; no
+  `fetch` tool: `read` fetches URLs). `edit` takes hashline input whose `[path#TAG]` needs a prior `read`.
   `web_search` failures and URL reads that fail (HTTP 404) end with `isError: false`; `task` runs subagents in the
   background unless `async.enabled: false`; open `todo` items make omp prompt the model again.
 - omp-rpc's client is blocking and closes the omp process group on drop; command default timeout is 30 s.

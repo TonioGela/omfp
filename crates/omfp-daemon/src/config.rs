@@ -32,7 +32,7 @@ pub struct Cli {
     /// Data directory (default: `$XDG_DATA_HOME/omfp`, else `~/.local/share/omfp`).
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
-    /// Where new workspace folders are made (DMN-020; default: `~/omfp/workspaces`).
+    /// Where new workspace folders are made (DMN-020; default: `~/.omfp`).
     #[arg(long)]
     pub workspaces_root: Option<PathBuf>,
     /// omp executable; default: the bundled one, else `omp` on PATH (DMN-006).
@@ -136,7 +136,7 @@ impl Config {
         let workspaces_root = match cli.workspaces_root.or(options.workspaces_root) {
             Some(dir) => dir,
             None => home
-                .map(|home| home.join("omfp").join("workspaces"))
+                .map(|home| home.join(".omfp"))
                 .ok_or("cannot determine the workspaces root: set --workspaces-root or HOME")?,
         };
         let max_processes = cli.max_processes.or(options.max_processes).unwrap_or(8);
@@ -320,12 +320,9 @@ allow_omp_mismatch = true
 
     // spec: DMN-020
     #[test]
-    fn workspace_folders_go_under_home_by_default() {
+    fn workspace_folders_go_under_a_hidden_home_folder_by_default() {
         let config = Config::from_cli(parse(&[]), None, Some("/home/u".into())).unwrap();
-        assert_eq!(
-            config.workspaces_root,
-            PathBuf::from("/home/u/omfp/workspaces")
-        );
+        assert_eq!(config.workspaces_root, PathBuf::from("/home/u/.omfp"));
         assert!(Config::from_cli(parse(&["--data-dir", "/d"]), None, None).is_err());
     }
 

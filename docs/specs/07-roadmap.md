@@ -199,8 +199,9 @@ theme).
 Result: nine contract scenarios (`crates/omfp-daemon/tests/contract_tool_cards.rs`) record the shapes of `read` (file,
 directory, URL), `edit` (hashline input, omp's diff), `write`, `grep`, `glob`, a failing `bash` (exit code in
 `details.exitCode`), `todo`, `web_search` (a SearXNG endpoint on loopback), `task` (a blocking subagent run with its
-progress frames) and a cancelled `ask`; omp 18.18.6 offers no `find`, `ast_grep` or `fetch` tool (a URL is fetched with
-`read`), so those keep the fallback card. Each specialized card (`ui/packages/app/src/vm/tool-view.ts`,
+progress frames) and a cancelled `ask`; in omp 18.18.6 `find` (semantic search, on only when `find.enabled` is `on` or a native judge model is configured) and
+`ast_grep` / `ast_edit` (`astGrep.enabled`, `astEdit.enabled`, off by default) exist but are off in the default test
+configuration, and there is no `fetch` tool (`read` fetches URLs), so those keep the fallback card for now. Each specialized card (`ui/packages/app/src/vm/tool-view.ts`,
 `widgets/chat/tool-cards.tsx`) is tested in its streaming, success and error states from those fixtures; `web_search`
 engine failures and URL reads that could not be fetched end with `isError: false` in omp, so the cards read
 `details.error` / `details.method` and show them as failed. `omfp:changes` follows the `workspace/<id>` topic and asks

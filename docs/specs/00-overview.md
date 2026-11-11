@@ -141,7 +141,7 @@ $XDG_DATA_HOME/omfp/            (default ~/.local/share/omfp)
   threads/<thread-id>/omp.log   omp stderr
   widgets/<name>/               the user's widget library (`user:<name>`, AGT-023)
 
-~/omfp/workspaces/<slug>/        workspaces created by the daemon (--workspaces-root); repos are top-level entries
+~/.omfp/<slug>/                  workspaces created by the daemon (--workspaces-root); repos are top-level entries
 ```
 
 | ID | Requirement |
