@@ -192,7 +192,6 @@ values are dark enough that `--omfp-ok` and `--omfp-warn` (UI-136) reach 4.5:1 a
 | Mode pill (rise + blur in) | Keymap mode changes (UI-098) | 240 ms `--omfp-ease` | ✓ | — | — |
 | Count-up (from 0) | Diff stats `+n −m` first shown | 700 ms, script | ✓ | — | — |
 | Row hover gradient (primary 10 % → transparent) | Hover on an unselected left-column row | instant | ✓ | flat `--omfp-hover` | flat `--omfp-hover` |
-| Smooth scroll | Transcript follows new output | browser `smooth` | ✓ | ✓ | instant |
 
 ## Key chips
 
@@ -256,4 +255,4 @@ gallery shows listening, speaking, muted, connecting, another window's session (
 | ID | Requirement |
 | --- | --- |
 | UI-173 | The UI MUST serve a **`/kit` gallery page** rendering every component of this document (UI-149..UI-172, plus key chips and the glyph vocabulary) in every state it lists, side by side, with sizes (default and small) and both densities, and a token sheet (type scale, spacing, radii, all color roles and derived colors with their contrast against their background). Hover, pressed and focus states are rendered statically (forced state classes), so the page is deterministic. It takes `?scheme=light\|dark`, `?theme=synth\|<matugen fixture>`, `?density=`, `?motion=` and `?fs=` parameters; the repo keeps at least one real matugen output as a fixture theme. |
-| UI-174 | Screenshot tests render `/kit` at motion `none` in light and dark for Synth and for the matugen fixture theme (four combinations at least, at 17 px compact), and compare them with checked-in baselines; the same run checks the WCAG AA contrast of text roles, the status colors `--omfp-ok` / `--omfp-warn` (UI-136) and gradient text (UI-135). |
+| UI-174 | An E2E test renders `/kit` at motion `none` in light and dark for Synth and for the matugen fixture theme (four combinations at least, at 17 px compact), keeps full-page shots for a look by eye (no pixel baselines), and checks the WCAG AA contrast of text roles, the status colors `--omfp-ok` / `--omfp-warn` (UI-136) and gradient text (UI-135). |

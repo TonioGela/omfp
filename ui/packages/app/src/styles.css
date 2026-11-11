@@ -73,15 +73,20 @@
     color: var(--omfp-error);
   }
 
-  /* The view switcher and layout editing, over the view area. */
-  .omfp-frame__bar {
+  /* The view switcher and layout editing, at the foot of the left column under the threads. */
+  .omfp-frame__views {
+    flex: none;
     display: flex;
-    justify-content: flex-end;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--omfp-s2);
-    padding: var(--omfp-s1) var(--omfp-s3);
-    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
-    background: var(--omfp-bar-bg);
+    gap: var(--omfp-s1) var(--omfp-s2);
+    padding: var(--omfp-s2);
+    border-block-start: var(--omfp-bw) solid var(--omfp-rule);
+  }
+
+  .omfp-frame__views > .omfp-select {
+    flex: 1 1 8rem;
+    min-inline-size: 0;
   }
 
   .omfp-shell {
@@ -96,9 +101,18 @@
     display: flex;
     flex-direction: column;
     min-block-size: 0;
-    overflow: auto;
+    min-inline-size: 0;
+    overflow: hidden;
     border-inline-end: var(--omfp-bw) solid var(--omfp-rule);
     background: var(--omfp-side-bg);
+  }
+
+  .omfp-frame__threads {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-block-size: 0;
+    overflow: auto;
   }
 
   /* The view area right of the left column, with the mode line at its bottom (UI-098). */

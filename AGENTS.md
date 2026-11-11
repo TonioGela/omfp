@@ -75,8 +75,7 @@ crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normal
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
 e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process; `Journey::start_fake` runs it on the
                       fake launcher, e.g. live.rs: live voice on a fake microphone, E2E-14), the journeys and the widget
-                      journeys; kit_gallery.rs is the `/kit` screenshot and contrast test (UI-174), its baselines in
-                      tests/kit-baselines/
+                      journeys; kit_gallery.rs is the `/kit` contrast test with shots for review (UI-174)
 ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + Biome (`just lint`), `bun run test`
 ui/packages/protocol  @omfp/protocol: generated protocol types + method table (generated.ts), envelope, topics
 ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked against fixtures/states/

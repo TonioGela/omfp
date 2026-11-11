@@ -104,35 +104,37 @@ export function Frame({
           {strings.shell.settings.error(settings.error)}
         </div>
       )}
-      <div className="omfp-frame__bar">
-        {editing && (
-          <AddWidget
-            registry={registry}
-            views={state}
-            onAdd={(reference) => {
-              void write({ kind: "add", reference });
-            }}
-          />
-        )}
-        <LayoutEditToggle editing={editing} enabled={workspaceId !== undefined} />
-        <Select
-          label={strings.shell.frame.views}
-          hideLabel
-          data-testid="view-switcher"
-          items={views.views.map((candidate) => ({ id: candidate.id, label: candidate.title }))}
-          selectedKey={view?.id ?? null}
-          onSelectionChange={(key) => {
-            if (key !== null) {
-              setActive(String(key));
-            }
-          }}
-        />
-      </div>
       <main className="omfp-shell" data-testid="shell">
         <aside className="omfp-frame__left" data-testid="left-column">
-          <WidgetBoundary reference="omfp:threads">
-            <ThreadsWidget />
-          </WidgetBoundary>
+          <div className="omfp-frame__threads">
+            <WidgetBoundary reference="omfp:threads">
+              <ThreadsWidget />
+            </WidgetBoundary>
+          </div>
+          <div className="omfp-frame__views" data-testid="view-controls">
+            <Select
+              label={strings.shell.frame.views}
+              hideLabel
+              data-testid="view-switcher"
+              items={views.views.map((candidate) => ({ id: candidate.id, label: candidate.title }))}
+              selectedKey={view?.id ?? null}
+              onSelectionChange={(key) => {
+                if (key !== null) {
+                  setActive(String(key));
+                }
+              }}
+            />
+            <LayoutEditToggle editing={editing} enabled={workspaceId !== undefined} />
+            {editing && (
+              <AddWidget
+                registry={registry}
+                views={state}
+                onAdd={(reference) => {
+                  void write({ kind: "add", reference });
+                }}
+              />
+            )}
+          </div>
         </aside>
         <div className="omfp-frame__main">
           {view !== undefined && (

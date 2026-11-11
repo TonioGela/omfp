@@ -543,6 +543,7 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
             }}
           />
           <Popover
+            className="omfp-composer__menu"
             triggerRef={inputRef}
             isOpen={open}
             isNonModal
@@ -565,7 +566,7 @@ export function Composer({ threadId, state }: { threadId: string; state: ThreadS
                   <span className="omfp-composer__command">/{suggestion.name}</span>
                   {suggestion.hint !== undefined && <span className="omfp-composer__hint"> {suggestion.hint}</span>}
                   {suggestion.description !== undefined && (
-                    <span className="omfp-composer__description"> — {suggestion.description}</span>
+                    <span className="omfp-composer__description"> {suggestion.description}</span>
                   )}
                 </MenuItem>
               )}

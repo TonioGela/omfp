@@ -95,7 +95,7 @@ describe("composer", () => {
       within(fresh)
         .getAllByTestId("slash-suggestion")
         .map((item) => item.textContent),
-    ).toEqual(["/zebra — Stripes"]);
+    ).toEqual(["/zebra Stripes"]);
   });
 
   // spec: UI-060

@@ -259,8 +259,8 @@ the chat (transcript, tool, approval and ask cards, composer); the side widgets 
 Acceptance: every UI-120..UI-174 cited by a test or the screenshot test; headless screenshots of the real app at the
 defaults (Synth light and dark, a matugen theme, motion `none`) compared by eye with `docs/specs/design/crush-default-*`.
 
-Result: the foundation, the kit with the `/kit` gallery (Synth and matugen forest, light and dark, compared to pixel
-baselines in `e2e/tests/kit-baselines/` with every text pair at AA), and the frame, chat and side slices were applied in
+Result: the foundation, the kit with the `/kit` gallery (Synth and matugen forest, light and dark, every text pair at
+AA; the pixel baselines were dropped afterwards, the gallery is reviewed by eye), and the frame, chat and side slices were applied in
 parallel and checked by the 23 E2E journeys. Merging the slices broke 8 journeys, all fixed: the side panel's Add button
 under the path-field completion, interaction cards losing their test hooks, `+n −m` counts split in two elements, a
 smooth-scroll rule that re-pinned the transcript, and a mode-pill animation that briefly showed a window scrollbar

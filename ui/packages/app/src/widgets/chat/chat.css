@@ -735,7 +735,22 @@
     background: var(--omfp-pop-bg);
   }
 
+  /* `/` completion: as wide as the composer, one line per command (name, arguments, description cut with an ellipsis). */
+  .omfp-composer__menu {
+    inline-size: var(--trigger-width);
+  }
+
+  .omfp-composer__menu .omfp-menu {
+    inline-size: auto;
+  }
+
+  .omfp-composer__menu .omfp-menu__item {
+    gap: var(--omfp-s2);
+    white-space: nowrap;
+  }
+
   .omfp-composer__command {
+    flex: none;
     font-family: var(--omfp-font-code);
     font-weight: var(--omfp-fw-strong);
     color: var(--omfp-tertiary);
@@ -743,6 +758,20 @@
 
   .omfp-composer__hint,
   .omfp-composer__description {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-composer__hint {
+    flex: 0 1 auto;
+    max-inline-size: 40%;
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-2xs);
+  }
+
+  .omfp-composer__description {
+    flex: 1 1 auto;
   }
 }
