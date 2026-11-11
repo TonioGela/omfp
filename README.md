@@ -6,6 +6,8 @@
   </picture>
 </h1>
 
+<sub>The f stands for fabulous, right?</sub>
+
 **The agent multiplexer for hackers who are tired of prepackaged workflows.**
 
 - **Many [omp](https://github.com/can1357/oh-my-pi) sessions, one place.** Every thread is its own agent. Control them
