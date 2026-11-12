@@ -474,7 +474,7 @@ describe("BorderBox", () => {
 });
 
 describe("HelpDialog", () => {
-  // spec: UI-198, UI-187
+  // spec: UI-198, UI-187, UI-092
   test("a modal border box titled help, its sections on labelled rules; Escape asks to close", async () => {
     const onClose = mock(() => {});
     render(
@@ -498,6 +498,8 @@ describe("HelpDialog", () => {
       "omfp-kbd",
       "omfp-kbd",
     ]);
+    // The scrolling list is a Tab stop, so the keyboard can scroll it.
+    expect(screen.getByRole("region", { name: "Keys and commands" }).getAttribute("tabindex")).toBe("0");
     await userEvent.setup().keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
   });

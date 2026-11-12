@@ -19,6 +19,7 @@ import {
   ResolvedLine,
   TextArea,
   TextField,
+  Toolbar,
 } from "omfp/kit";
 import {
   type AskForm,
@@ -209,26 +210,28 @@ function DismissButton({ disabled, onRespond }: Pick<BodyProps<unknown>, "disabl
   );
 }
 
+/** The options form one toolbar (arrow keys move between them, Tab leaves it for Dismiss, UI-092). */
 function SelectBody({ request, disabled, onRespond }: BodyProps<SelectUiRequest>) {
   return (
-    // biome-ignore lint/a11y/useSemanticElements: a group of buttons, not form fields
-    <div className="omfp-request__actions omfp-interaction__options" role="group" aria-label={request.title}>
-      {request.options.map((option, index) => (
-        <Button
-          // Options are fixed for the request's lifetime.
-          // biome-ignore lint/suspicious/noArrayIndexKey: see above
-          key={index}
-          data-testid="interaction-option"
-          variant={index === 0 ? "primary" : "secondary"}
-          isDisabled={disabled}
-          onPress={() => onRespond({ value: option })}
-        >
-          {option}
-          {request.optionDetails?.[index]?.description !== undefined && (
-            <span className="omfp-interaction__description">{request.optionDetails[index]?.description}</span>
-          )}
-        </Button>
-      ))}
+    <div className="omfp-request__actions omfp-interaction__options">
+      <Toolbar className="omfp-request__actions" aria-label={request.title} data-testid="interaction-options">
+        {request.options.map((option, index) => (
+          <Button
+            // Options are fixed for the request's lifetime.
+            // biome-ignore lint/suspicious/noArrayIndexKey: see above
+            key={index}
+            data-testid="interaction-option"
+            variant={index === 0 ? "primary" : "secondary"}
+            isDisabled={disabled}
+            onPress={() => onRespond({ value: option })}
+          >
+            {option}
+            {request.optionDetails?.[index]?.description !== undefined && (
+              <span className="omfp-interaction__description">{request.optionDetails[index]?.description}</span>
+            )}
+          </Button>
+        ))}
+      </Toolbar>
       <DismissButton disabled={disabled} onRespond={onRespond} />
     </div>
   );

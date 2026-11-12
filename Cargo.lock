@@ -2865,6 +2865,8 @@ dependencies = [
  "clap",
  "futures",
  "gio",
+ "objc2",
+ "objc2-app-kit",
  "objc2-foundation",
  "omfp-core",
  "omfp-daemon",

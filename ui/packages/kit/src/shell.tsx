@@ -377,7 +377,10 @@ export function HelpDialog({
         bodyClassName="omfp-help__body"
       >
         <div className="omfp-help__filter">{filter}</div>
-        <div className="omfp-help__list">{children}</div>
+        {/* biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling region the keyboard must reach to scroll (UI-092). */}
+        <section className="omfp-help__list" aria-label={label} tabIndex={0}>
+          {children}
+        </section>
       </BorderBox>
     </AriaDialog>
   );

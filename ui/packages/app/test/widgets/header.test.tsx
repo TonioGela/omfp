@@ -74,6 +74,13 @@ describe("omfp:header", () => {
     expect(within(screen.getByTestId("thinking-select")).getByRole("button").textContent).toContain("high");
   });
 
+  // spec: UI-202
+  test("the full header's title carries the full title as its tooltip, as the compact one does", () => {
+    const long = "a thread title long enough to be cut with an ellipsis in the full header";
+    setup(thread("t1", long, "w1"));
+    expect(screen.getByTestId("thread-title").getAttribute("title")).toBe(long);
+  });
+
   // spec: UI-030, UI-023
   test("rename in place: Enter saves through threads.update, Escape cancels; unnamed threads start empty", async () => {
     const { client, user } = setup(thread("t1", "", "w1"));

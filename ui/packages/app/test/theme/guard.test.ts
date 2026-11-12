@@ -89,13 +89,16 @@ describe("contrast guard", () => {
       "error",
       "on-primary",
       "on-tertiary",
+      "surface-container-highest",
     ]);
     for (const { role, to } of adjustments) {
       expect(root.style.getPropertyValue(`--omfp-${role}`)).toBe(to);
     }
     expect(root.style.getPropertyValue("--omfp-primary")).toBe("");
     expect(root.style.getPropertyValue("--omfp-font-code")).toBe("Iosevka");
-    expect(root.getAttribute(GUARD_ATTRIBUTE)).toBe("tertiary secondary error on-primary on-tertiary");
+    expect(root.getAttribute(GUARD_ATTRIBUTE)).toBe(
+      "tertiary secondary error on-primary on-tertiary surface-container-highest",
+    );
   });
 
   // spec: UI-196, UI-139
@@ -156,7 +159,9 @@ describe("contrast guard", () => {
     root.dataset.colorScheme = "light";
     const expected = applyContrastGuard(root, pageReader(root, system));
     const dispose = installContrastGuard(document, root);
-    expect(root.getAttribute(GUARD_ATTRIBUTE)).toBe("tertiary secondary error on-primary on-tertiary");
+    expect(root.getAttribute(GUARD_ATTRIBUTE)).toBe(
+      "tertiary secondary error on-primary on-tertiary surface-container-highest",
+    );
     for (const { role, to } of expected) {
       expect(root.style.getPropertyValue(`--omfp-${role}`)).toBe(to);
     }

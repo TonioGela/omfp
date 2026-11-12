@@ -14,7 +14,7 @@ use super::views::copy_error;
 use super::{Services, blocking, write_atomically};
 use crate::server::convert::{bad_request, internal};
 use crate::store::Store;
-use crate::widgets::folders::is_widget_name;
+use crate::widgets::folders::{ENTRIES, MOUNT_MARKER, is_widget_name};
 use crate::widgets::layout::Place;
 use crate::widgets::library::{self, Source};
 use crate::widgets::mounts::{self, Mount, MountError, Target};
@@ -78,9 +78,56 @@ fn current(store: &Store, id: &str) -> Result<(std::path::PathBuf, Option<Value>
     Ok((path, manifest))
 }
 
-/// Writes `.omfp/widgets/<id>/index.tsx` of the workspace at `workspace`.
+/// Whether the code of mount `id` may go to `.omfp/widgets/<id>/` of the workspace at `workspace` (DMN-183): not when
+/// `id` names a built-in (the folder would replace `omfp:<id>` in the whole workspace), nor when the folder exists
+/// without this mount's marker or has another entry file (which `index.tsx` would shadow or that would shadow it).
+/// `Ok(true)` when the mount's own folder exists: its code is replaced.
+fn claim_folder(
+    workspace: &std::path::Path,
+    id: &str,
+    builtins: &[String],
+) -> Result<bool, ErrorBody> {
+    let conflict = |why: String| {
+        ErrorBody::new(
+            ErrorCode::Conflict,
+            format!("cannot mount code as {id}: {why}; choose another id"),
+        )
+    };
+    if builtins.iter().any(|name| name == id) {
+        return Err(conflict(format!(
+            "a folder .omfp/widgets/{id}/ would replace the built-in omfp:{id} in this workspace"
+        )));
+    }
+    let folder = workspace_widgets(workspace).join(id);
+    match std::fs::symlink_metadata(&folder) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(internal(format!("{}: {error}", folder.display()))),
+        Ok(metadata) if !metadata.is_dir() => Err(conflict(format!(
+            ".omfp/widgets/{id} exists and is not a folder"
+        ))),
+        Ok(_) if !folder.join(MOUNT_MARKER).is_file() => Err(conflict(format!(
+            ".omfp/widgets/{id}/ holds a widget no mount wrote"
+        ))),
+        Ok(_) => match ENTRIES
+            .into_iter()
+            .find(|entry| *entry != "index.tsx" && folder.join(entry).exists())
+        {
+            Some(entry) => Err(conflict(format!(".omfp/widgets/{id}/ also has {entry}"))),
+            None => Ok(true),
+        },
+    }
+}
+
+/// Writes `.omfp/widgets/<id>/index.tsx` of the workspace at `workspace`, with the mount's marker.
 fn write_code(workspace: &std::path::Path, id: &str, code: &str) -> Result<(), ErrorBody> {
-    let file = workspace_widgets(workspace).join(id).join("index.tsx");
+    let folder = workspace_widgets(workspace).join(id);
+    let marker = folder.join(MOUNT_MARKER);
+    write_atomically(
+        &marker,
+        &format!("Written by views.mount `{id}`: its code (index.tsx) is replaced by the next mount with code.\n"),
+    )
+    .map_err(|error| internal(format!("{}: {error}", marker.display())))?;
+    let file = folder.join("index.tsx");
     write_atomically(&file, code).map_err(|error| internal(format!("{}: {error}", file.display())))
 }
 
@@ -106,9 +153,14 @@ impl Services {
         }
         let _edit = self.manifest_edits.lock().await;
         let store = Arc::clone(&self.store);
+        let builtins = self.widgets.builtin_names();
         let workspace_id = params.workspace_id.clone();
         let mounted = blocking(move || {
             let (path, current) = current(&store, &workspace_id)?;
+            let code_replaced = match params.code {
+                Some(_) => claim_folder(&path, &id, &builtins)?,
+                None => false,
+            };
             let view = params.view.as_deref().map(str::trim);
             let target = if params.panel {
                 Target::Panel
@@ -138,7 +190,7 @@ impl Services {
                 reference: placed.reference,
                 panel: placed.view.is_none(),
                 view: placed.view,
-                replaced: placed.replaced,
+                replaced: placed.replaced || code_replaced,
             })
         })
         .await?;
@@ -154,6 +206,7 @@ impl Services {
         }
         let _edit = self.manifest_edits.lock().await;
         let store = Arc::clone(&self.store);
+        let builtins = self.widgets.builtin_names();
         let workspace_id = params.workspace_id.clone();
         let mounted = blocking(move || {
             let (path, current) = current(&store, &workspace_id)?;
@@ -167,6 +220,7 @@ impl Services {
                         placed.reference
                     )));
                 }
+                claim_folder(&path, &id, &builtins)?;
                 write_code(&path, &id, code)?;
             }
             if current.as_ref() != Some(&placed.manifest) {

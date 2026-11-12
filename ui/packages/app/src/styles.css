@@ -345,7 +345,7 @@
     flex: 1 1 auto;
   }
 
-  .omfp-thread-header[data-compact] .omfp-state-badge {
+  .omfp-thread-header[data-compact] :is(.omfp-state-badge, .omfp-icon-button) {
     flex: none;
   }
 
@@ -396,6 +396,14 @@
     flex: none;
   }
 
+  /* Its top row stays one line too: the title gives way (ellipsis) to the rename, state and lifecycle controls. */
+  .omfp-thread-header:not([data-compact])
+    .omfp-thread-header__top
+    > :not(.omfp-thread-header__title, .omfp-thread-header__editor) {
+    flex: none;
+    flex-wrap: nowrap;
+  }
+
   .omfp-view__col > .omfp-view__cell:has(> .omfp-view__item > .omfp-widget[data-widget="omfp:header"]) {
     flex: 0 0 auto;
   }
@@ -438,6 +446,12 @@
     padding-inline: 0;
     border-block-end: 0;
     overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  /* The list scrolls sideways only, so the selected tab's indicator sits inside it, on the bar's rule. */
+  .omfp-view__tabbar > .omfp-tabs__list .omfp-tabs__tab[data-selected]::after {
+    inset-block-end: 0;
   }
 
   .omfp-view__tabbar > .omfp-icon-button {
@@ -668,6 +682,7 @@
   .omfp-widget-picker {
     display: flex;
     flex-direction: column;
+    align-items: stretch;
     gap: var(--omfp-s3);
   }
 

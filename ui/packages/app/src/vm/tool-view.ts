@@ -208,7 +208,7 @@ function askQuestions(html: string): string[] {
 
 /**
  * The arguments a specialized card shows outside its header's argument summary: its subject (command, path, query,
- * pattern) and the text of its body (a write's content, an edit's input).
+ * pattern) and the text of its body (a write's content, an edit's input, the questions of an ask's form).
  */
 const SHOWN_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {
   bash: ["command"],
@@ -218,6 +218,7 @@ const SHOWN_ARGUMENTS: Readonly<Record<string, readonly string[]>> = {
   grep: ["pattern"],
   glob: ["path"],
   web_search: ["query"],
+  ask: ["html"],
 };
 
 /** The arguments of a call of tool `name` its card shows elsewhere than the header's summary; `undefined` if none. */
@@ -231,13 +232,14 @@ function plural(count: number, one: string, many: string): string {
 
 /**
  * The specialized view of a call of tool `name`. `args` are its arguments (or `undefined` while the model writes them),
- * `output` the result once it ended or the latest partial result while it runs, `ended` whether it ended.
+ * `output` the result once it ended or the latest partial result while it runs, `succeeded` whether it ended without
+ * an error (a `bash` that did so without an exit code in its details exited 0; an aborted one has none).
  */
 export function toolView(
   name: string,
   args: JsonValue | undefined,
   output: ToolOutput | undefined,
-  ended: boolean,
+  succeeded: boolean,
 ): ToolView {
   const input = isRecord(args) ? args : {};
   const details = output?.details ?? {};
@@ -248,7 +250,7 @@ export function toolView(
         command: str(input.command) ?? "",
         cwd: str(input.cwd),
         output: output?.text,
-        exitCode: num(details.exitCode) ?? (ended && output !== undefined ? 0 : undefined),
+        exitCode: num(details.exitCode) ?? (succeeded && output !== undefined ? 0 : undefined),
       };
     case "read": {
       const raw = str(input.path) ?? "";

@@ -380,6 +380,11 @@ mod tests {
     }
 
     async fn harness() -> Harness {
+        harness_with(None).await
+    }
+
+    /// A harness whose daemon serves the web bundle `static_dir` (its built-in widgets).
+    async fn harness_with(static_dir: Option<&Path>) -> Harness {
         let dir = tempfile::tempdir().unwrap();
         let data = DataDir::new(dir.path().join("data"));
         std::fs::create_dir_all(data.root()).unwrap();
@@ -392,7 +397,7 @@ mod tests {
             root,
         ));
         let library = data.widgets();
-        let widgets = Arc::new(Widgets::new(library.clone(), None));
+        let widgets = Arc::new(Widgets::new(library.clone(), static_dir));
         let supervisor = Supervisor::new(
             Arc::new(FakeLauncher::new()),
             Arc::clone(&threads),
@@ -496,6 +501,105 @@ mod tests {
                 .is_file(),
             "the folder stays"
         );
+    }
+
+    // spec: DMN-183, PRT-080, PRT-081
+    #[tokio::test]
+    async fn code_never_overwrites_a_folder_no_mount_wrote_nor_shadows_a_built_in() {
+        let bundle = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(bundle.path().join("builtin-widgets/chat")).unwrap();
+        std::fs::write(
+            bundle.path().join("builtin-widgets/chat/index.tsx"),
+            "export default () => null;\n",
+        )
+        .unwrap();
+        let harness = harness_with(Some(bundle.path())).await;
+        let widgets = harness.folder.join(".omfp/widgets");
+        let code = "export default () => null;\n";
+        let conflict = |error: String, needle: &str| {
+            assert!(error.starts_with("conflict: "), "{error}");
+            assert!(error.contains(needle), "{error}");
+        };
+
+        let error = run(&harness, run_mount, json!({ "id": "chat", "code": code }))
+            .await
+            .unwrap_err();
+        conflict(error, "built-in omfp:chat");
+        assert!(!widgets.join("chat").exists());
+
+        // A hand-made widget, then one with only `index.ts`.
+        std::fs::create_dir_all(widgets.join("mine")).unwrap();
+        std::fs::write(widgets.join("mine/index.tsx"), "// mine\n").unwrap();
+        std::fs::create_dir_all(widgets.join("old")).unwrap();
+        std::fs::write(widgets.join("old/index.ts"), "// old\n").unwrap();
+        for id in ["mine", "old"] {
+            let error = run(&harness, run_mount, json!({ "id": id, "code": code }))
+                .await
+                .unwrap_err();
+            conflict(error, "no mount wrote");
+        }
+        assert_eq!(
+            std::fs::read_to_string(widgets.join("mine/index.tsx")).unwrap(),
+            "// mine\n"
+        );
+        assert!(!widgets.join("old/index.tsx").exists());
+        // Mounting the hand-made widget by reference is fine; its code still cannot be replaced.
+        run(
+            &harness,
+            run_mount,
+            json!({ "id": "mine", "widget": "mine" }),
+        )
+        .await
+        .unwrap();
+        let error = run(&harness, run_update, json!({ "id": "mine", "code": code }))
+            .await
+            .unwrap_err();
+        conflict(error, "no mount wrote");
+
+        // The mount's own folder: written with the marker, replaced (and said so) by the next mount with code.
+        let mounted = harness
+            .context
+            .services
+            .mount(
+                serde_json::from_value(json!({
+                    "workspaceId": harness.context.workspace_id, "id": "board", "code": code
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(!mounted.replaced);
+        assert!(
+            widgets
+                .join("board")
+                .join(crate::widgets::folders::MOUNT_MARKER)
+                .is_file()
+        );
+        run(&harness, run_remove, json!({ "id": "board" }))
+            .await
+            .unwrap();
+        let again = harness
+            .context
+            .services
+            .mount(
+                serde_json::from_value(json!({
+                    "workspaceId": harness.context.workspace_id, "id": "board", "code": "// v2\n"
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert!(again.replaced, "the folder's code was replaced");
+        assert_eq!(
+            std::fs::read_to_string(widgets.join("board/index.tsx")).unwrap(),
+            "// v2\n"
+        );
+        // Another entry file next to ours would shadow or be shadowed.
+        std::fs::write(widgets.join("board/index.js"), "// js\n").unwrap();
+        let error = run(&harness, run_update, json!({ "id": "board", "code": code }))
+            .await
+            .unwrap_err();
+        conflict(error, "also has index.js");
     }
 
     // spec: AGT-060, AGT-061, AGT-063, PRT-080

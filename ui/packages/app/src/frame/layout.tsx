@@ -4,7 +4,7 @@
  * renders the manifest the daemon pushes back.
  */
 
-import { Button, Dialog } from "@omfp/kit";
+import { Button, Dialog, Toolbar } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
 import { type ReactNode, useCallback, useState } from "react";
 import { useCall, useReportError, useWindowState, windowKey } from "../sdk/index.ts";
@@ -79,7 +79,10 @@ interface AddWidgetProps {
   readonly onAdd: (reference: string) => void;
 }
 
-/** "Add widget" and its picker (UI-104): built-ins, the workspace's widgets and the user library's. */
+/**
+ * "Add widget" and its picker (UI-104): built-ins, the workspace's widgets and the user library's, one vertical
+ * toolbar (the arrow keys move between them, UI-092).
+ */
 export function AddWidget({ registry, views, onAdd }: AddWidgetProps): ReactNode {
   const [open, setOpen] = useState(false);
   const folders = views?.widgets ?? [];
@@ -101,7 +104,7 @@ export function AddWidget({ registry, views, onAdd }: AddWidgetProps): ReactNode
       </Button>
       <Dialog title={text.picker} isOpen={open} onOpenChange={setOpen} isDismissable data-testid="widget-picker">
         {({ close }) => (
-          <div className="omfp-widget-picker">
+          <Toolbar orientation="vertical" className="omfp-widget-picker" aria-label={text.picker}>
             {groups.map(({ title, references }) => (
               <section key={title} className="omfp-widget-picker__group" aria-label={title}>
                 <h3 className="omfp-widget-picker__title">{title}</h3>
@@ -129,7 +132,7 @@ export function AddWidget({ registry, views, onAdd }: AddWidgetProps): ReactNode
                 )}
               </section>
             ))}
-          </div>
+          </Toolbar>
         )}
       </Dialog>
     </>

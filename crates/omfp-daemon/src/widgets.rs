@@ -338,6 +338,12 @@ impl Widgets {
         self.builtin.as_deref().filter(|dir| dir.is_dir())
     }
 
+    /// The names of the built-in widgets (`omfp:<name>`) of the bundle; none without one.
+    #[must_use]
+    pub fn builtin_names(&self) -> Vec<String> {
+        self.builtin_dir().map(builtin_names).unwrap_or_default()
+    }
+
     /// The manifest of the workspace at `workspace` and why it is refused (AGT-010, AGT-011, DMN-082).
     #[must_use]
     pub fn manifest(workspace: &Path) -> (Option<Value>, Option<String>) {
@@ -547,6 +553,9 @@ fn copy_dir(from: &Path, to: &Path) -> std::io::Result<()> {
     std::fs::create_dir(to)?;
     for entry in std::fs::read_dir(from)? {
         let entry = entry?;
+        if entry.file_name() == folders::MOUNT_MARKER {
+            continue;
+        }
         let (source, target) = (entry.path(), to.join(entry.file_name()));
         if entry.file_type()?.is_dir() {
             copy_dir(&source, &target)?;

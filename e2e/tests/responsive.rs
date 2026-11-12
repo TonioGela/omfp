@@ -7,6 +7,10 @@ use e2e::Journey;
 use fake_llm::{Reply, Step};
 use thirtyfour::prelude::*;
 
+/// The first message, whose placeholder title (DMN-073) is too long for the full header's top row at 1400 px.
+const LONG_PROMPT: &str =
+    "Summarize every responsive breakpoint thoroughly, including narrow phones";
+
 /// The `data-layout` the frame settles on.
 async fn layout(journey: &Journey, expected: &str) -> anyhow::Result<()> {
     journey
@@ -54,6 +58,13 @@ async fn wide(journey: &Journey) -> anyhow::Result<()> {
     )
     .await?;
     anyhow::ensure!(bar < 40.0, "the header's bar wraps: {bar} px tall");
+    // Its top row stays one line with a title too long for it: the title gives way, the controls do not wrap.
+    let top = height(
+        journey,
+        "[data-testid=thread-header] .omfp-thread-header__top",
+    )
+    .await?;
+    anyhow::ensure!(top < 40.0, "the header's top row wraps: {top} px tall");
     journey.fits("[data-testid=thread-header]").await?;
     shots(journey, 1400).await
 }
@@ -121,16 +132,25 @@ async fn phone(journey: &Journey) -> anyhow::Result<()> {
         "visible splitters: {splitters}"
     );
     journey.fits("[data-testid=app]").await?;
-    // Touch targets of at least 44 px (UI-205).
+    // Touch targets of at least 44 px; icon buttons at least 44 × 44 (UI-205).
     let lowest = journey
         .eval(
-            "return Math.min(...[...document.querySelectorAll('[data-testid=area-button], [data-testid=send]')]
+            "return Math.min(...[...document.querySelectorAll('[data-testid=area-button], [data-testid=send], [data-testid=header-more]')]
                .map(e => e.getBoundingClientRect().height));",
             Vec::new(),
         )
         .await?;
     let lowest = lowest.as_f64().unwrap_or_default();
     anyhow::ensure!(lowest >= 44.0, "a touch target is {lowest} px tall");
+    let narrowest = journey
+        .eval(
+            "return Math.min(...[...document.querySelectorAll('[data-testid=send], [data-testid=header-more]')]
+               .map(e => e.getBoundingClientRect().width));",
+            Vec::new(),
+        )
+        .await?;
+    let narrowest = narrowest.as_f64().unwrap_or_default();
+    anyhow::ensure!(narrowest >= 44.0, "an icon button is {narrowest} px wide");
     shots(journey, 390).await?;
     journey
         .click("[data-testid=area-button][data-area=threads]")
@@ -157,7 +177,7 @@ async fn the_frame_adapts_to_its_width() -> anyhow::Result<()> {
     let thread = journey
         .create_thread("a responsive journey with a rather long workspace name")
         .await?;
-    journey.send("say hello please").await?;
+    journey.send(LONG_PROMPT).await?;
     journey.reply("hello from the responsive journey").await?;
     journey.status(&thread, "idle").await?;
     wide(&journey).await?;

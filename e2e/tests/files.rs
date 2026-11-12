@@ -112,6 +112,19 @@ async fn opens_from_the_read_card(journey: &Journey) -> anyhow::Result<()> {
             .await?,
         "notes.txt"
     );
+    // Two tabs fit the bar: its tab list neither scrolls nor shows scrollbars (the selected tab's indicator included).
+    let overflow = journey
+        .eval(
+            "const list = document.querySelector('[data-slot=main] .omfp-view__tabbar > [role=tablist]');
+             return [list.scrollWidth - list.clientWidth, list.scrollHeight - list.clientHeight];",
+            Vec::new(),
+        )
+        .await?;
+    assert_eq!(
+        overflow,
+        json!([0, 0]),
+        "the main slot's tab list overflows"
+    );
     // The chat's tab still holds the card, which the click did not toggle.
     journey
         .click("[data-slot=main] [data-testid=view-tab]")

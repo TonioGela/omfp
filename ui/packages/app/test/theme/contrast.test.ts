@@ -136,7 +136,15 @@ describe("contrast adjustments", () => {
   // spec: UI-196
   test("the Dux Solarized preset gets readable text roles, then readable labels on the fills it changed", () => {
     const light = contrastAdjustments(reader("dux-solarized", "light"));
-    expect(light.map(({ role }) => role)).toEqual(["tertiary", "secondary", "error", "on-primary", "on-tertiary"]);
+    // Its light surface containers are all one color: the `NORMAL` pill's fill is set apart from the mode line.
+    expect(light.map(({ role }) => role)).toEqual([
+      "tertiary",
+      "secondary",
+      "error",
+      "on-primary",
+      "on-tertiary",
+      "surface-container-highest",
+    ]);
     const dark = contrastAdjustments(reader("dux-solarized", "dark"));
     expect(dark.map(({ role }) => role)).toEqual(["tertiary", "secondary", "error", "outline", "on-error"]);
     for (const scheme of ["light", "dark"] as const) {
@@ -168,7 +176,7 @@ describe("contrast adjustments", () => {
     const colors = themeColors("dux-solarized", "light");
     expect(
       contrastAdjustments((token) => (token === "tertiary" ? undefined : colors.get(token))).map(({ role }) => role),
-    ).toEqual(["secondary", "error"]);
+    ).toEqual(["secondary", "error", "surface-container-highest"]);
     expect(contrastAdjustments((token) => (token === "on-surface" ? undefined : colors.get(token)))).toEqual([]);
   });
 });

@@ -51,7 +51,9 @@ An agent shows UI to the user without editing `views.json` by hand:
   written to `.omfp/widgets/<id>/index.tsx`) or `widget` (a reference: `user:<name>`, `./widgets/<name>`). It goes
   into the view `view` (default: the default view; a new id creates a view showing only it, a dashboard) at `where`
   (`side-tab`, `main-tab`, `end`), or with `panel: true` floats over every view. The node gets `instance: <id>`, so
-  `useStored` state follows the mount; mounting the same id again replaces it.
+  `useStored` state follows the mount; mounting the same id again replaces it. `code` is refused (`conflict`) when
+  `.omfp/widgets/<id>/` holds a widget no mount with `code` wrote, or when `<id>` names a built-in (`chat`, `file`…):
+  pick another id.
 - `omfp_ui_update { id, props?, code? }` merges `props` into the mounted widget (`null` deletes one) or replaces its
   inline code; windows re-render it in place, its state kept. Drive a mounted widget (a progress, a status) this way.
 - `omfp_ui_remove { id }` removes it (a view it filled goes too); its folder stays.

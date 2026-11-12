@@ -93,13 +93,14 @@ async fn an_omp_outside_omfp_calls_omfp_call_through_mcp() {
     ])
     .await;
     let (daemon, _data) = daemon().await;
-    // What `omfp mcp config` prints (DMN-159), in the isolated omp's user-level mcp.json.
+    // What `omfp mcp config` prints (DMN-159), in the isolated omp's user-level mcp.json: the token comes from
+    // `$OMFP_TOKEN`, which omp expands in `mcp.json` (AGT-054).
     let mcp_json = json!({
         "mcpServers": {
             "omfp": {
                 "type": "http",
                 "url": format!("http://{}/mcp", daemon.addr()),
-                "headers": { "Authorization": format!("Bearer {}", daemon.token().expose()) },
+                "headers": { "Authorization": "Bearer ${OMFP_TOKEN}" },
                 "timeout": 0,
             }
         }
@@ -114,6 +115,8 @@ async fn an_omp_outside_omfp_calls_omfp_call_through_mcp() {
     // Wait for the MCP connection before the first turn instead of omp's 250 ms window.
     spec.env
         .push(("OMP_MCP_STARTUP_TIMEOUT_MS".into(), Some("0".into())));
+    spec.env
+        .push(("OMFP_TOKEN".into(), Some(daemon.token().expose().into())));
 
     let stderr = harness.thread.path().join("omp.log");
     tokio::task::spawn_blocking(move || {

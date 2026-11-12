@@ -241,7 +241,7 @@ function Title({ threadId, view, compact = false }: { threadId: string; view: He
           className={`omfp-chat-header__title omfp-thread-header__title${view.placeholder ? "" : " omfp-grad-text"}`}
           data-testid="thread-title"
           data-placeholder={view.placeholder ? "true" : undefined}
-          title={compact ? view.title : undefined}
+          title={view.title}
         >
           {view.title}
         </h1>

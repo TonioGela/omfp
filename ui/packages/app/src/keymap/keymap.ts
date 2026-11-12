@@ -74,13 +74,29 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
 export const SEQUENCE_TIMEOUT_MS = 1000;
 
 /** The parts of a `KeyboardEvent` a token is made of. */
-export type KeyInput = Pick<KeyboardEvent, "key" | "ctrlKey" | "altKey" | "metaKey" | "shiftKey">;
+export type KeyInput = Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "altKey" | "metaKey" | "shiftKey">;
 
 const NAMED: Readonly<Record<string, string>> = { " ": "Space", Escape: "Esc", Esc: "Esc" };
+/** Printable ASCII: what Alt leaves of a key outside macOS. */
+const ASCII = /^[\x20-\x7e]+$/;
+/** The letter or digit of a physical key (`KeyA`, `Digit1`). */
+const LETTER_CODE = /^(?:Key([A-Z])|Digit([0-9]))$/;
+
+/**
+ * The key of an Alt chord: macOS's Option composes (`Option-a` is `å`, `Option-n` the dead key of `˜`), so a chord whose
+ * key is not ASCII takes the letter or digit of its physical key (UI-021); elsewhere Alt leaves the key as typed.
+ */
+function altChordKey(event: KeyInput): string {
+  if (event.key !== "Dead" && ASCII.test(event.key)) {
+    return event.key;
+  }
+  const letter = LETTER_CODE.exec(event.code);
+  return letter === null ? event.key : (letter[1] ?? letter[2] ?? event.key);
+}
 
 /** The token of a key press; `undefined` for a lone modifier. */
 export function keyToken(event: KeyInput): string | undefined {
-  const { key } = event;
+  const key = event.altKey ? altChordKey(event) : event.key;
   if (key === "Control" || key === "Alt" || key === "Meta" || key === "Shift" || key === "Dead" || key === "") {
     return undefined;
   }

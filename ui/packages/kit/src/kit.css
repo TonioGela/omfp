@@ -2499,6 +2499,12 @@
     overscroll-behavior: contain;
   }
 
+  /* The list takes the focus so the keyboard can scroll it (UI-092). */
+  .omfp-help__list:focus-visible {
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: calc(-1 * var(--omfp-focus-w));
+  }
+
   .omfp-help__list .omfp-bbox__rule {
     margin: 0;
   }

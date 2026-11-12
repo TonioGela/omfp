@@ -931,7 +931,7 @@ pub struct Mounted {
     pub view: Option<String>,
     /// Whether it is the floating panel `id`.
     pub panel: bool,
-    /// Whether a node of this mount id existed before.
+    /// Whether a node of this mount id existed before, or the mount's code folder did (its code was replaced).
     pub replaced: bool,
 }
 

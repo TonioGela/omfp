@@ -63,7 +63,7 @@ describe("tool cards", () => {
   });
 
   // spec: UI-050
-  test("a specialized card's header does not repeat its subject nor a write's content", () => {
+  test("a specialized card's header does not repeat its subject nor what its body shows", () => {
     const summary = (name: string, args: Record<string, string | number>) =>
       toolCard("c1", { type: "toolCall", name, arguments: args }, undefined, undefined, undefined).summary;
     expect(summary("write", { path: "repo/AGENTS.md", content: "Marker: one\nEdited.\n" })).toBe("");
@@ -73,6 +73,8 @@ describe("tool cards", () => {
     expect(summary("grep", { pattern: "Edited", path: "repo" })).toBe("path: repo");
     expect(summary("glob", { path: "src/**/*.ts" })).toBe("");
     expect(summary("web_search", { query: "omp rpc", limit: 3 })).toBe("limit: 3");
+    // The ask card lists the form's questions.
+    expect(summary("ask", { html: "<form><fieldset><legend>Which database?</legend></fieldset></form>" })).toBe("");
     // Tools without a subject keep every scalar argument.
     expect(summary("todo", { op: "done", task: "Edit AGENTS.md" })).toBe("op: done, task: Edit AGENTS.md");
   });

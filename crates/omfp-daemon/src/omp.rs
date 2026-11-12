@@ -11,8 +11,9 @@ use std::sync::mpsc::Receiver;
 use omfp_core::{ProcessState, SessionInfo, ThreadEvent};
 use omp_rpc::{
     AgentMessage, Client, ClientOptions, Event, GetMessagesCommand, GetMessagesPageCommand,
-    HostTool, HostUri, OpenSessionCommand, OpenSessionResult, ReadyEvent, SetAskDialogCommand,
-    SetEventFilterResult, SetSubagentSubscriptionCommand, SubagentSubscriptionLevel,
+    HostTool, HostUri, OpenSessionCommand, OpenSessionResult, ReadyEvent, RpcServerFrame,
+    SetAskDialogCommand, SetEventFilterResult, SetSubagentSubscriptionCommand,
+    SubagentSubscriptionLevel,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -85,10 +86,7 @@ impl LaunchSpec {
         }
         std::fs::create_dir_all(&self.cwd)?;
         std::fs::create_dir_all(&self.session_dir)?;
-        let stderr = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.stderr_log)?;
+        let stderr = crate::paths::open_private_log(&self.stderr_log)?;
         let mut command = Command::new(&self.program);
         command
             .args(self.args())
@@ -294,7 +292,14 @@ fn load_history(client: &Client, requests: &mut u64) -> Result<Vec<AgentMessage>
     Ok(messages)
 }
 
+/// Fields omp 18.18.6 can send as fractional numbers although `omp-rpc` types them as integers, by frame `type`:
+/// `auto_retry_start.delayMs` is a jittered backoff (`turn-recovery.ts`), e.g. `406.547…`.
+const FRACTIONAL_INTEGER_FIELDS: &[(&str, &[&str])] = &[("auto_retry_start", &["delayMs"])];
+
 /// The reducer input for a frame from the event receiver (DMN-040, DMN-042).
+///
+/// A frame `omp-rpc` could not decode only because of a fractional number in one of
+/// [`FRACTIONAL_INTEGER_FIELDS`] is decoded again with that number rounded.
 #[must_use]
 pub fn thread_event(event: Event) -> ThreadEvent {
     match event {
@@ -302,8 +307,37 @@ pub fn thread_event(event: Event) -> ThreadEvent {
         Event::UnmatchedResponse(response) => ThreadEvent::Unknown {
             raw: serde_json::to_value(response).unwrap_or(Value::Null),
         },
-        Event::Undecodable { raw, .. } => ThreadEvent::Unknown { raw },
+        Event::Undecodable { raw, .. } => match round_integer_fields(&raw)
+            .and_then(|rounded| RpcServerFrame::from_value(rounded).ok())
+        {
+            Some(RpcServerFrame::RpcNotification(frame)) => ThreadEvent::Omp { frame },
+            _ => ThreadEvent::Unknown { raw },
+        },
     }
+}
+
+/// A copy of `raw` with the fractional numbers of its [`FRACTIONAL_INTEGER_FIELDS`] rounded; `None` when there are none.
+fn round_integer_fields(raw: &Value) -> Option<Value> {
+    let kind = raw.get("type")?.as_str()?;
+    let (_, fields) = FRACTIONAL_INTEGER_FIELDS
+        .iter()
+        .find(|(name, _)| *name == kind)?;
+    let mut rounded = raw.clone();
+    let object = rounded.as_object_mut()?;
+    let mut changed = false;
+    for field in *fields {
+        if let Some(value) = object.get_mut(*field)
+            && let Some(number) = value.as_f64()
+            && value.as_i64().is_none()
+            && number.is_finite()
+        {
+            #[allow(clippy::cast_possible_truncation)]
+            let integer = number.round() as i64;
+            *value = Value::from(integer);
+            changed = true;
+        }
+    }
+    changed.then_some(rounded)
 }
 
 /// Reducer inputs announcing a started process: its history (DMN-032), then `Running`.
@@ -421,5 +455,46 @@ mod tests {
         let envs: Vec<_> = command.get_envs().collect();
         assert!(envs.contains(&("KEEP".as_ref(), Some("1".as_ref()))));
         assert!(envs.contains(&("DROP".as_ref(), None)));
+    }
+
+    // spec: DMN-040, DMN-042, UI-043
+    #[test]
+    fn a_fractional_retry_delay_is_rounded_into_a_typed_frame() {
+        // As omp 18.18.6 sends it: `delayMs` is a jittered backoff, typed `i64` by omp-rpc.
+        let raw = serde_json::json!({
+            "type": "auto_retry_start",
+            "attempt": 1,
+            "maxAttempts": 3,
+            "delayMs": 406.547_312_909_617_4,
+            "errorMessage": "500 Internal Server Error",
+        });
+        assert!(RpcServerFrame::from_value(raw.clone()).is_err());
+
+        let event = thread_event(Event::Undecodable {
+            raw: raw.clone(),
+            error: "invalid type: floating point".into(),
+        });
+
+        let ThreadEvent::Omp { frame } = event else {
+            panic!("expected a typed frame, got {event:?}");
+        };
+        let mut expected = raw;
+        expected["delayMs"] = 407.into();
+        assert_eq!(serde_json::to_value(frame).unwrap(), expected);
+    }
+
+    // spec: DMN-042
+    #[test]
+    fn frames_still_undecodable_after_rounding_stay_unknown() {
+        for raw in [
+            serde_json::json!({ "type": "auto_retry_start", "delayMs": 1.5 }),
+            serde_json::json!({ "type": "turn_end", "delayMs": 1.5 }),
+        ] {
+            let event = thread_event(Event::Undecodable {
+                raw: raw.clone(),
+                error: String::new(),
+            });
+            assert_eq!(event, ThreadEvent::Unknown { raw });
+        }
     }
 }

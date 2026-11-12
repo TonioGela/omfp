@@ -593,7 +593,7 @@ export type Mounted = {
   panel: boolean;
   /** The widget reference the node renders. */
   reference: string;
-  /** Whether a node of this mount id existed before. */
+  /** Whether a node of this mount id existed before, or the mount's code folder did (its code was replaced). */
   replaced: boolean;
   /** The view showing it; `null` for a floating panel. */
   view?: string | null;

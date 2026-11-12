@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import { replay } from "@omfp/core";
 import { expandedByDefault, type ToolCard } from "../../src/vm/tool.ts";
-import { ompDiffLines, repoPath, type ToolView } from "../../src/vm/tool-view.ts";
+import { ompDiffLines, repoPath, type ToolView, toolView } from "../../src/vm/tool-view.ts";
 import { card, cards, streaming } from "../support/cards.ts";
 import { repo, workspace } from "../support/fixtures.ts";
 import { fixtureEvents, isFrame } from "../widgets/chat/fixtures.ts";
@@ -44,6 +44,12 @@ describe("bash card", () => {
     expect(view(failed, "bash")).toMatchObject({ command: "echo oops >&2; exit 3", exitCode: 3 });
     expect(view(failed, "bash").output).toStartWith("oops\n");
     expect(view(streaming("bash_tool_error", "call_bash_1"), "bash").exitCode).toBe(3);
+  });
+
+  // spec: UI-050, UI-052
+  test("aborted: omp's error result has no exit code, so the card shows none", () => {
+    const aborted = toolView("bash", { command: "sleep 3" }, { text: "Command aborted", details: {} }, false);
+    expect(aborted).toMatchObject({ output: "Command aborted", exitCode: undefined });
   });
 });
 

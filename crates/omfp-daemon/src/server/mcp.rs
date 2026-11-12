@@ -281,7 +281,7 @@ fn refusal(state: &AppState, headers: &HeaderMap) -> Option<Response> {
         StatusCode::UNAUTHORIZED,
         code::SERVER_ERROR,
         "unauthorized: send `Authorization: Bearer <token>` with the omfp daemon's token (`omfp mcp config` prints \
-         the client configuration)",
+         the client configuration, which reads the token from $OMFP_TOKEN: is it set where the client runs?)",
     )
     .response(&Value::Null);
     refused

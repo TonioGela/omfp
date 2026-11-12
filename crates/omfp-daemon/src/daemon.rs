@@ -3,7 +3,7 @@
 
 use std::ffi::OsString;
 use std::fs::{File, TryLockError};
-use std::io::Write as _;
+use std::io::{IsTerminal as _, Write as _};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -21,7 +21,7 @@ use crate::conventions;
 use crate::git::{Git, GitCli};
 use crate::jobs::Jobs;
 use crate::omp_binary;
-use crate::paths::DataDir;
+use crate::paths::{DataDir, create_private_dir, make_private_file, private_file_options};
 use crate::server::{self, AppState, Services};
 use crate::store::Store;
 use crate::supervisor::{Supervisor, SupervisorConfig};
@@ -128,7 +128,7 @@ pub fn discover(data_dir: &Path) -> std::io::Result<Option<DaemonInfo>> {
 
 /// Takes the data directory's exclusive lock (DMN-007).
 fn lock_data_dir(data_dir: &Path) -> anyhow::Result<File> {
-    let lock = File::options()
+    let lock = private_file_options()
         .create(true)
         .truncate(false)
         .write(true)
@@ -153,7 +153,11 @@ fn lock_data_dir(data_dir: &Path) -> anyhow::Result<File> {
 
 fn write_info(data_dir: &Path, info: &DaemonInfo) -> std::io::Result<()> {
     let temporary = data_dir.join(format!("{INFO_FILE}.tmp"));
-    let mut file = File::create(&temporary)?;
+    let mut file = private_file_options()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&temporary)?;
     file.write_all(serde_json::to_string_pretty(info)?.as_bytes())?;
     file.write_all(b"\n")?;
     file.sync_all()?;
@@ -204,11 +208,32 @@ impl DaemonHandle {
     /// The UI's URL with the token in the fragment (never sent to the server, PRT-002).
     #[must_use]
     pub fn url(&self) -> String {
+        format!("{}#token={}", self.base_url(), self.token.expose())
+    }
+
+    /// The UI's URL without the token (a daemon on every interface is reached on loopback).
+    #[must_use]
+    pub fn base_url(&self) -> String {
         let mut addr = self.addr;
         if addr.ip().is_unspecified() {
             addr.set_ip(IpAddr::V4(Ipv4Addr::LOCALHOST));
         }
-        format!("http://{addr}/#token={}", self.token.expose())
+        format!("http://{addr}/")
+    }
+
+    /// What `omfp daemon` prints once it listens (UI-004, DMN-181): the URL with the token only to a terminal; to
+    /// anything else (`daemon.log`, a pipe) the URL without it and where the token is.
+    #[must_use]
+    pub fn listening_line(&self, terminal: bool) -> String {
+        if terminal {
+            format!("omfp daemon listening on {}", self.url())
+        } else {
+            format!(
+                "omfp daemon listening on {} (open it with `omfp desktop`, or add #token=<token> from {})",
+                self.base_url(),
+                DataDir::new(&self.data_dir).token().display()
+            )
+        }
     }
 
     /// The agent supervisor: what the host tools of every thread act through (DMN-060).
@@ -275,8 +300,15 @@ pub async fn start(mut config: Config) -> anyhow::Result<DaemonHandle> {
 #[allow(clippy::too_many_lines)] // Startup wires every part in order.
 pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHandle> {
     let data_dir = std::path::absolute(&config.data_dir)?;
-    std::fs::create_dir_all(&data_dir)
-        .with_context(|| format!("cannot create {}", data_dir.display()))?;
+    if let Some(mode) = create_private_dir(&data_dir)
+        .with_context(|| format!("cannot create {}", data_dir.display()))?
+    {
+        warn!(
+            data_dir = %data_dir.display(),
+            mode = format_args!("{mode:o}"),
+            "the data directory was open to other users: its mode is now 0700 (DMN-180)"
+        );
+    }
     let lock = lock_data_dir(&data_dir)?;
     let data = DataDir::new(&data_dir);
     let token = Token::load_or_create(&data.token()).context("cannot read or create the token")?;
@@ -287,6 +319,14 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         )
     })?;
     let workspaces_root = std::path::absolute(&config.workspaces_root)?;
+    // SQLite creates its database (and gives its journal files the database's mode) with the umask's mode.
+    private_file_options()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(data.db())
+        .and_then(|_| make_private_file(&data.db()))
+        .with_context(|| format!("cannot create {}", data.db().display()))?;
     let store =
         Arc::new(Store::open(&data.db(), &workspaces_root).context("cannot open the database")?);
     let threads = Arc::new(Threads::new(Arc::clone(&store), data.clone()));
@@ -370,6 +410,9 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         services,
         mcp_sessions: server::McpSessions::default(),
         shutdown: stopping.clone(),
+        unauthenticated: Arc::new(tokio::sync::Semaphore::new(
+            server::UNAUTHENTICATED_CONNECTIONS,
+        )),
     });
     let mut stopped = stopping;
     let server = tokio::spawn(async move {
@@ -431,7 +474,7 @@ pub fn run_with<A>(mut cli: Cli, attach: impl FnOnce(&DaemonHandle) -> A) -> any
             let daemon = start(config).await?;
             // Signals are caught before the URL is printed: whoever waits for it may stop the daemon at once.
             let signal = signal_handler()?;
-            println!("omfp daemon listening on {}", daemon.url());
+            println!("{}", daemon.listening_line(std::io::stdout().is_terminal()));
             let attached = attach(&daemon);
             let requested = Arc::clone(&daemon.stop_request);
             tokio::select! {

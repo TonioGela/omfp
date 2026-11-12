@@ -1,15 +1,22 @@
 //! `omfp mcp config` (DMN-159, AGT-054): the `mcp.json` document that points an MCP client (omp outside omfp, any
 //! other agent) at a daemon's MCP server (DMN-155) with its token (DMN-158).
 
+use std::path::Path;
+
 use serde_json::{Value, json};
 
 use crate::remote::{DaemonArgs, local_addr};
+
+/// The environment variable the printed entry reads the token from (AGT-054): omp expands `${VAR}` in `mcp.json`, so
+/// no file holds the token itself.
+pub const TOKEN_VARIABLE: &str = "OMFP_TOKEN";
 
 /// `omfp mcp …`.
 #[derive(Debug, Clone, PartialEq, Eq, clap::Subcommand)]
 pub enum Command {
     /// Prints the `mcp.json` entry of the daemon's MCP server: put it in `~/.omp/agent/mcp.json` (every omp session)
-    /// or a project's `.omp/mcp.json`. It holds the daemon's token: keep the file private.
+    /// or a project's `.omp/mcp.json`. Its header reads the token from `$OMFP_TOKEN` (set it where the client runs);
+    /// `--literal-token` writes the token itself instead, which then must never be committed or shared.
     Config(ConfigArgs),
 }
 
@@ -21,12 +28,26 @@ pub struct ConfigArgs {
     /// The server's name in `mcp.json`; omp names its tools `mcp__<name>_…`.
     #[arg(long, default_value = "omfp")]
     pub name: String,
+    /// Writes the token itself into the header instead of `${OMFP_TOKEN}`, for clients without environment
+    /// expansion; the file then grants full access to the daemon (keep it private, never commit it).
+    #[arg(long)]
+    pub literal_token: bool,
 }
 
 /// Runs `omfp mcp …`; returns what to print.
 pub fn run(command: &Command) -> anyhow::Result<String> {
     match command {
-        Command::Config(args) => config(args),
+        Command::Config(args) => {
+            let printed = config(args)?;
+            if !args.literal_token {
+                let token_file = match &args.daemon.token {
+                    Some(_) => None,
+                    None => args.daemon.data_dir().ok().map(|dir| dir.join("token")),
+                };
+                eprintln!("{}", variable_hint(token_file.as_deref()));
+            }
+            Ok(printed)
+        }
     }
 }
 
@@ -35,14 +56,31 @@ fn config(args: &ConfigArgs) -> anyhow::Result<String> {
         Some(daemon) => mcp_url(daemon)?,
         None => format!("http://{}/mcp", local_addr(&args.daemon.data_dir()?)?),
     };
-    let token = args.daemon.token()?;
+    let token = if args.literal_token {
+        args.daemon.token()?
+    } else {
+        format!("${{{TOKEN_VARIABLE}}}")
+    };
     Ok(serde_json::to_string_pretty(&document(
         &args.name, &url, &token,
     ))?)
 }
 
-/// `{ "mcpServers": { <name>: … } }`: Streamable HTTP at `url`, the token as bearer, and no request timeout, so
-/// `omfp_thread_wait` may outlast omp's 30 s default (DMN-159).
+/// What `omfp mcp config` says on stderr about the variable (AGT-054): where its value comes from.
+#[must_use]
+pub fn variable_hint(token_file: Option<&Path>) -> String {
+    let value = match token_file {
+        Some(file) => format!("\"$(cat '{}')\"", file.display()),
+        None => "<the daemon's token>".to_owned(),
+    };
+    format!(
+        "omfp mcp: the entry reads the token from ${{{TOKEN_VARIABLE}}}; set it where the MCP client runs, e.g. \
+         export {TOKEN_VARIABLE}={value}"
+    )
+}
+
+/// `{ "mcpServers": { <name>: … } }`: Streamable HTTP at `url`, `token` (the token, or `${OMFP_TOKEN}`) as bearer, and
+/// no request timeout, so `omfp_thread_wait` may outlast omp's 30 s default (DMN-159).
 #[must_use]
 pub fn document(name: &str, url: &str, token: &str) -> Value {
     json!({
@@ -114,27 +152,44 @@ mod tests {
         );
     }
 
-    // spec: DMN-159
+    // spec: DMN-159, AGT-054
     #[test]
-    fn the_token_comes_from_the_data_dir_unless_given() {
+    fn the_entry_reads_the_token_from_the_environment_unless_asked_for_the_literal_token() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("token"), "abc\n").unwrap();
-        let args = ConfigArgs {
+        let mut args = ConfigArgs {
             daemon: DaemonArgs {
                 daemon: Some("http://127.0.0.1:1".into()),
                 token: None,
                 data_dir: Some(dir.path().into()),
             },
             name: "work".into(),
+            literal_token: false,
         };
         let printed: Value = serde_json::from_str(&config(&args).unwrap()).unwrap();
         assert_eq!(
             printed["mcpServers"]["work"]["headers"]["Authorization"],
-            "Bearer abc"
+            "Bearer ${OMFP_TOKEN}"
         );
         assert_eq!(
             printed["mcpServers"]["work"]["url"],
             "http://127.0.0.1:1/mcp"
+        );
+        assert_eq!(
+            variable_hint(Some(dir.path().join("token").as_path())),
+            format!(
+                "omfp mcp: the entry reads the token from ${{OMFP_TOKEN}}; set it where the MCP client runs, e.g. \
+                 export OMFP_TOKEN=\"$(cat '{}')\"",
+                dir.path().join("token").display()
+            )
+        );
+        assert!(variable_hint(None).ends_with("export OMFP_TOKEN=<the daemon's token>"));
+
+        args.literal_token = true;
+        let printed: Value = serde_json::from_str(&config(&args).unwrap()).unwrap();
+        assert_eq!(
+            printed["mcpServers"]["work"]["headers"]["Authorization"],
+            "Bearer abc"
         );
 
         let no_daemon = ConfigArgs {

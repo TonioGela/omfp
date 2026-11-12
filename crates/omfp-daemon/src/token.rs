@@ -5,6 +5,9 @@ use std::io::Write;
 use std::path::Path;
 
 use subtle::ConstantTimeEq;
+use tracing::warn;
+
+use crate::paths::{create_private_dir, make_private_file, private_file_options};
 
 /// Random secret every client presents in `system.hello`.
 #[derive(Clone, PartialEq, Eq)]
@@ -24,23 +27,35 @@ impl Token {
         Ok(Self(hex::encode(bytes)))
     }
 
-    /// Reads the token at `path`, creating it (mode `0600`) on first run.
+    /// Reads the token at `path`, creating it (mode `0600`) on first run. A stored token that group or others may read
+    /// is tightened to `0600` with a warning; one that cannot be (another user's file) is refused (DMN-003).
     pub fn load_or_create(path: &Path) -> std::io::Result<Self> {
         match std::fs::read_to_string(path) {
-            Ok(text) if !text.trim().is_empty() => return Ok(Self(text.trim().to_owned())),
+            Ok(text) if !text.trim().is_empty() => {
+                if let Some(mode) = make_private_file(path)? {
+                    warn!(
+                        path = %path.display(),
+                        mode = format_args!("{mode:o}"),
+                        "the token file was readable by other users: its mode is now 0600; if others could read \
+                         it, delete it and restart the daemon to get a new token"
+                    );
+                }
+                return Ok(Self(text.trim().to_owned()));
+            }
             Ok(_) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
             Err(error) => return Err(error),
         }
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            create_private_dir(parent)?;
         }
         let token = Self::generate()?;
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let mut file = options.open(path)?;
+        let mut file = private_file_options()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path)?;
+        make_private_file(path)?;
         file.write_all(token.0.as_bytes())?;
         file.write_all(b"\n")?;
         Ok(token)
@@ -92,6 +107,21 @@ mod tests {
 
         assert_eq!(first, second);
         assert_ne!(Token::generate().unwrap(), first);
+    }
+
+    // spec: DMN-003
+    #[test]
+    fn a_stored_token_others_may_read_is_tightened_to_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("token");
+        std::fs::write(&path, "abc\n").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        assert_eq!(Token::load_or_create(&path).unwrap().expose(), "abc");
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
     }
 
     // spec: PRT-002

@@ -41,12 +41,14 @@ same tools through the daemon's MCP server at `/mcp` (Streamable HTTP, with the 
 
 ```sh
 omfp mcp config > ~/.omp/agent/mcp.json   # or merge its "omfp" entry into an existing mcp.json
+export OMFP_TOKEN="$(cat ~/.local/share/omfp/token)"   # where omp runs, e.g. in your shell profile
 ```
 
-prints the entry for the running local daemon (`--daemon <url> --token <token>` for another one). omp then offers the
-tools as `xd://mcp__omfp_call` and so on; `"timeout": 0` in the entry lets `omfp_thread_wait` wait longer than omp's
-30 s default. The entry holds the token: keep the file private, or replace the header's value with
-`"!printf 'Bearer %s' \"$(cat ~/.local/share/omfp/token)\""` so omp reads it when it connects. Threads and workspaces
+prints the entry for the running local daemon (`--daemon <url>` for another one). omp then offers the tools as
+`xd://mcp__omfp_call` and so on; `"timeout": 0` in the entry lets `omfp_thread_wait` wait longer than omp's 30 s
+default. The entry's header is `"Bearer ${OMFP_TOKEN}"`: omp reads the token from the environment, so no file holds
+it. The token grants full access to the daemon (including shell commands): `--literal-token` writes it into the entry
+instead, but never put such an entry in a project's `.omp/mcp.json`, which may be committed. Threads and workspaces
 such a client creates show its name as their origin, and its actions appear in the `omfp:activity` widget. See
 [08-agent-control](specs/08-agent-control.md#mcp-server-m10) for the details.
 

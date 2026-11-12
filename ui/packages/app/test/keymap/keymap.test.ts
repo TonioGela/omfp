@@ -13,8 +13,12 @@ import {
 } from "../../src/keymap/keymap.ts";
 import { CommandRegistry, SCOPE_ATTRIBUTE } from "../../src/sdk/index.ts";
 
-function key(key: string, modifiers: Partial<Record<"ctrlKey" | "altKey" | "metaKey" | "shiftKey", boolean>> = {}) {
-  return { key, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, ...modifiers };
+function key(
+  key: string,
+  modifiers: Partial<Record<"ctrlKey" | "altKey" | "metaKey" | "shiftKey", boolean>> = {},
+  code = "",
+) {
+  return { key, code, ctrlKey: false, altKey: false, metaKey: false, shiftKey: false, ...modifiers };
 }
 
 /** A clock the test moves. */
@@ -45,6 +49,20 @@ describe("keymap", () => {
     expect(keyToken(key("Tab", { shiftKey: true }))).toBe("Shift-Tab");
     expect(keyToken(key("a", { altKey: true }))).toBe("Alt-a");
     expect(keyToken(key("Shift", { shiftKey: true }))).toBeUndefined();
+  });
+
+  // spec: UI-021
+  test("Alt chords match macOS's Option keys, which compose a character, by their physical key", () => {
+    expect(keyToken(key("å", { altKey: true }, "KeyA"))).toBe("Alt-a");
+    expect(keyToken(key("Dead", { altKey: true }, "KeyN"))).toBe("Alt-n");
+    expect(keyToken(key("Å", { altKey: true, shiftKey: true }, "KeyA"))).toBe("Alt-a");
+    expect(keyToken(key("¡", { altKey: true }, "Digit1"))).toBe("Alt-1");
+    // An ASCII key stays as typed (Linux, other layouts), and a dead key without a letter or digit is no token.
+    expect(keyToken(key("q", { altKey: true }, "KeyA"))).toBe("Alt-q");
+    expect(keyToken(key("Dead", { altKey: true }, "Backquote"))).toBeUndefined();
+    // Without Alt a composed character or a dead key is left as it is.
+    expect(keyToken(key("å", {}, "KeyA"))).toBe("å");
+    expect(keyToken(key("Dead", {}, "KeyN"))).toBeUndefined();
   });
 
   // spec: UI-148
@@ -161,11 +179,11 @@ describe("global key handler", () => {
         },
       });
     const handler = createKeyHandler({ bindings, commands, now: clock().now });
-    const press = (target: Element, name: string, modifiers: Parameters<typeof key>[1] = {}) => {
+    const press = (target: Element, name: string, modifiers: Parameters<typeof key>[1] = {}, code = "") => {
       if (target instanceof HTMLElement) {
         target.focus();
       }
-      const event = new KeyboardEvent("keydown", { ...key(name, modifiers), bubbles: true, cancelable: true });
+      const event = new KeyboardEvent("keydown", { ...key(name, modifiers, code), bubbles: true, cancelable: true });
       handler(event);
       return event.defaultPrevented;
     };
@@ -206,6 +224,22 @@ describe("global key handler", () => {
     expect(document.activeElement).toBe(field);
     expect(press(field, "Escape")).toBe(true);
     expect(document.activeElement).not.toBe(field);
+  });
+
+  // spec: UI-021
+  test("the attention and new-thread chords run from macOS's Option keys, while typing too", () => {
+    document.body.innerHTML = `<input id="field"><p id="out" tabindex="-1"></p>`;
+    const { register, ran, press } = setup();
+    register("thread.nextAttention");
+    register("thread.new");
+    const field = document.getElementById("field");
+    const out = document.getElementById("out");
+    if (field === null || out === null) {
+      throw new Error("fixture");
+    }
+    expect(press(field, "å", { altKey: true }, "KeyA")).toBe(true);
+    expect(press(out, "Dead", { altKey: true }, "KeyN")).toBe(true);
+    expect(ran).toEqual(["global:thread.nextAttention", "global:thread.new"]);
   });
 
   // spec: UI-063, UI-095

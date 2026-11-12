@@ -10,6 +10,10 @@ use omfp_protocol::{WidgetInfo, WidgetSource};
 /// Entry files in order of preference: the first present is the widget's entry (AGT-012).
 pub const ENTRIES: [&str; 4] = ["index.tsx", "index.ts", "index.jsx", "index.js"];
 
+/// The file a mount with `code` leaves in `.omfp/widgets/<id>/`: the folder is that mount's own (DMN-183). It is not
+/// a file of the widget: [`files`] and copies leave it out.
+pub const MOUNT_MARKER: &str = ".omfp-mount";
+
 /// Whether `name` can name a widget folder: ASCII letters, digits, `_`, `-` and `.`, not starting with `.`
 /// (AGT-012).
 #[must_use]
@@ -65,6 +69,9 @@ pub fn files(folder: &Path) -> Vec<(PathBuf, Metadata)> {
             return;
         };
         for entry in entries.filter_map(Result::ok) {
+            if entry.file_name() == MOUNT_MARKER {
+                continue;
+            }
             let path = relative.join(entry.file_name());
             if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
                 walk(folder, &path, out);

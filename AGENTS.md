@@ -168,6 +168,10 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   `web_search` failures and URL reads that fail (HTTP 404) end with `isError: false`; `task` runs subagents in the
   background unless `async.enabled: false`; open `todo` items make omp prompt the model again.
 - omp-rpc's client is blocking and closes the omp process group on drop; command default timeout is 30 s.
+- omp and omp-rpc disagree on number types: omp sends `auto_retry_start.delayMs` as a fractional, jittered backoff
+  (`406.547…`) but omp-rpc types it `i64`, so the client reports the frame `Undecodable`. `omp::thread_event` rounds
+  the fields listed in `FRACTIONAL_INTEGER_FIELDS` and decodes the frame again (DMN-042); add a field there when
+  another typed frame turns up as `unknown`.
 - Our harness docs (`omp://…`) may describe a different omp version than the pinned one: verify against the source at
   `~/.cargo/git/checkouts/oh-my-pi-*/<rev>/` (docs in `docs/`, Rust client in `sdk/rust/omp-rpc/`).
 

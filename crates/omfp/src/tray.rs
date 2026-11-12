@@ -275,10 +275,28 @@ pub fn window_command(data_dir: &Path, thread: Option<&str>) -> Vec<OsString> {
     line
 }
 
-/// Starts `command` detached like the daemon itself (ARC-003): its own process group, stdin `/dev/null`; reaped by a
-/// thread while the daemon lives.
+/// Opens `url` in the system's browser (UI-218, DMN-182): through the desktop portal's `OpenURI` (else `xdg-open`) on
+/// Linux, `open` on macOS.
+pub fn open_in_browser(url: &str) {
+    #[cfg(target_os = "linux")]
+    match gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>) {
+        Ok(connection) => sni::open_uri(&connection, url.to_owned()),
+        Err(_) => spawn_detached(Command::new("xdg-open").arg(url), "xdg-open"),
+    }
+    #[cfg(target_os = "macos")]
+    spawn_detached(Command::new("/usr/bin/open").arg(url), "open");
+}
+
+/// Starts `command` detached like the daemon itself (ARC-003): its own process group, stdin and stdout `/dev/null` (a
+/// child's stdout never reaches `daemon.log`: `omfp desktop` prints the daemon's URL there, DMN-181), stderr the
+/// daemon's; reaped by a thread while the daemon lives.
 fn spawn_detached(command: &mut Command, name: &str) {
-    match command.stdin(Stdio::null()).process_group(0).spawn() {
+    match command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .process_group(0)
+        .spawn()
+    {
         Ok(mut child) => {
             // Reaped while the daemon lives.
             std::thread::spawn(move || child.wait());

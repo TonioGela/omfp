@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{SinkExt, StreamExt};
@@ -15,7 +16,7 @@ use omfp_protocol::{
 };
 use serde::Serialize;
 use serde_json::Value;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{OwnedSemaphorePermit, broadcast, mpsc};
 use tokio::task::JoinHandle;
 use tracing::warn;
 
@@ -26,8 +27,10 @@ use super::{AppState, OUTBOUND_QUEUE, SUPPORTED_PROTOCOLS};
 use crate::event_log::{Position, Sequenced, Start, Subscription};
 use crate::supervisor::{WatchGuard, WorkspaceWatchGuard};
 
-/// Close code for a connection that did not authenticate (PRT-001).
+/// Close code for a connection that did not authenticate (PRT-001), or not within [`HELLO_TIMEOUT`] (DMN-184).
 pub(crate) const CLOSE_UNAUTHORIZED: u16 = 4401;
+/// How long a connection has to complete `system.hello` (DMN-184).
+pub(crate) const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 /// Close code after `version_mismatch` (PRT-004).
 pub(crate) const CLOSE_VERSION_MISMATCH: u16 = 4426;
 /// Close code when the daemon shuts down.
@@ -56,7 +59,7 @@ impl Outbound {
     }
 }
 
-pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>) {
+pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>, permit: OwnedSemaphorePermit) {
     let (mut sink, mut stream) = socket.split();
     let (out, mut outbox) = mpsc::channel::<Outbound>(OUTBOUND_QUEUE);
     let writer = tokio::spawn(async move {
@@ -80,7 +83,18 @@ pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>) {
 
     // Names the connection: its widget report (PRT-043) and the live sessions it owns (PRT-051, DMN-103).
     let number = app.services.reports_connection();
-    if let Some(principal) = hello(&app, &mut stream, &out, number).await {
+    let hello = tokio::time::timeout(
+        HELLO_TIMEOUT,
+        hello(&app, &mut stream, &out, number, permit),
+    );
+    let principal = if let Ok(principal) = hello.await {
+        principal
+    } else {
+        let close = Outbound::Close(CLOSE_UNAUTHORIZED, "system.hello timed out");
+        send(&out, Some(close)).await;
+        None
+    };
+    if let Some(principal) = principal {
         let (dropped_tx, dropped) = mpsc::unbounded_channel();
         let mut connection = Connection {
             app: Arc::clone(&app),
@@ -109,12 +123,14 @@ async fn send(out: &mpsc::Sender<Outbound>, frame: Option<Outbound>) {
     }
 }
 
-/// Waits for `system.hello`; anything else closes the connection with 4401 (PRT-001).
+/// Waits for `system.hello`; anything else closes the connection with 4401 (PRT-001). `permit` (DMN-184) is released
+/// once the token checked out, before the answer goes out.
 async fn hello(
     app: &AppState,
     stream: &mut futures::stream::SplitStream<WebSocket>,
     out: &mpsc::Sender<Outbound>,
     number: u64,
+    permit: OwnedSemaphorePermit,
 ) -> Option<Principal> {
     let unauthorized = || Outbound::Close(CLOSE_UNAUTHORIZED, "system.hello required");
     loop {
@@ -145,6 +161,7 @@ async fn hello(
             .await;
             return None;
         }
+        drop(permit);
         if !SUPPORTED_PROTOCOLS.contains(&params.protocol) {
             let error = ErrorBody::version_mismatch(SUPPORTED_PROTOCOLS);
             send(out, Outbound::response(id, Err(error))).await;

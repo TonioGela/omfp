@@ -1,13 +1,15 @@
 //! The window's macOS parts (M11, S-15): its web storage per data directory (UI-250) and the page's notifications
-//! through the system's notification center (UI-252). The pure parts also build in Linux tests.
+//! through the system's notification center (UI-252), only from the daemon's own page (DMN-182). The pure parts also
+//! build in Linux tests.
 
+use std::fmt::Write as _;
 use std::hash::{BuildHasher as _, Hasher as _, RandomState};
 use std::path::Path;
 
 use tauri::Url;
 
 /// The URL scheme of the page's notifications: the window cancels the navigation and posts the notification.
-const NOTIFY_SCHEME: &str = "omfp-notify";
+pub const NOTIFY_SCHEME: &str = "omfp-notify";
 
 /// The file in the window's web storage directory (`<data-dir>/webview/`) that keeps its data store identifier.
 const STORE_ID: &str = "store-id";
@@ -22,21 +24,46 @@ pub fn data_store_identifier(webview_data: &Path) -> anyhow::Result<[u8; 16]> {
     {
         return Ok(id);
     }
-    // Each `RandomState` has its own random keys: two hashes of nothing are 16 random bytes.
-    let random = || RandomState::new().build_hasher().finish().to_le_bytes();
-    let mut id = [0; 16];
-    id[..8].copy_from_slice(&random());
-    id[8..].copy_from_slice(&random());
+    let id = random_bytes();
     std::fs::create_dir_all(webview_data)?;
     std::fs::write(&file, id)?;
     Ok(id)
 }
 
+/// 16 random bytes: each `RandomState` has its own random keys, so two hashes of nothing are random.
+fn random_bytes() -> [u8; 16] {
+    let random = || RandomState::new().build_hasher().finish().to_le_bytes();
+    let mut id = [0; 16];
+    id[..8].copy_from_slice(&random());
+    id[8..].copy_from_slice(&random());
+    id
+}
+
+/// The secret of a window's notifications (DMN-182): only its own [`notification_script`] knows it, so a frame of
+/// another origin cannot post notifications under omfp's name by navigating to `omfp-notify:`.
+#[must_use]
+pub fn notify_nonce() -> String {
+    random_bytes().iter().fold(String::new(), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    })
+}
+
 /// The page's `Notification` in the window (UI-252): `WKWebView` denies web notifications, so the window replaces the
-/// API before the page's scripts run. The permission is `granted`; each notification is a navigation of a hidden
-/// frame to `omfp-notify:?title=…&body=…&tag=…`, which [`on_navigation`] cancels and posts.
-#[cfg(target_os = "macos")]
-pub const NOTIFICATION_SCRIPT: &str = r#"(() => {
+/// API before the page's scripts run, in the top-level page of the daemon's `origin` only (DMN-182). The permission is
+/// `granted`; each notification is a navigation of a hidden frame to `omfp-notify:?n=<nonce>&title=…&body=…&tag=…`,
+/// which [`navigation`] cancels and posts.
+#[must_use]
+pub fn notification_script(origin: &str, nonce: &str) -> String {
+    let quoted = |text: &str| serde_json::Value::from(text).to_string();
+    format!(
+        "(() => {{\n  const ORIGIN = {};\n  const NONCE = {};\n{NOTIFICATION_BODY}",
+        quoted(origin),
+        quoted(nonce)
+    )
+}
+
+const NOTIFICATION_BODY: &str = r#"  if (window.top !== window || location.origin !== ORIGIN) return;
   class Notification extends EventTarget {
     static get permission() { return "granted"; }
     static requestPermission(callback) { callback?.("granted"); return Promise.resolve("granted"); }
@@ -51,7 +78,8 @@ pub const NOTIFICATION_SCRIPT: &str = r#"(() => {
       this.onshow = null;
       const frame = document.createElement("iframe");
       frame.hidden = true;
-      frame.src = "omfp-notify:?" + new URLSearchParams({ title: this.title, body: this.body, tag: this.tag });
+      frame.src =
+        "omfp-notify:?" + new URLSearchParams({ n: NONCE, title: this.title, body: this.body, tag: this.tag });
       (document.body ?? document.documentElement).append(frame);
       setTimeout(() => frame.remove(), 1000);
     }
@@ -69,46 +97,52 @@ pub struct Notice {
     pub tag: String,
 }
 
-/// What the window does with a navigation.
+/// What the window does with an `omfp-notify:` navigation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Navigation {
-    Allow,
-    /// A notification of [`NOTIFICATION_SCRIPT`]: cancelled and posted.
+    /// A notification of [`notification_script`]: cancelled and posted.
     Notify(Notice),
+    /// Without the window's nonce: not from the daemon's page, cancelled.
+    Deny,
 }
 
-/// Sorts a navigation of the window (UI-252): an `omfp-notify:` URL is a notification, everything else navigates.
+/// Sorts an `omfp-notify:` navigation of the window (UI-252, DMN-182): a notification when it carries `nonce`, `None`
+/// for any other URL.
 #[must_use]
-pub fn navigation(url: &Url) -> Navigation {
+pub fn navigation(url: &Url, nonce: &str) -> Option<Navigation> {
     if url.scheme() != NOTIFY_SCHEME {
-        return Navigation::Allow;
+        return None;
     }
     let mut notice = Notice {
         title: String::new(),
         body: String::new(),
         tag: String::new(),
     };
+    let mut signed = false;
     for (key, value) in url.query_pairs() {
         match &*key {
+            "n" => signed = value == nonce,
             "title" => notice.title = value.into_owned(),
             "body" => notice.body = value.into_owned(),
             "tag" => notice.tag = value.into_owned(),
             _ => {}
         }
     }
-    Navigation::Notify(notice)
+    Some(if signed {
+        Navigation::Notify(notice)
+    } else {
+        Navigation::Deny
+    })
 }
 
-/// The window's navigation handler: posts the page's notifications, lets every other navigation through.
+/// The window's handling of `omfp-notify:` navigations: posts the daemon page's notifications and cancels them all
+/// (`Some(false)`); `None` for any other URL.
 #[cfg(target_os = "macos")]
-pub fn on_navigation(url: &Url) -> bool {
-    match navigation(url) {
-        Navigation::Allow => true,
-        Navigation::Notify(notice) => {
-            post(&notice);
-            false
-        }
+pub fn on_notify(url: &Url, nonce: &str) -> Option<bool> {
+    if let Navigation::Notify(notice) = navigation(url, nonce)? {
+        post(&notice);
     }
+    Some(false)
 }
 
 /// Posts `notice` to the notification center as the app of the embedded Info.plist (`dev.omfp.desktop`). It is
@@ -127,6 +161,24 @@ fn post(notice: &Notice) {
         notification.setIdentifier(Some(&NSString::from_str(&notice.tag)));
     }
     NSUserNotificationCenter::defaultUserNotificationCenter().deliverNotification(&notification);
+}
+
+/// The name `AppKit` looks the application's icon up under (`NSImageNameApplicationIcon`).
+#[cfg(target_os = "macos")]
+const APP_ICON: &str = "NSApplicationIcon";
+
+/// Makes the desktop icon (`icons/icon.png`, UI-222) the app's icon in the Dock, the app switcher and the About panel.
+/// `AppKit` takes it from the main bundle, which for `omfp desktop` is the executable's directory (also from `omfp.app`,
+/// whose executable starts `bin/.omfp-wrapped`), so macOS showed a folder; an image registered under the icon's name
+/// before the app starts wins (`setApplicationIconImage` would need `unsafe`). Returns whether it was registered.
+#[cfg(target_os = "macos")]
+pub fn register_app_icon() -> bool {
+    use objc2::AllocAnyThread as _;
+    use objc2_app_kit::NSImage;
+    use objc2_foundation::{NSData, NSString};
+    let png = NSData::with_bytes(include_bytes!("../../icons/icon.png"));
+    NSImage::initWithData(NSImage::alloc(), &png)
+        .is_some_and(|icon| icon.setName(Some(&NSString::from_str(APP_ICON))))
 }
 
 #[cfg(test)]
@@ -152,29 +204,75 @@ mod tests {
         );
     }
 
-    // spec: UI-252
+    // spec: UI-252, DMN-182
     #[test]
-    fn a_notify_navigation_carries_the_pages_notification() {
-        let url =
-            Url::parse("omfp-notify:?title=Fix+the+tests&body=needs+you+%26+waits&tag=t1&other=x")
-                .unwrap();
+    fn a_notify_navigation_with_the_windows_nonce_carries_the_pages_notification() {
+        let nonce = notify_nonce();
+        assert_eq!(nonce.len(), 32);
+        assert_ne!(notify_nonce(), nonce);
+        let url = Url::parse(&format!(
+            "omfp-notify:?n={nonce}&title=Fix+the+tests&body=needs+you+%26+waits&tag=t1&other=x"
+        ))
+        .unwrap();
         assert_eq!(
-            navigation(&url),
-            Navigation::Notify(Notice {
+            navigation(&url, &nonce),
+            Some(Navigation::Notify(Notice {
                 title: "Fix the tests".into(),
                 body: "needs you & waits".into(),
                 tag: "t1".into(),
-            })
+            }))
         );
         assert_eq!(
-            navigation(&Url::parse("omfp-notify:").unwrap()),
-            Navigation::Notify(Notice {
+            navigation(
+                &Url::parse(&format!("omfp-notify:?n={nonce}")).unwrap(),
+                &nonce
+            ),
+            Some(Navigation::Notify(Notice {
                 title: String::new(),
                 body: String::new(),
                 tag: String::new(),
-            })
+            }))
         );
+        // A frame of another origin does not know the nonce.
+        for forged in [
+            "omfp-notify:?title=Phish",
+            "omfp-notify:?n=0000&title=Phish",
+        ] {
+            assert_eq!(
+                navigation(&Url::parse(forged).unwrap(), &nonce),
+                Some(Navigation::Deny),
+                "{forged}"
+            );
+        }
         let page = Url::parse("http://127.0.0.1:7420/#token=t").unwrap();
-        assert_eq!(navigation(&page), Navigation::Allow);
+        assert_eq!(navigation(&page, &nonce), None);
+    }
+
+    // spec: UI-252, DMN-182
+    #[test]
+    fn the_notification_script_runs_only_in_the_daemons_top_level_page() {
+        let script = notification_script("http://127.0.0.1:7420", "ab\"c");
+        assert!(script.starts_with(
+            "(() => {\n  const ORIGIN = \"http://127.0.0.1:7420\";\n  const NONCE = \"ab\\\"c\";\n"
+        ));
+        assert!(
+            script.contains("if (window.top !== window || location.origin !== ORIGIN) return;")
+        );
+        assert!(script.contains("n: NONCE"));
+        assert!(script.ends_with("})();"));
+    }
+
+    // spec: UI-222
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_app_icon_is_the_desktop_icon_not_the_executables_folder() {
+        use objc2_app_kit::NSImage;
+        use objc2_foundation::NSString;
+        assert!(register_app_icon());
+        let icon = NSImage::imageNamed(&NSString::from_str(APP_ICON)).expect("the app icon");
+        // icons/icon.png is 512 px; the folder icon AppKit falls back to is 128 pt.
+        let size = icon.size();
+        assert!((size.width - 512.0).abs() < f64::EPSILON, "{size:?}");
+        assert!((size.height - 512.0).abs() < f64::EPSILON, "{size:?}");
     }
 }

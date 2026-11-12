@@ -1,5 +1,5 @@
 //! Integration test (L2) of `omfp mcp config` (DMN-159): the real binary finds the local daemon of a data directory
-//! and prints the `mcp.json` entry of its MCP server.
+//! and prints the `mcp.json` entry of its MCP server, the token read from `$OMFP_TOKEN` (AGT-054).
 
 use std::sync::Arc;
 
@@ -55,8 +55,36 @@ async fn mcp_config_prints_the_entry_of_the_local_daemon() {
         json!({ "mcpServers": { "omfp": {
             "type": "http",
             "url": format!("http://{}/mcp", daemon.addr()),
-            "headers": { "Authorization": format!("Bearer {}", daemon.token().expose()) },
+            "headers": { "Authorization": "Bearer ${OMFP_TOKEN}" },
             "timeout": 0,
         } } })
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(!stdout.contains(daemon.token().expose()), "{stdout}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(&format!(
+            "export OMFP_TOKEN=\"$(cat '{}')\"",
+            dir.path().join("token").display()
+        )),
+        "{stderr}"
+    );
+
+    let literal = tokio::process::Command::new(env!("CARGO_BIN_EXE_omfp"))
+        .args([
+            "mcp",
+            "config",
+            "--literal-token",
+            "--data-dir",
+            dir.path().to_str().unwrap(),
+        ])
+        .env_remove("XDG_DATA_HOME")
+        .output()
+        .await
+        .unwrap();
+    let printed: Value = serde_json::from_slice(&literal.stdout).unwrap();
+    assert_eq!(
+        printed["mcpServers"]["omfp"]["headers"]["Authorization"],
+        format!("Bearer {}", daemon.token().expose())
     );
 }

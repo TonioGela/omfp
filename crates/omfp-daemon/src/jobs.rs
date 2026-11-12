@@ -6,13 +6,12 @@ use std::collections::{HashMap, VecDeque};
 use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use omfp_protocol::{ErrorBody, ErrorCode, JobEvent, JobInfo, JobLine, JobStatus, JobStream};
 use rustix::io::Errno;
-use rustix::process::{Pid, Signal, kill_process_group};
+use rustix::process::{Pid, Signal, kill_process_group, test_kill_process_group};
 use serde::Serialize;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::{Child, ChildStderr, ChildStdout, Command};
@@ -220,18 +219,35 @@ async fn escalate(mut exited: watch::Receiver<bool>, grace: Duration, kill: impl
     }
 }
 
-/// Signals a job's process group.
+/// Signals a job's process group (DMN-081). The shell leads the group, so its id is the shell's pid. Once the shell
+/// is reaped the group may still hold leftovers (`sleep 60 &`); they are signalled too, after probing the group:
+/// the kernel never hands out a pid still used as a process-group id by a live process, so while the probe finds a
+/// member the id is still the job's. A group found empty is not signalled. What detached (`setsid`, its own group)
+/// is out of reach and keeps the job running while it holds the job's outputs open.
 #[derive(Debug)]
 struct Control {
     group: Pid,
-    /// Set once the shell exited.
+    /// Set right after the shell is reaped.
     exited: watch::Sender<bool>,
-    /// Set once the job finished (shell exited, outputs closed): it is never signalled again.
-    finished: AtomicBool,
 }
 
+/// How often a kill whose shell already exited checks whether the leftovers are gone.
+const LEFTOVER_POLL: Duration = Duration::from_millis(50);
+
 impl Control {
+    /// Whether the group still has a member; only meaningful once the shell exited.
+    fn group_alive(&self) -> bool {
+        // EPERM: a member exists but is not ours, so the id is in use; anything but ESRCH means alive.
+        test_kill_process_group(self.group) != Err(Errno::SRCH)
+    }
+
     fn signal(&self, signal: Signal) {
+        // Once the shell exited, the id stays the job's only while the group has a member (see [`Control`]).
+        // Remaining race: the group empties and its id is reused between the probe and the signal; the signal
+        // would then reach a group of the daemon's own user only (EPERM otherwise).
+        if *self.exited.borrow() && !self.group_alive() {
+            return;
+        }
         match kill_process_group(self.group, signal) {
             // The group may be gone already.
             Err(error) if error != Errno::SRCH => {
@@ -242,16 +258,26 @@ impl Control {
     }
 
     /// Sends SIGTERM to the group now; the returned future sends SIGKILL [`KILL_GRACE`] later unless the shell
-    /// exited, and ends once it exited (DMN-081). `None` when the job finished: nothing is sent.
+    /// exited (or, if it had exited already, unless the group emptied), and ends then (DMN-081). `None` when the
+    /// shell exited and the group is empty: nothing is sent.
     fn terminate(self: &Arc<Self>) -> Option<impl Future<Output = ()> + Send + 'static> {
-        if self.finished.load(Ordering::Acquire) {
+        let leftovers = *self.exited.borrow();
+        if leftovers && !self.group_alive() {
             return None;
         }
         self.signal(Signal::TERM);
         let control = Arc::clone(self);
         Some(async move {
-            let exited = control.exited.subscribe();
-            escalate(exited, KILL_GRACE, || control.signal(Signal::KILL)).await;
+            if leftovers {
+                let deadline = tokio::time::Instant::now() + KILL_GRACE;
+                while control.group_alive() && tokio::time::Instant::now() < deadline {
+                    tokio::time::sleep(LEFTOVER_POLL).await;
+                }
+                control.signal(Signal::KILL);
+            } else {
+                let exited = control.exited.subscribe();
+                escalate(exited, KILL_GRACE, || control.signal(Signal::KILL)).await;
+            }
         })
     }
 }
@@ -337,7 +363,6 @@ impl Jobs {
         let control = Arc::new(Control {
             group,
             exited: watch::Sender::new(false),
-            finished: AtomicBool::new(false),
         });
         registry.jobs.insert(
             job.id.clone(),
@@ -382,7 +407,6 @@ impl Jobs {
                 (None, None)
             }
         };
-        control.finished.store(true, Ordering::Release);
         // Kept as finished before anyone sees it finish.
         self.finish(&id);
         log.push(JobEvent::JobExited {
@@ -421,8 +445,8 @@ impl Jobs {
             .ok_or_else(|| JobError::NotFound(id.to_owned()))
     }
 
-    /// SIGTERM to the job's group, SIGKILL [`KILL_GRACE`] later if the shell has not exited (DMN-081); a finished
-    /// job is left alone.
+    /// SIGTERM to the job's group, SIGKILL [`KILL_GRACE`] later if the shell has not exited (DMN-081); once the
+    /// shell exited, only a group that still has members is signalled (see [`Control`]).
     pub fn kill(&self, id: &str) -> Result<(), JobError> {
         let control = self
             .lock()
@@ -498,7 +522,7 @@ impl Jobs {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     use omfp_protocol::JobState;
 
@@ -771,5 +795,43 @@ mod tests {
                 JobStatus::Exited { code: Some(0), .. }
             ));
         }
+    }
+
+    // spec: DMN-081
+    #[tokio::test(flavor = "multi_thread")]
+    async fn killing_a_job_whose_shell_exited_kills_its_leftovers() {
+        let dir = tempfile::tempdir().unwrap();
+        let jobs = Jobs::default();
+        // The shell exits at once; the background `sleep` keeps the group and the outputs, so the job keeps running.
+        let job = jobs
+            .start("w1", dir.path(), "sleep 60 & exit 0", None)
+            .unwrap();
+        let control = Arc::clone(&jobs.lock().jobs[&job.id].control);
+        let mut exited = control.exited.subscribe();
+        tokio::time::timeout(WAIT, exited.wait_for(|exited| *exited))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(control.group_alive());
+
+        jobs.kill(&job.id).unwrap();
+        // The job finishes only once the `sleep` closed the outputs, i.e. died.
+        finished(&jobs.log(&job.id).unwrap()).await;
+    }
+
+    // spec: DMN-081
+    #[tokio::test(flavor = "multi_thread")]
+    async fn killing_a_finished_job_with_an_empty_group_signals_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let jobs = Jobs::default();
+        let job = jobs.start("w1", dir.path(), "exit 0", None).unwrap();
+        let control = Arc::clone(&jobs.lock().jobs[&job.id].control);
+        finished(&jobs.log(&job.id).unwrap()).await;
+        assert!(*control.exited.borrow());
+
+        assert!(!control.group_alive());
+        assert!(control.terminate().is_none());
+        jobs.kill(&job.id).unwrap();
+        jobs.kill_workspace("w1").await;
     }
 }

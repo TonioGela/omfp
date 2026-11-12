@@ -55,6 +55,14 @@ fn desktop_with(home: &Path, env: &[(&str, &str)], args: &[&str]) -> Output {
         .env_remove("XDG_CONFIG_HOME")
         .output()
         .unwrap();
+    #[cfg(target_os = "macos")]
+    if let Some(data) = args
+        .iter()
+        .position(|arg| *arg == "--data-dir")
+        .and_then(|at| args.get(at + 1))
+    {
+        forget_web_store(Path::new(data));
+    }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
@@ -63,6 +71,40 @@ fn desktop_with(home: &Path, env: &[(&str, &str)], args: &[&str]) -> Output {
         output.status
     );
     output
+}
+
+/// Deletes the window's `WKWebsiteDataStore` of the data directory `data` (UI-250): `WebKit` keeps it outside the test's
+/// temporary directory, whatever the window's `HOME`, in the user's
+/// `~/Library/WebKit/dev.omfp.desktop/WebsiteDataStore/<the store id as a UUID>` (about 0.7 MB per window).
+#[cfg(target_os = "macos")]
+fn forget_web_store(data: &Path) {
+    use std::fmt::Write as _;
+    let (Ok(id), Some(home)) = (
+        std::fs::read(data.join("webview/store-id")),
+        std::env::var_os("HOME"),
+    ) else {
+        return;
+    };
+    let hex = id.iter().fold(String::new(), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    });
+    if hex.len() != 32 {
+        return;
+    }
+    let uuid = format!(
+        "{}-{}-{}-{}-{}",
+        &hex[..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..]
+    );
+    let _ = std::fs::remove_dir_all(
+        Path::new(&home)
+            .join("Library/WebKit/dev.omfp.desktop/WebsiteDataStore")
+            .join(uuid),
+    );
 }
 
 // spec: TST-033, TST-090, DMN-004
@@ -146,7 +188,7 @@ impl Drop for Daemon {
     }
 }
 
-// spec: ARC-003, UI-004, UI-005, DMN-128
+// spec: ARC-003, UI-004, UI-005, DMN-128, DMN-180, DMN-181
 #[test]
 fn a_second_window_reuses_the_background_daemon_that_outlives_the_first() {
     let dir = tempfile::tempdir().unwrap();
@@ -179,15 +221,29 @@ fn a_second_window_reuses_the_background_daemon_that_outlives_the_first() {
     );
     let log = std::fs::read_to_string(data.join("daemon.log")).unwrap();
     assert!(log.contains("omfp daemon listening on"), "{log}");
+    // DMN-180, DMN-181: neither the log nor its directory are open to others, and the log never holds the token.
+    let token = std::fs::read_to_string(data.join("token")).unwrap();
+    let token = token.trim();
+    assert!(!log.contains(token), "{log}");
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode =
+            |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode(&data), 0o700);
+        assert_eq!(mode(&data.join("daemon.log")), 0o600);
+    }
     // DMN-128: started with `--tray`; on Linux the test's session bus does not exist, on macOS the item is in the
     // menu bar (DMN-171).
     #[cfg(target_os = "linux")]
     assert!(log.contains("no tray icon: no session bus"), "{log}");
     #[cfg(target_os = "macos")]
     assert!(!log.contains("no menu bar item"), "{log}");
-    // UI-004: the URL a browser opens on the same daemon, with its token.
-    let token = std::fs::read_to_string(data.join("token")).unwrap();
-    let url = format!("omfp desktop: http://{}/#token={}", info.addr, token.trim());
+    // UI-004: the URL a browser opens on the same daemon; with the token only on a terminal, not this pipe (DMN-181).
+    let url = format!(
+        "omfp desktop: http://{}/ (add #token=<token> from {})",
+        info.addr,
+        data.join("token").display()
+    );
     assert!(
         String::from_utf8_lossy(&first.stdout).contains(&url),
         "{url}"

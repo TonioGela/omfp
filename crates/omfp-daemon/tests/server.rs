@@ -127,6 +127,51 @@ async fn a_wrong_token_is_unauthorized_and_closes_the_connection() {
     assert_eq!(client.close_code().await, Some(4401));
 }
 
+// spec: DMN-184
+#[tokio::test(start_paused = true)]
+async fn a_connection_without_hello_is_closed_after_10_seconds() {
+    let daemon = daemon(&[]).await;
+    let mut client = Client::connect(daemon.handle.addr()).await;
+    let start = tokio::time::Instant::now();
+
+    assert_eq!(client.close_code().await, Some(4401));
+    assert!(start.elapsed() >= std::time::Duration::from_secs(10));
+}
+
+// spec: DMN-184
+#[tokio::test(flavor = "multi_thread")]
+async fn at_most_64_connections_wait_for_hello_at_once() {
+    let daemon = daemon(&[]).await;
+    let addr = daemon.handle.addr();
+    let mut waiting = Vec::new();
+    for _ in 0..omfp_daemon::server::UNAUTHENTICATED_CONNECTIONS {
+        waiting.push(Client::connect(addr).await);
+    }
+    let refused = |result: Result<_, tokio_tungstenite::tungstenite::Error>| match result {
+        Err(tokio_tungstenite::tungstenite::Error::Http(response)) => response.status() == 503,
+        _ => false,
+    };
+    assert!(refused(
+        tokio_tungstenite::connect_async(client::url(addr)).await
+    ));
+
+    // A connection that authenticates frees its place, before its hello is answered.
+    let first = &mut waiting[0];
+    let hello = first
+        .call(
+            "system.hello",
+            json!({ "token": daemon.handle.token().expose(), "protocol": 1, "client": "test" }),
+        )
+        .await;
+    assert!(hello.is_ok(), "{hello:?}");
+    let mut late = Client::hello(addr, daemon.handle.token().expose(), "late").await;
+    late.ok("threads.list", json!({})).await;
+    waiting.push(Client::connect(addr).await);
+    assert!(refused(
+        tokio_tungstenite::connect_async(client::url(addr)).await
+    ));
+}
+
 /// Whether a browser at `origin` reaching the daemon with `host` upgrades and passes `system.hello`; a refused upgrade
 /// is `403`.
 async fn upgrades(daemon: &TestDaemon, origin: &str, host: &str) -> bool {
@@ -268,6 +313,58 @@ async fn the_library_daemon_serves_until_shutdown_then_stops_omp_and_closes_clie
     assert_eq!(client.close_code().await, Some(1001));
     assert!(!dir.path().join("daemon.json").exists());
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
+}
+
+// spec: DMN-181, UI-004
+#[tokio::test(flavor = "multi_thread")]
+async fn the_token_url_is_printed_only_to_a_terminal() {
+    let daemon = daemon(&[]).await;
+    let addr = daemon.handle.addr();
+    let token = daemon.handle.token().expose().to_owned();
+
+    assert_eq!(
+        daemon.handle.listening_line(true),
+        format!("omfp daemon listening on http://{addr}/#token={token}")
+    );
+    let logged = daemon.handle.listening_line(false);
+    assert!(!logged.contains(&token), "{logged}");
+    assert!(
+        logged.starts_with(&format!("omfp daemon listening on http://{addr}/ (")),
+        "{logged}"
+    );
+    assert!(logged.contains("omfp desktop"), "{logged}");
+    assert!(
+        logged.contains(&daemon.dir.path().join("token").display().to_string()),
+        "{logged}"
+    );
+}
+
+// spec: DMN-180, DMN-003
+#[tokio::test(flavor = "multi_thread")]
+async fn the_data_directory_and_the_daemons_files_are_private() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir(&data).unwrap();
+    std::fs::set_permissions(&data, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let launcher = FakeLauncher::new();
+    let git = Arc::new(FakeGit::new());
+    let handle = start_with(config(&data, &[]), ports(&launcher, &git))
+        .await
+        .unwrap();
+
+    let mode = |name: &str| {
+        std::fs::metadata(data.join(name))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777
+    };
+    assert_eq!(mode(""), 0o700);
+    for file in ["token", "daemon.json", "daemon.lock", "omfp.db"] {
+        assert_eq!(mode(file), 0o600, "{file}");
+    }
+    handle.shutdown().await.unwrap();
 }
 
 // spec: DMN-007

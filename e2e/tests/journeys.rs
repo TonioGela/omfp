@@ -139,7 +139,7 @@ async fn one_tool_card(journey: &Journey, status: &str) -> anyhow::Result<()> {
         .await
 }
 
-// spec: E2E-02, UI-070, UI-071, UI-050, TST-031
+// spec: E2E-02, UI-070, UI-071, UI-050, UI-092, TST-031
 #[tokio::test(flavor = "multi_thread")]
 async fn a_tool_needing_approval_completes_after_approving_it_in_the_ui() -> anyhow::Result<()> {
     let journey = Journey::start(vec![
@@ -161,8 +161,24 @@ async fn a_tool_needing_approval_completes_after_approving_it_in_the_ui() -> any
             pending_request(page).await
         })
         .await?;
-    // The first option of the first pending request has the focus (UI-070).
+    // The first option of the first pending request has the focus (UI-070); the arrow keys move between the options
+    // (UI-092).
     journey.until_focused("interaction-option").await?;
+    for (key, index) in [(Key::Right, 1), (Key::Left, 0)] {
+        journey.keys(key).await?;
+        journey
+            .until(&format!("the focus on option {index}"), async |page| {
+                let focused = page
+                    .eval(
+                        "return [...document.querySelectorAll('[data-testid=interaction-option]')]
+                           .indexOf(document.activeElement);",
+                        Vec::new(),
+                    )
+                    .await?;
+                Ok((focused == json!(index)).then_some(()))
+            })
+            .await?;
+    }
     choose(&journey, "Approve").await?;
 
     one_tool_card(&journey, "succeeded").await?;

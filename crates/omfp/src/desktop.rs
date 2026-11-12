@@ -6,13 +6,14 @@
 use std::cell::Cell;
 use std::ffi::OsString;
 use std::fs::{File, TryLockError};
+use std::io::IsTerminal as _;
 use std::net::{SocketAddr, TcpListener};
 use std::os::unix::process::CommandExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, bail};
@@ -20,13 +21,14 @@ use clap::Parser as _;
 #[cfg(target_os = "linux")]
 use gio::glib::{ToVariant as _, Variant};
 use omfp_daemon::config::{Cli, Config, default_config_file, default_data_dir};
+use omfp_daemon::paths::{create_private_dir, open_private_log};
 use omfp_daemon::theme::default_theme_file;
 use omfp_daemon::watch::{self, WatchedFile};
 use omfp_protocol::Theme;
 use omfp_protocol::method::ThemeSet;
 #[cfg(target_os = "linux")]
 use tauri::Theme as WindowTheme;
-use tauri::webview::{PermissionKind, PermissionResponse};
+use tauri::webview::{NewWindowResponse, PermissionKind, PermissionResponse};
 use tauri::{Manager as _, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::remote::{Connection, Target, reachable, read_token, websocket_url};
@@ -115,7 +117,7 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
         .enable_all()
         .build()?;
     let mut in_process = None;
-    let (window_url, browser_url, data_dir) = if let Some(connect) = &args.connect {
+    let (window_url, browser, data_dir) = if let Some(connect) = &args.connect {
         if !args.daemon_args.is_empty() {
             bail!("daemon arguments after `--` need the local daemon; drop them or --connect");
         }
@@ -134,10 +136,13 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
             ),
             ThemePush::NoThemeFile => {}
         }
-        let url = window_url(&base, args.token.as_deref(), false, None);
         (
             window_url(&base, args.token.as_deref(), false, args.thread.as_deref()),
-            url,
+            BrowserUrl {
+                base,
+                token: args.token.clone(),
+                token_file: None,
+            },
             data_dir,
         )
     } else {
@@ -158,12 +163,16 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
         let base = local_base(addr)?;
         (
             window_url(&base, Some(&token), true, args.thread.as_deref()),
-            window_url(&base, Some(&token), false, None),
+            BrowserUrl {
+                base,
+                token: Some(token),
+                token_file: Some(plan.data_dir.join("token")),
+            },
             plan.data_dir,
         )
     };
     // UI-004: a browser can attach to the same daemon.
-    println!("omfp desktop: {browser_url}");
+    println!("{}", browser.line(std::io::stdout().is_terminal()));
     let code = open_window(window_url, &data_dir.join("webview"), smoke)?;
     if let Some(handle) = in_process {
         runtime.block_on(handle.shutdown())?;
@@ -224,6 +233,74 @@ fn fragment_value(value: &str) -> String {
         .replace('&', "%26")
         .replace('#', "%23")
         .replace('=', "%3D")
+}
+
+/// The daemon's URL `omfp desktop` prints for a browser (UI-004).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BrowserUrl {
+    pub base: Url,
+    pub token: Option<String>,
+    /// Where the token is, for the line printed without it.
+    pub token_file: Option<PathBuf>,
+}
+
+impl BrowserUrl {
+    /// The printed line (DMN-181): the URL with the token only to a terminal; to anything else (the daemon's log when
+    /// the tray starts the window, a pipe) the URL without it and where the token is.
+    #[must_use]
+    pub fn line(&self, terminal: bool) -> String {
+        if terminal || self.token.is_none() {
+            return format!(
+                "omfp desktop: {}",
+                window_url(&self.base, self.token.as_deref(), false, None)
+            );
+        }
+        let from = self
+            .token_file
+            .as_ref()
+            .map(|file| format!(" from {}", file.display()))
+            .unwrap_or_default();
+        format!("omfp desktop: {} (add #token=<token>{from})", self.base)
+    }
+}
+
+/// What the window does with a navigation of its page or one of its frames (DMN-182).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Navigation {
+    /// The daemon's own origin, or a document without one of its own (`about:`, `blob:`, `data:`).
+    Allow,
+    /// Another web page or a mail link: cancelled and opened by the system's browser or mail client.
+    External,
+    /// Anything else (`file:`, other schemes): cancelled.
+    Deny,
+}
+
+/// Sorts a navigation of the window on the daemon at `origin` (its serialized origin, `http://127.0.0.1:7420`; DMN-182):
+/// the window stays on the daemon's UI.
+#[must_use]
+pub fn navigation(url: &Url, origin: &str) -> Navigation {
+    match url.scheme() {
+        "http" | "https" if url.origin().ascii_serialization() == origin => Navigation::Allow,
+        "http" | "https" | "mailto" => Navigation::External,
+        "about" | "blob" | "data" => Navigation::Allow,
+        _ => Navigation::Deny,
+    }
+}
+
+/// The answer to a permission request of the page at `page` in the window on the daemon at `origin` (DMN-182): the
+/// UI's notifications, and on macOS the microphone (live voice, UI-251), only for the daemon's own origin; nothing for
+/// another page.
+#[must_use]
+pub fn permission(kind: PermissionKind, page: &Url, origin: &str) -> PermissionResponse {
+    if page.origin().ascii_serialization() != origin {
+        return PermissionResponse::Deny;
+    }
+    match kind {
+        PermissionKind::Notifications => PermissionResponse::Allow,
+        #[cfg(target_os = "macos")]
+        PermissionKind::Microphone => PermissionResponse::Allow,
+        _ => PermissionResponse::Default,
+    }
 }
 
 /// Whether and what to push of the theme file of this machine (UI-091). A local daemon follows that file itself
@@ -411,14 +488,17 @@ impl LocalDaemon {
     /// appended to `<data-dir>/daemon.log`, reaped by a thread of this process while it lives. Waits until a daemon
     /// runs for the data directory (this one, or another that won a start race).
     fn start(&self, bind: Option<SocketAddr>) -> anyhow::Result<Started> {
-        std::fs::create_dir_all(&self.data_dir)
-            .with_context(|| format!("cannot create {}", self.data_dir.display()))?;
+        if let Some(mode) = create_private_dir(&self.data_dir)
+            .with_context(|| format!("cannot create {}", self.data_dir.display()))?
+        {
+            eprintln!(
+                "omfp desktop: {} was open to other users (mode {mode:o}): its mode is now 0700",
+                self.data_dir.display()
+            );
+        }
         let path = self.log();
-        let log = File::options()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .with_context(|| format!("cannot open {}", path.display()))?;
+        let log =
+            open_private_log(&path).with_context(|| format!("cannot open {}", path.display()))?;
         let mut child = Command::new(std::env::current_exe()?)
             .args(self.command_line(bind))
             .stdin(Stdio::null())
@@ -642,30 +722,70 @@ impl Drop for ColorScheme {
 
 /// Opens the window and runs the event loop until it closes.
 fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::Result<i32> {
+    // UI-222: the Dock's and the app switcher's icon, registered before AppKit starts (a folder otherwise).
+    #[cfg(target_os = "macos")]
+    if !macos::register_app_icon() {
+        eprintln!("omfp desktop: cannot set the app icon");
+    }
     let app = tauri::Builder::default().build(tauri::generate_context!())?;
+    // The window stays on the daemon's UI (DMN-182): its origin is the only one granted anything.
+    let origin = url.origin().ascii_serialization();
+    // The top-level page, as its loads report it (the permission handler must not call into the webview).
+    let page = Arc::new(Mutex::new(url.clone()));
+    #[cfg(target_os = "macos")]
+    let nonce = macos::notify_nonce();
     let builder = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(url))
         .title("omfp")
         .inner_size(1280.0, 800.0)
+        .on_page_load({
+            let page = Arc::clone(&page);
+            move |_, payload| {
+                *page.lock().unwrap_or_else(PoisonError::into_inner) = payload.url().clone();
+            }
+        })
         // WebKitGTK denies requests nobody handles: allow the UI's thread notifications. WKWebView answers an unhandled
         // media request with its own prompt on every page load: grant the microphone (live voice, UI-251); macOS still
-        // asks the user once per app through TCC (the embedded Info.plist's NSMicrophoneUsageDescription).
-        .on_permission_request(|_, kind| match kind {
-            PermissionKind::Notifications => PermissionResponse::Allow,
+        // asks the user once per app through TCC (the embedded Info.plist's NSMicrophoneUsageDescription). Only the
+        // daemon's page gets them (DMN-182).
+        .on_permission_request({
+            let (page, origin) = (Arc::clone(&page), origin.clone());
+            move |_, kind| {
+                let page = page.lock().unwrap_or_else(PoisonError::into_inner);
+                permission(kind, &page, &origin)
+            }
+        })
+        .on_navigation({
+            let origin = origin.clone();
             #[cfg(target_os = "macos")]
-            PermissionKind::Microphone => PermissionResponse::Allow,
-            _ => PermissionResponse::Default,
+            let nonce = nonce.clone();
+            move |url| {
+                #[cfg(target_os = "macos")]
+                if let Some(allowed) = macos::on_notify(url, &nonce) {
+                    return allowed;
+                }
+                follow(url, &origin)
+            }
+        })
+        // `target="_blank"` links and `window.open`: never a second webview; other pages go to the browser.
+        .on_new_window({
+            let origin = origin.clone();
+            move |url, _| {
+                if navigation(&url, &origin) == Navigation::External {
+                    crate::tray::open_in_browser(url.as_str());
+                }
+                NewWindowResponse::Deny
+            }
         });
     // Per data directory: two daemons on the same port never share the window's storage (UI-005). WebKitGTK takes a
     // directory; WKWebView ignores it and takes a data store identifier instead (UI-250, macOS 14+).
     #[cfg(target_os = "linux")]
     let builder = builder.data_directory(webview_data.to_path_buf());
-    // WKWebView has no web notifications: the page gets a `Notification` whose notifications the window posts to the
-    // system's notification center (UI-252).
+    // WKWebView has no web notifications: the daemon's page gets a `Notification` whose notifications the window posts
+    // to the system's notification center (UI-252).
     #[cfg(target_os = "macos")]
     let builder = builder
         .data_store_identifier(macos::data_store_identifier(webview_data)?)
-        .initialization_script(macos::NOTIFICATION_SCRIPT)
-        .on_navigation(macos::on_navigation);
+        .initialization_script(macos::notification_script(&origin, &nonce));
     let window = builder.build()?;
     #[cfg(target_os = "linux")]
     let _color_scheme = follow_color_scheme(&window);
@@ -673,6 +793,19 @@ fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::R
         smoke_check(window, std::env::var("OMFP_SMOKE_SCHEME").ok());
     }
     Ok(app.run_return(|_, _| {}))
+}
+
+/// Follows a navigation of the window (DMN-182): the daemon's own pages load, other web pages open in the system's
+/// browser instead, anything else is cancelled.
+fn follow(url: &Url, origin: &str) -> bool {
+    match navigation(url, origin) {
+        Navigation::Allow => true,
+        Navigation::External => {
+            crate::tray::open_in_browser(url.as_str());
+            false
+        }
+        Navigation::Deny => false,
+    }
 }
 
 /// Polls [`PROBE`] every 100 ms; once the shell is ready (and the page's color scheme is `scheme`, when given:
@@ -925,6 +1058,94 @@ mod tests {
         );
         let args = parse(&["--thread", "th-1", "--data-dir", "/d"]);
         assert_eq!(args.thread.as_deref(), Some("th-1"));
+    }
+
+    // spec: DMN-181, UI-004
+    #[test]
+    fn the_printed_url_carries_the_token_only_to_a_terminal() {
+        let browser = BrowserUrl {
+            base: local_base("127.0.0.1:7420".parse().unwrap()).unwrap(),
+            token: Some("t0k".into()),
+            token_file: Some(PathBuf::from("/data/omfp/token")),
+        };
+        assert_eq!(
+            browser.line(true),
+            "omfp desktop: http://127.0.0.1:7420/#token=t0k"
+        );
+        assert_eq!(
+            browser.line(false),
+            "omfp desktop: http://127.0.0.1:7420/ (add #token=<token> from /data/omfp/token)"
+        );
+        let remote = BrowserUrl {
+            base: connect_base("https://omfp.example.com").unwrap(),
+            token: Some("t0k".into()),
+            token_file: None,
+        };
+        assert_eq!(
+            remote.line(false),
+            "omfp desktop: https://omfp.example.com/ (add #token=<token>)"
+        );
+        let without = BrowserUrl {
+            token: None,
+            ..remote
+        };
+        assert_eq!(
+            without.line(false),
+            "omfp desktop: https://omfp.example.com/"
+        );
+    }
+
+    // spec: DMN-182
+    #[test]
+    fn the_window_stays_on_the_daemons_origin() {
+        let origin = "http://127.0.0.1:7420";
+        let url = |text: &str| Url::parse(text).unwrap();
+        for (target, expected) in [
+            ("http://127.0.0.1:7420/#token=t&local=1", Navigation::Allow),
+            ("http://127.0.0.1:7420/widgets/k/x", Navigation::Allow),
+            ("about:blank", Navigation::Allow),
+            ("blob:http://127.0.0.1:7420/1234", Navigation::Allow),
+            ("https://example.com/docs", Navigation::External),
+            ("http://127.0.0.1:7421/", Navigation::External),
+            ("http://localhost:7420/", Navigation::External),
+            ("mailto:someone@example.com", Navigation::External),
+            ("file:///etc/passwd", Navigation::Deny),
+            ("omfp-notify:?title=x", Navigation::Deny),
+        ] {
+            assert_eq!(navigation(&url(target), origin), expected, "{target}");
+        }
+    }
+
+    // spec: DMN-182, UI-251
+    #[test]
+    fn only_the_daemons_page_gets_permissions() {
+        let origin = "http://127.0.0.1:7420";
+        let daemon = Url::parse("http://127.0.0.1:7420/#token=t").unwrap();
+        let other = Url::parse("https://example.com/").unwrap();
+        assert_eq!(
+            permission(PermissionKind::Notifications, &daemon, origin),
+            PermissionResponse::Allow
+        );
+        assert_eq!(
+            permission(PermissionKind::Geolocation, &daemon, origin),
+            PermissionResponse::Default
+        );
+        for kind in [
+            PermissionKind::Notifications,
+            PermissionKind::Microphone,
+            PermissionKind::Camera,
+        ] {
+            assert_eq!(
+                permission(kind, &other, origin),
+                PermissionResponse::Deny,
+                "{kind:?}"
+            );
+        }
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            permission(PermissionKind::Microphone, &daemon, origin),
+            PermissionResponse::Allow
+        );
     }
 
     // spec: UI-195

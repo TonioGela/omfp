@@ -49,13 +49,17 @@ export interface GuardedRole {
   readonly toward: "on-surface" | "away";
 }
 
+/** The least a fill must stand out from the surface it sits on to read as a shape (Synth's lowest is 1.29:1). */
+const FILL = 1.1;
+
 /**
  * Every role the kit and the shell use as a text (or mark) color (UI-134, UI-137, UI-138), on the surfaces: normal
  * text at AA; `outline` draws the idle mark, hover borders and syntax punctuation, so it needs the non-text 3:1 (Synth's
  * own light outline is 4.26:1). `on-surface` is the target, so it is not guarded. Then the labels of filled controls
  * on their fills, measured after the fills were guarded: `on-primary` on the primary button and the `INSERT` pill
  * (primary → tertiary), `on-tertiary` on the `COMMAND` pill (the reversed gradient), `on-error` on the danger button,
- * `on-secondary-container` on counts.
+ * `on-secondary-container` on counts. Last the `NORMAL` pill's fill, `surface-container-highest`, on the mode line's
+ * `surface-container-lowest`: a theme that makes them one color hides the pill.
  */
 export const GUARDED_ROLES: readonly GuardedRole[] = [
   ...["primary", "tertiary", "secondary", "error", "on-surface-variant", "ok", "warn"].map(
@@ -66,6 +70,7 @@ export const GUARDED_ROLES: readonly GuardedRole[] = [
   { role: "on-tertiary", threshold: AA, on: ["tertiary", "primary"], toward: "away" },
   { role: "on-error", threshold: AA, on: ["error"], toward: "away" },
   { role: "on-secondary-container", threshold: AA, on: ["secondary-container"], toward: "away" },
+  { role: "surface-container-highest", threshold: FILL, on: ["surface-container-lowest"], toward: "on-surface" },
 ];
 
 const WHITE: Rgb = [255, 255, 255];

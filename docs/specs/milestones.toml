@@ -652,6 +652,13 @@ requirements = [
   "DMN-171",
   # The macOS data directory
   "DMN-170",
+  # Security review fixes: private data directory, token URL only to a terminal, window origin, mount folders,
+  # WebSocket connections before hello
+  "DMN-180",
+  "DMN-181",
+  "DMN-182",
+  "DMN-183",
+  "DMN-184",
   # Tests on macOS
   "TST-090",
   "TST-091",

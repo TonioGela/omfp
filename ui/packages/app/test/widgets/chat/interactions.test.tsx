@@ -60,6 +60,18 @@ describe("interactions", () => {
     expect(card.getAttribute("aria-busy")).toBe("true");
   });
 
+  // spec: UI-070, UI-092
+  test("the arrow keys move between a select's options; Tab leaves them for Dismiss", async () => {
+    renderThread(<ChatWidget />, approval().pending);
+    const focused = () => document.activeElement?.textContent;
+    expect(focused()).toBe("Approve");
+    await userEvent.keyboard("{ArrowRight}");
+    expect(focused()).toBe("Approve bash for this session");
+    // happy-dom's TreeWalker cannot walk backwards: E2E-02 checks ArrowLeft in Chromium.
+    await userEvent.keyboard("{Tab}");
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("interaction-dismiss");
+  });
+
   // spec: UI-092
   test("a new request is announced", () => {
     const { pending } = approval();

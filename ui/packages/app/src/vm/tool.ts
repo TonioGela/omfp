@@ -82,7 +82,7 @@ export function toolCard(
         : undefined,
     args: args !== undefined ? prettyJson(args) : (partial ?? "{}"),
     result: resultOf(run, result),
-    view: toolView(name, args, output, status === "succeeded" || status === "failed"),
+    view: toolView(name, args, output, status === "succeeded"),
   };
 }
 

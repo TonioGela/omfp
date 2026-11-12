@@ -20,7 +20,7 @@ use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use subtle::ConstantTimeEq;
-use tokio::sync::watch;
+use tokio::sync::{Semaphore, watch};
 
 pub use auth::{Permission, Principal, authorize, origin_allowed, parse_origin, permission};
 pub(crate) use mcp::Sessions as McpSessions;
@@ -35,6 +35,8 @@ pub const SUPPORTED_PROTOCOLS: &[u32] = &[omfp_protocol::PROTOCOL_VERSION];
 
 /// Frames a client may have queued before its topics are dropped with `resync_required` (PRT-023).
 pub(crate) const OUTBOUND_QUEUE: usize = 1024;
+/// Connections that may wait for their `system.hello` at once; further upgrades get `503` (DMN-184).
+pub const UNAUTHENTICATED_CONNECTIONS: usize = 64;
 
 /// Everything a connection needs.
 pub(crate) struct AppState {
@@ -52,6 +54,8 @@ pub(crate) struct AppState {
     pub mcp_sessions: McpSessions,
     /// Becomes `true` when the daemon shuts down; connections then close.
     pub shutdown: watch::Receiver<bool>,
+    /// One permit per connection still waiting for its `system.hello` (DMN-184).
+    pub unauthenticated: Arc<Semaphore>,
 }
 
 pub(crate) fn router(state: Arc<AppState>) -> Router {
@@ -149,10 +153,21 @@ async fn upgrade(
         );
         return (StatusCode::FORBIDDEN, "origin not allowed").into_response();
     }
+    // A connection holds its permit until `system.hello` succeeds or it closes (DMN-184).
+    let Ok(permit) = Arc::clone(&state.unauthenticated).try_acquire_owned() else {
+        tracing::warn!(
+            "refused a WebSocket upgrade: {UNAUTHENTICATED_CONNECTIONS} connections are waiting for system.hello"
+        );
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "too many connections waiting for system.hello",
+        )
+            .into_response();
+    };
     upgrade
         .max_message_size(omfp_protocol::MAX_FRAME_BYTES)
         .max_frame_size(omfp_protocol::MAX_FRAME_BYTES)
-        .on_upgrade(move |socket| connection::serve(socket, state))
+        .on_upgrade(move |socket| connection::serve(socket, state, permit))
 }
 
 /// Serves `--static-dir`; unknown paths get `index.html` so the UI can route them.

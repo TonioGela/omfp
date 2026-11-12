@@ -213,25 +213,29 @@ impl Daemon {
 
     /// The daemon's URL through the desktop portal's `OpenURI`, else `xdg-open`.
     fn open_in_browser(&self, connection: &gio::DBusConnection) {
-        let options: HashMap<String, Variant> = HashMap::new();
-        let url = self.url.clone();
-        connection.call(
-            Some("org.freedesktop.portal.Desktop"),
-            "/org/freedesktop/portal/desktop",
-            "org.freedesktop.portal.OpenURI",
-            "OpenURI",
-            Some(&("", url.as_str(), options).to_variant()),
-            None,
-            gio::DBusCallFlags::NONE,
-            -1,
-            None::<&gio::Cancellable>,
-            move |reply| {
-                if reply.is_err() {
-                    spawn_detached(Command::new("xdg-open").arg(&url), "xdg-open");
-                }
-            },
-        );
+        open_uri(connection, self.url.clone());
     }
+}
+
+/// Opens `url` through the desktop portal's `OpenURI`, else `xdg-open` (UI-218, DMN-182).
+pub(super) fn open_uri(connection: &gio::DBusConnection, url: String) {
+    let options: HashMap<String, Variant> = HashMap::new();
+    connection.call(
+        Some("org.freedesktop.portal.Desktop"),
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.OpenURI",
+        "OpenURI",
+        Some(&("", url.as_str(), options).to_variant()),
+        None,
+        gio::DBusCallFlags::NONE,
+        -1,
+        None::<&gio::Cancellable>,
+        move |reply| {
+            if reply.is_err() {
+                spawn_detached(Command::new("xdg-open").arg(&url), "xdg-open");
+            }
+        },
+    );
 }
 
 /// The tray's state, read by the D-Bus handlers and replaced on every index change.

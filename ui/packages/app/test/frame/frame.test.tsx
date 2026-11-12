@@ -951,6 +951,21 @@ describe("layout editing", () => {
     ]);
     await waitFor(() => expect(screen.queryByTestId("widget-picker")).toBeNull());
   });
+
+  // spec: UI-092, UI-104
+  test("the arrow keys move between the picker's widgets, across its groups", async () => {
+    const { user } = editing({
+      manifest: MANIFEST,
+      widgets: [{ name: "tests", source: "workspace", version: "a", entry: "index.tsx" }],
+    });
+    await user.click(screen.getByTestId("widget-add"));
+    const options = within(screen.getByTestId("widget-picker")).getAllByTestId("widget-option");
+    act(() => options[3]?.focus());
+    const focused = () => (document.activeElement as HTMLElement | null)?.dataset.widget;
+    expect(focused()).toBe("omfp:transcript");
+    await user.keyboard("{ArrowDown}");
+    expect(focused()).toBe("./widgets/tests");
+  });
 });
 
 describe("widget copy", () => {
