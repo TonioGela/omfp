@@ -3,6 +3,7 @@
 
 use std::path::Path;
 
+use omfp_daemon::paths::DataDir;
 use serde_json::{Value, json};
 
 use crate::remote::{DaemonArgs, local_addr};
@@ -42,7 +43,11 @@ pub fn run(command: &Command) -> anyhow::Result<String> {
             if !args.literal_token {
                 let token_file = match &args.daemon.token {
                     Some(_) => None,
-                    None => args.daemon.data_dir().ok().map(|dir| dir.join("token")),
+                    None => args
+                        .daemon
+                        .data_dir()
+                        .ok()
+                        .map(|dir| DataDir::new(dir).token()),
                 };
                 eprintln!("{}", variable_hint(token_file.as_deref()));
             }

@@ -489,8 +489,9 @@ bar π and its menu.
 
 Design: one code base with platform modules. `tray.rs` keeps the tray model (status, menu, window command) and its
 tests; `tray/sni.rs` is the Linux StatusNotifierItem, `tray/macos.rs` the menu bar item. `desktop.rs` keeps the window;
-the settings-portal follower is Linux only, and `desktop/macos.rs` adds the data store identifier and the page's
-`Notification`. Notifications: the window has no IPC and WKWebView no web notifications, so the window replaces
+the settings-portal follower (`desktop/portal.rs`) is Linux only, and `desktop/macos.rs` adds the data store
+identifier and the page's `Notification`. Notifications: the window has no IPC and WKWebView no web notifications, so
+the window replaces
 `Notification` with an initialization script whose notifications reach it as cancelled `omfp-notify:` navigations;
 the window posts them with `NSUserNotificationCenter` (`objc2-foundation`, safe bindings, `forbid(unsafe_code)` kept).
 The daemon's index was the other candidate (the tray process could post on a thread that starts needing you), but it

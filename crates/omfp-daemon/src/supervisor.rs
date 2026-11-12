@@ -13,18 +13,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 use std::time::Duration;
 
-use omfp_core::wire::LitTrue;
 use omfp_core::{
-    LiveOwner, NotifyRequest, OpenFileRequest, ProcessState, Resolution, SessionInfo, ThreadEvent,
-    ThreadState, live_error_message, validate_ask_answers,
+    LiveOwner, NotifyRequest, OpenFileRequest, ProcessState, SessionInfo, ThreadEvent, ThreadState,
 };
-use omfp_protocol::InteractionResponse;
-use omp_rpc::{
-    AnswersUiResponse, CancelUiResponse, ConfirmUiResponse, ExtensionUiRequest,
-    ExtensionUiResponse, GetMessagesResult, LiveConnectCommand, LiveConnectResult, LiveLevelsEvent,
-    LiveMuteCommand, LiveStartCommand, LiveStartResult, PromptCommand, RpcAgentEvent,
-    RpcNotification, SetSessionNameCommand, ValueUiResponse,
-};
+use omp_rpc::{GetMessagesResult, LiveLevelsEvent, PromptCommand, RpcAgentEvent, RpcNotification};
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
@@ -39,8 +31,11 @@ use crate::omp::{LaunchSpec, startup_events, thread_event};
 use crate::paths::DataDir;
 use crate::store::{Thread, TitleSource, new_id};
 use crate::threads::{ThreadError, Threads};
-use crate::titles::{self, TitleRequest};
 use crate::workspaces::{WorkspaceError, Workspaces};
+
+mod dialogs;
+mod live;
+mod naming;
 
 /// The event log of one thread: omp frames and daemon events folded by the shared reducer (ARC-006).
 pub type ThreadLog = EventLog<ThreadEvent, ThreadState>;
@@ -73,17 +68,6 @@ const READ_ONLY_TOOLS: &[&str] = &[
     "ask",
     "lsp",
 ];
-
-/// omp's `live_connect`/`live_start` failures that come before a session exists: no `live_end` follows them (S-09).
-const LIVE_NOT_STARTED: &[&str] = &[
-    "live_connect requires a non-empty sdpOffer",
-    "End dictation before starting live voice",
-    "Session is changing or shutting down",
-    "A live session is already active",
-];
-
-/// omp's `live_mute` failure without a session.
-const LIVE_NO_SESSION: &str = "No live session is active";
 
 /// How many `live_levels` a slow subscriber may miss before it skips to the latest (DMN-110).
 const LEVELS_BUFFER: usize = 8;
@@ -749,125 +733,6 @@ impl Supervisor {
         }
     }
 
-    /// Gives an unnamed thread the placeholder of its first message and starts generating its title (DMN-073).
-    async fn name_from_first_message(&self, actor: &Actor, message: String) {
-        let placeholder = titles::placeholder(&message);
-        if placeholder.is_empty() || actor.titled.load(Ordering::SeqCst) {
-            return;
-        }
-        let threads = Arc::clone(&self.inner.threads);
-        let workspaces = Arc::clone(&self.inner.workspaces);
-        let id = actor.id.clone();
-        let named = blocking(move || {
-            let thread = threads.get(&id)?;
-            if thread.title_source != TitleSource::Placeholder || !thread.title.is_empty() {
-                return Ok::<_, SupervisorError>(None);
-            }
-            let cwd = workspaces.get(&thread.workspace_id)?.path;
-            threads.replace_placeholder(&id, &placeholder, TitleSource::Placeholder)?;
-            Ok(Some(cwd))
-        })
-        .await;
-        let cwd = match named {
-            Ok(Ok(Some(cwd))) => cwd,
-            Ok(Ok(None)) => return,
-            Ok(Err(error)) | Err(error) => {
-                warn!(thread = %actor.id, %error, "cannot store the placeholder title");
-                return;
-            }
-        };
-        if actor.titled.swap(true, Ordering::SeqCst) {
-            return;
-        }
-        let _ = self.inner.changes.send(actor.id.clone());
-        if self.inner.config.title_generation {
-            self.spawn_title_generation(actor, cwd, message);
-        }
-    }
-
-    /// Runs omp in print mode for the thread's title; the title replaces the placeholder unless a title was set
-    /// meanwhile, and names the omp session (DMN-073).
-    fn spawn_title_generation(&self, actor: &Actor, cwd: PathBuf, message: String) {
-        let request = TitleRequest {
-            program: self.inner.config.omp_program.clone(),
-            cwd,
-            env: self.inner.config.omp_env.clone(),
-            message,
-        };
-        let supervisor = self.clone();
-        let id = actor.id.clone();
-        let task = tokio::spawn(async move {
-            let launcher = Arc::clone(&supervisor.inner.launcher);
-            let title = match blocking(move || launcher.generate_title(&request)).await {
-                Ok(Ok(title)) => title,
-                Ok(Err(error)) => {
-                    warn!(thread = %id, %error, "title generation failed; the placeholder stays");
-                    return;
-                }
-                Err(error) => {
-                    warn!(thread = %id, %error, "title generation failed; the placeholder stays");
-                    return;
-                }
-            };
-            let threads = Arc::clone(&supervisor.inner.threads);
-            let (thread_id, generated) = (id.clone(), title.clone());
-            let stored = blocking(move || {
-                threads.replace_placeholder(&thread_id, &generated, TitleSource::Generated)
-            })
-            .await;
-            match stored {
-                Ok(Ok(true)) => {
-                    // Named first, so a client seeing the title on the index finds the session named too.
-                    supervisor.name_session(&id, title).await;
-                    let _ = supervisor.inner.changes.send(id.clone());
-                }
-                Ok(Ok(false)) => {}
-                Ok(Err(error)) => warn!(thread = %id, %error, "cannot store the generated title"),
-                Err(error) => warn!(thread = %id, %error, "cannot store the generated title"),
-            }
-        });
-        *lock(&actor.title_task) = Some(task);
-    }
-
-    /// Waits until the thread's title generation, if any, is over.
-    #[cfg(test)]
-    async fn title_generated(&self, id: &str) {
-        let task = self
-            .lookup(id)
-            .and_then(|actor| lock(&actor.title_task).take());
-        if let Some(task) = task {
-            let _ = task.await;
-        }
-    }
-
-    /// Sets the thread's title and names its omp session after it (DMN-073). A [`TitleSource::Set`] title is never
-    /// replaced by a generated one.
-    pub async fn set_title(&self, id: &str, title: String, source: TitleSource) -> Result<Thread> {
-        let threads = Arc::clone(&self.inner.threads);
-        let (thread_id, stored) = (id.to_owned(), title.clone());
-        let thread = blocking(move || threads.rename(&thread_id, &stored, source)).await??;
-        self.name_session(id, title).await;
-        let _ = self.inner.changes.send(id.to_owned());
-        Ok(thread)
-    }
-
-    /// Sends `set_session_name` to the thread's omp when it runs (omp rejects an empty name); a stopped thread's
-    /// session keeps its name until the next title change.
-    async fn name_session(&self, id: &str, name: String) {
-        let Some(process) = self.lookup(id).and_then(|actor| actor.process()) else {
-            return;
-        };
-        if name.trim().is_empty() {
-            return;
-        }
-        let call = OmpCall::SetSessionName(SetSessionNameCommand { name });
-        match blocking(move || process.call(call)).await {
-            Ok(Ok(_)) => {}
-            Ok(Err(error)) => warn!(thread = %id, %error, "cannot name the omp session"),
-            Err(error) => warn!(thread = %id, %error, "cannot name the omp session"),
-        }
-    }
-
     /// Forwards an omp command, starting omp first when needed (DMN-070). Commands do not wait for each other
     /// (DMN-037); omp's error codes are kept (DMN-071).
     pub async fn call(&self, id: &str, call: OmpCall) -> Result<Value> {
@@ -928,211 +793,6 @@ impl Supervisor {
             ThreadEvent::History {
                 session,
                 messages: messages.messages,
-            },
-        );
-        Ok(())
-    }
-
-    /// Starts a live voice session for `owner` on the client's peer (DMN-100). Returns omp's SDP answer once the call
-    /// is signaled.
-    pub async fn live_connect(
-        &self,
-        id: &str,
-        owner: LiveOwner,
-        sdp_offer: String,
-    ) -> Result<LiveConnectResult> {
-        if sdp_offer.trim().is_empty() {
-            return Err(SupervisorError::EmptyOffer);
-        }
-        let answer = self
-            .open_live(id, owner, |instructions| {
-                OmpCall::LiveConnect(LiveConnectCommand {
-                    sdp_offer,
-                    voice: None,
-                    instructions: Some(instructions),
-                })
-            })
-            .await?;
-        serde_json::from_value(answer).map_err(|error| {
-            SupervisorError::Internal(format!("unexpected live_connect answer: {error}"))
-        })
-    }
-
-    /// Starts a live voice session for `owner` on the daemon machine's microphone and speakers (DMN-109). Returns the
-    /// voice once omp records.
-    pub async fn live_start(&self, id: &str, owner: LiveOwner) -> Result<String> {
-        let answer = self
-            .open_live(id, owner, |instructions| {
-                OmpCall::LiveStart(LiveStartCommand {
-                    voice: None,
-                    instructions: Some(instructions),
-                })
-            })
-            .await?;
-        serde_json::from_value::<LiveStartResult>(answer)
-            .map(|started| started.voice)
-            .map_err(|error| {
-                SupervisorError::Internal(format!("unexpected live_start answer: {error}"))
-            })
-    }
-
-    /// omp's `live_levels` of the thread's `live_start` sessions, which never reach its log (DMN-110).
-    pub async fn live_levels(&self, id: &str) -> Result<broadcast::Receiver<LiveLevelsEvent>> {
-        Ok(self.actor(id).await?.levels.subscribe())
-    }
-
-    /// Opens the thread's one live session (DMN-101) for `owner`: starts omp when needed, records the owner as a
-    /// `live_session` event, then sends omp the command `call` builds from the live instructions (DMN-105).
-    async fn open_live(
-        &self,
-        id: &str,
-        owner: LiveOwner,
-        call: impl FnOnce(String) -> OmpCall,
-    ) -> Result<Value> {
-        let actor = self.actor(id).await?;
-        let slot = self.inner.voice_ids.fetch_add(1, Ordering::SeqCst);
-        {
-            let mut voice = lock(&actor.voice);
-            if let Some(active) = &*voice {
-                return Err(SupervisorError::LiveActive {
-                    client: active.owner.client.clone(),
-                });
-            }
-            *voice = Some(VoiceSlot {
-                id: slot,
-                owner: owner.clone(),
-            });
-        }
-        let process = match self.ensure_running(&actor).await {
-            Ok(process) => process,
-            Err(error) => {
-                actor.release_voice(slot);
-                return Err(error);
-            }
-        };
-        let threads = Arc::clone(&self.inner.threads);
-        let thread_id = id.to_owned();
-        let fetched = blocking(move || threads.get(&thread_id).map_err(SupervisorError::from))
-            .await
-            .and_then(|fetched| fetched);
-        let title = match fetched {
-            Ok(thread) => thread.title,
-            Err(error) => {
-                actor.release_voice(slot);
-                return Err(error);
-            }
-        };
-        // The realtime model knows only its instructions, so they carry the thread's conversation (DMN-105).
-        let instructions = actor
-            .log
-            .with_state(|state| crate::live_context::live_instructions(&title, state));
-        self.push(&actor, ThreadEvent::LiveSession { owner: Some(owner) });
-        let call = call(instructions);
-        let answer = blocking(move || process.call(call)).await?;
-        actor.touch();
-        answer.map_err(|error| {
-            match &error {
-                // omp refused before a session existed: no `live_end` will close it.
-                omp_rpc::Error::Command { error, .. }
-                    if LIVE_NOT_STARTED.iter().any(|known| error.contains(known)) =>
-                {
-                    if actor.release_voice(slot) {
-                        self.push(&actor, ThreadEvent::LiveSession { owner: None });
-                    }
-                }
-                // The session started and failed: omp's `live_end` frees the slot.
-                omp_rpc::Error::Command { .. } => {}
-                // The process is gone, and the session with it.
-                _ => {
-                    actor.release_voice(slot);
-                }
-            }
-            live_failure(error)
-        })
-    }
-
-    /// Stops the thread's live voice session (DMN-102); a thread whose omp does not run has none, and omp succeeds
-    /// without one.
-    pub async fn live_stop(&self, id: &str) -> Result<()> {
-        let actor = self.actor(id).await?;
-        let Some(process) = actor.process() else {
-            return Ok(());
-        };
-        match blocking(move || process.call(OmpCall::LiveStop)).await? {
-            Ok(_) | Err(omp_rpc::Error::Closed) => Ok(()),
-            Err(error) => Err(live_failure(error)),
-        }
-    }
-
-    /// Mutes or unmutes the thread's live voice session (DMN-102); returns the mute omp applied.
-    pub async fn live_mute(&self, id: &str, muted: bool) -> Result<bool> {
-        let actor = self.actor(id).await?;
-        let process = actor
-            .process()
-            .filter(|_| lock(&actor.voice).is_some())
-            .ok_or(SupervisorError::NoLiveSession)?;
-        let call = OmpCall::LiveMute(LiveMuteCommand { muted: Some(muted) });
-        match blocking(move || process.call(call)).await? {
-            Ok(value) => value.get("muted").and_then(Value::as_bool).ok_or_else(|| {
-                SupervisorError::Internal(format!("unexpected live_mute answer: {value}"))
-            }),
-            Err(omp_rpc::Error::Command { error, .. }) if error.contains(LIVE_NO_SESSION) => {
-                Err(SupervisorError::NoLiveSession)
-            }
-            Err(error) => Err(live_failure(error)),
-        }
-    }
-
-    /// Stops every live voice session started by `connection`, which closed (DMN-103).
-    pub async fn release_live(&self, connection: u64) {
-        let owned: Vec<String> = lock(&self.inner.actors)
-            .values()
-            .filter(|actor| {
-                lock(&actor.voice)
-                    .as_ref()
-                    .is_some_and(|slot| slot.owner.connection == connection)
-            })
-            .map(|actor| actor.id.clone())
-            .collect();
-        for id in owned {
-            if let Err(error) = self.live_stop(&id).await {
-                warn!(thread = %id, %error, "cannot stop the live session of a closed connection");
-            }
-        }
-    }
-
-    /// Answers a pending interactive request: the first valid answer is forwarded and recorded, later ones get
-    /// `already_resolved` (DMN-051); `ask` answers are validated first (DMN-054).
-    pub async fn respond(
-        &self,
-        id: &str,
-        interaction_id: &str,
-        response: InteractionResponse,
-        client: &str,
-    ) -> Result<()> {
-        let actor = self.actor(id).await?;
-        let _answers = lock(&actor.answers);
-        let request = actor.log.with_state(|state| {
-            state
-                .interactions
-                .iter()
-                .find(|request| dialog_id(request) == Some(interaction_id))
-                .cloned()
-        });
-        let (Some(request), Some(process)) = (request, actor.process()) else {
-            return Err(SupervisorError::AlreadyResolved(interaction_id.to_owned()));
-        };
-        let reply = ui_response(&request, interaction_id, response)
-            .map_err(SupervisorError::InvalidResponse)?;
-        // `respond` only queues the frame, so holding the answer lock across it is cheap.
-        process.respond(reply)?;
-        self.push(
-            &actor,
-            ThreadEvent::InteractionResolved {
-                id: interaction_id.to_owned(),
-                resolution: Resolution::Client {
-                    client: client.to_owned(),
-                },
             },
         );
         Ok(())
@@ -1644,17 +1304,6 @@ impl Supervisor {
     }
 }
 
-/// A failed live command, readable (DMN-104); other errors keep their meaning (a process gone stays one).
-fn live_failure(error: omp_rpc::Error) -> SupervisorError {
-    match error {
-        omp_rpc::Error::Command { error, .. } => SupervisorError::Live {
-            message: live_error_message(&error),
-            omp: error,
-        },
-        other => other.into(),
-    }
-}
-
 /// The `--add-dir` roots for a workspace's repositories: every one but the folder itself, by its path inside the
 /// workspace (DMN-029).
 fn root_paths(repos: &[crate::workspaces::Discovered]) -> Vec<PathBuf> {
@@ -1663,79 +1312,6 @@ fn root_paths(repos: &[crate::workspaces::Discovered]) -> Vec<PathBuf> {
         .filter(|repo| !repo.is_root)
         .map(|repo| repo.path.clone())
         .collect()
-}
-
-/// The id of a dialog request; `None` for presentation-only methods.
-fn dialog_id(request: &ExtensionUiRequest) -> Option<&str> {
-    match request {
-        ExtensionUiRequest::Select(select) => Some(&select.id),
-        ExtensionUiRequest::Confirm(confirm) => Some(&confirm.id),
-        ExtensionUiRequest::Input(input) => Some(&input.id),
-        ExtensionUiRequest::Editor(editor) => Some(&editor.id),
-        ExtensionUiRequest::Ask(ask) => Some(&ask.id),
-        _ => None,
-    }
-}
-
-/// The omp answer for `request`, checked against its kind: `select` takes one of its options, `confirm` a boolean,
-/// `ask` answers in omp's shape (DMN-054); any request can be cancelled.
-fn ui_response(
-    request: &ExtensionUiRequest,
-    id: &str,
-    response: InteractionResponse,
-) -> std::result::Result<ExtensionUiResponse, String> {
-    let id = id.to_owned();
-    match (request, response) {
-        (_, InteractionResponse::Cancelled) => {
-            Ok(ExtensionUiResponse::CancelUiResponse(CancelUiResponse {
-                id,
-                cancelled: LitTrue,
-                timed_out: None,
-            }))
-        }
-        (ExtensionUiRequest::Select(select), InteractionResponse::Value(value)) => {
-            if select.options.contains(&value) {
-                Ok(ExtensionUiResponse::ValueUiResponse(ValueUiResponse {
-                    id,
-                    value,
-                }))
-            } else {
-                Err(format!(
-                    "{value:?} is not one of the options {:?}",
-                    select.options
-                ))
-            }
-        }
-        (
-            ExtensionUiRequest::Input(_) | ExtensionUiRequest::Editor(_),
-            InteractionResponse::Value(value),
-        ) => Ok(ExtensionUiResponse::ValueUiResponse(ValueUiResponse {
-            id,
-            value,
-        })),
-        (ExtensionUiRequest::Confirm(_), InteractionResponse::Confirmed(confirmed)) => {
-            Ok(ExtensionUiResponse::ConfirmUiResponse(ConfirmUiResponse {
-                id,
-                confirmed,
-            }))
-        }
-        (ExtensionUiRequest::Ask(ask), InteractionResponse::Answers(answers)) => {
-            validate_ask_answers(ask, &answers)?;
-            Ok(ExtensionUiResponse::AnswersUiResponse(AnswersUiResponse {
-                id,
-                answers,
-            }))
-        }
-        (_, response) => Err(format!(
-            "{} cannot answer this request",
-            match response {
-                InteractionResponse::Value(_) => "a value",
-                InteractionResponse::Confirmed(_) => "a confirmation",
-                InteractionResponse::Answers(_) => "ask answers",
-                InteractionResponse::Cancelled => "a cancellation",
-            }
-        )),
-    }
 }
 
 /// The last `lines` lines of omp's stderr log (at most its last 16 KiB).

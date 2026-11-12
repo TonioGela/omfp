@@ -4,21 +4,17 @@
 //! follow the thread index like the Linux tray (UI-217..219); `Quit daemon` stops the daemon (DMN-130), whose end ends
 //! the loop.
 
-use std::path::PathBuf;
-use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError};
 
+use omfp_daemon::DaemonHandle;
 use omfp_daemon::config::Cli;
-use omfp_daemon::{DaemonHandle, StopRequest};
 use omfp_protocol::ThreadSummary;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuEvent, MenuItem as NativeItem, PredefinedMenuItem};
 use tauri::tray::TrayIconBuilder;
 use tauri::{ActivationPolicy, AppHandle, Wry};
 
-use super::{
-    Action, MenuItem, ThreadIds, TrayIcon, TrayStatus, menu, spawn_detached, window_command,
-};
+use super::{Daemon, MenuItem, ThreadIds, TrayIcon, TrayStatus, menu, open_in_browser};
 
 /// The status item's id.
 const ID: &str = "omfp";
@@ -54,38 +50,6 @@ impl Drop for ExitLoop {
     }
 }
 
-/// What the menu acts on.
-struct Target {
-    exe: PathBuf,
-    data_dir: PathBuf,
-    /// The UI's URL with the token in the fragment.
-    url: String,
-    stop: StopRequest,
-}
-
-impl Target {
-    fn act(&self, action: &Action) {
-        match action {
-            Action::NewWindow => self.open_window(None),
-            Action::OpenThread(thread) => self.open_window(Some(thread)),
-            Action::OpenInBrowser => {
-                spawn_detached(Command::new("/usr/bin/open").arg(&self.url), "open");
-            }
-            Action::Quit => {
-                eprintln!("omfp daemon: quit from the menu bar");
-                self.stop.request();
-            }
-        }
-    }
-
-    fn open_window(&self, thread: Option<&str>) {
-        spawn_detached(
-            Command::new(&self.exe).args(window_command(&self.data_dir, thread)),
-            "omfp desktop",
-        );
-    }
-}
-
 /// The status item of a running daemon; dropping it removes the item (before the shutdown starts, DMN-130). `AppKit`
 /// objects are main-thread-only: the item is built, updated and dropped on the main thread (objc2 panics when the
 /// last handle is dropped on the daemon's thread), never held here.
@@ -96,19 +60,7 @@ pub struct MenuBar {
 
 impl MenuBar {
     fn start(app: &AppHandle, daemon: &DaemonHandle) -> Option<Self> {
-        let exe = match std::env::current_exe() {
-            Ok(exe) => exe,
-            Err(error) => {
-                eprintln!("omfp daemon: no menu bar item, cannot find this executable: {error}");
-                return None;
-            }
-        };
-        let target = Target {
-            exe,
-            data_dir: daemon.data_dir().to_path_buf(),
-            url: daemon.url(),
-            stop: daemon.stop_request(),
-        };
+        let target = Daemon::of(daemon, "menu bar item")?;
         let mut threads = daemon.threads();
         let status = TrayStatus::of(&threads.borrow_and_update());
         let mut ids = ThreadIds::default();
@@ -223,7 +175,7 @@ fn native_menu(app: &AppHandle, items: &[MenuItem]) -> tauri::Result<Menu<Wry>> 
     Ok(native)
 }
 
-fn click(shown: &Mutex<Vec<MenuItem>>, target: &Target, event: &MenuEvent) {
+fn click(shown: &Mutex<Vec<MenuItem>>, target: &Daemon, event: &MenuEvent) {
     let action = shown
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
@@ -231,7 +183,7 @@ fn click(shown: &Mutex<Vec<MenuItem>>, target: &Target, event: &MenuEvent) {
         .find(|item| item.id.to_string() == event.id().as_ref())
         .and_then(|item| item.action.clone());
     if let Some(action) = action {
-        target.act(&action);
+        target.act(&action, "menu bar", open_in_browser);
     }
 }
 

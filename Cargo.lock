@@ -1166,14 +1166,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
- "bytes",
  "clap",
- "futures",
  "reqwest",
  "serde",
  "serde_json",
  "tokio",
- "tokio-stream",
 ]
 
 [[package]]
@@ -2885,7 +2882,6 @@ dependencies = [
 name = "omfp-core"
 version = "0.1.0"
 dependencies = [
- "insta",
  "omp-rpc",
  "proptest",
  "serde",
@@ -2904,7 +2900,6 @@ dependencies = [
  "futures",
  "getrandom 0.4.3",
  "hex",
- "insta",
  "omfp-core",
  "omfp-protocol",
  "omfp-testkit",
@@ -2927,7 +2922,6 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
- "tokio-stream",
  "tokio-tungstenite 0.30.0",
  "toml 1.2.1+spec-1.1.0",
  "toml_edit 0.25.19+spec-1.1.0",

@@ -4,10 +4,12 @@
 use std::path::Path;
 
 use omfp_core::replay;
+use omfp_protocol::InteractionResponse;
 use omp_rpc::{AgentStartEvent, RpcAgentEvent, RpcNotification};
 use serde_json::json;
 use tempfile::TempDir;
 
+use super::dialogs::dialog_id;
 use super::*;
 use crate::agent::{FakeCall, FakeLauncher, FakeReply, FakeRun};
 use crate::event_log::Start;
@@ -15,6 +17,7 @@ use crate::git::{FakeGit, Git};
 use crate::host_tools::{NOTIFY, OPEN_FILE, SET_THREAD_TITLE, run_set_thread_title};
 use crate::store::Store;
 use crate::threads::NewThread;
+use crate::titles::TitleRequest;
 use crate::workspaces::{NewWorkspace, Workspaces};
 
 struct Harness {

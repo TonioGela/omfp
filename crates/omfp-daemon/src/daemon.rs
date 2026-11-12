@@ -111,17 +111,26 @@ pub fn discover(data_dir: &Path) -> std::io::Result<Option<DaemonInfo>> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),
     };
+    if !lock_held(data_dir)? {
+        // Nobody holds the lock: `daemon.json` is stale.
+        return Ok(None);
+    }
+    serde_json::from_str(&text)
+        .map(Some)
+        .map_err(std::io::Error::other)
+}
+
+/// Whether a daemon holds the data directory's lock (DMN-007): its process is alive, even before it wrote
+/// `daemon.json`.
+pub fn lock_held(data_dir: &Path) -> std::io::Result<bool> {
     let lock = match File::open(data_dir.join(LOCK_FILE)) {
         Ok(lock) => lock,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
         Err(error) => return Err(error),
     };
     match lock.try_lock_shared() {
-        // Nobody holds the lock: `daemon.json` is stale.
-        Ok(()) => Ok(None),
-        Err(TryLockError::WouldBlock) => serde_json::from_str(&text)
-            .map(Some)
-            .map_err(std::io::Error::other),
+        Ok(()) => Ok(false),
+        Err(TryLockError::WouldBlock) => Ok(true),
         Err(TryLockError::Error(error)) => Err(error),
     }
 }

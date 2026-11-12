@@ -57,15 +57,11 @@ impl DaemonArgs {
 
     /// `--data-dir`, else the daemon's default data directory.
     pub fn data_dir(&self) -> anyhow::Result<PathBuf> {
-        self.data_dir
-            .clone()
-            .or_else(|| {
-                default_data_dir(
-                    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from),
-                    std::env::var_os("HOME").map(PathBuf::from).as_deref(),
-                )
-            })
-            .context("cannot determine the data directory: pass --data-dir, or set XDG_DATA_HOME or HOME")
+        data_dir_or_default(
+            self.data_dir.clone(),
+            std::env::var_os("XDG_DATA_HOME").map(PathBuf::from),
+            std::env::var_os("HOME").map(PathBuf::from).as_deref(),
+        )
     }
 
     /// `--token`, else the token file of the data directory.
@@ -75,6 +71,19 @@ impl DaemonArgs {
             None => read_token(&self.data_dir()?),
         }
     }
+}
+
+/// `data_dir` (a `--data-dir`), else the daemon's default data directory for these variables.
+pub(crate) fn data_dir_or_default(
+    data_dir: Option<PathBuf>,
+    xdg_data_home: Option<PathBuf>,
+    home: Option<&Path>,
+) -> anyhow::Result<PathBuf> {
+    data_dir
+        .or_else(|| default_data_dir(xdg_data_home, home))
+        .context(
+            "cannot determine the data directory: pass --data-dir, or set XDG_DATA_HOME or HOME",
+        )
 }
 
 /// The WebSocket URL of `--daemon`: `http(s)://` becomes `ws(s)://`, a missing scheme means `ws://`, and a URL

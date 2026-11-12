@@ -32,7 +32,8 @@ pub mod widgets;
 pub mod workspaces;
 
 pub use daemon::{
-    DaemonHandle, DaemonInfo, Ports, StopRequest, discover, run, run_with, start, start_with,
+    DaemonHandle, DaemonInfo, Ports, StopRequest, discover, lock_held, run, run_with, start,
+    start_with,
 };
 
 /// Version string reported by `omfp --version`: daemon version plus the omp release it speaks to.

@@ -513,17 +513,6 @@ impl Journey {
         .await
     }
 
-    /// Creates a workspace named `name` from the "+ workspace" field at the top of the left column (UI-023) and waits
-    /// until the draft thread it opens has the composer focused.
-    pub async fn new_workspace(&self, name: &str) -> anyhow::Result<()> {
-        let field = self.element("[data-testid=new-workspace-input]").await?;
-        field.click().await?;
-        field.send_keys(name).await?;
-        field.send_keys(Key::Enter).await?;
-        self.element("[data-testid=draft-thread]").await?;
-        self.until_focused("composer-input").await
-    }
-
     /// Creates a workspace holding a link to the repository at `path` from the "+ workspace" field (UI-023): types
     /// `typed` (a prefix of `path` starting with `/`), picks `path` among the daemon's completions (DMN-021), presses
     /// Enter and waits until the draft thread it opens has the composer focused.
@@ -555,7 +544,8 @@ impl Journey {
     }
 
     /// Creates a thread in a new workspace named `workspace` through the protocol (no repository, no first message),
-    /// then opens it from the left column; returns its id. Journeys about creating threads use [`Self::new_workspace`].
+    /// then opens it from the left column; returns its id. Journeys about creating threads use
+    /// [`Self::new_linked_workspace`].
     pub async fn create_thread(&self, workspace: &str) -> anyhow::Result<String> {
         self.create_thread_with(workspace, None).await
     }

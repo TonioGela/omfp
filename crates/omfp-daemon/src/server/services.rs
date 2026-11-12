@@ -141,7 +141,8 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-async fn blocking<T: Send + 'static>(
+/// Runs blocking work (the store, the file system) off the async workers; a panicked task is an internal error.
+pub(super) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, ErrorBody> + Send + 'static,
 ) -> Result<T, ErrorBody> {
     tokio::task::spawn_blocking(work).await.map_err(internal)?

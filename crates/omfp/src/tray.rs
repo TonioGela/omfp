@@ -6,10 +6,11 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::os::unix::process::CommandExt as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use omfp_core::ProcessState;
+use omfp_daemon::{DaemonHandle, StopRequest};
 use omfp_protocol::ThreadSummary;
 
 #[cfg(target_os = "macos")]
@@ -273,6 +274,57 @@ pub fn window_command(data_dir: &Path, thread: Option<&str>) -> Vec<OsString> {
         line.extend(["--thread".into(), thread.into()]);
     }
     line
+}
+
+/// What the tray acts on: this executable (for new windows), the daemon's data directory, URL and stop.
+#[derive(Debug, Clone)]
+struct Daemon {
+    exe: PathBuf,
+    data_dir: PathBuf,
+    /// The UI's URL with the token in the fragment.
+    url: String,
+    stop: StopRequest,
+}
+
+impl Daemon {
+    /// The target of `daemon`'s tray; `None` (said in the log, `item` naming what is not shown) when this executable
+    /// cannot be found.
+    fn of(daemon: &DaemonHandle, item: &str) -> Option<Self> {
+        let exe = match std::env::current_exe() {
+            Ok(exe) => exe,
+            Err(error) => {
+                eprintln!("omfp daemon: no {item}, cannot find this executable: {error}");
+                return None;
+            }
+        };
+        Some(Self {
+            exe,
+            data_dir: daemon.data_dir().to_path_buf(),
+            url: daemon.url(),
+            stop: daemon.stop_request(),
+        })
+    }
+
+    /// Runs a menu entry's action; `place` names the tray in the log, `open_in_browser` opens the UI's URL.
+    fn act(&self, action: &Action, place: &str, open_in_browser: impl FnOnce(&str)) {
+        match action {
+            Action::NewWindow => self.open_window(None),
+            Action::OpenThread(thread) => self.open_window(Some(thread)),
+            Action::OpenInBrowser => open_in_browser(&self.url),
+            Action::Quit => {
+                eprintln!("omfp daemon: quit from the {place}");
+                self.stop.request();
+            }
+        }
+    }
+
+    /// `omfp desktop --data-dir <dir> [--thread <id>]`, detached like the daemon itself.
+    fn open_window(&self, thread: Option<&str>) {
+        spawn_detached(
+            Command::new(&self.exe).args(window_command(&self.data_dir, thread)),
+            "omfp desktop",
+        );
+    }
 }
 
 /// Opens `url` in the system's browser (UI-218, DMN-182): through the desktop portal's `OpenURI` (else `xdg-open`) on

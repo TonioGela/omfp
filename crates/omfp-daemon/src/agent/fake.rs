@@ -208,7 +208,6 @@ struct Script {
     replies: HashMap<String, FakeReply>,
     gates: HashMap<String, Gate>,
     held: HashSet<String>,
-    fail_next: Option<String>,
     launches: Vec<FakeLaunch>,
     /// Answers of the next title generations (DMN-073); without one a generation fails.
     titles: VecDeque<Result<String, String>>,
@@ -264,11 +263,6 @@ impl FakeLauncher {
     /// Reports `session_id` as owned by another omp process (DMN-033).
     pub fn hold_lease(&self, session_id: &str) {
         lock(&self.script).held.insert(session_id.to_owned());
-    }
-
-    /// Makes the next launch fail with `message`.
-    pub fn fail_next_launch(&self, message: &str) {
-        lock(&self.script).fail_next = Some(message.to_owned());
     }
 
     /// Every launch so far, oldest first.
@@ -343,9 +337,6 @@ impl AgentLauncher for FakeLauncher {
             gate.pass();
         }
         let mut script = lock(&self.script);
-        if let Some(message) = script.fail_next.take() {
-            return Err(StartError::Spawn(std::io::Error::other(message)));
-        }
         let mut run = script.runs.pop_front().unwrap_or_else(FakeRun::fresh);
         let (sender, events) = channel();
         let startup_frames = run.segments.pop_front().unwrap_or_default();

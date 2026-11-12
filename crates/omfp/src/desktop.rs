@@ -2,39 +2,34 @@
 //! found with [`omfp_daemon::discover`] or started in the background (ARC-003), or with `--connect` on another
 //! daemon. The window loads the daemon's own UI over http: no bundled assets, no Tauri IPC, no capabilities.
 
-#[cfg(target_os = "linux")]
-use std::cell::Cell;
-use std::ffi::OsString;
-use std::fs::{File, TryLockError};
 use std::io::IsTerminal as _;
-use std::net::{SocketAddr, TcpListener};
-use std::os::unix::process::CommandExt as _;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
-#[cfg(target_os = "linux")]
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context as _, bail};
-use clap::Parser as _;
-#[cfg(target_os = "linux")]
-use gio::glib::{ToVariant as _, Variant, VariantTy};
-use omfp_daemon::config::{Cli, Config, default_config_file, default_data_dir};
-use omfp_daemon::paths::{create_private_dir, open_private_log};
+use omfp_daemon::paths::DataDir;
 use omfp_daemon::theme::default_theme_file;
 use omfp_daemon::watch::{self, WatchedFile};
 use omfp_protocol::Theme;
 use omfp_protocol::method::ThemeSet;
-#[cfg(target_os = "linux")]
-use tauri::Theme as WindowTheme;
 use tauri::webview::{NewWindowResponse, PermissionKind, PermissionResponse};
 use tauri::{Manager as _, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
-use crate::remote::{Connection, Target, reachable, read_token, websocket_url};
+use crate::remote::{
+    Connection, Target, data_dir_or_default, reachable, read_token, websocket_url,
+};
 
+mod local;
 #[cfg(any(target_os = "macos", test))]
 mod macos;
+#[cfg(target_os = "linux")]
+mod portal;
+
+pub use local::{LocalDaemon, fallback_bind};
+#[cfg(target_os = "linux")]
+pub use portal::{portal_theme, portal_value, setting_changed};
 
 /// `omfp desktop`.
 #[derive(Debug, Clone, PartialEq, Eq, clap::Args)]
@@ -106,8 +101,6 @@ pub const SMOKE_DEADLINE: Duration = Duration::from_secs(60);
 /// locked screen (about 30 s to get ready).
 #[cfg(target_os = "macos")]
 pub const SMOKE_DEADLINE: Duration = Duration::from_secs(180);
-/// How long a started daemon gets to write `daemon.json`.
-const START_DEADLINE: Duration = Duration::from_secs(30);
 
 /// Runs `omfp desktop`; returns the process exit code.
 pub fn run(args: &Args) -> anyhow::Result<i32> {
@@ -122,11 +115,11 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
             bail!("daemon arguments after `--` need the local daemon; drop them or --connect");
         }
         let base = connect_base(connect)?;
-        let data_dir = args
-            .data_dir
-            .clone()
-            .or_else(|| default_data_dir(env.xdg_data_home.clone(), env.home.as_deref()))
-            .context("cannot determine the data directory: pass --data-dir, or set XDG_DATA_HOME or HOME")?;
+        let data_dir = data_dir_or_default(
+            args.data_dir.clone(),
+            env.xdg_data_home.clone(),
+            env.home.as_deref(),
+        )?;
         match theme_push(&base, args.token.as_deref(), &env) {
             ThemePush::Push { target, file } => {
                 runtime.spawn(push_theme(target, file, watch::POLL));
@@ -166,7 +159,7 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
             BrowserUrl {
                 base,
                 token: Some(token),
-                token_file: Some(plan.data_dir.join("token")),
+                token_file: Some(DataDir::new(&plan.data_dir).token()),
             },
             plan.data_dir,
         )
@@ -363,215 +356,6 @@ async fn set_theme(target: &Target, css: Option<String>) -> anyhow::Result<()> {
     connection.close().await
 }
 
-/// How to find or start the daemon of the data directory (ARC-003): the daemon's own command line and config file
-/// decide its data directory and bind address.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocalDaemon {
-    /// Absolute data directory.
-    pub data_dir: PathBuf,
-    /// The configured or default address (DMN-002).
-    pub bind: SocketAddr,
-    /// `--bind` was passed after `--`: never replaced.
-    pub explicit_bind: bool,
-    /// Arguments for `omfp daemon` (without the subcommand).
-    pub daemon_args: Vec<OsString>,
-}
-
-impl LocalDaemon {
-    /// Resolves the daemon's settings like `omfp daemon` would; `data_dir` is `omfp desktop --data-dir`.
-    pub fn plan(
-        data_dir: &Option<PathBuf>,
-        daemon_args: &[String],
-        env: &Env,
-    ) -> anyhow::Result<Self> {
-        let mut cli = Cli::try_parse_from(
-            std::iter::once("daemon").chain(daemon_args.iter().map(String::as_str)),
-        )
-        .map_err(|error| anyhow::anyhow!("daemon arguments after `--`: {error}"))?;
-        if data_dir.is_some() && cli.data_dir.is_some() {
-            bail!("--data-dir is given twice: pass it before `--` only");
-        }
-        let mut args: Vec<OsString> = Vec::new();
-        if let Some(dir) = data_dir {
-            cli.data_dir = Some(dir.clone());
-        }
-        let explicit_bind = cli.bind.is_some();
-        cli.config = cli
-            .config
-            .or_else(|| default_config_file(env.xdg_config_home.clone(), env.home.clone()));
-        let config = Config::from_cli(cli, env.xdg_data_home.clone(), env.home.clone())
-            .map_err(anyhow::Error::msg)?;
-        let data_dir = std::path::absolute(&config.data_dir)?;
-        args.extend(["--data-dir".into(), data_dir.clone().into_os_string()]);
-        args.extend(
-            daemon_args
-                .iter()
-                .scan(false, |skip, arg| {
-                    // The data directory goes first, resolved: drop its `--data-dir` from the passed arguments.
-                    let keep = !*skip && arg != "--data-dir" && !arg.starts_with("--data-dir=");
-                    *skip = arg == "--data-dir";
-                    Some(keep.then(|| OsString::from(arg)))
-                })
-                .flatten(),
-        );
-        Ok(Self {
-            data_dir,
-            bind: config.bind,
-            explicit_bind,
-            daemon_args: args,
-        })
-    }
-
-    /// The config of the smoke test's in-process daemon (TST-033): on a random port unless `--bind` was passed.
-    fn in_process_config(&self) -> anyhow::Result<Config> {
-        let mut cli = Cli::try_parse_from(
-            std::iter::once(OsString::from("daemon")).chain(self.daemon_args.iter().cloned()),
-        )?;
-        if !self.explicit_bind {
-            cli.bind = Some(SocketAddr::new(self.bind.ip(), 0));
-        }
-        let env = Env::current();
-        Config::from_cli(cli, env.xdg_data_home, env.home).map_err(anyhow::Error::msg)
-    }
-
-    /// The command line of the background daemon: in the tray (DMN-128).
-    #[must_use]
-    pub fn command_line(&self, bind: Option<SocketAddr>) -> Vec<OsString> {
-        let mut line = vec![OsString::from("daemon"), OsString::from("--tray")];
-        if let Some(bind) = bind {
-            line.extend(["--bind".into(), bind.to_string().into()]);
-        }
-        line.extend(self.daemon_args.iter().cloned());
-        line
-    }
-
-    /// The address of the running daemon, after starting one in the background when none runs: on the configured
-    /// address first, so the window's origin (and its `localStorage`) stays the same across restarts, else on a
-    /// random port (ARC-003).
-    pub fn find_or_start(&self) -> anyhow::Result<SocketAddr> {
-        if let Some(info) = omfp_daemon::discover(&self.data_dir)? {
-            eprintln!(
-                "omfp desktop: found the daemon (pid {}) on {}",
-                info.pid, info.addr
-            );
-            return Ok(info.addr);
-        }
-        let mut bind = None;
-        loop {
-            match self.start(bind)? {
-                Started::Ready(addr) => return Ok(addr),
-                Started::Exited(status) => {
-                    if bind.is_none()
-                        && let Some(fallback) =
-                            fallback_bind(self.bind, self.explicit_bind, port_in_use(self.bind))
-                    {
-                        eprintln!(
-                            "omfp desktop: {} is taken, starting the daemon on {fallback}",
-                            self.bind
-                        );
-                        bind = Some(fallback);
-                        continue;
-                    }
-                    bail!(
-                        "omfp daemon exited ({status}), see {}",
-                        self.log().display()
-                    );
-                }
-            }
-        }
-    }
-
-    fn log(&self) -> PathBuf {
-        self.data_dir.join("daemon.log")
-    }
-
-    /// Starts `omfp daemon` detached (D-16): its own process group (no terminal signals), stdin `/dev/null`, output
-    /// appended to `<data-dir>/daemon.log`, reaped by a thread of this process while it lives. Waits until a daemon
-    /// runs for the data directory (this one, or another that won a start race).
-    fn start(&self, bind: Option<SocketAddr>) -> anyhow::Result<Started> {
-        if let Some(mode) = create_private_dir(&self.data_dir)
-            .with_context(|| format!("cannot create {}", self.data_dir.display()))?
-        {
-            eprintln!(
-                "omfp desktop: {} was open to other users (mode {mode:o}): its mode is now 0700",
-                self.data_dir.display()
-            );
-        }
-        let path = self.log();
-        let log =
-            open_private_log(&path).with_context(|| format!("cannot open {}", path.display()))?;
-        let mut child = Command::new(std::env::current_exe()?)
-            .args(self.command_line(bind))
-            .stdin(Stdio::null())
-            .stdout(log.try_clone()?)
-            .stderr(log)
-            .process_group(0)
-            .spawn()
-            .context("cannot start omfp daemon")?;
-        eprintln!(
-            "omfp desktop: started the daemon (pid {}), log in {}",
-            child.id(),
-            path.display()
-        );
-        let started = self.wait_ready(&mut child);
-        std::thread::spawn(move || child.wait());
-        started
-    }
-
-    fn wait_ready(&self, child: &mut Child) -> anyhow::Result<Started> {
-        let deadline = Instant::now() + START_DEADLINE;
-        loop {
-            if let Some(info) = omfp_daemon::discover(&self.data_dir)? {
-                return Ok(Started::Ready(info.addr));
-            }
-            // A child that lost a start race exits while the winner, which holds the lock, is still starting.
-            if let Some(status) = child.try_wait()?
-                && !lock_held(&self.data_dir)?
-            {
-                return Ok(Started::Exited(status));
-            }
-            if Instant::now() > deadline {
-                bail!(
-                    "omfp daemon did not start in {} s, see {}",
-                    START_DEADLINE.as_secs(),
-                    self.log().display()
-                );
-            }
-            std::thread::sleep(Duration::from_millis(25));
-        }
-    }
-}
-
-enum Started {
-    Ready(SocketAddr),
-    Exited(ExitStatus),
-}
-
-/// Where to retry a background daemon that exited without starting (ARC-003): on a random port of the same
-/// interface when the configured port is taken; never when `--bind` was given or the port was already random.
-#[must_use]
-pub fn fallback_bind(bind: SocketAddr, explicit: bool, in_use: bool) -> Option<SocketAddr> {
-    (!explicit && bind.port() != 0 && in_use).then(|| SocketAddr::new(bind.ip(), 0))
-}
-
-fn port_in_use(bind: SocketAddr) -> bool {
-    TcpListener::bind(bind).is_err_and(|error| error.kind() == std::io::ErrorKind::AddrInUse)
-}
-
-/// Whether a daemon holds the data directory's lock (DMN-007).
-fn lock_held(data_dir: &Path) -> std::io::Result<bool> {
-    let lock = match File::open(data_dir.join("daemon.lock")) {
-        Ok(lock) => lock,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
-        Err(error) => return Err(error),
-    };
-    match lock.try_lock_shared() {
-        Ok(()) => Ok(false),
-        Err(TryLockError::WouldBlock) => Ok(true),
-        Err(TryLockError::Error(error)) => Err(error),
-    }
-}
-
 /// The page state the smoke check polls: the shell is connected and shows a view (as e2e's `connected()`), and the
 /// color scheme the page sees.
 const PROBE: &str = r#"(() => {
@@ -585,148 +369,6 @@ const PROBE: &str = r#"(() => {
     mediaDevices: typeof navigator.mediaDevices,
   };
 })()"#;
-
-#[cfg(target_os = "linux")]
-const PORTAL: &str = "org.freedesktop.portal.Desktop";
-#[cfg(target_os = "linux")]
-const PORTAL_PATH: &str = "/org/freedesktop/portal/desktop";
-#[cfg(target_os = "linux")]
-const PORTAL_SETTINGS: &str = "org.freedesktop.portal.Settings";
-#[cfg(target_os = "linux")]
-const APPEARANCE: &str = "org.freedesktop.appearance";
-#[cfg(target_os = "linux")]
-const COLOR_SCHEME: &str = "color-scheme";
-
-/// The window theme for the settings portal's `org.freedesktop.appearance color-scheme` (UI-195): 1 prefers dark,
-/// 2 prefers light, 0 (no preference) and unknown values leave the toolkit's default.
-#[cfg(target_os = "linux")]
-#[must_use]
-pub fn portal_theme(color_scheme: u32) -> Option<WindowTheme> {
-    match color_scheme {
-        1 => Some(WindowTheme::Dark),
-        2 => Some(WindowTheme::Light),
-        _ => None,
-    }
-}
-
-/// The `u` of a portal value however it is wrapped: `ReadOne` answers `(v)`, the older `Read` `(v)` holding a `v`,
-/// `SettingChanged`'s `(ssv)` carries a `v` ([`setting_changed`]). Only a `v` is opened as one: `g_variant_get_variant`
-/// on anything else is a `GLib-CRITICAL`.
-#[cfg(target_os = "linux")]
-#[must_use]
-pub fn portal_value(value: &Variant) -> Option<u32> {
-    if let Some(number) = value.get::<u32>() {
-        return Some(number);
-    }
-    if value.is_type(VariantTy::VARIANT) {
-        return value.as_variant().and_then(|inner| portal_value(&inner));
-    }
-    value
-        .is_type(VariantTy::new("(v)").expect("a valid type string"))
-        .then(|| portal_value(&value.child_value(0)))
-        .flatten()
-}
-
-/// The color scheme a `SettingChanged(namespace, key, value)` signal (`(ssv)`) reports, if it is about it.
-#[cfg(target_os = "linux")]
-#[must_use]
-pub fn setting_changed(parameters: &Variant) -> Option<Option<u32>> {
-    let (namespace, key, value) = parameters.get::<(String, String, Variant)>()?;
-    (namespace == APPEARANCE && key == COLOR_SCHEME).then(|| portal_value(&value))
-}
-
-/// Follows the session's color scheme through the settings portal (UI-195): `WebKitGTK` 4.1 (GTK3) never reads it, so
-/// the page's `prefers-color-scheme` stayed light under a dark desktop. The window's theme (GTK's
-/// `gtk-application-prefer-dark-theme`, which `WebKitGTK` maps to `prefers-color-scheme`) is set from the portal's value
-/// at startup and on every `SettingChanged`. Without a session bus or portal nothing changes. Runs on the GTK main
-/// thread, whose main loop delivers the replies and signals; the subscription lasts as long as the returned value.
-#[cfg(target_os = "linux")]
-fn follow_color_scheme(window: &WebviewWindow) -> Option<ColorScheme> {
-    let connection = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>).ok()?;
-    // Subscribed before reading, so no change between the read and the subscription is lost; a change that arrives
-    // before the read's answer wins over it.
-    let changed = Rc::new(Cell::new(false));
-    let subscription = connection.signal_subscribe(
-        Some(PORTAL),
-        Some(PORTAL_SETTINGS),
-        Some("SettingChanged"),
-        Some(PORTAL_PATH),
-        Some(APPEARANCE),
-        gio::DBusSignalFlags::NONE,
-        {
-            let window = window.clone();
-            let changed = Rc::clone(&changed);
-            move |_, _, _, _, _, parameters| {
-                if let Some(value) = setting_changed(parameters) {
-                    changed.set(true);
-                    let _ = window.set_theme(value.and_then(portal_theme));
-                }
-            }
-        },
-    );
-    read_color_scheme(&connection, "ReadOne", {
-        let window = window.clone();
-        let connection = connection.clone();
-        move |value| match value {
-            Some(value) => apply_read(&window, &changed, &value),
-            // Portals before version 2 only have `Read`.
-            None => read_color_scheme(&connection, "Read", move |value| {
-                if let Some(value) = value {
-                    apply_read(&window, &changed, &value);
-                }
-            }),
-        }
-    });
-    Some(ColorScheme {
-        connection,
-        subscription: Some(subscription),
-    })
-}
-
-#[cfg(target_os = "linux")]
-fn read_color_scheme(
-    connection: &gio::DBusConnection,
-    method: &str,
-    done: impl FnOnce(Option<Variant>) + 'static,
-) {
-    connection.call(
-        Some(PORTAL),
-        PORTAL_PATH,
-        PORTAL_SETTINGS,
-        method,
-        Some(&(APPEARANCE, COLOR_SCHEME).to_variant()),
-        None,
-        gio::DBusCallFlags::NONE,
-        -1,
-        None::<&gio::Cancellable>,
-        move |reply| done(reply.ok()),
-    );
-}
-
-#[cfg(target_os = "linux")]
-fn apply_read(window: &WebviewWindow, changed: &Cell<bool>, value: &Variant) {
-    if !changed.get()
-        && let Some(theme) = portal_value(value).and_then(portal_theme)
-    {
-        let _ = window.set_theme(Some(theme));
-    }
-}
-
-/// The portal subscription of [`follow_color_scheme`].
-#[cfg(target_os = "linux")]
-struct ColorScheme {
-    connection: gio::DBusConnection,
-    subscription: Option<gio::SignalSubscriptionId>,
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for ColorScheme {
-    fn drop(&mut self) {
-        if let Some(subscription) = self.subscription.take() {
-            self.connection.signal_unsubscribe(subscription);
-        }
-    }
-}
 
 /// Opens the window and runs the event loop until it closes.
 fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::Result<i32> {
@@ -797,7 +439,7 @@ fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::R
         .initialization_script(macos::notification_script(&origin, &nonce));
     let window = builder.build()?;
     #[cfg(target_os = "linux")]
-    let _color_scheme = follow_color_scheme(&window);
+    let _color_scheme = portal::follow_color_scheme(&window);
     if smoke.is_some() {
         smoke_check(window, std::env::var("OMFP_SMOKE_SCHEME").ok());
     }
@@ -860,9 +502,12 @@ fn smoke_check(window: WebviewWindow, scheme: Option<String>) {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
     use std::sync::Arc;
 
+    use clap::Parser as _;
     use omfp_daemon::agent::FakeLauncher;
+    use omfp_daemon::config::{Cli, Config};
     use omfp_daemon::git::FakeGit;
     use omfp_daemon::{Ports, start_with};
     use omfp_protocol::Empty;
@@ -982,33 +627,6 @@ mod tests {
             &env(home.path()),
         );
         assert!(twice.unwrap_err().to_string().contains("twice"));
-    }
-
-    // spec: ARC-003
-    #[test]
-    fn a_taken_configured_port_falls_back_to_a_random_one() {
-        let default = omfp_daemon::config::DEFAULT_BIND;
-        assert_eq!(
-            fallback_bind(default, false, true),
-            Some("127.0.0.1:0".parse().unwrap())
-        );
-        assert_eq!(
-            fallback_bind("0.0.0.0:7420".parse().unwrap(), false, true),
-            Some("0.0.0.0:0".parse().unwrap())
-        );
-        // Another reason to exit, an explicit `--bind`, or a random port already: no retry.
-        assert_eq!(fallback_bind(default, false, false), None);
-        assert_eq!(fallback_bind(default, true, true), None);
-        assert_eq!(
-            fallback_bind("127.0.0.1:0".parse().unwrap(), false, true),
-            None
-        );
-
-        let taken = TcpListener::bind("127.0.0.1:0").unwrap();
-        assert!(port_in_use(taken.local_addr().unwrap()));
-        let free = taken.local_addr().unwrap();
-        drop(taken);
-        assert!(!port_in_use(free));
     }
 
     // spec: ARC-003, UI-004
@@ -1167,94 +785,6 @@ mod tests {
             permission(PermissionKind::Microphone, &daemon, origin),
             PermissionResponse::Allow
         );
-    }
-
-    // spec: UI-195
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn the_portal_color_scheme_picks_the_window_theme() {
-        assert_eq!(portal_theme(1), Some(WindowTheme::Dark));
-        assert_eq!(portal_theme(2), Some(WindowTheme::Light));
-        // No preference, or a value the portal may add later: the toolkit's default.
-        assert_eq!(portal_theme(0), None);
-        assert_eq!(portal_theme(3), None);
-
-        assert_eq!(portal_value(&"dark".to_variant()), None);
-        assert_eq!(portal_value(&(1u32, 2u32).to_variant()), None);
-        assert_eq!(portal_value(&parsed("(s)", "('dark',)")), None);
-    }
-
-    /// A variant of `type_` from its text form.
-    #[cfg(target_os = "linux")]
-    fn parsed(type_: &str, text: &str) -> Variant {
-        Variant::parse(Some(VariantTy::new(type_).unwrap()), text).unwrap()
-    }
-
-    /// The `GLib-CRITICAL`s logged on this thread while `run` runs (a failed `g_return_if_fail`).
-    #[cfg(target_os = "linux")]
-    fn glib_critical_logs<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
-        let logged = Arc::new(Mutex::new(Vec::new()));
-        let thread = std::thread::current().id();
-        let handler = gio::glib::log_set_handler(
-            Some("GLib"),
-            gio::glib::LogLevels::LEVEL_CRITICAL,
-            false,
-            false,
-            {
-                let logged = Arc::clone(&logged);
-                move |_, _, message| {
-                    if std::thread::current().id() == thread {
-                        logged.lock().unwrap().push(message.to_owned());
-                    }
-                }
-            },
-        );
-        let answer = run();
-        gio::glib::log_remove_handler(Some("GLib"), handler);
-        let logged = logged.lock().unwrap().clone();
-        (answer, logged)
-    }
-
-    // spec: UI-195
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn read_one_answers_a_v_in_a_tuple() {
-        let (value, critical_logs) =
-            glib_critical_logs(|| portal_value(&parsed("(v)", "(<uint32 1>,)")));
-        assert_eq!(value, Some(1));
-        assert_eq!(critical_logs, Vec::<String>::new());
-    }
-
-    // spec: UI-195
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn read_answers_a_v_holding_a_v_in_a_tuple() {
-        let (value, critical_logs) =
-            glib_critical_logs(|| portal_value(&parsed("(v)", "(<<uint32 2>>,)")));
-        assert_eq!(value, Some(2));
-        assert_eq!(critical_logs, Vec::<String>::new());
-    }
-
-    // spec: UI-195
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn setting_changed_carries_the_v_of_its_key() {
-        let (values, critical_logs) = glib_critical_logs(|| {
-            [
-                "('org.freedesktop.appearance', 'color-scheme', <uint32 1>)",
-                "('org.freedesktop.appearance', 'color-scheme', <<uint32 2>>)",
-                "('org.freedesktop.appearance', 'color-scheme', <'dark'>)",
-                "('org.freedesktop.appearance', 'accent-color', <uint32 1>)",
-                "('org.gnome.desktop.interface', 'color-scheme', <uint32 1>)",
-            ]
-            .map(|text| setting_changed(&parsed("(ssv)", text)))
-        });
-        assert_eq!(
-            values,
-            [Some(Some(1)), Some(Some(2)), Some(None), None, None]
-        );
-        assert_eq!(critical_logs, Vec::<String>::new());
-        assert_eq!(setting_changed(&parsed("(ss)", "('a', 'b')")), None);
     }
 
     // spec: TST-033

@@ -2,7 +2,6 @@
 //! (DMN-128..130).
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread::JoinHandle;
@@ -12,12 +11,10 @@ use futures::channel::oneshot;
 use futures::future::{self, Either};
 use gio::glib::{self, ToVariant as _, Variant, VariantTy};
 use gio::prelude::*;
-use omfp_daemon::{DaemonHandle, StopRequest};
+use omfp_daemon::DaemonHandle;
 use omfp_protocol::ThreadSummary;
 
-use super::{
-    Action, MenuItem, ThreadIds, TrayIcon, TrayStatus, menu, spawn_detached, window_command,
-};
+use super::{Action, Daemon, MenuItem, ThreadIds, TrayIcon, TrayStatus, menu, spawn_detached};
 
 /// The `a(iiay)` pixmaps of an icon: every rendered size, ARGB32 in network byte order (built by build.rs).
 #[must_use]
@@ -182,42 +179,9 @@ const MENU_XML: &str = r#"<node>
   </interface>
 </node>"#;
 
-/// What the tray acts on: the daemon's data directory, URL and stop.
-#[derive(Debug, Clone)]
-struct Daemon {
-    exe: PathBuf,
-    data_dir: PathBuf,
-    /// The UI's URL with the token in the fragment.
-    url: String,
-    stop: StopRequest,
-}
-
-impl Daemon {
-    fn act(&self, connection: &gio::DBusConnection, action: &Action) {
-        match action {
-            Action::NewWindow => self.open_window(None),
-            Action::OpenThread(thread) => self.open_window(Some(thread)),
-            Action::OpenInBrowser => self.open_in_browser(connection),
-            Action::Quit => {
-                eprintln!("omfp daemon: quit from the tray");
-                self.stop.request();
-            }
-        }
-    }
-
-    /// `omfp desktop --data-dir <dir> [--thread <id>]`, detached like the daemon itself (ARC-003): its own process
-    /// group, stdin `/dev/null`, its output in the daemon's log.
-    fn open_window(&self, thread: Option<&str>) {
-        spawn_detached(
-            Command::new(&self.exe).args(window_command(&self.data_dir, thread)),
-            "omfp desktop",
-        );
-    }
-
-    /// The daemon's URL through the desktop portal's `OpenURI`, else `xdg-open`.
-    fn open_in_browser(&self, connection: &gio::DBusConnection) {
-        open_uri(connection, self.url.clone());
-    }
+/// Runs a menu action; the browser opens through the desktop portal on the tray's `connection`, else `xdg-open`.
+fn act(daemon: &Daemon, connection: &gio::DBusConnection, action: &Action) {
+    daemon.act(action, "tray", |url| open_uri(connection, url.to_owned()));
 }
 
 /// Opens `url` through the desktop portal's `OpenURI`, else `xdg-open` (UI-218, DMN-182).
@@ -339,19 +303,7 @@ impl Tray {
     /// the log) when there is no session bus.
     #[must_use]
     pub fn start(daemon: &DaemonHandle) -> Option<Self> {
-        let exe = match std::env::current_exe() {
-            Ok(exe) => exe,
-            Err(error) => {
-                eprintln!("omfp daemon: no tray icon, cannot find this executable: {error}");
-                return None;
-            }
-        };
-        let target = Daemon {
-            exe,
-            data_dir: daemon.data_dir().to_path_buf(),
-            url: daemon.url(),
-            stop: daemon.stop_request(),
-        };
+        let target = Daemon::of(daemon, "tray icon")?;
         let threads = daemon.threads();
         let (ready, started) = mpsc::channel();
         let thread = std::thread::Builder::new()
@@ -557,7 +509,7 @@ impl Registration {
                 let daemon = daemon.clone();
                 move |connection, _, _, _, method, _, invocation| {
                     if method == "Activate" {
-                        daemon.act(&connection, &Action::NewWindow);
+                        act(&daemon, &connection, &Action::NewWindow);
                     }
                     // `ContextMenu`, `SecondaryActivate` and `Scroll` do nothing: the host shows `Menu`.
                     invocation.return_value(None);
@@ -800,7 +752,7 @@ fn menu_call(
             }
             invocation.return_value(None);
             for action in actions {
-                daemon.act(connection, &action);
+                act(daemon, connection, &action);
             }
         }
         "EventGroup" => {
@@ -818,7 +770,7 @@ fn menu_call(
             let (actions, errors) = clicks(state, events);
             invocation.return_value(Some(&(errors,).to_variant()));
             for action in actions {
-                daemon.act(connection, &action);
+                act(daemon, connection, &action);
             }
         }
         "AboutToShow" => invocation.return_value(Some(&(false,).to_variant())),

@@ -27,7 +27,6 @@ anyhow = "1"
 axum = { version = "0.8", features = ["ws"] }
 # File contents (DMN-089): images in base64, hashes in SHA-1; both already in the tree through axum.
 base64 = "0.22"
-bytes = "1"
 clap = { version = "4", features = ["derive", "string"] }
 futures = "0.3"
 getrandom = "0.4"
@@ -95,7 +94,6 @@ tokio = { version = "1", features = [
   "process",
   "signal",
 ] }
-tokio-stream = "0.1"
 tokio-tungstenite = "0.30"
 toml = "1"
 # Config file write-back keeping comments (DMN-009); already in the tree through proc-macro-crate.

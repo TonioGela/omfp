@@ -34,7 +34,6 @@ sha1.workspace = true
 subtle.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tokio-stream.workspace = true
 toml.workspace = true
 toml_edit.workspace = true
 tracing.workspace = true
@@ -43,7 +42,6 @@ ulid.workspace = true
 
 [dev-dependencies]
 fake-llm.workspace = true
-insta.workspace = true
 omfp-testkit.workspace = true
 # The MCP server's L2 tests speak HTTP to it (DMN-155); already in the tree through fake-llm.
 reqwest.workspace = true

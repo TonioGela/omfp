@@ -64,9 +64,11 @@ Clippy runs with `pedantic` as errors. Notable: `assert_is_empty` forbids `asser
 crates/omfp-core      reducer over omp events (ThreadEvent → ThreadState); no I/O; compiles to wasm (ARC-010)
 crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wasm (ARC-010)
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs; omp's live voice
-                      sequence in agent/fake/live.rs), live voice relay (supervisor.rs: one session per thread;
+                      sequence in agent/fake/live.rs), live voice relay (supervisor/live.rs: one session per thread;
                       live_context.rs: omp's vendored live prompt live_instructions.txt + the thread's conversation),
-                      supervisor (launch in the workspace folder, root sync), agent conventions and the widget-builder agent (conventions.rs),
+                      supervisor (supervisor.rs: launch in the workspace folder, root sync; supervisor/dialogs.rs:
+                      answers to omp's dialogs; supervisor/naming.rs: thread titles and session names), agent
+                      conventions and the widget-builder agent (conventions.rs),
                       event log, store (+ migrations, store/migrate.rs), workspaces (folder scanner in
                       workspaces/scan.rs, cheap change check in workspaces/fingerprint.rs, reading and writing
                       workspace files with a hash check in workspaces/files.rs, add/remove repo,
@@ -88,10 +90,11 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
 crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI),
                       `mcp config` (mcp.rs: the `mcp.json` entry of a daemon's MCP server), and with
                       the `desktop` feature (Tauri 2: WebKitGTK on Linux, WKWebView on macOS, M11) `desktop`
-                      (desktop.rs: find or start the background daemon, the window on its own UI, the theme push of
-                      `--connect`, the color scheme of the settings portal over gio's D-Bus API (Linux), the
-                      `OMFP_SMOKE` check; desktop/macos.rs: the data store id and the page's `Notification` posted to
-                      the notification center); tray.rs: `omfp daemon --tray`, the shared tray model, tray/sni.rs the
+                      (desktop.rs: the window on the daemon's own UI, the theme push of `--connect`, the `OMFP_SMOKE`
+                      check; desktop/local.rs: find or start the background daemon; desktop/portal.rs: the color
+                      scheme of the settings portal over gio's D-Bus API (Linux); desktop/macos.rs: the data store id
+                      and the page's `Notification` posted to the notification center); tray.rs: `omfp daemon
+                      --tray`, the shared tray model, tray/sni.rs the
                       Linux StatusNotifierItem + dbusmenu over gio, tray/macos.rs the macOS menu bar item (AppKit on
                       the main thread, the daemon on another); build.rs (also the tray pixmaps and, on macOS, the
                       embedded Info.plist), Info.plist, tauri.conf.json, icons/ with the icons' HTML sources
