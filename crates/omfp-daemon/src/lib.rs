@@ -25,6 +25,7 @@ pub mod store;
 pub mod supervisor;
 pub mod theme;
 pub mod threads;
+pub mod ticket;
 pub mod titles;
 pub mod token;
 pub mod watch;

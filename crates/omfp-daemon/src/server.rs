@@ -26,6 +26,7 @@ pub use auth::{Permission, Principal, authorize, origin_allowed, parse_origin, p
 pub(crate) use mcp::Sessions as McpSessions;
 pub(crate) use services::Services;
 
+use crate::ticket::Tickets;
 use crate::token::Token;
 use crate::widgets::{Served, workspace_widgets};
 
@@ -41,6 +42,8 @@ pub const UNAUTHENTICATED_CONNECTIONS: usize = 64;
 /// Everything a connection needs.
 pub(crate) struct AppState {
     pub token: Token,
+    /// One-time tickets of `system.ticket` and the daemon's own URLs, redeemed by `system.hello` (DMN-186).
+    pub tickets: Tickets,
     /// omp version reported in `system.hello` (PRT-005).
     pub omp_version: String,
     /// Startup warnings reported in `system.hello`, e.g. `--allow-omp-mismatch` (DMN-001).

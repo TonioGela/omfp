@@ -13,7 +13,7 @@ use omfp_daemon::agent::{FakeLauncher, FakeRun};
 use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
 use omfp_daemon::{DaemonHandle, Ports, start_with};
-use omfp_protocol::method::ActivityList;
+use omfp_protocol::method::{ActivityList, SystemTicket};
 use omfp_protocol::method::{
     FsComplete, InteractionRespond, ReposSuggest, Subscribe, SystemHello, ThemeGet, ThemeSet,
     ThreadAbort, ThreadBash, ThreadBtw, ThreadCommands, ThreadCompact, ThreadFollowUp, ThreadFork,
@@ -133,12 +133,17 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
     let mut client = Client::connect(daemon.handle.addr()).await;
     let hello = client
         .typed::<SystemHello>(HelloParams {
-            token: daemon.handle.token().expose().to_owned(),
+            token: Some(daemon.handle.token().expose().to_owned()),
+            ticket: None,
             protocol: omfp_protocol::PROTOCOL_VERSION,
             client: "test".into(),
         })
         .await;
     assert_eq!(hello.protocol, omfp_protocol::PROTOCOL_VERSION);
+    let ticket = client
+        .typed::<SystemTicket>(omfp_protocol::TicketParams::default())
+        .await;
+    assert_eq!(ticket.expires_in_ms, 60_000);
     let subscribed = client
         .typed::<Subscribe>(SubscribeParams {
             topic: Topic::Index,

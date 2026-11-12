@@ -1,0 +1,23 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "system.ticket",
+    "params": {
+      "ttlSeconds": 600
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "expiresInMs": 600000,
+      "ticket": "b41d07…"
+    },
+    "type": "response"
+  }
+}

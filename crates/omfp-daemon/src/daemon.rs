@@ -7,6 +7,7 @@ use std::io::{IsTerminal as _, Write as _};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::{Context, bail};
 use omfp_protocol::ThreadSummary;
@@ -27,6 +28,7 @@ use crate::store::Store;
 use crate::supervisor::{Supervisor, SupervisorConfig};
 use crate::theme::default_theme_file;
 use crate::threads::Threads;
+use crate::ticket::{MAX_TTL, TicketUrls, Tickets};
 use crate::token::Token;
 use crate::widgets::Widgets;
 use crate::workspaces::Workspaces;
@@ -190,6 +192,7 @@ impl StopRequest {
 pub struct DaemonHandle {
     addr: SocketAddr,
     token: Token,
+    tickets: Tickets,
     data_dir: PathBuf,
     supervisor: Supervisor,
     jobs: Jobs,
@@ -214,10 +217,27 @@ impl DaemonHandle {
         &self.token
     }
 
-    /// The UI's URL with the token in the fragment (never sent to the server, PRT-002).
+    /// The UI's URL with the token in the fragment (never sent to the server, PRT-002); still accepted, but what the
+    /// daemon opens or prints carries a ticket ([`DaemonHandle::ticket_url`], DMN-186).
     #[must_use]
     pub fn url(&self) -> String {
         format!("{}#token={}", self.base_url(), self.token.expose())
+    }
+
+    /// A new single-use ticket valid for `ttl` (DMN-186, experimental).
+    pub fn ticket(&self, ttl: Duration) -> std::io::Result<String> {
+        self.tickets.issue(ttl)
+    }
+
+    /// The UI's URL with a new single-use ticket valid for `ttl` in the fragment (DMN-186, experimental).
+    pub fn ticket_url(&self, ttl: Duration) -> std::io::Result<String> {
+        self.ticket_urls().issue(ttl)
+    }
+
+    /// What issues [`DaemonHandle::ticket_url`]s from another thread (the tray's `Open in browser`).
+    #[must_use]
+    pub fn ticket_urls(&self) -> TicketUrls {
+        TicketUrls::new(self.base_url(), self.tickets.clone())
     }
 
     /// The UI's URL without the token (a daemon on every interface is reached on loopback).
@@ -230,19 +250,18 @@ impl DaemonHandle {
         format!("http://{addr}/")
     }
 
-    /// What `omfp daemon` prints once it listens (UI-004, DMN-181): the URL with the token only to a terminal; to
-    /// anything else (`daemon.log`, a pipe) the URL without it and where the token is.
+    /// What `omfp daemon` prints once it listens (UI-004, DMN-181, DMN-186): to a terminal the URL with a ticket valid
+    /// for 10 minutes; to anything else (`daemon.log`, a pipe) the URL without a secret and where the token is.
     #[must_use]
     pub fn listening_line(&self, terminal: bool) -> String {
-        if terminal {
-            format!("omfp daemon listening on {}", self.url())
-        } else {
-            format!(
-                "omfp daemon listening on {} (open it with `omfp desktop`, or add #token=<token> from {})",
-                self.base_url(),
-                DataDir::new(&self.data_dir).token().display()
-            )
+        if terminal && let Ok(url) = self.ticket_url(MAX_TTL) {
+            return format!("omfp daemon listening on {url} (single use, for 10 minutes)");
         }
+        format!(
+            "omfp daemon listening on {} (open it with `omfp desktop`, or add #token=<token> from {})",
+            self.base_url(),
+            DataDir::new(&self.data_dir).token().display()
+        )
     }
 
     /// The agent supervisor: what the host tools of every thread act through (DMN-060).
@@ -409,8 +428,10 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
     let (stop, stopping) = watch::channel(false);
     let mut widget_key = [0_u8; 16];
     getrandom::fill(&mut widget_key).map_err(|error| anyhow::anyhow!("no randomness: {error}"))?;
+    let tickets = Tickets::default();
     let state = Arc::new(AppState {
         token: token.clone(),
+        tickets: tickets.clone(),
         omp_version: ports.omp_version,
         warnings: ports.warnings,
         allowed_origins: config.allowed_origins,
@@ -435,6 +456,7 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
     Ok(DaemonHandle {
         addr,
         token,
+        tickets,
         data_dir,
         supervisor,
         jobs,

@@ -311,7 +311,7 @@ export function decodeServerFrame(value: unknown): Decoded<ServerFrame> {
   }
 }
 
-/** Decodes the result of `system.hello` (PRT-005, PRT-051). */
+/** Decodes the result of `system.hello` (PRT-005, PRT-051), with the token a ticket was traded for (PRT-096). */
 export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
   if (
     !isObject(value) ||
@@ -320,9 +320,12 @@ export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
     typeof value.omp !== "string" ||
     !isStringArray(value.warnings) ||
     typeof value.widgetBase !== "string" ||
-    !isSeq(value.connection)
+    !isSeq(value.connection) ||
+    (value.token !== undefined && typeof value.token !== "string")
   ) {
-    return invalid("expected `protocol`, `daemon`, `omp`, `warnings`, `widgetBase` and `connection`");
+    return invalid(
+      "expected `protocol`, `daemon`, `omp`, `warnings`, `widgetBase`, `connection` and an optional `token`",
+    );
   }
   return {
     ok: true,
@@ -333,6 +336,7 @@ export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
       warnings: value.warnings,
       widgetBase: value.widgetBase,
       connection: value.connection,
+      ...(typeof value.token === "string" ? { token: value.token } : {}),
     },
   };
 }

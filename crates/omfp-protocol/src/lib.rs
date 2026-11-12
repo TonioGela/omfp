@@ -43,9 +43,9 @@ pub use params::{
     SetSettingsParams, SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
     SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
     SuggestReposParams, TerminalList, TerminalRef, ThreadGit, ThreadRef, ThreadSearchResult,
-    ThreadSearchResults, ThreadWorkspace, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
-    WidgetCopied, WidgetJobReport, WidgetReport, WidgetReportState, WorkspaceDiffParams,
-    WorkspaceRef, WriteFileParams,
+    ThreadSearchResults, ThreadWorkspace, Ticket, TicketParams, TopicParams, UpdateThreadParams,
+    UpdateWorkspaceParams, WidgetCopied, WidgetJobReport, WidgetReport, WidgetReportState,
+    WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
 };
 pub use params::{
     LibraryComponent, MountParams, MountPlace, MountUpdateParams, Mounted, SaveWidgetParams,

@@ -25,6 +25,7 @@ sequenceDiagram
 | PRT-070 | The `Origin` match MUST be exact on scheme, host and port: the daemon's own origin is `http://<Host>` or `https://<Host>` of the upgrade request, an allow-list entry (normalized, DMN-141) matches only the identical serialized origin — no wildcard, no subdomain, no other scheme or port, not `null`. A window reached through a proxy that rewrites `Host` (e.g. `omfp desktop --connect https://omfp.example.ts.net` or a phone browser on that URL) therefore needs its origin listed; one that keeps `Host` does not. |
 | PRT-004 | `protocol` is an integer. If the client's version is not supported the daemon MUST answer with error `version_mismatch` listing the supported versions, then close. |
 | PRT-005 | The hello response MUST include daemon version, omp version, and warnings (e.g. `--allow-omp-mismatch` in effect). |
+| PRT-096 | (experimental, branch idea/ticket) **One-time tickets**: `system.hello` MAY present `ticket` instead of `token` (exactly one of the two, else `unauthorized`); a ticket the daemon issued (DMN-186), unused and in time, authenticates the connection as the owner once, and the hello result then carries `token`, the daemon's token, for the client's next connections (a hello with the token gets no `token`). A used, expired or unknown ticket is `unauthorized` with the message `ticket already used`, `ticket expired` or `invalid ticket`, then close 4401 with the same reason. `system.ticket { ttlSeconds? }` (1 to 600, default 60; else `bad_request`) issues one for the owner's connection and answers `{ ticket, expiresInMs }`; it is connection-level like `system.hello` (an agent or MCP client cannot call it, AGT-041). |
 
 ## Envelope
 
@@ -105,7 +106,8 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 
 | Method | Params | Result |
 | --- | --- | --- |
-| `system.hello` | `token`, `protocol`, `client` | versions, warnings, `widgetBase`, `connection` (PRT-051) |
+| `system.hello` | `token` or `ticket` (PRT-096), `protocol`, `client` | versions, warnings, `widgetBase`, `connection` (PRT-051), `token` after a ticket |
+| `system.ticket` | `ttlSeconds?` | `{ ticket, expiresInMs }`: a one-time ticket (PRT-096, DMN-186; experimental) |
 | `subscribe` / `unsubscribe` | `topic`, `since?` | see above |
 | `repos.suggest` | `query?` | `{ repos: [{ path, name, lastSeenAt }] }`: repositories seen in any workspace (DMN-021) |
 | `fs.complete` | `path` | `{ entries: [{ name, path, isGitRoot }] }`: child directories on the daemon host (DMN-021) |

@@ -5,6 +5,7 @@ mod client;
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use clap::Parser;
 use client::{Client, Follower};
@@ -98,6 +99,132 @@ fn hello(token: &str, protocol: u32) -> String {
         "params": { "token": token, "protocol": protocol, "client": "test" }
     })
     .to_string()
+}
+
+fn ticket_hello(ticket: &str) -> String {
+    json!({
+        "type": "request", "id": "h1", "method": "system.hello",
+        "params": { "ticket": ticket, "protocol": 1, "client": "test" }
+    })
+    .to_string()
+}
+
+/// The ticket of a URL's `#ticket=` fragment.
+fn fragment_ticket(url: &str) -> String {
+    url.split_once("#ticket=")
+        .unwrap_or_else(|| panic!("no ticket in {url}"))
+        .1
+        .to_owned()
+}
+
+/// Says `system.hello` with `ticket` on a new connection: the response, and the connection.
+async fn hello_with_ticket(daemon: &TestDaemon, ticket: &str) -> (Value, Client) {
+    let mut client = Client::connect(daemon.handle.addr()).await;
+    client.send_text(ticket_hello(ticket)).await;
+    (client.frame().await, client)
+}
+
+// spec: PRT-096, DMN-186
+#[tokio::test(flavor = "multi_thread")]
+async fn a_ticket_is_traded_once_for_the_token() {
+    let daemon = daemon(&[]).await;
+    let token = daemon.handle.token().expose().to_owned();
+    let url = daemon
+        .handle
+        .ticket_url(omfp_daemon::ticket::DEFAULT_TTL)
+        .unwrap();
+    assert!(url.starts_with(&daemon.handle.base_url()), "{url}");
+    assert!(!url.contains(&token), "{url}");
+    let ticket = fragment_ticket(&url);
+
+    let (accepted, mut client) = hello_with_ticket(&daemon, &ticket).await;
+    assert_eq!(accepted["result"]["token"], json!(token), "{accepted}");
+    // The connection is the owner's.
+    client.ok("threads.list", json!({})).await;
+
+    // A second use is refused, and says so.
+    let (replayed, mut again) = hello_with_ticket(&daemon, &ticket).await;
+    assert_eq!(replayed["error"]["code"], "unauthorized");
+    assert_eq!(replayed["error"]["message"], "ticket already used");
+    assert_eq!(again.close_code().await, Some(4401));
+
+    // A hello with the token gets no token back.
+    let mut owner = Client::connect(daemon.handle.addr()).await;
+    owner.send_text(hello(&token, 1)).await;
+    assert_eq!(owner.frame().await["result"].get("token"), None);
+}
+
+// spec: PRT-096, DMN-186
+#[tokio::test(flavor = "multi_thread")]
+async fn an_expired_unknown_or_missing_ticket_is_refused() {
+    let daemon = daemon(&[]).await;
+    let expired = fragment_ticket(&daemon.handle.ticket_url(Duration::ZERO).unwrap());
+
+    for (ticket, message) in [
+        (expired.as_str(), "ticket expired"),
+        ("0123456789abcdef", "invalid ticket"),
+    ] {
+        let (refused, mut client) = hello_with_ticket(&daemon, ticket).await;
+        assert_eq!(refused["error"]["code"], "unauthorized", "{ticket}");
+        assert_eq!(refused["error"]["message"], message, "{ticket}");
+        assert_eq!(client.close_code().await, Some(4401));
+    }
+
+    // Neither a token nor a ticket, or both: refused.
+    let token = daemon.handle.token().expose().to_owned();
+    let valid = fragment_ticket(
+        &daemon
+            .handle
+            .ticket_url(omfp_daemon::ticket::DEFAULT_TTL)
+            .unwrap(),
+    );
+    for params in [
+        json!({ "protocol": 1, "client": "test" }),
+        json!({ "token": token, "ticket": valid, "protocol": 1, "client": "test" }),
+    ] {
+        let mut client = Client::connect(daemon.handle.addr()).await;
+        client
+            .send_text(
+                json!({ "type": "request", "id": "h1", "method": "system.hello", "params": params })
+                    .to_string(),
+            )
+            .await;
+        let refused = client.frame().await;
+        assert_eq!(refused["error"]["code"], "unauthorized", "{params}");
+        assert_eq!(client.close_code().await, Some(4401));
+    }
+    // The ticket of the refused hello with both is still unused.
+    let (accepted, _client) = hello_with_ticket(&daemon, &valid).await;
+    assert_eq!(accepted["result"]["token"], json!(token));
+}
+
+// spec: PRT-096, DMN-186
+#[tokio::test(flavor = "multi_thread")]
+async fn an_owner_connection_issues_tickets_that_the_next_connection_redeems() {
+    let daemon = daemon(&[]).await;
+    let mut owner = daemon.client("omfp/cli").await;
+
+    let issued = owner
+        .ok("system.ticket", json!({ "ttlSeconds": 600 }))
+        .await;
+    assert_eq!(issued["expiresInMs"], 600_000);
+    assert_eq!(
+        owner.ok("system.ticket", json!({})).await["expiresInMs"],
+        60_000
+    );
+    for ttl in [0, 601] {
+        let refused = owner
+            .request("system.ticket", json!({ "ttlSeconds": ttl }))
+            .await;
+        assert_eq!(refused["error"]["code"], "bad_request", "{ttl}");
+    }
+
+    let ticket = issued["ticket"].as_str().unwrap();
+    let (accepted, _client) = hello_with_ticket(&daemon, ticket).await;
+    assert_eq!(
+        accepted["result"]["token"],
+        json!(daemon.handle.token().expose())
+    );
 }
 
 // spec: PRT-001
@@ -315,19 +442,26 @@ async fn the_library_daemon_serves_until_shutdown_then_stops_omp_and_closes_clie
     assert!(tokio::net::TcpStream::connect(addr).await.is_err());
 }
 
-// spec: DMN-181, UI-004
+// spec: DMN-181, UI-004, DMN-186
 #[tokio::test(flavor = "multi_thread")]
-async fn the_token_url_is_printed_only_to_a_terminal() {
+async fn the_ui_url_is_printed_with_a_ticket_only_to_a_terminal() {
     let daemon = daemon(&[]).await;
     let addr = daemon.handle.addr();
     let token = daemon.handle.token().expose().to_owned();
 
-    assert_eq!(
-        daemon.handle.listening_line(true),
-        format!("omfp daemon listening on http://{addr}/#token={token}")
-    );
+    let printed = daemon.handle.listening_line(true);
+    assert!(!printed.contains(&token), "{printed}");
+    let prefix = format!("omfp daemon listening on http://{addr}/#ticket=");
+    let ticket = printed
+        .strip_prefix(&prefix)
+        .and_then(|rest| rest.strip_suffix(" (single use, for 10 minutes)"))
+        .unwrap_or_else(|| panic!("{printed}"));
+    let (accepted, _client) = hello_with_ticket(&daemon, ticket).await;
+    assert_eq!(accepted["result"]["token"], json!(token));
+
     let logged = daemon.handle.listening_line(false);
     assert!(!logged.contains(&token), "{logged}");
+    assert!(!logged.contains("#ticket="), "{logged}");
     assert!(
         logged.starts_with(&format!("omfp daemon listening on http://{addr}/ (")),
         "{logged}"

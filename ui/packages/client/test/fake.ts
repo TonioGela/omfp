@@ -12,6 +12,7 @@ import {
   type Client,
   type ConnectionStatus,
   type Connector,
+  type Credential,
   connect,
   type Timer,
   type Transport,
@@ -201,8 +202,15 @@ export class Rig {
   readonly client: Client;
   #done = false;
 
-  constructor() {
-    this.client = connect({ connector: this.net.connector(), timer: this.timer, token: TOKEN, client: "test/l1" });
+  /** A client with `credential` (the token by default), telling `onToken` the token a ticket was traded for. */
+  constructor(credential: Credential = { token: TOKEN }, onToken?: (token: string) => void) {
+    this.client = connect({
+      ...credential,
+      connector: this.net.connector(),
+      timer: this.timer,
+      client: "test/l1",
+      ...(onToken === undefined ? {} : { onToken }),
+    });
     void this.client.done.then(() => {
       this.#done = true;
     });

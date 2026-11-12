@@ -53,8 +53,8 @@ export type ConnectionStatus =
   | { kind: "connected"; hello: HelloResult }
   /** The connection failed or was lost; attempt `attempt` starts after `retryInMs` (UI-003). */
   | { kind: "reconnecting"; attempt: number; retryInMs: number; error: string }
-  /** The daemon refused the token (`unauthorized`, close 4401); the client does not retry. */
-  | { kind: "unauthenticated" }
+  /** The daemon refused the token or ticket (`unauthorized`, close 4401) and said why; the client does not retry. */
+  | { kind: "unauthenticated"; message: string }
   /** The daemon does not speak this client's protocol version (PRT-004); the client does not retry. */
   | { kind: "version_mismatch"; supported: number[]; message: string }
   /** The client was closed by the host. */

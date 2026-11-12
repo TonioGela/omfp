@@ -1,9 +1,9 @@
 /**
- * The protocol session (03-protocol): `system.hello` with the token (PRT-001, PRT-002), request/response correlation
- * by id (PRT-010), subscriptions resumed from their `{epoch, seq}` (PRT-020..024), transient frames handed to their
- * listeners outside the model (PRT-054), and reconnect with exponential
- * backoff capped at 10 s (UI-003). A refused token (`unauthorized`, close 4401) or protocol version
- * (`version_mismatch`, close 4426, PRT-004) stops the client instead of retrying.
+ * The protocol session (03-protocol): `system.hello` with the token (PRT-001, PRT-002) or a one-time ticket traded for
+ * the token (PRT-096, experimental), request/response correlation by id (PRT-010), subscriptions resumed from their
+ * `{epoch, seq}` (PRT-020..024), transient frames handed to their listeners outside the model (PRT-054), and
+ * reconnect with exponential backoff capped at 10 s (UI-003). A refused token or ticket (`unauthorized`, close 4401)
+ * or protocol version (`version_mismatch`, close 4426, PRT-004) stops the client instead of retrying.
  *
  * The session is an event-driven state machine: transport callbacks, timer callbacks and the host's commands each run
  * to completion synchronously; only call results are promises.
@@ -100,19 +100,25 @@ export type CallMethod = Exclude<MethodName, SessionMethod>;
 
 const SESSION_METHODS: Record<SessionMethod, true> = { "system.hello": true, subscribe: true, unsubscribe: true };
 
+/**
+ * What a client authenticates with: the daemon's token, never in the URL (PRT-002), or a one-time ticket of a URL's
+ * `#ticket=` (PRT-096) that the first hello trades for the token; later connections use that token.
+ */
+export type Credential = { readonly token: string } | { readonly ticket: string };
+
 /** How a client connects, what it says in `system.hello`, and how it retries. */
-export interface ClientOptions {
+export type ClientOptions = Credential & {
   /** Opens every connection attempt, e.g. `webSocketConnector("ws://127.0.0.1:7420/api/ws")`. */
   readonly connector: Connector;
-  /** The daemon's token; sent in `system.hello`, never in the URL (PRT-002). */
-  readonly token: string;
   /** Client name recorded as provenance (PRT-033), e.g. `omfp/web`. */
   readonly client: string;
+  /** Called with the token a ticket was traded for, e.g. to store it for the next page load. */
+  readonly onToken?: (token: string) => void;
   /** Default: {@link DEFAULT_BACKOFF}. */
   readonly backoff?: Backoff;
   /** Default: {@link systemTimer}. */
   readonly timer?: Timer;
-}
+};
 
 interface Call {
   readonly method: MethodName;
@@ -146,7 +152,7 @@ class Link {
 function refused(error: ErrorBody): Outcome {
   switch (error.code) {
     case "unauthorized":
-      return { kind: "stop", status: { kind: "unauthenticated" } };
+      return { kind: "stop", status: { kind: "unauthenticated", message: error.message } };
     case "version_mismatch": {
       const supported = isObject(error.details) ? error.details.supported : undefined;
       const versions =
@@ -163,7 +169,7 @@ function refused(error: ErrorBody): Outcome {
 function onClosed(link: Link, closed: Closed): Outcome {
   switch (closed.code) {
     case CLOSE_UNAUTHORIZED:
-      return { kind: "stop", status: { kind: "unauthenticated" } };
+      return { kind: "stop", status: { kind: "unauthenticated", message: closed.reason } };
     case CLOSE_VERSION_MISMATCH:
       return { kind: "stop", status: { kind: "version_mismatch", supported: [], message: closed.reason } };
     default:
@@ -179,7 +185,8 @@ function transportError(error: unknown): TransportError {
 export class Client {
   readonly #connector: Connector;
   readonly #timer: Timer;
-  readonly #hello: HelloParams;
+  #hello: HelloParams;
+  readonly #onToken: ((token: string) => void) | undefined;
   readonly #backoff: Backoff;
   readonly #model = new Model();
   readonly #hub = new ChangeHub(() => this.#model.revision);
@@ -198,7 +205,11 @@ export class Client {
     this.#connector = options.connector;
     this.#timer = options.timer ?? systemTimer;
     this.#backoff = options.backoff ?? DEFAULT_BACKOFF;
-    this.#hello = { token: options.token, protocol: PROTOCOL_VERSION, client: options.client };
+    this.#hello =
+      "ticket" in options
+        ? { ticket: options.ticket, protocol: PROTOCOL_VERSION, client: options.client }
+        : { token: options.token, protocol: PROTOCOL_VERSION, client: options.client };
+    this.#onToken = options.onToken;
     this.#done = new Promise((resolve) => {
       this.#finish = resolve;
     });
@@ -578,12 +589,18 @@ export class Client {
     if (!response.ok) {
       return refused(response.error);
     }
-    const hello = decodeHelloResult(response.result);
-    if (!hello.ok) {
-      throw new TransportError(`invalid hello result: ${hello.error}`);
+    const decoded = decodeHelloResult(response.result);
+    if (!decoded.ok) {
+      throw new TransportError(`invalid hello result: ${decoded.error}`);
+    }
+    const { token, ...hello } = decoded.value;
+    if (typeof token === "string" && typeof this.#hello.ticket === "string") {
+      // The ticket is used up: the next connections present the token it was traded for (PRT-096).
+      this.#hello = { token, protocol: this.#hello.protocol, client: this.#hello.client };
+      this.#onToken?.(token);
     }
     link.ready = true;
-    this.#model.setConnection({ kind: "connected", hello: hello.value });
+    this.#model.setConnection({ kind: "connected", hello });
     for (const { topic } of this.#model.topics) {
       this.#subscribe(link, topic);
     }

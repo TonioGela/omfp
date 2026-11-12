@@ -126,6 +126,8 @@ macro_rules! methods {
 methods! {
     /// Authenticates the connection and negotiates the protocol version.
     SystemHello = "system.hello" (params::HelloParams) -> params::HelloResult;
+    /// Issues a single-use ticket for a `#ticket=` URL, traded for the token in `system.hello` (experimental).
+    SystemTicket = "system.ticket" (params::TicketParams) -> params::Ticket;
     /// Starts delivery of a topic.
     Subscribe = "subscribe" (params::SubscribeParams) -> params::SubscribeResult;
     /// Stops delivery of a topic.

@@ -25,7 +25,9 @@ use omfp_protocol::{
     WidgetReportState, WidgetSource, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
     decode_request, method,
 };
-use omfp_protocol::{CreatedBy, ListThreadsParams, Provenance, ThreadList, WorkspaceList};
+use omfp_protocol::{
+    CreatedBy, ListThreadsParams, Provenance, ThreadList, Ticket, TicketParams, WorkspaceList,
+};
 use omfp_protocol::{
     LibraryComponent, MountParams, MountPlace, MountUpdateParams, Mounted, SaveWidgetParams,
     UnmountParams, Unmounted, WidgetLibrary, WidgetSaved,
@@ -102,7 +104,8 @@ fn system_examples() -> Vec<(&'static str, Value)> {
     vec![
         example::<method::SystemHello>(
             HelloParams {
-                token: "3f9c1e…".to_owned(),
+                token: Some("3f9c1e…".to_owned()),
+                ticket: None,
                 protocol: PROTOCOL_VERSION,
                 client: "omfp/web".to_owned(),
             },
@@ -113,6 +116,16 @@ fn system_examples() -> Vec<(&'static str, Value)> {
                 warnings: vec!["omp version mismatch allowed (--allow-omp-mismatch)".to_owned()],
                 widget_base: "/widgets/8c1f…".to_owned(),
                 connection: 3,
+                token: None,
+            },
+        ),
+        example::<method::SystemTicket>(
+            TicketParams {
+                ttl_seconds: Some(600),
+            },
+            &Ticket {
+                ticket: "b41d07…".to_owned(),
+                expires_in_ms: 600_000,
             },
         ),
         example::<method::Subscribe>(
@@ -1030,6 +1043,7 @@ fn hello_names_where_widgets_are_served() {
         warnings: Vec::new(),
         widget_base: "/widgets/abc".to_owned(),
         connection: 1,
+        token: None,
     };
     assert_eq!(
         serde_json::to_value(&result).unwrap()["widgetBase"],
@@ -1047,11 +1061,48 @@ fn hello_names_the_connection() {
         warnings: Vec::new(),
         widget_base: "/widgets/abc".to_owned(),
         connection: 42,
+        token: None,
     };
     assert_eq!(
         serde_json::to_value(&result).unwrap()["connection"],
         json!(42)
     );
+}
+
+// spec: PRT-096
+#[test]
+fn a_hello_with_a_ticket_instead_of_the_token_gets_the_token_back() {
+    let request = Request::new(
+        "1",
+        Call::SystemHello(HelloParams {
+            token: None,
+            ticket: Some("b41d07".to_owned()),
+            protocol: PROTOCOL_VERSION,
+            client: "omfp/web".to_owned(),
+        }),
+    );
+    assert_eq!(
+        serde_json::to_value(&request).unwrap()["params"],
+        json!({ "ticket": "b41d07", "protocol": PROTOCOL_VERSION, "client": "omfp/web" })
+    );
+    let result = HelloResult {
+        protocol: PROTOCOL_VERSION,
+        daemon: "0.1.0".to_owned(),
+        omp: "18.18.6".to_owned(),
+        warnings: Vec::new(),
+        widget_base: "/widgets/abc".to_owned(),
+        connection: 7,
+        token: Some("3f9c1e".to_owned()),
+    };
+    assert_eq!(
+        serde_json::to_value(&result).unwrap()["token"],
+        json!("3f9c1e")
+    );
+    // `system.ticket` takes no params by default.
+    let decoded =
+        decode_request(r#"{"type":"request","id":"2","method":"system.ticket","params":{}}"#)
+            .unwrap();
+    assert_eq!(decoded.call, Call::SystemTicket(TicketParams::default()));
 }
 
 // spec: PRT-050

@@ -4,10 +4,11 @@
  * - Transport: a {@link Connector} opens a {@link Transport} per connection attempt and reports to a
  *   {@link TransportListener}; {@link webSocketConnector} uses the standard `WebSocket` (browser or Bun), checked by
  *   the transport suite against a real daemon (UI-001, TST-030).
- * - Session: {@link connect} returns a {@link Client} that sends `system.hello`, correlates responses by id, keeps
- *   subscriptions with their `{epoch, seq}`, reconnects with capped exponential backoff and resubscribes (UI-003),
- *   queues calls made while disconnected, and stops on `unauthorized` / `version_mismatch`. Calls are typed by the
- *   protocol's `Methods` table: `client.call("threads.create", { title })`.
+ * - Session: {@link connect} returns a {@link Client} that sends `system.hello` with a {@link Credential} (the token,
+ *   or a one-time ticket it trades for the token), correlates responses by id, keeps subscriptions with their
+ *   `{epoch, seq}`, reconnects with capped exponential backoff and resubscribes (UI-003), queues calls made while
+ *   disconnected, and stops on `unauthorized` / `version_mismatch`. Calls are typed by the protocol's `Methods` table:
+ *   `client.call("threads.create", { title })`.
  * - Model: `client.model` ({@link ModelView}) holds the connection status, the index, per-thread `ThreadState` from
  *   the shared reducer with the interactions it closed, and workspace git status; its objects are immutable. Every
  *   change bumps `revision` and lands in a {@link Dirty} set the host drains with `client.takeDirty()`, and
@@ -57,6 +58,7 @@ export {
   CLOSE_VERSION_MISMATCH,
   Client,
   type ClientOptions,
+  type Credential,
   connect,
   DEFAULT_BACKOFF,
   type SessionMethod,

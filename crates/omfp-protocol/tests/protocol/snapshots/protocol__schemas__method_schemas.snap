@@ -1132,7 +1132,7 @@ expression: method_schemas()
   "system.hello": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "`system.hello`: first frame of every connection (PRT-001).",
+      "description": "`system.hello`: first frame of every connection (PRT-001), with the daemon's token or a one-time ticket (PRT-096).",
       "properties": {
         "client": {
           "description": "Client name, recorded as provenance (PRT-033), e.g. `omfp/web`.",
@@ -1144,13 +1144,22 @@ expression: method_schemas()
           "minimum": 0,
           "type": "integer"
         },
+        "ticket": {
+          "description": "A one-time ticket of `system.ticket` instead of the token (PRT-096, experimental): the result then carries the\ntoken.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "token": {
-          "description": "The daemon's access token (PRT-002).",
-          "type": "string"
+          "description": "The daemon's access token (PRT-002); absent when `ticket` is given.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [
-        "token",
         "protocol",
         "client"
       ],
@@ -1180,6 +1189,13 @@ expression: method_schemas()
           "minimum": 0,
           "type": "integer"
         },
+        "token": {
+          "description": "The daemon's access token, only when the hello presented a ticket (PRT-096, experimental): the client keeps it\nfor its next connections.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "warnings": {
           "items": {
             "type": "string"
@@ -1200,6 +1216,46 @@ expression: method_schemas()
         "connection"
       ],
       "title": "HelloResult",
+      "type": "object"
+    }
+  },
+  "system.ticket": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`system.ticket` params (PRT-096, experimental).",
+      "properties": {
+        "ttlSeconds": {
+          "description": "How long the ticket stays valid, in seconds: 1 to 600, default 60 (DMN-186).",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "title": "TicketParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`system.ticket` result: a single-use secret for `system.hello { ticket }` (PRT-096, experimental).",
+      "properties": {
+        "expiresInMs": {
+          "description": "Milliseconds until the ticket expires.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ticket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket",
+        "expiresInMs"
+      ],
+      "title": "Ticket",
       "type": "object"
     }
   },

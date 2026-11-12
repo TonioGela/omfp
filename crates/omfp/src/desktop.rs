@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, bail};
 use omfp_daemon::paths::DataDir;
 use omfp_daemon::theme::default_theme_file;
+use omfp_daemon::ticket::MAX_TTL;
 use omfp_daemon::watch::{self, WatchedFile};
-use omfp_protocol::Theme;
-use omfp_protocol::method::ThemeSet;
+use omfp_protocol::method::{SystemTicket, ThemeSet};
+use omfp_protocol::{Theme, TicketParams};
 use tauri::webview::{NewWindowResponse, PermissionKind, PermissionResponse};
 use tauri::{Manager as _, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
@@ -164,8 +165,13 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
             plan.data_dir,
         )
     };
-    // UI-004: a browser can attach to the same daemon.
-    println!("{}", browser.line(std::io::stdout().is_terminal()));
+    // UI-004: a browser can attach to the same daemon; a terminal gets a single-use link (DMN-186).
+    let ticket = if std::io::stdout().is_terminal() {
+        browser_ticket(&runtime, in_process.as_ref(), &browser)
+    } else {
+        None
+    };
+    println!("{}", browser.line(ticket.as_deref()));
     let code = open_window(window_url, &data_dir.join("webview"), smoke)?;
     if let Some(handle) = in_process {
         runtime.block_on(handle.shutdown())?;
@@ -228,6 +234,39 @@ fn fragment_value(value: &str) -> String {
         .replace('=', "%3D")
 }
 
+/// A single-use ticket for the printed URL (DMN-186), valid for 10 minutes: from the in-process daemon, else asked of
+/// the daemon with `system.ticket`; `None` without a token to ask with or when the daemon cannot give one (said on
+/// stderr), and the printed line then names where the token is.
+fn browser_ticket(
+    runtime: &tokio::runtime::Runtime,
+    in_process: Option<&omfp_daemon::DaemonHandle>,
+    browser: &BrowserUrl,
+) -> Option<String> {
+    let ticket = match (in_process, &browser.token) {
+        (Some(handle), _) => handle.ticket(MAX_TTL).map_err(anyhow::Error::from),
+        (None, Some(token)) => runtime.block_on(request_ticket(&Target {
+            url: websocket_url(browser.base.as_str()),
+            token: token.clone(),
+        })),
+        (None, None) => return None,
+    };
+    ticket
+        .inspect_err(|error| eprintln!("omfp desktop: no single-use link to print: {error:#}"))
+        .ok()
+}
+
+/// A ticket valid for 10 minutes from the daemon at `target` (`system.ticket`, PRT-096).
+pub async fn request_ticket(target: &Target) -> anyhow::Result<String> {
+    let mut connection = Connection::open(target).await?;
+    let ticket = connection
+        .call::<SystemTicket>(TicketParams {
+            ttl_seconds: u32::try_from(MAX_TTL.as_secs()).ok(),
+        })
+        .await?;
+    connection.close().await?;
+    Ok(ticket.ticket)
+}
+
 /// The daemon's URL `omfp desktop` prints for a browser (UI-004).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrowserUrl {
@@ -238,15 +277,18 @@ pub struct BrowserUrl {
 }
 
 impl BrowserUrl {
-    /// The printed line (DMN-181): the URL with the token only to a terminal; to anything else (the daemon's log when
-    /// the tray starts the window, a pipe) the URL without it and where the token is.
+    /// The printed line (DMN-181, DMN-186): with a ticket (to a terminal) the URL with `#ticket=`; otherwise (the
+    /// daemon's log when the tray starts the window, a pipe, no ticket to be had) the URL without a secret and where
+    /// the token is. The token itself is never printed.
     #[must_use]
-    pub fn line(&self, terminal: bool) -> String {
-        if terminal || self.token.is_none() {
-            return format!(
-                "omfp desktop: {}",
-                window_url(&self.base, self.token.as_deref(), false, None)
-            );
+    pub fn line(&self, ticket: Option<&str>) -> String {
+        if let Some(ticket) = ticket {
+            let mut url = self.base.clone();
+            url.set_fragment(Some(&format!("ticket={}", fragment_value(ticket))));
+            return format!("omfp desktop: {url} (single use, for 10 minutes)");
+        }
+        if self.token.is_none() {
+            return format!("omfp desktop: {}", self.base);
         }
         let from = self
             .token_file
@@ -688,20 +730,20 @@ mod tests {
         assert_eq!(args.thread.as_deref(), Some("th-1"));
     }
 
-    // spec: DMN-181, UI-004
+    // spec: DMN-181, UI-004, DMN-186
     #[test]
-    fn the_printed_url_carries_the_token_only_to_a_terminal() {
+    fn the_printed_url_carries_a_ticket_never_the_token() {
         let browser = BrowserUrl {
             base: local_base("127.0.0.1:7420".parse().unwrap()).unwrap(),
             token: Some("t0k".into()),
             token_file: Some(PathBuf::from("/data/omfp/token")),
         };
         assert_eq!(
-            browser.line(true),
-            "omfp desktop: http://127.0.0.1:7420/#token=t0k"
+            browser.line(Some("71c4e7")),
+            "omfp desktop: http://127.0.0.1:7420/#ticket=71c4e7 (single use, for 10 minutes)"
         );
         assert_eq!(
-            browser.line(false),
+            browser.line(None),
             "omfp desktop: http://127.0.0.1:7420/ (add #token=<token> from /data/omfp/token)"
         );
         let remote = BrowserUrl {
@@ -710,7 +752,7 @@ mod tests {
             token_file: None,
         };
         assert_eq!(
-            remote.line(false),
+            remote.line(None),
             "omfp desktop: https://omfp.example.com/ (add #token=<token>)"
         );
         let without = BrowserUrl {
@@ -718,7 +760,7 @@ mod tests {
             ..remote
         };
         assert_eq!(
-            without.line(false),
+            without.line(None),
             "omfp desktop: https://omfp.example.com/"
         );
     }
@@ -821,18 +863,16 @@ mod tests {
         );
     }
 
-    // spec: UI-091
-    #[tokio::test]
-    async fn the_theme_file_follows_to_the_connected_daemon() {
-        let dir = tempfile::tempdir().unwrap();
+    /// A daemon on the fake launcher in `dir`, and the CLI's target for it.
+    async fn test_daemon(dir: &Path) -> (omfp_daemon::DaemonHandle, Target) {
         let cli = Cli::try_parse_from([
             "daemon",
             "--bind",
             "127.0.0.1:0",
             "--data-dir",
-            dir.path().join("data").to_str().unwrap(),
+            dir.join("data").to_str().unwrap(),
             "--workspaces-root",
-            dir.path().join("workspaces").to_str().unwrap(),
+            dir.join("workspaces").to_str().unwrap(),
         ])
         .unwrap();
         let ports = Ports {
@@ -850,6 +890,61 @@ mod tests {
             url: format!("ws://{}/api/ws", daemon.addr()),
             token: daemon.token().expose().to_owned(),
         };
+        (daemon, target)
+    }
+
+    /// The answer to `system.hello { ticket }` on a new connection to `url`.
+    async fn ticket_hello(url: &str, ticket: &str) -> serde_json::Value {
+        use futures::{SinkExt as _, StreamExt as _};
+        use omfp_protocol::{Call, HelloParams, PROTOCOL_VERSION, Request};
+        use tokio_tungstenite::tungstenite::Message;
+
+        let (mut ws, _) = tokio_tungstenite::connect_async(url).await.unwrap();
+        let hello = Request::new(
+            "h1",
+            Call::SystemHello(HelloParams {
+                token: None,
+                ticket: Some(ticket.to_owned()),
+                protocol: PROTOCOL_VERSION,
+                client: "test".into(),
+            }),
+        );
+        let text = serde_json::to_string(&hello).unwrap();
+        ws.send(Message::Text(text.into())).await.unwrap();
+        loop {
+            if let Message::Text(text) = ws.next().await.unwrap().unwrap() {
+                return serde_json::from_str(text.as_str()).unwrap();
+            }
+        }
+    }
+
+    // spec: DMN-186, PRT-096
+    #[tokio::test]
+    async fn the_printed_ticket_comes_from_the_daemon_and_opens_it_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let (daemon, target) = test_daemon(dir.path()).await;
+
+        let ticket = request_ticket(&target).await.unwrap();
+        assert_ne!(request_ticket(&target).await.unwrap(), ticket);
+        let accepted = ticket_hello(&target.url, &ticket).await;
+        assert_eq!(accepted["result"]["token"], serde_json::json!(target.token));
+        let replayed = ticket_hello(&target.url, &ticket).await;
+        assert_eq!(replayed["error"]["message"], "ticket already used");
+        let refused = request_ticket(&Target {
+            token: "not-the-token".into(),
+            ..target
+        })
+        .await;
+        assert!(refused.is_err());
+
+        daemon.shutdown().await.unwrap();
+    }
+
+    // spec: UI-091
+    #[tokio::test]
+    async fn the_theme_file_follows_to_the_connected_daemon() {
+        let dir = tempfile::tempdir().unwrap();
+        let (daemon, target) = test_daemon(dir.path()).await;
         let file = dir.path().join("theme.css");
         std::fs::write(&file, ":root { --omfp-primary: #123456; }").unwrap();
         let pusher = tokio::spawn(push_theme(

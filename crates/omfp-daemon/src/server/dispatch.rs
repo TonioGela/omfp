@@ -1,5 +1,5 @@
 //! Request handlers: every protocol method mapped to the daemon's services (ARC-007), except the connection-level
-//! ones (`system.hello`, `subscribe`, `unsubscribe`).
+//! ones (`system.hello`, `system.ticket`, `subscribe`, `unsubscribe`).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -46,6 +46,7 @@ pub(crate) async fn dispatch(services: &Services, principal: &Principal, call: C
 async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
     match call {
         Call::SystemHello(_)
+        | Call::SystemTicket(_)
         | Call::Subscribe(_)
         | Call::Unsubscribe(_)
         | Call::WidgetsReport(_)

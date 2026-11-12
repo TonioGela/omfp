@@ -18,12 +18,17 @@ use crate::topic::Topic;
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Empty {}
 
-/// `system.hello`: first frame of every connection (PRT-001).
+/// `system.hello`: first frame of every connection (PRT-001), with the daemon's token or a one-time ticket (PRT-096).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct HelloParams {
-    /// The daemon's access token (PRT-002).
-    pub token: String,
+    /// The daemon's access token (PRT-002); absent when `ticket` is given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    /// A one-time ticket of `system.ticket` instead of the token (PRT-096, experimental): the result then carries the
+    /// token.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ticket: Option<String>,
     /// Protocol version the client speaks (PRT-004).
     pub protocol: u32,
     /// Client name, recorded as provenance (PRT-033), e.g. `omfp/web`.
@@ -45,6 +50,28 @@ pub struct HelloResult {
     /// Number of this connection, unique while the daemon runs: the `owner.connection` of the live sessions it
     /// starts (PRT-051).
     pub connection: u64,
+    /// The daemon's access token, only when the hello presented a ticket (PRT-096, experimental): the client keeps it
+    /// for its next connections.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+}
+
+/// `system.ticket` params (PRT-096, experimental).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TicketParams {
+    /// How long the ticket stays valid, in seconds: 1 to 600, default 60 (DMN-186).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_seconds: Option<u32>,
+}
+
+/// `system.ticket` result: a single-use secret for `system.hello { ticket }` (PRT-096, experimental).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Ticket {
+    pub ticket: String,
+    /// Milliseconds until the ticket expires.
+    pub expires_in_ms: u64,
 }
 
 /// A position in a topic's event stream.

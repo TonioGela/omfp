@@ -26,6 +26,7 @@ pub const THREAD_WAIT: &str = "omfp_thread_wait";
 /// AGT-042).
 pub const CONNECTION_ONLY: &[&str] = &[
     "system.hello",
+    "system.ticket",
     "subscribe",
     "unsubscribe",
     "widgets.report",

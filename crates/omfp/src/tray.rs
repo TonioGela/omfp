@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use omfp_core::ProcessState;
+use omfp_daemon::ticket::{DEFAULT_TTL, TicketUrls};
 use omfp_daemon::{DaemonHandle, StopRequest};
 use omfp_protocol::ThreadSummary;
 
@@ -137,7 +138,7 @@ impl TrayStatus {
 pub enum Action {
     /// A new window on the daemon (`omfp desktop`).
     NewWindow,
-    /// The daemon's UI in the browser, with its token.
+    /// The daemon's UI in the browser, with a new single-use ticket (DMN-186).
     OpenInBrowser,
     /// A new window on this thread (`omfp desktop --thread <id>`).
     OpenThread(String),
@@ -281,8 +282,8 @@ pub fn window_command(data_dir: &Path, thread: Option<&str>) -> Vec<OsString> {
 struct Daemon {
     exe: PathBuf,
     data_dir: PathBuf,
-    /// The UI's URL with the token in the fragment.
-    url: String,
+    /// The UI's URL, each with a new single-use ticket in the fragment (DMN-186).
+    browser: TicketUrls,
     stop: StopRequest,
 }
 
@@ -300,7 +301,7 @@ impl Daemon {
         Some(Self {
             exe,
             data_dir: daemon.data_dir().to_path_buf(),
-            url: daemon.url(),
+            browser: daemon.ticket_urls(),
             stop: daemon.stop_request(),
         })
     }
@@ -310,7 +311,10 @@ impl Daemon {
         match action {
             Action::NewWindow => self.open_window(None),
             Action::OpenThread(thread) => self.open_window(Some(thread)),
-            Action::OpenInBrowser => open_in_browser(&self.url),
+            Action::OpenInBrowser => match self.browser.issue(DEFAULT_TTL) {
+                Ok(url) => open_in_browser(&url),
+                Err(error) => eprintln!("omfp daemon: cannot open the browser, no ticket: {error}"),
+            },
             Action::Quit => {
                 eprintln!("omfp daemon: quit from the {place}");
                 self.stop.request();

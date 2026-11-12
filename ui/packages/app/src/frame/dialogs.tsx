@@ -143,8 +143,17 @@ function DeleteWorkspaceForm({
   );
 }
 
-/** Asks for the token printed by `omfp daemon` when none is known or the daemon refused it (UI-002). */
-export function TokenScreen({ rejected, onSubmit }: { rejected: boolean; onSubmit: (token: string) => void }) {
+/**
+ * Asks for the token printed by `omfp daemon` when none is known or the daemon refused it (UI-002); `rejected` says why
+ * the last token or link did not connect (UI-255).
+ */
+export function TokenScreen({
+  rejected,
+  onSubmit,
+}: {
+  rejected: string | undefined;
+  onSubmit: (token: string) => void;
+}) {
   const [token, setToken] = useState("");
   const text = strings.shell.token;
   const submit = (event: FormEvent) => {
@@ -169,9 +178,9 @@ export function TokenScreen({ rejected, onSubmit }: { rejected: boolean; onSubmi
           autoFocus
           inputProps={{ "data-testid": "token-input" }}
         />
-        {rejected && (
+        {rejected !== undefined && (
           <p className="omfp-form-error" role="alert" data-testid="token-rejected">
-            {text.rejected}
+            {rejected}
           </p>
         )}
         <Button type="submit" variant="primary" data-testid="token-submit">

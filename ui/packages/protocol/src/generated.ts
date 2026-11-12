@@ -293,14 +293,19 @@ export type GoalParams = {
   tokenBudget?: number | null;
 };
 
-/** `system.hello`: first frame of every connection (PRT-001). */
+/** `system.hello`: first frame of every connection (PRT-001), with the daemon's token or a one-time ticket (PRT-096). */
 export type HelloParams = {
   /** Client name, recorded as provenance (PRT-033), e.g. `omfp/web`. */
   client: string;
   /** Protocol version the client speaks (PRT-004). */
   protocol: number;
-  /** The daemon's access token (PRT-002). */
-  token: string;
+  /**
+   * A one-time ticket of `system.ticket` instead of the token (PRT-096, experimental): the result then carries the
+   * token.
+   */
+  ticket?: string | null;
+  /** The daemon's access token (PRT-002); absent when `ticket` is given. */
+  token?: string | null;
 };
 
 /** `system.hello` result (PRT-005). */
@@ -315,6 +320,11 @@ export type HelloResult = {
   /** omp version. */
   omp: string;
   protocol: number;
+  /**
+   * The daemon's access token, only when the hello presented a ticket (PRT-096, experimental): the client keeps it
+   * for its next connections.
+   */
+  token?: string | null;
   warnings: string[];
   /** Path under which this daemon serves widget modules to this client (`/widgets/<key>`, DMN-084, PRT-042). */
   widgetBase: string;
@@ -1037,6 +1047,19 @@ export type ThreadsStopped = {
   threadIds: string[];
 };
 
+/** `system.ticket` result: a single-use secret for `system.hello { ticket }` (PRT-096, experimental). */
+export type Ticket = {
+  /** Milliseconds until the ticket expires. */
+  expiresInMs: number;
+  ticket: string;
+};
+
+/** `system.ticket` params (PRT-096, experimental). */
+export type TicketParams = {
+  /** How long the ticket stays valid, in seconds: 1 to 600, default 60 (DMN-186). */
+  ttlSeconds?: number | null;
+};
+
 /** Where a thread's title comes from (DMN-073). */
 export type TitleSource =
   /** The first words of the first message (or `""` before it), until a title is generated or set. */
@@ -1347,6 +1370,7 @@ export type WriteFileParams = {
 /** Params and result type of every method (PRT-010). */
 export interface Methods {
   "system.hello": { params: HelloParams; result: HelloResult };
+  "system.ticket": { params: TicketParams; result: Ticket };
   "subscribe": { params: SubscribeParams; result: SubscribeResult };
   "unsubscribe": { params: TopicParams; result: Empty };
   "repos.suggest": { params: SuggestReposParams; result: RepoSuggestions };
@@ -1431,6 +1455,7 @@ export type ResultOf<M extends MethodName> = Methods[M]["result"];
 /** Every method name, in table order. */
 export const METHODS: readonly MethodName[] = [
   "system.hello",
+  "system.ticket",
   "subscribe",
   "unsubscribe",
   "repos.suggest",

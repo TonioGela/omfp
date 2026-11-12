@@ -7,12 +7,14 @@ import { announcement, banner } from "../../src/vm/connection.ts";
 import {
   chooseToken,
   fragmentLocal,
+  fragmentTicket,
   fragmentToken,
-  fragmentWithoutToken,
+  fragmentWithoutCredential,
+  rejection,
   TOKEN_KEY,
   type TokenPage,
+  takeCredential,
   takeThread,
-  takeToken,
 } from "../../src/vm/token.ts";
 import { thread } from "../support/fixtures.ts";
 
@@ -37,7 +39,7 @@ describe("connection", () => {
     });
     expect(banner(connected)).toBeUndefined();
     expect(banner({ kind: "connecting" })?.tone).toBe("info");
-    expect(banner({ kind: "unauthenticated" })?.tone).toBe("error");
+    expect(banner({ kind: "unauthenticated", message: "invalid token" })?.tone).toBe("error");
     expect(banner({ kind: "version_mismatch", supported: [2], message: "wants 2" })?.tone).toBe("error");
   });
 
@@ -59,14 +61,14 @@ describe("token", () => {
   // spec: UI-002
   test("the token is read from the fragment and removed from it", () => {
     expect(fragmentToken("#token=abc123")).toBe("abc123");
-    expect(fragmentWithoutToken("#token=abc123")).toBe("");
+    expect(fragmentWithoutCredential("#token=abc123")).toBe("");
     expect(fragmentToken("#thread=t1&token=abc123")).toBe("abc123");
-    expect(fragmentWithoutToken("#thread=t1&token=abc123")).toBe("#thread=t1");
+    expect(fragmentWithoutCredential("#thread=t1&token=abc123")).toBe("#thread=t1");
     expect(fragmentToken("#token=")).toBeUndefined();
     expect(fragmentToken("")).toBeUndefined();
-    expect(fragmentWithoutToken("")).toBe("");
+    expect(fragmentWithoutCredential("")).toBe("");
     expect(fragmentToken("#tokens=abc")).toBeUndefined();
-    expect(fragmentWithoutToken("#tokens=abc")).toBe("#tokens=abc");
+    expect(fragmentWithoutCredential("#tokens=abc")).toBe("#tokens=abc");
   });
 
   // spec: UI-002
@@ -86,11 +88,42 @@ describe("token", () => {
       history: { replaceState: (_data, _unused, url) => replaced.push(String(url)) },
       storage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
     });
-    expect(takeToken(page("#thread=t1&token=abc"))).toBe("abc");
+    expect(takeCredential(page("#thread=t1&token=abc"))).toEqual({ token: "abc" });
     expect(stored.get(TOKEN_KEY)).toBe("abc");
     expect(replaced).toEqual(["/?x=1#thread=t1"]);
-    expect(takeToken(page(""))).toBe("abc");
+    expect(takeCredential(page(""))).toEqual({ token: "abc" });
     expect(replaced).toHaveLength(1);
+    stored.clear();
+    expect(takeCredential(page(""))).toBeUndefined();
+  });
+
+  // spec: UI-255
+  test("a ticket is taken from the fragment, removed from it and never stored", () => {
+    expect(fragmentTicket("#ticket=b41d07&local=1")).toBe("b41d07");
+    expect(fragmentTicket("#ticket=")).toBeUndefined();
+    expect(fragmentTicket("#token=abc")).toBeUndefined();
+    expect(fragmentWithoutCredential("#ticket=b41d07&thread=t1")).toBe("#thread=t1");
+    const stored = new Map<string, string>([[TOKEN_KEY, "old"]]);
+    const replaced: string[] = [];
+    const page: TokenPage = {
+      location: { hash: "#ticket=b41d07&thread=t1", pathname: "/", search: "" },
+      history: { replaceState: (_data, _unused, url) => replaced.push(String(url)) },
+      storage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
+    };
+    // A fresh link wins over the stored token, which stays until the ticket's token replaces it.
+    expect(takeCredential(page)).toEqual({ ticket: "b41d07" });
+    expect(replaced).toEqual(["/#thread=t1"]);
+    expect([...stored.entries()]).toEqual([[TOKEN_KEY, "old"]]);
+  });
+
+  // spec: UI-255
+  test("a refused ticket says whether it expired or was already used", () => {
+    expect(rejection({ token: "t" }, "invalid token")).toBe("The daemon rejected this token.");
+    expect(rejection({ ticket: "b" }, "ticket expired")).toContain("expired");
+    expect(rejection({ ticket: "b" }, "invalid ticket")).toContain("expired");
+    const used = rejection({ ticket: "b" }, "ticket already used");
+    expect(used).toContain("already used");
+    expect(used).toContain("someone else");
   });
 
   // spec: UI-188
@@ -107,7 +140,7 @@ describe("token", () => {
       history: { replaceState: (_data, _unused, url) => replaced.push(String(url)) },
       storage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
     };
-    expect(takeToken(page)).toBe("abc");
+    expect(takeCredential(page)).toEqual({ token: "abc" });
     expect(replaced).toEqual(["/#local=1"]);
     expect([...stored.keys()]).toEqual([TOKEN_KEY]);
   });

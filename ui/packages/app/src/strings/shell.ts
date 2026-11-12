@@ -69,9 +69,13 @@ export const shell = {
   },
   token: {
     title: "Connect to the daemon",
-    help: "Open the link printed by `omfp daemon`, or paste the access token from its data directory.",
+    help: "Open the link printed by `omfp daemon` or `omfp desktop`, or the tray's Open in browser, or paste the access token from its data directory.",
     label: "Access token",
     rejected: "The daemon rejected this token.",
+    ticketExpired:
+      "This link has expired: links are single use and valid for a few minutes. Open a new one, or paste the access token.",
+    ticketUsed:
+      "This link was already used. If you did not open it before, someone else may have: delete the daemon's token file and restart the daemon to get a new token.",
     submit: "Connect",
   },
   header: {

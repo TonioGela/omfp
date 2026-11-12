@@ -9,10 +9,10 @@ use axum::extract::ws::{CloseFrame, Message, WebSocket};
 use futures::{SinkExt, StreamExt};
 use omfp_core::LiveOwner;
 use omfp_protocol::{
-    BashParams, BtwParams, Call, ErrorBody, ErrorCode, EventFrame, HelloResult, LiveConnectParams,
-    LiveConnected, LiveStarted, MessageParams, PromptParams, Request, RespondParams, Response,
-    ServerFrame, SubscribeParams, SubscribeResult, ThreadRef, Topic, TopicEvent, TransientEvent,
-    decode_request,
+    BashParams, BtwParams, Call, ErrorBody, ErrorCode, EventFrame, HelloParams, HelloResult,
+    LiveConnectParams, LiveConnected, LiveStarted, MessageParams, PromptParams, Request,
+    RespondParams, Response, ServerFrame, SubscribeParams, SubscribeResult, ThreadRef, Ticket,
+    TicketParams, Topic, TopicEvent, TransientEvent, decode_request,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -26,6 +26,7 @@ use super::dispatch::dispatch;
 use super::{AppState, OUTBOUND_QUEUE, SUPPORTED_PROTOCOLS};
 use crate::event_log::{Position, Sequenced, Start, Subscription};
 use crate::supervisor::{WatchGuard, WorkspaceWatchGuard};
+use crate::ticket::{DEFAULT_TTL, Redeemed};
 
 /// Close code for a connection that did not authenticate (PRT-001), or not within [`HELLO_TIMEOUT`] (DMN-184).
 pub(crate) const CLOSE_UNAUTHORIZED: u16 = 4401;
@@ -123,8 +124,9 @@ async fn send(out: &mpsc::Sender<Outbound>, frame: Option<Outbound>) {
     }
 }
 
-/// Waits for `system.hello`; anything else closes the connection with 4401 (PRT-001). `permit` (DMN-184) is released
-/// once the token checked out, before the answer goes out.
+/// Waits for `system.hello`; anything else closes the connection with 4401 (PRT-001). The hello presents the token
+/// (PRT-002) or a one-time ticket (PRT-096, DMN-186), then gets the token in its result. `permit` (DMN-184) is released
+/// once the credential checked out, before the answer goes out.
 async fn hello(
     app: &AppState,
     stream: &mut futures::stream::SplitStream<WebSocket>,
@@ -151,16 +153,15 @@ async fn hello(
             send(out, Some(unauthorized())).await;
             return None;
         };
-        if !app.token.matches(&params.token) {
-            let error = ErrorBody::new(ErrorCode::Unauthorized, "invalid token");
-            send(out, Outbound::response(id, Err(error))).await;
-            send(
-                out,
-                Some(Outbound::Close(CLOSE_UNAUTHORIZED, "invalid token")),
-            )
-            .await;
-            return None;
-        }
+        let handed_token = match credential(app, &params) {
+            Ok(handed_token) => handed_token,
+            Err(refusal) => {
+                let error = ErrorBody::new(ErrorCode::Unauthorized, refusal);
+                send(out, Outbound::response(id, Err(error))).await;
+                send(out, Some(Outbound::Close(CLOSE_UNAUTHORIZED, refusal))).await;
+                return None;
+            }
+        };
         drop(permit);
         if !SUPPORTED_PROTOCOLS.contains(&params.protocol) {
             let error = ErrorBody::version_mismatch(SUPPORTED_PROTOCOLS);
@@ -176,12 +177,50 @@ async fn hello(
             warnings: app.warnings.clone(),
             widget_base: app.widget_base.clone(),
             connection: number,
+            token: handed_token,
         };
         send(out, Outbound::response(id, to_value(&result))).await;
         return Some(Principal::Owner {
             client: params.client,
         });
     }
+}
+
+/// Checks the credential of a hello: the token, or a ticket redeemed once, whose hello gets the token (PRT-096);
+/// `Err` says why it is refused. A used ticket presented again is logged: someone may have redeemed it first (DMN-186).
+fn credential(app: &AppState, params: &HelloParams) -> Result<Option<String>, &'static str> {
+    match (&params.token, &params.ticket) {
+        (Some(token), None) if app.token.matches(token) => Ok(None),
+        (Some(_), None) => Err("invalid token"),
+        (None, Some(ticket)) => {
+            let redeemed = app.tickets.redeem(ticket);
+            if redeemed == Redeemed::Used {
+                warn!(
+                    "a used ticket was presented again: unless its link was opened twice, someone else may have \
+                     used it first; to get a new token, delete the token file and restart the daemon"
+                );
+            }
+            match redeemed.refusal() {
+                None => Ok(Some(app.token.expose().to_owned())),
+                Some(refusal) => Err(refusal),
+            }
+        }
+        _ => Err("system.hello needs `token` or `ticket`"),
+    }
+}
+
+/// `system.ticket` (PRT-096): a single-use ticket valid for `ttlSeconds` (1 to 600, default 60, DMN-186).
+fn issue_ticket(app: &AppState, params: &TicketParams) -> Result<Value, ErrorBody> {
+    let ttl = match params.ttl_seconds {
+        None => DEFAULT_TTL,
+        Some(seconds @ 1..=600) => Duration::from_secs(u64::from(seconds)),
+        Some(_) => return Err(bad_request("ttlSeconds must be 1 to 600")),
+    };
+    let ticket = app.tickets.issue(ttl).map_err(internal)?;
+    to_value(&Ticket {
+        ticket,
+        expires_in_ms: u64::try_from(ttl.as_millis()).map_err(internal)?,
+    })
 }
 
 fn to_value(value: &impl Serialize) -> Result<Value, ErrorBody> {
@@ -284,6 +323,10 @@ impl Connection {
             Call::SystemHello(_) => {
                 let error = bad_request("system.hello was already sent on this connection");
                 send(&self.out, Outbound::response(id, Err(error))).await;
+            }
+            Call::SystemTicket(params) => {
+                let result = issue_ticket(&self.app, &params);
+                send(&self.out, Outbound::response(id, result)).await;
             }
             Call::Subscribe(params) => self.subscribe(id, params).await,
             Call::Unsubscribe(params) => {

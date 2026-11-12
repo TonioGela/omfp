@@ -239,12 +239,52 @@ describe("transport suite", () => {
         // The client stops by itself.
         await within("the client to stop", () => describeModel(refused.model), refused.done);
 
-        expect(refused.model.connection).toEqual({ kind: "unauthenticated" });
+        expect(refused.model.connection).toEqual({ kind: "unauthenticated", message: "invalid token" });
         expect(links.attempts).toBe(1);
         const error = await pending;
         expect(error instanceof Error && "failure" in error && error.failure).toEqual({ kind: "closed" });
       } finally {
         refused.close();
+      }
+    },
+    TEST_MS,
+  );
+
+  // spec: PRT-096, UI-255
+  test(
+    "a ticket connects once and its token reconnects",
+    async () => {
+      const owner = client("suite/owner");
+      const { url, token } = daemon();
+      const links = new Switch();
+      const tokens: string[] = [];
+      let ticketed: Client | undefined;
+      let replayed: Client | undefined;
+      try {
+        const { ticket } = await owner.call("system.ticket", {});
+        ticketed = connect({
+          ticket,
+          connector: links.connector(webSocketConnector(url)),
+          client: "suite/ticket",
+          backoff: BACKOFF,
+          onToken: (traded) => tokens.push(traded),
+        });
+        await until(ticketed, "the ticket's hello", connected);
+        expect(tokens).toEqual([token]);
+
+        // A reconnect presents the token: the ticket is used up.
+        links.dropConnection();
+        await until(ticketed, "the reconnect", (model) => model.connection.kind === "reconnecting");
+        await until(ticketed, "the reconnect with the token", connected);
+        expect(links.attempts).toBe(2);
+
+        replayed = connect({ ticket, connector: webSocketConnector(url), client: "suite/replay", backoff: BACKOFF });
+        await within("the replay to stop", () => describeModel(replayed?.model ?? owner.model), replayed.done);
+        expect(replayed.model.connection).toEqual({ kind: "unauthenticated", message: "ticket already used" });
+      } finally {
+        owner.close();
+        ticketed?.close();
+        replayed?.close();
       }
     },
     TEST_MS,

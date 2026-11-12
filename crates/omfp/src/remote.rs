@@ -160,7 +160,8 @@ impl Connection {
         let mut connection = Self { ws, next_id: 0 };
         connection
             .call::<SystemHello>(HelloParams {
-                token: target.token.clone(),
+                token: Some(target.token.clone()),
+                ticket: None,
                 protocol: PROTOCOL_VERSION,
                 client: CLIENT_NAME.to_owned(),
             })

@@ -242,12 +242,49 @@ describe("session", () => {
       server.close(4401);
       await flush();
 
-      expect(rig.status).toEqual({ kind: "unauthenticated" });
+      // The daemon's reason: its error message, else the close frame's (empty here).
+      expect(rig.status).toEqual({ kind: "unauthenticated", message: answerFirst ? "invalid token" : "" });
       expect(rig.done).toBe(true);
       expect(rig.timer.requested).toEqual([]);
       expect(rig.net.attempts).toBe(1);
       expect(pending.settled?.ok === false && pending.settled.error.failure).toEqual({ kind: "closed" });
     }
+  });
+
+  // spec: PRT-096, UI-255
+  test("a ticket is traded for the token, which the next connections present", () => {
+    const tokens: string[] = [];
+    const rig = new Rig({ ticket: "b41d07" }, (token) => tokens.push(token));
+    const server = rig.accept();
+    const [first] = server.frames();
+    expect(first?.params).toEqual({ ticket: "b41d07", protocol: PROTOCOL_VERSION, client: "test/l1" });
+
+    server.respond(first?.id, { ...hello(), token: TOKEN });
+    // The token stays out of the model.
+    expect(rig.status).toEqual({ kind: "connected", hello: hello() });
+    expect(tokens).toEqual([TOKEN]);
+
+    server.close(1001);
+    rig.timer.fire();
+    const again = rig.accept();
+    const [second] = again.frames();
+    expect(second?.params).toEqual({ token: TOKEN, protocol: PROTOCOL_VERSION, client: "test/l1" });
+    again.respond(second?.id, hello());
+    expect(tokens).toEqual([TOKEN]);
+  });
+
+  // spec: PRT-096, UI-255
+  test("a refused ticket stops the client with the daemon's reason", async () => {
+    const rig = new Rig({ ticket: "b41d07" });
+    const server = rig.accept();
+    const [first] = server.frames();
+    server.fail(first?.id, { code: "unauthorized", message: "ticket already used" });
+    server.close(4401);
+    await flush();
+
+    expect(rig.status).toEqual({ kind: "unauthenticated", message: "ticket already used" });
+    expect(rig.done).toBe(true);
+    expect(rig.net.attempts).toBe(1);
   });
 
   // spec: PRT-004
