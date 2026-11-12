@@ -247,7 +247,7 @@
     background: transparent;
   }
 
-  .omfp-tool-card__section h4 {
+  .omfp-tool-card__section h3 {
     margin: 0;
     font-size: var(--omfp-fs-2xs);
     font-weight: var(--omfp-fw-medium);

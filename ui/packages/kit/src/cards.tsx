@@ -68,7 +68,7 @@ export interface BoxRuleProps extends Omit<HTMLAttributes<HTMLHeadingElement>, "
 }
 
 /** A labelled rule across a border box's body, opening its next section (UI-187): `├─ Output ──────┤`. */
-export function BoxRule({ label, level = 4, className, ...props }: BoxRuleProps) {
+export function BoxRule({ label, level = 3, className, ...props }: BoxRuleProps) {
   const Heading = `h${level}` as const;
   return (
     <Heading {...props} className={cx("omfp-bbox__rule", className)}>
@@ -133,15 +133,18 @@ export function ToolCard({
   return (
     <section {...props} className={cx("omfp-tool", boxed && "omfp-bbox", className)} data-status={status}>
       {hasBody ? (
-        <AriaButton
-          className={headClass}
-          aria-expanded={expanded}
-          aria-controls={bodyId}
-          onPress={() => onExpandedChange?.(!expanded)}
-          data-testid={headTestId}
-        >
-          {head}
-        </AriaButton>
+        // The head is the card's heading (UI-187): the body's `BoxRule`s are its sub-headings.
+        <h2 className="omfp-tool__heading">
+          <AriaButton
+            className={headClass}
+            aria-expanded={expanded}
+            aria-controls={bodyId}
+            onPress={() => onExpandedChange?.(!expanded)}
+            data-testid={headTestId}
+          >
+            {head}
+          </AriaButton>
+        </h2>
       ) : (
         <div className={headClass} data-testid={headTestId}>
           {head}

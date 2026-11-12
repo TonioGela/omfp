@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { modeAt } from "../keymap/handler.ts";
 import { type Binding, keyLabel, type Mode } from "../keymap/keymap.ts";
 import {
+  FOCUS_COMPOSER,
   NOTICES,
   type Notice,
   type NoticeTone,
@@ -110,8 +111,8 @@ const KIT_TONES: Readonly<Record<NoticeTone, KitTone>> = {
 };
 
 /**
- * Opens the newest notice (`notice.open`, `g n` by default, or a click on it): selects its thread, if any, and drops
- * it; visiting the thread clears the thread's other notices.
+ * Opens the newest notice (`notice.open`, `g n` by default, or a click on it): selects its thread, if any, with the
+ * focus in its composer (UI-286), and drops it; visiting the thread clears the thread's other notices.
  */
 function useOpenNotice(): () => void {
   const { notices, window } = useHost();
@@ -124,6 +125,7 @@ function useOpenNotice(): () => void {
     notices.dismiss(newest.id);
     if (newest.threadId !== undefined) {
       actions.select(newest.threadId);
+      window.set(FOCUS_COMPOSER, newest.threadId);
     }
   };
   useCommand({

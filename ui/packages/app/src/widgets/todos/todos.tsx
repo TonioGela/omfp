@@ -22,7 +22,7 @@ export function TodosWidget(_props: WidgetProps): ReactNode {
       {view?.goal !== undefined && (
         <BorderBox
           title={text.goal}
-          level={3}
+          level={2}
           end={view.goal.statusLabel}
           className="omfp-todos__goal"
           data-testid="todos-goal"
@@ -41,7 +41,7 @@ export function TodosWidget(_props: WidgetProps): ReactNode {
           <BorderBox
             key={phase.name}
             title={phase.name}
-            level={3}
+            level={2}
             end={phase.progress}
             className="omfp-todos__phase"
             data-testid="todos-phase"

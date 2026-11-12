@@ -1931,6 +1931,13 @@
     background: none;
   }
 
+  /* The heading around a tool card's head button (UI-187) adds no box of its own. */
+  .omfp-tool__heading {
+    display: contents;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
   .omfp-tool__head {
     display: flex;
     align-items: center;
@@ -3242,6 +3249,7 @@
   .omfp-live.is-focus,
   .omfp-select.is-focus .omfp-select__button,
   :is(.omfp-checkbox, .omfp-radio):is([data-focus-visible], .is-focus) :is(.omfp-checkbox__box, .omfp-radio__dot),
+  .omfp-chat-header__title:focus-visible,
   .omfp-input-box:focus-within,
   .omfp-field.is-focus .omfp-input-box {
     outline: var(--omfp-focus-w) solid var(--omfp-focus-color);

@@ -150,7 +150,7 @@ function Transcript({ threadId, row, version, onClose }: TranscriptProps): React
   return (
     <BorderBox
       title={text.transcript(row.id)}
-      level={3}
+      level={2}
       className="omfp-subagents__transcript"
       data-testid="subagent-transcript"
       end={<IconButton label={text.close} icon={<Icon name="x" />} onPress={onClose} data-testid="subagent-close" />}

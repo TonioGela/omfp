@@ -103,7 +103,7 @@ interface RepoChangesProps {
 function RepoChanges({ workspaceId, repo, isRoot, runs }: RepoChangesProps): ReactNode {
   return (
     <section className="omfp-changes__repo" data-testid="changes-repo" data-repo={repo.name} aria-label={repo.name}>
-      <h3 className="omfp-changes__repo-head">
+      <h2 className="omfp-changes__repo-head">
         <span className="omfp-changes__repo-name">{repo.name}</span>
         <span className="omfp-changes__branch">
           <Icon name="git-branch" />
@@ -115,7 +115,7 @@ function RepoChanges({ workspaceId, repo, isRoot, runs }: RepoChangesProps): Rea
             {repo.summary}
           </span>
         )}
-      </h3>
+      </h2>
       {repo.files === undefined ? (
         <p className="omfp-changes__empty">{text.loading}</p>
       ) : repo.files.length === 0 ? (
@@ -160,7 +160,7 @@ function FileChanges({ workspaceId, repo, filePath, file, runs }: FileChangesPro
       // `g f` on the focused file opens it against `HEAD` (UI-116).
       data-omfp-path={filePath}
       data-omfp-diff=""
-      level={4}
+      level={3}
       toggleTestId="changes-file-toggle"
       expanded={expanded}
       onExpandedChange={setExpanded}

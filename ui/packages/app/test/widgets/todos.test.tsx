@@ -41,7 +41,7 @@ describe("omfp:todos", () => {
     setup(fixtureEvents("todo_tool_calls"));
     const [phase] = screen.getAllByTestId("todos-phase");
     expect(phase?.classList.contains("omfp-bbox")).toBe(true);
-    expect(within(phase as HTMLElement).getByRole("heading", { level: 3, name: "Tasks" })).toBeDefined();
+    expect(within(phase as HTMLElement).getByRole("heading", { level: 2, name: "Tasks" })).toBeDefined();
     expect(phase?.querySelector(".omfp-bbox__end")?.textContent).toBe("2/2");
     expect(
       screen

@@ -234,14 +234,30 @@ async function fetchDetails(call: SdkClient["call"], threadId: string): Promise<
   };
 }
 
-/** The title, or its editor while renaming (`Space r`, `:rename`); the compact header renames from its `⋯`. */
+/** The title, or its editor while renaming (`Space r`, `:rename`); the compact header renames from its `⋯`. Saving or
+ * cancelling leaves the focus on the title (UI-286). */
 function Title({ threadId, view, compact = false }: { threadId: string; view: HeaderView; compact?: boolean }) {
   const [renaming, setRenaming] = useWindowState(RENAMING_THREAD);
   const actions = useThreadActions();
+  const title = useRef<HTMLHeadingElement>(null);
+  const refocus = useRef(false);
+  useEffect(() => {
+    if (renaming !== threadId && refocus.current) {
+      refocus.current = false;
+      title.current?.focus();
+    }
+  }, [renaming, threadId]);
+  const close = () => {
+    refocus.current = true;
+    setRenaming(undefined);
+  };
   if (renaming !== threadId) {
     return (
       <>
         <h1
+          ref={title}
+          // A focus target only, after renaming (UI-286).
+          tabIndex={-1}
           className={`omfp-chat-header__title omfp-thread-header__title${view.placeholder ? "" : " omfp-grad-text"}`}
           data-testid="thread-title"
           data-placeholder={view.placeholder ? "true" : undefined}
@@ -269,13 +285,13 @@ function Title({ threadId, view, compact = false }: { threadId: string; view: He
       inputTestId="title-input"
       label={text.renameLabel}
       initial={view.placeholder ? "" : view.title}
-      onSave={(title) => {
-        setRenaming(undefined);
-        if (title !== "") {
-          void actions.rename(threadId, title);
+      onSave={(value) => {
+        close();
+        if (value !== "") {
+          void actions.rename(threadId, value);
         }
       }}
-      onCancel={() => setRenaming(undefined)}
+      onCancel={close}
     />
   );
 }

@@ -65,7 +65,7 @@ describe("omfp:tree", () => {
     expect(test.client.callsTo("thread.tree").map((call) => call.params)).toEqual([{ threadId: THREAD }]);
     const box = await screen.findByTestId("tree");
     expect(box.classList.contains("omfp-bbox")).toBe(true);
-    expect(within(box).getByRole("heading", { level: 3, name: "Session tree" })).toBeDefined();
+    expect(within(box).getByRole("heading", { level: 2, name: "Session tree" })).toBeDefined();
     expect(screen.getAllByTestId("tree-row").map((element) => element.dataset.entry)).toEqual([
       "u1",
       "a1",

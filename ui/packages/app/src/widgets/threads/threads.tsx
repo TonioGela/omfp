@@ -45,6 +45,7 @@ import { strings } from "../../strings/index.ts";
 import {
   ConversationSearch,
   displayTitle,
+  focusAfterRemoval,
   isCollapsed,
   isFiltering,
   isUnread,
@@ -110,6 +111,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
   const newWorkspace = useRef<HTMLInputElement>(null);
   useNavCommands(order, root);
   useSectionCommands();
+  useFocusAfterRemoval(sections, root, newWorkspace);
   useCommand({
     id: "nav.search",
     title: strings.shell.commands.search,
@@ -287,6 +289,56 @@ function useSectionCommands(): void {
   });
 }
 
+/**
+ * Keeps the focus in the column when the thread or workspace that had it goes (UI-285): once the element focused
+ * last has left the page and the focus fell back to it, {@link focusAfterRemoval} picks the row, head or field that
+ * takes the focus (a collapsed section's head when its rows are hidden).
+ */
+function useFocusAfterRemoval(
+  sections: readonly Section[],
+  root: RefObject<HTMLElement | null>,
+  newWorkspace: RefObject<HTMLInputElement | null>,
+): void {
+  const last = useRef<Element | null>(null);
+  useEffect(() => {
+    const track = (event: FocusEvent) => {
+      last.current = event.target instanceof Element ? event.target : null;
+    };
+    document.addEventListener("focusin", track);
+    return () => document.removeEventListener("focusin", track);
+  }, []);
+  const previous = useRef(sections);
+  useEffect(() => {
+    const before = previous.current;
+    previous.current = sections;
+    const active = document.activeElement;
+    const lost = (active === null || active === document.body) && last.current?.isConnected === false;
+    const target = lost ? focusAfterRemoval(before, sections) : undefined;
+    if (target === undefined) {
+      return;
+    }
+    if (target.kind === "newWorkspace") {
+      newWorkspace.current?.focus();
+      return;
+    }
+    const section = root.current?.querySelector(
+      `[data-testid="workspace-section"][data-workspace-id="${CSS.escape(target.workspaceId)}"]`,
+    );
+    const candidates = [
+      target.kind === "thread" && `[data-testid="thread-row"][data-thread-id="${CSS.escape(target.threadId)}"]`,
+      target.kind !== "workspace" && '[data-testid="add-thread"]',
+      '[data-testid="workspace-collapse"]',
+    ];
+    for (const selector of candidates) {
+      const element = selector === false ? null : section?.querySelector<HTMLElement>(selector);
+      if (element !== null && element !== undefined) {
+        element.focus();
+        return;
+      }
+    }
+  }, [sections, root, newWorkspace]);
+}
+
 /** The one filter of the column (UI-022); `/` focuses it. */
 function ThreadFilterField({ search }: { search: RefObject<HTMLInputElement | null> }): ReactNode {
   const [query, setQuery] = useWindowState(THREAD_QUERY);
@@ -342,6 +394,12 @@ function WorkspaceSection({
   const [archivedOpen, setArchivedOpen] = useWindowState(ARCHIVED_OPEN);
   const [draft] = useWindowState(DRAFT_THREAD);
   const [renaming, setRenaming] = useState(false);
+  const head = useRef<HTMLButtonElement>(null);
+  const closeRename = () => {
+    setRenaming(false);
+    // The focus stays on the renamed workspace: its head (UI-286).
+    head.current?.focus();
+  };
   const headingId = useId();
   const collapsed = isCollapsed(workspace.id, collapsedIds, filter);
   const current = useCurrentWorkspaceId() === workspace.id;
@@ -359,6 +417,7 @@ function WorkspaceSection({
     >
       <div className="omfp-ws__head">
         <button
+          ref={head}
           type="button"
           className="omfp-ws__chevron"
           data-testid="workspace-collapse"
@@ -369,17 +428,17 @@ function WorkspaceSection({
           <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
         </button>
         {renaming ? (
-          <RenameWorkspace workspace={workspace} close={() => setRenaming(false)} />
+          <RenameWorkspace workspace={workspace} close={closeRename} />
         ) : (
           <>
-            <h3
+            <h2
               id={headingId}
               className={cx("omfp-wsection__name omfp-ws__name", current && "omfp-grad-text")}
               data-testid="workspace-section-name"
             >
               {workspace.name}
               {current && <span className="omfp-visually-hidden"> ({text.current})</span>}
-            </h3>
+            </h2>
             <span className="omfp-wsection__path" title={workspace.path}>
               {workspace.path}
             </span>

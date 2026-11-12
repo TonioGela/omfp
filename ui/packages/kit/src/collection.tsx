@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import {
   Button as AriaButton,
   ListBox as AriaListBox,
@@ -43,9 +43,42 @@ export function ListBoxItem<T extends object>({ className, ...props }: ListBoxIt
 
 export type MenuProps<T extends object> = AriaMenuProps<T>;
 
-/** A menu of actions; put it in a `Popover` inside a `MenuTrigger`. */
+/** The items of a menu, in order (radio and checkbox items too), without the disabled ones. */
+const MENU_ITEMS = '[role^="menuitem"]:not([aria-disabled="true"])';
+
+/**
+ * A menu of actions; put it in a `Popover` inside a `MenuTrigger`. Like a native menu, an arrow key while no item
+ * shows the focus (opened with the mouse) lands on the first item (ArrowDown) or the last (ArrowUp): React Aria
+ * would move on from the item the pointer last crossed, which it keeps focused unseen (UI-288).
+ */
 export function Menu<T extends object>({ className, ...props }: MenuProps<T>) {
-  return <AriaMenu {...props} className={withClass("omfp-menu", className)} />;
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const menu = ref.current;
+    if (menu === null) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") {
+        return;
+      }
+      const item = event.target instanceof Element ? event.target.closest('[role^="menuitem"]') : null;
+      if (item === null || item.hasAttribute("data-focus-visible") || item.hasAttribute("data-hovered")) {
+        return;
+      }
+      const items = [...menu.querySelectorAll<HTMLElement>(MENU_ITEMS)];
+      const target = event.key === "ArrowDown" ? items[0] : items.at(-1);
+      if (target === undefined) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      target.focus();
+    };
+    menu.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => menu.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, []);
+  return <AriaMenu {...props} ref={ref} className={withClass("omfp-menu", className)} />;
 }
 
 export interface MenuItemProps<T extends object> extends AriaMenuItemProps<T> {

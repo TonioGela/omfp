@@ -372,6 +372,7 @@ export function HelpDialog({
       <BorderBox
         {...props}
         title={title}
+        level={2}
         end={end}
         className={cx("omfp-help", className)}
         bodyClassName="omfp-help__body"

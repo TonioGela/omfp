@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { WidgetComponent } from "../../src/sdk/index.ts";
+import { OmfpProvider, type WidgetComponent } from "../../src/sdk/index.ts";
 import type { LayoutEdit } from "../../src/view/edit.ts";
 import { containsWidget, parseLayout } from "../../src/view/layout.ts";
 import { ViewRenderer } from "../../src/view/render.tsx";
@@ -279,6 +279,49 @@ describe("edit mode", () => {
     cleanup();
     show("omfp:named", edits);
     expect((screen.getByTestId("widget-hide") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  // spec: UI-092, UI-103, UI-285
+  test("after Hide the focus goes to the next widget's toolbar, else the previous one", async () => {
+    const edits: LayoutEdit[] = [];
+    const onEdit = async (edit: LayoutEdit) => {
+      edits.push(edit);
+      return true;
+    };
+    const labelled = (...labels: string[]) => ["col", {}, ...labels.map((label) => ["omfp:named", { label }])];
+    const frame = (layout: unknown) => (
+      <>
+        <button type="button" data-testid="layout-edit">
+          Edit layout
+        </button>
+        <ViewRenderer view={only({ views: { v: { layout } } })} registry={registry} onEdit={onEdit} />
+      </>
+    );
+    const { host, view } = renderWithHost(frame(labelled("a", "b", "c")));
+    const rerender = (layout: unknown) => view.rerender(<OmfpProvider host={host}>{frame(layout)}</OmfpProvider>);
+    const user = userEvent.setup();
+    const hide = (index: number) =>
+      user.click(within(screen.getAllByTestId("widget-toolbar")[index] ?? document.body).getByTestId("widget-hide"));
+    /** The focused control's test id and the path of the toolbar holding it. */
+    const focused = () => {
+      const element = document.activeElement;
+      const toolbar = element?.closest<HTMLElement>('[data-testid="widget-toolbar"]');
+      return [element?.getAttribute("data-testid"), toolbar?.dataset.path];
+    };
+    // The middle widget: the next one, which takes its place.
+    await hide(1);
+    rerender(labelled("a", "c"));
+    await act(async () => {});
+    expect(focused()).toEqual(["widget-move", "0.1"]);
+    // The last widget: the previous one.
+    await hide(1);
+    rerender(labelled("a"));
+    await act(async () => {});
+    expect(focused()).toEqual(["widget-move", "0.0"]);
+    expect(edits).toEqual([
+      { kind: "hide", path: "0.1" },
+      { kind: "hide", path: "0.1" },
+    ]);
   });
 
   // spec: UI-103

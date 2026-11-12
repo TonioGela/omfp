@@ -59,7 +59,7 @@ export function Dialog({
     <AriaDialog {...props} className={cx("omfp-dialog", className)}>
       {(renderProps) => (
         <>
-          <Heading slot="title" className="omfp-dialog__title">
+          <Heading slot="title" level={2} className="omfp-dialog__title">
             {title}
           </Heading>
           <div className="omfp-dialog__body">{typeof children === "function" ? children(renderProps) : children}</div>

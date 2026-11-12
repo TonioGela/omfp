@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { createKeyHandler } from "../../../src/keymap/handler.ts";
 import { DEFAULT_BINDINGS } from "../../../src/keymap/keymap.ts";
-import { draftKey, type OmfpHost, SELECTED_THREAD } from "../../../src/sdk/index.ts";
+import { draftKey, FOCUS_COMPOSER, type OmfpHost, SELECTED_THREAD } from "../../../src/sdk/index.ts";
 import { ChatWidget, ComposerWidget } from "../../../src/widgets/chat/index.ts";
 import { eventsUntil, fixtureEvents, isFrame } from "./fixtures.ts";
 import { ManualClock, renderThread, THREAD } from "./harness.tsx";
@@ -323,5 +323,17 @@ describe("queue chips", () => {
     await act(async () => client.callsTo("thread.queue.promote")[0]?.resolve({ promoted: false }));
     expect(host.announcer.getSnapshot().message).toBe("\u201clater please\u201d is no longer queued");
     expect(screen.getByTestId("queue-chip").getAttribute("aria-busy")).toBe("false");
+  });
+});
+
+describe("focus requests", () => {
+  // spec: UI-092, UI-286
+  test("the composer of the thread named by FOCUS_COMPOSER takes the focus and clears the request", () => {
+    const { host } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+    act(() => host.window.set(FOCUS_COMPOSER, "other"));
+    expect(document.activeElement?.getAttribute("data-testid")).not.toBe("composer-input");
+    act(() => host.window.set(FOCUS_COMPOSER, THREAD));
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("composer-input");
+    expect(host.window.get(FOCUS_COMPOSER)).toBeUndefined();
   });
 });

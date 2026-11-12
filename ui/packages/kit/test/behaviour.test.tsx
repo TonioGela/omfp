@@ -185,6 +185,39 @@ describe("Menu", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
     expect(focused()).toBe("more");
   });
+
+  // spec: UI-092, UI-288
+  test("opened with the mouse, the first ArrowDown lands on the first item, even after the pointer crossed one", async () => {
+    const user = userEvent.setup();
+    render(
+      <MenuTrigger>
+        <Button data-testid="more">More</Button>
+        <Popover>
+          <Menu aria-label="Thread actions">
+            <MenuItem id="rename" data-testid="rename">
+              Rename
+            </MenuItem>
+            <MenuItem id="archive" data-testid="archive">
+              Archive
+            </MenuItem>
+            <MenuItem id="delete" data-testid="delete">
+              Delete
+            </MenuItem>
+          </Menu>
+        </Popover>
+      </MenuTrigger>,
+    );
+    await user.click(screen.getByTestId("more"));
+    await screen.findByRole("menu");
+    // The pointer crosses the second item on its way out: React Aria keeps it focused, unseen.
+    await user.hover(screen.getByTestId("archive"));
+    await user.unhover(screen.getByTestId("archive"));
+    await user.keyboard("{ArrowDown}");
+    expect(focused()).toBe("rename");
+    expect(screen.getByTestId("rename").hasAttribute("data-focus-visible")).toBe(true);
+    await user.keyboard("{ArrowDown}");
+    expect(focused()).toBe("archive");
+  });
 });
 
 function ModeSelect({ onChange }: { onChange: (key: Key | null) => void }) {

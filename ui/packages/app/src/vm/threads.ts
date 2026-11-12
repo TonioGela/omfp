@@ -199,6 +199,54 @@ export interface Section {
   readonly archivedIds: readonly string[];
 }
 
+/** What takes the focus when the thread or workspace under it leaves the column (UI-285). */
+export type RemovalFocus =
+  | { readonly kind: "thread"; readonly threadId: string; readonly workspaceId: string }
+  | { readonly kind: "addThread"; readonly workspaceId: string }
+  | { readonly kind: "workspace"; readonly workspaceId: string }
+  | { readonly kind: "newWorkspace" };
+
+/** The first of `before` missing from `after`'s neighbour: the next one still there, else the previous one; `null`
+ * when none is left, `undefined` when nothing went. */
+function neighbour(before: readonly string[], after: readonly string[]): string | null | undefined {
+  const kept = new Set(after);
+  const gone = before.findIndex((id) => !kept.has(id));
+  if (gone === -1) {
+    return undefined;
+  }
+  return (
+    before.slice(gone + 1).find((id) => kept.has(id)) ?? before.slice(0, gone).findLast((id) => kept.has(id)) ?? null
+  );
+}
+
+/**
+ * Where the focus goes when the column changes from `before` to `after` under it (UI-285): a workspace that went
+ * hands it to the next workspace's head, else the previous one's, else "+ workspace"; a thread that left a list
+ * (archived, deleted) to the next row of that list, else the previous one, else its workspace's "+ thread".
+ */
+export function focusAfterRemoval(before: readonly Section[], after: readonly Section[]): RemovalFocus | undefined {
+  const workspace = neighbour(
+    before.map((section) => section.workspace.id),
+    after.map((section) => section.workspace.id),
+  );
+  if (workspace !== undefined) {
+    return workspace === null ? { kind: "newWorkspace" } : { kind: "workspace", workspaceId: workspace };
+  }
+  for (const section of after) {
+    const workspaceId = section.workspace.id;
+    const previous = before.find((candidate) => candidate.workspace.id === workspaceId);
+    if (previous === undefined) {
+      continue;
+    }
+    const active = neighbour(previous.threadIds, section.threadIds);
+    const thread = active === undefined ? neighbour(previous.archivedIds, section.archivedIds) : active;
+    if (thread !== undefined) {
+      return thread === null ? { kind: "addThread", workspaceId } : { kind: "thread", threadId: thread, workspaceId };
+    }
+  }
+  return undefined;
+}
+
 /**
  * Every workspace by name with its threads (UI-020); while filtering, only threads that match and only workspaces
  * with one (UI-022). Threads of an unknown workspace are not listed.

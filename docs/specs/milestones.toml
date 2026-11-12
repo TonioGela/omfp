@@ -679,6 +679,11 @@ requirements = [
   "UI-272",
   "UI-273",
   "UI-274",
+  # Accessibility: focus after removals, renames and jumps; heading levels; menus opened with the mouse
+  "UI-285",
+  "UI-286",
+  "UI-287",
+  "UI-288",
   # Acceptance
   "E2E-21",
 ]

@@ -31,6 +31,7 @@ import {
   type DraftThread,
   draftKey,
   EMPTY_DRAFT,
+  FOCUS_COMPOSER,
   INTERRUPT_WINDOW_MS,
   imageAttachment,
   interruptAction,
@@ -311,6 +312,14 @@ export const Composer = memo(function Composer({
   /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
   const [insert, setInsert] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [focusRequest, setFocusRequest] = useWindowState(FOCUS_COMPOSER);
+  // Asked to take the focus once shown, e.g. after `g n` (UI-286).
+  useEffect(() => {
+    if (focusRequest === threadId) {
+      inputRef.current?.focus();
+      setFocusRequest(undefined);
+    }
+  }, [focusRequest, threadId, setFocusRequest]);
   const mode = sendMode(busy, steer);
   const other = alternative(mode);
   const commands = useThreadCommands(threadId, known);

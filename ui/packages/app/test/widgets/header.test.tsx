@@ -100,8 +100,8 @@ describe("omfp:header", () => {
     expect(screen.getByTestId("thread-title").getAttribute("title")).toBe(long);
   });
 
-  // spec: UI-030, UI-023
-  test("rename in place: Enter saves through threads.update, Escape cancels; unnamed threads start empty", async () => {
+  // spec: UI-030, UI-023, UI-092, UI-286
+  test("rename in place: Enter saves through threads.update, Escape cancels, both back on the title; unnamed threads start empty", async () => {
     const { client, user } = setup(thread("t1", "", "w1"));
     const title = screen.getByTestId("thread-title");
     expect([title.textContent, title.dataset.placeholder]).toEqual(["New thread", "true"]);
@@ -113,9 +113,12 @@ describe("omfp:header", () => {
     expect(client.callsTo("threads.update").map((call) => call.params)).toEqual([
       { threadId: "t1", title: "checkout v2" },
     ]);
+    // The focus stays on the renamed item: its title.
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("thread-title");
     await user.click(screen.getByTestId("rename-thread"));
     await user.type(screen.getByTestId("title-input"), "x{Escape}");
     expect(screen.queryByTestId("title-input")).toBeNull();
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("thread-title");
     expect(client.callsTo("threads.update")).toHaveLength(1);
   });
 

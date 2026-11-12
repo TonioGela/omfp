@@ -132,7 +132,7 @@ function SessionTree({ threadId }: { threadId: string }): ReactNode {
   return (
     <BorderBox
       title={text.label}
-      level={3}
+      level={2}
       className="omfp-tree"
       data-testid="tree"
       end={

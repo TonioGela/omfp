@@ -342,6 +342,98 @@ describe("omfp:threads", () => {
     expect(host.window.get(DELETE_THREAD)).toBe("t2");
   });
 
+  // spec: UI-287
+  test("each workspace's name is an h2, under the thread title's h1", () => {
+    setup();
+    expect(screen.getAllByRole("heading").map((heading) => [heading.tagName, heading.textContent])).toEqual([
+      ["H2", "checkout"],
+      ["H2", "scratch"],
+    ]);
+  });
+
+  /** The focused element's test id and its thread or workspace id. */
+  function focusedItem(): string {
+    const element = document.activeElement as HTMLElement | null;
+    const testId = element?.getAttribute("data-testid") ?? element?.tagName ?? "none";
+    const owner =
+      element?.dataset.threadId ?? element?.closest<HTMLElement>("[data-workspace-id]")?.dataset.workspaceId;
+    return owner === undefined ? testId : `${testId} ${owner}`;
+  }
+
+  function row(threadId: string): HTMLElement {
+    const found = screen.getAllByTestId("thread-row").find((candidate) => candidate.dataset.threadId === threadId);
+    if (found === undefined) {
+      throw new Error(`no row ${threadId}`);
+    }
+    return found;
+  }
+
+  // spec: UI-092, UI-285
+  test("when the focused thread leaves its list, the focus goes to the next row, else the previous one, else + thread", () => {
+    const [a, b, c] = [
+      thread("a", "alpha", "w1", { updatedAt: 9 }),
+      thread("b", "beta", "w1", { updatedAt: 8 }),
+      thread("c", "gamma", "w1", { updatedAt: 7 }),
+    ];
+    const { client, flush } = setup({ ...INDEX, threads: [a, b, c] });
+    expect(rows()).toEqual(["a", "b", "c"]);
+    // Archived: the next row.
+    act(() => row("b").focus());
+    client.indexEvents({ kind: "thread_upserted", thread: { ...b, archivedAt: 10 } });
+    flush();
+    expect(focusedItem()).toBe("thread-row c");
+    // Deleted, the last one: the previous row.
+    client.indexEvents({ kind: "thread_removed", threadId: "c" });
+    flush();
+    expect(focusedItem()).toBe("thread-row a");
+    // The workspace's last thread: its + thread.
+    client.indexEvents({ kind: "thread_removed", threadId: "a" });
+    flush();
+    expect(focusedItem()).toBe("add-thread w1");
+  });
+
+  // spec: UI-092, UI-285
+  test("a thread removed while the focus is elsewhere leaves the focus where it is", async () => {
+    const { client, flush, user } = setup();
+    await user.click(screen.getByTestId("thread-filter"));
+    client.indexEvents({ kind: "thread_removed", threadId: "t1" });
+    flush();
+    expect(focusedItem()).toBe("thread-filter");
+  });
+
+  // spec: UI-092, UI-285
+  test("when the focused workspace goes, the focus goes to the next workspace head, else the previous, else + workspace", () => {
+    // By name: checkout (w1), extra (w3), scratch (w2).
+    const extra = { ...workspace("w3"), name: "extra", path: "/home/me/extra" };
+    const { client, flush } = setup({ ...INDEX, workspaces: [...(INDEX.workspaces ?? []), extra] });
+    act(() => within(section("w1")).getByTestId("delete-workspace").focus());
+    client.indexEvents({ kind: "thread_removed", threadId: "t1" }, { kind: "workspace_removed", workspaceId: "w1" });
+    flush();
+    expect(focusedItem()).toBe("workspace-collapse w3");
+    act(() => within(section("w2")).getByTestId("workspace-menu").focus());
+    client.indexEvents(
+      { kind: "thread_removed", threadId: "t2" },
+      { kind: "thread_removed", threadId: "t3" },
+      { kind: "workspace_removed", workspaceId: "w2" },
+    );
+    flush();
+    expect(focusedItem()).toBe("workspace-collapse w3");
+    client.indexEvents({ kind: "workspace_removed", workspaceId: "w3" });
+    flush();
+    expect(focusedItem()).toBe("new-workspace-input");
+  });
+
+  // spec: UI-092, UI-286
+  test("renaming a workspace with Enter leaves the focus on its head", async () => {
+    const { user } = setup();
+    await user.click(within(section("w1")).getByTestId("workspace-menu"));
+    await user.click(await screen.findByTestId("workspace-rename"));
+    const input = await screen.findByTestId("workspace-name-input");
+    await user.clear(input);
+    await user.type(input, "checkout-2{Enter}");
+    await waitFor(() => expect(focusedItem()).toBe("workspace-collapse w1"));
+  });
+
   // spec: UI-095, UI-022, UI-023
   test("nav commands move through the rows shown; `/` focuses the filter and `Space w` the + workspace field", () => {
     const { host } = setup();

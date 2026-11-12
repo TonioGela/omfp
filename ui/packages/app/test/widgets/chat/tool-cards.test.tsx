@@ -176,7 +176,9 @@ describe("bash card", () => {
       "omfp-tool-card__section",
     ]);
     expect(byTestId(element, "tool-command").textContent).toBe("echo tool-output-123");
-    expect(within(element).getByRole("heading", { level: 4, name: "Output" })).toBeDefined();
+    // The head is the card's h2, its rules h3 (UI-287).
+    expect(within(within(element).getByRole("heading", { level: 2 })).getAllByRole("button").length).toBe(1);
+    expect(within(element).getByRole("heading", { level: 3, name: "Output" })).toBeDefined();
     expect(body?.children[2]?.contains(byTestId(element, "tool-output"))).toBe(true);
   });
 });

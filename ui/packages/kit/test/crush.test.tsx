@@ -467,7 +467,7 @@ describe("BorderBox", () => {
   // spec: UI-187
   test("a labelled rule is a heading that opens the next section", () => {
     render(<BoxRule label="Output" data-testid="rule" />);
-    const rule = screen.getByRole("heading", { level: 4, name: "Output" });
+    const rule = screen.getByRole("heading", { level: 3, name: "Output" });
     expect(rule === screen.getByTestId("rule")).toBe(true);
     expect(rule.className).toBe("omfp-bbox__rule");
   });
@@ -488,6 +488,7 @@ describe("HelpDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "Keys and commands" });
     expect(dialog.querySelector(".omfp-bbox__label")?.textContent).toBe("help");
     expect(dialog.querySelector(".omfp-bbox__end")?.textContent).toBe("esc");
+    expect(screen.getByRole("heading", { level: 2, name: "help" }).className).toBe("omfp-bbox__label");
     expect(screen.getByRole("heading", { level: 3, name: "normal" }).className).toBe("omfp-bbox__rule");
     expect([...dialog.querySelectorAll(".omfp-help__row")].map((row) => row.textContent)).toEqual([
       "spc a] aNext thread needing attention",

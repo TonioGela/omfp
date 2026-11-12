@@ -12,6 +12,7 @@ import {
   ACTIVE_VIEW,
   DRAFT_THREAD,
   ERRORS,
+  FOCUS_COMPOSER,
   NOTICES,
   type Notice,
   REVEAL_WIDGET,
@@ -1164,5 +1165,29 @@ describe("responsive frame", () => {
         Object.defineProperty(window, "visualViewport", original);
       }
     }
+  });
+});
+
+describe("focus after a jump", () => {
+  // spec: UI-092, UI-286
+  test("the jump to the next thread needing attention (`Space a`) hands the focus to its composer", () => {
+    const { client, flush, host } = setup();
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1", { needsAttention: true }) });
+    flush();
+    act(() => {
+      host.commands.run("thread.nextAttention");
+    });
+    expect([host.window.get(SELECTED_THREAD), host.window.get(FOCUS_COMPOSER)]).toEqual(["t2", "t2"]);
+  });
+
+  // spec: UI-092, UI-192, UI-286
+  test("`g n` opens the newest notice's thread with the focus in its composer", () => {
+    const { client, flush, host } = setup({ hasFocus: () => true });
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t2", "flaky", "w1", { needsAttention: true }) });
+    flush();
+    act(() => {
+      host.commands.run("notice.open");
+    });
+    expect([host.window.get(SELECTED_THREAD), host.window.get(FOCUS_COMPOSER)]).toEqual(["t2", "t2"]);
   });
 });

@@ -12,6 +12,7 @@ import {
   ACTIVE_VIEW,
   COLOR_SCHEME,
   currentWorkspaceId,
+  FOCUS_COMPOSER,
   type OpenFileOptions,
   openFile,
   RENAMING_THREAD,
@@ -185,6 +186,8 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
       const next = nextNeedingAttention(threads, selected);
       if (next !== undefined) {
         actions.select(next);
+        // The jump lands in the thread's composer (UI-286).
+        host.window.set(FOCUS_COMPOSER, next);
       }
     },
   });

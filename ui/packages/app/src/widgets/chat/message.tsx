@@ -178,7 +178,7 @@ function RecordBlock({ cardKey, summary, json }: { cardKey: string; summary: str
   const [expanded, setExpanded] = useExpanded(cardKey, false);
   return (
     <div className="omfp-record" data-testid="record" data-expanded={expanded}>
-      <Disclosure title={summary} expanded={expanded} onExpandedChange={setExpanded} level={4}>
+      <Disclosure title={summary} expanded={expanded} onExpandedChange={setExpanded} level={2}>
         <Code code={json} block data-testid="record-json" />
       </Disclosure>
     </div>
@@ -278,7 +278,7 @@ export function NoticeRowView({ cardKey, row }: { cardKey: string; row: NoticeRo
     <div className="omfp-notice" data-testid="notice" data-kind={row.kind} data-level={row.level}>
       <span className="omfp-notice__text">{row.text}</span>
       {row.json !== undefined && (
-        <Disclosure title={text.details} expanded={expanded} onExpandedChange={setExpanded} level={4}>
+        <Disclosure title={text.details} expanded={expanded} onExpandedChange={setExpanded} level={2}>
           <Code code={row.json} block data-testid="notice-json" />
         </Disclosure>
       )}
@@ -302,7 +302,7 @@ export function SystemRowView({ cardKey, row }: { cardKey: string; row: SystemRo
       {row.text === undefined ? (
         summary
       ) : (
-        <Disclosure title={summary} expanded={expanded} onExpandedChange={setExpanded} level={4}>
+        <Disclosure title={summary} expanded={expanded} onExpandedChange={setExpanded} level={2}>
           <div className="omfp-system__text" data-testid="system-text">
             {row.text}
           </div>

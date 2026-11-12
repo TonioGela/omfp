@@ -22,7 +22,16 @@ import {
   Toolbar,
 } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
-import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { fileName, fileTabId, REVEAL_WIDGET, useFileTabs, useWindowState } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { type LayoutEdit, type Place, resizeSizes } from "./edit.ts";
@@ -80,10 +89,49 @@ interface Scope {
   readonly viewId: string;
   /** On a phone: the area shown. */
   readonly area: Area | undefined;
+  /** Hide was pressed on the toolbar at `index` (document order), or `undefined`: its edit failed; the focus moves on
+   * once the view changes. */
+  readonly onHide: ((index: number | undefined) => void) | undefined;
+}
+
+const TOOLBAR = '[data-testid="widget-toolbar"]';
+
+/**
+ * Where the focus goes after Hide (UI-285): to the toolbar now at the hidden widget's place (the next widget's), else
+ * the previous one, else the frame's "Edit layout" — once the view without the widget renders, unless the focus moved
+ * on meanwhile (outside the toolbars, which the next widget may have taken over in place).
+ */
+function useFocusAfterHide(tree: LayoutTree): [RefObject<HTMLDivElement | null>, (index: number | undefined) => void] {
+  const root = useRef<HTMLDivElement>(null);
+  const pending = useRef<number | undefined>(undefined);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the view the daemon pushes back renders
+  useEffect(() => {
+    const index = pending.current;
+    pending.current = undefined;
+    const active = document.activeElement;
+    const lost = active === null || active === document.body || active.closest(TOOLBAR) !== null;
+    if (index === undefined || root.current === null || !lost) {
+      return;
+    }
+    const toolbars = [...root.current.querySelectorAll<HTMLElement>(TOOLBAR)];
+    const toolbar = toolbars[index] ?? toolbars[index - 1];
+    const target =
+      toolbar === undefined
+        ? document.querySelector<HTMLElement>('[data-testid="layout-edit"]')
+        : toolbar.querySelector<HTMLElement>("button:not([disabled])");
+    target?.focus();
+  }, [tree]);
+  return [
+    root,
+    (index) => {
+      pending.current = index;
+    },
+  ];
 }
 
 export function ViewRenderer({ view, registry, workspaceId, views, onEdit, area }: ViewRendererProps): ReactNode {
   const targets = useMemo(() => moveTargets(view.tree, "0"), [view.tree]);
+  const [root, onHide] = useFocusAfterHide(view.tree);
   const scope: Scope = {
     registry,
     workspaceId,
@@ -93,9 +141,11 @@ export function ViewRenderer({ view, registry, workspaceId, views, onEdit, area 
     single: view.tree.kind === "widget",
     viewId: view.id,
     area,
+    onHide,
   };
   return (
     <div
+      ref={root}
       className="omfp-view"
       data-testid="view"
       data-view={view.id}
@@ -128,6 +178,7 @@ export function PanelLayout({ id, tree, registry, workspaceId, views }: PanelLay
     single: true,
     viewId: path,
     area: undefined,
+    onHide: undefined,
   };
   return <Node tree={tree} path={path} scope={scope} />;
 }
@@ -555,8 +606,15 @@ function WidgetToolbar({ reference, path, scope, onEdit }: ToolbarProps): ReactN
         aria-label={layoutText.hideLabel(reference)}
         data-testid="widget-hide"
         isDisabled={scope.single}
-        onPress={() => {
-          void onEdit({ kind: "hide", path });
+        onPress={(event) => {
+          const toolbar = event.target.closest(TOOLBAR);
+          const toolbars = [...(toolbar?.closest('[data-testid="view"]')?.querySelectorAll(TOOLBAR) ?? [])];
+          scope.onHide?.(toolbar === null ? 0 : toolbars.indexOf(toolbar));
+          void onEdit({ kind: "hide", path }).then((written) => {
+            if (!written) {
+              scope.onHide?.(undefined);
+            }
+          });
         }}
       >
         {layoutText.hide}

@@ -224,7 +224,7 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
           ) : (
             view.input !== undefined && (
               <>
-                <h4>{text.edit}</h4>
+                <h3>{text.edit}</h3>
                 <Code code={view.input} block data-testid="tool-input" />
               </>
             )
@@ -341,7 +341,7 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
 function TodoList({ phases }: { phases: readonly TodoPhase[] }): ReactNode {
   return phases.map((phase) => (
     <section key={phase.name} className="omfp-tool-card__phase" aria-label={phase.name}>
-      {phases.length > 1 && <h4>{phase.name}</h4>}
+      {phases.length > 1 && <h3>{phase.name}</h3>}
       <ul className="omfp-todo omfp-tool-card__todo">
         {phase.tasks.map((task) => (
           <li key={task.content} className="omfp-todo__item" data-testid="todo-task" data-status={task.status}>
