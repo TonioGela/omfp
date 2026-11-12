@@ -853,6 +853,7 @@ mod tests {
             props: Map::new(),
             view: None,
             place: Place::SideTab,
+            argument: "where",
         }
     }
 

@@ -1165,6 +1165,11 @@
     color: var(--omfp-on-surface-variant);
   }
 
+  /* The error line wraps the row past its height: the step to the next row comes back below it. */
+  .omfp-activity__row[data-failed] {
+    padding-block-end: var(--omfp-s1);
+  }
+
   .omfp-activity__time {
     color: var(--omfp-tertiary);
   }

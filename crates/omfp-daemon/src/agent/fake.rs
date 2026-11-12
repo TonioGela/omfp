@@ -302,6 +302,13 @@ impl FakeLauncher {
         self.gate(LAUNCH_GATE)
     }
 
+    /// Holds every later close of a process by the daemon (dropping it, as `omp-rpc` kills omp) until the returned
+    /// gate opens.
+    #[must_use]
+    pub fn gate_closes(&self) -> Gate {
+        self.gate(CLOSE_GATE)
+    }
+
     /// Every title generation so far, oldest first.
     #[must_use]
     pub fn title_requests(&self) -> Vec<TitleRequest> {
@@ -320,6 +327,9 @@ const TITLE_GATE: &str = "<title>";
 
 /// Gate key of launches (not an omp command).
 const LAUNCH_GATE: &str = "<launch>";
+
+/// Gate key of process closes (not an omp command).
+const CLOSE_GATE: &str = "<close>";
 
 impl AgentLauncher for FakeLauncher {
     fn launch(
@@ -471,6 +481,9 @@ struct FakeAgent(FakeProcess);
 
 impl Drop for FakeAgent {
     fn drop(&mut self) {
+        if let (_, Some(gate)) = self.0.scripted(CLOSE_GATE) {
+            gate.pass();
+        }
         self.0.exit();
     }
 }

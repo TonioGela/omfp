@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context as _, bail};
 use clap::Parser as _;
 #[cfg(target_os = "linux")]
-use gio::glib::{ToVariant as _, Variant};
+use gio::glib::{ToVariant as _, Variant, VariantTy};
 use omfp_daemon::config::{Cli, Config, default_config_file, default_data_dir};
 use omfp_daemon::paths::{create_private_dir, open_private_log};
 use omfp_daemon::theme::default_theme_file;
@@ -269,7 +269,8 @@ impl BrowserUrl {
 pub enum Navigation {
     /// The daemon's own origin, or a document without one of its own (`about:`, `blob:`, `data:`).
     Allow,
-    /// Another web page or a mail link: cancelled and opened by the system's browser or mail client.
+    /// Another web page or a mail link: cancelled; a new-window request for it opens in the system's browser or mail
+    /// client.
     External,
     /// Anything else (`file:`, other schemes): cancelled.
     Deny,
@@ -609,19 +610,29 @@ pub fn portal_theme(color_scheme: u32) -> Option<WindowTheme> {
 }
 
 /// The `u` of a portal value however it is wrapped: `ReadOne` answers `(v)`, the older `Read` `(v)` holding a `v`,
-/// `SettingChanged` carries a `v`.
+/// `SettingChanged`'s `(ssv)` carries a `v` ([`setting_changed`]). Only a `v` is opened as one: `g_variant_get_variant`
+/// on anything else is a `GLib-CRITICAL`.
 #[cfg(target_os = "linux")]
 #[must_use]
 pub fn portal_value(value: &Variant) -> Option<u32> {
     if let Some(number) = value.get::<u32>() {
         return Some(number);
     }
-    if let Some(inner) = value.as_variant() {
-        return portal_value(&inner);
+    if value.is_type(VariantTy::VARIANT) {
+        return value.as_variant().and_then(|inner| portal_value(&inner));
     }
-    (value.is_container() && value.n_children() == 1)
+    value
+        .is_type(VariantTy::new("(v)").expect("a valid type string"))
         .then(|| portal_value(&value.child_value(0)))
         .flatten()
+}
+
+/// The color scheme a `SettingChanged(namespace, key, value)` signal (`(ssv)`) reports, if it is about it.
+#[cfg(target_os = "linux")]
+#[must_use]
+pub fn setting_changed(parameters: &Variant) -> Option<Option<u32>> {
+    let (namespace, key, value) = parameters.get::<(String, String, Variant)>()?;
+    (namespace == APPEARANCE && key == COLOR_SCHEME).then(|| portal_value(&value))
 }
 
 /// Follows the session's color scheme through the settings portal (UI-195): `WebKitGTK` 4.1 (GTK3) never reads it, so
@@ -646,12 +657,9 @@ fn follow_color_scheme(window: &WebviewWindow) -> Option<ColorScheme> {
             let window = window.clone();
             let changed = Rc::clone(&changed);
             move |_, _, _, _, _, parameters| {
-                if let Some((namespace, key, value)) = parameters.get::<(String, String, Variant)>()
-                    && namespace == APPEARANCE
-                    && key == COLOR_SCHEME
-                {
+                if let Some(value) = setting_changed(parameters) {
                     changed.set(true);
-                    let _ = window.set_theme(portal_value(&value).and_then(portal_theme));
+                    let _ = window.set_theme(value.and_then(portal_theme));
                 }
             }
         },
@@ -766,11 +774,12 @@ fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::R
                 follow(url, &origin)
             }
         })
-        // `target="_blank"` links and `window.open`: never a second webview; other pages go to the browser.
+        // `target="_blank"` links and `window.open`: never a second webview; other pages go to the browser. The same on
+        // Linux and macOS: Tauri's handlers, no platform code.
         .on_new_window({
             let origin = origin.clone();
             move |url, _| {
-                if navigation(&url, &origin) == Navigation::External {
+                if opens_externally(&url, &origin) {
                     crate::tray::open_in_browser(url.as_str());
                 }
                 NewWindowResponse::Deny
@@ -795,17 +804,18 @@ fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::R
     Ok(app.run_return(|_, _| {}))
 }
 
-/// Follows a navigation of the window (DMN-182): the daemon's own pages load, other web pages open in the system's
-/// browser instead, anything else is cancelled.
+/// Whether a navigation of the window's page or of one of its frames loads (DMN-182): only the daemon's own pages
+/// and documents without an origin of their own. Every other navigation is cancelled without a word, an external web
+/// page or `mailto:` link too: neither `WebKitGTK` nor `WKWebView` tells Tauri whether a frame or the page navigates, and
+/// a widget's frame on another site must not open the browser at every render of every window.
 fn follow(url: &Url, origin: &str) -> bool {
-    match navigation(url, origin) {
-        Navigation::Allow => true,
-        Navigation::External => {
-            crate::tray::open_in_browser(url.as_str());
-            false
-        }
-        Navigation::Deny => false,
-    }
+    navigation(url, origin) == Navigation::Allow
+}
+
+/// Whether a new-window request (`target="_blank"`, `window.open`) goes to the system (DMN-182): an external web page
+/// or mail link does; the window never opens a second webview.
+fn opens_externally(url: &Url, origin: &str) -> bool {
+    navigation(url, origin) == Navigation::External
 }
 
 /// Polls [`PROBE`] every 100 ms; once the shell is ready (and the page's color scheme is `scheme`, when given:
@@ -1113,6 +1123,17 @@ mod tests {
             ("omfp-notify:?title=x", Navigation::Deny),
         ] {
             assert_eq!(navigation(&url(target), origin), expected, "{target}");
+            // Navigations of the page or a frame never reach the system; new windows do when they are external.
+            assert_eq!(
+                follow(&url(target), origin),
+                expected == Navigation::Allow,
+                "{target}"
+            );
+            assert_eq!(
+                opens_externally(&url(target), origin),
+                expected == Navigation::External,
+                "{target}"
+            );
         }
     }
 
@@ -1158,17 +1179,82 @@ mod tests {
         assert_eq!(portal_theme(0), None);
         assert_eq!(portal_theme(3), None);
 
-        // `ReadOne` answers `(v)`, `Read` `(v)` holding a `v`, `SettingChanged` carries the `v`.
-        let read_one = (1u32.to_variant(),).to_variant();
-        let read = (Variant::from_variant(&2u32.to_variant()),).to_variant();
-        assert_eq!(portal_value(&read_one), Some(1));
-        assert_eq!(portal_value(&read), Some(2));
-        assert_eq!(
-            portal_value(&Variant::from_variant(&0u32.to_variant())),
-            Some(0)
-        );
         assert_eq!(portal_value(&"dark".to_variant()), None);
         assert_eq!(portal_value(&(1u32, 2u32).to_variant()), None);
+        assert_eq!(portal_value(&parsed("(s)", "('dark',)")), None);
+    }
+
+    /// A variant of `type_` from its text form.
+    #[cfg(target_os = "linux")]
+    fn parsed(type_: &str, text: &str) -> Variant {
+        Variant::parse(Some(VariantTy::new(type_).unwrap()), text).unwrap()
+    }
+
+    /// The `GLib-CRITICAL`s logged on this thread while `run` runs (a failed `g_return_if_fail`).
+    #[cfg(target_os = "linux")]
+    fn glib_critical_logs<T>(run: impl FnOnce() -> T) -> (T, Vec<String>) {
+        let logged = Arc::new(Mutex::new(Vec::new()));
+        let thread = std::thread::current().id();
+        let handler = gio::glib::log_set_handler(
+            Some("GLib"),
+            gio::glib::LogLevels::LEVEL_CRITICAL,
+            false,
+            false,
+            {
+                let logged = Arc::clone(&logged);
+                move |_, _, message| {
+                    if std::thread::current().id() == thread {
+                        logged.lock().unwrap().push(message.to_owned());
+                    }
+                }
+            },
+        );
+        let answer = run();
+        gio::glib::log_remove_handler(Some("GLib"), handler);
+        let logged = logged.lock().unwrap().clone();
+        (answer, logged)
+    }
+
+    // spec: UI-195
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn read_one_answers_a_v_in_a_tuple() {
+        let (value, critical_logs) =
+            glib_critical_logs(|| portal_value(&parsed("(v)", "(<uint32 1>,)")));
+        assert_eq!(value, Some(1));
+        assert_eq!(critical_logs, Vec::<String>::new());
+    }
+
+    // spec: UI-195
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn read_answers_a_v_holding_a_v_in_a_tuple() {
+        let (value, critical_logs) =
+            glib_critical_logs(|| portal_value(&parsed("(v)", "(<<uint32 2>>,)")));
+        assert_eq!(value, Some(2));
+        assert_eq!(critical_logs, Vec::<String>::new());
+    }
+
+    // spec: UI-195
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn setting_changed_carries_the_v_of_its_key() {
+        let (values, critical_logs) = glib_critical_logs(|| {
+            [
+                "('org.freedesktop.appearance', 'color-scheme', <uint32 1>)",
+                "('org.freedesktop.appearance', 'color-scheme', <<uint32 2>>)",
+                "('org.freedesktop.appearance', 'color-scheme', <'dark'>)",
+                "('org.freedesktop.appearance', 'accent-color', <uint32 1>)",
+                "('org.gnome.desktop.interface', 'color-scheme', <uint32 1>)",
+            ]
+            .map(|text| setting_changed(&parsed("(ssv)", text)))
+        });
+        assert_eq!(
+            values,
+            [Some(Some(1)), Some(Some(2)), Some(None), None, None]
+        );
+        assert_eq!(critical_logs, Vec::<String>::new());
+        assert_eq!(setting_changed(&parsed("(ss)", "('a', 'b')")), None);
     }
 
     // spec: TST-033

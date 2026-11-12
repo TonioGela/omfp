@@ -624,8 +624,14 @@ impl Supervisor {
         self.ensure_running(&actor).await.map(drop)
     }
 
-    /// Stops the thread's omp process, if any.
+    /// Stops the thread's omp process, if any. Cancellation-safe ([`Self::detached`]).
     pub async fn stop(&self, id: &str) -> Result<()> {
+        let id = id.to_owned();
+        self.detached(|supervisor| async move { supervisor.stop_now(&id).await })
+            .await
+    }
+
+    async fn stop_now(&self, id: &str) -> Result<()> {
         let actor = self.actor(id).await?;
         let _lifecycle = actor.lifecycle.lock().await;
         self.stop_locked(&actor).await
@@ -634,8 +640,15 @@ impl Supervisor {
     /// Stops the thread, then every thread of its spawned tree (AGT-071, DMN-162) in creation order, reading the tree
     /// again after each pass until a pass finds no member left, so threads spawned meanwhile stop too. Every member is
     /// tried; the first error comes back after that. Returns the stopped threads in the order they were stopped.
+    /// Cancellation-safe ([`Self::detached`]): an agent stopping its own tree loses its call with its process.
     pub async fn stop_tree(&self, id: &str) -> Result<Vec<String>> {
-        self.stop(id).await?;
+        let id = id.to_owned();
+        self.detached(|supervisor| async move { supervisor.stop_tree_now(&id).await })
+            .await
+    }
+
+    async fn stop_tree_now(&self, id: &str) -> Result<Vec<String>> {
+        self.stop_now(id).await?;
         let mut stopped = vec![id.to_owned()];
         let mut failed = None;
         loop {
@@ -650,7 +663,7 @@ impl Supervisor {
                 break;
             }
             for member in pending {
-                if let Err(error) = self.stop(&member).await {
+                if let Err(error) = self.stop_now(&member).await {
                     warn!(thread = %member, %error, "cascade stop failed");
                     failed.get_or_insert(error);
                 }
@@ -660,28 +673,51 @@ impl Supervisor {
         failed.map_or(Ok(stopped), Err)
     }
 
-    /// Stops and starts the thread's process; the history reloads from the session (DMN-032).
+    /// Stops and starts the thread's process; the history reloads from the session (DMN-032). Cancellation-safe
+    /// ([`Self::detached`]).
     pub async fn restart(&self, id: &str) -> Result<()> {
-        let actor = self.actor(id).await?;
-        let _lifecycle = actor.lifecycle.lock().await;
-        self.stop_locked(&actor).await?;
-        self.start_locked(&actor).await.map(drop)
+        let id = id.to_owned();
+        self.detached(|supervisor| async move {
+            let actor = supervisor.actor(&id).await?;
+            let _lifecycle = actor.lifecycle.lock().await;
+            supervisor.stop_locked(&actor).await?;
+            supervisor.start_locked(&actor).await.map(drop)
+        })
+        .await
     }
 
-    /// Stops the thread and forgets its actor (the thread was deleted).
+    /// Runs a lifecycle operation as a task of its own that the caller only awaits, so dropping the caller cannot
+    /// interrupt it half-way: an agent stopping or restarting its own thread through a host tool loses that call when
+    /// its omp process dies, and an operation cut after taking the process would never report it stopped nor release
+    /// its slot of the process limit (DMN-038).
+    async fn detached<T, F>(&self, operation: impl FnOnce(Self) -> F) -> Result<T>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<T>> + Send + 'static,
+    {
+        tokio::spawn(operation(self.clone()))
+            .await
+            .map_err(|error| SupervisorError::Internal(error.to_string()))?
+    }
+
+    /// Stops the thread and forgets its actor (the thread was deleted). Cancellation-safe ([`Self::detached`]).
     pub async fn forget(&self, id: &str) -> Result<()> {
-        let Some(actor) = self.lookup(id) else {
-            return Ok(());
-        };
-        {
-            let _lifecycle = actor.lifecycle.lock().await;
-            self.stop_locked(&actor).await?;
-        }
-        if let Some(task) = lock(&actor.title_task).take() {
-            task.abort();
-        }
-        lock(&self.inner.actors).remove(id);
-        Ok(())
+        let id = id.to_owned();
+        self.detached(|supervisor| async move {
+            let Some(actor) = supervisor.lookup(&id) else {
+                return Ok(());
+            };
+            {
+                let _lifecycle = actor.lifecycle.lock().await;
+                supervisor.stop_locked(&actor).await?;
+            }
+            if let Some(task) = lock(&actor.title_task).take() {
+                task.abort();
+            }
+            lock(&supervisor.inner.actors).remove(&id);
+            Ok(())
+        })
+        .await
     }
 
     /// Sends a prompt, starting omp first when needed (DMN-070); returns at admission (PRT-030). The thread's first

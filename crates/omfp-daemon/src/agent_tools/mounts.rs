@@ -207,6 +207,13 @@ fn placed(mounted: &Mounted) -> String {
     }
 }
 
+/// An error of `views.mount` in the tool's own words: the method's `place` is the tool's `where`.
+fn as_tool_arguments(error: &str) -> String {
+    error
+        .replace("`place`", "`where`")
+        .replace("place: \"", "where: \"")
+}
+
 fn run_mount(context: ToolContext, arguments: Map<String, Value>) -> ToolFuture {
     Box::pin(async move {
         let place = match text(&arguments, "where")?.as_deref() {
@@ -229,7 +236,9 @@ fn run_mount(context: ToolContext, arguments: Map<String, Value>) -> ToolFuture 
             panel: flag(&arguments, "panel")?,
         };
         let inline = params.code.is_some();
-        let mounted: Mounted = run_call(&context, Call::ViewsMount(params)).await?;
+        let mounted: Mounted = run_call(&context, Call::ViewsMount(params))
+            .await
+            .map_err(|error| as_tool_arguments(&error))?;
         let mut answer = format!(
             "Mounted {} as {:?} {}{}; open windows show it now.",
             mounted.reference,
@@ -554,7 +563,13 @@ mod tests {
         let error = run(&harness, run_update, json!({ "id": "mine", "code": code }))
             .await
             .unwrap_err();
-        conflict(error, "no mount wrote");
+        conflict(error.clone(), "no mount wrote");
+        // An update cannot choose another id.
+        assert!(
+            error.contains("cannot update the code of mount mine"),
+            "{error}"
+        );
+        assert!(!error.contains("choose another id"), "{error}");
 
         // The mount's own folder: written with the marker, replaced (and said so) by the next mount with code.
         let mounted = harness
@@ -637,7 +652,7 @@ mod tests {
             ),
             (
                 json!({ "id": "x", "widget": "y", "panel": true, "view": "v" }),
-                "bad_request: a panel floats over every view",
+                "bad_request: a panel floats over every view: `view` and `where` do not apply",
             ),
             (
                 json!({ "id": "x", "widget": "y", "where": "left" }),
@@ -674,6 +689,47 @@ mod tests {
         assert!(
             error.starts_with("bad_request: .omfp/views.json is invalid ("),
             "{error}"
+        );
+    }
+
+    // spec: AGT-061, PRT-080, DMN-064
+    #[tokio::test]
+    async fn placement_errors_name_the_callers_argument() {
+        let harness = harness().await;
+        // A view without the `side` tabs: the fix names the caller's argument, `where` here, `place` in the method.
+        std::fs::create_dir_all(harness.folder.join(".omfp")).unwrap();
+        std::fs::write(
+            harness.folder.join(".omfp/views.json"),
+            r#"{ "default": "a", "views": { "a": { "layout": ["row", {}, "omfp:chat"] } } }"#,
+        )
+        .unwrap();
+        let error = run(&harness, run_mount, json!({ "id": "x", "widget": "y" }))
+            .await
+            .unwrap_err();
+        assert!(error.contains("use where: \"end\""), "{error}");
+        let mount = |params: Value| {
+            let mut params = params;
+            params["workspaceId"] = json!(harness.context.workspace_id);
+            harness
+                .context
+                .services
+                .mount(serde_json::from_value(params).unwrap())
+        };
+        let error = mount(json!({ "id": "x", "widget": "y" }))
+            .await
+            .unwrap_err();
+        assert!(
+            error.message.contains("use place: \"end\""),
+            "{}",
+            error.message
+        );
+        let error = mount(json!({ "id": "x", "widget": "y", "panel": true, "place": "end" }))
+            .await
+            .unwrap_err();
+        assert!(
+            error.message.contains("`view` and `place` do not apply"),
+            "{}",
+            error.message
         );
     }
 

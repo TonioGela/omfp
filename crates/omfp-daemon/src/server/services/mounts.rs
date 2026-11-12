@@ -81,17 +81,23 @@ fn current(store: &Store, id: &str) -> Result<(std::path::PathBuf, Option<Value>
 /// Whether the code of mount `id` may go to `.omfp/widgets/<id>/` of the workspace at `workspace` (DMN-183): not when
 /// `id` names a built-in (the folder would replace `omfp:<id>` in the whole workspace), nor when the folder exists
 /// without this mount's marker or has another entry file (which `index.tsx` would shadow or that would shadow it).
-/// `Ok(true)` when the mount's own folder exists: its code is replaced.
+/// `Ok(true)` when the mount's own folder exists: its code is replaced. `update` says the conflict as
+/// `views.mount_update`'s, which cannot choose another id.
 fn claim_folder(
     workspace: &std::path::Path,
     id: &str,
     builtins: &[String],
+    update: bool,
 ) -> Result<bool, ErrorBody> {
     let conflict = |why: String| {
-        ErrorBody::new(
-            ErrorCode::Conflict,
-            format!("cannot mount code as {id}: {why}; choose another id"),
-        )
+        let message = if update {
+            format!(
+                "cannot update the code of mount {id}: {why}; mount the code again under another id"
+            )
+        } else {
+            format!("cannot mount code as {id}: {why}; choose another id")
+        };
+        ErrorBody::new(ErrorCode::Conflict, message)
     };
     if builtins.iter().any(|name| name == id) {
         return Err(conflict(format!(
@@ -158,7 +164,7 @@ impl Services {
         let mounted = blocking(move || {
             let (path, current) = current(&store, &workspace_id)?;
             let code_replaced = match params.code {
-                Some(_) => claim_folder(&path, &id, &builtins)?,
+                Some(_) => claim_folder(&path, &id, &builtins, false)?,
                 None => false,
             };
             let view = params.view.as_deref().map(str::trim);
@@ -220,7 +226,7 @@ impl Services {
                         placed.reference
                     )));
                 }
-                claim_folder(&path, &id, &builtins)?;
+                claim_folder(&path, &id, &builtins, true)?;
                 write_code(&path, &id, code)?;
             }
             if current.as_ref() != Some(&placed.manifest) {

@@ -95,6 +95,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    use omfp_core::ProcessState;
     use omp_rpc::ToolLoadMode;
 
     use super::super::tests::Harness;
@@ -154,5 +155,65 @@ mod tests {
 
         let done: ToolFuture = Box::pin(async { Ok("done".to_owned()) });
         assert_eq!(until_cancelled(done, || false).await, Ok("done".to_owned()));
+    }
+
+    // spec: AGT-071, DMN-070, DMN-038, DMN-151
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_agent_stopping_its_own_tree_with_omfp_call_stops_it_although_omp_cancels_the_call()
+    {
+        let harness = Harness::new().await;
+        let supervisor = harness.services.supervisor.clone();
+        let tool = registry()
+            .into_iter()
+            .find(|tool| tool.name == CALL)
+            .unwrap();
+        let call = |arguments: serde_json::Value| {
+            let serde_json::Value::Object(arguments) = arguments else {
+                unreachable!()
+            };
+            (tool.run)(harness.context(), arguments)
+        };
+        let child: serde_json::Value = serde_json::from_str(
+            &call(serde_json::json!({
+                "method": "threads.create",
+                "params": { "title": "child", "workspace": { "id": harness.workspace } }
+            }))
+            .await
+            .unwrap(),
+        )
+        .unwrap();
+        let child = child["id"].as_str().unwrap().to_owned();
+        supervisor.start(&harness.thread).await.unwrap();
+        supervisor.start(&child).await.unwrap();
+        let close = harness.launcher.gate_closes();
+
+        // Killing the caller's own omp cancels its call (DMN-151): the body is dropped mid-way.
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&cancelled);
+        let stop = tokio::spawn(until_cancelled(
+            call(serde_json::json!({
+                "method": "thread.stop",
+                "params": { "threadId": harness.thread, "cascade": true }
+            })),
+            move || flag.load(Ordering::SeqCst),
+        ));
+        close.arrived(1).await;
+        cancelled.store(true, Ordering::SeqCst);
+        assert_eq!(stop.await.unwrap(), Err("cancelled".to_owned()));
+        close.open();
+
+        // The lifecycle lock orders this stop after the cascade's stop of the caller; the cascade goes on to the child.
+        supervisor.stop(&harness.thread).await.unwrap();
+        assert_eq!(
+            supervisor.status(&harness.thread).process,
+            ProcessState::Stopped
+        );
+        let log = supervisor.thread_log(&child).await.unwrap();
+        let mut live = log.subscribe(None).live;
+        while log.with_state(|state| state.process != ProcessState::Stopped) {
+            live.recv().await.unwrap();
+        }
+        assert!(harness.launcher.process(0).is_closed());
+        assert!(harness.launcher.process(1).is_closed());
     }
 }

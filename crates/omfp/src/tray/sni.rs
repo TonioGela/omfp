@@ -4,11 +4,14 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
+use futures::channel::oneshot;
+use futures::future::{self, Either};
 use gio::glib::{self, ToVariant as _, Variant, VariantTy};
+use gio::prelude::*;
 use omfp_daemon::{DaemonHandle, StopRequest};
 use omfp_protocol::ThreadSummary;
 
@@ -379,6 +382,9 @@ impl Drop for Tray {
     }
 }
 
+/// How long the tray waits between two looks for a session bus once its bus closed (DMN-128).
+const RECONNECT: Duration = Duration::from_secs(2);
+
 /// The tray thread: registers the item and the menu, owns `org.kde.StatusNotifierItem-<pid>-1`, registers with every
 /// `StatusNotifierWatcher` that appears, and follows `threads` until the main loop quits.
 fn run(
@@ -392,14 +398,12 @@ fn run(
         Ok(registration) => {
             let context = inner;
             let main_loop = glib::MainLoop::new(Some(&context), false);
-            context.spawn_local(follow(
-                registration.connection.clone(),
-                Arc::clone(&registration.state),
-                threads,
-            ));
+            let serving = context.spawn_local(serve(registration, daemon.clone(), threads));
             let _ = ready.send(Some((context.clone(), main_loop.clone())));
             main_loop.run();
-            drop(registration);
+            // Drops the registration here, on the thread that made it, before the daemon goes on shutting down.
+            serving.abort();
+            drop(serving);
         }
         Err(error) => {
             eprintln!("omfp daemon: no tray icon: {error:#}");
@@ -409,6 +413,40 @@ fn run(
     if let Err(error) = result {
         eprintln!("omfp daemon: no tray icon: {error}");
         let _ = ready.send(None);
+    }
+}
+
+/// Serves the tray on `registration`'s bus. When that bus goes away the daemon keeps running: the tray says so once,
+/// then looks for a session bus every [`RECONNECT`] and registers again on the first one that answers.
+async fn serve(
+    mut registration: Registration,
+    daemon: Daemon,
+    threads: tokio::sync::watch::Receiver<Vec<ThreadSummary>>,
+) {
+    loop {
+        if let Some(closed) = registration.closed.take() {
+            let following = follow(
+                registration.connection.clone(),
+                Arc::clone(&registration.state),
+                threads.clone(),
+            );
+            futures::pin_mut!(following);
+            // `follow` ends early only when the daemon's index ends; the bus can still close after that.
+            if let Either::Right(((), closed)) = future::select(closed, following).await {
+                let _ = closed.await;
+            }
+        }
+        drop(registration);
+        eprintln!(
+            "omfp daemon: the session bus closed: no tray icon until a session bus answers again"
+        );
+        registration = loop {
+            glib::timeout_future(RECONNECT).await;
+            if let Ok(next) = Registration::new(&daemon, &threads) {
+                break next;
+            }
+        };
+        eprintln!("omfp daemon: tray icon back on the session bus");
     }
 }
 
@@ -456,14 +494,21 @@ async fn follow(
     }
 }
 
-/// The objects, the bus name and the watcher subscription of the tray; released on drop.
+/// The tray's own connection to the session bus with its objects, its bus name and its watcher subscription;
+/// released on drop.
+///
+/// The connection is private, not gio's shared one: the shared session bus connection exits the process when the bus
+/// goes away (`exit-on-close`), and gio's name owning and watching helpers call back with no connection then, which
+/// the Rust bindings unwrap inside a C callback (an abort). Closing a private connection also releases the name.
 struct Registration {
     connection: gio::DBusConnection,
     state: Arc<Mutex<State>>,
     objects: Vec<gio::RegistrationId>,
-    owner: Option<gio::OwnerId>,
-    /// Stops watching for a `StatusNotifierWatcher`.
-    watcher: Arc<Mutex<Option<Unwatch>>>,
+    /// `NameOwnerChanged` of the `StatusNotifierWatcher`.
+    watcher: Option<gio::SignalSubscriptionId>,
+    /// Resolves once the bus closed the connection; taken by [`serve`].
+    closed: Option<oneshot::Receiver<()>>,
+    on_closed: Option<glib::SignalHandlerId>,
 }
 
 impl Registration {
@@ -471,18 +516,39 @@ impl Registration {
         daemon: &Daemon,
         threads: &tokio::sync::watch::Receiver<Vec<ThreadSummary>>,
     ) -> anyhow::Result<Self> {
-        let connection = gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>)
-            .map_err(|error| anyhow::anyhow!("no session bus ({error})"))?;
+        let no_bus = |error: glib::Error| anyhow::anyhow!("no session bus ({error})");
+        let address =
+            gio::dbus_address_get_for_bus_sync(gio::BusType::Session, None::<&gio::Cancellable>)
+                .map_err(no_bus)?;
+        let connection = gio::DBusConnection::for_address_sync(
+            &address,
+            gio::DBusConnectionFlags::AUTHENTICATION_CLIENT
+                | gio::DBusConnectionFlags::MESSAGE_BUS_CONNECTION,
+            None,
+            None::<&gio::Cancellable>,
+        )
+        .map_err(no_bus)?;
+        let (on_close, closed) = oneshot::channel();
+        let on_close = Mutex::new(Some(on_close));
+        let on_closed = connection.connect_closed(move |_, _, _| {
+            if let Some(on_close) = on_close
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .take()
+            {
+                let _ = on_close.send(());
+            }
+        });
         let state = Arc::new(Mutex::new(State::new(&threads.borrow())));
         let menu_path = glib::variant::ObjectPath::try_from(MENU_PATH.to_owned())?.to_variant();
         let mut registration = Self {
             connection: connection.clone(),
             state: Arc::clone(&state),
             objects: Vec::new(),
-            owner: None,
-            watcher: Arc::new(Mutex::new(None)),
+            watcher: None,
+            closed: Some(closed),
+            on_closed: Some(on_closed),
         };
-
         let item = interface(ITEM_XML, ITEM_INTERFACE)?;
         registration.objects.push(connection.register_object(
             ITEM_PATH,
@@ -531,65 +597,101 @@ impl Registration {
             |_, _, _, _, _, _| false,
         )?);
 
-        let name = format!("org.kde.StatusNotifierItem-{}-1", std::process::id());
-        let watcher = Arc::clone(&registration.watcher);
-        registration.owner = Some(gio::bus_own_name_on_connection(
-            &connection,
-            &name,
-            gio::BusNameOwnerFlags::NONE,
-            move |connection, name| {
-                // Registered with every watcher that appears (a panel restart included).
-                let reported = Arc::new(AtomicBool::new(false));
-                let service = name.to_owned();
-                let id = gio::bus_watch_name_on_connection(
-                    &connection,
-                    WATCHER,
-                    gio::BusNameWatcherFlags::NONE,
-                    move |connection, _, _| register_item(&connection, &service),
-                    move |_, _| {
-                        if !reported.swap(true, Ordering::Relaxed) {
-                            eprintln!(
-                                "omfp daemon: no StatusNotifierWatcher on the session bus: no tray icon until one appears"
-                            );
-                        }
-                    },
-                );
-                let unwatch: Unwatch = Box::new(move || gio::bus_unwatch_name(id));
-                let previous = watcher
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .replace(unwatch);
-                if let Some(previous) = previous {
-                    previous();
-                }
-            },
-            |_, name| eprintln!("omfp daemon: no tray icon: cannot own {name} on the session bus"),
-        ));
+        registration.watcher = own_and_watch(&connection);
         Ok(registration)
     }
 }
 
-/// `gio::bus_unwatch_name` of one watch (gio has two `WatcherId` types, one of them unnameable).
-type Unwatch = Box<dyn FnOnce() + Send>;
+/// Owns `org.kde.StatusNotifierItem-<pid>-1` on `connection` and registers it with every `StatusNotifierWatcher`
+/// that appears (a panel restart included) and with the one already there; the subscription, `None` (said in the
+/// log) when the name is taken.
+fn own_and_watch(connection: &gio::DBusConnection) -> Option<gio::SignalSubscriptionId> {
+    let name = format!("org.kde.StatusNotifierItem-{}-1", std::process::id());
+    let owned = connection
+        .call_sync(
+            Some(BUS),
+            BUS_PATH,
+            BUS,
+            "RequestName",
+            Some(&(name.as_str(), NAME_DO_NOT_QUEUE).to_variant()),
+            Some(VariantTy::new("(u)").expect("a valid type string")),
+            gio::DBusCallFlags::NONE,
+            -1,
+            None::<&gio::Cancellable>,
+        )
+        .ok()
+        .and_then(|reply| reply.get::<(u32,)>())
+        .is_some_and(|(reply,)| reply == NAME_PRIMARY_OWNER);
+    if !owned {
+        eprintln!("omfp daemon: no tray icon: cannot own {name} on the session bus");
+        return None;
+    }
+    let watcher = connection.signal_subscribe(
+        Some(BUS),
+        Some(BUS),
+        Some("NameOwnerChanged"),
+        Some(BUS_PATH),
+        Some(WATCHER),
+        gio::DBusSignalFlags::NONE,
+        {
+            let service = name.clone();
+            move |connection, _, _, _, _, parameters| {
+                if parameters
+                    .get::<(String, String, String)>()
+                    .is_some_and(|(_, _, owner)| !owner.is_empty())
+                {
+                    register_item(connection, &service);
+                }
+            }
+        },
+    );
+    connection.call(
+        Some(BUS),
+        BUS_PATH,
+        BUS,
+        "NameHasOwner",
+        Some(&(WATCHER,).to_variant()),
+        Some(VariantTy::new("(b)").expect("a valid type string")),
+        gio::DBusCallFlags::NONE,
+        -1,
+        None::<&gio::Cancellable>,
+        {
+            let connection = connection.clone();
+            move |reply| {
+                if reply.ok().and_then(|reply| reply.get::<(bool,)>()) == Some((true,)) {
+                    register_item(&connection, &name);
+                } else {
+                    eprintln!(
+                        "omfp daemon: no StatusNotifierWatcher on the session bus: no tray icon until one appears"
+                    );
+                }
+            }
+        },
+    );
+    Some(watcher)
+}
+
+const BUS: &str = "org.freedesktop.DBus";
+const BUS_PATH: &str = "/org/freedesktop/DBus";
+/// `RequestName` flag `DBUS_NAME_FLAG_DO_NOT_QUEUE`.
+const NAME_DO_NOT_QUEUE: u32 = 4;
+/// `RequestName` reply `DBUS_REQUEST_NAME_REPLY_PRIMARY_OWNER`.
+const NAME_PRIMARY_OWNER: u32 = 1;
 
 impl Drop for Registration {
     fn drop(&mut self) {
-        let unwatch = self
-            .watcher
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .take();
-        if let Some(unwatch) = unwatch {
-            unwatch();
+        if let Some(watcher) = self.watcher.take() {
+            self.connection.signal_unsubscribe(watcher);
         }
-        if let Some(owner) = self.owner.take() {
-            gio::bus_unown_name(owner);
+        if let Some(on_closed) = self.on_closed.take() {
+            self.connection.disconnect(on_closed);
         }
         for object in self.objects.drain(..) {
             let _ = self.connection.unregister_object(object);
         }
-        // The name is released before the process goes on shutting down, so the host drops the icon now.
+        // Closing releases the name before the process goes on shutting down, so the host drops the icon now.
         let _ = self.connection.flush_sync(None::<&gio::Cancellable>);
+        let _ = self.connection.close_sync(None::<&gio::Cancellable>);
     }
 }
 

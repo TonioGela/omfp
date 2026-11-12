@@ -265,6 +265,7 @@ pub fn run_view_add(
         props,
         view,
         place,
+        argument: "where",
     };
     Ok(HostToolOutput::Text(
         host.add_to_view(workspace_id, &addition)?,

@@ -23,12 +23,23 @@ struct Bus {
 
 impl Bus {
     fn start() -> Self {
-        let mut child = Command::new("dbus-daemon")
+        Self::spawn(None)
+    }
+
+    /// A bus listening on `socket`, so a later bus can take its place at the same address.
+    fn start_at(socket: &std::path::Path) -> Self {
+        Self::spawn(Some(socket))
+    }
+
+    fn spawn(socket: Option<&std::path::Path>) -> Self {
+        let mut command = Command::new("dbus-daemon");
+        command
             .arg(format!("--config-file={}", session_config().display()))
-            .args(["--nofork", "--print-address=1"])
-            .stdout(Stdio::piped())
-            .spawn()
-            .unwrap();
+            .args(["--nofork", "--print-address=1"]);
+        if let Some(socket) = socket {
+            command.arg(format!("--address=unix:path={}", socket.display()));
+        }
+        let mut child = command.stdout(Stdio::piped()).spawn().unwrap();
         let mut address = String::new();
         BufReader::new(child.stdout.take().unwrap())
             .read_line(&mut address)
@@ -403,6 +414,53 @@ fn without_a_watcher_the_daemon_says_so_once_and_registers_when_one_appears() {
         1,
         "{output}"
     );
+}
+
+// spec: TST-061, DMN-128
+#[test]
+fn the_daemon_outlives_its_session_bus_and_registers_again_on_the_next_one() {
+    let dir = tempfile::tempdir().unwrap();
+    let socket = dir.path().join("bus");
+    // Without the bus's guid, so the daemon accepts the next bus at that address.
+    let address = format!("unix:path={}", socket.display());
+    let bus = Bus::start_at(&socket);
+    let registrations = watcher(&bus);
+    let mut daemon = Daemon::start(&address);
+    let service = format!("org.kde.StatusNotifierItem-{}-1", daemon.child.id());
+    let (_, registered) = registrations
+        .recv_timeout(DEADLINE)
+        .unwrap_or_else(|_| panic!("no registration:\n{}", daemon.output()));
+    assert_eq!(registered, service);
+
+    drop(bus);
+    daemon.wait_line("the session bus closed");
+    assert!(
+        daemon.child.try_wait().unwrap().is_none(),
+        "the daemon died with its bus:\n{}",
+        daemon.output()
+    );
+    assert!(omfp_daemon::discover(&daemon.data).unwrap().is_some());
+
+    let bus = Bus::start_at(&socket);
+    let registrations = watcher(&bus);
+    let (_, registered) = registrations
+        .recv_timeout(DEADLINE)
+        .unwrap_or_else(|_| panic!("no registration on the new bus:\n{}", daemon.output()));
+    assert_eq!(registered, service);
+    let output = daemon.output();
+    assert_eq!(
+        output.matches("the session bus closed").count(),
+        1,
+        "{output}"
+    );
+
+    kill_process(
+        Pid::from_raw(i32::try_from(daemon.child.id()).unwrap()).unwrap(),
+        Signal::TERM,
+    )
+    .unwrap();
+    assert!(daemon.wait_exit(), "{}", daemon.output());
+    assert_eq!(omfp_daemon::discover(&daemon.data).unwrap(), None);
 }
 
 // spec: DMN-128

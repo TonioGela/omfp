@@ -255,6 +255,7 @@ pub fn mount(manifest: Option<&Value>, mount: &Mount<'_>) -> Result<Placed, Moun
                     props,
                     view: Some(&view_id),
                     place,
+                    argument: "place",
                 };
                 manifest = layout::add(Some(&manifest), &addition)
                     .map_err(MountError::Invalid)?

@@ -853,6 +853,54 @@ async fn shutdown_stops_every_process_and_refuses_new_ones() {
     ));
 }
 
+/// Polls `operation` until the fake holds the process close, then drops it mid-way, as a host tool's call is dropped
+/// when the agent stopping its own thread loses its omp process.
+async fn drop_at_close(close: &crate::agent::Gate, operation: impl Future) {
+    tokio::select! {
+        _ = operation => panic!("the operation ended while the close was held"),
+        () = close.arrived(1) => {}
+    }
+}
+
+// spec: DMN-038, DMN-070, AGT-071
+#[tokio::test]
+async fn a_stop_dropped_mid_way_still_stops_the_thread_and_frees_its_process_slot() {
+    let h = harness(|config| config.max_processes = 1);
+    let (a, b) = (h.thread(), h.thread());
+    h.supervisor.start(&a).await.unwrap();
+    let close = h.launcher.gate_closes();
+
+    drop_at_close(&close, h.supervisor.stop(&a)).await;
+    close.open();
+
+    h.wait(&a, "the stop", |state| {
+        state.process == ProcessState::Stopped
+    })
+    .await;
+    assert!(h.launcher.process(0).is_closed());
+    assert!(!h.supervisor.is_running(&a));
+    h.supervisor.start(&b).await.unwrap();
+}
+
+// spec: DMN-038, DMN-070
+#[tokio::test]
+async fn a_restart_dropped_mid_way_still_starts_the_new_process() {
+    let h = harness(|config| config.max_processes = 1);
+    let id = h.thread();
+    h.supervisor.start(&id).await.unwrap();
+    let close = h.launcher.gate_closes();
+
+    drop_at_close(&close, h.supervisor.restart(&id)).await;
+    close.open();
+
+    // The lifecycle lock orders this start after the restart: a restart cut short would leave no process and its slot
+    // taken, so this start would hit the limit.
+    h.supervisor.start(&id).await.unwrap();
+    assert_eq!(h.launcher.launches().len(), 2);
+    assert!(h.launcher.process(0).is_closed());
+    assert!(!h.launcher.process(1).is_closed());
+}
+
 #[test]
 fn the_stderr_tail_keeps_the_last_lines() {
     let dir = tempfile::tempdir().unwrap();

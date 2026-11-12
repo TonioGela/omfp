@@ -48,6 +48,8 @@ pub struct Addition<'a> {
     /// The view to change; `None` for the manifest's default view.
     pub view: Option<&'a str>,
     pub place: Place,
+    /// The caller's name for `place` in its errors: `where` for the agent tools, `place` for `views.mount`.
+    pub argument: &'a str,
 }
 
 const CONTAINERS: [&str; 4] = ["row", "col", "tabs", "stack"];
@@ -169,8 +171,9 @@ pub fn add(manifest: Option<&Value>, addition: &Addition<'_>) -> Result<(Value, 
             Some(slot) => {
                 let container = find_slot(layout, slot).ok_or_else(|| {
                     format!(
-                        "view {view_id:?} has no `tabs` container with \"id\": \"{slot}\"; use where: \"end\", or \
-                         another view"
+                        "view {view_id:?} has no `tabs` container with \"id\": \"{slot}\"; use {}: \"end\", or \
+                         another view",
+                        addition.argument
                     )
                 })?;
                 append(container, node);
@@ -237,6 +240,7 @@ mod tests {
             props: Map::new(),
             view: None,
             place,
+            argument: "where",
         }
     }
 
@@ -315,6 +319,10 @@ mod tests {
         let error = add(Some(&plain), &addition("./widgets/tests", Place::SideTab)).unwrap_err();
         assert!(error.contains("\"id\": \"side\""), "{error}");
         assert!(error.contains("where: \"end\""), "{error}");
+        let mut named = addition("./widgets/tests", Place::SideTab);
+        named.argument = "place";
+        let error = add(Some(&plain), &named).unwrap_err();
+        assert!(error.contains("use place: \"end\""), "{error}");
     }
 
     // spec: AGT-028
