@@ -5,8 +5,8 @@ use serde_json::Value;
 use crate::event::{ProcessState, ThreadEvent};
 use crate::live::live_error_message;
 use crate::state::{
-    LiveLine, LiveSession, Notice, NoticeFrame, QueueState, StreamingMessage, ThreadState, ToolRun,
-    ToolStatus, TranscriptEntry, Widget,
+    BackgroundJob, LiveLine, LiveSession, Notice, NoticeFrame, QueueState, StreamingMessage,
+    ThreadState, ToolRun, ToolStatus, TranscriptEntry, Widget,
 };
 use crate::wire::{
     AgentMessage, AssistantMessageEvent, ExtensionUiRequest, LivePhase, LiveTranscriptEvent,
@@ -177,6 +177,9 @@ impl ThreadState {
                     run.args.clone_from(&update.args);
                 }
                 run.partial_result.clone_from(&update.partial_result);
+                if let Some(frame) = update.partial_result.as_ref().and_then(job_frame) {
+                    run.background = Some(frame);
+                }
             }
             RpcAgentEvent::ToolStreamUpdate(update) => {
                 let run =
@@ -186,6 +189,18 @@ impl ThreadState {
             RpcAgentEvent::ToolExecutionEnd(end) => {
                 let run = self.tool_run(&end.tool_call_id, &end.tool_name, ToolStatus::Running);
                 run.result.clone_from(&end.result);
+                // The start result of a background job: its text is omp's notice to the model, not the job's
+                // output; later updates, which may have come first, are newer.
+                if run.background.is_none() {
+                    run.background =
+                        end.result
+                            .as_ref()
+                            .and_then(job_frame)
+                            .map(|job| BackgroundJob {
+                                output: None,
+                                ..job
+                            });
+                }
                 run.status = if end.is_error == Some(true) {
                     ToolStatus::Failed
                 } else {
@@ -299,6 +314,7 @@ impl ThreadState {
                     partial_result: None,
                     preview: None,
                     result: None,
+                    background: None,
                 });
                 self.tools.len() - 1
             });
@@ -387,6 +403,28 @@ fn committed_todo_phases(message: &AgentMessage) -> Option<Vec<TodoPhase>> {
         return None;
     }
     serde_json::from_value(details.get("phases")?.clone()).ok()
+}
+
+/// The background job of an omp tool result or partial result (`{ content, details: { async: { state, jobId },
+/// exitCode? } }`, PRT-100); `None` without a job frame or with an unknown state.
+fn job_frame(result: &Value) -> Option<BackgroundJob> {
+    let details = result.get("details")?;
+    let frame = details.get("async")?;
+    let state = serde_json::from_value(frame.get("state")?.clone()).ok()?;
+    let output: String = result
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+        .filter_map(|block| block.get("text").and_then(Value::as_str))
+        .collect();
+    Some(BackgroundJob {
+        job_id: frame.get("jobId")?.as_str()?.to_owned(),
+        state,
+        output: (!output.is_empty()).then_some(output),
+        exit_code: details.get("exitCode").and_then(Value::as_i64),
+    })
 }
 
 /// Applies `events` in order to a fresh state.

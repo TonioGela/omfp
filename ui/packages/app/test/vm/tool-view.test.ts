@@ -27,6 +27,7 @@ describe("bash card", () => {
       cwd: undefined,
       output: "tool-output-123\n",
       exitCode: undefined,
+      background: undefined,
     });
   });
 

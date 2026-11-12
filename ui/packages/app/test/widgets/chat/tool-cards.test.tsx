@@ -4,14 +4,16 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { replay } from "@omfp/core";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type OmfpHost, OPEN_FILES, SELECTED_THREAD } from "../../../src/sdk/index.ts";
 import type { ToolCard } from "../../../src/vm/tool.ts";
 import { MessageRow, ToolCardView } from "../../../src/widgets/chat/message.tsx";
-import { card, streaming } from "../../support/cards.ts";
+import { card, cards, streaming } from "../../support/cards.ts";
 import { repo, thread, workspace } from "../../support/fixtures.ts";
 import { renderWithHost, testHost } from "../../support/host.tsx";
+import { fixtureEvents, isFrame } from "./fixtures.ts";
 
 afterEach(cleanup);
 
@@ -48,6 +50,70 @@ const texts = (element: HTMLElement, id: string) =>
     .queryAllByTestId(id)
     .map((node) => node.textContent);
 
+/** The card of the async `bash` fixture's call after its first `count` events. */
+function jobCard(count: number): ToolCard {
+  const [found] = cards(replay(fixtureEvents("async_bash_tool_call").slice(0, count)));
+  if (found === undefined) {
+    throw new Error("no card");
+  }
+  return found;
+}
+
+describe("background bash card", () => {
+  const events = fixtureEvents("async_bash_tool_call");
+  const ended = events.findIndex(isFrame("tool_execution_end")) + 1;
+  /** Up to the job's completed frame: its last running frame has output. */
+  const output = events.findLastIndex(isFrame("tool_execution_update"));
+
+  // spec: UI-270
+  test("while the job runs: running, marked background, its last output line, no exit code", async () => {
+    const started = show(jobCard(ended));
+    expect(started.dataset.status).toBe("running");
+    expect(byTestId(started, "tool-background").dataset.state).toBe("running");
+    expect(byTestId(started, "tool-background").textContent).toBe("background");
+    expect(within(started).queryByTestId("tool-last-line")).toBeNull();
+    cleanup();
+    const element = await open(jobCard(output));
+    expect(element.dataset.status).toBe("running");
+    expect(byTestId(element, "tool-last-line").textContent).toBe("bg-output-42");
+    expect(byTestId(element, "tool-output").textContent).toBe("bg-output-42\n");
+    expect(within(element).queryByTestId("tool-exit")).toBeNull();
+  });
+
+  // spec: UI-270
+  test("once the job completed: its final output and exit 0", async () => {
+    const element = await open(card("async_bash_tool_call", "call_bash_bg"));
+    expect(element.dataset.status).toBe("succeeded");
+    expect(byTestId(element, "tool-background").textContent).toBe("background · done");
+    expect(byTestId(element, "tool-output").textContent).toContain("bg-output-42");
+    expect(byTestId(element, "tool-exit").textContent).toBe("exit 0");
+    expect(within(element).queryByTestId("tool-last-line")).toBeNull();
+  });
+
+  // spec: UI-270
+  test("failed and cancelled jobs: failed cards with their state and exit code", () => {
+    const base = jobCard(ended);
+    const ofState = (state: "failed" | "cancelled"): ToolCard => ({
+      ...base,
+      status: "failed",
+      view: {
+        kind: "bash",
+        command: "make",
+        cwd: undefined,
+        output: "boom",
+        exitCode: 2,
+        background: { jobId: "bg_1", state },
+      },
+    });
+    const element = show(ofState("failed"));
+    expect(byTestId(element, "tool-background").textContent).toBe("background · failed");
+    expect(byTestId(element, "tool-exit").textContent).toBe("exit 2");
+    cleanup();
+    const cancelled = show(ofState("cancelled"));
+    expect(byTestId(cancelled, "tool-background").textContent).toBe("background · cancelled");
+  });
+});
+
 describe("bash card", () => {
   // spec: UI-050, UI-051
   test("streaming: the command in the header, the output so far, no exit code yet", async () => {
@@ -83,7 +149,14 @@ describe("bash card", () => {
     const done = card("bash_tool_call", "call_bash_1");
     const colored: ToolCard = {
       ...done,
-      view: { kind: "bash", command: "ls", cwd: "/tmp", output: "\u001b[1;34mdir\u001b[0m file", exitCode: 0 },
+      view: {
+        kind: "bash",
+        command: "ls",
+        cwd: "/tmp",
+        output: "\u001b[1;34mdir\u001b[0m file",
+        exitCode: 0,
+        background: undefined,
+      },
     };
     const element = await open(colored);
     const output = byTestId(element, "tool-output");

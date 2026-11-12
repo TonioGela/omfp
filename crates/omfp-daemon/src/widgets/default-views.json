@@ -29,7 +29,8 @@
             "id": "side"
           },
           "omfp:workspace",
-          "omfp:changes"
+          "omfp:changes",
+          "omfp:background"
         ]
       ],
       "title": "Default"

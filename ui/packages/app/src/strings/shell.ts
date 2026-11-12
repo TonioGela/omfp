@@ -75,6 +75,8 @@ export const shell = {
     submit: "Connect",
   },
   header: {
+    /** The badge of running background work (UI-274). */
+    inBackground: (count: number) => `${count} in background`,
     rename: "Rename",
     renameLabel: "Title",
     save: "Save",
@@ -200,6 +202,19 @@ export const shell = {
       failed: "failed",
       aborted: "cancelled",
     } as Readonly<Record<string, string>>,
+  },
+  /** `omfp:background` (UI-271..UI-273). */
+  background: {
+    label: "Background",
+    noThread: "No thread selected",
+    none: "Nothing runs in the background",
+    noneHint: "Background jobs of the agent and its subagents appear here.",
+    showJob: (id: string) => `Show the card of background job ${id}`,
+    openSubagent: (name: string) => `Open subagent ${name}`,
+    state: { running: "running", completed: "done", failed: "failed", cancelled: "cancelled" },
+    stopRequested: "stop requested",
+    stop: "Stop",
+    cancel: "Cancel",
   },
   /** `omfp:todos` (UI-082). */
   todos: {
@@ -364,6 +379,7 @@ export const shell = {
       "omfp:changes": "Changes",
       "omfp:file": "File",
       "omfp:subagents": "Subagents",
+      "omfp:background": "Background",
       "omfp:todos": "Todos",
       "omfp:tree": "Tree",
       "omfp:activity": "Activity",

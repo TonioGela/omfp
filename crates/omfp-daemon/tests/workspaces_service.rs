@@ -1300,6 +1300,7 @@ fn files_the_thread_names_rank_first_among_equal_matches() {
         partial_result: None,
         preview: None,
         result: None,
+        background: None,
     });
     let named = named_files(&state);
     assert_eq!(

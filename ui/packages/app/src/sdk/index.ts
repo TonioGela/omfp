@@ -52,6 +52,15 @@ export { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 export { keyLabel } from "../keymap/keymap.ts";
 export { strings } from "../strings/index.ts";
 export { type AnsiRun, ansiRuns } from "../vm/ansi.ts";
+export {
+  type BackgroundRow,
+  backgroundRows,
+  type JobTimes,
+  lastOutputLine,
+  observeJobs,
+  runningInBackground,
+  stopJobMessage,
+} from "../vm/background.ts";
 export { type ChangedFile, type ChangesRepo, changeRunsKey, changesView } from "../vm/changes.ts";
 export {
   alternative,
@@ -222,6 +231,7 @@ export {
   useReportError,
   useThreadActions,
 } from "./actions.ts";
+export { type Background, useBackground, useRunningInBackground, useSubagentRows } from "./background.ts";
 export { type Command, CommandRegistry, SCOPE_ATTRIBUTE, scopesAt } from "./commands.ts";
 export {
   cancelFilePicker,
@@ -299,7 +309,11 @@ export {
   draftKey,
   EMPTY_DRAFT,
   ERRORS,
+  OPEN_SUBAGENT,
+  type OpenSubagentRequest,
   RENAMING_THREAD,
+  REVEAL_WIDGET,
+  type RevealRequest,
   SELECTED_THREAD,
 } from "./keys.ts";
 export {

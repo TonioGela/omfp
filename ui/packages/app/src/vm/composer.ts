@@ -29,7 +29,7 @@ export function canAbort(state: ThreadState): boolean {
 /** What the send action does: a new turn when idle; while busy queued until the turn ends, or steered into it. */
 export type SendMode = "prompt" | "follow-up" | "steer";
 
-/** Busy threads queue as follow-up unless the steer modifier (Alt, Ctrl or ⌘ with Enter) is held. */
+/** Busy threads queue as follow-up unless the steer modifier (Shift, Ctrl or ⌘ with Enter) is held. */
 export function sendMode(busy: boolean, steerModifier: boolean): SendMode {
   if (!busy) {
     return "prompt";
@@ -69,15 +69,22 @@ export interface Modifiers {
   readonly meta: boolean;
 }
 
-/** The modifier that turns a busy send into a steer. */
+/**
+ * The modifier that turns a busy send into a steer: Shift (Ctrl and ⌘ too). Alt with Enter is a new line, also on
+ * macOS, where Option+Enter arrives as `Enter` with `altKey`.
+ */
 export function steerModifier(modifiers: Modifiers): boolean {
-  return modifiers.alt || modifiers.ctrl || modifiers.meta;
+  return !modifiers.alt && (modifiers.shift || modifiers.ctrl || modifiers.meta);
 }
 
 /** What a key press in the composer does. */
 export type KeyAction =
-  /** Let the text area handle it (typing, Shift+Enter newline). */
+  /** Let the text area handle it (typing). */
   | { readonly type: "none" }
+  /** Alt+Enter: insert a line break at the caret. */
+  | { readonly type: "newline" }
+  /** An auto-repeated Enter: swallowed, so holding the key sends one message, not one per repeat. */
+  | { readonly type: "ignore" }
   | { readonly type: "send"; readonly mode: SendMode }
   /** Esc while busy or queued: `thread.abort` (UI-063). */
   | { readonly type: "abort" }
@@ -92,14 +99,19 @@ export interface KeyContext {
   /** Per {@link canAbort}. */
   readonly abortable: boolean;
   readonly hasSuggestions: boolean;
+  /** The key is auto-repeating (`KeyboardEvent.repeat`). */
+  readonly repeat?: boolean;
 }
 
 /** The composer's key bindings. */
 export function keyAction(key: string, modifiers: Modifiers, context: KeyContext): KeyAction {
   switch (key) {
     case "Enter":
-      return modifiers.shift
-        ? { type: "none" }
+      if (modifiers.alt) {
+        return { type: "newline" };
+      }
+      return context.repeat === true
+        ? { type: "ignore" }
         : { type: "send", mode: sendMode(context.busy, steerModifier(modifiers)) };
     case "Escape":
       return context.abortable ? { type: "abort" } : { type: "leave" };

@@ -3,6 +3,7 @@
 
 import type { WidgetComponent } from "../sdk/index.ts";
 import { ActivityWidget } from "../widgets/activity/index.ts";
+import { BackgroundWidget } from "../widgets/background/index.ts";
 import { ChangesWidget } from "../widgets/changes/index.ts";
 import { ChatWidget, ComposerWidget, InteractionsWidget, TranscriptWidget } from "../widgets/chat/index.ts";
 import { FileWidget } from "../widgets/file/index.ts";
@@ -17,6 +18,7 @@ export const BUILTIN_WIDGETS: WidgetRegistry = new Map<string, WidgetComponent>(
   ["omfp:header", HeaderWidget],
   ["omfp:workspace", WorkspaceWidget],
   ["omfp:changes", ChangesWidget],
+  ["omfp:background", BackgroundWidget],
   ["omfp:subagents", SubagentsWidget],
   ["omfp:todos", TodosWidget],
   ["omfp:tree", TreeWidget],

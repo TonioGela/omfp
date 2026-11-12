@@ -4,7 +4,7 @@
  * expanded by default (UI-052).
  */
 
-import type { JsonValue, ToolCall, ToolResultMessage, ToolRun, UserContent } from "@omfp/core";
+import type { JobState, JsonValue, ToolCall, ToolResultMessage, ToolRun, UserContent } from "@omfp/core";
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { quietFailure, shownArguments, type ToolView, toolOutput, toolView } from "./tool-view.ts";
@@ -71,21 +71,32 @@ export function toolCard(
   const finishedAt = result?.timestamp;
   const value = run?.result ?? run?.partial_result ?? null;
   const output = toolOutput(value ?? result);
-  const status = statusOf(partial !== undefined && args === undefined, run, result);
+  const job = run?.background ?? null;
+  // A background job's state is the card's (UI-270): the call itself ended when the job started.
+  const status =
+    job === null ? statusOf(partial !== undefined && args === undefined, run, result) : JOB_STATUS[job.state];
   return {
     toolCallId,
     name,
     summary: summaryOf(name, intent, args, partial),
-    status: status === "succeeded" && quietFailure(name, output) !== undefined ? "failed" : status,
+    status: status === "succeeded" && job === null && quietFailure(name, output) !== undefined ? "failed" : status,
     durationMs:
-      calledAt !== undefined && finishedAt !== undefined && calledAt > 0 && finishedAt >= calledAt
+      job === null && calledAt !== undefined && finishedAt !== undefined && calledAt > 0 && finishedAt >= calledAt
         ? finishedAt - calledAt
         : undefined,
     args: args !== undefined ? prettyJson(args) : (partial ?? "{}"),
-    result: resultOf(run, result),
-    view: toolView(name, args, output, status === "succeeded"),
+    result: job === null ? resultOf(run, result) : (job.output ?? undefined),
+    view: toolView(name, args, output, status === "succeeded", job),
   };
 }
+
+/** The card status of a background job's state; a cancelled job is drawn failed. */
+const JOB_STATUS: Readonly<Record<JobState, CardStatus>> = {
+  running: "running",
+  completed: "succeeded",
+  failed: "failed",
+  cancelled: "failed",
+};
 
 /**
  * The header's one-line summary: the intent, else the arguments the card does not show elsewhere (`shownArguments`),

@@ -939,7 +939,7 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
         assert_eq!(
             written["views"]["default"]["layout"][3],
-            json!(["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "./widgets/tests"])
+            json!(["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "omfp:background", "./widgets/tests"])
         );
         assert_eq!(
             log.with_state(|state| state.manifest.clone()),

@@ -16,7 +16,7 @@ export const DEFAULT_VIEW: View = {
     "row",
     { sizes: [3, 1] },
     ["col", {}, "omfp:header", ["tabs", { id: "main" }, "omfp:chat"]],
-    ["tabs", { id: "side" }, "omfp:workspace", "omfp:changes"],
+    ["tabs", { id: "side" }, "omfp:workspace", "omfp:changes", "omfp:background"],
   ],
 };
 

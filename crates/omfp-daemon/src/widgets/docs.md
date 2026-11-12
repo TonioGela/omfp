@@ -7,7 +7,9 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 
 - `<workspace>/.omfp/views.json` — the views of the window (schema: `omfp://schemas/views.json`). Without it the window
   shows the default view:
-  `["row", { "sizes": [3, 1] }, ["col", {}, "omfp:header", "omfp:chat"], ["tabs", {}, "omfp:workspace", "omfp:changes"]]`.
+  `["row", { "sizes": [3, 1] }, ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]], ["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "omfp:background"]]`.
+  A workspace that has its own `views.json` keeps it as it is (omfp never rewrites it): `:view reset` there, or an
+  agent with `omfp_ui_mount`, adds a widget the default view gained later, such as `omfp:background`.
 - `<workspace>/.omfp/widgets/<name>/index.tsx` (or `index.ts`, `index.jsx`, `index.js`) — a workspace widget,
   referenced as `./widgets/<name>`. Its default export is a React component; its props are the layout node's props.
   Other files of the folder are imported with relative paths (`./chart.tsx` or `./chart`).
@@ -35,7 +37,8 @@ Layout nodes: a reference (`"omfp:chat"`), `[reference, props]`, or `[container,
 container is `row`, `col`, `tabs` or `stack` and `props.sizes` (optional) gives one positive flex weight per child.
 Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue and composer), `omfp:transcript`,
 `omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes` (changed files and diffs of the workspace's
-repositories), `omfp:subagents` (the selected thread's subagents, their transcripts, steer and cancel), `omfp:todos`
+repositories), `omfp:background` (the selected thread's background jobs and subagents: state, duration, last output
+line; stop a job, cancel a subagent), `omfp:subagents` (the selected thread's subagents, their transcripts, steer and cancel), `omfp:todos`
 (its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:activity`
 (`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against

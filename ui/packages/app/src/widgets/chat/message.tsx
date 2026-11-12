@@ -1,6 +1,7 @@
 /** One transcript row: a message with its blocks (text, thinking, images, tool cards, records) or a notice row. */
 
 import {
+  Badge,
   Code,
   Disclosure,
   ExitCode,
@@ -16,6 +17,7 @@ import {
   type ToolCard as Card,
   expandedByDefault,
   formatDuration,
+  lastOutputLine,
   markdownChunks,
   strings,
   useOpenFile,
@@ -224,13 +226,32 @@ export function ToolCardView({ cardKey, card }: { cardKey: string; card: Card })
   );
 }
 
-/** Right-aligned metadata of a card's head: the status word for assistive tech, duration, exit code. */
+/** Right-aligned metadata of a card's head: the status word for assistive tech, a background job's mark and, while it
+ * runs, its last output line (UI-270), duration, exit code. */
 function ToolMeta({ card, exitCode }: { card: Card; exitCode: number | undefined }): ReactNode {
+  const job = card.view.kind === "bash" ? card.view.background : undefined;
+  const lastLine =
+    job?.state === "running" && card.view.kind === "bash" ? lastOutputLine(card.view.output ?? "") : undefined;
   return (
     <>
       <span className="omfp-visually-hidden" data-testid="tool-status">
         {text.tool.status[card.status]}
       </span>
+      {lastLine !== undefined && lastLine !== "" && (
+        <span className="omfp-tool-card__last-line" data-testid="tool-last-line" title={lastLine}>
+          {lastLine}
+        </span>
+      )}
+      {job !== undefined && (
+        <Badge
+          tone={job.state === "completed" ? "success" : job.state === "running" ? "primary" : "default"}
+          data-testid="tool-background"
+          data-state={job.state}
+          title={text.tool.backgroundJob(job.jobId)}
+        >
+          {text.tool.background[job.state]}
+        </Badge>
+      )}
       {card.durationMs !== undefined && <span data-testid="tool-duration">{formatDuration(card.durationMs)}</span>}
       {exitCode !== undefined && <ExitCode code={exitCode} data-testid="tool-exit" />}
     </>

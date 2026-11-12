@@ -14,6 +14,7 @@ import {
   ERRORS,
   NOTICES,
   type Notice,
+  REVEAL_WIDGET,
   SELECTED_THREAD,
   useCommand,
   useNotify,
@@ -158,6 +159,36 @@ const MANIFEST = {
 };
 
 describe("frame", () => {
+  // spec: UI-274
+  test("a reveal request selects the tab holding the widget, else floats it in a panel of this window", async () => {
+    const tabs = {
+      views: { work: { layout: ["row", {}, "omfp:chat", ["tabs", {}, "omfp:workspace", "omfp:background"]] } },
+    };
+    const withBackground = { registry: new Map([...registry, ["omfp:background", stub("background")]]) };
+    const test = inWorkspace({ manifest: tabs }, withBackground);
+    expect(screen.queryByTestId("stub-background")).toBeNull();
+    act(() => test.host.window.set(REVEAL_WIDGET, { reference: "omfp:background", nonce: 1 }));
+    test.flush();
+    await waitFor(() => expect(screen.queryByTestId("stub-background")).not.toBeNull());
+    expect(screen.queryByTestId("floating-widget")).toBeNull();
+    // The view showed it: the request is done.
+    expect(test.host.window.get(REVEAL_WIDGET)).toBeUndefined();
+    cleanup();
+
+    const without = inWorkspace(
+      { manifest: { views: { work: { layout: ["row", {}, "omfp:chat", "omfp:workspace"] } } } },
+      withBackground,
+    );
+    act(() => without.host.window.set(REVEAL_WIDGET, { reference: "omfp:background", nonce: 2 }));
+    without.flush();
+    const panel = screen.getByTestId("floating-widget");
+    expect(within(panel).getByTestId("floating-widget-title").textContent).toBe("Background");
+    expect(within(panel).queryByTestId("stub-background")).not.toBeNull();
+    await without.user.click(within(panel).getByTestId("floating-widget-close"));
+    expect(screen.queryByTestId("floating-widget")).toBeNull();
+    expect(without.client.callsTo("views.unmount")).toEqual([]);
+  });
+
   // spec: UI-024, UI-100
   test("the left column is the frame's; the default view renders its widgets; there is a view switcher", () => {
     setup();
@@ -843,7 +874,7 @@ describe("layout editing", () => {
             "row",
             { sizes: [3, 1] },
             ["col", {}, "omfp:workspace", "omfp:header", ["tabs", { id: "main" }, "omfp:chat"]],
-            ["tabs", { id: "side" }, "omfp:changes"],
+            ["tabs", { id: "side" }, "omfp:changes", "omfp:background"],
           ],
         },
       },
@@ -866,7 +897,7 @@ describe("layout editing", () => {
               "row",
               { sizes: [3, 1] },
               ["col", {}, "omfp:header", ["tabs", { id: "main" }, "omfp:chat"]],
-              ["tabs", { id: "side" }, "omfp:changes"],
+              ["tabs", { id: "side" }, "omfp:changes", "omfp:background"],
             ],
           },
         },

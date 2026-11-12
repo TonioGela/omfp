@@ -4,7 +4,7 @@
  * Tools without a recorded shape keep the fallback card (`generic`).
  */
 
-import type { JsonValue } from "@omfp/core";
+import type { BackgroundJob, JobState, JsonValue } from "@omfp/core";
 import type { DiffLine } from "@omfp/kit";
 import { languageOfPath } from "@omfp/kit";
 import type { Workspace } from "@omfp/protocol";
@@ -44,9 +44,11 @@ export type ToolView =
       readonly command: string;
       /** The directory given to the call, when not the thread's. */
       readonly cwd: string | undefined;
-      /** The output so far while it runs, then the result's text. */
+      /** The output so far while it runs, then the result's text; a background job's own output. */
       readonly output: string | undefined;
       readonly exitCode: number | undefined;
+      /** The omp background job the call became (UI-270): its id and state. */
+      readonly background: { readonly jobId: string; readonly state: JobState } | undefined;
     }
   | {
       readonly kind: "read";
@@ -233,13 +235,15 @@ function plural(count: number, one: string, many: string): string {
 /**
  * The specialized view of a call of tool `name`. `args` are its arguments (or `undefined` while the model writes them),
  * `output` the result once it ended or the latest partial result while it runs, `succeeded` whether it ended without
- * an error (a `bash` that did so without an exit code in its details exited 0; an aborted one has none).
+ * an error (a `bash` that did so without an exit code in its details exited 0; an aborted one has none), `job` the
+ * background job the call became (a `bash` then shows the job's output and exit code, a completed job exited 0).
  */
 export function toolView(
   name: string,
   args: JsonValue | undefined,
   output: ToolOutput | undefined,
   succeeded: boolean,
+  job: BackgroundJob | null = null,
 ): ToolView {
   const input = isRecord(args) ? args : {};
   const details = output?.details ?? {};
@@ -249,8 +253,17 @@ export function toolView(
         kind: "bash",
         command: str(input.command) ?? "",
         cwd: str(input.cwd),
-        output: output?.text,
-        exitCode: num(details.exitCode) ?? (succeeded && output !== undefined ? 0 : undefined),
+        ...(job === null
+          ? {
+              output: output?.text,
+              exitCode: num(details.exitCode) ?? (succeeded && output !== undefined ? 0 : undefined),
+              background: undefined,
+            }
+          : {
+              output: job.output ?? undefined,
+              exitCode: job.exit_code ?? (job.state === "completed" ? 0 : undefined),
+              background: { jobId: job.job_id, state: job.state },
+            }),
       };
     case "read": {
       const raw = str(input.path) ?? "";

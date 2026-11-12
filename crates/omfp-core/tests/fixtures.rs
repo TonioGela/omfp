@@ -6,7 +6,7 @@ use common::{FIXTURES, fixture, index_of, message_text, state_through, streaming
 use omfp_core::wire::{
     AgentMessage, AssistantContent, ExtensionUiRequest, PromptStatus, StopReason,
 };
-use omfp_core::{ProcessState, QueueState, ThreadEvent, ThreadState, ToolStatus, replay};
+use omfp_core::{JobState, ProcessState, QueueState, ThreadEvent, ThreadState, ToolStatus, replay};
 use proptest::prelude::*;
 use serde_json::Value;
 
@@ -138,6 +138,29 @@ fn bash_tool_call_runs_one_tool_to_success() {
         .collect();
     assert_eq!(roles, ["user", "assistant", "toolResult", "assistant"]);
     assert!(state.settled);
+}
+
+// spec: PRT-100, TST-012
+#[test]
+fn async_bash_tool_call_keeps_the_job_after_the_call_ends() {
+    let events = fixture("async_bash_tool_call");
+    let ended = state_through(&events, index_of(&events, "tool_execution_end", 0));
+    let run = &ended.tools[0];
+    assert_eq!(run.status, ToolStatus::Succeeded);
+    let job = run.background.as_ref().expect("a background job");
+    assert_eq!(
+        (job.job_id.as_str(), job.state),
+        ("bg_1", JobState::Running)
+    );
+
+    let state = replay(&events);
+    let job = state.tools[0]
+        .background
+        .as_ref()
+        .expect("a background job");
+    assert_eq!(job.state, JobState::Completed);
+    assert!(job.output.as_deref().unwrap_or("").contains("bg-output-42"));
+    assert_eq!(last_message_text(&state), "The job printed bg-output-42.");
 }
 
 // spec: ARC-006, TST-012

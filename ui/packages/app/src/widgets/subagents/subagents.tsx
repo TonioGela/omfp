@@ -5,28 +5,25 @@
  * changes; a running one can be steered (`thread.subagent_steer`) and cancelled (`thread.subagent_cancel`).
  */
 
-import type { Subagent } from "@omfp/core";
 import { BorderBox, Button, EmptyState, Icon, IconButton, Markdown, Message, StateMark, TextField } from "omfp/kit";
 import {
   appendTranscriptPage,
   EMPTY_TRANSCRIPT,
+  OPEN_SUBAGENT,
   SELECTED_THREAD,
   type SubagentRow,
   type SubagentTranscript,
   strings,
   subagentLines,
-  subagentRows,
   useCall,
   useReportError,
-  useThread,
+  useSubagentRows,
   useWindowState,
   type WidgetProps,
 } from "omfp/sdk";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const text = strings.shell.subagents;
-
-const NO_SUBAGENTS: Readonly<Record<string, Subagent>> = {};
 
 export function SubagentsWidget(_props: WidgetProps): ReactNode {
   const [threadId] = useWindowState(SELECTED_THREAD);
@@ -51,32 +48,15 @@ function mark(status: string) {
 }
 
 function Subagents({ threadId }: { threadId: string }): ReactNode {
-  const state = useThread(threadId)?.state;
-  const call = useCall();
-  const reportError = useReportError();
-  const subagents = state?.subagents ?? NO_SUBAGENTS;
-  const running = state?.process.state === "running";
-  const [listed, setListed] = useState<unknown>(undefined);
-  const [requested, setRequested] = useState(0);
-  // omp's roster changes when a subagent starts or ends; only a running omp has one (reading it would start omp).
-  const known = Object.keys(subagents).join("\n");
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `known` and `requested` trigger a new read of the roster.
-  useEffect(() => {
-    if (!running) {
-      return;
-    }
-    let current = true;
-    call("thread.subagents", { threadId }).then((result) => {
-      if (current) {
-        setListed(result);
-      }
-    }, reportError);
-    return () => {
-      current = false;
-    };
-  }, [call, reportError, threadId, running, known, requested]);
-  const rows = useMemo(() => subagentRows(subagents, listed), [subagents, listed]);
+  const { rows, refresh } = useSubagentRows(threadId);
   const [open, setOpen] = useState<string | undefined>(undefined);
+  // `omfp:background` opens a subagent here (UI-271).
+  const [request] = useWindowState(OPEN_SUBAGENT);
+  useEffect(() => {
+    if (request !== undefined && request.threadId === threadId) {
+      setOpen(request.subagentId);
+    }
+  }, [request, threadId]);
   const opened = rows.find((row) => row.id === open);
 
   return (
@@ -85,7 +65,7 @@ function Subagents({ threadId }: { threadId: string }): ReactNode {
         <IconButton
           label={text.refresh}
           icon={<Icon name="refresh-cw" />}
-          onPress={() => setRequested((count) => count + 1)}
+          onPress={refresh}
           data-testid="subagents-refresh"
         />
       </div>

@@ -396,6 +396,9 @@ pub fn normalize_frame(value: &mut Value, root: &str) {
             normalized = TASK_DURATION
                 .replace_all(&normalized, r#"$1"<duration>""#)
                 .into_owned();
+            normalized = WALL_TIME
+                .replace_all(&normalized, "Wall time: <duration>")
+                .into_owned();
             *text = normalized;
         }
         _ => {}
@@ -413,6 +416,9 @@ static SESSION_TIME: LazyLock<Regex> = LazyLock::new(|| {
 /// `<task-result id="…" agent="…" status="…" duration="63ms">`, the summary of a subagent run.
 static TASK_DURATION: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(<task-result [^>]*duration=)"[^"]*""#).expect("valid regex"));
+/// `Wall time: 1.10 seconds`, the footer of a `bash` result.
+static WALL_TIME: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"Wall time: [0-9.]+ \w+").expect("valid regex"));
 
 fn is_random_id(text: &str) -> bool {
     text.len() == 16 && text.bytes().all(|byte| byte.is_ascii_hexdigit())
@@ -472,7 +478,7 @@ mod tests {
             "items": [ { "completedAt": 5, "id": "not-random" } ],
             "progress": { "currentToolStartMs": 1_794_356_027_239_u64, "contextTokens": 7177, "tokens": 7177, "recentTools": [ { "endMs": 1_794_356_027_241_u64 } ] },
             "input": 3,
-            "text": "<task-result id=\"Counter\" agent=\"task\" status=\"completed\" duration=\"63ms\">\n<output>\nduration=\"5s\"\n</output>",
+            "text": "<task-result id=\"Counter\" agent=\"task\" status=\"completed\" duration=\"63ms\">\n<output>\nduration=\"5s\"\n</output>\n\nWall time: 1.10 seconds",
             "timestamp": "kept-because-not-a-number",
         });
 
@@ -494,7 +500,7 @@ mod tests {
                 "items": [ { "completedAt": 0, "id": "not-random" } ],
                 "progress": { "currentToolStartMs": 0, "contextTokens": 0, "tokens": 0, "recentTools": [ { "endMs": 0 } ] },
                 "input": 3,
-                "text": "<task-result id=\"Counter\" agent=\"task\" status=\"completed\" duration=\"<duration>\">\n<output>\nduration=\"5s\"\n</output>",
+                "text": "<task-result id=\"Counter\" agent=\"task\" status=\"completed\" duration=\"<duration>\">\n<output>\nduration=\"5s\"\n</output>\n\nWall time: <duration>",
                 "timestamp": "kept-because-not-a-number",
             })
         );

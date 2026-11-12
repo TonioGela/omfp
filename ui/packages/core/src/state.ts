@@ -131,6 +131,22 @@ export interface ToolRun {
   preview: JsonValue | null;
   /** Final result from `tool_execution_end`. */
   result: JsonValue | null;
+  /** The background job the call became (PRT-100): omp's `details.async` frames, kept across `tool_execution_end`
+   * and the `tool_execution_update`s that follow it. */
+  background: BackgroundJob | null;
+}
+
+/** `details.async.state` of an omp job frame. */
+export type JobState = "running" | "completed" | "failed" | "cancelled";
+
+/** A tool call running on as an omp background job (`bash` with `async`, or auto-backgrounded), PRT-100. */
+export interface BackgroundJob {
+  job_id: string;
+  state: JobState;
+  /** Text of the job's latest frame: its output so far, then its final output. */
+  output: string | null;
+  /** `details.exitCode` of the job's latest frame, once it reports one. */
+  exit_code: number | null;
 }
 
 /** Queue chips, as sent by omp's `queue_update`. */

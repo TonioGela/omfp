@@ -777,6 +777,7 @@
 
   .omfp-tabs__list {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--omfp-s1);
     border-block-end: var(--omfp-bw) solid var(--omfp-rule);
   }

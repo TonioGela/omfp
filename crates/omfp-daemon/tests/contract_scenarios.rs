@@ -128,6 +128,61 @@ async fn bash_tool_call() {
     harness.assert_no_stray_network();
 }
 
+/// Whether `events` hold a `tool_execution_update` whose job frame (`details.async`) is in `state`.
+fn job_update(events: &[ThreadEvent], state: &str) -> bool {
+    events.iter().any(|event| {
+        serde_json::to_value(event).is_ok_and(|value| {
+            value["frame"]["type"] == "tool_execution_update"
+                && value["frame"]["partialResult"]["details"]["async"]["state"] == state
+        })
+    })
+}
+
+// spec: TST-012, PRT-100
+#[tokio::test(flavor = "multi_thread")]
+async fn async_bash_tool_call() {
+    let harness = Harness::new(vec![
+        Step::reply(Reply::tool_calls(vec![ToolCall::new(
+            "call_bash_bg",
+            "bash",
+            json!({ "command": "sleep 1; echo bg-output-42", "async": true }),
+        )])),
+        Step::reply(Reply::text("Started it in the background.")),
+        Step::reply(Reply::text("The job printed bg-output-42.")),
+    ])
+    .await;
+    let mut spec = harness.spec(&[]);
+    spec.approval_mode = Some("yolo".into());
+
+    let recorder = tokio::task::spawn_blocking(move || {
+        let (mut process, startup) = start(&spec);
+        let recorder = Recorder::attach(&mut process, &startup);
+        process
+            .client()
+            .prompt_and_wait(&prompt("run it in the background"), TIMEOUT)
+            .unwrap();
+        recorder.wait_until("the job's completed frame", |events| {
+            job_update(events, "completed")
+        });
+        recorder.wait_until("session_settled", settled(1));
+        recorder
+    })
+    .await
+    .unwrap_or_else(|_| panic!("stderr:\n{}", harness.stderr()));
+
+    let types: Vec<String> = recorder.events().iter().filter_map(frame_type).collect();
+    let end = types.iter().position(|kind| kind == "tool_execution_end");
+    let last_update = types
+        .iter()
+        .rposition(|kind| kind == "tool_execution_update");
+    assert!(
+        end < last_update,
+        "job frames follow the call's end: {types:?}"
+    );
+    recorder.record(&harness, "async_bash_tool_call");
+    harness.assert_no_stray_network();
+}
+
 // spec: TST-012, DMN-050
 #[tokio::test(flavor = "multi_thread")]
 async fn approval_requested_and_granted() {

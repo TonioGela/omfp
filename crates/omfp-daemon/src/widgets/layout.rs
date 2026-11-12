@@ -254,7 +254,7 @@ mod tests {
         let (manifest, said) = add(None, &addition("./widgets/tests", Place::SideTab)).unwrap();
         assert_eq!(
             layout(&manifest)[3],
-            json!(["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "./widgets/tests"])
+            json!(["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "omfp:background", "./widgets/tests"])
         );
         assert_eq!(said, "as a tab of the side tabs of view \"default\"");
         assert_eq!(manifest["$schema"], "omfp://schemas/views.json");

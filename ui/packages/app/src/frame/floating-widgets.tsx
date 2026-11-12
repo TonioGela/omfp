@@ -7,12 +7,21 @@
 
 import { IconButton } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
-import type { CSSProperties, ReactNode } from "react";
-import { floatingWidgetKey, movePanel, reportError, resizePanel, useHost } from "../sdk/index.ts";
+import { type CSSProperties, type ReactNode, useEffect } from "react";
+import {
+  floatingWidgetKey,
+  movePanel,
+  REVEAL_WIDGET,
+  reportError,
+  resizePanel,
+  useHost,
+  useWindowState,
+} from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
+import { containsWidget } from "../view/layout.ts";
 import { PanelLayout } from "../view/render.tsx";
 import type { WidgetRegistry } from "../view/resolve.ts";
-import type { ResolvedPanel } from "../view/views.ts";
+import type { ResolvedPanel, ResolvedView } from "../view/views.ts";
 import { useFloatingBox } from "./floating-box.ts";
 
 const text = strings.shell.panels;
@@ -40,8 +49,52 @@ export function FloatingWidgets({ panels, workspaceId, views, registry }: Floati
   ));
 }
 
+export interface RevealedWidgetProps extends FloatingWidgetsProps {
+  readonly view: ResolvedView | undefined;
+}
+
+/**
+ * The widget of the window's latest reveal request (UI-274) when neither the view nor a panel of the manifest holds
+ * it: a floating panel of this window only (`views.json` is not written); closing it drops the request.
+ */
+export function RevealedWidget({ view, panels, workspaceId, views, registry }: RevealedWidgetProps): ReactNode {
+  const [request, setRequest] = useWindowState(REVEAL_WIDGET);
+  const names = request === undefined ? [] : [request.reference];
+  const held =
+    (view !== undefined && containsWidget(view.tree, names)) ||
+    panels.some((panel) => containsWidget(panel.tree, names));
+  // Once the view's tabs showed it (their effects run first), the request is done: a later view without the widget
+  // must not float it.
+  useEffect(() => {
+    if (held) {
+      setRequest(undefined);
+    }
+  }, [held, setRequest]);
+  if (request === undefined || workspaceId === undefined || held) {
+    return null;
+  }
+  const panel: ResolvedPanel = {
+    id: `reveal/${request.reference}`,
+    title: strings.shell.frame.widgetTitles[request.reference] ?? request.reference,
+    node: request.reference,
+    tree: { kind: "widget", name: request.reference, props: {} },
+  };
+  return (
+    <FloatingWidget
+      panel={panel}
+      index={panels.length}
+      workspaceId={workspaceId}
+      views={views}
+      registry={registry}
+      onClose={() => setRequest(undefined)}
+    />
+  );
+}
+
 interface FloatingWidgetProps {
   readonly panel: ResolvedPanel;
+  /** Closes the panel; by default `views.unmount` removes it from `views.json` (UI-231). */
+  readonly onClose?: () => void;
   /** Its place in id order: panels without a box of their own are cascaded by it. */
   readonly index: number;
   readonly workspaceId: string;
@@ -49,11 +102,15 @@ interface FloatingWidgetProps {
   readonly registry: WidgetRegistry;
 }
 
-function FloatingWidget({ panel, index, workspaceId, views, registry }: FloatingWidgetProps): ReactNode {
+function FloatingWidget({ panel, index, workspaceId, views, registry, onClose }: FloatingWidgetProps): ReactNode {
   const host = useHost();
   const { panel: state, setPanel, root, handle, style } = useFloatingBox(floatingWidgetKey(workspaceId, panel.id));
   const { title } = panel;
   const close = () => {
+    if (onClose !== undefined) {
+      onClose();
+      return;
+    }
     host.client
       .call("views.unmount", { workspaceId, id: panel.id })
       .catch((error: unknown) => reportError(host, error));

@@ -13,7 +13,7 @@ const LAYOUT: LayoutNode = [
 ];
 
 /** The right-hand tabs of the default view. */
-const SIDE_TABS: LayoutNode = ["tabs", { id: "side" }, "omfp:workspace", "omfp:changes"];
+const SIDE_TABS: LayoutNode = ["tabs", { id: "side" }, "omfp:workspace", "omfp:changes", "omfp:background"];
 /** The default view's `main` tabs, holding the chat. */
 const MAIN_TABS: LayoutNode = ["tabs", { id: "main" }, "omfp:chat"];
 
@@ -30,7 +30,7 @@ describe("move", () => {
         "row",
         { sizes: [3, 1] },
         ["col", {}, "omfp:workspace", "omfp:header", MAIN_TABS],
-        ["tabs", { id: "side" }, "omfp:changes"],
+        ["tabs", { id: "side" }, "omfp:changes", "omfp:background"],
       ],
     });
     expect(moveNode(LAYOUT, "0.0.0", "after", "0.1.1")).toEqual({

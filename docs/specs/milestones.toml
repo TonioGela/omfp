@@ -664,3 +664,17 @@ requirements = [
   "TST-091",
   "TST-092",
 ]
+
+[M12]
+status = "done"
+requirements = [
+  # Background jobs in the reducers, cards, the omfp:background widget and the header badge
+  "PRT-100",
+  "UI-270",
+  "UI-271",
+  "UI-272",
+  "UI-273",
+  "UI-274",
+  # Acceptance
+  "E2E-21",
+]

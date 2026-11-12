@@ -17,7 +17,9 @@ export type { JsonObject, JsonValue } from "./json.ts";
 export { liveErrorMessage } from "./live.ts";
 export { dialogId, reduce, replay } from "./reducer.ts";
 export {
+  type BackgroundJob,
   emptyThreadState,
+  type JobState,
   type LiveLine,
   type LiveSession,
   type Notice,

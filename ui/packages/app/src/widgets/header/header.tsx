@@ -32,6 +32,7 @@ import {
   headerView,
   NO_DETAILS,
   RENAMING_THREAD,
+  REVEAL_WIDGET,
   type SdkClient,
   SELECTED_THREAD,
   splitModel,
@@ -41,6 +42,7 @@ import {
   type ThreadStatus,
   useCall,
   useReportError,
+  useRunningInBackground,
   useThread,
   useThreadActions,
   useThreadSummary,
@@ -122,6 +124,7 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
         <div className="omfp-thread-header__top">
           <Title threadId={summary.id} view={view} compact />
           <HeaderState status={view.status} />
+          <BackgroundBadge threadId={summary.id} />
           <ModelSelect threadId={summary.id} view={view} onChanged={refreshSession} />
           <More threadId={summary.id} view={view} onChanged={refreshSession} />
         </div>
@@ -131,6 +134,7 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
             <Title threadId={summary.id} view={view} />
             <div className="omfp-thread-header__process">
               <HeaderState status={view.status} />
+              <BackgroundBadge threadId={summary.id} />
               <ProcessAction threadId={summary.id} view={view} />
             </div>
             <Lifecycle threadId={summary.id} archived={view.archived} />
@@ -511,5 +515,28 @@ function HeaderState({ status }: { status: ThreadStatus }): ReactNode {
     >
       {statusLabel(status)}
     </StateBadge>
+  );
+}
+
+/**
+ * `N in background` while jobs or subagents of the thread run (UI-274); a press shows `omfp:background` — its tab, or
+ * a floating panel when the view lacks it. Its own component: only it follows the thread's events.
+ */
+function BackgroundBadge({ threadId }: { threadId: string }): ReactNode {
+  const running = useRunningInBackground(threadId);
+  const [, reveal] = useWindowState(REVEAL_WIDGET);
+  if (running === 0) {
+    return null;
+  }
+  return (
+    <Button
+      size="sm"
+      variant="quiet"
+      data-testid="background-badge"
+      data-count={running}
+      onPress={() => reveal({ reference: "omfp:background", nonce: Date.now() })}
+    >
+      {text.inBackground(running)}
+    </Button>
   );
 }

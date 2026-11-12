@@ -9,6 +9,7 @@ import { isObject } from "../../../src/sdk/json.ts";
 export type FixtureName =
   | "text_reply"
   | "bash_tool_call"
+  | "async_bash_tool_call"
   | "bash_tool_error"
   | "approval_granted"
   | "ask_answered"

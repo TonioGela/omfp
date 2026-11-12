@@ -27,6 +27,8 @@ export interface SubagentRow {
   readonly activity: string | undefined;
   /** `3 tools · 12.3k tokens · fake/cheap`, what is known of it. */
   readonly meta: string;
+  /** Its run time so far (`durationMs` of its progress), when known. */
+  readonly durationMs: number | undefined;
   /** Still running: it can be steered and cancelled. */
   readonly live: boolean;
 }
@@ -103,6 +105,7 @@ function row(id: string, known: Subagent | undefined, listed: Listed | undefined
     task: known?.progress?.assignment ?? listed?.task ?? known?.progress?.task ?? "",
     activity: str(progress?.currentToolIntent) ?? str(progress?.lastIntent),
     meta: meta(progress),
+    durationMs: num(progress?.durationMs),
     live: finished === undefined && !Object.hasOwn(FINISHED, status),
   };
 }

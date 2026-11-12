@@ -22,8 +22,8 @@ import {
   Toolbar,
 } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
-import { Fragment, type KeyboardEvent, type ReactNode, useMemo, useState } from "react";
-import { fileName, fileTabId, useFileTabs, useWindowState } from "../sdk/index.ts";
+import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { fileName, fileTabId, REVEAL_WIDGET, useFileTabs, useWindowState } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { type LayoutEdit, type Place, resizeSizes } from "./edit.ts";
 import {
@@ -170,36 +170,75 @@ function Node({ tree, path, scope }: { tree: LayoutTree; path: string; scope: Sc
     if (tree.props.id === MAIN_SLOT) {
       return <MainTabs tree={tree} path={path} scope={scope} />;
     }
-    const children = tree.children.map((child, index) => ({ child, path: `${path}.${index}` }));
-    const [only] = children;
-    if (only !== undefined && children.length === 1) {
-      // One tab needs no tab bar (AGT-010): the default view's `main` slot holds the chat alone until files open.
-      return (
-        <div className="omfp-view__tabs" data-layout="tabs" data-path={path}>
-          <div className="omfp-view__panel">
-            <Node tree={only.child} path={only.path} scope={scope} />
-          </div>
-        </div>
-      );
-    }
-    return (
-      <Tabs className="omfp-view__tabs" data-layout="tabs" data-path={path}>
-        <TabList aria-label={text.views}>
-          {children.map(({ child, path: id }) => (
-            <Tab key={id} id={id} data-testid="view-tab">
-              {nodeTitle(child)}
-            </Tab>
-          ))}
-        </TabList>
-        {children.map(({ child, path: id }) => (
-          <TabPanel key={id} id={id} className="omfp-view__panel">
-            <Node tree={child} path={id} scope={scope} />
-          </TabPanel>
-        ))}
-      </Tabs>
-    );
+    return <TabsNode tree={tree} path={path} scope={scope} />;
   }
   return <Cells tree={tree} path={path} scope={scope} />;
+}
+
+/**
+ * Selects the tab whose subtree holds the widget of the window's latest reveal request (UI-274), when it arrives.
+ * `tabs` are the container's own children with their tab ids.
+ */
+function useRevealTab(tabs: readonly { child: LayoutTree; id: string }[], select: (id: string) => void): void {
+  const [request] = useWindowState(REVEAL_WIDGET);
+  const latest = useRef(select);
+  latest.current = select;
+  const target =
+    request === undefined ? undefined : tabs.find(({ child }) => containsWidget(child, [request.reference]))?.id;
+  useEffect(() => {
+    if (request !== undefined && target !== undefined) {
+      latest.current(target);
+    }
+  }, [request, target]);
+}
+
+/** A `tabs` container other than `main`: one tab per child, the selected one window-local. */
+function TabsNode({
+  tree,
+  path,
+  scope,
+}: {
+  tree: Exclude<LayoutTree, { kind: "widget" }>;
+  path: string;
+  scope: Scope;
+}): ReactNode {
+  const children = tree.children.map((child, index) => ({ child, id: `${path}.${index}` }));
+  const [picked, setPicked] = useState<string | undefined>(undefined);
+  useRevealTab(children, setPicked);
+  const selected = children.find(({ id }) => id === picked)?.id ?? children[0]?.id;
+  const [only] = children;
+  if (only !== undefined && children.length === 1) {
+    // One tab needs no tab bar (AGT-010): the default view's `main` slot holds the chat alone until files open.
+    return (
+      <div className="omfp-view__tabs" data-layout="tabs" data-path={path}>
+        <div className="omfp-view__panel">
+          <Node tree={only.child} path={only.id} scope={scope} />
+        </div>
+      </div>
+    );
+  }
+  return (
+    <Tabs
+      className="omfp-view__tabs"
+      data-layout="tabs"
+      data-path={path}
+      {...(selected === undefined ? {} : { selectedKey: selected })}
+      onSelectionChange={(key) => setPicked(String(key))}
+    >
+      <TabList aria-label={text.views}>
+        {children.map(({ child, id }) => (
+          <Tab key={id} id={id} data-testid="view-tab">
+            {nodeTitle(child)}
+          </Tab>
+        ))}
+      </TabList>
+      {children.map(({ child, id }) => (
+        <TabPanel key={id} id={id} className="omfp-view__panel">
+          <Node tree={child} path={id} scope={scope} />
+        </TabPanel>
+      ))}
+    </Tabs>
+  );
 }
 
 /**
@@ -217,6 +256,7 @@ function MainTabs({
 }): ReactNode {
   const files = useFileTabs(scope.workspaceId);
   const own = tree.children.map((child, index) => ({ child, id: `${path}.${index}` }));
+  useRevealTab(own, files.select);
   const ids = [...own.map(({ id }) => id), ...files.tabs.map((tab) => fileTabId(tab.path))];
   const selected = files.active !== undefined && ids.includes(files.active) ? files.active : ids[0];
   const [only] = own;

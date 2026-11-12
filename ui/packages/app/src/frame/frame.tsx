@@ -42,7 +42,7 @@ import { GlobalCommands } from "./commands.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
 import { FilePickerLine } from "./file-picker.tsx";
 import { FloatingFile } from "./floating-file.tsx";
-import { FloatingWidgets } from "./floating-widgets.tsx";
+import { FloatingWidgets, RevealedWidget } from "./floating-widgets.tsx";
 import { Help } from "./help.tsx";
 import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
 import { ModeLine, useMode } from "./mode-line.tsx";
@@ -183,6 +183,13 @@ export function Frame({
             <FloatingFile workspaceId={workspaceId} views={state} registry={registry} />
           )}
           <FloatingWidgets panels={views.panels} workspaceId={workspaceId} views={state} registry={registry} />
+          <RevealedWidget
+            view={view}
+            panels={views.panels}
+            workspaceId={workspaceId}
+            views={state}
+            registry={registry}
+          />
           <FrameModeLine appRef={appRef} bindings={bindings} />
         </div>
       </main>

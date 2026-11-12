@@ -90,6 +90,7 @@ describe("tool cards", () => {
       partial_result: null,
       preview: null,
       result: { content: [{ type: "text", text: "ENOENT" }] },
+      background: null,
     };
     const card = toolCard("c1", undefined, run, undefined, undefined);
     expect(expandedByDefault(card)).toBe(true);

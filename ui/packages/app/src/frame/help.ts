@@ -97,8 +97,8 @@ const keys = text.keys;
 /** Keys the composer handles itself (UI-060, UI-061). */
 const COMPOSER_KEYS: readonly HelpRow[] = [
   { keys: [keyLabel("Enter")], description: keys.send },
-  { keys: [keyLabel("Alt-Enter")], description: keys.steer },
-  { keys: [keyLabel("Shift-Enter")], description: keys.newline },
+  { keys: [keyLabel("Shift-Enter")], description: keys.steer },
+  { keys: [keyLabel("Alt-Enter")], description: keys.newline },
   { keys: [keyLabel("Tab")], description: keys.complete },
 ];
 

@@ -39,6 +39,14 @@ export const chat = {
     lines: (first: number, last: number, total: number) => `${first}–${last} of ${total}`,
     fetchFailed: "The URL could not be fetched.",
     exitCode: (code: number) => `exit ${code}`,
+    /** The mark of a `bash` call that became a background job (UI-270), by job state. */
+    background: {
+      running: "background",
+      completed: "background · done",
+      failed: "background · failed",
+      cancelled: "background · cancelled",
+    },
+    backgroundJob: (id: string) => `Background job ${id}`,
     cwd: (cwd: string) => `in ${cwd}`,
     output: "Output",
     noOutput: "No output",
@@ -89,7 +97,7 @@ export const chat = {
   composer: {
     label: "Message",
     placeholderIdle: "Message (/ for commands)",
-    placeholderBusy: "Queue a follow-up (alt+enter steers, esc aborts)",
+    placeholderBusy: "Queue a follow-up (shift+enter steers, esc aborts)",
     send: { prompt: "Send", "follow-up": "Queue follow-up", steer: "Steer now" },
     abort: "Abort",
     /** Composer bar hints after their key chips (UI-148, UI-172). */

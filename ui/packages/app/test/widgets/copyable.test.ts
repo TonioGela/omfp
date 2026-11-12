@@ -34,7 +34,7 @@ function valueImports(folder: string): { file: string; path: string }[] {
 }
 
 describe("copyable built-ins", () => {
-  // spec: AGT-021, AGT-012, UI-081, UI-082, UI-083
+  // spec: AGT-021, AGT-012, UI-081, UI-082, UI-083, UI-273
   test("value imports come only from react, omfp/sdk, omfp/kit and the widget's own folder", () => {
     const imports = COPYABLE.flatMap(valueImports);
     expect(imports.length).toBeGreaterThan(0);

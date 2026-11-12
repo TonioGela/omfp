@@ -40,11 +40,12 @@ describe("composer", () => {
     const busy = fixtureUntil("follow_up_then_abort", isFrame("queue_update"));
     expect(isBusy(busy)).toBe(true);
     expect(isBusy(fixture("text_reply"))).toBe(false);
-    const alt = { ...PLAIN, alt: true };
+    const shift = { ...PLAIN, shift: true };
     expect(keyAction("Enter", PLAIN, BUSY)).toEqual({ type: "send", mode: "follow-up" });
-    expect(keyAction("Enter", alt, BUSY)).toEqual({ type: "send", mode: "steer" });
+    expect(keyAction("Enter", shift, BUSY)).toEqual({ type: "send", mode: "steer" });
     expect(keyAction("Enter", { ...PLAIN, meta: true }, BUSY)).toEqual({ type: "send", mode: "steer" });
-    expect(keyAction("Enter", alt, IDLE)).toEqual({ type: "send", mode: "prompt" });
+    // Idle, the steer key sends like Enter.
+    expect(keyAction("Enter", shift, IDLE)).toEqual({ type: "send", mode: "prompt" });
     expect(behavior("follow-up")).toBe("followUp");
     expect(behavior("steer")).toBe("steer");
     expect(behavior("prompt")).toBeUndefined();
@@ -53,10 +54,17 @@ describe("composer", () => {
   });
 
   // spec: UI-060
-  test("shift+enter is a newline and tab completes only with suggestions", () => {
-    expect(keyAction("Enter", { ...PLAIN, shift: true }, IDLE)).toEqual({ type: "none" });
+  test("alt+enter is a newline (macOS's Option+Enter too) and tab completes only with suggestions", () => {
+    expect(keyAction("Enter", { ...PLAIN, alt: true }, IDLE)).toEqual({ type: "newline" });
+    expect(keyAction("Enter", { ...PLAIN, alt: true, shift: true }, BUSY)).toEqual({ type: "newline" });
     expect(keyAction("Tab", PLAIN, { ...IDLE, hasSuggestions: true })).toEqual({ type: "complete" });
     expect(keyAction("Tab", PLAIN, IDLE)).toEqual({ type: "none" });
+  });
+
+  // spec: UI-061
+  test("an auto-repeated enter or steer key sends nothing", () => {
+    expect(keyAction("Enter", PLAIN, { ...IDLE, repeat: true })).toEqual({ type: "ignore" });
+    expect(keyAction("Enter", { ...PLAIN, shift: true }, { ...BUSY, repeat: true })).toEqual({ type: "ignore" });
   });
 
   // spec: UI-063, UI-095

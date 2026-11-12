@@ -17,6 +17,8 @@ import {
 import { isObject, type JsonValue, withKey, withoutKey } from "./json.ts";
 import { liveErrorMessage } from "./live.ts";
 import type {
+  BackgroundJob,
+  JobState,
   LiveLine,
   LiveSession,
   Notice,
@@ -133,6 +135,42 @@ function closeInteraction(state: ThreadState, id: string): ThreadState {
   return interactions.length === state.interactions.length ? state : { ...state, interactions };
 }
 
+const JOB_STATES: Readonly<Record<string, JobState>> = {
+  running: "running",
+  completed: "completed",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
+/** The background job of an omp tool result or partial result (`{ content, details: { async: { state, jobId },
+ * exitCode? } }`, PRT-100); `null` without a job frame or with an unknown state. */
+function jobFrame(result: unknown): BackgroundJob | null {
+  const details = isObject(result) ? result.details : undefined;
+  const frame = isObject(details) ? details.async : undefined;
+  if (!isObject(details) || !isObject(frame) || typeof frame.state !== "string" || typeof frame.jobId !== "string") {
+    return null;
+  }
+  const state = Object.hasOwn(JOB_STATES, frame.state) ? JOB_STATES[frame.state] : undefined;
+  if (state === undefined) {
+    return null;
+  }
+  const content = isObject(result) && Array.isArray(result.content) ? result.content : [];
+  const output = content
+    .map((block) => (isObject(block) && block.type === "text" && typeof block.text === "string" ? block.text : ""))
+    .join("");
+  return {
+    job_id: frame.jobId,
+    state,
+    output: output === "" ? null : output,
+    exit_code: typeof details.exitCode === "number" && Number.isInteger(details.exitCode) ? details.exitCode : null,
+  };
+}
+
+/** A job as its start result reports it: without output. */
+function startedJob(job: BackgroundJob | null): BackgroundJob | null {
+  return job === null ? null : { ...job, output: null };
+}
+
 /** `state` with the run `toolCallId` changed by `update`; a new run starts with `toolName` and `status`. */
 function updateTool(
   state: ThreadState,
@@ -157,6 +195,7 @@ function updateTool(
     partial_result: null,
     preview: null,
     result: null,
+    background: null,
   };
   return { ...state, tools: [...state.tools, update(run)] };
 }
@@ -312,6 +351,7 @@ function applyFrame(state: ThreadState, type: string, frame: Record<string, unkn
         ...run,
         args: update.args ?? run.args,
         partial_result: update.partialResult ?? null,
+        background: jobFrame(update.partialResult) ?? run.background,
       }));
     }
     case "tool_stream_update": {
@@ -327,6 +367,9 @@ function applyFrame(state: ThreadState, type: string, frame: Record<string, unkn
         ...run,
         result: end.result ?? null,
         status: end.isError === true ? "failed" : "succeeded",
+        // The start result of a background job: its text is omp's notice to the model, not the job's output; later
+        // updates, which may have come first, are newer.
+        background: run.background ?? startedJob(jobFrame(end.result)),
       }));
     }
     case "queue_update": {

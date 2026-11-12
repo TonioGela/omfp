@@ -17,8 +17,8 @@ pub use event::{
 pub use live::live_error_message;
 pub use reducer::replay;
 pub use state::{
-    LiveLine, LiveSession, Notice, NoticeFrame, Presentation, QueueState, StreamingMessage,
-    Subagent, ThreadState, ToolRun, ToolStatus, TranscriptEntry, Widget,
+    BackgroundJob, JobState, LiveLine, LiveSession, Notice, NoticeFrame, Presentation, QueueState,
+    StreamingMessage, Subagent, ThreadState, ToolRun, ToolStatus, TranscriptEntry, Widget,
 };
 
 /// omp RPC wire types, reused as-is instead of being redefined (ARC-011).

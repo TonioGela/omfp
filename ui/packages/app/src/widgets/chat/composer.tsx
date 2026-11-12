@@ -150,15 +150,24 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
     if (event.target !== inputRef.current || event.nativeEvent.isComposing) {
       return;
     }
-    const action = keyAction(event.key, modifiersOf(event), { busy: false, abortable: false, hasSuggestions: false });
-    if (action.type === "send" || action.type === "leave") {
+    const action = keyAction(event.key, modifiersOf(event), {
+      busy: false,
+      abortable: false,
+      hasSuggestions: false,
+      repeat: event.repeat,
+    });
+    if (action.type === "send" || action.type === "leave" || action.type === "ignore") {
       event.preventDefault();
       event.stopPropagation();
       if (action.type === "send") {
         send();
-      } else {
+      } else if (action.type === "leave") {
         leave();
       }
+    } else if (action.type === "newline") {
+      event.preventDefault();
+      event.stopPropagation();
+      insertLineBreak(inputRef.current, (value) => setMessage((previous) => ({ ...previous, text: value })));
     }
   };
   return (
@@ -187,11 +196,11 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
           onBlur={() => setInsert(false)}
           isReadOnly={sending}
           inputRef={inputRef}
-          inputProps={{ ...testId("composer-input"), "aria-keyshortcuts": "Enter Shift+Enter Escape" }}
+          inputProps={{ ...testId("composer-input"), "aria-keyshortcuts": "Enter Alt+Enter Escape" }}
         />
         <ComposerBar>
           <ComposerHint>
-            <Kbd>{keyLabel("Shift-Enter")}</Kbd> {text.hint.newline}
+            <Kbd>{keyLabel("Alt-Enter")}</Kbd> {text.hint.newline}
           </ComposerHint>
           <ComposerHint>
             <Kbd>{keyLabel("Esc")}</Kbd> {text.hint.leave}
@@ -280,9 +289,21 @@ function QueueChipView({ threadId, chip }: { threadId: string; chip: QueueChip }
   );
 }
 
-/** The key chip of a send mode's key (UI-148): `alt+enter` steers while the agent works, `enter` sends otherwise. */
+/** The key chip of a send mode's key (UI-148): `shift+enter` steers while the agent works, `enter` sends otherwise. */
 function sendKey(mode: SendMode): string {
-  return keyLabel(mode === "steer" ? "Alt-Enter" : "Enter");
+  return keyLabel(mode === "steer" ? "Shift-Enter" : "Enter");
+}
+
+/**
+ * Alt+Enter (UI-060): a line break replaces the selection, the caret after it. The field's value and caret are set
+ * first so React, finding the same value, leaves the caret where it is.
+ */
+function insertLineBreak(input: HTMLTextAreaElement, apply: (text: string) => void) {
+  const { selectionStart, selectionEnd, value } = input;
+  const text = `${value.slice(0, selectionStart)}\n${value.slice(selectionEnd)}`;
+  input.value = text;
+  input.setSelectionRange(selectionStart + 1, selectionStart + 1);
+  apply(text);
 }
 
 function modifiersOf(event: KeyboardEvent): Modifiers {
@@ -505,13 +526,15 @@ export const Composer = memo(function Composer({
       return;
     }
     event.stopPropagation();
-    const action = keyAction(event.key, modifiers, { busy, abortable, hasSuggestions: false });
+    const action = keyAction(event.key, modifiers, { busy, abortable, hasSuggestions: false, repeat: event.repeat });
     if (action.type === "none") {
       return;
     }
     event.preventDefault();
     if (action.type === "send") {
       send(action.mode);
+    } else if (action.type === "newline") {
+      insertLineBreak(inputRef.current, (value) => setDraft((previous) => ({ ...previous, text: value })));
     } else if (action.type === "abort") {
       abort();
     } else if (action.type === "leave") {
@@ -641,7 +664,7 @@ const ComposerActions = memo(function ComposerActions({
   return (
     <ComposerBar>
       <ComposerHint>
-        <Kbd>{keyLabel("Shift-Enter")}</Kbd> {text.hint.newline}
+        <Kbd>{keyLabel("Alt-Enter")}</Kbd> {text.hint.newline}
       </ComposerHint>
       <ComposerHint>
         <Kbd>{keyLabel("Esc")}</Kbd> {abortable ? text.hint.abort : text.hint.leave}

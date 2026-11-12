@@ -302,8 +302,8 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
     let written: Value =
         serde_json::from_str(&std::fs::read_to_string(folder.join(".omfp/views.json"))?)?;
     assert_eq!(
-        references(&written["views"]["default"]["layout"]),
-        ["omfp:header", "omfp:chat", "omfp:workspace", "omfp:changes"]
+        references(&written["views"]["default"]["layout"]).join(" "),
+        "omfp:header omfp:chat omfp:workspace omfp:changes omfp:background"
     );
 
     // Edit mode: move the workspace widget (the default view's `0.1.0`, first tab of the side tabs next to the
@@ -314,7 +314,8 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
         .await?;
     move_widget(&journey, "0.1.0", "before", "0.0.0").await?;
     let layout = written_layout(&journey, &folder, "the moved workspace widget", |layout| {
-        references(layout) == ["omfp:workspace", "omfp:header", "omfp:chat", "omfp:changes"]
+        references(layout).join(" ")
+            == "omfp:workspace omfp:header omfp:chat omfp:changes omfp:background"
     })
     .await?;
     assert_eq!(
@@ -323,7 +324,7 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
             "row",
             { "sizes": [3, 1] },
             ["col", {}, "omfp:workspace", "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]],
-            ["tabs", { "id": "side" }, "omfp:changes"]
+            ["tabs", { "id": "side" }, "omfp:changes", "omfp:background"]
         ])
     );
 
@@ -335,7 +336,7 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
         .click("[data-testid=widget-toolbar][data-path=\"0.0.1\"] [data-testid=widget-hide]")
         .await?;
     written_layout(&journey, &folder, "the hidden header", |layout| {
-        references(layout) == ["omfp:workspace", "omfp:chat", "omfp:changes"]
+        references(layout).join(" ") == "omfp:workspace omfp:chat omfp:changes omfp:background"
     })
     .await?;
 
@@ -350,7 +351,8 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
         .click("[data-testid=widget-option][data-widget=\"omfp:header\"]")
         .await?;
     written_layout(&journey, &folder, "the added header", |layout| {
-        references(layout) == ["omfp:workspace", "omfp:chat", "omfp:changes", "omfp:header"]
+        references(layout).join(" ")
+            == "omfp:workspace omfp:chat omfp:changes omfp:background omfp:header"
     })
     .await?;
     journey.gone("[data-testid=widget-picker]").await?;

@@ -14,6 +14,7 @@ flowchart LR
   M5 --> M8[M8 Subagents, tree, goal]
   M5 & M6 & M7 & M8 --> M9[M9 Hardening] --> M10[M10 Agent control]
   M9 --> M11[M11 macOS desktop]
+  M8 --> M12[M12 Background work]
 ```
 
 ## Spikes
@@ -503,6 +504,24 @@ from the shell does not have.
 Later (S-15 step 9, not in M11): a single-instance app with Cmd-N windows (D-16 on macOS); a LaunchAgent for start at
 login; Developer ID signing, hardened runtime with `com.apple.security.device.audio-input` and notarization for a
 downloadable `.dmg` (and a microphone grant that survives updates).
+
+## M12 — Background work (done)
+
+Scope: what omp runs in the background, visible and controllable from the window. omp 18.18.6 runs `bash` with `async`
+(or auto-backgrounded after 60 s) as a job: the call ends at once with `details.async = { state: "running", jobId }`
+and the job's output and final state arrive as `tool_execution_update` frames after `tool_execution_end`. Both
+reducers keep the job on its tool run (PRT-100); its card runs, marked background, with the last output line, then
+shows the final output and exit code (UI-270); the built-in `omfp:background` lists the thread's jobs and subagents
+with state, duration and last line, stops a job (a steer asking the agent: the RPC has no kill command) and cancels a
+subagent (UI-271..UI-273), in the default view after Workspace and Changes; the header's `N in background` badge
+reveals it (UI-274). Also in M12: the composer's keys swapped — `alt+enter` is a new line, `shift+enter` steers, and an
+auto-repeated Enter sends nothing (UI-060, UI-061).
+
+Result: the fixture `async_bash_tool_call` was recorded from the pinned omp and the fake LLM (an async `bash` whose job
+settles after the call's end, then omp delivers the job's result as a new turn), so the reducers, the cards and the
+widget are tested on real frames; E2E-21 runs the same through the window. omp's job frames carry no times, so a job's
+duration is measured from when the window first saw it; the call's own result is omp's notice to the model, not job
+output. Workspaces with a `views.json` of their own keep it: `:view reset` or an agent's mount adds the new tab.
 
 ## Terminal (deferred)
 

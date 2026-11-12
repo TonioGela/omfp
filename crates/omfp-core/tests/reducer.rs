@@ -7,8 +7,8 @@ use omfp_core::wire::{
     AssistantContent, ExtensionUiRequest, NotifyType, PromptStatus, SubagentLifecycleStatus,
 };
 use omfp_core::{
-    NoticeFrame, NotifyRequest, OpenFileRequest, ProcessState, QueueState, ThreadState, ToolStatus,
-    replay,
+    BackgroundJob, JobState, NoticeFrame, NotifyRequest, OpenFileRequest, ProcessState, QueueState,
+    ThreadState, ToolStatus, replay,
 };
 use serde_json::{Value, json};
 
@@ -539,6 +539,124 @@ fn tool_runs_follow_execution_events() {
     assert_eq!(bash.status, ToolStatus::Succeeded);
     assert_eq!(state.tools[1].status, ToolStatus::Failed);
     assert_eq!(state.tools[1].result, Some(json!("nope")));
+}
+
+fn job_frame(
+    kind: &str,
+    state: &str,
+    text: &str,
+    exit_code: Option<i64>,
+) -> omfp_core::ThreadEvent {
+    let mut details = json!({ "async": { "state": state, "jobId": "bg_1", "type": "bash" } });
+    if let Some(code) = exit_code {
+        details["exitCode"] = json!(code);
+    }
+    let result = json!({ "content": [{ "type": "text", "text": text }], "details": details });
+    let mut frame = json!({ "type": kind, "toolCallId": "t1", "toolName": "bash" });
+    if kind == "tool_execution_end" {
+        frame["result"] = result;
+        frame["isError"] = json!(false);
+    } else {
+        frame["partialResult"] = result;
+    }
+    omp(frame)
+}
+
+fn job(state: JobState, output: &str, exit_code: Option<i64>) -> BackgroundJob {
+    BackgroundJob {
+        job_id: "bg_1".into(),
+        state,
+        output: (!output.is_empty()).then(|| output.into()),
+        exit_code,
+    }
+}
+
+// spec: PRT-100
+#[test]
+fn a_background_job_lives_on_after_the_call_ends() {
+    let start = omp(
+        json!({ "type": "tool_execution_start", "toolCallId": "t1", "toolName": "bash", "args": { "command": "make", "async": true } }),
+    );
+    let started = [
+        start.clone(),
+        job_frame(
+            "tool_execution_end",
+            "running",
+            "Background job bg_1 started",
+            None,
+        ),
+    ];
+    let state = replay(&started);
+    assert_eq!(state.tools[0].status, ToolStatus::Succeeded);
+    // The start result's text is omp's notice to the model, not the job's output.
+    assert_eq!(
+        state.tools[0].background,
+        Some(job(JobState::Running, "", None))
+    );
+
+    let mut events = started.to_vec();
+    events.push(job_frame(
+        "tool_execution_update",
+        "running",
+        "building",
+        None,
+    ));
+    assert_eq!(
+        replay(&events).tools[0].background,
+        Some(job(JobState::Running, "building", None))
+    );
+    events.push(job_frame(
+        "tool_execution_update",
+        "completed",
+        "built",
+        Some(0),
+    ));
+    let done = replay(&events);
+    assert_eq!(
+        done.tools[0].background,
+        Some(job(JobState::Completed, "built", Some(0)))
+    );
+    assert_eq!(done.tools[0].status, ToolStatus::Succeeded);
+
+    // A job frame that comes before the call's end is newer than the start result.
+    let raced = replay(&[
+        start,
+        job_frame("tool_execution_update", "running", "early", None),
+        job_frame(
+            "tool_execution_end",
+            "running",
+            "Background job bg_1 started",
+            None,
+        ),
+    ]);
+    assert_eq!(
+        raced.tools[0].background,
+        Some(job(JobState::Running, "early", None))
+    );
+
+    // Failed and cancelled jobs; frames without a job or with an unknown state leave it unset.
+    let failed = replay(&[job_frame(
+        "tool_execution_update",
+        "failed",
+        "boom",
+        Some(2),
+    )]);
+    assert_eq!(
+        failed.tools[0].background,
+        Some(job(JobState::Failed, "boom", Some(2)))
+    );
+    let cancelled = replay(&[job_frame(
+        "tool_execution_update",
+        "cancelled",
+        "stopped",
+        None,
+    )]);
+    assert_eq!(
+        cancelled.tools[0].background,
+        Some(job(JobState::Cancelled, "stopped", None))
+    );
+    let unknown = replay(&[job_frame("tool_execution_update", "paused", "x", None)]);
+    assert_eq!(unknown.tools[0].background, None);
 }
 
 // spec: TST-010

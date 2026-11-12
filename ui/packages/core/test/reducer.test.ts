@@ -3,8 +3,10 @@
 import { describe, expect, test } from "bun:test";
 import {
   type AssistantContent,
+  type BackgroundJob,
   dialogId,
   emptyThreadState,
+  type JobState,
   type JsonObject,
   type JsonValue,
   type NoticeFrame,
@@ -308,6 +310,58 @@ describe("reducer", () => {
     expect(transcriptTexts(ended).at(-1)).toBe("final");
   });
 
+  // spec: PRT-100
+  test("a background job lives on after the call ends", () => {
+    const frame = (kind: string, state: string, text: string, exitCode?: number): ThreadEvent => {
+      const details: JsonObject = { async: { state, jobId: "bg_1", type: "bash" } };
+      if (exitCode !== undefined) {
+        details.exitCode = exitCode;
+      }
+      const result = { content: [{ type: "text", text }], details };
+      return omp(
+        kind === "tool_execution_end"
+          ? { type: kind, toolCallId: "t1", toolName: "bash", result, isError: false }
+          : { type: kind, toolCallId: "t1", toolName: "bash", partialResult: result },
+      );
+    };
+    const job = (state: JobState, output: string, exitCode: number | null = null): BackgroundJob => ({
+      job_id: "bg_1",
+      state,
+      output: output === "" ? null : output,
+      exit_code: exitCode,
+    });
+    const start = omp({
+      type: "tool_execution_start",
+      toolCallId: "t1",
+      toolName: "bash",
+      args: { command: "make", async: true },
+    });
+    const started = [start, frame("tool_execution_end", "running", "Background job bg_1 started")];
+    expect(replay(started).tools[0]?.status).toBe("succeeded");
+    // The start result's text is omp's notice to the model, not the job's output.
+    expect(replay(started).tools[0]?.background).toEqual(job("running", ""));
+    const building = [...started, frame("tool_execution_update", "running", "building")];
+    expect(replay(building).tools[0]?.background).toEqual(job("running", "building"));
+    const done = replay([...building, frame("tool_execution_update", "completed", "built", 0)]);
+    expect(done.tools[0]?.background).toEqual(job("completed", "built", 0));
+    expect(done.tools[0]?.status).toBe("succeeded");
+    // A job frame that comes before the call's end is newer than the start result.
+    const raced = replay([
+      start,
+      frame("tool_execution_update", "running", "early"),
+      frame("tool_execution_end", "running", "Background job bg_1 started"),
+    ]);
+    expect(raced.tools[0]?.background).toEqual(job("running", "early"));
+    // Failed and cancelled jobs; frames without a job or with an unknown state leave it unset.
+    expect(replay([frame("tool_execution_update", "failed", "boom", 2)]).tools[0]?.background).toEqual(
+      job("failed", "boom", 2),
+    );
+    expect(replay([frame("tool_execution_update", "cancelled", "stopped")]).tools[0]?.background).toEqual(
+      job("cancelled", "stopped"),
+    );
+    expect(replay([frame("tool_execution_update", "paused", "x")]).tools[0]?.background).toBeNull();
+  });
+
   // spec: TST-010
   test("tool runs follow execution events", () => {
     const state = replay([
@@ -334,6 +388,7 @@ describe("reducer", () => {
       partial_result: { out: "ab" },
       preview: null,
       result: { out: "abc" },
+      background: null,
     });
     expect(state.tools[1]?.status).toBe("failed");
     expect(state.tools[1]?.result).toBe("nope");

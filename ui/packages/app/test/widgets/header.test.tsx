@@ -5,11 +5,12 @@ import type { CallMethod } from "@omfp/client";
 import type { ThreadSummary } from "@omfp/protocol";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { DELETE_THREAD, draftKey, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { DELETE_THREAD, draftKey, REVEAL_WIDGET, SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { HeaderWidget } from "../../src/widgets/header/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { type FakeClient, renderWithHost, testHost } from "../support/host.tsx";
 import { installResizeObserver, resize } from "../support/resize.ts";
+import { fixtureEvents, isFrame } from "./chat/fixtures.ts";
 
 afterEach(cleanup);
 
@@ -32,6 +33,7 @@ function answer(client: FakeClient): void {
     "thread.restart": {},
     "thread.set_model": {},
     "thread.set_thinking": {},
+    "thread.subagents": { subagents: [] },
   };
   for (const [method, result] of Object.entries(answers)) {
     client.answers.set(method as CallMethod, () => result);
@@ -55,6 +57,23 @@ async function choose(user: UserEvent, testid: string, option: string): Promise<
 }
 
 describe("omfp:header", () => {
+  // spec: UI-274
+  test("a badge counts what runs in the background and shows omfp:background", async () => {
+    const test = setup();
+    expect(screen.queryByTestId("background-badge")).toBeNull();
+    const events = fixtureEvents("async_bash_tool_call");
+    const ended = events.findIndex(isFrame("tool_execution_end")) + 1;
+    test.client.thread("t1", events.slice(0, ended));
+    test.flush();
+    const badge = screen.getByTestId("background-badge");
+    expect(badge.textContent).toBe("1 in background");
+    await test.user.click(badge);
+    expect(test.host.window.get(REVEAL_WIDGET)?.reference).toBe("omfp:background");
+    test.client.threadEvents("t1", ...events.slice(ended));
+    test.flush();
+    expect(screen.queryByTestId("background-badge")).toBeNull();
+  });
+
   // spec: UI-030
   test("without a selected thread the header says so", () => {
     renderWithHost(<HeaderWidget />);

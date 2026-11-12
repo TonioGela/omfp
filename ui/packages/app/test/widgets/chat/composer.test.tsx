@@ -46,10 +46,10 @@ function busyEvents(): ThreadEvent[] {
 
 describe("composer", () => {
   // spec: UI-060
-  test("multi-line input: Shift+Enter is a newline, Enter sends and clears the draft", async () => {
+  test("multi-line input: Alt+Enter is a newline, Enter sends and clears the draft", async () => {
     const { client } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
     await userEvent.click(input());
-    await userEvent.keyboard("first line{Shift>}{Enter}{/Shift}second line");
+    await userEvent.keyboard("first line{Alt>}{Enter}{/Alt}second line");
     expect(input().value).toBe("first line\nsecond line");
     expect(screen.getByTestId("send").dataset.mode).toBe("prompt");
     await userEvent.keyboard("{Enter}");
@@ -141,10 +141,10 @@ describe("composer", () => {
     expect(screen.getByTestId("send-alternative").dataset.mode).toBe("steer");
     await userEvent.click(input());
     await userEvent.keyboard("later{Enter}");
-    await userEvent.keyboard("{Alt>}");
+    await userEvent.keyboard("{Shift>}");
     expect(screen.getByTestId("send").dataset.mode).toBe("steer");
-    expect(screen.getByTestId("send").textContent).toBe("Steer nowalt+enter");
-    await userEvent.keyboard("{/Alt}now{Alt>}{Enter}{/Alt}");
+    expect(screen.getByTestId("send").textContent).toBe("Steer nowshift+enter");
+    await userEvent.keyboard("{/Shift}now{Shift>}{Enter}{Enter>3/}{/Shift}");
     expect(client.callsTo("thread.prompt").map((call) => call.params)).toEqual([
       { threadId: THREAD, text: "later", behavior: "followUp" },
       { threadId: THREAD, text: "now", behavior: "steer" },

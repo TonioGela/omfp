@@ -400,14 +400,14 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
     journey.click("[data-testid=queue-remove]").await?;
     journey.gone("[data-testid=queue-chip]").await?;
 
-    // Holding Alt in the composer switches the send button to steering; leaving the composer while it is held
+    // Holding Shift in the composer switches the send button to steering; leaving the composer while it is held
     // does not leave it stuck there.
     let input = journey.element("[data-testid=composer-input]").await?;
     input.click().await?;
     journey
         .driver
         .action_chain()
-        .key_down(Key::Alt)
+        .key_down(Key::Shift)
         .perform()
         .await?;
     send_mode(&journey, "steer").await?;
@@ -415,12 +415,12 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
     journey
         .driver
         .action_chain()
-        .key_up(Key::Alt)
+        .key_up(Key::Shift)
         .perform()
         .await?;
     send_mode(&journey, "follow-up").await?;
 
-    // Alt+Enter steers.
+    // Alt+Enter is a new line, Shift+Enter steers (the trailing line break is trimmed).
     input.click().await?;
     input.send_keys("steer me").await?;
     journey
@@ -429,6 +429,15 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
         .key_down(Key::Alt)
         .send_keys(Key::Enter)
         .key_up(Key::Alt)
+        .perform()
+        .await?;
+    assert_eq!(draft(&journey).await?, "steer me\n");
+    journey
+        .driver
+        .action_chain()
+        .key_down(Key::Shift)
+        .send_keys(Key::Enter)
+        .key_up(Key::Shift)
         .perform()
         .await?;
     queued(&journey, "steering", "steer me").await?;
@@ -1326,4 +1335,63 @@ async fn changes_widget_shows_the_diff(journey: &Journey) -> anyhow::Result<()> 
     );
     journey.screenshot("m5-changes").await?;
     Ok(())
+}
+
+// spec: E2E-21, UI-270, UI-271, UI-274, PRT-100
+#[tokio::test(flavor = "multi_thread")]
+async fn a_background_job_runs_on_its_card_the_badge_and_the_background_tab() -> anyhow::Result<()>
+{
+    // The job prints a line, then waits for the test to release it.
+    let command =
+        "echo bg-e2e-started; while [ ! -f release.flag ]; do sleep 0.1; done; echo bg-e2e-done";
+    let journey = Journey::start(vec![
+        Step::reply(Reply::tool_calls(vec![ToolCall::new(
+            "call_bash_bg",
+            "bash",
+            json!({ "command": command, "async": true }),
+        )])),
+        Step::reply(Reply::text("Started it in the background.")),
+        Step::reply(Reply::text("The job is done.")),
+    ])
+    .await?;
+    journey.connected().await?;
+    let thread = journey.create_thread("background journey").await?;
+    let folder = journey.workspace_folder(&thread).await?;
+    journey.send("run it in the background").await?;
+
+    // The call ended, the job runs: a running card marked background with its last line, and the header's badge.
+    journey
+        .element("[data-testid=tool-card][data-status=running] [data-testid=tool-background][data-state=running]")
+        .await?;
+    journey
+        .until("the job's last line", async |page| {
+            let line = page.text("[data-testid=tool-last-line]").await?;
+            Ok((line == "bg-e2e-started").then_some(()))
+        })
+        .await?;
+    journey.reply("Started it in the background.").await?;
+    journey
+        .until("the badge", async |page| {
+            let badge = page.text("[data-testid=background-badge]").await?;
+            Ok((badge == "1 in background").then_some(()))
+        })
+        .await?;
+
+    // The badge shows the default view's Background tab with the job.
+    journey.click("[data-testid=background-badge]").await?;
+    journey
+        .element("[data-testid=background-row][data-kind=job][data-status=running]")
+        .await?;
+    journey.screenshot("m12-background").await?;
+
+    // Released, the job completes: the card and the row settle, the badge goes.
+    std::fs::write(folder.join("release.flag"), "")?;
+    one_tool_card(&journey, "succeeded").await?;
+    journey
+        .element("[data-testid=background-row][data-kind=job][data-status=completed]")
+        .await?;
+    journey.gone("[data-testid=background-badge]").await?;
+    journey.reply("The job is done.").await?;
+    journey.status(&thread, "idle").await?;
+    journey.finish("E2E-21").await
 }

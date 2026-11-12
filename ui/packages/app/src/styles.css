@@ -936,6 +936,27 @@
     cursor: pointer;
   }
 
+  /* omfp:background (UI-271): a row and its stop or cancel button side by side. */
+  .omfp-background__item {
+    display: flex;
+    align-items: baseline;
+    gap: var(--omfp-s2);
+  }
+
+  .omfp-background__item > .omfp-subagents__row {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  /* The last output line of a running background job in its card's head (UI-270). */
+  .omfp-tool-card__last-line {
+    max-inline-size: 24ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--omfp-on-surface-variant);
+  }
+
   .omfp-subagents__row:hover,
   .omfp-subagents__row[aria-expanded="true"] {
     background: var(--omfp-hover);

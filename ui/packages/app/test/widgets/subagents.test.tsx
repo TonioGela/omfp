@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { OPEN_SUBAGENT, SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { SubagentsWidget } from "../../src/widgets/subagents/index.ts";
 import { renderWithHost, testHost } from "../support/host.tsx";
 import { fixtureEvents, isFrame, summary } from "./chat/fixtures.ts";
@@ -36,6 +36,21 @@ function setup(threadEvents: readonly ThreadEvent[], listed: unknown[] = []) {
 }
 
 describe("omfp:subagents", () => {
+  // spec: UI-271
+  test("a request from omfp:background opens the subagent's transcript", async () => {
+    const base = testHost();
+    base.client.answers.set("thread.subagents", () => ({ subagents: [] }));
+    base.client.answers.set("thread.subagent_messages", () => ({ messages: [], nextByte: 0 }));
+    base.host.window.set(SELECTED_THREAD, THREAD);
+    base.host.window.set(OPEN_SUBAGENT, { threadId: THREAD, subagentId: "Counter", nonce: 1 });
+    const test = renderWithHost(<SubagentsWidget />, base);
+    test.client.connected();
+    test.client.index({ threads: [summary(THREAD)] });
+    test.client.thread(THREAD, events);
+    test.flush();
+    await waitFor(() => expect(screen.queryByTestId("subagent-transcript")).not.toBeNull());
+  });
+
   // spec: UI-081, PRT-055
   test("the roster from the thread's subagent frames and the running ones omp lists", async () => {
     const test = setup(events, [{ id: "Scout", index: 1, agent: "scout", status: "running", task: "Look around" }]);

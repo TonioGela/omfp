@@ -61,3 +61,21 @@ export const RENAMING_THREAD = windowKey<string | undefined>("renamingThread", u
 
 /** Errors of failed actions, oldest first, shown by the frame until dismissed. */
 export const ERRORS = windowKey<readonly string[]>("errors", []);
+
+/** A request to show a built-in widget (UI-274): the frame selects the tab holding `reference` in the current view,
+ * else floats it in a panel of this window; `nonce` tells one request from the next. */
+export interface RevealRequest {
+  readonly reference: string;
+  readonly nonce: number;
+}
+
+export const REVEAL_WIDGET = windowKey<RevealRequest | undefined>("revealWidget", undefined);
+
+/** A request to open a subagent's transcript in `omfp:subagents` (UI-271); `nonce` tells one request from the next. */
+export interface OpenSubagentRequest {
+  readonly threadId: string;
+  readonly subagentId: string;
+  readonly nonce: number;
+}
+
+export const OPEN_SUBAGENT = windowKey<OpenSubagentRequest | undefined>("openSubagent", undefined);

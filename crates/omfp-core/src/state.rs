@@ -140,6 +140,30 @@ pub struct ToolRun {
     pub preview: Option<Value>,
     /// Final result from `tool_execution_end`.
     pub result: Option<Value>,
+    /// The background job the call became (PRT-100): omp's `details.async` frames, kept across
+    /// `tool_execution_end` and the `tool_execution_update`s that follow it.
+    pub background: Option<BackgroundJob>,
+}
+
+/// A tool call running on as an omp background job (`bash` with `async`, or auto-backgrounded), PRT-100.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BackgroundJob {
+    pub job_id: String,
+    pub state: JobState,
+    /// Text of the job's latest frame: its output so far, then its final output.
+    pub output: Option<String>,
+    /// `details.exitCode` of the job's latest frame, once it reports one.
+    pub exit_code: Option<i64>,
+}
+
+/// `details.async.state` of an omp job frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JobState {
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
 }
 
 /// Progress of a [`ToolRun`].

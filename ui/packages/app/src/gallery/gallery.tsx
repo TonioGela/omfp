@@ -1446,7 +1446,7 @@ function Composers() {
               shot.png
             </Chip>
             <ComposerHint>
-              <Kbd>alt+enter</Kbd> steer
+              <Kbd>shift+enter</Kbd> steer
             </ComposerHint>
             <Button variant="primary" size="sm" icon={<Icon name="arrow-up" />} kbd="enter">
               Send
