@@ -241,7 +241,7 @@ export function addWidget(layout: LayoutNode, reference: string): LayoutNode {
   return fromItem(root);
 }
 
-export function applyEdit(layout: LayoutNode, edit: LayoutEdit): Parsed<LayoutNode> {
+function applyEdit(layout: LayoutNode, edit: LayoutEdit): Parsed<LayoutNode> {
   switch (edit.kind) {
     case "move":
       return moveNode(layout, edit.from, edit.place, edit.to);

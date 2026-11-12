@@ -81,7 +81,7 @@ export function resolveViews(manifest: unknown): Views {
 
 /** Checks a manifest (AGT-010, AGT-060): views, then panels, then the default; the error names the JSON path and the
  * reason, as the daemon's does. */
-export function parseManifest(manifest: unknown): Parsed<Views> {
+function parseManifest(manifest: unknown): Parsed<Views> {
   if (!isObject(manifest) || !isObject(manifest.views)) {
     return { ok: false, error: "views: expected an object of views" };
   }

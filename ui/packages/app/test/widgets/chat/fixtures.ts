@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { OMP_VERSION, replay, type ThreadEvent, type ThreadState } from "@omfp/core";
 import type { ThreadSummary } from "@omfp/protocol";
-import { isObject } from "../../../src/vm/tool.ts";
+import { isObject } from "../../../src/sdk/json.ts";
 
 export type FixtureName =
   | "text_reply"

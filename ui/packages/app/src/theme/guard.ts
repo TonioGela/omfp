@@ -75,7 +75,7 @@ export function cssColorReader(document: Document): ColorReader {
  * `prefers-color-scheme`, any change under `<head>` (the user theme's `<style>` text or its replacement) and any
  * stylesheet finishing loading. Returns the unsubscribe.
  */
-export function watchTheme(document: Document, changed: () => void): () => void {
+function watchTheme(document: Document, changed: () => void): () => void {
   const observer = new MutationObserver(changed);
   observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-color-scheme"] });
   observer.observe(document.head, { childList: true, subtree: true, characterData: true });

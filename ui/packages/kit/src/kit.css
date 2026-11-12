@@ -649,8 +649,7 @@
     background: var(--omfp-hover);
   }
 
-  .omfp-listbox__item[data-selected],
-  .omfp-listbox__item.is-selected {
+  .omfp-listbox__item[data-selected] {
     color: var(--omfp-sel-fg);
     background: var(--omfp-sel-bg);
   }
@@ -1119,7 +1118,7 @@
   .omfp-kind {
     display: inline-flex;
     align-items: center;
-    gap: 0.25em;
+    gap: var(--omfp-s1);
     font-size: var(--omfp-fs-2xs);
     color: var(--omfp-on-surface-variant);
   }
@@ -1139,7 +1138,7 @@
 
   .omfp-diffstat {
     display: inline-flex;
-    gap: 0.4em;
+    gap: var(--omfp-s1);
     font-size: var(--omfp-fs-2xs);
     font-variant-numeric: tabular-nums;
   }
@@ -1435,7 +1434,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5ch;
+    gap: var(--omfp-s1);
     font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
   }
@@ -1471,7 +1470,7 @@
   .omfp-live__hint {
     display: inline-flex;
     align-items: baseline;
-    gap: 0.5ch;
+    gap: var(--omfp-s1);
   }
 
   .omfp-live__sep {
@@ -2100,7 +2099,7 @@
   .omfp-request__countdown {
     display: inline-flex;
     align-items: center;
-    gap: 0.3em;
+    gap: var(--omfp-s1);
   }
 
   .omfp-request__countdown .omfp-ic {
@@ -2251,7 +2250,7 @@
   .omfp-modeline__segment {
     display: inline-flex;
     align-items: center;
-    gap: 0.3em;
+    gap: var(--omfp-s1);
     block-size: var(--omfp-status-h);
     font-variant-numeric: tabular-nums;
   }
@@ -2293,7 +2292,7 @@
     display: inline-flex;
     flex: 0 1 auto;
     align-items: center;
-    gap: 0.4em;
+    gap: var(--omfp-s1);
     box-sizing: border-box;
     block-size: calc(var(--omfp-status-h) - 2 * var(--omfp-s1));
     min-inline-size: 0;
@@ -2893,7 +2892,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 0.15rem;
+    gap: var(--omfp-s1);
     min-block-size: max(44px, 3rem);
     padding: var(--omfp-s1);
     border: 0;
@@ -3128,7 +3127,7 @@
   .omfp-compose__hint {
     display: inline-flex;
     align-items: center;
-    gap: 0.35em;
+    gap: var(--omfp-s1);
     font-size: var(--omfp-fs-2xs);
     white-space: nowrap;
     color: var(--omfp-on-surface-variant);

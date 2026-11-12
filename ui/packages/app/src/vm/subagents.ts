@@ -6,8 +6,9 @@
 
 import type { AgentMessage, JsonObject, Subagent } from "@omfp/core";
 import { compactNumber } from "@omfp/kit";
+import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
-import { isObject } from "./tool.ts";
+import { contentText } from "./tree.ts";
 
 const text = strings.shell.subagents;
 
@@ -149,17 +150,6 @@ export function appendTranscriptPage(transcript: SubagentTranscript, page: unkno
 export interface TranscriptLine {
   readonly role: "user" | "assistant" | "tool";
   readonly text: string;
-}
-
-function contentText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  return (Array.isArray(content) ? content : [])
-    .flatMap((block: unknown) =>
-      isObject(block) && block.type === "text" && typeof block.text === "string" ? [block.text] : [],
-    )
-    .join("\n");
 }
 
 /** The lines a transcript shows: user and assistant text, one line per tool call (its intent, else its name). */

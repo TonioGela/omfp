@@ -256,7 +256,7 @@ describe("omfp:threads", () => {
     expect(screen.getByTestId("no-workspaces-hint").textContent).toContain("No workspace yet");
     expect(screen.queryByTestId("thread-filter")).toBeNull();
     expect(screen.queryByTestId("workspace-section")).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("new-workspace-input")));
+    await waitFor(() => expect(document.activeElement === screen.getByTestId("new-workspace-input")).toBe(true));
   });
 
   // spec: UI-020
@@ -360,9 +360,9 @@ describe("omfp:threads", () => {
     run("nav.halfUp");
     expect(host.window.get(SELECTED_THREAD)).toBe("t1");
     run("nav.search");
-    expect(document.activeElement).toBe(screen.getByTestId("thread-filter"));
+    expect(document.activeElement === screen.getByTestId("thread-filter")).toBe(true);
     run("workspace.new");
-    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-input"));
+    expect(document.activeElement === screen.getByTestId("new-workspace-input")).toBe(true);
   });
 
   // spec: UI-092

@@ -95,7 +95,7 @@ describe("help panel", () => {
     press("?", { shiftKey: true });
     const help = screen.getByTestId("help");
     expect(help.querySelector(".omfp-bbox__label")?.textContent).toBe("help");
-    expect(document.activeElement).toBe(screen.getByTestId("help-filter"));
+    expect(document.activeElement === screen.getByTestId("help-filter")).toBe(true);
     expect([...help.querySelectorAll("[data-section]")].map((section) => section.getAttribute("data-section"))).toEqual(
       ["normal", "insert", "transcript", "cmdline", "editor", "commands"],
     );
@@ -111,7 +111,7 @@ describe("help panel", () => {
     ]);
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("help")).toBeNull();
-    expect(document.activeElement).toBe(row ?? null);
+    expect(document.activeElement === row).toBe(true);
   });
 
   // spec: UI-198, UI-097

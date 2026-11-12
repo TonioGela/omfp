@@ -173,7 +173,7 @@ describe("interactions", () => {
       request({ method: "editor", id: "e", title: "Edit", prefill: "draft" }),
     ]);
     expect(screen.queryByTestId("countdown")).toBeNull();
-    expect(document.activeElement).toBe(screen.getByTestId("interaction-confirm"));
+    expect(document.activeElement === screen.getByTestId("interaction-confirm")).toBe(true);
     await userEvent.click(screen.getByTestId("interaction-confirm"));
     await userEvent.type(screen.getByTestId("interaction-input"), "omfp{Enter}");
     const editor = screen.getByTestId("interaction-editor") as HTMLTextAreaElement;

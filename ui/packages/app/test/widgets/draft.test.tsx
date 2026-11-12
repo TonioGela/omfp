@@ -42,7 +42,7 @@ describe("draft thread", () => {
         .getAllByTestId("workspace-chip")
         .map((chip) => chip.textContent),
     ).toEqual(["⌂checkout", "fe:main"]);
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("composer-input")));
+    await waitFor(() => expect(document.activeElement === screen.getByTestId("composer-input")).toBe(true));
   });
 
   // spec: UI-023

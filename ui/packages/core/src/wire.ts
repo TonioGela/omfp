@@ -707,9 +707,6 @@ export type ExtensionUiRequest =
   | UiRequest<"set_editor_text", SetEditorTextUiRequest>
   | UiRequest<"open_url", OpenUrlUiRequest>;
 
-/** The dialog requests: they wait for an answer. */
-export type DialogRequest = Extract<ExtensionUiRequest, { method: "select" | "confirm" | "input" | "editor" | "ask" }>;
-
 const selectOptionDetail: Decoder<SelectOptionDetail> = (value) => {
   // An open record: kept as received, an invalid `description` included.
   if (isObject(value)) {
@@ -730,8 +727,6 @@ export const askQuestion = record<AskQuestion>({
 });
 
 export const askUiRequest = record<AskUiRequest>({ id: str, questions: arrayOf(askQuestion), timeout: optional(int) });
-
-export const askAnswer = record<AskAnswer>({ id: str, selectedOptions: arrayOf(str), customInput: optional(str) });
 
 export const notifyUiRequest = record<NotifyUiRequest>({ id: str, message: str, notifyType: optional(notifyType) });
 

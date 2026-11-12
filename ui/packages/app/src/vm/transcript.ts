@@ -21,10 +21,11 @@ import type {
   TranscriptEntry,
   UserContent,
 } from "@omfp/core";
+import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { type NoticeRow, noticeRow } from "./notice.ts";
 import { type SystemRow, systemMessage, systemNotice } from "./system.ts";
-import { isObject, oneLine, prettyJson, type ToolCard, toolCard } from "./tool.ts";
+import { oneLine, prettyJson, type ToolCard, toolCard } from "./tool.ts";
 
 /** What an item renders: `state.transcript[index]`, `state.notices[index]` or `state.streaming`. */
 export type ItemKind =

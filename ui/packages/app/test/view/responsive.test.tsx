@@ -275,6 +275,6 @@ describe("a view on a phone", () => {
     expect(shown()).toEqual(["changes"]);
     fireEvent.keyDown(tabs()[0] ?? document.body, { key: "ArrowRight" });
     expect(shown()).toEqual(["todos"]);
-    expect(document.activeElement).toBe(tabs()[1] ?? null);
+    expect(document.activeElement === tabs()[1]).toBe(true);
   });
 });

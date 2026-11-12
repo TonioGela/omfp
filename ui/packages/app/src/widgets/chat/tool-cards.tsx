@@ -26,7 +26,7 @@ const text = strings.chat.tool;
  * path opens the file (UI-116); in a card's header the path sits inside the collapse toggle, so it opens on a pointer
  * click without toggling, and the keyboard reaches it with `g f` on the focused card (its `data-omfp-path`).
  */
-export function FilePath({ path, open }: { path: string; open?: OpenFileOptions | undefined }): ReactNode {
+function FilePath({ path, open }: { path: string; open?: OpenFileOptions | undefined }): ReactNode {
   const workspaceId = useCurrentWorkspaceId();
   const workspace = useWorkspaces().get(workspaceId ?? "");
   const openFile = useOpenFile();
@@ -100,7 +100,7 @@ function Subject({ children }: { children: ReactNode }): ReactNode {
 }
 
 /** Command output with its ANSI colors and attributes as theme classes. */
-export function AnsiOutput({ output }: { output: string }): ReactNode {
+function AnsiOutput({ output }: { output: string }): ReactNode {
   const runs = useMemo(() => ansiRuns(output), [output]);
   return (
     <pre className="omfp-code omfp-code--block omfp-tool-card__output" data-testid="tool-output">

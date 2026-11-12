@@ -437,7 +437,7 @@ describe("ToolCard", () => {
     expect(head.querySelector(".omfp-bbox__label")?.textContent).toBe("bashls -la1.2s");
     expect(head.querySelector(".omfp-bbox__line")?.getAttribute("aria-hidden")).toBe("true");
     expect(tool.querySelector(".omfp-tool__body")?.classList.contains("omfp-bbox__body")).toBe(true);
-    expect(screen.getByTestId("tool-head")).toBe(head);
+    expect(screen.getByTestId("tool-head") === head).toBe(true);
     await user.click(head);
     expect(tool.classList.contains("omfp-bbox")).toBe(false);
   });
@@ -452,7 +452,7 @@ describe("BorderBox", () => {
       </BorderBox>,
     );
     const box = screen.getByRole("region", { name: "Repositories" });
-    expect(box).toBe(screen.getByTestId("box"));
+    expect(box === screen.getByTestId("box")).toBe(true);
     const head = box.querySelector(".omfp-bbox__head");
     expect([...(head?.children ?? [])].map((part) => part.className)).toEqual([
       "omfp-bbox__label",
@@ -468,7 +468,7 @@ describe("BorderBox", () => {
   test("a labelled rule is a heading that opens the next section", () => {
     render(<BoxRule label="Output" data-testid="rule" />);
     const rule = screen.getByRole("heading", { level: 4, name: "Output" });
-    expect(rule).toBe(screen.getByTestId("rule"));
+    expect(rule === screen.getByTestId("rule")).toBe(true);
     expect(rule.className).toBe("omfp-bbox__rule");
   });
 });

@@ -5,8 +5,8 @@
  * up. A chain stays at its depth; the branches of an entry with several children are indented one step.
  */
 
+import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
-import { isObject } from "./tool.ts";
 
 const text = strings.shell.tree;
 
@@ -47,7 +47,8 @@ function firstLine(value: string): string {
   return line.length > ROW_TEXT ? `${line.slice(0, ROW_TEXT - 1)}…` : line;
 }
 
-function contentText(content: unknown): string {
+/** The text of a message content: the string, or its text blocks joined by newlines. */
+export function contentText(content: unknown): string {
   if (typeof content === "string") {
     return content;
   }

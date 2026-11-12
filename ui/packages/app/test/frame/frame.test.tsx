@@ -193,7 +193,7 @@ describe("frame", () => {
     expect(document.documentElement.dataset.density).toBe("compact");
     press(":");
     const input = screen.getByTestId("command-line-input");
-    expect(document.activeElement).toBe(input);
+    expect(document.activeElement === input).toBe(true);
     await user.type(input, "the");
     expect(screen.getAllByTestId("command-option").map((option) => option.dataset.value)).toEqual(["theme"]);
     await user.keyboard("{Tab}");
@@ -224,7 +224,7 @@ describe("frame", () => {
     press(":");
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("command-line")).toBeNull();
-    expect(document.activeElement).toBe(row ?? null);
+    expect(document.activeElement === row).toBe(true);
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "arch");
     await user.click(screen.getAllByTestId("command-option")[0] ?? document.body);
@@ -264,7 +264,7 @@ describe("frame", () => {
     expect(screen.getByTestId("draft-thread")).toBeDefined();
     press(" ");
     press("w");
-    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-input"));
+    expect(document.activeElement === screen.getByTestId("new-workspace-input")).toBe(true);
   });
 
   // spec: UI-023
@@ -273,7 +273,7 @@ describe("frame", () => {
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "new{Enter}");
     expect(host.window.get(DRAFT_THREAD)).toBeUndefined();
-    expect(document.activeElement).toBe(screen.getByTestId("new-workspace-input"));
+    expect(document.activeElement === screen.getByTestId("new-workspace-input")).toBe(true);
   });
 
   // spec: UI-095, UI-025
@@ -302,7 +302,7 @@ describe("frame", () => {
     const dialog = screen.getByTestId("delete-thread-dialog");
     expect(dialog.getAttribute("role")).toBe("alertdialog");
     expect(within(dialog).getByRole("heading").textContent).toBe("Delete \u201cflaky\u201d?");
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId("cancel-delete-thread")));
+    await waitFor(() => expect(document.activeElement === screen.getByTestId("cancel-delete-thread")).toBe(true));
     await user.click(screen.getByTestId("confirm-delete-thread"));
     expect(client.callsTo("threads.delete").map((call) => call.params)).toEqual([{ threadId: "t2" }]);
     expect(host.window.get(SELECTED_THREAD)).toBeUndefined();
@@ -314,7 +314,7 @@ describe("frame", () => {
     link.setAttribute("data-omfp-theme", "");
     document.head.append(link);
     const { client, flush } = setup({}, false);
-    expect(document.head.querySelector("link[data-omfp-theme]")).toBe(link);
+    expect(document.head.querySelector("link[data-omfp-theme]") === link).toBe(true);
     client.connected();
     client.index({ theme: { css: ":root { --omfp-primary: red; }" } });
     flush();

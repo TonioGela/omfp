@@ -44,7 +44,7 @@ describe("Dialog", () => {
 
     const dialog = await screen.findByTestId("dialog");
     expect(dialog.getAttribute("role")).toBe("dialog");
-    expect(screen.getByRole("dialog", { name: "Rename thread" })).toBe(dialog);
+    expect(screen.getByRole("dialog", { name: "Rename thread" }) === dialog).toBe(true);
     await waitFor(() => expect(focused()).toBe("title"));
 
     await user.tab();

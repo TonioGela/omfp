@@ -6,7 +6,7 @@
 import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/core";
 import type { PromptBehavior } from "@omfp/protocol";
 import type { Draft } from "../sdk/index.ts";
-import { isObject } from "./tool.ts";
+import { isObject } from "../sdk/json.ts";
 
 /** Most suggestions shown at once. */
 const MAX_SUGGESTIONS = 8;

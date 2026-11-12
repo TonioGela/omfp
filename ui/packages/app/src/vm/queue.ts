@@ -4,7 +4,7 @@
  */
 
 import type { QueueState } from "@omfp/core";
-import { isObject } from "./tool.ts";
+import { isObject } from "../sdk/json.ts";
 
 export type QueueOp = "remove" | "promote";
 

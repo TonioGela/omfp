@@ -183,9 +183,9 @@ describe("composer", () => {
     const { host } = renderThread(<ChatWidget />, fixtureEvents("text_reply"));
     await userEvent.click(input());
     await userEvent.keyboard("{Escape}");
-    expect(document.activeElement).toBe(screen.getByTestId("transcript"));
+    expect(document.activeElement === screen.getByTestId("transcript")).toBe(true);
     act(() => void host.commands.run("composer.focus"));
-    expect(document.activeElement).toBe(input());
+    expect(document.activeElement === input()).toBe(true);
   });
 
   // spec: UI-064

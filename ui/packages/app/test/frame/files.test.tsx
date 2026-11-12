@@ -239,7 +239,7 @@ describe("the file picker", () => {
   // spec: UI-117
   test("arrows move through the candidates, Enter opens the highlighted one in the missing path's tab", async () => {
     const test = pick();
-    expect(document.activeElement).toBe(screen.getByTestId("file-picker-input"));
+    expect(document.activeElement === screen.getByTestId("file-picker-input")).toBe(true);
     expect(options()).toEqual(["app/src/theme.ts", "lib/theme.ts", "notes/theme.ts"]);
     expect(screen.getAllByTestId("file-picker-option")[0]?.textContent).toContain("in the conversation");
     expect(highlighted()).toBe("app/src/theme.ts");

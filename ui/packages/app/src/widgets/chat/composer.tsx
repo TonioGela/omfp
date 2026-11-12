@@ -115,7 +115,7 @@ export function ComposerWidget(_props: WidgetProps) {
  * text stays when that fails. It takes the focus whenever the draft is opened; Esc leaves it, discarding an empty
  * draft.
  */
-export function DraftComposer({ draft }: { draft: DraftThread }) {
+function DraftComposer({ draft }: { draft: DraftThread }) {
   const actions = useThreadActions();
   const [message, setMessage] = useWindowState(DRAFT_MESSAGE);
   const [sending, setSending] = useState(false);
@@ -215,7 +215,7 @@ export function DraftComposer({ draft }: { draft: DraftThread }) {
 }
 
 /** The queue from the last `queue_update`; actions mark a chip busy until the daemon answers (UI-062). */
-export function QueueChips({ threadId, state }: { threadId: string; state: ThreadState }) {
+function QueueChips({ threadId, state }: { threadId: string; state: ThreadState }) {
   const [pending] = useWindowState(PENDING_QUEUE);
   const chips = queueChips(state.queue, threadId, pending);
   if (chips.length === 0) {

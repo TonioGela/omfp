@@ -69,7 +69,7 @@ export const LEFT_DEFAULT_REM = 17;
 /** The narrowest left column, in `rem`. */
 export const LEFT_MIN_REM = 12;
 /** The widest left column, as a share of the frame. */
-export const LEFT_MAX_SHARE = 0.5;
+const LEFT_MAX_SHARE = 0.5;
 
 /**
  * The left column's width after moving its splitter by `delta` (a share of the frame's width `frameRem`, in `rem`),

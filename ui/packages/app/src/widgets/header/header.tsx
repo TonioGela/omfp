@@ -55,7 +55,7 @@ import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo,
 const text = strings.shell.header;
 
 /** Below this width (in `rem`) the header is one row (UI-202). */
-export const COMPACT_BELOW_REM = 48;
+const COMPACT_BELOW_REM = 48;
 
 export function HeaderWidget(_props: WidgetProps): ReactNode {
   const [selected] = useWindowState(SELECTED_THREAD);

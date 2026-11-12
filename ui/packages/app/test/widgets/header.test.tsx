@@ -88,7 +88,7 @@ describe("omfp:header", () => {
     expect([title.textContent, title.dataset.placeholder]).toEqual(["New thread", "true"]);
     await user.click(screen.getByTestId("rename-thread"));
     const input = screen.getByTestId("title-input");
-    expect(document.activeElement).toBe(input);
+    expect(document.activeElement === input).toBe(true);
     expect((input as HTMLInputElement).value).toBe("");
     await user.type(input, "checkout v2{Enter}");
     expect(client.callsTo("threads.update").map((call) => call.params)).toEqual([

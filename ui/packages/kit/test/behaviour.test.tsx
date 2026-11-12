@@ -215,7 +215,7 @@ describe("Select", () => {
     const button = screen.getByRole("button");
     expect(button.textContent).toContain("Yolo");
     await user.tab();
-    expect(document.activeElement).toBe(button);
+    expect(document.activeElement === button).toBe(true);
     await user.keyboard("{ArrowDown}");
     const listbox = await screen.findByRole("listbox");
     expect(listbox.textContent).toContain("Ask");
@@ -260,7 +260,7 @@ describe("text inputs", () => {
     act(() => ref.current?.focus());
     await user.keyboard("one{Shift>}{Enter}{/Shift}two");
     expect(ref.current?.value).toBe("one\ntwo");
-    expect(screen.getByLabelText("Message")).toBe(screen.getByTestId("composer"));
+    expect(screen.getByLabelText("Message") === screen.getByTestId("composer")).toBe(true);
   });
 
   // spec: UI-092
@@ -369,7 +369,7 @@ describe("status", () => {
     expect(determinate.getAttribute("aria-valuenow")).toBe("30");
     expect(determinate.getAttribute("aria-valuemax")).toBe("60");
     expect(screen.getByTestId("busy").hasAttribute("aria-valuenow")).toBe(false);
-    expect(screen.getByRole("progressbar", { name: "Working" })).toBe(screen.getByTestId("busy"));
+    expect(screen.getByRole("progressbar", { name: "Working" }) === screen.getByTestId("busy")).toBe(true);
   });
 
   // spec: UI-092

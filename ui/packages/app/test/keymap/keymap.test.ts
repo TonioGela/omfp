@@ -221,9 +221,9 @@ describe("global key handler", () => {
     expect(press(field, "a", { altKey: true })).toBe(true);
     expect(ran).toEqual(["global:thread.nextAttention"]);
     // Without a `focus.leave` command Esc just leaves the field.
-    expect(document.activeElement).toBe(field);
+    expect(document.activeElement === field).toBe(true);
     expect(press(field, "Escape")).toBe(true);
-    expect(document.activeElement).not.toBe(field);
+    expect(document.activeElement === field).toBe(false);
   });
 
   // spec: UI-021

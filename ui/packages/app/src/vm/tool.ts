@@ -5,6 +5,7 @@
  */
 
 import type { JsonValue, ToolCall, ToolResultMessage, ToolRun, UserContent } from "@omfp/core";
+import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { quietFailure, shownArguments, type ToolView, toolOutput, toolView } from "./tool-view.ts";
 
@@ -125,10 +126,6 @@ function statusOf(composing: boolean, run: ToolRun | undefined, result: ToolResu
     return "running";
   }
   return run === undefined && composing ? "composing" : "pending";
-}
-
-export function isObject(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** `key: value` of the scalar arguments but `omitted`, by key, on one line. */

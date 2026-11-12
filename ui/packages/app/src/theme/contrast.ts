@@ -25,7 +25,7 @@ export const NON_TEXT = 3;
  * The backgrounds text roles sit on (UI-130): `surface` (app), `surface-container-lowest` (left column, mode line),
  * `surface-container-low` (code, light popovers) and `surface-container` (key chips, dark popovers).
  */
-export const GUARD_BACKGROUNDS: readonly string[] = [
+const GUARD_BACKGROUNDS: readonly string[] = [
   "surface",
   "surface-container-lowest",
   "surface-container-low",
@@ -33,7 +33,7 @@ export const GUARD_BACKGROUNDS: readonly string[] = [
 ];
 
 /** The role a failing text role moves toward. */
-export const GUARD_TARGET = "on-surface";
+const GUARD_TARGET = "on-surface";
 
 /** A role the guard keeps readable, by token name without `--omfp-`. */
 export interface GuardedRole {

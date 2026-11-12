@@ -106,7 +106,7 @@ export function setCustom(form: AskForm, request: AskUiRequest, index: number, t
 }
 
 /** The answers in question order, selected options in the request's option order. */
-export function askAnswers(form: AskForm, request: AskUiRequest): AskAnswer[] {
+function askAnswers(form: AskForm, request: AskUiRequest): AskAnswer[] {
   return request.questions.map((question, index) => {
     const draft = form[index] ?? { selected: [], custom: "" };
     const custom = draft.custom.trim();

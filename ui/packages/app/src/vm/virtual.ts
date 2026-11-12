@@ -14,7 +14,7 @@
  */
 
 /** The view counts as at the bottom within this distance. */
-export const PIN_THRESHOLD_PX = 32;
+const PIN_THRESHOLD_PX = 32;
 /** The view is at the very end of the content less than this far from it (rounded positions: WebKitGTK reports -1 at
  * the end, and 1 after the first 2 px frame of a smooth scroll up). */
 const END_PX = 1;

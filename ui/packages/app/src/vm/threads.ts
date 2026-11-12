@@ -82,7 +82,7 @@ export function workspaceChips(workspaceId: string, workspaces: readonly Workspa
 }
 
 /** `name:branch`, or `name` on a detached HEAD. */
-export function repoLabel(repo: Pick<WorkspaceRepo, "name" | "branch">): string {
+function repoLabel(repo: Pick<WorkspaceRepo, "name" | "branch">): string {
   return repo.branch === undefined || repo.branch === null ? repo.name : `${repo.name}:${repo.branch}`;
 }
 
@@ -104,7 +104,7 @@ export function isFiltering(filter: ThreadFilter): boolean {
 }
 
 /** `query` (case-insensitive) is in the title, the workspace's name or one of its repositories' names. */
-export function matchesLocally(thread: ThreadSummary, workspace: Workspace | undefined, query: string): boolean {
+function matchesLocally(thread: ThreadSummary, workspace: Workspace | undefined, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (needle === "") {
     return true;
@@ -120,7 +120,7 @@ export function matchesLocally(thread: ThreadSummary, workspace: Workspace | und
 
 /** The thread passes `filter`: in its spawned tree, if any, and matching the query locally or through its
  * conversation. */
-export function matchesFilter(thread: ThreadSummary, workspace: Workspace | undefined, filter: ThreadFilter): boolean {
+function matchesFilter(thread: ThreadSummary, workspace: Workspace | undefined, filter: ThreadFilter): boolean {
   if (filter.spawned !== undefined && !filter.spawned.has(thread.id)) {
     return false;
   }
@@ -256,7 +256,7 @@ export function decodeIds(stored: unknown): readonly string[] | undefined {
 }
 
 /** Queries shorter than this are not sent to `threads.search` (DMN-076). */
-export const MIN_SEARCH_LENGTH = 2;
+const MIN_SEARCH_LENGTH = 2;
 /** Pause after the last keystroke before `threads.search` is called. */
 export const SEARCH_DELAY_MS = 200;
 

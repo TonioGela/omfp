@@ -77,7 +77,7 @@ describe("omfp:workspace", () => {
     setup();
     const repos = screen.getByRole("region", { name: "Repositories" });
     const add = screen.getByRole("region", { name: "Add repository" });
-    expect(add).toBe(screen.getByTestId("add-repo"));
+    expect(add === screen.getByTestId("add-repo")).toBe(true);
     for (const box of [repos, add]) {
       expect(box.classList.contains("omfp-bbox")).toBe(true);
       expect(box.querySelector(".omfp-bbox__head > h3.omfp-bbox__label")?.textContent).toBe(

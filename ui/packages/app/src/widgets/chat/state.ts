@@ -33,7 +33,7 @@ export const SHOWN_AT = windowKey<Readonly<Record<string, number>>>("chat/shownA
 export const ASK_FORMS = windowKey<Readonly<Record<string, AskForm>>>("chat/askForms", {});
 
 /** Expanded state of cards and disclosures the user toggled, by card key; absent = its default. */
-export const EXPANDED = windowKey<Readonly<Record<string, boolean>>>("chat/expanded", {});
+const EXPANDED = windowKey<Readonly<Record<string, boolean>>>("chat/expanded", {});
 
 /** Scrolling of each thread's transcript, so switching threads keeps the position (UI-042). */
 export function pinKey(threadId: string): WindowKey<PinState> {
@@ -99,7 +99,7 @@ export interface Clock {
   every(ms: number, tick: () => void): () => void;
 }
 
-export const systemClock: Clock = {
+const systemClock: Clock = {
   now: () => Date.now(),
   every: (ms, tick) => {
     const id = setInterval(tick, ms);

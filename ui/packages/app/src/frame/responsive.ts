@@ -12,9 +12,9 @@ import { displayTitle, isArchived, type ThreadStatus, threadStatus } from "../vm
 export type Breakpoint = "wide" | "narrow" | "mobile";
 
 /** Frames narrower than this get the strip (px). */
-export const NARROW_BELOW = 1100;
+const NARROW_BELOW = 1100;
 /** Frames narrower than this get one area at a time (px). */
-export const MOBILE_BELOW = 700;
+const MOBILE_BELOW = 700;
 
 /** The breakpoint of a frame `width` px wide; an unmeasured frame (0) stays wide. */
 export function breakpointOf(width: number): Breakpoint {

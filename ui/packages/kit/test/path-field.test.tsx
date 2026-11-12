@@ -200,12 +200,12 @@ describe("PathField", () => {
     await waitFor(() => expect(shown().length).toBe(2));
     await user.keyboard("{Tab}");
     expect(input().value).toBe("/home/u/pro");
-    expect(document.activeElement).toBe(input());
+    expect(document.activeElement === input()).toBe(true);
     await user.type(input(), "j");
     await waitFor(() => expect(shown().map((option) => option.path)).toEqual(["/home/u/projects"]));
     await user.keyboard("{Tab}");
     expect(input().value).toBe("/home/u/projects/");
-    expect(document.activeElement).toBe(input());
+    expect(document.activeElement === input()).toBe(true);
     await waitFor(() => expect(completedPaths(source).at(-1)).toBe("/home/u/projects/"));
   });
 
@@ -219,7 +219,7 @@ describe("PathField", () => {
     await waitFor(() => expect(shown().length).toBe(3));
     await user.keyboard("{Tab}");
     expect(input().value).toBe("/home/u/");
-    expect(document.activeElement).toBe(screen.getByTestId("after"));
+    expect(document.activeElement === screen.getByTestId("after")).toBe(true);
   });
 
   // spec: UI-023, UI-025, DMN-021
@@ -235,7 +235,7 @@ describe("PathField", () => {
     if (projects === undefined) throw new Error("no projects option");
     await user.click(projects);
     expect(input().value).toBe("/home/u/projects/");
-    expect(document.activeElement).toBe(input());
+    expect(document.activeElement === input()).toBe(true);
     await waitFor(() =>
       expect(shown().map((option) => option.path)).toEqual(["/home/u/projects/api", "/home/u/projects/archive"]),
     );
@@ -300,6 +300,6 @@ describe("PathField", () => {
     await user.keyboard("{Escape}");
     expect(shown()).toEqual([]);
     expect(input().value).toBe("/");
-    expect(document.activeElement).toBe(input());
+    expect(document.activeElement === input()).toBe(true);
   });
 });

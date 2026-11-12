@@ -6,7 +6,7 @@
  */
 
 import type { AgentMessage, NoticeFrame } from "@omfp/core";
-import { isObject } from "./tool.ts";
+import { isObject } from "../sdk/json.ts";
 
 export interface SystemRow {
   /** The first non-blank line of the text; the record's `customType` when it has no text. */

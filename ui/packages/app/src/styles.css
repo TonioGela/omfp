@@ -1102,7 +1102,7 @@
   .omfp-tree__here {
     display: inline-flex;
     align-items: center;
-    gap: 0.35em;
+    gap: var(--omfp-s1);
     font-size: var(--omfp-fs-2xs);
     color: var(--omfp-tertiary);
   }
@@ -1252,7 +1252,7 @@
   .omfp-workspace__branch {
     display: inline-flex;
     align-items: center;
-    gap: 0.35em;
+    gap: var(--omfp-s1);
     font-family: var(--omfp-font-code);
     font-size: var(--omfp-fs-2xs);
     color: var(--omfp-on-surface);

@@ -13,7 +13,7 @@ type FontRole = "prose" | "ui" | "code";
 
 export const DENSITIES: readonly Density[] = ["compact", "normal"];
 export const MOTIONS: readonly Motion[] = ["full", "reduced", "none"];
-export const NOTIFICATIONS: readonly NotificationMode[] = ["background", "always", "never"];
+const NOTIFICATIONS: readonly NotificationMode[] = ["background", "always", "never"];
 const FONT_ROLES: readonly FontRole[] = ["prose", "ui", "code"];
 const MODES: readonly Mode[] = ["normal", "insert", "cmdline"];
 

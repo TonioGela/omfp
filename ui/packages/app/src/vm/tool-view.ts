@@ -8,8 +8,8 @@ import type { JsonValue } from "@omfp/core";
 import type { DiffLine } from "@omfp/kit";
 import { languageOfPath } from "@omfp/kit";
 import type { Workspace } from "@omfp/protocol";
+import { isObject as isRecord } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
-import { isObject as isRecord } from "./tool.ts";
 
 const text = strings.chat.tool;
 

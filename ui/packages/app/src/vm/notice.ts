@@ -4,8 +4,9 @@
  */
 
 import type { NoticeFrame } from "@omfp/core";
+import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
-import { isObject, prettyJson } from "./tool.ts";
+import { prettyJson } from "./tool.ts";
 
 export type Level = "info" | "warning" | "error";
 
