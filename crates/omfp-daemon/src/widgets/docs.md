@@ -40,7 +40,9 @@ Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue an
 repositories), `omfp:background` (the selected thread's background jobs and subagents: state, duration, last output
 line; stop a job, cancel a subagent), `omfp:subagents` (the selected thread's subagents, their transcripts, steer and cancel), `omfp:todos`
 (its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:activity`
-(`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:file`
+(`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:mcp` (the MCP servers of
+the selected thread, checked by its omp, or those configured for the workspace: state, tools, error, config file;
+reconnect = restart the thread, `thread.mcp_servers`, `thread.mcp_reconnect`), `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
 `HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Props every widget accepts: `instance` (a string naming the instance for `useStored` and `useJob`;

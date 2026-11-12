@@ -9,6 +9,7 @@ mod activity;
 mod dto;
 mod envelope;
 mod lists;
+mod mcp;
 pub mod method;
 mod params;
 mod schema;
@@ -30,6 +31,9 @@ pub use envelope::{
     ServerFrame, TopicEvent, TransientEvent, ViewsEvent, WorkspaceEvent, decode_request,
 };
 pub use lists::{ListThreadsParams, ThreadList, WorkspaceList};
+pub use mcp::{
+    McpReconnectParams, McpScope, McpServer, McpServers, McpSource, McpState, McpTransport,
+};
 pub use method::{Call, METHODS, Method, method_description, method_schemas};
 pub use params::{
     AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CopyWidgetParams,

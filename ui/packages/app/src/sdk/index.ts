@@ -142,6 +142,7 @@ export {
   ownStatus,
 } from "../vm/live.ts";
 export { markdownChunks } from "../vm/markdown.ts";
+export { MCP_IDLE, type McpMark, type McpPending, type McpRow, mcpRows, mcpStatus } from "../vm/mcp.ts";
 export { type NoticeRow, noticeRow } from "../vm/notice.ts";
 export {
   type PendingQueueOp,

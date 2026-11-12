@@ -687,3 +687,23 @@ requirements = [
   # Acceptance
   "E2E-21",
 ]
+
+[M13]
+status = "done"
+requirements = [
+  # The configured servers, the checks by the thread's omp, the reconnect by restart
+  "PRT-110",
+  "PRT-111",
+  "PRT-112",
+  "PRT-113",
+  "PRT-114",
+  "DMN-190",
+  "DMN-191",
+  "DMN-192",
+  # The omfp:mcp widget
+  "UI-290",
+  "UI-291",
+  "UI-292",
+  "UI-293",
+  "UI-294",
+]

@@ -30,6 +30,9 @@ use omfp_protocol::{
     LibraryComponent, MountParams, MountPlace, MountUpdateParams, Mounted, SaveWidgetParams,
     UnmountParams, Unmounted, WidgetLibrary, WidgetSaved,
 };
+use omfp_protocol::{
+    McpReconnectParams, McpScope, McpServer, McpServers, McpSource, McpState, McpTransport,
+};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
@@ -943,6 +946,87 @@ fn list_examples() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// The MCP servers of a workspace and a thread (PRT-110..PRT-114).
+fn mcp_examples() -> Vec<(&'static str, Value)> {
+    let project = McpSource {
+        path: "/work/checkout/.omp/mcp.json".to_owned(),
+        workspace_path: Some(".omp/mcp.json".to_owned()),
+        scope: McpScope::Project,
+        tool: "omp".to_owned(),
+    };
+    let docs = McpServer {
+        name: "docs".to_owned(),
+        transport: McpTransport::Http,
+        target: "https://docs.example/mcp".to_owned(),
+        source: project.clone(),
+        state: McpState::Configured,
+        checkable: true,
+        tools: None,
+        error: None,
+    };
+    let fs = McpServer {
+        name: "fs".to_owned(),
+        transport: McpTransport::Stdio,
+        target: "npx -y fs-server".to_owned(),
+        source: McpSource {
+            path: "/home/u/.cursor/mcp.json".to_owned(),
+            workspace_path: None,
+            scope: McpScope::User,
+            tool: "cursor".to_owned(),
+        },
+        state: McpState::Configured,
+        checkable: false,
+        tools: None,
+        error: None,
+    };
+    let listing = |thread_id: Option<&str>, servers: Vec<McpServer>| McpServers {
+        workspace_id: WORKSPACE_ID.to_owned(),
+        thread_id: thread_id.map(str::to_owned),
+        running: thread_id.is_some(),
+        project_config: "/work/checkout/.omp/mcp.json".to_owned(),
+        user_config: Some("/home/u/.omp/agent/mcp.json".to_owned()),
+        servers,
+    };
+    let connected = McpServer {
+        state: McpState::Connected,
+        tools: Some(2),
+        ..docs.clone()
+    };
+    let failed = McpServer {
+        name: "broken".to_owned(),
+        transport: McpTransport::Stdio,
+        target: "/nonexistent/mcp-server".to_owned(),
+        source: project,
+        state: McpState::Failed,
+        checkable: true,
+        tools: None,
+        error: Some(
+            "ENOENT: no such file or directory, posix_spawn '/nonexistent/mcp-server'".to_owned(),
+        ),
+    };
+    vec![
+        example::<method::WorkspacesMcpServers>(
+            WorkspaceRef {
+                workspace_id: WORKSPACE_ID.to_owned(),
+            },
+            &listing(None, vec![docs, fs.clone()]),
+        ),
+        example::<method::ThreadMcpServers>(
+            ThreadRef {
+                thread_id: THREAD_ID.to_owned(),
+            },
+            &listing(Some(THREAD_ID), vec![connected.clone(), failed, fs.clone()]),
+        ),
+        example::<method::ThreadMcpReconnect>(
+            McpReconnectParams {
+                thread_id: THREAD_ID.to_owned(),
+                name: Some("docs".to_owned()),
+            },
+            &listing(Some(THREAD_ID), vec![connected, fs]),
+        ),
+    ]
+}
+
 // spec: PRT-085
 #[test]
 fn stop_cascades_only_when_asked() {
@@ -1155,6 +1239,7 @@ fn every_method_has_a_golden_request_and_response() {
         mount_examples(),
         activity_examples(),
         list_examples(),
+        mcp_examples(),
     ]
     .concat();
 

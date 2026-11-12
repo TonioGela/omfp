@@ -203,10 +203,9 @@ pub fn append_system_prompt(
     }
 }
 
-/// omp's user agent directory, `<HOME>/.omp/agent`, with `HOME` taken from the omp environment overrides when they
-/// set it, else from `home`.
+/// The home omp runs with: `HOME` of the omp environment overrides when they set it, else `home`.
 #[must_use]
-pub fn omp_agent_dir(
+pub fn omp_home(
     overrides: &[(OsString, Option<OsString>)],
     home: Option<&OsStr>,
 ) -> Option<PathBuf> {
@@ -214,7 +213,16 @@ pub fn omp_agent_dir(
         Some((_, value)) => value.as_deref(),
         None => home,
     }?;
-    Some(Path::new(home).join(".omp").join("agent"))
+    Some(PathBuf::from(home))
+}
+
+/// omp's user agent directory, `<HOME>/.omp/agent`, with `HOME` from [`omp_home`].
+#[must_use]
+pub fn omp_agent_dir(
+    overrides: &[(OsString, Option<OsString>)],
+    home: Option<&OsStr>,
+) -> Option<PathBuf> {
+    Some(omp_home(overrides, home)?.join(".omp").join("agent"))
 }
 
 #[cfg(test)]

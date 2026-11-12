@@ -13,7 +13,7 @@ use crate::dto::{
     DiffPage, FileCandidates, FileContent, FileWritten, GitStatus, JobInfo, Settings, Theme,
     ThreadSummary, Workspace,
 };
-use crate::{activity, lists, params};
+use crate::{activity, lists, mcp, params};
 use omfp_core::wire;
 
 /// A protocol method: its wire name and the types of its params and result.
@@ -278,6 +278,12 @@ methods! {
     ThreadsList = "threads.list" (lists::ListThreadsParams) -> lists::ThreadList;
     /// Every workspace as on the `index` topic (PRT-091).
     WorkspacesList = "workspaces.list" (params::Empty) -> lists::WorkspaceList;
+    /// The MCP servers configured for a workspace, where each comes from, unchecked (PRT-110).
+    WorkspacesMcpServers = "workspaces.mcp_servers" (params::WorkspaceRef) -> mcp::McpServers;
+    /// The MCP servers of a thread's workspace, checked by its running omp (`/mcp test`, PRT-111).
+    ThreadMcpServers = "thread.mcp_servers" (params::ThreadRef) -> mcp::McpServers;
+    /// Reconnects a thread's MCP servers by restarting its idle omp process, then checks them again (PRT-112).
+    ThreadMcpReconnect = "thread.mcp_reconnect" (mcp::McpReconnectParams) -> mcp::McpServers;
 }
 
 #[cfg(test)]

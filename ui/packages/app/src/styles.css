@@ -1226,6 +1226,109 @@
     color: var(--omfp-error);
   }
 
+  /* omfp:mcp (UI-290..UI-292): the status line and its buttons, then a border box per server (UI-187): its state mark,
+   * state and tool count on the top border, transport and command, the error line, the config file and Reconnect. */
+  .omfp-mcp {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s3);
+    padding: var(--omfp-s2) var(--omfp-s3) var(--omfp-s3);
+    font-family: var(--omfp-font-code);
+  }
+
+  .omfp-mcp__bar,
+  .omfp-mcp__source {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s1) var(--omfp-s2);
+  }
+
+  .omfp-mcp__status {
+    flex: 1 1 12rem;
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-mcp__state {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--omfp-s1);
+  }
+
+  .omfp-mcp__server[data-state="done"] .omfp-bbox__end {
+    color: var(--omfp-ok);
+  }
+
+  .omfp-mcp__server[data-state="failed"] .omfp-bbox__end {
+    color: var(--omfp-error);
+  }
+
+  .omfp-mcp__server[data-disabled] .omfp-bbox__label {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-mcp__tools {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-mcp__target,
+  .omfp-mcp__server-error,
+  .omfp-mcp__note,
+  .omfp-mcp__source,
+  .omfp-mcp__error {
+    margin: 0;
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-mcp__target {
+    display: flex;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+  }
+
+  .omfp-mcp__transport {
+    color: var(--omfp-tertiary);
+  }
+
+  .omfp-mcp__command {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .omfp-mcp__server-error,
+  .omfp-mcp__error {
+    color: var(--omfp-error);
+    overflow-wrap: anywhere;
+  }
+
+  .omfp-mcp__note,
+  .omfp-mcp__origin {
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-mcp__path {
+    flex: 1 1 10rem;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .omfp-mcp__link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: start;
+    color: var(--omfp-primary);
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
   /* omfp:changes (UI-080): per repository a head (name, branch, ahead/behind, summary), then file rows (status letter,
    * path, `+n −m`) that expand to the file's diff card (UI-165). */
   .omfp-changes {

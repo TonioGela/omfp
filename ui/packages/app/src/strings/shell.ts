@@ -216,6 +216,38 @@ export const shell = {
     stop: "Stop",
     cancel: "Cancel",
   },
+  /** `omfp:mcp` (UI-290..UI-294). */
+  mcp: {
+    label: "MCP servers",
+    noWorkspace: "No workspace",
+    noWorkspaceHint: "Select a thread to see the MCP servers of its workspace.",
+    loading: "Loading MCP servers…",
+    none: "No MCP servers",
+    noneHint: (projectConfig: string) =>
+      `Add them to ${projectConfig} (this workspace), or to ~/.omp/agent/mcp.json for every workspace, as ` +
+      '{ "mcpServers": { "<name>": { "command": "<program>", "args": [] } } } or ' +
+      '{ "mcpServers": { "<name>": { "type": "http", "url": "<url>" } } }. omp also reads the configs of ' +
+      "Claude Code (.claude/), Cursor (.cursor/) and VS Code (.vscode/mcp.json).",
+    workspaceOnly: "No thread selected: the servers configured for this workspace, not checked.",
+    notRunning: "The thread is not running: its servers start with it.",
+    checked: "Checked by the thread's omp.",
+    notCheckable: "omp checks only .omp/mcp.json and ~/.omp/agent/mcp.json: it loads this one without a check.",
+    state: {
+      configured: "configured",
+      connected: "connected",
+      failed: "failed",
+      disabled: "disabled",
+      checking: "checking…",
+    },
+    tools: (count: number) => (count === 1 ? "1 tool" : `${count} tools`),
+    origin: (tool: string, scope: string) => `${tool} · ${scope}`,
+    openSource: (path: string) => `Open ${path}`,
+    checkAgain: "Check again",
+    reloadAll: "Reload all",
+    reloadAllHint: "Restarts the thread's omp, which connects every MCP server again",
+    reconnect: "Reconnect",
+    reconnectLabel: (name: string) => `Reconnect ${name} (restarts the thread's omp)`,
+  },
   /** `omfp:todos` (UI-082). */
   todos: {
     label: "Todos",
@@ -383,6 +415,7 @@ export const shell = {
       "omfp:todos": "Todos",
       "omfp:tree": "Tree",
       "omfp:activity": "Activity",
+      "omfp:mcp": "MCP servers",
     } as Readonly<Record<string, string>>,
   },
   /** The narrow and mobile frame (UI-200..UI-205). */

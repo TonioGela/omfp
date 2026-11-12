@@ -155,6 +155,9 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `jobs.start` | `workspaceId`, `command` | the job: `{ id, workspaceId, command, startedAt, status }` (DMN-080) |
 | `jobs.kill` | `jobId` | `{}` (DMN-081) |
 | `activity.list` | `threadId?`, `before?`, `after?`, `limit?` | `{ entries: [{ seq, at, threadId, client, method, params, error }], more }`: the activity log, newest first (PRT-086) |
+| `workspaces.mcp_servers` | `workspaceId` | `McpServers`: the MCP servers configured for the workspace, unchecked (PRT-110) |
+| `thread.mcp_servers` | `threadId` | `McpServers`: the servers of the thread's workspace, checked by its running omp (PRT-111) |
+| `thread.mcp_reconnect` | `threadId`, `name?` | `McpServers` after restarting the idle thread; `conflict` while it works (PRT-112) |
 
 Results of omp-forwarded methods are omp's response data (`data` of its `response` frame), the `omp-rpc` wire
 `*Result` type named in the method table, even where `omp-rpc` decodes the command's output to the bare list or
@@ -193,6 +196,16 @@ record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 | --- | --- |
 | PRT-085 | `thread.stop { threadId, cascade? }` MUST answer `{ threadIds }`: the stopped threads, the thread first, then, with `cascade: true`, the other members of its spawned tree (AGT-070) in the order the daemon stopped them (DMN-162); `cascade` defaults to `false`. Stopping a thread that runs no process succeeds; an unknown thread is `not_found`. |
 | PRT-086 | `activity.list { threadId?, before?, after?, limit? }` (permission `Read`) MUST answer `{ entries, more }` from the activity log (DMN-160), newest first: each entry `{ seq, at, threadId, client, method, params, error }` (`error` `null` for a success); `threadId` keeps the entries of that calling thread, `before` those with a smaller `seq`, `after` those with a greater one; `limit` defaults to 50 and is capped at 500; `more` tells whether entries matching the query were left out by the limit. |
+
+## MCP servers (M13)
+
+| ID | Requirement |
+| --- | --- |
+| PRT-110 | `workspaces.mcp_servers { workspaceId }` (permission `Read`) MUST answer `McpServers { workspaceId, threadId: null, running: false, projectConfig, userConfig, servers }`: every MCP server omp would load for the workspace folder (DMN-190), each in state `configured` or `disabled`, without starting omp. `projectConfig` is `<workspace>/.omp/mcp.json` and `userConfig` `~/.omp/agent/mcp.json` (`null` when the daemon knows no home), whether they exist or not. |
+| PRT-111 | `thread.mcp_servers { threadId }` (permission `Read`) MUST answer `McpServers` for the thread's workspace with `threadId` set and `running` whether its omp process runs: when it runs, each `checkable` server was checked by that omp (DMN-191) and is `connected` (with `tools`) or `failed` (with `error`); a server omp did not answer for, and every server of a stopped thread, stays `configured`. It never starts omp. |
+| PRT-112 | `thread.mcp_reconnect { threadId, name? }` (permission `Drive`) MUST reconnect the thread's MCP servers by restarting its omp process (DMN-192) and answer `McpServers` as PRT-111 does, checking only server `name` when given (the others stay `configured`), every checkable one without it. A thread that is not settled MUST be refused with `conflict` and keep running; a stopped thread is started. |
+| PRT-113 | A server of `McpServers` MUST carry `name`, `transport` (`stdio`, `http` or `sse`), `target` (a stdio server's command and arguments; a remote URL without its query, fragment and user info), `source { path, workspacePath?, scope, tool }` (the config file: absolute, and relative to the workspace folder when inside it; `project` or `user`; `omp`, `claude`, `cursor` or `vscode`), `state`, `checkable` (omp can check it: an enabled entry of omp's own project or user `mcp.json` whose name has no whitespace), and `tools`/`error` per PRT-114. Servers come in omp's precedence order, each name once. |
+| PRT-114 | A server's `state` MUST be `configured` (enabled, not checked), `connected` (omp connected and listed its `tools`), `failed` (omp's `error`) or `disabled` (`enabled: false`, unless the user config's `enabledServers` names it, or named in its `disabledServers`): what omp's `/mcp test` saw, not its live connection, which omp 18.18.6 does not expose (M13 spike). |
 
 ## Views and jobs (M4)
 

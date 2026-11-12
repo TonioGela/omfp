@@ -370,6 +370,14 @@ pub(super) async fn thread(services: &Services, principal: &Principal, call: Cal
                 .map_err(supervisor_error)?;
             empty()
         }
+        Call::ThreadMcpServers(params) => ok(&supervisor
+            .thread_mcp_servers(&params.thread_id)
+            .await
+            .map_err(supervisor_error)?),
+        Call::ThreadMcpReconnect(params) => ok(&supervisor
+            .mcp_reconnect(&params.thread_id, params.name.as_deref())
+            .await
+            .map_err(supervisor_error)?),
         Call::ThreadStop(params) => {
             // The cascade also kills the jobs the stopped threads' agents started (AGT-071, DMN-162).
             let thread_ids = if params.cascade {

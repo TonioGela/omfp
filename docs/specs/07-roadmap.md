@@ -523,6 +523,37 @@ widget are tested on real frames; E2E-21 runs the same through the window. omp's
 duration is measured from when the window first saw it; the call's own result is omp's notice to the model, not job
 output. Workspaces with a `views.json` of their own keep it: `:view reset` or an agent's mount adds the new tab.
 
+## M13 — MCP servers (done)
+
+Scope: see the MCP servers of the current workspace's threads, their state, and restart them. Each thread's omp runs in
+the workspace folder, so it loads the workspace's `.omp/mcp.json`, the user's `~/.omp/agent/mcp.json` and the configs
+it imports from other tools. The daemon lists them (DMN-190, `workspaces.mcp_servers`, PRT-110), has the thread's omp
+check each of its own (DMN-191, `thread.mcp_servers`, PRT-111) and reconnects by restarting the thread (DMN-192,
+`thread.mcp_reconnect`, PRT-112); the built-in `omfp:mcp` shows a border box per server with its state, tools, error and
+config file, Reconnect, Reload all and Check again (UI-290..UI-294), offered by the widget picker.
+
+Spike (contract harness on the pinned omp, fake LLM, a Streamable HTTP stub server on loopback and a stdio command
+that does not exist): omp 18.18.6 has no RPC command or frame with its MCP state. `get_state.dumpTools` lists no MCP
+tool (omp mounts them as `xd://mcp__<server>_<tool>` devices); the only trace of the live manager is a `notice`
+(`source: "xdev"`, `xd://: mounted mcp__stub_ping, …`) that the `tools.xdevNotices` setting and quiet startup turn
+off, and startup failures go only to omp's log file. Over `prompt`, the `/mcp` subcommands run as local commands
+(`agentInvoked: false`) answering `command_output` frames: `/mcp list` prints the omp-native project and user files
+(`name | type | enabled | location [scope]`), `/mcp test <name>` opens a fresh connection to an omp-native server and
+answers `Server "<name>" connected (N tools).` or `Connection to "<name>" failed: <error>`, `/mcp reconnect` is refused
+(`requires OAuth or browser flows only available in the TUI client`) and `/mcp reload` only re-sends the command list
+(the stub saw no new `initialize`).
+
+Result: the most reliable design those facts allow. The daemon reads the files omp reads, in omp's precedence order
+(omp's own, Claude Code, Cursor, VS Code, the root fallbacks), for the configured list and each server's source; a
+running thread checks each server of omp's own files with `/mcp test`, whose reply is parsed (one check at a time per
+thread, since the frames carry no id); imported servers stay `configured`, and a stopped thread is not started to check.
+Reconnect is a restart of the idle thread (refused with `conflict` while it works), after which omp connects every
+server and the daemon checks again. A check is a second connection, not the thread's own, and spawns a stdio server
+once more: hence `omfp:mcp` is not in the default view. Tested on the fake launcher (L2, `tests/mcp_servers.rs`) and
+against the pinned omp with the stub server (L3, `tests/contract_mcp_servers.rs`: connected with 2 tools, the missing
+command failed with omp's `ENOENT`, a user-scope server checked, an imported one left configured, and a reconnect that
+re-initializes the stub).
+
 ## Terminal (deferred)
 
 Not planned for now (D-06 revised): the user does not rely on the TUI-only commands. [05](05-terminal.md) stays as the

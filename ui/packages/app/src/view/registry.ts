@@ -8,6 +8,7 @@ import { ChangesWidget } from "../widgets/changes/index.ts";
 import { ChatWidget, ComposerWidget, InteractionsWidget, TranscriptWidget } from "../widgets/chat/index.ts";
 import { FileWidget } from "../widgets/file/index.ts";
 import { HeaderWidget } from "../widgets/header/index.ts";
+import { McpWidget } from "../widgets/mcp/index.ts";
 import { SubagentsWidget } from "../widgets/subagents/index.ts";
 import { TodosWidget } from "../widgets/todos/index.ts";
 import { TreeWidget } from "../widgets/tree/index.ts";
@@ -23,6 +24,7 @@ export const BUILTIN_WIDGETS: WidgetRegistry = new Map<string, WidgetComponent>(
   ["omfp:todos", TodosWidget],
   ["omfp:tree", TreeWidget],
   ["omfp:activity", ActivityWidget],
+  ["omfp:mcp", McpWidget],
   ["omfp:chat", ChatWidget],
   ["omfp:transcript", TranscriptWidget],
   ["omfp:interactions", InteractionsWidget],

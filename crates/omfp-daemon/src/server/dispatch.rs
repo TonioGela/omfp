@@ -13,7 +13,7 @@ use serde_json::Value;
 
 use super::activity;
 use super::auth::Principal;
-use super::convert::{bad_request, internal, workspace_error};
+use super::convert::{bad_request, internal, supervisor_error, workspace_error};
 use super::services::{Services, blocking};
 use crate::store::Provenance;
 use crate::{fs_complete, search};
@@ -150,6 +150,11 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
             let workspaces = services.index.with_state(|index| index.workspaces.clone());
             ok(&WorkspaceList { workspaces })
         }
+        Call::WorkspacesMcpServers(params) => ok(&services
+            .supervisor
+            .workspace_mcp_servers(&params.workspace_id)
+            .await
+            .map_err(supervisor_error)?),
         Call::ThemeGet(_) => ok(&services.theme()),
         Call::ThemeSet(params) => {
             services.set_theme(params.css).await?;

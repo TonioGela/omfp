@@ -35,6 +35,7 @@ use crate::workspaces::{WorkspaceError, Workspaces};
 
 mod dialogs;
 mod live;
+mod mcp;
 mod naming;
 
 /// The event log of one thread: omp frames and daemon events folded by the shared reducer (ARC-006).
@@ -97,6 +98,8 @@ pub struct SupervisorConfig {
     pub live_buffer: usize,
     /// omp's user agent directory, where the user's `APPEND_SYSTEM.md` lives (DMN-030).
     pub agent_dir: Option<PathBuf>,
+    /// The home omp runs with, where it reads the MCP configs of other tools (`~/.claude.json`, …, DMN-190).
+    pub home: Option<PathBuf>,
     /// Generate thread titles with an omp print-mode run after the first message (DMN-073). Tests against the fake
     /// LLM turn it off so the extra model call does not take a scripted step.
     pub title_generation: bool,
@@ -117,6 +120,7 @@ impl SupervisorConfig {
             event_capacity: 2000,
             live_buffer: 4096,
             agent_dir: None,
+            home: None,
             title_generation: true,
             builtin_widgets: None,
         }
@@ -153,6 +157,10 @@ pub enum SupervisorError {
     LiveActive { client: String },
     #[error("no live session is running on this thread")]
     NoLiveSession,
+    #[error(
+        "the thread is working: a restart would abort it; wait until it is idle (or stop it), then reconnect"
+    )]
+    Busy,
     /// A live voice failure, readable (DMN-104); `omp` is omp's own message.
     #[error("{message}")]
     Live { message: String, omp: String },
@@ -271,6 +279,8 @@ struct Actor {
     levels: broadcast::Sender<LiveLevelsEvent>,
     /// The id of the last prompt omp admitted with agent work, until the next process starts (DMN-152).
     last_prompt: Mutex<Option<String>>,
+    /// Serializes the daemon's own local commands (`/mcp test`), whose `command_output` frames carry no id (DMN-191).
+    local_commands: tokio::sync::Mutex<()>,
 }
 
 impl Actor {
@@ -295,6 +305,7 @@ impl Actor {
             voice: Mutex::new(None),
             levels: broadcast::channel(LEVELS_BUFFER).0,
             last_prompt: Mutex::new(None),
+            local_commands: tokio::sync::Mutex::new(()),
         }
     }
 

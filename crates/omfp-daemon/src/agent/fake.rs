@@ -11,8 +11,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 
 use omfp_core::ThreadEvent;
 use omp_rpc::{
-    AgentMessage, Event, ExtensionUiResponse, HostTool, HostUri, OpenSessionResult, PromptCommand,
-    ReadyEvent, RpcAgentEvent, RpcNotification,
+    AgentMessage, CommandOutputEvent, Event, ExtensionUiResponse, HostTool, HostUri,
+    OpenSessionResult, PromptCommand, ReadyEvent, RpcAgentEvent, RpcNotification,
 };
 use serde_json::{Value, json};
 use tokio::sync::watch;
@@ -214,6 +214,9 @@ struct Script {
     title_requests: Vec<TitleRequest>,
     /// How every later `live_connect` or `live_start` goes (TST-015, TST-051).
     live: FakeLive,
+    /// The `command_output` texts of local commands by message (e.g. `/mcp test fs`), sent before the answer as omp
+    /// does (DMN-191).
+    outputs: HashMap<String, Vec<String>>,
 }
 
 /// The fake launcher. Without queued runs, every launch plays [`FakeRun::fresh`].
@@ -313,6 +316,15 @@ impl FakeLauncher {
     /// call connects without further frames ([`FakeLive::default`]).
     pub fn script_live(&self, live: FakeLive) {
         lock(&self.script).live = live;
+    }
+
+    /// Answers every later local prompt `message` (a slash command, e.g. `/mcp test fs`) with `command_output` frames
+    /// of `texts`, sent before the prompt's answer as omp does.
+    pub fn local_output(&self, message: &str, texts: &[&str]) {
+        lock(&self.script).outputs.insert(
+            message.to_owned(),
+            texts.iter().map(|text| (*text).to_owned()).collect(),
+        );
     }
 }
 
@@ -483,6 +495,7 @@ impl AgentProcess for FakeAgent {
     fn prompt(&self, command: PromptCommand) -> Result<PromptAdmission, omp_rpc::Error> {
         let process = &self.0;
         let local = command.message.starts_with('/');
+        let message = command.message.clone();
         process.record(FakeCall::Prompt(command));
         if let (_, Some(gate)) = process.scripted("prompt") {
             gate.pass();
@@ -491,6 +504,17 @@ impl AgentProcess for FakeAgent {
             return Err(omp_rpc::Error::Closed);
         }
         if local {
+            let texts = lock(&process.shared.script)
+                .outputs
+                .get(message.as_str())
+                .cloned()
+                .unwrap_or_default();
+            process.emit(
+                texts
+                    .into_iter()
+                    .map(|text| RpcNotification::CommandOutput(CommandOutputEvent { text }))
+                    .collect(),
+            );
             return Ok(PromptAdmission {
                 prompt_id: format!("req_{}", new_id()),
                 agent_invoked: false,

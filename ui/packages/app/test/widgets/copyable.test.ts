@@ -7,13 +7,14 @@ import changes from "../../src/widgets/changes/index.ts";
 import * as chat from "../../src/widgets/chat/index.ts";
 import file from "../../src/widgets/file/index.ts";
 import header from "../../src/widgets/header/index.ts";
+import mcp from "../../src/widgets/mcp/index.ts";
 import subagents from "../../src/widgets/subagents/index.ts";
 import todos from "../../src/widgets/todos/index.ts";
 import tree from "../../src/widgets/tree/index.ts";
 import workspace from "../../src/widgets/workspace/index.ts";
 
 const WIDGETS = join(import.meta.dir, "../../src/widgets");
-const COPYABLE = ["chat", "header", "workspace", "changes", "file", "subagents", "todos", "tree", "activity"];
+const COPYABLE = ["chat", "header", "workspace", "changes", "file", "subagents", "todos", "tree", "activity", "mcp"];
 /** What an agent widget may import (AGT-012), besides files of its own folder. */
 const ALLOWED = new Set(["react", "react/jsx-runtime", "react-dom", "omfp/sdk", "omfp/kit"]);
 
@@ -34,7 +35,7 @@ function valueImports(folder: string): { file: string; path: string }[] {
 }
 
 describe("copyable built-ins", () => {
-  // spec: AGT-021, AGT-012, UI-081, UI-082, UI-083, UI-273
+  // spec: AGT-021, AGT-012, UI-081, UI-082, UI-083, UI-273, UI-290
   test("value imports come only from react, omfp/sdk, omfp/kit and the widget's own folder", () => {
     const imports = COPYABLE.flatMap(valueImports);
     expect(imports.length).toBeGreaterThan(0);
@@ -55,7 +56,7 @@ describe("copyable built-ins", () => {
     expect(typeof workspace).toBe("function");
     expect(typeof changes).toBe("function");
     expect(typeof file).toBe("function");
-    for (const widget of [subagents, todos, tree]) {
+    for (const widget of [subagents, todos, tree, mcp]) {
       expect(typeof widget).toBe("function");
     }
   });

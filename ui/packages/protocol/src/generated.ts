@@ -529,6 +529,72 @@ export type LiveStarted = {
   voice: string;
 };
 
+/** `thread.mcp_reconnect` params (PRT-112). */
+export type McpReconnectParams = {
+  /** The server checked again after the restart; without it every checkable server is. */
+  name?: string | null;
+  threadId: string;
+};
+
+/** Whether a config belongs to the workspace or to the user. */
+export type McpScope = "project" | "user";
+
+/** One MCP server configured for the workspace (PRT-113). */
+export type McpServer = {
+  /** omp can check the server over RPC (`/mcp test`): it comes from omp's own project or user `mcp.json`. */
+  checkable: boolean;
+  /** Why the check failed (`failed`), as omp reported it. */
+  error?: string | null;
+  name: string;
+  source: McpSource;
+  state: McpState;
+  /** The command of a stdio server (with its arguments), or the URL of a remote one without its query and user info. */
+  target: string;
+  /** Tools the server offered when checked (`connected`). */
+  tools?: number | null;
+  transport: McpTransport;
+};
+
+/** `workspaces.mcp_servers`, `thread.mcp_servers` and `thread.mcp_reconnect` result (PRT-110..PRT-112). */
+export type McpServers = {
+  /** omp's project config of the workspace, `<workspace>/.omp/mcp.json`, whether it exists or not. */
+  projectConfig: string;
+  /** The thread's omp process runs: its servers were checked. `false` without a thread. */
+  running: boolean;
+  /** In omp's precedence order (the first definition of a name wins): omp's own files, then the imported ones. */
+  servers: McpServer[];
+  /** The thread whose omp checked the servers; `null` for `workspaces.mcp_servers`. */
+  threadId?: string | null;
+  /** omp's user config, `~/.omp/agent/mcp.json`, whether it exists or not; `null` when the daemon knows no home. */
+  userConfig?: string | null;
+  workspaceId: string;
+};
+
+/** Where a server is defined (PRT-113). */
+export type McpSource = {
+  /** Absolute path of the config file. */
+  path: string;
+  scope: McpScope;
+  /** The tool whose config it is: `omp`, `claude`, `cursor`, `vscode` (omp imports the others' files). */
+  tool: string;
+  /** The path relative to the workspace folder when the file is in it (a workspace file the UI can open). */
+  workspacePath?: string | null;
+};
+
+/** A server's state as the daemon knows it (PRT-114). */
+export type McpState =
+  /** Configured and enabled, not checked: no thread, the thread is not running, or omp cannot check it. */
+  | "configured"
+  /** omp connected to it and listed its tools. */
+  | "connected"
+  /** omp could not connect to it or list its tools. */
+  | "failed"
+  /** `enabled: false`, or named in the user config's `disabledServers`: omp does not load it. */
+  | "disabled";
+
+/** How omp talks to a server. */
+export type McpTransport = "stdio" | "http" | "sse";
+
 /** `thread.steer` / `thread.follow_up` params. */
 export type MessageParams = {
   images?: unknown[];
@@ -1422,6 +1488,9 @@ export interface Methods {
   "activity.list": { params: ListActivityParams; result: ActivityPage };
   "threads.list": { params: ListThreadsParams; result: ThreadList };
   "workspaces.list": { params: Empty; result: WorkspaceList };
+  "workspaces.mcp_servers": { params: WorkspaceRef; result: McpServers };
+  "thread.mcp_servers": { params: ThreadRef; result: McpServers };
+  "thread.mcp_reconnect": { params: McpReconnectParams; result: McpServers };
 }
 
 export type MethodName = keyof Methods;
@@ -1506,4 +1575,7 @@ export const METHODS: readonly MethodName[] = [
   "activity.list",
   "threads.list",
   "workspaces.list",
+  "workspaces.mcp_servers",
+  "thread.mcp_servers",
+  "thread.mcp_reconnect",
 ];

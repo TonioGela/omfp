@@ -84,7 +84,9 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.state"
         | "theme.get"
         | "settings.get"
-        | "widgets.library" => Read,
+        | "widgets.library"
+        | "workspaces.mcp_servers"
+        | "thread.mcp_servers" => Read,
         "workspaces.create"
         | "workspaces.update"
         | "workspaces.remove"
@@ -129,6 +131,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.live_start"
         | "thread.live_stop"
         | "thread.live_mute"
+        | "thread.mcp_reconnect"
         | "interaction.respond"
         | "jobs.start"
         | "jobs.kill" => Drive,

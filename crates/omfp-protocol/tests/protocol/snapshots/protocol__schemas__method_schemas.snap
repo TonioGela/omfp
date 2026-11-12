@@ -2026,6 +2026,383 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "thread.mcp_reconnect": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`thread.mcp_reconnect` params (PRT-112).",
+      "properties": {
+        "name": {
+          "description": "The server checked again after the restart; without it every checkable server is.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "McpReconnectParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "McpScope": {
+          "description": "Whether a config belongs to the workspace or to the user.",
+          "enum": [
+            "project",
+            "user"
+          ],
+          "type": "string"
+        },
+        "McpServer": {
+          "description": "One MCP server configured for the workspace (PRT-113).",
+          "properties": {
+            "checkable": {
+              "description": "omp can check the server over RPC (`/mcp test`): it comes from omp's own project or user `mcp.json`.",
+              "type": "boolean"
+            },
+            "error": {
+              "description": "Why the check failed (`failed`), as omp reported it.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/McpSource"
+            },
+            "state": {
+              "$ref": "#/$defs/McpState"
+            },
+            "target": {
+              "description": "The command of a stdio server (with its arguments), or the URL of a remote one without its query and user info.",
+              "type": "string"
+            },
+            "tools": {
+              "description": "Tools the server offered when checked (`connected`).",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "transport": {
+              "$ref": "#/$defs/McpTransport"
+            }
+          },
+          "required": [
+            "name",
+            "transport",
+            "target",
+            "source",
+            "state",
+            "checkable"
+          ],
+          "type": "object"
+        },
+        "McpSource": {
+          "description": "Where a server is defined (PRT-113).",
+          "properties": {
+            "path": {
+              "description": "Absolute path of the config file.",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/McpScope"
+            },
+            "tool": {
+              "description": "The tool whose config it is: `omp`, `claude`, `cursor`, `vscode` (omp imports the others' files).",
+              "type": "string"
+            },
+            "workspacePath": {
+              "description": "The path relative to the workspace folder when the file is in it (a workspace file the UI can open).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path",
+            "scope",
+            "tool"
+          ],
+          "type": "object"
+        },
+        "McpState": {
+          "description": "A server's state as the daemon knows it (PRT-114).",
+          "oneOf": [
+            {
+              "const": "configured",
+              "description": "Configured and enabled, not checked: no thread, the thread is not running, or omp cannot check it.",
+              "type": "string"
+            },
+            {
+              "const": "connected",
+              "description": "omp connected to it and listed its tools.",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "omp could not connect to it or list its tools.",
+              "type": "string"
+            },
+            {
+              "const": "disabled",
+              "description": "`enabled: false`, or named in the user config's `disabledServers`: omp does not load it.",
+              "type": "string"
+            }
+          ]
+        },
+        "McpTransport": {
+          "description": "How omp talks to a server.",
+          "enum": [
+            "stdio",
+            "http",
+            "sse"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`workspaces.mcp_servers`, `thread.mcp_servers` and `thread.mcp_reconnect` result (PRT-110..PRT-112).",
+      "properties": {
+        "projectConfig": {
+          "description": "omp's project config of the workspace, `<workspace>/.omp/mcp.json`, whether it exists or not.",
+          "type": "string"
+        },
+        "running": {
+          "description": "The thread's omp process runs: its servers were checked. `false` without a thread.",
+          "type": "boolean"
+        },
+        "servers": {
+          "description": "In omp's precedence order (the first definition of a name wins): omp's own files, then the imported ones.",
+          "items": {
+            "$ref": "#/$defs/McpServer"
+          },
+          "type": "array"
+        },
+        "threadId": {
+          "description": "The thread whose omp checked the servers; `null` for `workspaces.mcp_servers`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "userConfig": {
+          "description": "omp's user config, `~/.omp/agent/mcp.json`, whether it exists or not; `null` when the daemon knows no home.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "running",
+        "projectConfig",
+        "servers"
+      ],
+      "title": "McpServers",
+      "type": "object"
+    }
+  },
+  "thread.mcp_servers": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one thread.",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadRef",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "McpScope": {
+          "description": "Whether a config belongs to the workspace or to the user.",
+          "enum": [
+            "project",
+            "user"
+          ],
+          "type": "string"
+        },
+        "McpServer": {
+          "description": "One MCP server configured for the workspace (PRT-113).",
+          "properties": {
+            "checkable": {
+              "description": "omp can check the server over RPC (`/mcp test`): it comes from omp's own project or user `mcp.json`.",
+              "type": "boolean"
+            },
+            "error": {
+              "description": "Why the check failed (`failed`), as omp reported it.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/McpSource"
+            },
+            "state": {
+              "$ref": "#/$defs/McpState"
+            },
+            "target": {
+              "description": "The command of a stdio server (with its arguments), or the URL of a remote one without its query and user info.",
+              "type": "string"
+            },
+            "tools": {
+              "description": "Tools the server offered when checked (`connected`).",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "transport": {
+              "$ref": "#/$defs/McpTransport"
+            }
+          },
+          "required": [
+            "name",
+            "transport",
+            "target",
+            "source",
+            "state",
+            "checkable"
+          ],
+          "type": "object"
+        },
+        "McpSource": {
+          "description": "Where a server is defined (PRT-113).",
+          "properties": {
+            "path": {
+              "description": "Absolute path of the config file.",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/McpScope"
+            },
+            "tool": {
+              "description": "The tool whose config it is: `omp`, `claude`, `cursor`, `vscode` (omp imports the others' files).",
+              "type": "string"
+            },
+            "workspacePath": {
+              "description": "The path relative to the workspace folder when the file is in it (a workspace file the UI can open).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path",
+            "scope",
+            "tool"
+          ],
+          "type": "object"
+        },
+        "McpState": {
+          "description": "A server's state as the daemon knows it (PRT-114).",
+          "oneOf": [
+            {
+              "const": "configured",
+              "description": "Configured and enabled, not checked: no thread, the thread is not running, or omp cannot check it.",
+              "type": "string"
+            },
+            {
+              "const": "connected",
+              "description": "omp connected to it and listed its tools.",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "omp could not connect to it or list its tools.",
+              "type": "string"
+            },
+            {
+              "const": "disabled",
+              "description": "`enabled: false`, or named in the user config's `disabledServers`: omp does not load it.",
+              "type": "string"
+            }
+          ]
+        },
+        "McpTransport": {
+          "description": "How omp talks to a server.",
+          "enum": [
+            "stdio",
+            "http",
+            "sse"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`workspaces.mcp_servers`, `thread.mcp_servers` and `thread.mcp_reconnect` result (PRT-110..PRT-112).",
+      "properties": {
+        "projectConfig": {
+          "description": "omp's project config of the workspace, `<workspace>/.omp/mcp.json`, whether it exists or not.",
+          "type": "string"
+        },
+        "running": {
+          "description": "The thread's omp process runs: its servers were checked. `false` without a thread.",
+          "type": "boolean"
+        },
+        "servers": {
+          "description": "In omp's precedence order (the first definition of a name wins): omp's own files, then the imported ones.",
+          "items": {
+            "$ref": "#/$defs/McpServer"
+          },
+          "type": "array"
+        },
+        "threadId": {
+          "description": "The thread whose omp checked the servers; `null` for `workspaces.mcp_servers`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "userConfig": {
+          "description": "omp's user config, `~/.omp/agent/mcp.json`, whether it exists or not; `null` when the daemon knows no home.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "running",
+        "projectConfig",
+        "servers"
+      ],
+      "title": "McpServers",
+      "type": "object"
+    }
+  },
   "thread.models": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4954,6 +5331,191 @@ expression: method_schemas()
         "workspaces"
       ],
       "title": "WorkspaceList",
+      "type": "object"
+    }
+  },
+  "workspaces.mcp_servers": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one workspace.",
+      "properties": {
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId"
+      ],
+      "title": "WorkspaceRef",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "McpScope": {
+          "description": "Whether a config belongs to the workspace or to the user.",
+          "enum": [
+            "project",
+            "user"
+          ],
+          "type": "string"
+        },
+        "McpServer": {
+          "description": "One MCP server configured for the workspace (PRT-113).",
+          "properties": {
+            "checkable": {
+              "description": "omp can check the server over RPC (`/mcp test`): it comes from omp's own project or user `mcp.json`.",
+              "type": "boolean"
+            },
+            "error": {
+              "description": "Why the check failed (`failed`), as omp reported it.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/McpSource"
+            },
+            "state": {
+              "$ref": "#/$defs/McpState"
+            },
+            "target": {
+              "description": "The command of a stdio server (with its arguments), or the URL of a remote one without its query and user info.",
+              "type": "string"
+            },
+            "tools": {
+              "description": "Tools the server offered when checked (`connected`).",
+              "format": "uint32",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "transport": {
+              "$ref": "#/$defs/McpTransport"
+            }
+          },
+          "required": [
+            "name",
+            "transport",
+            "target",
+            "source",
+            "state",
+            "checkable"
+          ],
+          "type": "object"
+        },
+        "McpSource": {
+          "description": "Where a server is defined (PRT-113).",
+          "properties": {
+            "path": {
+              "description": "Absolute path of the config file.",
+              "type": "string"
+            },
+            "scope": {
+              "$ref": "#/$defs/McpScope"
+            },
+            "tool": {
+              "description": "The tool whose config it is: `omp`, `claude`, `cursor`, `vscode` (omp imports the others' files).",
+              "type": "string"
+            },
+            "workspacePath": {
+              "description": "The path relative to the workspace folder when the file is in it (a workspace file the UI can open).",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "path",
+            "scope",
+            "tool"
+          ],
+          "type": "object"
+        },
+        "McpState": {
+          "description": "A server's state as the daemon knows it (PRT-114).",
+          "oneOf": [
+            {
+              "const": "configured",
+              "description": "Configured and enabled, not checked: no thread, the thread is not running, or omp cannot check it.",
+              "type": "string"
+            },
+            {
+              "const": "connected",
+              "description": "omp connected to it and listed its tools.",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "omp could not connect to it or list its tools.",
+              "type": "string"
+            },
+            {
+              "const": "disabled",
+              "description": "`enabled: false`, or named in the user config's `disabledServers`: omp does not load it.",
+              "type": "string"
+            }
+          ]
+        },
+        "McpTransport": {
+          "description": "How omp talks to a server.",
+          "enum": [
+            "stdio",
+            "http",
+            "sse"
+          ],
+          "type": "string"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`workspaces.mcp_servers`, `thread.mcp_servers` and `thread.mcp_reconnect` result (PRT-110..PRT-112).",
+      "properties": {
+        "projectConfig": {
+          "description": "omp's project config of the workspace, `<workspace>/.omp/mcp.json`, whether it exists or not.",
+          "type": "string"
+        },
+        "running": {
+          "description": "The thread's omp process runs: its servers were checked. `false` without a thread.",
+          "type": "boolean"
+        },
+        "servers": {
+          "description": "In omp's precedence order (the first definition of a name wins): omp's own files, then the imported ones.",
+          "items": {
+            "$ref": "#/$defs/McpServer"
+          },
+          "type": "array"
+        },
+        "threadId": {
+          "description": "The thread whose omp checked the servers; `null` for `workspaces.mcp_servers`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "userConfig": {
+          "description": "omp's user config, `~/.omp/agent/mcp.json`, whether it exists or not; `null` when the daemon knows no home.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "running",
+        "projectConfig",
+        "servers"
+      ],
+      "title": "McpServers",
       "type": "object"
     }
   },

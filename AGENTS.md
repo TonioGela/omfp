@@ -85,6 +85,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs),
                       the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
                       token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue as resources);
+                      the MCP servers omp loads for a workspace (omp_mcp.rs: the config files omp reads, the `/mcp test`
+                      reply; supervisor/mcp.rs: checks by the thread's omp, reconnect by restart, M13);
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` and `omfp desktop`;
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
 crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI),
@@ -176,6 +178,9 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   (`406.547…`) but omp-rpc types it `i64`, so the client reports the frame `Undecodable`. `omp::thread_event` rounds
   the fields listed in `FRACTIONAL_INTEGER_FIELDS` and decodes the frame again (DMN-042); add a field there when
   another typed frame turns up as `unknown`.
+- omp exposes no MCP server state over RPC (MCP tools are `xd://` devices, absent from `get_state.dumpTools`). Over
+  `prompt`, `/mcp test <name>` (omp-native configs only) answers one `command_output` frame before its response;
+  `/mcp reconnect` is refused outside the TUI and `/mcp reload` reconnects nothing: restart the thread instead (M13).
 - Our harness docs (`omp://…`) may describe a different omp version than the pinned one: verify against the source at
   `~/.cargo/git/checkouts/oh-my-pi-*/<rev>/` (docs in `docs/`, Rust client in `sdk/rust/omp-rpc/`).
 

@@ -1,0 +1,200 @@
+/** L4: `omfp:mcp` over a fake client (UI-290..UI-294). */
+
+import { afterEach, describe, expect, test } from "bun:test";
+import type { McpServer, McpServers } from "@omfp/protocol";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { DRAFT_THREAD, OPEN_FILES, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { BUILTIN_WIDGETS } from "../../src/view/registry.ts";
+import { DEFAULT_MANIFEST } from "../../src/view/views.ts";
+import { McpWidget } from "../../src/widgets/mcp/index.ts";
+import { thread, workspace } from "../support/fixtures.ts";
+import { FakeClient, renderWithHost, testHost } from "../support/host.tsx";
+
+afterEach(cleanup);
+
+const PROJECT = {
+  path: "/work/w1/.omp/mcp.json",
+  workspacePath: ".omp/mcp.json",
+  scope: "project",
+  tool: "omp",
+} as const;
+const USER = { path: "/home/u/.omp/agent/mcp.json", scope: "user", tool: "omp" } as const;
+
+function server(name: string, extra: Partial<McpServer> = {}): McpServer {
+  return {
+    name,
+    transport: "stdio",
+    target: `${name}-server`,
+    source: PROJECT,
+    state: "configured",
+    checkable: true,
+    ...extra,
+  };
+}
+
+function listing(servers: McpServer[], extra: Partial<McpServers> = {}): McpServers {
+  return {
+    workspaceId: "w1",
+    threadId: "t1",
+    running: true,
+    projectConfig: "/work/w1/.omp/mcp.json",
+    userConfig: "/home/u/.omp/agent/mcp.json",
+    servers,
+    ...extra,
+  };
+}
+
+const CHECKED = listing([
+  server("docs", { transport: "http", target: "http://127.0.0.1:9/mcp", state: "connected", tools: 2 }),
+  server("fs", { state: "failed", error: "ENOENT: no such file or directory, posix_spawn 'fs-server'" }),
+  server("mine", { source: USER, state: "connected", tools: 1 }),
+]);
+
+/** The widget on thread `t1` of workspace `w1`, whose omp checked {@link CHECKED}. */
+function setup() {
+  const base = testHost(new FakeClient());
+  base.client.answers.set("thread.mcp_servers", () => CHECKED);
+  base.host.window.set(SELECTED_THREAD, "t1");
+  const test = renderWithHost(<McpWidget />, base);
+  test.client.connected();
+  test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "work", "w1")] });
+  test.flush();
+  return { ...test, user: userEvent.setup() };
+}
+
+function boxes() {
+  return screen.queryAllByTestId("mcp-server").map((box) => ({
+    name: box.dataset.name,
+    state: box.dataset.state,
+    text: within(box).getByTestId("mcp-state").textContent,
+  }));
+}
+
+describe("omfp:mcp", () => {
+  // spec: UI-290, UI-291, PRT-111
+  test("the selected thread's servers: a box each with its mark, state, tools, error and command", async () => {
+    const { client } = setup();
+    await waitFor(() => expect(boxes().length).toBe(3));
+    expect(boxes()).toEqual([
+      { name: "docs", state: "done", text: "connected · 2 tools" },
+      { name: "fs", state: "failed", text: "failed" },
+      { name: "mine", state: "done", text: "connected · 1 tool" },
+    ]);
+    expect(screen.getAllByTestId("mcp-target")[0]?.textContent).toBe("httphttp://127.0.0.1:9/mcp");
+    expect(screen.getAllByTestId("mcp-server-error").map((line) => line.textContent)).toEqual([
+      "ENOENT: no such file or directory, posix_spawn 'fs-server'",
+    ]);
+    expect(screen.getByTestId("mcp-status").textContent).toBe("Checked by the thread's omp.");
+    expect(client.callsTo("thread.mcp_servers").map((call) => call.params)).toEqual([{ threadId: "t1" }]);
+    expect(screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual([
+      "docs",
+      "fs",
+      "mine",
+    ]);
+  });
+
+  // spec: UI-292
+  test("a workspace config opens in a file tab; a file outside the workspace is only shown", async () => {
+    const { host, user } = setup();
+    await waitFor(() => expect(boxes().length).toBe(3));
+    const sources = screen.getAllByTestId("mcp-source");
+    expect(sources.map((source) => [source.tagName, source.textContent])).toEqual([
+      ["BUTTON", ".omp/mcp.json"],
+      ["BUTTON", ".omp/mcp.json"],
+      ["SPAN", "/home/u/.omp/agent/mcp.json"],
+    ]);
+    expect(sources[0]?.getAttribute("aria-label")).toBe("Open .omp/mcp.json");
+    await user.click(sources[0] ?? document.body);
+    expect(host.window.get(OPEN_FILES).w1?.tabs.map((tab) => tab.path)).toEqual([".omp/mcp.json"]);
+  });
+
+  // spec: UI-293, PRT-112
+  test("Reconnect restarts the thread for one server, which spins until the daemon answers", async () => {
+    const { client, user } = setup();
+    await waitFor(() => expect(boxes().length).toBe(3));
+    await user.click(screen.getByRole("button", { name: "Reconnect fs (restarts the thread's omp)" }));
+
+    const [reconnect] = client.callsTo("thread.mcp_reconnect");
+    expect(reconnect?.params).toEqual({ threadId: "t1", name: "fs" });
+    await waitFor(() => expect(boxes().map((box) => box.state)).toEqual(["done", "running", "done"]));
+    expect(boxes()[1]?.text).toBe("checking…");
+    expect(screen.getByTestId("mcp-reload-all").hasAttribute("disabled")).toBe(true);
+
+    reconnect?.resolve(
+      listing([server("docs", { state: "connected", tools: 2 }), server("fs", { state: "connected", tools: 4 })]),
+    );
+    await waitFor(() => expect(boxes().map((box) => box.text)).toEqual(["connected · 2 tools", "connected · 4 tools"]));
+    expect(screen.getByTestId("mcp-reload-all").hasAttribute("disabled")).toBe(false);
+  });
+
+  // spec: UI-293, PRT-112
+  test("Reload all restarts the thread for every server; a refusal shows the daemon's reason", async () => {
+    const { client, user } = setup();
+    await waitFor(() => expect(boxes().length).toBe(3));
+    await user.click(screen.getByTestId("mcp-reload-all"));
+    const [reload] = client.callsTo("thread.mcp_reconnect");
+    expect(reload?.params).toEqual({ threadId: "t1" });
+    await waitFor(() => expect(boxes().map((box) => box.state)).toEqual(["running", "running", "running"]));
+
+    reload?.reject(new Error("the thread is working: a restart would abort it"));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe("the thread is working: a restart would abort it"),
+    );
+    expect(boxes().map((box) => box.state)).toEqual(["done", "failed", "done"]);
+
+    client.answers.set("thread.mcp_servers", () => listing([server("docs", { state: "connected", tools: 3 })]));
+    await user.click(screen.getByTestId("mcp-check"));
+    await waitFor(() => expect(boxes().map((box) => box.text)).toEqual(["connected · 3 tools"]));
+    expect(screen.queryAllByRole("alert").length).toBe(0);
+  });
+
+  // spec: UI-290, PRT-110
+  test("without a selected thread, the current workspace's configured servers, with no reconnect", async () => {
+    const base = testHost(new FakeClient());
+    base.client.answers.set("workspaces.mcp_servers", () =>
+      listing([server("docs"), server("old", { state: "disabled", checkable: false })], {
+        threadId: null,
+        running: false,
+      }),
+    );
+    base.host.window.set(DRAFT_THREAD, { workspaceId: "w1" });
+    const test = renderWithHost(<McpWidget />, base);
+    test.client.connected();
+    test.client.index({ workspaces: [workspace("w1")], threads: [] });
+    test.flush();
+
+    await waitFor(() => expect(boxes().map((box) => box.text)).toEqual(["configured", "disabled"]));
+    expect(test.client.callsTo("workspaces.mcp_servers").map((call) => call.params)).toEqual([{ workspaceId: "w1" }]);
+    expect(screen.getByTestId("mcp-status").textContent).toBe(
+      "No thread selected: the servers configured for this workspace, not checked.",
+    );
+    expect(screen.queryAllByTestId("mcp-reconnect").length).toBe(0);
+    expect(screen.queryAllByTestId("mcp-reload-all").length).toBe(0);
+  });
+
+  // spec: UI-294
+  test("no servers: where to put .omp/mcp.json; no workspace: say so", async () => {
+    const base = testHost(new FakeClient());
+    base.client.answers.set("thread.mcp_servers", () => listing([]));
+    base.host.window.set(SELECTED_THREAD, "t1");
+    const test = renderWithHost(<McpWidget />, base);
+    test.client.connected();
+    test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "work", "w1")] });
+    test.flush();
+    const none = await screen.findByTestId("mcp-none");
+    expect(none.textContent).toContain("/work/w1/.omp/mcp.json");
+    expect(none.textContent).toContain('"mcpServers"');
+    expect(none.textContent).toContain("~/.omp/agent/mcp.json");
+    cleanup();
+
+    renderWithHost(<McpWidget />).flush();
+    expect(screen.getByTestId("mcp-no-workspace").textContent).toContain("No workspace");
+  });
+
+  // spec: UI-104, UI-290
+  test("a built-in offered by the widget picker, not in the default view", () => {
+    expect(BUILTIN_WIDGETS.has("omfp:mcp")).toBe(true);
+    expect(JSON.stringify(DEFAULT_MANIFEST)).not.toContain("omfp:mcp");
+  });
+});

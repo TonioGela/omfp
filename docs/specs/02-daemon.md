@@ -223,6 +223,17 @@ without a model turn (08, AGT-019). Jobs are in memory only.
 | DMN-161 | The dispatcher MUST log a call once it answered, so the row carries the outcome, for every principal whose provenance is a thread or `mcp` (AGT-053) and every method whose permission is not `Connect` or `Read` (`auth::permission`, PRT-034). The logged params are the call's params with every string longer than 200 characters cut to its first 200 characters followed by `…` (file contents and prompts stay short). A failure to write the row is a warning in the daemon's log and never fails the call. |
 | DMN-162 | **Cascade stop** (AGT-071): the supervisor stops the thread first (so it spawns nothing more), then the members of its spawned tree (AGT-070) read from the store in creation order, reading the tree again after each pass until a pass finds no member it has not stopped, so threads spawned meanwhile are stopped too; each stop takes the thread's lifecycle lock like `thread.stop`. Every running job started by an agent principal of a stopped thread (`jobs.start` records the starting thread, DMN-080) is killed as `jobs.kill` does (DMN-081). A failure stops nothing less: every member is tried, then the first error is returned. |
 
+## MCP servers of a workspace and a thread (M13)
+
+omp 18.18.6 exposes no MCP state over RPC (spike in 07-roadmap, M13): the daemon reads the config files omp reads, asks
+the thread's omp to check each of its own servers, and reconnects by restarting the thread.
+
+| ID | Requirement |
+| --- | --- |
+| DMN-190 | **Configured servers** (`omp_mcp::configured`, PRT-110, PRT-113): the daemon MUST read, in omp's precedence order, the workspace's `.omp/mcp.json` and `.omp/.mcp.json`, the user's `~/.omp/agent/mcp.json` and `.mcp.json` (`HOME` of the omp environment, else the daemon's), Claude Code's project `.claude/.mcp.json` else `.claude/mcp.json` and user `~/.claude.json` else `~/.claude/mcp.json`, Cursor's project then user `.cursor/mcp.json`, VS Code's `.vscode/mcp.json` (`mcp.servers`), then the root `mcp.json` else `.mcp.json`; each server name once, from the first file defining it, in its file's order. Files that are missing, unreadable or not JSON are skipped. Codex, Gemini CLI, OpenCode, Windsurf and plugin configs are not read. |
+| DMN-191 | **Checks by omp** (PRT-111): for a running thread, the daemon MUST check each checkable server by sending its omp the local command `/mcp test <name>` as a `prompt` (no model turn; omp connects anew, lists the tools and disconnects) and reading the one `command_output` frame omp sends before its answer: `Server "<name>" connected (<n> tools).` is `connected`, `Connection to "<name>" failed: <error>` is `failed`, `Server "<name>" not found…` leaves it `configured`, and so does no matching frame within 10 s. Checks of one thread run one at a time (the frames carry no id); a stopped thread is not started. |
+| DMN-192 | **Reconnect** (PRT-112): omp 18.18.6 refuses `/mcp reconnect` over RPC (TUI only) and its `/mcp reload` reconnects nothing, so `thread.mcp_reconnect` MUST restart the thread's process like `thread.restart` (the session resumes, DMN-032; omp connects every server at startup), then check as DMN-191; a thread that is not settled is refused with `conflict` (a restart would abort its turn). |
+
 ## Views and widgets (M4)
 
 The daemon reads, checks and serves what the window shows: the views manifest, the widget folders of the workspace
