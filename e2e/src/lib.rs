@@ -6,6 +6,7 @@
 //! nothing waits for a fixed time. Title generation (DMN-073) is off, so the fake LLM only answers scripted turns and
 //! threads keep the placeholder title of their first message.
 
+use std::ffi::OsString;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -48,6 +49,14 @@ pub fn web_bundle() -> PathBuf {
 #[must_use]
 pub fn row(id: &str) -> String {
     format!("[data-testid=thread-row][data-thread-id=\"{id}\"]")
+}
+
+/// The browsers' fontconfig file, never the host's fonts: `OMFP_E2E_FONTCONFIG_FILE`, `DejaVu` from the dev shell. CI's
+/// purged runner has no fonts left (TST-075), and Chromium's renderer crashes without any; the same fonts everywhere
+/// also give every machine the same text metrics.
+fn fontconfig_file() -> anyhow::Result<OsString> {
+    std::env::var_os("OMFP_E2E_FONTCONFIG_FILE")
+        .context("OMFP_E2E_FONTCONFIG_FILE is unset (run inside `nix develop`)")
 }
 
 /// `chromedriver` on the port it picks itself; killed on drop.
@@ -94,6 +103,7 @@ impl ChromeDriver {
                 "DBUS_SESSION_BUS_ADDRESS",
                 "unix:path=/nonexistent/omfp-e2e-no-session-bus",
             )
+            .env("FONTCONFIG_FILE", fontconfig_file()?)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -180,6 +190,7 @@ impl WebKitDriver {
             .env_remove("DISPLAY")
             .env_remove("WAYLAND_DISPLAY")
             .env("GDK_BACKEND", "x11")
+            .env("FONTCONFIG_FILE", fontconfig_file()?)
             .process_group(0)
             .spawn()
             .context("cannot start xvfb-run (run inside `nix develop`)")?;

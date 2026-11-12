@@ -242,6 +242,26 @@
             }
             // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
               CHROME_BIN = lib.getExe pkgs.chromium;
+              # The only fonts of the e2e browsers (e2e/src/lib.rs), never the host's: CI's purged runner has none, and
+              # Chromium's renderer crashes without any. fontconfig's own rules map the generic families (and a "Mono"
+              # or "Serif" in a family name) onto DejaVu.
+              OMFP_E2E_FONTCONFIG_FILE = pkgs.writeText "omfp-e2e-fonts.conf" ''
+                <?xml version="1.0"?>
+                <!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+                <fontconfig>
+                  <dir>${pkgs.dejavu_fonts}</dir>
+                  <cachedir prefix="xdg">fontconfig</cachedir>
+                  ${lib.concatMapStrings
+                    (rules: "<include>${pkgs.fontconfig.out}/etc/fonts/conf.d/${rules}</include>")
+                    [
+                      "45-latin.conf"
+                      "48-guessfamily.conf"
+                      "49-sansserif.conf"
+                      "60-latin.conf"
+                    ]
+                  }
+                </fontconfig>
+              '';
               # Adding glib-networking to `packages` does not set it: the shell's GIO_EXTRA_MODULES holds only dconf.
               GIO_EXTRA_MODULES = "${pkgs.glib-networking}/lib/gio/modules";
             };

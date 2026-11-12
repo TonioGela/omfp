@@ -19,8 +19,10 @@ nix develop          # or: direnv allow (.envrc contains `use flake`)
 | Utilities | `just`, `git`, `jq`, `websocat`, `nixfmt`, `actionlint` |
 
 Environment set by the shell: `RUST_SRC_PATH`, `OMFP_BUN_CACHE` (the Bun install cache of `ui/`'s dependencies, built by
-Nix from `ui/bun.nix`); on Linux also `CHROME_BIN` and `GIO_EXTRA_MODULES` (glib-networking's GIO modules: listing the
-package in the shell does not set it, and WebKitGTK shows "TLS support is not available" without it).
+Nix from `ui/bun.nix`); on Linux also `CHROME_BIN`, `OMFP_E2E_FONTCONFIG_FILE` (a fontconfig file with DejaVu, the only
+fonts of the e2e browsers: the host's fonts would change text metrics, and CI's purged runner has none, without which
+Chromium's renderer crashes, TST-075) and `GIO_EXTRA_MODULES` (glib-networking's GIO modules: listing the package in the
+shell does not set it, and WebKitGTK shows "TLS support is not available" without it).
 
 Known workarounds:
 

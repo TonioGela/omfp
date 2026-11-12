@@ -11,6 +11,9 @@ on:
 permissions:
   contents: read
 
+# One run per branch at a time. On a pull request a new push cancels the run it supersedes. On master a running run
+# always finishes (it may be the only one testing a CI change, and it fills the caches); of the pushes that arrive
+# meanwhile GitHub keeps only the newest pending, and as master is linear that run tests every change before it too.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
