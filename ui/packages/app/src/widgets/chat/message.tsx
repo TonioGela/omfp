@@ -42,9 +42,16 @@ export function MessageRow({ cardKey, view, streaming }: { cardKey: string; view
     </>
   );
   const blocks = view.blocks.map((block, index) => (
-    // Blocks only grow at the end while streaming, so the index is a stable key.
-    // biome-ignore lint/suspicious/noArrayIndexKey: see above
-    <BlockView key={index} cardKey={`${cardKey}/${index}`} role={view.role} block={block} streaming={streaming} />
+    <BlockView
+      // Blocks only grow at the end while streaming, so the index is a stable key.
+      // biome-ignore lint/suspicious/noArrayIndexKey: see above
+      key={index}
+      cardKey={`${cardKey}/${index}`}
+      role={view.role}
+      block={block}
+      streaming={streaming}
+      last={index === view.blocks.length - 1}
+    />
   ));
   const error = view.error === undefined ? undefined : <span data-testid="message-error">{view.error}</span>;
   const caret = streaming && view.blocks.at(-1)?.type !== "text" ? <StreamCaret /> : null;
@@ -79,11 +86,14 @@ const BlockView = memo(function BlockView({
   role,
   block,
   streaming,
+  last,
 }: {
   cardKey: string;
   role: Role;
   block: Block;
   streaming: boolean;
+  /** The message's last block: a streaming text then trails the caret (UI-147). */
+  last: boolean;
 }) {
   const openFile = useOpenFile();
   // Paths in the assistant's text open the file (UI-116).
@@ -101,7 +111,7 @@ const BlockView = memo(function BlockView({
         );
       }
       return streaming ? (
-        <StreamingMarkdown text={block.text} onOpenPath={openPath} />
+        <StreamingMarkdown text={block.text} trail={last} onOpenPath={openPath} />
       ) : (
         <Markdown text={block.text} data-testid="markdown" onOpenPath={openPath} />
       );
@@ -126,16 +136,19 @@ const BlockView = memo(function BlockView({
 /** A Markdown chunk, parsed again only when its text changes. */
 const MarkdownChunk = memo(Markdown);
 
-/** Streaming Markdown in top-level chunks (UI-191): a delta parses the chunk it grows, not the whole reply. */
+/** Streaming Markdown in top-level chunks (UI-191): a delta parses the chunk it grows, not the whole reply. With
+ * `trail`, the stream caret follows its last character (UI-147). */
 function StreamingMarkdown({
   text: markdown,
+  trail,
   onOpenPath,
 }: {
   text: string;
+  trail: boolean;
   onOpenPath: (reference: { path: string; line: number | undefined }) => void;
 }) {
   return (
-    <div className="omfp-markdown-stream" data-testid="markdown">
+    <div className={trail ? "omfp-markdown-stream omfp-caret-trail" : "omfp-markdown-stream"} data-testid="markdown">
       {markdownChunks(markdown).map((chunk, index) => (
         // Chunks only change or grow at the end while streaming, so the index is a stable key.
         // biome-ignore lint/suspicious/noArrayIndexKey: see above

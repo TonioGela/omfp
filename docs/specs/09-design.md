@@ -44,7 +44,7 @@ with no aliases. Tokens are declared in the `omfp-tokens` cascade layer; the kit
 | --- | --- |
 | UI-125 | Every length, size, color, duration and easing used by the shell or the kit MUST come from the `--omfp-*` tokens listed in this section (or be a `color-mix()` / `calc()` of them); the only literals allowed in component CSS are hairlines and glyph strokes (`1px`, `2px`), `999px` for pills, `50%` for round marks and percentages inside `color-mix()`. |
 | UI-126 | **Type scale.** Sizes are in `rem` (UI-094), so the root size (`[ui] font_size`, default **17 px**, UI-144) scales all of them. Values and their size at 17 px are in the type table below; weights are `--omfp-fw-regular: 400`, `--omfp-fw-medium: 600`, `--omfp-fw-strong: 700` (the bundled faces have no 500, UI-141); line heights are `--omfp-lh-ui: 1.4`, `--omfp-lh-prose: 1.5`, `--omfp-lh-code: 1.5`. Labels keep their case (`--omfp-label-case: none`, `--omfp-label-track: 0`). The type scale does not change with density. |
-| UI-127 | **Spacing.** `--omfp-unit: 0.25rem`; `--omfp-density` is `1` in compact (the default) and `1.3` in normal (`[ui] density`, UI-097); the steps `--omfp-s1`…`--omfp-s6` and `--omfp-s8` are `unit × n × density` (values in the spacing table below). Paddings, gaps and margins use only these steps. |
+| UI-127 | **Spacing.** `--omfp-unit: 0.25rem`; `--omfp-density` is `1` in compact (the default) and `1.3` in normal (`[ui] density`, UI-097); the steps `--omfp-s1`…`--omfp-s6` and `--omfp-s8` are `unit × n × density` (values in the spacing table below). Paddings, gaps and margins use only these steps, or the **text spacing** tokens (text spacing table below): em/ch values for key chips, counts, exit tags, inline code, Markdown flow and glyph gaps, which scale with the text they sit in rather than with density. |
 | UI-128 | **Layout sizes** (layout table below): row, control and message-gap heights scale with density; the frame sizes (columns, bars, gutter, reading measure) do not. |
 | UI-129 | **Radii and borders.** Radii: `--omfp-r-ctl: 0.375rem` (buttons, fields, selects), `--omfp-r-row: 0.375rem` (rows, menu items), `--omfp-r-chip: 0.3125rem` (chips, badges, key chips, inline code), `--omfp-r-card: 0.625rem` (cards, popovers, dialogs, code blocks, the composer); pills (mode, counts, progress tracks) are `999px`. Borders are `--omfp-bw: 1px`; rules are `--omfp-rule` (`outline-variant` at 80 %) and `--omfp-rule-strong` (`outline-variant`). Borders are **solid** except: the border of approval and ask cards (their labelled rules follow it), queued-message chips, ghost chips, empty-state boxes and gallery size separators, which are **dashed** — dashed means "pending, provisional or placeholder". Accent bars (selected row, user message, code block, thinking text) are `2px` solid. |
 | UI-130 | **Surfaces and elevation.** Crush is flat: elevation is shown by surface role and a primary-tinted border, not by grey shadows. `--omfp-app-bg: surface`; `--omfp-side-bg` and `--omfp-bar-bg: surface-container-lowest` (left column, mode line); cards, fields and controls are transparent on their parent (`--omfp-card-bg`, `--omfp-field-bg`, `--omfp-ctl-bg`); `--omfp-code-bg: surface-container-low`; popovers, menus, dialogs and toasts use `--omfp-pop-bg` (`surface-container-low` in light, `surface-container` in dark), `--omfp-pop-border` (primary 45 % into `outline-variant`) and `--omfp-pop-shadow` (a 1 px primary ring at 8 % plus `0 0.75rem 2rem` primary at 14 %) — the only shadow in the UI; key chips sit on `surface-container`. The modal scrim is `scrim` at 36 %. |
@@ -77,6 +77,22 @@ with no aliases. Tokens are declared in the `omfp-tokens` cascade layer; the kit
 | `--omfp-s6` | 1.5rem (25.5 px) | 1.95rem (33.15 px) |
 | `--omfp-s8` | 2rem (34 px) | 2.6rem (44.2 px) |
 
+### Text spacing
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `--omfp-kbd-pad` | 0.36em 0.4em | Key chips (UI-148) |
+| `--omfp-pill-pad` | 0.1em 0.5em | Counts (pills) |
+| `--omfp-tag-pad` | 0.1em 0.45em | Exit code tags |
+| `--omfp-code-pad` | 0.08em 0.32em | Inline code |
+| `--omfp-md-block` | 0.7em | Space between Markdown blocks (and streamed chunks, UI-191) |
+| `--omfp-md-head` | 1em | Space before a Markdown heading |
+| `--omfp-md-head-after` | 0.5em | Space after a Markdown heading |
+| `--omfp-md-item` | 0.2em | Space between list items |
+| `--omfp-md-indent` | 1.4em | List indent |
+| `--omfp-glyph-gap` | 0.1em | Stream caret, command line input |
+| `--omfp-mark-gap` | 0.5ch | Tab marker `▸` |
+
 ### Layout sizes
 
 | Token | Compact | Normal | Scales with density |
@@ -91,6 +107,12 @@ with no aliases. Tokens are declared in the `omfp-tokens` cascade layer; the kit
 | `--omfp-status-h` (mode line) | 1.625rem | 1.625rem | no |
 | `--omfp-gutter` (transcript side padding) | 2rem | 2rem | no |
 | `--omfp-measure` (transcript and composer width) | 50rem | 50rem | no |
+| `--omfp-touch` (minimum touch target on a phone, UI-205) | 44px | 44px | no |
+| `--omfp-areabar-h` (phone's bottom bar items) | max(touch, 3rem) | max(touch, 3rem) | no |
+| `--omfp-float-w` (floating widget panels, UI-230) | 24rem | 24rem | no |
+| `--omfp-tip-w` (tooltip maximum width) | 24rem | 24rem | no |
+| `--omfp-toast-w` (toast column, UI-160) | 22rem | 22rem | no |
+| `--omfp-key-col` (key/command label column: help, command menu) | 13em | 13em | no |
 
 ## Color
 
@@ -201,7 +223,7 @@ values are dark enough that `--omfp-ok` and `--omfp-warn` (UI-136) reach 4.5:1 a
 
 | ID | Requirement |
 | --- | --- |
-| UI-148 | Keys are shown as **key chips**: lowercase words in the code family at `--omfp-fs-2xs` — `spc`, `enter`, `esc`, `tab`, `alt+enter`, `ctrl+c`, `shift+tab`, `up`, `down`, letters as typed (`i`, `G`), sequences separated by a space inside one chip (`d d`, `spc n`), commands with their colon (`:rescan`) — never symbol glyphs (`␣`, `⏎`, `⌥`, `⌘`), whose height differs per font. The chip is `inline-block`, `min-inline-size: 1.6em`, padding `0.36em 0.4em`, `line-height: 1`, `text-box: trim-both ex alphabetic` so the label is optically centred whatever the font's metrics, and its baseline is the text baseline so it lines up with the sentence around it; color `tertiary`, border 1 px tertiary at 40 %, background `surface-container`, radius `--omfp-r-chip`. Inside a button the chip takes the button's text color on a transparent background. The keymap's labels (UI-095) are the source of the chip text, so a rebinding (`[keymap]`, UI-097) updates every chip. |
+| UI-148 | Keys are shown as **key chips**: lowercase words in the code family at `--omfp-fs-2xs` — `spc`, `enter`, `esc`, `tab`, `alt+enter`, `ctrl+c`, `shift+tab`, `up`, `down`, letters as typed (`i`, `G`), sequences separated by a space inside one chip (`d d`, `spc n`), commands with their colon (`:rescan`) — never symbol glyphs (`␣`, `⏎`, `⌥`, `⌘`), whose height differs per font. The chip is `inline-block`, `min-inline-size: 1.6em`, padding `--omfp-kbd-pad` (`0.36em 0.4em`), `line-height: 1`, `text-box: trim-both ex alphabetic` so the label is optically centred whatever the font's metrics, and its baseline is the text baseline so it lines up with the sentence around it; color `tertiary`, border 1 px tertiary at 40 %, background `surface-container`, radius `--omfp-r-chip`. Inside a button the chip takes the button's text color on a transparent background. The keymap's labels (UI-095) are the source of the chip text, so a rebinding (`[keymap]`, UI-097) updates every chip. |
 
 ## Components
 

@@ -55,6 +55,21 @@ export const TYPE_SCALE: Readonly<Record<string, string>> = {
 /** Spacing steps (UI-127): `unit × n × density`. */
 export const SPACE_STEPS: readonly number[] = [1, 2, 3, 4, 5, 6, 8];
 
+/** Text spacing (UI-127): paddings and margins in `em`/`ch` that scale with the text they sit in, not with density. */
+export const TEXT_SPACING: Readonly<Record<string, string>> = {
+  "kbd-pad": "0.36em 0.4em",
+  "pill-pad": "0.1em 0.5em",
+  "tag-pad": "0.1em 0.45em",
+  "code-pad": "0.08em 0.32em",
+  "md-block": "0.7em",
+  "md-head": "1em",
+  "md-head-after": "0.5em",
+  "md-item": "0.2em",
+  "md-indent": "1.4em",
+  "glyph-gap": "0.1em",
+  "mark-gap": "0.5ch",
+};
+
 /** Layout sizes (UI-128): those that scale with density, and the frame sizes that do not. */
 export const DENSITY_SIZES: Readonly<Record<string, string>> = {
   "row-h": "1.5rem",
@@ -69,6 +84,12 @@ export const FRAME_SIZES: Readonly<Record<string, string>> = {
   "status-h": "1.625rem",
   gutter: "2rem",
   measure: "50rem",
+  touch: "44px",
+  "areabar-h": "max(var(--omfp-touch), 3rem)",
+  "float-w": "24rem",
+  "tip-w": "24rem",
+  "toast-w": "22rem",
+  "key-col": "13em",
 };
 
 /** Radii, borders and rules (UI-129), icons (UI-131), focus (UI-132) and interactive states (UI-133). */

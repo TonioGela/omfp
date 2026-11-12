@@ -15,6 +15,7 @@ import {
   SURFACE_TOKENS,
   SYNTH,
   TEXT_PAIRS,
+  TEXT_SPACING,
   TYPE_SCALE,
 } from "./support/tokens.ts";
 
@@ -60,15 +61,15 @@ function value(rule: CssRule, token: string): string {
   return tidy(found);
 }
 
-/** The tokens of `expected` whose value in `rule` differs, with the value found. */
-function differing(rule: CssRule, expected: Readonly<Record<string, string>>): Record<string, string | undefined> {
+/** The tokens of `expected` whose value in `rule` differs, with the value found (`toEqual` ignores `undefined`). */
+function differing(rule: CssRule, expected: Readonly<Record<string, string>>): Record<string, string> {
   return Object.fromEntries(
     Object.entries(expected)
       .filter(([token, wanted]) => {
         const found = rule.declarations.get(prop(token));
         return found === undefined || tidy(found) !== wanted;
       })
-      .map(([token]) => [token, rule.declarations.get(prop(token))]),
+      .map(([token]) => [token, rule.declarations.get(prop(token)) ?? "(missing)"]),
   );
 }
 
@@ -244,6 +245,11 @@ describe("tokens.css", () => {
         ),
       ),
     ).toEqual({});
+  });
+
+  // spec: UI-127
+  test("text spacing is in em/ch, so chips, inline code and Markdown flow scale with their text, not with density", () => {
+    expect(differing(light, TEXT_SPACING)).toEqual({});
   });
 
   // spec: UI-128

@@ -15,13 +15,11 @@ import { type Binding, DEFAULT_BINDINGS } from "../keymap/keymap.ts";
 import { KeymapError, useBindings } from "../keymap/workspace.tsx";
 import {
   ACTIVE_VIEW,
-  DRAFT_THREAD,
   EDITOR_MODE,
-  SELECTED_THREAD,
+  useCurrentWorkspaceId,
   useHost,
   useSettings,
   useSnapshot,
-  useThreadSummary,
   useViews,
   useWindowState,
 } from "../sdk/index.ts";
@@ -229,14 +227,6 @@ function FrameModeLine({
       <FilePickerLine />
     </ModeLine>
   );
-}
-
-/** The workspace this window works in, live: the selected thread's, else the draft thread's (UI-100). */
-function useCurrentWorkspaceId(): string | undefined {
-  const [selected] = useWindowState(SELECTED_THREAD);
-  const [draft] = useWindowState(DRAFT_THREAD);
-  const summary = useThreadSummary(selected);
-  return selected === undefined ? draft?.workspaceId : summary?.workspaceId;
 }
 
 /** The views of the workspace's manifest; the default view without one, before it arrives, or with the daemon's

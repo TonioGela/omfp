@@ -80,11 +80,14 @@ describe("workspaces", () => {
     expect(gitSummary({ branch: "main", ahead: 0, behind: 0, dirty: true, files: [] })).toBe("dirty");
   });
 
-  // spec: UI-025
-  test("the widget shows the selected thread's workspace, else the draft's", () => {
-    expect(currentWorkspaceId(thread("t1", "one", "w1"), { workspaceId: "w2" })).toBe("w1");
-    expect(currentWorkspaceId(undefined, { workspaceId: "w2" })).toBe("w2");
-    expect(currentWorkspaceId(undefined, undefined)).toBeUndefined();
+  // spec: UI-025, UI-100
+  test("the window's workspace is the selected thread's, else the draft's; none while the thread is unknown", () => {
+    const t1 = thread("t1", "one", "w1");
+    expect(currentWorkspaceId("t1", t1, { workspaceId: "w2" })).toBe("w1");
+    expect(currentWorkspaceId(undefined, undefined, { workspaceId: "w2" })).toBe("w2");
+    expect(currentWorkspaceId(undefined, undefined, undefined)).toBeUndefined();
+    // A selected thread not in the index yet (just created): no workspace, not a flash of the draft's.
+    expect(currentWorkspaceId("t2", undefined, { workspaceId: "w2" })).toBeUndefined();
   });
 
   // spec: UI-025

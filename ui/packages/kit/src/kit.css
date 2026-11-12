@@ -65,7 +65,7 @@
   .omfp-kbd {
     display: inline-block;
     min-inline-size: 1.6em;
-    padding: 0.36em 0.4em;
+    padding: var(--omfp-kbd-pad);
     font-family: var(--omfp-font-code);
     font-size: var(--omfp-fs-2xs);
     line-height: 1;
@@ -598,7 +598,7 @@
   }
 
   .omfp-tooltip {
-    max-inline-size: 24rem;
+    max-inline-size: var(--omfp-tip-w);
     padding: var(--omfp-s1) var(--omfp-s2);
     border-radius: var(--omfp-r-chip);
     font-size: var(--omfp-fs-xs);
@@ -806,7 +806,7 @@
 
   .omfp-tabs__tab::before {
     content: "▸";
-    margin-inline-end: 0.5ch;
+    margin-inline-end: var(--omfp-mark-gap);
     opacity: 0;
   }
 
@@ -1094,7 +1094,7 @@
   }
 
   .omfp-count {
-    padding: 0.1em 0.5em;
+    padding: var(--omfp-pill-pad);
     border-radius: 999px;
     font-size: var(--omfp-fs-2xs);
     font-variant-numeric: tabular-nums;
@@ -1103,7 +1103,7 @@
   }
 
   .omfp-exit {
-    padding: 0.1em 0.45em;
+    padding: var(--omfp-tag-pad);
     border-radius: var(--omfp-r-chip);
     font-size: var(--omfp-fs-2xs);
     white-space: nowrap;
@@ -1505,7 +1505,7 @@
   .omfp-dialog code,
   code.omfp-code,
   .omfp-markdown :not(pre) > code {
-    padding: 0.08em 0.32em;
+    padding: var(--omfp-code-pad);
     border-radius: var(--omfp-r-chip);
     font-size: 0.82em;
     color: var(--omfp-tertiary);
@@ -1743,7 +1743,7 @@
   }
 
   .omfp-markdown :is(p, ul, ol, blockquote, pre, table) {
-    margin-block: 0.7em;
+    margin-block: var(--omfp-md-block);
   }
 
   .omfp-markdown :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
@@ -1751,7 +1751,7 @@
   }
 
   .omfp-markdown :is(h1, h2, h3, h4, h5, h6) {
-    margin-block: 1em 0.5em;
+    margin-block: var(--omfp-md-head) var(--omfp-md-head-after);
     font-size: 1em;
     font-weight: var(--omfp-fw-strong);
     line-height: 1.3;
@@ -1766,11 +1766,11 @@
   }
 
   .omfp-markdown :is(ul, ol) {
-    padding-inline-start: 1.4em;
+    padding-inline-start: var(--omfp-md-indent);
   }
 
   .omfp-markdown li + li {
-    margin-block-start: 0.2em;
+    margin-block-start: var(--omfp-md-item);
   }
 
   .omfp-markdown li::marker {
@@ -1827,7 +1827,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--omfp-s2);
-    inline-size: 22rem;
+    inline-size: var(--omfp-toast-w);
   }
 
   .omfp-toast {
@@ -2369,7 +2369,7 @@
   .omfp-cmd__input {
     flex: 1;
     min-inline-size: 0;
-    padding: 0 0 0 0.1em;
+    padding: 0 0 0 var(--omfp-glyph-gap);
     border: 0;
     font: inherit;
     color: inherit;
@@ -2406,7 +2406,7 @@
   }
 
   .omfp-cmdmenu__command {
-    min-inline-size: 13em;
+    min-inline-size: var(--omfp-key-col);
     font-family: var(--omfp-font-code);
     white-space: nowrap;
   }
@@ -2526,7 +2526,7 @@
 
   .omfp-help__row {
     display: grid;
-    grid-template-columns: minmax(0, 13em) minmax(0, 1fr);
+    grid-template-columns: minmax(0, var(--omfp-key-col)) minmax(0, 1fr);
     align-items: baseline;
     gap: var(--omfp-s3);
     padding-block: calc(var(--omfp-s1) / 2);
@@ -2894,7 +2894,7 @@
     align-items: center;
     justify-content: center;
     gap: var(--omfp-s1);
-    min-block-size: max(44px, 3rem);
+    min-block-size: var(--omfp-areabar-h);
     padding: var(--omfp-s1);
     border: 0;
     background: transparent;
@@ -3015,14 +3015,23 @@
     border-inline-start: 2px solid var(--omfp-tertiary);
   }
 
-  .omfp-caret {
+  /* The stream caret (UI-147): a `StreamCaret`, or after the last streamed character of a `.omfp-caret-trail` column
+     of Markdown chunks (UI-191), the last text a streaming reply has; no tail effect on the text. */
+  .omfp-caret,
+  .omfp-caret-trail > .omfp-markdown:last-child > :last-child:not(ul, ol)::after,
+  .omfp-caret-trail > .omfp-markdown:last-child > :is(ul, ol):last-child > li:last-child::after {
     display: inline-block;
     inline-size: 0.5em;
     block-size: 1.05em;
-    margin-inline-start: 0.1em;
+    margin-inline-start: var(--omfp-glyph-gap);
     vertical-align: -0.15em;
     background: var(--omfp-grad);
     box-shadow: 0 0 0.5rem color-mix(in oklab, var(--omfp-primary) 60%, transparent);
+  }
+
+  .omfp-caret-trail > .omfp-markdown:last-child > :last-child:not(ul, ol)::after,
+  .omfp-caret-trail > .omfp-markdown:last-child > :is(ul, ol):last-child > li:last-child::after {
+    content: "";
   }
 
   .omfp-reasoning {
@@ -3349,7 +3358,13 @@
     animation: omfp-bounce 0.45s var(--omfp-ease) 2;
   }
 
-  :root[data-motion="full"] .omfp-caret {
+  :root[data-motion="full"] .omfp-caret,
+  :root[data-motion="full"] .omfp-caret-trail > .omfp-markdown:last-child > :last-child:not(ul, ol)::after,
+  :root[data-motion="full"]
+    .omfp-caret-trail
+    > .omfp-markdown:last-child
+    > :is(ul, ol):last-child
+    > li:last-child::after {
     animation: omfp-blink 0.9s steps(1) infinite;
   }
 

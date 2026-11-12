@@ -39,12 +39,16 @@ export interface WorkspaceRow {
   readonly repos: readonly RepoRow[];
 }
 
-/** The workspace the widget shows: the selected thread's, else the draft thread's (UI-023), else none. */
+/**
+ * The window's current workspace (UI-100): the selected thread's (`selected` is its summary in the index), else the
+ * draft thread's (UI-023), else none. While the selected thread is not in the index yet, none: never the draft's.
+ */
 export function currentWorkspaceId(
+  selectedId: string | undefined,
   selected: ThreadSummary | undefined,
   draft: { readonly workspaceId: string } | undefined,
 ): string | undefined {
-  return selected?.workspaceId ?? draft?.workspaceId;
+  return selectedId === undefined ? draft?.workspaceId : selected?.workspaceId;
 }
 
 /** The row of `workspace`; `status` is the `workspace/<id>` topic's git status (`undefined` until it arrives). */

@@ -6,11 +6,13 @@
 
 import type { Density, Motion, NotificationMode, SetSettingsParams } from "@omfp/protocol";
 import { type Mode, normalizeKeys } from "../keymap/keymap.ts";
-import { FONT_SIZE_MAX, FONT_SIZE_MIN } from "../sdk/index.ts";
+import { type ColorScheme, FONT_SIZE_MAX, FONT_SIZE_MIN } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 
 type FontRole = "prose" | "ui" | "code";
 
+/** The window's color schemes (`:theme`, the gallery's `?scheme=`). */
+export const SCHEMES: readonly ColorScheme[] = ["system", "light", "dark"];
 export const DENSITIES: readonly Density[] = ["compact", "normal"];
 export const MOTIONS: readonly Motion[] = ["full", "reduced", "none"];
 const NOTIFICATIONS: readonly NotificationMode[] = ["background", "always", "never"];

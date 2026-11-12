@@ -85,6 +85,8 @@ describe("transcript", () => {
     const chunks = () => [...screen.getByTestId("markdown").querySelectorAll(":scope > .omfp-markdown")];
     const [first, second] = chunks();
     expect([first?.textContent, second?.textContent]).toEqual(["First paragraph.", "Second"]);
+    // The streaming text is the reply's last block: the caret trails its last character.
+    expect(screen.getByTestId("markdown").classList.contains("omfp-caret-trail")).toBe(true);
     client.threadEvents(THREAD, update({ type: "text_delta", contentIndex: 0, delta: " half." }));
     flush();
     expect(chunks()[0]).toBe(first);

@@ -12,7 +12,6 @@
 import {
   ActionRow,
   Brand,
-  Button,
   cx,
   HintRow,
   Icon,
@@ -20,82 +19,52 @@ import {
   Menu,
   MenuItem,
   MenuTrigger,
-  PathField,
   Popover,
   SearchField,
   StateMark,
-  TextField,
 } from "@omfp/kit";
 import { INDEX_TOPIC, type ThreadSummary, type Workspace } from "@omfp/protocol";
-import {
-  type FormEvent,
-  type KeyboardEvent,
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   DELETE_WORKSPACE,
   DRAFT_THREAD,
-  errorMessage,
   SELECTED_THREAD,
   threadActions,
   useCall,
   useCommand,
+  useCurrentWorkspaceId,
   useHost,
-  useReportError,
   useSnapshot,
   useThreadActions,
   useThreads,
   useWindowState,
   useWorkspaces,
   type WidgetProps,
-  windowKey,
 } from "../../sdk/index.ts";
-import { usePathSources } from "../../sdk/paths.ts";
 import { strings } from "../../strings/index.ts";
 import {
   ConversationSearch,
-  decodeIds,
   displayTitle,
   isCollapsed,
   isFiltering,
   isUnread,
-  isWorkspacePath,
   type Move,
   moveSelection,
-  newWorkspaceParams,
   type Section,
   type Seen,
   sidebarSections,
   spawnedCounts,
   spawnedTree,
-  statusLabel,
   type ThreadFilter,
-  threadStatus,
   toggled,
   updateSeen,
   visibleOrder,
 } from "../../vm/threads.ts";
-import { relativeAge } from "./age.ts";
-import { threadMarkState, useFresh } from "./marks.ts";
+import { ARCHIVED_OPEN, COLLAPSED_WORKSPACES, SEEN, SPAWNED_BY, THREAD_QUERY } from "./keys.ts";
+import { ThreadRow } from "./thread-row.tsx";
+import { NewWorkspace, RenameWorkspace } from "./workspace-fields.tsx";
 
 const text = strings.shell.threads;
-
-/** The filter query of this window. */
-export const THREAD_QUERY = windowKey<string>("threads/query", "");
-/** Workspace ids whose section is collapsed, kept across reloads (UI-022). */
-export const COLLAPSED_WORKSPACES = windowKey<readonly string[]>("threads/collapsed", [], decodeIds);
-/** Workspace ids whose archived threads are listed (UI-026); collapsed by default. */
-export const ARCHIVED_OPEN = windowKey<readonly string[]>("threads/archivedOpen", []);
-/** `updatedAt` of each thread when this window last showed it (UI-020). */
-export const SEEN = windowKey<Seen>("threads/seen", new Map());
-/** The thread whose spawned tree the column shows (UI-240); `undefined` shows every thread. */
-export const SPAWNED_BY = windowKey<string | undefined>("threads/spawnedBy", undefined);
 
 /** Rows moved by Ctrl-d / Ctrl-u. */
 const HALF_PAGE = 10;
@@ -350,71 +319,6 @@ function SpawnedByBar({ thread, clear }: { thread: ThreadSummary | undefined; cl
   );
 }
 
-/** "+ workspace" (UI-023): one field taking a name (optional) or, when it starts with `/` or `~`, the path of a
- * repository to link (completed as in DMN-021); Enter creates the workspace and opens a draft thread in it. */
-function NewWorkspace({
-  inputRef,
-  focus,
-}: {
-  inputRef: RefObject<HTMLInputElement | null>;
-  focus: boolean;
-}): ReactNode {
-  const call = useCall();
-  const actions = useThreadActions();
-  const sources = usePathSources();
-  const labels = strings.shell.newWorkspace;
-  const [value, setValue] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
-  useEffect(() => {
-    if (focus) {
-      inputRef.current?.focus();
-    }
-  }, [focus, inputRef]);
-  const submit = (typed: string) => {
-    if (busy) {
-      return;
-    }
-    setBusy(true);
-    setError(undefined);
-    call("workspaces.create", newWorkspaceParams(typed)).then(
-      (workspace) => {
-        setBusy(false);
-        setValue("");
-        actions.openDraft(workspace.id);
-      },
-      (failure: unknown) => {
-        setBusy(false);
-        setError(errorMessage(failure));
-      },
-    );
-  };
-  return (
-    <div
-      className="omfp-threads__new-workspace"
-      data-testid="new-workspace"
-      data-mode={isWorkspacePath(value) ? "path" : "name"}
-    >
-      <PathField
-        label={labels.label}
-        hideLabel
-        placeholder={labels.placeholder}
-        value={value}
-        onChange={setValue}
-        onSubmit={submit}
-        complete={sources.complete}
-        inputRef={inputRef}
-        data-testid="new-workspace-input"
-      />
-      {error !== undefined && (
-        <p className="omfp-form-error" role="alert" data-testid="new-workspace-error">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function WorkspaceSection({
   section,
   filter,
@@ -440,7 +344,7 @@ function WorkspaceSection({
   const [renaming, setRenaming] = useState(false);
   const headingId = useId();
   const collapsed = isCollapsed(workspace.id, collapsedIds, filter);
-  const current = useCurrentWorkspace() === workspace.id;
+  const current = useCurrentWorkspaceId() === workspace.id;
   const showArchived = archivedOpen.includes(workspace.id);
   const draftHere = draft?.workspaceId === workspace.id && !isFiltering(filter);
   const snippets = isFiltering(filter) ? filter.conversation : NO_SNIPPETS;
@@ -604,146 +508,5 @@ function WorkspaceSection({
         </>
       )}
     </section>
-  );
-}
-
-/** The workspace this window works in: the selected thread's, else the draft thread's. */
-function useCurrentWorkspace(): string | undefined {
-  const [selected] = useWindowState(SELECTED_THREAD);
-  const [draft] = useWindowState(DRAFT_THREAD);
-  const threads = useThreads();
-  return selected === undefined ? draft?.workspaceId : threads.get(selected)?.workspaceId;
-}
-
-function RenameWorkspace({ workspace, close }: { workspace: Workspace; close: () => void }): ReactNode {
-  const call = useCall();
-  const report = useReportError();
-  const [name, setName] = useState(workspace.name);
-  const save = (event: FormEvent) => {
-    event.preventDefault();
-    close();
-    const trimmed = name.trim();
-    if (trimmed !== "" && trimmed !== workspace.name) {
-      call("workspaces.update", { workspaceId: workspace.id, name: trimmed }).catch(report);
-    }
-  };
-  const onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === "Escape") {
-      event.preventDefault();
-      close();
-    }
-  };
-  return (
-    <form className="omfp-ws__rename" onSubmit={save}>
-      <TextField
-        label={text.renameLabel}
-        hideLabel
-        value={name}
-        onChange={setName}
-        onKeyDown={onKeyDown}
-        // Opened from the section's menu to type the new name at once
-        autoFocus
-        inputProps={{ "data-testid": "workspace-name-input" }}
-      />
-    </form>
-  );
-}
-
-function ThreadRow({
-  thread,
-  selected,
-  unread,
-  snippet,
-  spawned,
-  archived = false,
-}: {
-  thread: ThreadSummary;
-  selected: boolean;
-  unread: boolean;
-  snippet: string | undefined;
-  /** How many threads it spawned, transitively; `undefined` for none (UI-240). */
-  spawned: number | undefined;
-  archived?: boolean;
-}): ReactNode {
-  const actions = useThreadActions();
-  const [spawnedBy, setSpawnedBy] = useWindowState(SPAWNED_BY);
-  const status = threadStatus(thread);
-  const title = displayTitle(thread);
-  const state = threadMarkState(status, unread);
-  const fresh = useFresh(status);
-  const filtering = spawnedBy === thread.id;
-  return (
-    <li
-      className="omfp-row omfp-thread omfp-thread-item"
-      data-state={state}
-      data-unread={unread || undefined}
-      data-selected={selected || undefined}
-      data-fresh={fresh || undefined}
-      data-archived={archived || undefined}
-      data-snippet={snippet !== undefined || undefined}
-    >
-      <button
-        type="button"
-        className="omfp-thread-row"
-        data-testid="thread-row"
-        data-thread-id={thread.id}
-        data-status={status}
-        data-title-source={thread.titleSource}
-        data-archived={archived ? "true" : undefined}
-        aria-current={selected ? "true" : undefined}
-        onClick={() => actions.select(thread.id)}
-      >
-        <StateMark state={state} label={statusLabel(status)} data-testid="thread-status" data-status={status} />
-        <span className="omfp-row__title omfp-thread-row__title">{title}</span>
-        {unread && (
-          <span className="omfp-visually-hidden" data-testid="unread">
-            {text.unread}
-          </span>
-        )}
-        <span className="omfp-row__meta" data-testid="thread-age">
-          {relativeAge(thread.updatedAt, Date.now())}
-        </span>
-        {snippet !== undefined && (
-          <span className="omfp-thread-row__snippet" data-testid="thread-snippet">
-            {snippet}
-          </span>
-        )}
-      </button>
-      {archived && (
-        <Button
-          size="sm"
-          variant="quiet"
-          aria-label={text.unarchiveThread(title)}
-          data-testid="unarchive-thread"
-          data-thread-id={thread.id}
-          onPress={() => void actions.unarchive(thread.id)}
-        >
-          {text.unarchive}
-        </Button>
-      )}
-      {spawned !== undefined && (
-        <Button
-          size="sm"
-          variant="quiet"
-          className="omfp-thread-row__spawned"
-          icon={<Icon name="git-fork" />}
-          aria-label={text.spawnedFilter(spawned, title)}
-          aria-pressed={filtering}
-          data-testid="spawned-filter"
-          data-thread-id={thread.id}
-          onPress={() => setSpawnedBy(filtering ? undefined : thread.id)}
-        >
-          {spawned}
-        </Button>
-      )}
-      <IconButton
-        className="omfp-row__delete"
-        label={text.deleteThread(title)}
-        icon={<Icon name="x" />}
-        data-testid="row-delete-thread"
-        data-thread-id={thread.id}
-        onPress={() => actions.requestDelete(thread.id)}
-      />
-    </li>
   );
 }

@@ -6,14 +6,13 @@
  * selected, the composer of the draft thread (UI-023): its first message creates the thread.
  */
 
-import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/core";
+import type { AvailableSlashCommand, ImageContent } from "@omfp/core";
 import {
   Autocomplete,
   Button,
   ComposerBar,
   ComposerHint,
   Icon,
-  IconButton,
   Kbd,
   Composer as KitComposer,
   Menu,
@@ -29,7 +28,6 @@ import {
   complete,
   DRAFT_MESSAGE,
   DRAFT_THREAD,
-  type Draft,
   type DraftThread,
   draftKey,
   EMPTY_DRAFT,
@@ -41,10 +39,6 @@ import {
   keyAction,
   keyLabel,
   type Modifiers,
-  type QueueChip,
-  type QueueOp,
-  queueChips,
-  queueOpApplied,
   restoreCleared,
   restoreDraft,
   restoredTexts,
@@ -53,7 +47,6 @@ import {
   type SendMode,
   type Suggestion,
   sendMode,
-  settleQueueOp,
   slashSuggestions,
   steerModifier,
   strings,
@@ -75,9 +68,11 @@ import {
   useRef,
   useState,
 } from "react";
+import { Attachments } from "./attachments.tsx";
 import { LiveVoicePanel, MicButton } from "./live.tsx";
 import { testId, type WidgetProps } from "./props.ts";
-import { clearedDraftKey, PENDING_QUEUE, useClock, useSelectedThread } from "./state.ts";
+import { QueueChips } from "./queue.tsx";
+import { clearedDraftKey, useClock, useSelectedThread } from "./state.ts";
 
 const text = strings.chat.composer;
 
@@ -223,73 +218,6 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
   );
 }
 
-/** The queue from the last `queue_update`; actions mark a chip busy until the daemon answers (UI-062). */
-function QueueChips({ threadId, state }: { threadId: string; state: ThreadState }) {
-  const [pending] = useWindowState(PENDING_QUEUE);
-  const chips = queueChips(state.queue, threadId, pending);
-  if (chips.length === 0) {
-    return null;
-  }
-  return (
-    <ul className="omfp-queue" data-testid="queue" aria-label={strings.chat.queue.label}>
-      {chips.map((chip, index) => (
-        // Queue texts may repeat; the position tells them apart.
-        // biome-ignore lint/suspicious/noArrayIndexKey: see above
-        <QueueChipView key={`${chip.queue}-${index}`} threadId={threadId} chip={chip} />
-      ))}
-    </ul>
-  );
-}
-
-function QueueChipView({ threadId, chip }: { threadId: string; chip: QueueChip }) {
-  const call = useCall();
-  const announce = useAnnounce();
-  const [, setPending] = useWindowState(PENDING_QUEUE);
-  const run = (op: QueueOp) => {
-    const sent = { threadId, op, message: chip.text };
-    setPending((previous) => [...previous, sent]);
-    const method = op === "remove" ? "thread.queue.remove" : "thread.queue.promote";
-    const queue = chip.queue === "steering" ? "steering" : "followUp";
-    const settle = (applied: boolean) => {
-      setPending((previous) => settleQueueOp(previous, sent));
-      if (!applied) {
-        announce(strings.chat.queue.gone(chip.text));
-      }
-    };
-    call(method, { threadId, message: chip.text, queue }).then(
-      (result) => settle(queueOpApplied(op, result)),
-      () => settle(false),
-    );
-  };
-  const busy = chip.pending !== undefined;
-  return (
-    <li
-      className="omfp-queue-chip omfp-queue__chip"
-      data-kind={chip.queue === "steering" ? "steer" : "follow-up"}
-      data-testid="queue-chip"
-      data-queue={chip.queue}
-      data-pending={chip.pending}
-      aria-busy={busy}
-    >
-      <span className="omfp-queue-chip__kind">{strings.chat.queue.kind[chip.queue]}</span>
-      <span className="omfp-queue-chip__text">{chip.text}</span>
-      {chip.canPromote && (
-        <Button size="sm" variant="quiet" data-testid="queue-promote" isDisabled={busy} onPress={() => run("promote")}>
-          {strings.chat.queue.promote}
-        </Button>
-      )}
-      <IconButton
-        label={strings.chat.queue.remove}
-        icon={<Icon name="x" />}
-        data-testid="queue-remove"
-        isDisabled={busy}
-        onPress={() => run("remove")}
-      />
-    </li>
-  );
-}
-
-/** The key chip of a send mode's key (UI-148): `shift+enter` steers while the agent works, `enter` sends otherwise. */
 function sendKey(mode: SendMode): string {
   return keyLabel(mode === "steer" ? "Shift-Enter" : "Enter");
 }
@@ -711,30 +639,4 @@ const ComposerActions = memo(function ComposerActions({
 function ThreadMicButton({ threadId }: { threadId: string }) {
   const view = useThread(threadId);
   return view === undefined ? null : <MicButton threadId={threadId} state={view.state} />;
-}
-
-/** Thumbnails of the attached images, each removable. */
-function Attachments({ draft, setDraft }: { draft: Draft; setDraft: (update: (previous: Draft) => Draft) => void }) {
-  return (
-    <ul className="omfp-composer__attachments" aria-label={text.attachments}>
-      {draft.images.map((image, index) => (
-        // Attachments have no identity besides their position.
-        // biome-ignore lint/suspicious/noArrayIndexKey: see above
-        <li key={index} className="omfp-composer__attachment" data-testid="attachment">
-          <img src={`data:${image.mimeType ?? ""};base64,${image.data ?? ""}`} alt={text.attachment(index + 1)} />
-          <IconButton
-            label={text.removeAttachment(index + 1)}
-            icon="×"
-            data-testid="attachment-remove"
-            onPress={() =>
-              setDraft((previous) => ({
-                ...previous,
-                images: previous.images.filter((_, position) => position !== index),
-              }))
-            }
-          />
-        </li>
-      ))}
-    </ul>
-  );
 }

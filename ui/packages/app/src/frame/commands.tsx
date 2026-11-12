@@ -11,7 +11,6 @@ import type { ReactNode } from "react";
 import {
   ACTIVE_VIEW,
   COLOR_SCHEME,
-  type ColorScheme,
   currentWorkspaceId,
   type OpenFileOptions,
   openFile,
@@ -28,9 +27,7 @@ import { strings } from "../strings/index.ts";
 import { DEFAULT_MANIFEST } from "../view/views.ts";
 import { displayTitle, isArchived, nextNeedingAttention, spawnerOf } from "../vm/threads.ts";
 import { LAYOUT_EDIT } from "./layout.tsx";
-import { DENSITIES, parseSet, SET_KEYS } from "./set.ts";
-
-const SCHEMES: readonly ColorScheme[] = ["system", "light", "dark"];
+import { DENSITIES, parseSet, SCHEMES, SET_KEYS } from "./set.ts";
 
 /** The path the focused element or its nearest ancestor carries for `g f` (`data-omfp-path`, UI-116). */
 function focusedPath(element: Element | null): { path: string; options: OpenFileOptions } | undefined {

@@ -42,12 +42,12 @@
     overflow: hidden;
   }
 
-  /* A phone (UI-205): 44 px touch targets, a narrower gutter. */
+  /* A phone (UI-205): touch targets of at least `--omfp-touch`, a narrower gutter. */
   .omfp-app[data-layout="mobile"] {
-    --omfp-ctl-h: max(44px, 1.75rem);
-    --omfp-ctl-h-sm: max(44px, 1.4375rem);
-    --omfp-row-h: max(44px, 1.5rem);
-    --omfp-bar-h: max(44px, 2.125rem);
+    --omfp-ctl-h: max(var(--omfp-touch), 1.75rem);
+    --omfp-ctl-h-sm: max(var(--omfp-touch), 1.4375rem);
+    --omfp-row-h: max(var(--omfp-touch), 1.5rem);
+    --omfp-bar-h: max(var(--omfp-touch), 2.125rem);
     --omfp-gutter: var(--omfp-s3);
   }
 
@@ -556,7 +556,7 @@
     z-index: 2;
     display: flex;
     flex-direction: column;
-    inline-size: 24rem;
+    inline-size: var(--omfp-float-w);
     block-size: 16rem;
     min-inline-size: 15rem;
     border: var(--omfp-bw) solid var(--omfp-pop-border);

@@ -99,13 +99,26 @@ describe("kit styles", () => {
     expect(sources.filter((path) => RETIRED_TOKEN.test(readFileSync(path, "utf8")))).toEqual([]);
   });
 
+  // spec: UI-125, UI-127
+  test("paddings, gaps and margins use the spacing steps or the text spacing tokens, never a length literal", () => {
+    const SPACING = /(?:^|[;{\s])((?:padding|margin|gap|row-gap|column-gap)[\w-]*)\s*:\s*([^;{}]+)/g;
+    // Hairlines (`1px`, `2px`, UI-125) stay literal; so do viewport-relative offsets.
+    const LENGTH = /(?<![\w-])\d*\.?\d+(?:em|rem|ch|ex|px)\b/g;
+    const offending = [join(KIT_SRC, "kit.css"), ...cssFiles(APP_SRC)].flatMap((path) =>
+      [...stripComments(readFileSync(path, "utf8")).matchAll(SPACING)]
+        .filter((match) => (match[2] ?? "").match(LENGTH)?.some((length) => length !== "1px" && length !== "2px"))
+        .map((match) => `${basename(path)}: ${match[1]}: ${(match[2] ?? "").trim()}`),
+    );
+    expect(offending).toEqual([]);
+  });
+
   // spec: UI-148
   test("key chips: code family at fs-2xs, optically centred on the text baseline, tertiary on surface-container", () => {
     const chip = findRule(kitRules, [LAYER], ".omfp-kbd");
     expect(Object.fromEntries(chip.declarations)).toEqual({
       display: "inline-block",
       "min-inline-size": "1.6em",
-      padding: "0.36em 0.4em",
+      padding: "var(--omfp-kbd-pad)",
       "font-family": "var(--omfp-font-code)",
       "font-size": "var(--omfp-fs-2xs)",
       "line-height": "1",
@@ -218,13 +231,24 @@ describe("kit styles", () => {
   });
 
   // spec: UI-147, UI-146
-  test("the stream caret blinks at motion full only; elsewhere it is steady", () => {
+  test("the stream caret, a StreamCaret or trailing streamed Markdown, is defined once and blinks at motion full only", () => {
+    const TRAIL = [
+      ".omfp-caret-trail > .omfp-markdown:last-child > :last-child:not(ul, ol)::after",
+      ".omfp-caret-trail > .omfp-markdown:last-child > :is(ul, ol):last-child > li:last-child::after",
+    ];
+    const look = findRule(kitRules, [LAYER], [".omfp-caret", ...TRAIL].join(", "));
+    expect(look.declarations.get("background")).toBe("var(--omfp-grad)");
     const blinking = kitRules.filter(
       (rule) => rule.selector.includes(".omfp-caret") && rule.declarations.has("animation"),
     );
     expect(blinking.map((rule) => [rule.selector, rule.declarations.get("animation")])).toEqual([
-      [':root[data-motion="full"] .omfp-caret', "omfp-blink 0.9s steps(1) infinite"],
+      [
+        [".omfp-caret", ...TRAIL].map((selector) => `:root[data-motion="full"] ${selector}`).join(", "),
+        "omfp-blink 0.9s steps(1) infinite",
+      ],
     ]);
+    const appCss = cssFiles(APP_SRC).map((path) => readFileSync(path, "utf8"));
+    expect(appCss.filter((css) => css.includes("omfp-blink")).length).toBe(0);
   });
 });
 

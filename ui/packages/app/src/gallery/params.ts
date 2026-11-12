@@ -3,7 +3,7 @@
  * `?density=`, `?motion=` and `?fs=` (the root size in px). Unknown values keep the app's defaults.
  */
 import type { Density, Motion } from "@omfp/protocol";
-import { DENSITIES, MOTIONS } from "../frame/set.ts";
+import { DENSITIES, MOTIONS, SCHEMES } from "../frame/set.ts";
 import { type ColorScheme, DEFAULT_DENSITY, DEFAULT_FONT_SIZE, DEFAULT_MOTION } from "../sdk/index.ts";
 
 /** The built-in palette, the matugen fixture theme, or the user preset the contrast guard fixes (UI-196). */
@@ -17,7 +17,6 @@ export interface GalleryParams {
   readonly fontSize: number;
 }
 
-const SCHEMES: readonly ColorScheme[] = ["system", "light", "dark"];
 const THEMES: readonly GalleryTheme[] = ["synth", "matugen-forest", "dux-solarized"];
 /** Root sizes the gallery accepts (px), the `[ui] font_size` range. */
 const MIN_FONT_SIZE = 10;

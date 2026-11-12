@@ -147,6 +147,20 @@
     --omfp-unit: 0.25rem;
     --omfp-density: 1;
 
+    /* Text spacing (UI-127): in em/ch, so it scales with the text it sits in (key chips, counts, exit tags, inline
+       code, Markdown flow, glyph gaps), not with density. */
+    --omfp-kbd-pad: 0.36em 0.4em;
+    --omfp-pill-pad: 0.1em 0.5em;
+    --omfp-tag-pad: 0.1em 0.45em;
+    --omfp-code-pad: 0.08em 0.32em;
+    --omfp-md-block: 0.7em;
+    --omfp-md-head: 1em;
+    --omfp-md-head-after: 0.5em;
+    --omfp-md-item: 0.2em;
+    --omfp-md-indent: 1.4em;
+    --omfp-glyph-gap: 0.1em;
+    --omfp-mark-gap: 0.5ch;
+
     /* Layout sizes (UI-128) that do not scale with density */
     --omfp-side-w: 17rem;
     --omfp-panel-w: 22rem;
@@ -154,6 +168,12 @@
     --omfp-status-h: 1.625rem;
     --omfp-gutter: 2rem;
     --omfp-measure: 50rem;
+    --omfp-touch: 44px;
+    --omfp-areabar-h: max(var(--omfp-touch), 3rem);
+    --omfp-float-w: 24rem;
+    --omfp-tip-w: 24rem;
+    --omfp-toast-w: 22rem;
+    --omfp-key-col: 13em;
 
     /* Radii and borders (UI-129) */
     --omfp-r-ctl: 0.375rem;

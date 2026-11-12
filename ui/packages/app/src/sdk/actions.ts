@@ -54,20 +54,18 @@ export function useReportError(): (error: unknown) => void {
   return useMemo(() => (error: unknown) => reportError(host, error), [host]);
 }
 
-/** The workspace this window works in, live: the selected thread's, else the draft thread's. */
+/** The workspace this window works in, live: the selected thread's, else the draft thread's (UI-100). */
 export function useCurrentWorkspaceId(): string | undefined {
   const [selected] = useWindowState(SELECTED_THREAD);
   const [draft] = useWindowState(DRAFT_THREAD);
-  return workspaceOf(useThreadSummary(selected), draft);
+  return workspaceOf(selected, useThreadSummary(selected), draft);
 }
 
-/** The workspace this window works in: the selected thread's, else the draft thread's. */
+/** The workspace this window works in: the selected thread's, else the draft thread's (UI-100). */
 export function currentWorkspaceId(host: OmfpHost): string | undefined {
   const selected = host.window.get(SELECTED_THREAD);
-  if (selected !== undefined) {
-    return host.frames.getSnapshot().index.threads.get(selected)?.workspaceId;
-  }
-  return host.window.get(DRAFT_THREAD)?.workspaceId;
+  const summary = selected === undefined ? undefined : host.frames.getSnapshot().index.threads.get(selected);
+  return workspaceOf(selected, summary, host.window.get(DRAFT_THREAD));
 }
 
 /** Drops what the window keeps for a thread that is archived or deleted: selection, draft, open editors (UI-026). */
