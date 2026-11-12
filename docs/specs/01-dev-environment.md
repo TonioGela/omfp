@@ -101,7 +101,8 @@ Its jobs run in parallel on `ubuntu-latest`, each `nix develop -c just <recipe>`
 
 Every job starts with the local action `.github/actions/dev-shell`: `wimpysworld/nothing-but-nix` (TST-075: the
 runner's free disk, then what deleting its preinstalled SDKs, browsers and Docker frees, pooled into a compressed Btrfs
-`/nix`, where Nix also builds; the Rust jobs bind-mount `target/` from it), `cachix/install-nix-action` (with
+`/nix`, where Nix also builds; the Rust jobs bind-mount `target/` from it and keep `CARGO_HOME` there, as the purge
+deletes `~/.cargo`), `cachix/install-nix-action` (with
 `accept-flake-config`), `cachix/cachix-action` on the `omfp` cache of ENV-034, `nix develop` once to build or fetch the
 shell; the jobs that compile Rust also restore `Swatinem/rust-cache` (the shell's toolchain is put on `PATH` for it).
 Caching (TST-072):

@@ -22,7 +22,8 @@ jobs:
   web:
     name: web bundle
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A cold Cachix cache builds omp from source in the dev shell (~26 min).
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/dev-shell

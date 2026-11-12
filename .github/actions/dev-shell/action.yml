@@ -24,20 +24,25 @@ runs:
       with:
         hatchet-protocol: rampage
 
-    - name: Put target/ on the Nix volume
+    # The purge deletes ~/.cargo in the background, also while cargo clones into it or after rust-cache restored it:
+    # CARGO_HOME, like target/, lives on the Nix volume (rust-cache reads CARGO_HOME too).
+    - name: Put target/ and CARGO_HOME on the Nix volume
       if: inputs.rust == 'true' && runner.os == 'Linux'
       shell: bash
       run: |
-        mkdir -p /var/tmp/nothing-but-nix/cargo-target target
+        mkdir -p /var/tmp/nothing-but-nix/cargo-target /var/tmp/nothing-but-nix/cargo-home target
         sudo mount --bind /var/tmp/nothing-but-nix/cargo-target target
+        echo "CARGO_HOME=/var/tmp/nothing-but-nix/cargo-home" >> "$GITHUB_ENV"
 
     - uses: cachix/install-nix-action@v31
       with:
         github_access_token: ${{ github.token }}
-        # Builds go to the Btrfs volume, not to /tmp on the small root disk.
+        # Builds go to the Btrfs volume, not to /tmp on the small root disk. A failed download from a cache (Cachix
+        # answered HTTP 500 once) builds the path instead of failing the job.
         extra_nix_config: |
           accept-flake-config = true
           build-dir = /nix/build
+          fallback = true
 
     - name: Make the build directory (macOS)
       if: runner.os == 'macOS'

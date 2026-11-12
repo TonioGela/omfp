@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead as _, BufReader, Read};
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
@@ -23,7 +24,8 @@ struct Bus {
 impl Bus {
     fn start() -> Self {
         let mut child = Command::new("dbus-daemon")
-            .args(["--session", "--nofork", "--print-address=1"])
+            .arg(format!("--config-file={}", session_config().display()))
+            .args(["--nofork", "--print-address=1"])
             .stdout(Stdio::piped())
             .spawn()
             .unwrap();
@@ -47,6 +49,22 @@ impl Bus {
         )
         .unwrap()
     }
+}
+
+/// The session bus configuration installed with the `dbus-daemon` on `PATH` (`../share/dbus-1/session.conf`):
+/// `--session` reads `/etc/dbus-1/session.conf`, which not every host has (GitHub's runner after the disk purge).
+fn session_config() -> PathBuf {
+    let daemon = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+        .map(|dir| dir.join("dbus-daemon"))
+        .find(|path| path.is_file())
+        .expect("dbus-daemon on PATH");
+    let daemon = daemon.canonicalize().unwrap();
+    daemon
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("share/dbus-1/session.conf")
 }
 
 impl Drop for Bus {

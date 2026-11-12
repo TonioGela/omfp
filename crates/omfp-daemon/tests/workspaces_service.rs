@@ -463,7 +463,8 @@ fn suggestions_are_filtered_by_path_or_name_ignoring_case() {
     assert_eq!(suggested(&env, "bACKEND"), vec![api.clone()]);
     assert_eq!(suggested(&env, " REPOS/APP "), vec![env.repo.clone()]);
     assert_eq!(suggested(&env, "repos/").len(), 2);
-    assert_eq!(suggested(&env, "nothing"), Vec::<PathBuf>::new());
+    // Not a word a temp dir path can hold (GitHub's runner keeps TMPDIR under /var/tmp/nothing-but-nix/).
+    assert_eq!(suggested(&env, "zz-no-such-repo"), Vec::<PathBuf>::new());
 }
 
 /// Fills `folder` with a link, a worktree and a clone among entries that are no repository.

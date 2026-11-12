@@ -251,7 +251,8 @@ mod portal {
     impl Portal {
         fn start(initial: u32, then: Option<u32>) -> Self {
             let mut bus = Command::new("dbus-daemon")
-                .args(["--session", "--nofork", "--print-address=1"])
+                .arg(format!("--config-file={}", session_config().display()))
+                .args(["--nofork", "--print-address=1"])
                 .stdout(Stdio::piped())
                 .spawn()
                 .unwrap();
@@ -344,6 +345,22 @@ mod portal {
             let _ = self.bus.kill();
             let _ = self.bus.wait();
         }
+    }
+
+    /// The session bus configuration installed with the `dbus-daemon` on `PATH` (`../share/dbus-1/session.conf`):
+    /// `--session` reads `/etc/dbus-1/session.conf`, which not every host has (GitHub's runner after the disk purge).
+    fn session_config() -> std::path::PathBuf {
+        let daemon = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
+            .map(|dir| dir.join("dbus-daemon"))
+            .find(|path| path.is_file())
+            .expect("dbus-daemon on PATH");
+        let daemon = daemon.canonicalize().unwrap();
+        daemon
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("share/dbus-1/session.conf")
     }
 
     /// The page's color scheme in a smoke window on `portal`'s session bus (`OMFP_SMOKE_SCHEME=<expected>` waits for it).
