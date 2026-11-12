@@ -92,8 +92,9 @@ crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs
                       the `desktop` feature (Tauri 2: WebKitGTK on Linux, WKWebView on macOS, M11) `desktop`
                       (desktop.rs: the window on the daemon's own UI, the theme push of `--connect`, the `OMFP_SMOKE`
                       check; desktop/local.rs: find or start the background daemon; desktop/portal.rs: the color
-                      scheme of the settings portal over gio's D-Bus API (Linux); desktop/macos.rs: the data store id
-                      and the page's `Notification` posted to the notification center); tray.rs: `omfp daemon
+                      scheme of the settings portal over gio's D-Bus API (Linux); desktop/macos.rs: the data store id,
+                      the page's `Notification` posted to the notification center, the app menu's New Window and
+                      zoom items); tray.rs: `omfp daemon
                       --tray`, the shared tray model, tray/sni.rs the
                       Linux StatusNotifierItem + dbusmenu over gio, tray/macos.rs the macOS menu bar item (AppKit on
                       the main thread, the daemon on another); build.rs (also the tray pixmaps and, on macOS, the

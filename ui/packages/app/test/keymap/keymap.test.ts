@@ -86,6 +86,16 @@ describe("keymap", () => {
     expect(keyLabel("-")).toBe("-");
   });
 
+  // spec: UI-280
+  test("on macOS Alt chords are labelled opt, elsewhere alt", () => {
+    expect(keyLabel("Alt-a", true)).toBe("opt+a");
+    expect(keyLabel("Ctrl-Alt-Enter", true)).toBe("ctrl+opt+enter");
+    expect(keyLabel("Space n", true)).toBe("spc n");
+    expect(keyLabel("Alt-a", false)).toBe("alt+a");
+    // The test DOM is not macOS: the default is the page's platform.
+    expect(keyLabel("Alt-a")).toBe("alt+a");
+  });
+
   // spec: UI-095, UI-020, UI-022, UI-023, UI-063
   test("the defaults are vim-style, with the command line and the Space leader", () => {
     const table = (command: string, mode: "normal" | "insert" = "normal") => keysFor(DEFAULT_BINDINGS, command, mode);

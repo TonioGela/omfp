@@ -650,6 +650,10 @@ requirements = [
   # The menu bar item
   "UI-254",
   "DMN-171",
+  # Option key labels, zoom and New Window of the macOS window
+  "UI-280",
+  "UI-281",
+  "UI-282",
   # The macOS data directory
   "DMN-170",
   # Security review fixes: private data directory, token URL only to a terminal, window origin, mount folders,

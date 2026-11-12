@@ -1,12 +1,21 @@
-//! The window's macOS parts (M11, S-15): its web storage per data directory (UI-250) and the page's notifications
-//! through the system's notification center (UI-252), only from the daemon's own page (DMN-182). The pure parts also
-//! build in Linux tests.
+//! The window's macOS parts (M11, S-15): its web storage per data directory (UI-250), the page's notifications
+//! through the system's notification center (UI-252), only from the daemon's own page (DMN-182), and the app menu's
+//! New Window and zoom items (UI-281, UI-282). The pure parts also build in Linux tests.
 
 use std::fmt::Write as _;
 use std::hash::{BuildHasher as _, Hasher as _, RandomState};
 use std::path::Path;
 
+#[cfg(target_os = "macos")]
+use std::ffi::OsString;
+#[cfg(target_os = "macos")]
+use std::sync::{Mutex, PoisonError};
+
 use tauri::Url;
+
+use super::Zoom;
+#[cfg(target_os = "macos")]
+use super::zoomed;
 
 /// The URL scheme of the page's notifications: the window cancels the navigation and posts the notification.
 pub const NOTIFY_SCHEME: &str = "omfp-notify";
@@ -181,9 +190,196 @@ pub fn register_app_icon() -> bool {
         .is_some_and(|icon| icon.setName(Some(&NSString::from_str(APP_ICON))))
 }
 
+/// The app menu's own entries (UI-281, UI-282), by their menu ids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuAction {
+    NewWindow,
+    Zoom(Zoom),
+}
+
+/// The app menu's own entries: id, title, key (Tauri's accelerator) and action, in the File menu (New Window) and
+/// the View menu (the zoom items, Safari's titles and keys).
+pub const MENU_ENTRIES: [(&str, &str, &str, MenuAction); 4] = [
+    (
+        "new-window",
+        "New Window",
+        "CmdOrCtrl+N",
+        MenuAction::NewWindow,
+    ),
+    (
+        "zoom-reset",
+        "Actual Size",
+        "CmdOrCtrl+0",
+        MenuAction::Zoom(Zoom::Reset),
+    ),
+    (
+        "zoom-in",
+        "Zoom In",
+        "CmdOrCtrl+=",
+        MenuAction::Zoom(Zoom::In),
+    ),
+    (
+        "zoom-out",
+        "Zoom Out",
+        "CmdOrCtrl+-",
+        MenuAction::Zoom(Zoom::Out),
+    ),
+];
+
+/// The action of the app menu's entry `id`; `None` for Tauri's predefined items.
+#[must_use]
+pub fn menu_action(id: &str) -> Option<MenuAction> {
+    MENU_ENTRIES
+        .iter()
+        .find(|(entry, ..)| *entry == id)
+        .map(|(.., action)| *action)
+}
+
+/// `builder` with the window's app menu (UI-281, UI-282): Tauri's default macOS menu (the app menu, File, Edit,
+/// View, Window, Help) plus New Window (Cmd-N, `omfp` with `new_window`) atop File and Actual Size, Zoom In, Zoom Out
+/// (Cmd-0, Cmd-=, Cmd--) atop View, which set the page zoom of the window ([`zoomed`]).
+#[cfg(target_os = "macos")]
+pub fn with_app_menu(
+    builder: tauri::Builder<tauri::Wry>,
+    new_window: Vec<OsString>,
+) -> tauri::Builder<tauri::Wry> {
+    let zoom = Mutex::new(1.0);
+    builder
+        .menu(app_menu)
+        .on_menu_event(move |app, event| match menu_action(event.id().as_ref()) {
+            Some(MenuAction::NewWindow) => match std::env::current_exe() {
+                Ok(exe) => crate::tray::spawn_detached(
+                    std::process::Command::new(exe).args(&new_window),
+                    "omfp desktop",
+                    "omfp desktop",
+                ),
+                Err(error) => {
+                    eprintln!("omfp desktop: no new window, cannot find this executable: {error}")
+                }
+            },
+            Some(MenuAction::Zoom(step)) => {
+                use tauri::Manager as _;
+                let Some(window) = app.get_webview_window("main") else {
+                    return;
+                };
+                let mut level = zoom.lock().unwrap_or_else(PoisonError::into_inner);
+                let next = zoomed(*level, step);
+                match window.set_zoom(next) {
+                    Ok(()) => *level = next,
+                    Err(error) => eprintln!("omfp desktop: cannot zoom: {error}"),
+                }
+            }
+            None => {}
+        })
+}
+
+/// Tauri's default macOS menu (the app menu, File, Edit, View, Window, Help) with the entries of [`MENU_ENTRIES`] atop
+/// File and View.
+#[cfg(target_os = "macos")]
+fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{
+        AboutMetadata, HELP_SUBMENU_ID, Menu, MenuItem, PredefinedMenuItem as Item, Submenu,
+        WINDOW_SUBMENU_ID,
+    };
+    let [new_window, zoom_reset, zoom_in, zoom_out] =
+        MENU_ENTRIES.map(|(id, title, key, _)| MenuItem::with_id(app, id, title, true, Some(key)));
+    let info = app.package_info();
+    let about = AboutMetadata {
+        name: Some(info.name.clone()),
+        version: Some(info.version.to_string()),
+        ..AboutMetadata::default()
+    };
+    let separator = || Item::separator(app);
+    Menu::with_items(
+        app,
+        &[
+            &Submenu::with_items(
+                app,
+                &info.name,
+                true,
+                &[
+                    &Item::about(app, None, Some(about))?,
+                    &separator()?,
+                    &Item::services(app, None)?,
+                    &separator()?,
+                    &Item::hide(app, None)?,
+                    &Item::hide_others(app, None)?,
+                    &separator()?,
+                    &Item::quit(app, None)?,
+                ],
+            )?,
+            &Submenu::with_items(
+                app,
+                "File",
+                true,
+                &[&new_window?, &separator()?, &Item::close_window(app, None)?],
+            )?,
+            &Submenu::with_items(
+                app,
+                "Edit",
+                true,
+                &[
+                    &Item::undo(app, None)?,
+                    &Item::redo(app, None)?,
+                    &separator()?,
+                    &Item::cut(app, None)?,
+                    &Item::copy(app, None)?,
+                    &Item::paste(app, None)?,
+                    &Item::select_all(app, None)?,
+                ],
+            )?,
+            &Submenu::with_items(
+                app,
+                "View",
+                true,
+                &[
+                    &zoom_reset?,
+                    &zoom_in?,
+                    &zoom_out?,
+                    &separator()?,
+                    &Item::fullscreen(app, None)?,
+                ],
+            )?,
+            &Submenu::with_id_and_items(
+                app,
+                WINDOW_SUBMENU_ID,
+                "Window",
+                true,
+                &[
+                    &Item::minimize(app, None)?,
+                    &Item::maximize(app, None)?,
+                    &separator()?,
+                    &Item::close_window(app, None)?,
+                ],
+            )?,
+            &Submenu::with_id_and_items(app, HELP_SUBMENU_ID, "Help", true, &[])?,
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // spec: UI-281, UI-282
+    #[test]
+    fn the_app_menu_entries_act_by_id_on_the_macos_keys() {
+        let keys: Vec<(&str, Option<MenuAction>)> = MENU_ENTRIES
+            .iter()
+            .map(|(id, _, key, _)| (*key, menu_action(id)))
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                ("CmdOrCtrl+N", Some(MenuAction::NewWindow)),
+                ("CmdOrCtrl+0", Some(MenuAction::Zoom(Zoom::Reset))),
+                ("CmdOrCtrl+=", Some(MenuAction::Zoom(Zoom::In))),
+                ("CmdOrCtrl+-", Some(MenuAction::Zoom(Zoom::Out))),
+            ]
+        );
+        // Tauri's predefined items (Close Window, Quit, …) are not ours.
+        assert_eq!(menu_action("quit"), None);
+    }
 
     // spec: UI-250
     #[test]

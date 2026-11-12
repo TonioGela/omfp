@@ -202,18 +202,23 @@ const CHIP_NAMES: Readonly<Record<string, string>> = {
   ArrowRight: "right",
 };
 
+/** Whether the page runs on macOS (`navigator.platform` `MacIntel`, also in the desktop window's WKWebView). */
+const MAC = typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
+
 /**
  * The key chip label of a key sequence (UI-148): lowercase words (`spc`, `esc`, `enter`, `alt+enter`, `ctrl+c`),
- * printable keys as typed (`G`, `:`), tokens separated by a space (`spc n`, `d d`); never symbol glyphs.
+ * printable keys as typed (`G`, `:`), tokens separated by a space (`spc n`, `d d`); never symbol glyphs. On macOS
+ * (`mac`) Alt is the Option key: `opt+a` (UI-280).
  */
-export function keyLabel(keys: string): string {
+export function keyLabel(keys: string, mac = MAC): string {
   return normalizeKeys(keys)
     .split(" ")
     .map((token) => {
       const modifiers: string[] = [];
       let rest = token;
       for (let match = MODIFIER.exec(rest); match !== null; match = MODIFIER.exec(rest)) {
-        modifiers.push((match[1] ?? "").toLowerCase());
+        const modifier = (match[1] ?? "").toLowerCase();
+        modifiers.push(mac && modifier === "alt" ? "opt" : modifier);
         rest = rest.slice(match[0].length);
       }
       const base = CHIP_NAMES[rest] ?? ([...rest].length === 1 ? rest : rest.toLowerCase());

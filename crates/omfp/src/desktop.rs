@@ -2,6 +2,7 @@
 //! found with [`omfp_daemon::discover`] or started in the background (ARC-003), or with `--connect` on another
 //! daemon. The window loads the daemon's own UI over http: no bundled assets, no Tauri IPC, no capabilities.
 
+use std::ffi::OsString;
 use std::io::IsTerminal as _;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -166,7 +167,8 @@ pub fn run(args: &Args) -> anyhow::Result<i32> {
     };
     // UI-004: a browser can attach to the same daemon.
     println!("{}", browser.line(std::io::stdout().is_terminal()));
-    let code = open_window(window_url, &data_dir.join("webview"), smoke)?;
+    let new_window = new_window_command(args, &data_dir);
+    let code = open_window(window_url, &data_dir.join("webview"), smoke, new_window)?;
     if let Some(handle) = in_process {
         runtime.block_on(handle.shutdown())?;
     }
@@ -370,14 +372,32 @@ const PROBE: &str = r#"(() => {
   };
 })()"#;
 
-/// Opens the window and runs the event loop until it closes.
-fn open_window(url: Url, webview_data: &Path, smoke: Option<Smoke>) -> anyhow::Result<i32> {
+/// Opens the window and runs the event loop until it closes. `new_window` is the command line of one more window
+/// (macOS's File menu, UI-282).
+#[cfg_attr(
+    not(target_os = "macos"),
+    expect(
+        unused_variables,
+        clippy::needless_pass_by_value,
+        reason = "macOS's app menu only"
+    )
+)]
+fn open_window(
+    url: Url,
+    webview_data: &Path,
+    smoke: Option<Smoke>,
+    new_window: Vec<OsString>,
+) -> anyhow::Result<i32> {
     // UI-222: the Dock's and the app switcher's icon, registered before AppKit starts (a folder otherwise).
     #[cfg(target_os = "macos")]
     if !macos::register_app_icon() {
         eprintln!("omfp desktop: cannot set the app icon");
     }
-    let app = tauri::Builder::default().build(tauri::generate_context!())?;
+    let builder = tauri::Builder::default();
+    // UI-281, UI-282: the app menu with New Window and the zoom items on their macOS keys.
+    #[cfg(target_os = "macos")]
+    let builder = macos::with_app_menu(builder, new_window);
+    let app = builder.build(tauri::generate_context!())?;
     // The window stays on the daemon's UI (DMN-182): its origin is the only one granted anything.
     let origin = url.origin().ascii_serialization();
     // The top-level page, as its loads report it (the permission handler must not call into the webview).
@@ -458,6 +478,53 @@ fn follow(url: &Url, origin: &str) -> bool {
 /// or mail link does; the window never opens a second webview.
 fn opens_externally(url: &Url, origin: &str) -> bool {
     navigation(url, origin) == Navigation::External
+}
+
+/// A zoom command of the window (UI-281): the View menu's Zoom In, Zoom Out and Actual Size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Zoom {
+    In,
+    Out,
+    Reset,
+}
+
+/// The window's page zoom levels (UI-281), the browsers' steps from 50 % to 300 %.
+const ZOOM_LEVELS: [f64; 13] = [
+    0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0,
+];
+
+/// The page zoom after `zoom` at `current` (UI-281): the next level up or down, the ends staying, or 100 %.
+#[must_use]
+pub fn zoomed(current: f64, zoom: Zoom) -> f64 {
+    const SAME: f64 = 1e-6;
+    match zoom {
+        Zoom::In => ZOOM_LEVELS
+            .into_iter()
+            .find(|level| *level > current + SAME)
+            .unwrap_or(current),
+        Zoom::Out => ZOOM_LEVELS
+            .into_iter()
+            .rev()
+            .find(|level| *level < current - SAME)
+            .unwrap_or(current),
+        Zoom::Reset => 1.0,
+    }
+}
+
+/// The command line of one more window like the one of `args` (UI-282): on the same daemon (`--connect`) or the
+/// local one of `data_dir` (found running, so without the daemon arguments), with the same token when one was given;
+/// not on the thread of `--thread`. The local case is the menu bar's New window (UI-218).
+#[must_use]
+pub fn new_window_command(args: &Args, data_dir: &Path) -> Vec<OsString> {
+    let mut line = vec![OsString::from("desktop")];
+    if let Some(connect) = &args.connect {
+        line.extend(["--connect".into(), connect.into()]);
+    }
+    line.extend(["--data-dir".into(), data_dir.as_os_str().to_owned()]);
+    if let Some(token) = &args.token {
+        line.extend(["--token".into(), token.into()]);
+    }
+    line
 }
 
 /// Polls [`PROBE`] every 100 ms; once the shell is ready (and the page's color scheme is `scheme`, when given:
@@ -884,5 +951,59 @@ mod tests {
 
         pusher.abort();
         daemon.shutdown().await.unwrap();
+    }
+
+    // spec: UI-281
+    #[test]
+    fn zoom_steps_through_the_browsers_levels() {
+        assert_eq!(zoomed(1.0, Zoom::In), 1.1);
+        assert_eq!(zoomed(1.0, Zoom::Out), 0.9);
+        assert_eq!(zoomed(2.5, Zoom::Reset), 1.0);
+        // A level between two steps goes to the next one either way.
+        assert_eq!(zoomed(1.2, Zoom::In), 1.25);
+        assert_eq!(zoomed(1.2, Zoom::Out), 1.1);
+        // The ends stay.
+        assert_eq!(zoomed(3.0, Zoom::In), 3.0);
+        assert_eq!(zoomed(0.5, Zoom::Out), 0.5);
+        let mut level = 1.0;
+        let mut ins = Vec::new();
+        for _ in 0..8 {
+            level = zoomed(level, Zoom::In);
+            ins.push(level);
+        }
+        assert_eq!(ins, [1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.0]);
+    }
+
+    // spec: UI-282
+    #[test]
+    fn a_new_window_opens_on_the_same_daemon() {
+        let dir = Path::new("/data");
+        assert_eq!(
+            strings(&new_window_command(&parse(&["--thread", "t1"]), dir)),
+            ["desktop", "--data-dir", "/data"]
+        );
+        // The daemon arguments of a daemon already running are not needed again.
+        assert_eq!(
+            strings(&new_window_command(
+                &parse(&["--token", "s", "--", "--bind", "127.0.0.1:0"]),
+                dir
+            )),
+            ["desktop", "--data-dir", "/data", "--token", "s"]
+        );
+        assert_eq!(
+            strings(&new_window_command(
+                &parse(&["--connect", "https://host:7420", "--token", "s"]),
+                dir
+            )),
+            [
+                "desktop",
+                "--connect",
+                "https://host:7420",
+                "--data-dir",
+                "/data",
+                "--token",
+                "s"
+            ]
+        );
     }
 }

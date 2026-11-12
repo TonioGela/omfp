@@ -199,7 +199,11 @@ pub(super) fn open_uri(connection: &gio::DBusConnection, url: String) {
         None::<&gio::Cancellable>,
         move |reply| {
             if reply.is_err() {
-                spawn_detached(Command::new("xdg-open").arg(&url), "xdg-open");
+                spawn_detached(
+                    Command::new("xdg-open").arg(&url),
+                    "xdg-open",
+                    "omfp daemon",
+                );
             }
         },
     );

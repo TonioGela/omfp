@@ -323,6 +323,7 @@ impl Daemon {
         spawn_detached(
             Command::new(&self.exe).args(window_command(&self.data_dir, thread)),
             "omfp desktop",
+            "omfp daemon",
         );
     }
 }
@@ -333,16 +334,21 @@ pub fn open_in_browser(url: &str) {
     #[cfg(target_os = "linux")]
     match gio::bus_get_sync(gio::BusType::Session, None::<&gio::Cancellable>) {
         Ok(connection) => sni::open_uri(&connection, url.to_owned()),
-        Err(_) => spawn_detached(Command::new("xdg-open").arg(url), "xdg-open"),
+        Err(_) => spawn_detached(Command::new("xdg-open").arg(url), "xdg-open", "omfp daemon"),
     }
     #[cfg(target_os = "macos")]
-    spawn_detached(Command::new("/usr/bin/open").arg(url), "open");
+    spawn_detached(
+        Command::new("/usr/bin/open").arg(url),
+        "open",
+        "omfp daemon",
+    );
 }
 
-/// Starts `command` detached like the daemon itself (ARC-003): its own process group, stdin and stdout `/dev/null` (a
-/// child's stdout never reaches `daemon.log`: `omfp desktop` prints the daemon's URL there, DMN-181), stderr the
-/// daemon's; reaped by a thread while the daemon lives.
-fn spawn_detached(command: &mut Command, name: &str) {
+/// Starts `command` (`name` in the log of `from`) detached like the daemon itself (ARC-003): its own process group,
+/// stdin and stdout `/dev/null` (a child's stdout never reaches `daemon.log`: `omfp desktop` prints the daemon's URL
+/// there, DMN-181), stderr the caller's; reaped by a thread while the caller lives. Also the new windows of a window
+/// (UI-282).
+pub(crate) fn spawn_detached(command: &mut Command, name: &str, from: &str) {
     match command
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -350,10 +356,10 @@ fn spawn_detached(command: &mut Command, name: &str) {
         .spawn()
     {
         Ok(mut child) => {
-            // Reaped while the daemon lives.
+            // Reaped while the caller lives.
             std::thread::spawn(move || child.wait());
         }
-        Err(error) => eprintln!("omfp daemon: cannot start {name}: {error}"),
+        Err(error) => eprintln!("{from}: cannot start {name}: {error}"),
     }
 }
 
