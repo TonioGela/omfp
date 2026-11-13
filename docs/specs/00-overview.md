@@ -86,8 +86,8 @@ flowchart LR
 
 ```text
 crates/
-  omfp-protocol/   UI↔daemon protocol types (serde), JSON Schemas. Compiles to wasm.
-  omfp-core/       Domain model and pure reducer over omp events. Compiles to wasm. No I/O.
+  omfp-protocol/   UI↔daemon protocol types (serde), JSON Schemas.
+  omfp-core/       Domain model and pure reducer over omp events. No I/O.
   omfp-daemon/     Daemon library (tokio, axum, rusqlite, omp-rpc): `omfp_daemon::start`, `omfp_daemon::run`.
   omfp/            The single `omfp` binary (D-15): `omfp daemon`, `omfp theme set`, `omfp mcp config`, and with the
                    `desktop` feature `omfp desktop` (Tauri, M7, M11).
@@ -100,7 +100,7 @@ ui/packages/      The TypeScript UI (Bun workspace, 04-ui): protocol (generated 
 
 | ID | Requirement |
 | --- | --- |
-| ARC-010 | `omfp-protocol` and `omfp-core` MUST compile for `wasm32-unknown-unknown` and MUST NOT use tokio, `std::process` or the filesystem. |
+| ARC-010 | (Removed, QA: no client runs a wasm build of the shared crates since the UI became a TypeScript port, D-18; `just check-wasm` and the toolchain's wasm target are gone.) `omfp-protocol` and `omfp-core` compiled for `wasm32-unknown-unknown` and used no tokio, `std::process` or the filesystem; they still do no I/O. |
 | ARC-011 | `omfp-core` MUST reuse `omp_rpc::wire` types for omp events and messages instead of redefining them. The whole `omp-rpc` crate compiles for wasm (S-01), but `omfp-core` uses only its `wire` module; its process client is for the daemon. |
 | ARC-012 | System dependencies (git, omp, clock, ID generation) MUST sit behind traits ("ports") in `omfp-daemon`, so component tests can use fake implementations. |
 

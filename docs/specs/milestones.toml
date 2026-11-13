@@ -7,7 +7,7 @@
 [M0]
 status = "done"
 requirements = [
-  "ARC-010", # shared crates compile for wasm (justfile check-wasm)
+  # ARC-010 (shared crates compile for wasm) was retired by QA: no client runs a wasm build since the TS port (D-18).
   "ENV-010", # omp pin agrees everywhere (xtask check-versions)
   "ENV-011", # omp pinned to a release tag
   # ENV-012 (wasm-bindgen and dioxus agree with the shell tools) was retired in M3 with the Dioxus UI (D-18).

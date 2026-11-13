@@ -38,7 +38,7 @@ nix develop                      # or: nix develop -c sh -c '<command>'
 just ci                          # check, test, test-ts, test-contract, test-e2e, test-desktop, package, mutants-gate, cov (CI: .github/workflows/ci.yml, same recipes)
 just mutants-gate                # TST-050: no surviving mutant in omfp-core, omfp-protocol (`just mutants` explores more crates)
 just cov                         # TST-050: line coverage gates (Rust pure crates ≥ 90%, daemon ≥ 75%, TS view models ≥ 90%) + HTML report
-just check                       # lint, check-versions, spec-trace, check-wasm, deny, check-workflow (actionlint + workflow vs `just ci`)
+just check                       # lint, check-versions, spec-trace, deny, check-workflow (actionlint + workflow vs `just ci`)
 just test                        # fast Rust tests (no omp process)
 just test-ts                     # `bun run test` in ui/ (reducer goldens, client, kit + app component tests; transport suite against a fake-launcher daemon)
 just test-contract               # contract tests against the pinned omp + fake LLM
@@ -67,8 +67,8 @@ Clippy runs with `pedantic` as errors. Notable: `assert_is_empty` forbids `asser
 ## Layout
 
 ```text
-crates/omfp-core      reducer over omp events (ThreadEvent → ThreadState); no I/O; compiles to wasm (ARC-010)
-crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas; compiles to wasm (ARC-010)
+crates/omfp-core      reducer over omp events (ThreadEvent → ThreadState); no I/O
+crates/omfp-protocol  UI ↔ daemon protocol types, JSON Schemas
 crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLauncher (agent.rs, agent/fake.rs; omp's live voice
                       sequence in agent/fake/live.rs), live voice relay (supervisor/live.rs: one session per thread;
                       live_context.rs: omp's vendored live prompt live_instructions.txt + the thread's conversation),

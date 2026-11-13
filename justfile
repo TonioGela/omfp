@@ -42,10 +42,6 @@ with-web-bundle command:
 record-fixtures:
     OMFP_RECORD_FIXTURES=1 just test-contract
 
-# spec: ARC-010 — the shared crates compile for the browser
-check-wasm:
-    cargo check -p omfp-core -p omfp-protocol --target wasm32-unknown-unknown
-
 # JavaScript dependencies of ui/ exactly as locked in ui/bun.lock, offline from the dev shell's Bun cache, which Nix
 # builds from ui/bun.nix (ENV-001); the cache is read-only, bun copies the packages into ui/node_modules
 ui-install: check-bun-nix
@@ -161,8 +157,8 @@ package-macos out="dist":
 package-flatpak out="dist":
     contrib/release/package-flatpak.sh {{ quote(out) }}
 
-# Static checks: formatting and lints, version pins, traceability, wasm, dependencies, the CI workflow
-check: lint check-versions spec-trace check-wasm deny check-workflow
+# Static checks: formatting and lints, version pins, traceability, dependencies, the CI workflow
+check: lint check-versions spec-trace deny check-workflow
 
 # Mutation testing of the pure crates (TST-005); pass `--in-diff <file>` to limit it to a change
 mutants *args:

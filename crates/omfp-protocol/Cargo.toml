@@ -1,6 +1,6 @@
 [package]
 name = "omfp-protocol"
-description = "UI <-> daemon protocol types (serde, compiles to wasm)."
+description = "UI <-> daemon protocol types (serde)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

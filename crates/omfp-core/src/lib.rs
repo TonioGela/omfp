@@ -1,7 +1,7 @@
 //! Domain model and pure reducer over omp events.
 //!
-//! This crate performs no I/O and compiles to `wasm32-unknown-unknown` (ARC-010). The daemon runs it; the UI runs its
-//! TypeScript port (`ui/packages/core`), checked against this reducer's golden states (D-04).
+//! This crate performs no I/O. The daemon runs it; the UI runs its TypeScript port (`ui/packages/core`), checked
+//! against this reducer's golden states (D-04).
 
 mod ask;
 mod event;

@@ -11,7 +11,7 @@ nix develop          # or: direnv allow (.envrc contains `use flake`)
 | Group | Tools |
 | --- | --- |
 | Agent | `omp` built from the pinned upstream release (`inputs.oh-my-pi`, `packages.<system>.omp`), with its `nixpkgs`, `rust-overlay` and `bun2nix` inputs following ours |
-| Rust | toolchain from `rust-toolchain.toml` via rust-overlay (1.99.1, `wasm32-unknown-unknown` for `just check-wasm` (ARC-010), clippy, rustfmt, rust-analyzer, rust-src, llvm-tools) |
+| Rust | toolchain from `rust-toolchain.toml` via rust-overlay (1.99.1, clippy, rustfmt, rust-analyzer, rust-src, llvm-tools) |
 | Testing | `cargo-nextest`, `cargo-insta`, `cargo-llvm-cov`, `cargo-mutants`, `cargo-deny`, `bacon` |
 | TypeScript (`ui/`) | `bun` 1.4.4 (runtime, package manager, test runner), `bun2nix` 2.1.2 (patched, see below), `biome` 2.6.5 (format and lint; from nixpkgs because the npm build is a glibc binary NixOS cannot run); `typescript` 7.0.2 (native `tsc`) and `@types/bun` come from `ui/bun.lock` through `ui/bun.nix` |
 | E2E / smoke (Linux) | `chromium`, `chromedriver`, `xvfb-run` |
@@ -162,7 +162,7 @@ Its jobs run in parallel on `ubuntu-latest`, each `nix develop -c just <recipe>`
 | --- | --- |
 | `dev-shell` | no recipe: builds (or fetches) the Linux dev shell once; every other Linux job `needs:` it (TST-076) |
 | `web` | `just build-web`; uploads `ui/packages/app/dist` as the `web-bundle` artifact |
-| `check` | `just check`: lints, version pins, spec-trace, wasm, `cargo deny`, the workflow itself (`actionlint`) |
+| `check` | `just check`: lints, version pins, spec-trace, `cargo deny`, the workflow itself (`actionlint`) |
 | `test`, `test-ts`, `test-contract` | `just test`, `just test-ts`, `just test-contract` (the pinned omp of the dev shell, the fake LLM) |
 | `test-e2e`, `test-desktop` | after `web`, on its artifact (`OMFP_WEB_BUNDLE`): `just test-e2e` (headless Chromium), `just test-desktop` (`xvfb-run`) |
 | `macos` | pushes to `master` only, `macos-15`, after `web`: `just test-desktop` (WKWebView, the menu bar item) and `just package` (the darwin packages and `omfp.app`) (TST-092, ENV-042) |

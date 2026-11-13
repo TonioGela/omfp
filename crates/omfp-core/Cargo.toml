@@ -1,6 +1,6 @@
 [package]
 name = "omfp-core"
-description = "Domain model and pure reducer over omp events (no I/O, compiles to wasm)."
+description = "Domain model and pure reducer over omp events (no I/O)."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

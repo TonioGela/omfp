@@ -1,6 +1,7 @@
 //! Types of the UI <-> daemon protocol (docs/specs/03-protocol.md).
 //!
-//! Shared by the daemon and every client; compiles to `wasm32-unknown-unknown` (ARC-010).
+//! Shared by the daemon and the Rust clients (the `omfp` CLI, the tests); `just gen-ts` generates the UI's TypeScript
+//! types from its JSON Schemas.
 //!
 //! A client sends [`Request`]s (decode them with [`decode_request`]); the daemon answers with [`ServerFrame`]s. Each
 //! method has a marker type in [`method`] implementing [`Method`], which names its params and result types.

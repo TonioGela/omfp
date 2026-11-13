@@ -179,7 +179,7 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 | `just gen-ts` / `just gen-states` | regenerate the TypeScript protocol types (`ui/packages/protocol/src/generated.ts`) / the golden reducer states (`fixtures/states/<version>/`); `just test` fails while either is stale |
 | `just test-e2e` | L5 on a release web bundle of its own (TST-074): `OMFP_WEB_BUNDLE` when set, else one built into a temporary directory |
 | `just test-desktop` | the `omfp` crate with `--features desktop`: the desktop unit tests and the window tests of TST-033 under `xvfb-run` (on macOS on the user's screen, with the menu bar test, TST-090, TST-091), one at a time (on its own web bundle, as `just test-e2e`) |
-| `just check` | `lint` (`fmt --check`, `clippy -D warnings`, Biome, `tsc`), `check-versions`, `spec-trace`, `check-wasm`, `deny` (`cargo deny check`), `check-workflow` (TST-070..TST-073, TST-075, TST-076, TST-092) |
+| `just check` | `lint` (`fmt --check`, `clippy -D warnings`, Biome, `tsc`), `check-versions`, `spec-trace`, `deny` (`cargo deny check`), `check-workflow` (TST-070..TST-073, TST-075, TST-076, TST-092) |
 | `just package` | `nix build` of the packages `omfp` and `omfp-headless` (ENV-030..ENV-033; on macOS with `Applications/omfp.app`, ENV-041) |
 | `just mutants` | `cargo mutants` on `omfp-core`, `omfp-protocol`, `fake-llm`, `xtask` (`--in-diff` for changed code) |
 | `just mutants-gate` | TST-050: `cargo mutants` on `omfp-core` and `omfp-protocol`; fails on a surviving mutant (report in `target/mutants.out`) |
