@@ -794,9 +794,15 @@ requirements = [
   "DMN-215",
   "UI-355",
   "UI-356",
+  # Composer: large pastes as chips
+  "UI-357",
+  "UI-358",
+  "UI-359",
+  "UI-360",
   # Journeys
   "E2E-22",
   "E2E-23",
   "E2E-26",
   "E2E-27",
+  "E2E-29",
 ]

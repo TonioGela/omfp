@@ -122,33 +122,59 @@ describe("composer", () => {
   // spec: UI-064
   test("a failed send puts its text and images back before what was typed since", () => {
     const image = { type: "image" as const, data: "AA==", mimeType: "image/png" };
-    expect(restoreFailedPrompt({ text: "more", images: [] }, "first", [image])).toEqual({
+    expect(
+      restoreFailedPrompt({ text: "more", images: [], pastes: [] }, { text: "first", images: [image], pastes: [] }),
+    ).toEqual({
       text: "first\n\nmore",
       images: [image],
+      pastes: [],
     });
   });
 
   // spec: UI-063, UI-095
   test("Ctrl-C clears a non-empty draft, aborts an empty one or on a second press within the window", () => {
     const image = { type: "image" as const, data: "AA==", mimeType: "image/png" };
-    expect(interruptAction({ text: "typing", images: [] }, 5000, undefined)).toBe("clear");
-    expect(interruptAction({ text: "", images: [image] }, 5000, undefined)).toBe("clear");
-    expect(interruptAction({ text: " ", images: [] }, 5000, undefined)).toBe("clear");
-    expect(interruptAction({ text: "", images: [] }, 5000, undefined)).toBe("abort");
-    expect(interruptAction({ text: "typing", images: [] }, 5000 + INTERRUPT_WINDOW_MS, 5000)).toBe("abort");
-    expect(interruptAction({ text: "typing", images: [] }, 5001 + INTERRUPT_WINDOW_MS, 5000)).toBe("clear");
+    const draft = (text: string, images: (typeof image)[] = []) => ({ text, images, pastes: [] });
+    expect(interruptAction(draft("typing"), 5000, undefined)).toBe("clear");
+    expect(interruptAction(draft("", [image]), 5000, undefined)).toBe("clear");
+    expect(interruptAction(draft(" "), 5000, undefined)).toBe("clear");
+    expect(interruptAction(draft(""), 5000, undefined)).toBe("abort");
+    expect(interruptAction(draft("typing"), 5000 + INTERRUPT_WINDOW_MS, 5000)).toBe("abort");
+    expect(interruptAction(draft("typing"), 5001 + INTERRUPT_WINDOW_MS, 5000)).toBe("clear");
   });
 
   // spec: UI-063
   test("u puts the cleared draft back before what was typed since", () => {
     const image = { type: "image" as const, data: "AA==", mimeType: "image/png" };
-    expect(restoreCleared({ text: "", images: [] }, { text: "cleared", images: [image] })).toEqual({
+    expect(
+      restoreCleared({ text: "", images: [], pastes: [] }, { text: "cleared", images: [image], pastes: [] }),
+    ).toEqual({
       text: "cleared",
       images: [image],
+      pastes: [],
     });
-    expect(restoreCleared({ text: "new", images: [] }, { text: "cleared", images: [] })).toEqual({
+    expect(
+      restoreCleared({ text: "new", images: [], pastes: [] }, { text: "cleared", images: [], pastes: [] }),
+    ).toEqual({
       text: "cleared\n\nnew",
       images: [],
+      pastes: [],
+    });
+  });
+
+  // spec: UI-064, UI-357
+  test("a restored draft keeps its paste chips; chips typed since become text when both have some", () => {
+    const cleared = { text: "see [Paste #1, +11 lines]", images: [], pastes: [{ id: 1, text: "x\n".repeat(10) }] };
+    expect(restoreCleared({ text: "plain", images: [], pastes: [] }, cleared)).toEqual({
+      text: "see [Paste #1, +11 lines]\n\nplain",
+      images: [],
+      pastes: cleared.pastes,
+    });
+    const since = { text: "and [Paste #1, 1001 chars]", images: [], pastes: [{ id: 1, text: "y".repeat(1001) }] };
+    expect(restoreCleared(since, cleared)).toEqual({
+      text: `see [Paste #1, +11 lines]\n\nand ${"y".repeat(1001)}`,
+      images: [],
+      pastes: cleared.pastes,
     });
   });
 

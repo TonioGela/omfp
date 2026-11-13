@@ -337,3 +337,119 @@ describe("focus requests", () => {
     expect(host.window.get(FOCUS_COMPOSER)).toBeUndefined();
   });
 });
+
+const lines = (count: number) => Array.from({ length: count }, (_, index) => `line ${index + 1}`).join("\n");
+
+/** Pastes `text` at the caret; `false` when the composer took it over (the default action was prevented). */
+function paste(text: string): boolean {
+  let native = true;
+  act(() => {
+    native = fireEvent.paste(input(), { clipboardData: { files: [], getData: () => text } });
+  });
+  return native;
+}
+
+const chipLabels = () => screen.queryAllByTestId("paste-toggle").map((chip) => chip.textContent);
+
+describe("large pastes", () => {
+  // spec: UI-357, UI-360
+  test("a paste above the threshold becomes a numbered chip and a token; sending expands it in place", async () => {
+    const { client, host } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+    await userEvent.click(input());
+    await userEvent.keyboard("before  after");
+    input().setSelectionRange(7, 7);
+    expect(paste(lines(120))).toBe(false);
+    expect(input().value).toBe("before [Paste #1, +120 lines] after");
+    expect(input().selectionStart).toBe("before [Paste #1, +120 lines]".length);
+    expect(chipLabels()).toEqual(["Pasted text #1 · 120 lines"]);
+    expect(within(screen.getByRole("list", { name: "Pasted texts" })).getAllByTestId("paste-chip").length).toBe(1);
+    expect(host.announcer.getSnapshot().message).toBe("Pasted 120 lines as pasted text #1; ctrl+shift+v pastes it raw");
+    input().setSelectionRange(input().value.length, input().value.length);
+    expect(paste("y".repeat(1001))).toBe(false);
+    expect(chipLabels()).toEqual(["Pasted text #1 · 120 lines", "Pasted text #2 · 1001 chars"]);
+    await userEvent.click(screen.getByTestId("send"));
+    expect(client.callsTo("thread.prompt").map((call) => call.params)).toEqual([
+      { threadId: THREAD, text: `before ${lines(120)} after${"y".repeat(1001)}` },
+    ]);
+    expect(chipLabels()).toEqual([]);
+  });
+
+  // spec: UI-359
+  test("small pastes and Ctrl+Shift+V pastes are left to the text area", async () => {
+    renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+    await userEvent.click(input());
+    expect(paste(lines(10))).toBe(true);
+    act(() => {
+      fireEvent.keyDown(input(), { key: "V", ctrlKey: true, shiftKey: true });
+    });
+    expect(paste(lines(50))).toBe(true);
+    // The raw keys count for the next paste only.
+    expect(paste(lines(50))).toBe(false);
+    expect(chipLabels()).toEqual(["Pasted text #1 · 50 lines"]);
+  });
+
+  // spec: UI-358, UI-092
+  test("the chip expands to its editable text; × removes the paste and its token", async () => {
+    const { host } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+    await userEvent.click(input());
+    paste(lines(12));
+    const toggle = screen.getByTestId("paste-toggle");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    await userEvent.click(toggle);
+    expect(screen.getByTestId("paste-toggle").getAttribute("aria-expanded")).toBe("true");
+    const area = screen.getByTestId("paste-text") as HTMLTextAreaElement;
+    expect(area.value).toBe(lines(12));
+    expect(screen.getByLabelText("Text of pasted text #1").getAttribute("data-testid")).toBe("paste-text");
+    await userEvent.clear(area);
+    await userEvent.type(area, "short");
+    expect(input().value).toBe("[Paste #1, 5 chars]");
+    expect(chipLabels()).toEqual(["Pasted text #1 · 5 chars"]);
+    await userEvent.click(screen.getByRole("button", { name: "Remove pasted text #1" }));
+    expect(input().value).toBe("");
+    expect(chipLabels()).toEqual([]);
+    expect(host.window.get(draftKey(THREAD)).pastes).toEqual([]);
+    expect(host.announcer.getSnapshot().message).toBe("Removed pasted text #1");
+  });
+
+  // spec: UI-358
+  test("Backspace on a token removes the whole paste", async () => {
+    renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+    await userEvent.click(input());
+    await userEvent.keyboard("see ");
+    paste(lines(11));
+    await userEvent.keyboard("{Backspace}");
+    expect(input().value).toBe("see ");
+    expect(chipLabels()).toEqual([]);
+  });
+
+  // spec: UI-360, UI-064, UI-063
+  test("pastes stay in the thread's draft: thread switches, Ctrl-C then u, and a failed send", async () => {
+    const clock = new ManualClock(0);
+    const { client, flush, host } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"), clock);
+    installKeymap(host, clock);
+    await userEvent.click(input());
+    paste(lines(11));
+    act(() => host.window.set(SELECTED_THREAD, "02T"));
+    client.thread("02T", fixtureEvents("text_reply"));
+    flush();
+    expect(chipLabels()).toEqual([]);
+    act(() => host.window.set(SELECTED_THREAD, THREAD));
+    client.thread(THREAD, fixtureEvents("text_reply"));
+    flush();
+    expect(input().value).toBe("[Paste #1, +11 lines]");
+    expect(chipLabels()).toEqual(["Pasted text #1 · 11 lines"]);
+
+    await userEvent.click(input());
+    press("c", { ctrlKey: true });
+    expect(chipLabels()).toEqual([]);
+    act(() => input().blur());
+    press("u");
+    expect(chipLabels()).toEqual(["Pasted text #1 · 11 lines"]);
+
+    await userEvent.click(screen.getByTestId("send"));
+    expect(client.callsTo("thread.prompt")[0]?.params).toEqual({ threadId: THREAD, text: lines(11) });
+    await act(async () => client.callsTo("thread.prompt")[0]?.reject(new Error("offline")));
+    expect(input().value).toBe("[Paste #1, +11 lines]");
+    expect(chipLabels()).toEqual(["Pasted text #1 · 11 lines"]);
+  });
+});

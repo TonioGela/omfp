@@ -6,13 +6,21 @@ import { type WindowKey, windowKey } from "./window-store.ts";
 /** The thread this window shows; `undefined` for none. */
 export const SELECTED_THREAD = windowKey<string | undefined>("selectedThread", undefined);
 
-/** A composer draft: text and pasted or dropped images (UI-060, UI-064). */
+/** A large paste kept as a chip (UI-357): its number in the draft and its text. */
+export interface Paste {
+  readonly id: number;
+  readonly text: string;
+}
+
+/** A composer draft: text, pasted or dropped images (UI-060, UI-064) and large pastes, each standing in `text` as
+ * its placeholder token (UI-357). */
 export interface Draft {
   readonly text: string;
   readonly images: readonly ImageContent[];
+  readonly pastes: readonly Paste[];
 }
 
-export const EMPTY_DRAFT: Draft = { text: "", images: [] };
+export const EMPTY_DRAFT: Draft = { text: "", images: [], pastes: [] };
 
 /** The draft of one thread, kept across thread switches and reconnects (UI-064); dropped when the thread is archived
  * or deleted (UI-026). */

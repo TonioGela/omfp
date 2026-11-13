@@ -235,7 +235,7 @@ const CHIP_NAMES: Readonly<Record<string, string>> = {
 };
 
 /** Whether the page runs on macOS (`navigator.platform` `MacIntel`, also in the desktop window's WKWebView). */
-const MAC = typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
+export const MAC = typeof navigator !== "undefined" && navigator.platform.startsWith("Mac");
 
 /**
  * The key chip label of a key sequence (UI-148): lowercase words (`spc`, `esc`, `enter`, `alt+enter`, `ctrl+c`),

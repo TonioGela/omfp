@@ -9,6 +9,7 @@
 import { type Binding, keyLabel, type Mode } from "../keymap/keymap.ts";
 import type { Command } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
+import { rawPasteKeys } from "../vm/paste.ts";
 import { unique } from "./cmdline.ts";
 
 export type HelpSectionId = "workspace" | "normal" | "insert" | "transcript" | "cmdline" | "editor" | "commands";
@@ -104,6 +105,7 @@ const COMPOSER_KEYS: readonly HelpRow[] = [
   { keys: [keyLabel("Shift-Enter")], description: keys.steer },
   { keys: [keyLabel("Alt-Enter")], description: keys.newline },
   { keys: [keyLabel("Tab")], description: keys.complete },
+  { keys: [keyLabel(rawPasteKeys())], description: keys.pasteRaw },
 ];
 
 /** Keys the transcript handles itself (UI-095). */

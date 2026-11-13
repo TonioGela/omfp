@@ -169,6 +169,18 @@ export {
 export { type NoticeRow, noticeRow } from "../vm/notice.ts";
 export { OpenedUrlWatch, openedUrls, threadOpenedUrls, urlHost } from "../vm/opened-url.ts";
 export {
+  applyEdit,
+  type Edited,
+  editPaste,
+  expandPastes,
+  insertPaste,
+  isLargePaste,
+  isRawPaste,
+  lineCount,
+  rawPasteKeys,
+  removePaste,
+} from "../vm/paste.ts";
+export {
   type PendingQueueOp,
   type QueueChip,
   type QueueOp,
@@ -356,6 +368,7 @@ export {
   FOCUS_COMPOSER,
   OPEN_SUBAGENT,
   type OpenSubagentRequest,
+  type Paste,
   RENAMING_THREAD,
   REVEAL_WIDGET,
   type RevealRequest,

@@ -166,7 +166,7 @@ describe("omfp:header", () => {
   // spec: UI-026
   test("archiving the selected thread clears the selection and its draft; delete asks first", async () => {
     const { client, host, user } = setup();
-    host.window.set(draftKey("t1"), { text: "half", images: [] });
+    host.window.set(draftKey("t1"), { text: "half", images: [], pastes: [] });
     await user.click(screen.getByTestId("delete-thread"));
     expect(host.window.get(DELETE_THREAD)).toBe("t1");
     expect(client.callsTo("threads.delete")).toHaveLength(0);

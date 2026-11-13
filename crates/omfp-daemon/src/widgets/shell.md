@@ -88,5 +88,8 @@ help, `Space p` workspace, `Space f` files, `Space v` views); Escape cancels the
 | `Ctrl-c`, `u` | Clear the draft, then abort the turn; restore the last cleared draft. |
 
 In insert mode `Esc` leaves the text field, `Ctrl-c` clears then aborts, `Alt-a` / `Alt-n` work too; in the composer
-Enter sends, Shift-Enter steers the running turn, Alt-Enter adds a line. Keys are rebindable: the daemon's `[keymap]`
-config, the workspace's `.omfp/keymap.json`, then the init files' `bind` (each layer wins over the ones before it).
+Enter sends, Shift-Enter steers the running turn, Alt-Enter adds a line. A paste of more than 10 lines or 1000
+characters becomes a chip (`Pasted text #1 · 120 lines`) and a `[Paste #1, +120 lines]` token, expanded when the
+message is sent; `Ctrl-Shift-v` (`Cmd-Shift-v` on macOS) pastes it as plain text instead. Keys are rebindable: the
+daemon's `[keymap]` config, the workspace's `.omfp/keymap.json`, then the init files' `bind` (each layer wins over the
+ones before it).

@@ -213,7 +213,7 @@ describe("omfp:threads", () => {
     expect(screen.queryByTestId("draft-thread")).toBeNull();
     // A draft with text stays listed while another thread is shown, and reopens from its row.
     await user.click(within(section("w1")).getByTestId("add-thread"));
-    act(() => host.window.set(DRAFT_MESSAGE, { text: "fix it", images: [] }));
+    act(() => host.window.set(DRAFT_MESSAGE, { text: "fix it", images: [], pastes: [] }));
     await user.click(screen.getAllByTestId("thread-row")[1] ?? document.body);
     expect(host.window.get(SELECTED_THREAD)).toBe("t2");
     await user.click(within(section("w1")).getByTestId("draft-thread"));

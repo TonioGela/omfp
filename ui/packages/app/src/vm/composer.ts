@@ -7,6 +7,7 @@ import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/cor
 import type { PromptBehavior } from "@omfp/protocol";
 import type { Draft } from "../sdk/index.ts";
 import { isObject } from "../sdk/json.ts";
+import { expandDraft } from "./paste.ts";
 
 /** Most suggestions shown at once. */
 const MAX_SUGGESTIONS = 8;
@@ -180,11 +181,17 @@ export function restoreDraft(draft: string, steering: readonly string[], followU
 }
 
 /**
- * The draft after a prompt failed to send: the failed text, then what was typed since, one blank line apart; the
- * failed images, then the images attached since. Nothing the user wrote is lost (UI-064).
+ * The draft after the draft `failed` failed to send: its text, then what was typed since, one blank line apart; its
+ * images, then the images attached since; its paste chips, and those typed since unless both have chips, whose numbers
+ * would clash: the later ones then become their text. Nothing the user wrote is lost (UI-064, UI-357).
  */
-export function restoreFailedPrompt(draft: Draft, text: string, images: readonly ImageContent[]): Draft {
-  return { text: restoreDraft(draft.text, [text], []), images: [...images, ...draft.images] };
+export function restoreFailedPrompt(draft: Draft, failed: Draft): Draft {
+  const since = failed.pastes.length === 0 || draft.pastes.length === 0 ? draft : expandDraft(draft);
+  return {
+    text: restoreDraft(since.text, [failed.text], []),
+    images: [...failed.images, ...since.images],
+    pastes: [...failed.pastes, ...since.pastes],
+  };
 }
 
 /** A second `Ctrl-C` within this many milliseconds of the one that cleared the draft aborts (UI-063). */
@@ -204,10 +211,9 @@ export function interruptAction(draft: Draft, now: number, lastPress: number | u
   return draft.text === "" && draft.images.length === 0 ? "abort" : "clear";
 }
 
-/** The draft after `u` restored the draft `Ctrl-C` cleared: its text and images first, then what was typed since
- * (UI-063). */
+/** The draft after `u` restored the draft `Ctrl-C` cleared, put back as a failed prompt is (UI-063). */
 export function restoreCleared(draft: Draft, cleared: Draft): Draft {
-  return restoreFailedPrompt(draft, cleared.text, cleared.images);
+  return restoreFailedPrompt(draft, cleared);
 }
 
 /** The texts of a `thread.abort` result (`{ steering: [{ text }], followUp: [{ text }] }`). */

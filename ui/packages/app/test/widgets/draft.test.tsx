@@ -1,7 +1,7 @@
 /** L4: the draft thread (UI-023) in `omfp:chat` and `omfp:header` over a fake client. */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DRAFT_MESSAGE, DRAFT_THREAD, ERRORS, SELECTED_THREAD, threadActions } from "../../src/sdk/index.ts";
 import { ChatWidget } from "../../src/widgets/chat/index.ts";
@@ -83,5 +83,24 @@ describe("draft thread", () => {
     expect(host.window.get(DRAFT_THREAD)).toBeUndefined();
     expect(screen.queryByTestId("draft-thread-view")).toBeNull();
     expect(screen.getByTestId("no-thread")).toBeDefined();
+  });
+
+  // spec: UI-360, UI-023
+  test("a large paste in the draft thread's composer is a chip, expanded in the first message", async () => {
+    const { client, host, user } = setup();
+    const input = screen.getByTestId("composer-input");
+    await user.type(input, "look: ");
+    const long = Array.from({ length: 30 }, (_, index) => `row ${index}`).join("\n");
+    act(() => {
+      fireEvent.paste(input, { clipboardData: { files: [], getData: () => long } });
+    });
+    expect(screen.getAllByTestId("paste-toggle").map((chip) => chip.textContent)).toEqual([
+      "Pasted text #1 · 30 lines",
+    ]);
+    expect(host.window.get(DRAFT_MESSAGE).text).toBe("look: [Paste #1, +30 lines]");
+    await user.keyboard("{Enter}");
+    expect(client.callsTo("threads.create").map((call) => call.params)).toEqual([
+      { workspace: { id: "w1" }, prompt: `look: ${long}` },
+    ]);
   });
 });

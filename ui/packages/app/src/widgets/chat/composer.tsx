@@ -1,9 +1,10 @@
 /**
  * `omfp:composer`: queue chips (UI-062) and the composer (UI-060..064) of the selected thread. Multi-line input with
- * image paste/drop, `/` command completion (React Aria `Autocomplete` + `TextArea` + `Menu` in a non-modal `Popover`,
- * S-11), the send mode on the send button, Esc aborting a busy thread or leaving the composer, `Ctrl-C` clearing the
- * draft (restored by `u`) then aborting without restoring the queue (UI-063), and drafts per thread. With no thread
- * selected, the composer of the draft thread (UI-023): its first message creates the thread.
+ * image paste/drop, large pastes as chips (UI-357..UI-360), `/` command completion (React Aria `Autocomplete` +
+ * `TextArea` + `Menu` in a non-modal `Popover`, S-11), the send mode on the send button, Esc aborting a busy thread or
+ * leaving the composer, `Ctrl-C` clearing the draft (restored by `u`) then aborting without restoring the queue
+ * (UI-063), and drafts per thread. With no thread selected, the composer of the draft thread (UI-023): its first
+ * message creates the thread.
  */
 
 import type { AvailableSlashCommand, ImageContent } from "@omfp/core";
@@ -31,6 +32,7 @@ import {
   type DraftThread,
   draftKey,
   EMPTY_DRAFT,
+  expandPastes,
   FOCUS_COMPOSER,
   INTERRUPT_WINDOW_MS,
   imageAttachment,
@@ -40,6 +42,7 @@ import {
   keyAction,
   keyLabel,
   type Modifiers,
+  rawPasteKeys,
   restoreCleared,
   restoreDraft,
   restoredTexts,
@@ -71,6 +74,7 @@ import {
 } from "react";
 import { Attachments } from "./attachments.tsx";
 import { LiveVoicePanel, MicButton } from "./live.tsx";
+import { PasteChips, usePastes } from "./pastes.tsx";
 import { testId, type WidgetProps } from "./props.ts";
 import { QueueChips } from "./queue.tsx";
 import { clearedDraftKey, useClock, useSelectedThread } from "./state.ts";
@@ -142,10 +146,12 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
   };
   useCommand({ id: "composer.focus", title: text.focus, run: () => inputRef.current?.focus() });
   useCommand({ id: "focus.leave", title: text.leave, scope: "composer", run: leave });
+  const pastes = usePastes(message, setMessage, inputRef);
   const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== inputRef.current || event.nativeEvent.isComposing) {
       return;
     }
+    pastes.onKeyDown(event, modifiersOf(event));
     const action = keyAction(event.key, modifiersOf(event), {
       busy: false,
       abortable: false,
@@ -163,7 +169,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
     } else if (action.type === "newline") {
       event.preventDefault();
       event.stopPropagation();
-      insertLineBreak(inputRef.current, (value) => setMessage((previous) => ({ ...previous, text: value })));
+      insertLineBreak(inputRef.current, pastes.onChange);
     }
   };
   return (
@@ -180,6 +186,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
       onKeyDownCapture={onKeyDownCapture}
     >
       <KitComposer mode={insert ? "insert" : "normal"}>
+        {message.pastes.length > 0 && <PasteChips draft={message} setDraft={setMessage} inputRef={inputRef} />}
         <TextArea
           className="omfp-compose__field"
           label={text.label}
@@ -187,12 +194,16 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
           rows={2}
           placeholder={labels.placeholder}
           value={message.text}
-          onChange={(value) => setMessage((previous) => ({ ...previous, text: value }))}
+          onChange={pastes.onChange}
           onFocus={() => setInsert(true)}
           onBlur={() => setInsert(false)}
           isReadOnly={sending}
           inputRef={inputRef}
-          inputProps={{ ...testId("composer-input"), "aria-keyshortcuts": "Enter Alt+Enter Escape" }}
+          inputProps={{
+            ...testId("composer-input"),
+            "aria-keyshortcuts": `Enter Alt+Enter Escape ${ariaKeys(rawPasteKeys())}`,
+            onPaste: pastes.onPaste,
+          }}
         />
         <ComposerBar>
           <ComposerHint>
@@ -237,6 +248,14 @@ function insertLineBreak(input: HTMLTextAreaElement, apply: (text: string) => vo
 
 function modifiersOf(event: KeyboardEvent): Modifiers {
   return { shift: event.shiftKey, alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey };
+}
+
+/** `Ctrl-Shift-v` as `aria-keyshortcuts` writes it: `Control+Shift+V`. */
+function ariaKeys(keys: string): string {
+  return keys
+    .split("-")
+    .map((part) => (part === "Ctrl" ? "Control" : part.length === 1 ? part.toUpperCase() : part))
+    .join("+");
 }
 
 /** The image attachments among `files` (UI-060). */
@@ -330,9 +349,10 @@ export const Composer = memo(function Composer({
     if (isBlank(draft)) {
       return;
     }
-    const message = draft.text.trim();
+    const message = expandPastes(draft.text, draft.pastes).trim();
     const images = draft.images;
     const queued = behavior(chosen);
+    const sent = draft;
     setDraft(EMPTY_DRAFT);
     call("thread.prompt", {
       threadId,
@@ -345,7 +365,7 @@ export const Composer = memo(function Composer({
           announce(strings.chat.announce.queued);
         }
       },
-      () => setDraft((previous) => restoreFailedPrompt(previous, message, images)),
+      () => setDraft((previous) => restoreFailedPrompt(previous, sent)),
     );
   };
   const abort = useCallback(() => {
@@ -433,6 +453,7 @@ export const Composer = memo(function Composer({
     },
   });
 
+  const pastes = usePastes(draft, setDraft, inputRef);
   // Captured before React Aria's Autocomplete: while no suggestion list is open the text area keeps its own keys
   // (arrows move the caret), and the composer's bindings apply. Chords other than the send ones (Ctrl-C, Alt-a, …)
   // go on to the keymap (UI-095).
@@ -441,6 +462,7 @@ export const Composer = memo(function Composer({
       return;
     }
     const modifiers = modifiersOf(event);
+    pastes.onKeyDown(event, modifiers);
     setSteer(steerModifier(modifiers));
     if (open && !(event.key === "Enter" && !inputRef.current.hasAttribute("aria-activedescendant"))) {
       if (event.key === "Tab" && !event.shiftKey) {
@@ -471,7 +493,7 @@ export const Composer = memo(function Composer({
     if (action.type === "send") {
       send(action.mode);
     } else if (action.type === "newline") {
-      insertLineBreak(inputRef.current, (value) => setDraft((previous) => ({ ...previous, text: value })));
+      insertLineBreak(inputRef.current, pastes.onChange);
     } else if (action.type === "abort") {
       abort();
     } else if (action.type === "leave") {
@@ -483,7 +505,9 @@ export const Composer = memo(function Composer({
     if (files.length > 0) {
       event.preventDefault();
       attach(files);
+      return;
     }
+    pastes.onPaste(event);
   };
   const onDrop = (event: DragEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -507,10 +531,11 @@ export const Composer = memo(function Composer({
     >
       <KitComposer mode={insert ? "insert" : "normal"}>
         {draft.images.length > 0 && <Attachments draft={draft} setDraft={setDraft} />}
+        {draft.pastes.length > 0 && <PasteChips draft={draft} setDraft={setDraft} inputRef={inputRef} />}
         <Autocomplete
           inputValue={draft.text}
           onInputChange={(value) => {
-            setDraft((previous) => ({ ...previous, text: value }));
+            pastes.onChange(value);
             setDismissed(false);
             // Typing ends a `Ctrl-C` sequence: the next press clears what was typed rather than aborting (UI-063).
             lastInterrupt.current = undefined;
@@ -531,7 +556,7 @@ export const Composer = memo(function Composer({
             }}
             inputProps={{
               ...testId("composer-input"),
-              "aria-keyshortcuts": "Enter Shift+Enter Alt+Enter Escape Tab",
+              "aria-keyshortcuts": `Enter Shift+Enter Alt+Enter Escape Tab ${ariaKeys(rawPasteKeys())}`,
               onPaste,
             }}
           />

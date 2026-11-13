@@ -118,6 +118,16 @@ export const chat = {
     attachments: "Attached images",
     attachment: (index: number) => `Attached image ${index}`,
     removeAttachment: (index: number) => `Remove image ${index}`,
+    /** Large pastes kept as chips (UI-357..UI-360). */
+    pastes: "Pasted texts",
+    /** A chip's label: `Pasted text #1 · 120 lines`, or the characters for a text of one line. */
+    paste: (id: number, lines: number, chars: number) =>
+      `Pasted text #${id} · ${lines > 1 ? `${lines} lines` : `${chars} chars`}`,
+    pasteText: (id: number) => `Text of pasted text #${id}`,
+    removePaste: (id: number) => `Remove pasted text #${id}`,
+    pasted: (id: number, lines: number, rawKey: string) =>
+      `Pasted ${lines} ${lines === 1 ? "line" : "lines"} as pasted text #${id}; ${rawKey} pastes it raw`,
+    pasteRemoved: (id: number) => `Removed pasted text #${id}`,
     commands: "Commands",
     focus: "Focus the composer",
     leave: "Leave the composer",

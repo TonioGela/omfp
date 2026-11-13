@@ -85,7 +85,7 @@ describe("omfp:tree", () => {
   // spec: UI-083
   test("going to a user message puts its text in the composer, after what the draft already had", async () => {
     const test = setup();
-    test.host.window.set(draftKey(THREAD), { text: "half typed", images: [] });
+    test.host.window.set(draftKey(THREAD), { text: "half typed", images: [], pastes: [] });
     await test.user.click(within(await screen.findByTestId("tree")).getAllByTestId("tree-navigate")[2] as HTMLElement);
     expect(test.client.callsTo("thread.navigate").map((call) => call.params)).toEqual([
       { threadId: THREAD, entryId: "u2", summarize: false },

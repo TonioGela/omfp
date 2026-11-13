@@ -1404,3 +1404,68 @@ async fn a_background_job_runs_on_its_card_the_badge_and_the_background_tab() ->
     journey.status(&thread, "idle").await?;
     journey.finish("E2E-21").await
 }
+
+/// Pastes `text` into the composer as the browser does, with `text/plain` on the clipboard.
+async fn paste_text(journey: &Journey, text: &str) -> anyhow::Result<()> {
+    journey
+        .eval(
+            "const data = new DataTransfer();
+             data.setData('text/plain', arguments[0]);
+             const input = document.querySelector('[data-testid=composer-input]');
+             input.focus();
+             input.setSelectionRange(input.value.length, input.value.length);
+             input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));",
+            vec![json!(text)],
+        )
+        .await?;
+    Ok(())
+}
+
+// spec: E2E-29, UI-357, UI-360
+#[tokio::test(flavor = "multi_thread")]
+async fn a_long_paste_is_a_chip_in_the_composer_and_the_agent_gets_the_whole_text()
+-> anyhow::Result<()> {
+    let pasted = (1..=40).fold(String::new(), |mut text, line| {
+        use std::fmt::Write as _;
+        writeln!(text, "pasted row {line}").expect("writing to a String");
+        text
+    });
+    let journey = Journey::start(vec![Step::when(
+        fake_llm::Matcher::LastUserContains("Summarize: pasted row 1\n".to_owned()),
+        Reply::text("Forty rows, all read."),
+    )])
+    .await?;
+    journey.connected().await?;
+    let thread = journey.create_thread("paste thread").await?;
+    journey
+        .type_into("[data-testid=composer-input]", "Summarize: ")
+        .await?;
+    paste_text(&journey, &pasted).await?;
+    let chips = journey
+        .until("the paste chip", async |page| {
+            let chips = page.texts("[data-testid=paste-toggle]").await?;
+            Ok((!chips.is_empty()).then_some(chips))
+        })
+        .await?;
+    assert_eq!(chips, ["Pasted text #1 · 41 lines"]);
+    assert_eq!(draft(&journey).await?, "Summarize: [Paste #1, +41 lines]");
+
+    journey.click("[data-testid=send]").await?;
+    journey.reply("Forty rows, all read.").await?;
+    let users = journey
+        .texts("[data-testid=message][data-role=user]")
+        .await?;
+    assert!(
+        users
+            .iter()
+            .any(|text| text.contains("pasted row 1") && text.contains("pasted row 40")),
+        "{users:?}"
+    );
+    assert!(
+        !users.iter().any(|text| text.contains("[Paste #1")),
+        "{users:?}"
+    );
+    assert_eq!(journey.count("[data-testid=paste-chip]").await?, 0);
+    journey.status(&thread, "idle").await?;
+    journey.finish("E2E-29").await
+}

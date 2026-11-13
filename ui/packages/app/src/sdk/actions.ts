@@ -5,6 +5,7 @@
 
 import { useMemo } from "react";
 import { strings } from "../strings/index.ts";
+import { expandPastes } from "../vm/paste.ts";
 import { currentWorkspaceId as workspaceOf } from "../vm/workspaces.ts";
 import { useAnnounce, useThreadSummary, useWindowState } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
@@ -165,7 +166,8 @@ export function threadActions(host: OmfpHost): ThreadActions {
     discardDraft: () => discardDraft(host),
     sendDraft: async () => {
       const draft = window.get(DRAFT_THREAD);
-      const prompt = window.get(DRAFT_MESSAGE).text.trim();
+      const message = window.get(DRAFT_MESSAGE);
+      const prompt = expandPastes(message.text, message.pastes).trim();
       if (draft === undefined || prompt === "") {
         return false;
       }

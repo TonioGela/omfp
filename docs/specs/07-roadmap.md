@@ -581,7 +581,9 @@ omp's stderr tail (DMN-210..DMN-212, TST-106); `thread.session` answers a thread
 usage without omp's whole state and without starting omp (PRT-125, PRT-126, DMN-213, DMN-214, AGT-085). Jobs: the
 widget docs and agent notes say what a `useJob` command runs in (shell, folder, the daemon's environment, limits,
 retention; AGT-087), and `useJob(command, { key })` keeps one job per key, the daemon replacing the previous one
-(AGT-086, DMN-215, UI-355, UI-356).
+(AGT-086, DMN-215, UI-355, UI-356). Large pastes become chips in the composer, like omp's TUI paste markers: an atomic
+`[Paste #N, …]` token expanded on send, editable and removable, kept in the draft, `Ctrl+Shift+V` for a raw paste
+(UI-357..UI-360, E2E-29).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and
