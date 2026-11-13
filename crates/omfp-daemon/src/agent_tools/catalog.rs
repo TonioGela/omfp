@@ -12,7 +12,7 @@ use super::{CALL, not_for_agents};
 /// Host URI listing the methods; `<METHODS_URL>/<name>` reads one method's schemas.
 pub const METHODS_URL: &str = "omfp://protocol/methods";
 
-/// The methods an agent may call with `omfp_call`, in method-table order: neither connection-only nor deferred.
+/// The methods an agent may call with `omfp_call`, in method-table order: all but the connection-only ones.
 pub fn methods() -> impl Iterator<Item = &'static str> {
     METHODS
         .iter()
@@ -78,7 +78,7 @@ pub fn read_uri(url: &str) -> Option<Result<HostUriRead, String>> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{CONNECTION_ONLY, DEFERRED};
+    use super::super::CONNECTION_ONLY;
     use super::*;
 
     // spec: AGT-042, PRT-092
@@ -97,10 +97,7 @@ mod tests {
             .lines()
             .filter(|line| line.starts_with("- `"))
             .collect();
-        assert_eq!(
-            lines.len(),
-            METHODS.len() - CONNECTION_ONLY.len() - DEFERRED.len()
-        );
+        assert_eq!(lines.len(), METHODS.len() - CONNECTION_ONLY.len());
         assert!(
             lines.contains(
                 &"- `threads.list` — Thread summaries as on the `index` topic, without archived threads unless \
@@ -108,7 +105,7 @@ mod tests {
             ),
             "{text}"
         );
-        for method in CONNECTION_ONLY.iter().chain(DEFERRED) {
+        for method in CONNECTION_ONLY {
             assert!(!text.contains(&format!("`{method}`")), "{method}: {text}");
         }
         assert!(!text.contains("terminal"), "{text}");
@@ -150,7 +147,10 @@ mod tests {
                 "omfp://protocol/methods/subscribe",
                 "needs a window's connection",
             ),
-            ("omfp://protocol/methods/terminal.open", "deferred (D-06)"),
+            (
+                "omfp://protocol/methods/terminal.open",
+                "unknown omfp protocol method `terminal.open`",
+            ),
         ] {
             let error = read_uri(url).unwrap().unwrap_err();
             assert!(error.contains(reason), "{url}: {error}");

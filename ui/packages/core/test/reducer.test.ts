@@ -131,11 +131,9 @@ describe("reducer", () => {
     expect(failed.streaming).toBeNull();
     expect(failed.process).toEqual({ state: "failed", message: "exited", exit_code: 1 });
 
-    for (const state of [{ state: "stopped" }, { state: "terminal" }]) {
-      const left = replay([...running, processEvent(state)]);
-      expect(left.settled).toBe(true);
-      expect(left.interactions).toEqual([]);
-    }
+    const left = replay([...running, processEvent({ state: "stopped" })]);
+    expect(left.settled).toBe(true);
+    expect(left.interactions).toEqual([]);
 
     const restarting = replay([...running, processEvent({ state: "starting" })]);
     expect(restarting.settled).toBe(false);

@@ -575,12 +575,6 @@ export type ListActivityParams = {
   threadId?: string | null;
 };
 
-/** `terminal.list` params; filters combine. */
-export type ListTerminalsParams = {
-  threadId?: string | null;
-  workspaceId?: string | null;
-};
-
 /** `threads.list` params (PRT-090). */
 export type ListThreadsParams = {
   /** Archived threads too (default `false`). */
@@ -804,24 +798,6 @@ export type NotificationMode =
   /** Only while the window has no focus (default). */
   | "background";
 
-/** `terminal.open` params (05-terminal). */
-export type OpenTerminalParams = {
-  cols: number;
-  kind: TerminalKind;
-  rows: number;
-  /** Required for `omp`; for `shell`, the thread whose home is the cwd. */
-  threadId?: string | null;
-  /** For `shell`: the workspace used as cwd. */
-  workspaceId?: string | null;
-};
-
-/** `terminal.open` result. */
-export type OpenTerminalResult = {
-  /** Binary-frame channel of this terminal on this connection. */
-  channel: number;
-  terminalId: string;
-};
-
 /** `fs.complete` result: directories sorted by name, at most 200. */
 export type PathCompletions = {
   entries: PathEntry[];
@@ -1008,13 +984,6 @@ export type ReportWidgetsParams = {
   window?: WindowReport | null;
   /** The workspace whose view the window shows; `null` when it shows none. */
   workspaceId?: string | null;
-};
-
-/** `terminal.resize` params. */
-export type ResizeTerminalParams = {
-  cols: number;
-  rows: number;
-  terminalId: string;
 };
 
 /** `interaction.respond` params (DMN-051). */
@@ -1220,33 +1189,6 @@ export type SuggestReposParams = {
   query?: string | null;
 };
 
-/** An open terminal. */
-export type TerminalInfo = {
-  cols: number;
-  id: string;
-  kind: TerminalKind;
-  rows: number;
-  threadId?: string | null;
-  workspaceId?: string | null;
-};
-
-/** What runs in a terminal (05-terminal). */
-export type TerminalKind =
-  /** Interactive omp on the thread's session. */
-  | "omp"
-  /** A login shell. */
-  | "shell";
-
-/** `terminal.list` result. */
-export type TerminalList = {
-  terminals: TerminalInfo[];
-};
-
-/** Params naming one terminal. */
-export type TerminalRef = {
-  terminalId: string;
-};
-
 /** The user's theme: CSS applied after the built-in tokens (DMN-075). */
 export type Theme = {
   /** `null`: the built-in themes only. */
@@ -1385,7 +1327,7 @@ export type TitleSource =
   /** Set by the user or an agent (`threads.create`, `threads.update`, host tool `set_thread_title`); never replaced. */
   | "set";
 
-/** `index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`, `views/<id>` or `job/<id>`. */
+/** `index`, `thread/<id>`, `workspace/<id>`, `views/<id>` or `job/<id>`. */
 export type Topic = string;
 
 /** Params naming one topic (`unsubscribe`). */
@@ -1963,10 +1905,6 @@ export interface Methods {
   "thread.live_stop": { params: ThreadRef; result: Empty };
   "thread.live_mute": { params: LiveMuteParams; result: LiveMuted };
   "interaction.respond": { params: RespondParams; result: Empty };
-  "terminal.open": { params: OpenTerminalParams; result: OpenTerminalResult };
-  "terminal.resize": { params: ResizeTerminalParams; result: Empty };
-  "terminal.close": { params: TerminalRef; result: Empty };
-  "terminal.list": { params: ListTerminalsParams; result: TerminalList };
   "theme.get": { params: Empty; result: Theme };
   "theme.set": { params: Theme; result: Empty };
   "settings.get": { params: Empty; result: Settings };
@@ -2062,10 +2000,6 @@ export const METHODS: readonly MethodName[] = [
   "thread.live_stop",
   "thread.live_mute",
   "interaction.respond",
-  "terminal.open",
-  "terminal.resize",
-  "terminal.close",
-  "terminal.list",
   "theme.get",
   "theme.set",
   "settings.get",

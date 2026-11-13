@@ -1,4 +1,4 @@
-//! Entities the daemon exposes: workspaces, thread summaries, git status, repository suggestions and terminals.
+//! Entities the daemon exposes: workspaces, thread summaries, git status and repository suggestions.
 //!
 //! Timestamps are Unix epoch milliseconds.
 
@@ -467,30 +467,6 @@ pub struct FileCandidates {
     /// More files matched than were returned.
     #[serde(default)]
     pub truncated: bool,
-}
-
-/// What runs in a terminal (05-terminal).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum TerminalKind {
-    /// Interactive omp on the thread's session.
-    Omp,
-    /// A login shell.
-    Shell,
-}
-
-/// An open terminal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalInfo {
-    pub id: String,
-    pub kind: TerminalKind,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub thread_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
-    pub cols: u16,
-    pub rows: u16,
 }
 
 /// Where a widget folder lives (AGT-012, AGT-023).

@@ -129,9 +129,6 @@ stateDiagram-v2
   Busy --> Failed: process exited
   Idle --> Failed: process exited
   Failed --> Starting: explicit restart or new prompt
-  Idle --> Terminal: handoff to terminal
-  Stopped --> Terminal: handoff to terminal
-  Terminal --> Stopped: terminal closed
 ```
 
 `AwaitingInput` is not a process state but an attribute: there are pending interactive requests (approval, `ask`,
@@ -146,7 +143,7 @@ dialogs).
 | DMN-034 | A process that is `Idle`, settled, and not watched by any client MUST be stopped after `idle_timeout` (default 15 minutes, configurable). A `Busy` process or one with pending interactive requests is never stopped. |
 | DMN-035 | If the process exits unexpectedly, the thread MUST move to `Failed` with the last stderr lines (and the exit code when available — omp-rpc 18.18.6 does not expose it); pending interactive requests MUST be cancelled towards the UI. Restart happens only on the user's next command. |
 | DMN-036 | omp's stderr MUST be written to a per-thread log file (`<data-dir>/threads/<id>/omp.log`, rotated) and never mixed with protocol stdout. |
-| DMN-037 | Lifecycle operations on a thread (start, stop, restart, root sync after a rescan (DMN-029), handoff to terminal) MUST be serialized by its actor. omp commands are forwarded without waiting for each other, because omp orders them itself and some must overtake a running one (`abort` during `compact`, `steer` during a turn). Different threads proceed in parallel. |
+| DMN-037 | Lifecycle operations on a thread (start, stop, restart, root sync after a rescan (DMN-029)) MUST be serialized by its actor. omp commands are forwarded without waiting for each other, because omp orders them itself and some must overtake a running one (`abort` during `compact`, `steer` during a turn). Different threads proceed in parallel. |
 | DMN-038 | The maximum number of concurrent omp processes MUST be configurable (default 8); beyond the limit, starting a stopped thread MUST fail with an explicit error (no silent queueing). |
 
 ### Events

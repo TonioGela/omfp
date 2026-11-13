@@ -14,9 +14,7 @@ export type ProcessState =
   | { state: "starting" }
   | { state: "running" }
   /** Exited unexpectedly or failed to start (DMN-035). `stderr_tail` (last lines of stderr) is left out when empty. */
-  | { state: "failed"; message: string; exit_code?: number; stderr_tail?: string }
-  /** The session is owned by an interactive omp in a terminal (05-terminal). */
-  | { state: "terminal" };
+  | { state: "failed"; message: string; exit_code?: number; stderr_tail?: string };
 
 /** The omp session a thread is bound to. */
 export interface SessionInfo {
@@ -99,7 +97,6 @@ export const processState: Decoder<ProcessState> = (value) => {
     case "stopped":
     case "starting":
     case "running":
-    case "terminal":
       return { state };
     case "failed": {
       const { stderr_tail, ...rest } = failed(value);

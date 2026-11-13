@@ -116,7 +116,7 @@ mod tests {
         );
     }
 
-    // spec: AGT-041
+    // spec: AGT-041, PRT-135
     #[tokio::test]
     async fn bad_calls_are_tool_errors_that_say_why() {
         let harness = Harness::new().await;
@@ -155,7 +155,7 @@ mod tests {
             ),
             (
                 json!({ "method": "terminal.list", "params": {} }),
-                "deferred (D-06)",
+                "unknown method `terminal.list`",
             ),
         ] {
             let error = call_tool(&harness, arguments.clone()).await.unwrap_err();

@@ -22,7 +22,6 @@ describe("topics", () => {
       [{ kind: "index" }, "index"],
       [{ kind: "thread", id: "01J0THREAD" }, "thread/01J0THREAD"],
       [{ kind: "workspace", id: "01J0WS" }, "workspace/01J0WS"],
-      [{ kind: "terminal", id: "term_1-a" }, "terminal/term_1-a"],
       [{ kind: "views", id: "01J0WS" }, "views/01J0WS"],
       [{ kind: "job", id: "01J0JOB" }, "job/01J0JOB"],
     ] as const;
@@ -37,6 +36,7 @@ describe("topics", () => {
     expect(jobTopic("01J0JOB")).toBe("job/01J0JOB");
   });
 
+  // spec: PRT-135
   test("malformed names are rejected", () => {
     const names = [
       "",
@@ -49,6 +49,7 @@ describe("topics", () => {
       "Thread/01J",
       "threads/01J",
       "repo/01J",
+      "terminal/01J",
       "/01J",
       " index",
     ];

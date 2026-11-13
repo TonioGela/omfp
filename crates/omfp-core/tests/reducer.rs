@@ -180,16 +180,11 @@ fn leaving_running_settles_and_cancels_pending_interactions() {
         }
     );
 
-    for state in [
-        json!({ "state": "stopped" }),
-        json!({ "state": "terminal" }),
-    ] {
-        let mut events = running.to_vec();
-        events.push(process(state));
-        let left = replay(&events);
-        assert!(left.settled);
-        assert_eq!(left.interactions, Vec::new());
-    }
+    let mut stopped = running.to_vec();
+    stopped.push(process(json!({ "state": "stopped" })));
+    let left = replay(&stopped);
+    assert!(left.settled);
+    assert_eq!(left.interactions, Vec::new());
 
     let mut restarting = running.to_vec();
     restarting.push(process(json!({ "state": "starting" })));

@@ -12,7 +12,7 @@ only be reachable from the human UI.
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M14 done, with M2b, M5b, M5c, M5d and M6b; Terminal deferred);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M14 done, with M2b, M5b, M5c, M5d and M6b; the terminal was removed, D-06);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 

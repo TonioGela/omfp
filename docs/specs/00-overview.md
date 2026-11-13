@@ -17,7 +17,6 @@ An application for working with many omp agents in parallel:
   session tree;
 - the same interface (a TypeScript web app, D-18) runs **in the browser** and **as a desktop app** (Tauri webview, M7),
   connected to the same daemon;
-- anything the UI does not cover could later be reached from a **terminal panel** on the same session (deferred, D-06);
 - agents **build UI**: the window shows a workspace's views manifest of React widgets that agents write as files and
   the user rearranges, reloaded live (M4, [08](08-agent-control.md#agent-made-ui-views-and-widgets-m4));
 - long term, **agents drive the interface**: they spawn threads, create workspaces and publish dashboards. This is the
@@ -25,7 +24,7 @@ An application for working with many omp agents in parallel:
 
 ## Non-goals (for now)
 
-- Rewriting the omp TUI: TUI-only features are out of scope; a terminal handoff is designed but deferred (D-06).
+- Rewriting the omp TUI: TUI-only features are out of scope; the terminal handoff once designed for them was removed (D-06).
 - An IDE (no LSP, debugger, refactoring): only quick edits, in the file viewer (`omfp:file`, M5c); real work stays in the user's editor ("open in editor").
 - Multi-user accounts and permissions. The daemon is personal (one OS user), protected by a token.
 - Agent control features (08) before the base is solid; only their constraints apply now.
@@ -60,17 +59,14 @@ flowchart LR
     TS[ThreadService]
     SUP[AgentSupervisor]
     WK[WorkspaceManager]
-    PTY[TerminalService]
     DB[(SQLite)]
   end
   W -- "WS /api" --> WS
   D -- "WS /api (127.0.0.1)" --> WS
   WS --> TS
   TS --> SUP & WK & DB
-  TS --> PTY
   SUP -- "stdio JSONL (omp-rpc)" --> O1["omp --mode rpc-ui (thread A: cwd=workspace X, --add-dir X/front X/back)"]
   SUP --> O2["omp --mode rpc-ui (thread B: cwd=workspace Y, --add-dir Y/app)"]
-  PTY -- "pty" --> OTERM["interactive omp (thread C, terminal mode)"]
 ```
 
 | ID | Requirement |
@@ -79,7 +75,7 @@ flowchart LR
 | ARC-002 | The UI MUST communicate only with the daemon, through the protocol in [03](03-protocol.md), on both web and desktop. |
 | ARC-003 | `omfp desktop` MUST connect to the local daemon for its data directory when one is running (DMN-007), otherwise start one in the background and connect to it; the UI connects like a web client (D-15, D-16). The background daemon is `omfp daemon --tray` (in the system tray, DMN-128) in its own process group, stdin `/dev/null`, output appended to `<data-dir>/daemon.log` (mode `0600` in the `0700` data directory, DMN-180; it never holds the token, DMN-181); it binds the configured or default address (DMN-002, `127.0.0.1:7420`) first, so the window's origin and its `localStorage` survive daemon restarts (S-04), and only when that port is taken retries on a random port of the same interface (never replacing a `--bind` passed to it). The window loads the daemon's own UI (`http://<addr>/#token=…&local=1`, plus `&thread=<id>` with `--thread`, UI-218; `local=1` tells the app it runs on the daemon's machine) with no Tauri IPC and no capabilities, keeps its web storage under `<data-dir>/webview`, and stays on the daemon's origin (DMN-182). |
 | ARC-004 | Several clients MUST be able to connect to the same daemon at once and see the same state. |
-| ARC-005 | Each thread MUST have at most one live omp process at a time (RPC or terminal, never both). |
+| ARC-005 | Each thread MUST have at most one live omp process at a time. |
 | ARC-006 | A thread's visible state MUST derive from the `omfp-core` reducer applied to its event sequence; the UI runs its TypeScript port (`@omfp/core`), which produces the same state on every recorded fixture (D-04). |
 | ARC-007 | **API-first** (D-12): every action available in the UI MUST be a protocol method; the UI holds no business logic that another client could not reproduce through the protocol. |
 | ARC-008 | Threads MUST NOT be bound to a single repository: a thread lives in a workspace folder that holds zero or more repositories, and repositories can be added to and removed from the workspace during the thread's life, by the user or by the agent (D-11). |

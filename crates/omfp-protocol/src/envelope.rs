@@ -347,11 +347,6 @@ impl<'de> Deserialize<'de> for EventFrame {
             Topic::Workspace(_) => serde_json::from_value(raw.event).map(TopicEvent::Workspace),
             Topic::Views(_) => serde_json::from_value(raw.event).map(TopicEvent::Views),
             Topic::Job(_) => serde_json::from_value(raw.event).map(TopicEvent::Job),
-            Topic::Terminal(_) => {
-                return Err(D::Error::custom(
-                    "terminal output travels in binary frames, not in event frames",
-                ));
-            }
         }
         .map_err(|error| {
             D::Error::custom(format!("invalid event for topic {}: {error}", raw.topic))

@@ -925,6 +925,8 @@ requirements = [
   "UI-455",
   # QA fixes: journeys measure overlays at rest
   "TST-110",
+  # QA fixes: the terminal is removed
+  "PRT-135",
   # Journeys
   "E2E-22",
   "E2E-23",

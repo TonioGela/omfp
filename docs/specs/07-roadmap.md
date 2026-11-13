@@ -77,7 +77,7 @@ contract_daemon.rs`), the supervisor runs L1 tests on a fake launcher replaying 
 and the server runs L2 tests with a native WebSocket client. `omfp daemon` serves `system.hello` and publishes
 `daemon.json`. Known limits from omp-rpc 18.18.6: no exit code on crash (DMN-035), no drain window on shutdown
 (DMN-005), prompt ids unique per process epoch (PRT-030). Open: `/add-dir` on a busy thread (S-07), PR workspaces
-(S-08), `terminal.*`.
+(S-08), `terminal.*` (later removed, PRT-135).
 
 ## M2 — Web UI MVP (done)
 
@@ -656,18 +656,16 @@ keeps only the window and the daemon, and the daemon starts omp, git and jobs th
 bundled omp runs from the app's deployment on the host (`app-path`), so it is always the pinned one. Not done: Flathub,
 Intel Macs, arm64 Linux.
 
-## Terminal (deferred)
+## Terminal (removed)
 
-Not planned for now (D-06 revised): the user does not rely on the TUI-only commands. [05](05-terminal.md) stays as the
-design to pick up if a real need appears (TUI-only features, or a shell panel per workspace). Scope when resumed:
-TRM-001..022. Acceptance: E2E-07; L2 tests for PTY spawn, replay buffer, resize, channel isolation (TRM-012); handoff
-refused while `Busy` (TRM-001).
+Removed (D-06, PRT-135): the user does not rely on the TUI-only commands, so the terminal was never built; its
+refused `terminal.*` methods, `terminal/<id>` topic, permission and process state are gone too. TRM-001..022 and
+E2E-07 are kept in [05](05-terminal.md) and [06](06-testing.md) as removed rows.
 
 ## Later (noted, not scheduled)
 
 - Helix-style modal editing in the composer (UI-095 keeps a keymap with modes, so it fits later).
 - Configurable fonts, keymap and density from a settings file (the tokens and the keymap are data from M3).
-- Terminal widget over PTY jobs (see "Terminal (deferred)").
 - PR repositories (DMN-024 `pr`, spike S-08; moved out of M5): fetching a PR head into a worktree and tracking the PR.
   The agent can already do it with `gh pr checkout` or `git fetch origin pull/N/head`, and GitHub cannot be tested
   offline; the user decided to leave it to the agent (no UI).

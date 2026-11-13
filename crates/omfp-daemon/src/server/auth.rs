@@ -54,14 +54,12 @@ pub enum Permission {
     Manage,
     /// Drive a thread's agent: prompts, answers, process control.
     Drive,
-    /// Open and use terminals.
-    Terminal,
 }
 
 /// The method → permission table; `None` for an unknown method.
 #[must_use]
 pub fn permission(method: &str) -> Option<Permission> {
-    use Permission::{Connect, Drive, Manage, Read, Terminal};
+    use Permission::{Connect, Drive, Manage, Read};
     Some(match method {
         "system.hello" | "subscribe" | "unsubscribe" | "widgets.report" | "windows.answer" => {
             Connect
@@ -148,7 +146,6 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "auth.login"
         | "auth.login_cancel"
         | "auth.logout" => Drive,
-        "terminal.open" | "terminal.resize" | "terminal.close" | "terminal.list" => Terminal,
         _ => return None,
     })
 }
@@ -166,15 +163,11 @@ pub fn authorize(principal: &Principal, method: &str) -> Result<(), ErrorBody> {
         // DMN-150, AGT-051), but no connection to hello, subscribe on or report from.
         (
             Principal::Owner { .. },
-            Permission::Connect
-            | Permission::Read
-            | Permission::Manage
-            | Permission::Drive
-            | Permission::Terminal,
+            Permission::Connect | Permission::Read | Permission::Manage | Permission::Drive,
         )
         | (
             Principal::Agent { .. } | Principal::Mcp { .. },
-            Permission::Read | Permission::Manage | Permission::Drive | Permission::Terminal,
+            Permission::Read | Permission::Manage | Permission::Drive,
         ) => Ok(()),
         (Principal::Agent { .. } | Principal::Mcp { .. }, Permission::Connect) => {
             Err(ErrorBody::new(

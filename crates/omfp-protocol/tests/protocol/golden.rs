@@ -12,17 +12,15 @@ use omfp_protocol::{
     CopyWidgetParams, CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileCandidate,
     FileCandidates, FileContent, FileDiff, FileKind, FileMatch, FileWritten, FindFileParams,
     ForkParams, GoalParams, HelloParams, HelloResult, IndexSnapshot, InteractionResponse, JobInfo,
-    JobRef, JobStatus, LabelParams, ListTerminalsParams, LiveConnectParams, LiveConnected,
-    LiveMuteParams, LiveMuted, LiveStarted, METHODS, MessageParams, Method, NavigateParams,
-    OpenTerminalParams, OpenTerminalResult, PROTOCOL_VERSION, PathCompletions, PathEntry, Position,
-    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, ReadFileParams,
-    RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
-    ReportWidgetsParams, Request, ResizeTerminalParams, RespondParams, Response,
-    SearchThreadsParams, SeenRepository, ServerFrame, SetModelParams, SetSettingsParams,
-    SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
-    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
-    SuggestReposParams, TerminalInfo, TerminalKind, TerminalList, TerminalRef, Theme, ThreadGit,
-    ThreadRef, ThreadSearchResult, ThreadSearchResults, ThreadWorkspace, Topic, TopicParams,
+    JobRef, JobStatus, LabelParams, LiveConnectParams, LiveConnected, LiveMuteParams, LiveMuted,
+    LiveStarted, METHODS, MessageParams, Method, NavigateParams, PROTOCOL_VERSION, PathCompletions,
+    PathEntry, Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams,
+    ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
+    ReportWidgetsParams, Request, RespondParams, Response, SearchThreadsParams, SeenRepository,
+    ServerFrame, SetModelParams, SetSettingsParams, SetThinkingParams, SetViewsParams,
+    SetWidgetStateParams, StartJobParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams,
+    SubscribeParams, SubscribeResult, SuggestReposParams, Theme, ThreadGit, ThreadRef,
+    ThreadSearchResult, ThreadSearchResults, ThreadWorkspace, Topic, TopicParams,
     UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied, WidgetJobReport, WidgetReport,
     WidgetReportState, WidgetSource, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
     decode_request, method,
@@ -53,8 +51,8 @@ use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::samples::{
-    TERMINAL_ID, THREAD_ID, WORKSPACE_ID, git_status, repo_statuses, root_workspace, settings,
-    theme, thread, workspace,
+    THREAD_ID, WORKSPACE_ID, git_status, repo_statuses, root_workspace, settings, theme, thread,
+    workspace,
 };
 
 const REQUEST_ID: &str = "c42";
@@ -719,54 +717,6 @@ fn tool_examples() -> Vec<(&'static str, Value)> {
                     THREAD_ID.to_owned(),
                     "01JD8X3Q4T9V2W6Y5Z7A1B3C4E".to_owned(),
                 ],
-            },
-        ),
-    ]
-}
-
-fn terminal_examples() -> Vec<(&'static str, Value)> {
-    vec![
-        example::<method::TerminalOpen>(
-            OpenTerminalParams {
-                kind: TerminalKind::Omp,
-                thread_id: Some(THREAD_ID.to_owned()),
-                workspace_id: None,
-                cols: 120,
-                rows: 40,
-            },
-            &OpenTerminalResult {
-                terminal_id: TERMINAL_ID.to_owned(),
-                channel: 1,
-            },
-        ),
-        example::<method::TerminalResize>(
-            ResizeTerminalParams {
-                terminal_id: TERMINAL_ID.to_owned(),
-                cols: 100,
-                rows: 30,
-            },
-            &Empty {},
-        ),
-        example::<method::TerminalClose>(
-            TerminalRef {
-                terminal_id: TERMINAL_ID.to_owned(),
-            },
-            &Empty {},
-        ),
-        example::<method::TerminalList>(
-            ListTerminalsParams {
-                thread_id: Some(THREAD_ID.to_owned()),
-                workspace_id: None,
-            },
-            &TerminalList {
-                terminals: vec![TerminalInfo {
-                    id: TERMINAL_ID.to_owned(),
-                    kind: TerminalKind::Shell,
-                    thread_id: Some(THREAD_ID.to_owned()),
-                    workspace_id: Some(WORKSPACE_ID.to_owned()),
-                    cols: 120,
-                    rows: 40,
-                }],
             },
         ),
     ]
@@ -1579,7 +1529,6 @@ fn every_method_has_a_golden_request_and_response() {
         subagent_examples(),
         tool_examples(),
         live_examples(),
-        terminal_examples(),
         theme_examples(),
         ui_settings_examples(),
         widget_examples(),

@@ -242,7 +242,7 @@ impl Connection {
                 message = stream.next() => match message {
                     Some(Ok(Message::Text(text))) => self.on_text(&text).await,
                     Some(Ok(Message::Binary(_))) => {
-                        let error = bad_request("binary frames are for the terminal, which is deferred (D-06)");
+                        let error = bad_request("binary frames are not part of the protocol");
                         send(&self.out, Outbound::response(String::new(), Err(error))).await;
                     }
                     Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
@@ -461,7 +461,6 @@ impl Connection {
                 }
                 Err(error) => Err((id, error)),
             },
-            Topic::Terminal(_) => Err((id, bad_request("the terminal is deferred (D-06)"))),
             Topic::Views(workspace_id) => match services.views_log(workspace_id).await {
                 Ok(log) => {
                     // Watched like `workspace/<id>`: the polls read its views every round (DMN-082).

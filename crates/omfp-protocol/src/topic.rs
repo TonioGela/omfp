@@ -16,15 +16,13 @@ pub enum Topic {
     Thread(String),
     /// Git status of one workspace.
     Workspace(String),
-    /// Output of one terminal (binary frames, see 05-terminal).
-    Terminal(String),
     /// Views manifest, widget folders and widget state of one workspace (PRT-040).
     Views(String),
     /// Output of one job (PRT-041).
     Job(String),
 }
 
-/// A topic name that is not `index` or `<thread|workspace|terminal|views|job>/<id>`.
+/// A topic name that is not `index` or `<thread|workspace|views|job>/<id>`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TopicParseError {
     pub name: String,
@@ -34,7 +32,7 @@ impl fmt::Display for TopicParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "invalid topic {:?}: expected `index` or `<thread|workspace|terminal|views|job>/<id>`",
+            "invalid topic {:?}: expected `index` or `<thread|workspace|views|job>/<id>`",
             self.name
         )
     }
@@ -61,7 +59,6 @@ impl FromStr for Topic {
             Some((kind, id)) if is_valid_id(id) => match kind {
                 "thread" => Some(Self::Thread(id.to_owned())),
                 "workspace" => Some(Self::Workspace(id.to_owned())),
-                "terminal" => Some(Self::Terminal(id.to_owned())),
                 "views" => Some(Self::Views(id.to_owned())),
                 "job" => Some(Self::Job(id.to_owned())),
                 _ => None,
@@ -80,7 +77,6 @@ impl fmt::Display for Topic {
             Self::Index => f.write_str("index"),
             Self::Thread(id) => write!(f, "thread/{id}"),
             Self::Workspace(id) => write!(f, "workspace/{id}"),
-            Self::Terminal(id) => write!(f, "terminal/{id}"),
             Self::Views(id) => write!(f, "views/{id}"),
             Self::Job(id) => write!(f, "job/{id}"),
         }
@@ -107,9 +103,9 @@ impl JsonSchema for Topic {
 
     fn json_schema(_generator: &mut SchemaGenerator) -> Schema {
         json_schema!({
-            "description": "`index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`, `views/<id>` or `job/<id>`.",
+            "description": "`index`, `thread/<id>`, `workspace/<id>`, `views/<id>` or `job/<id>`.",
             "type": "string",
-            "pattern": "^(index|(thread|workspace|terminal|views|job)/[A-Za-z0-9_-]+)$"
+            "pattern": "^(index|(thread|workspace|views|job)/[A-Za-z0-9_-]+)$"
         })
     }
 }

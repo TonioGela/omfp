@@ -102,7 +102,6 @@ describe("thread list", () => {
     expect(threadStatus({ ...summary, settled: false, needsAttention: true })).toBe("awaiting");
     expect(threadStatus({ ...summary, process: { state: "failed", message: "boom" } })).toBe("failed");
     expect(threadStatus({ ...summary, process: { state: "stopped" } })).toBe("stopped");
-    expect(threadStatus({ ...summary, process: { state: "terminal" } })).toBe("terminal");
   });
 
   // spec: UI-020

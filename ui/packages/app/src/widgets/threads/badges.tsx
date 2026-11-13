@@ -11,7 +11,6 @@ const TONES: Readonly<Record<ThreadStatus, Tone>> = {
   starting: "primary",
   idle: "success",
   stopped: "default",
-  terminal: "default",
 };
 
 export function StatusBadge({ status, testid }: { status: ThreadStatus; testid: string }): ReactNode {

@@ -27,8 +27,6 @@ pub enum ProcessState {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         stderr_tail: String,
     },
-    /// The session is owned by an interactive omp in a terminal (05-terminal).
-    Terminal,
 }
 
 /// The omp session a thread is bound to.

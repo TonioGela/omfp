@@ -38,26 +38,13 @@ pub const CONNECTION_ONLY: &[&str] = &[
     "thread.live_start",
 ];
 
-/// The methods of the deferred terminal (D-06): the daemon refuses every one, so `omfp_call` refuses them and the
-/// catalogue leaves them out like [`CONNECTION_ONLY`] (AGT-041, AGT-042).
-pub const DEFERRED: &[&str] = &[
-    "terminal.open",
-    "terminal.resize",
-    "terminal.close",
-    "terminal.list",
-];
-
 /// Why agents cannot call `method`, naming the catalogue; `None` when they can (AGT-041, AGT-042).
 pub(crate) fn not_for_agents(method: &str) -> Option<String> {
-    let why = if CONNECTION_ONLY.contains(&method) {
-        "needs a window's connection, so agents cannot call it"
-    } else if DEFERRED.contains(&method) {
-        "belongs to the terminal, which is deferred (D-06): omfp refuses it"
-    } else {
+    if !CONNECTION_ONLY.contains(&method) {
         return None;
-    };
+    }
     Some(format!(
-        "`{method}` {why}; {} lists the methods {CALL} accepts",
+        "`{method}` needs a window's connection, so agents cannot call it; {} lists the methods {CALL} accepts",
         catalog::METHODS_URL
     ))
 }

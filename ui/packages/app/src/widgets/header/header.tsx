@@ -622,7 +622,6 @@ const BADGE_STATE: Readonly<Record<ThreadStatus, ThreadState>> = {
   starting: "running",
   idle: "idle",
   stopped: "idle",
-  terminal: "idle",
 };
 
 /** The thread's state as a badge (UI-157): glyph and word, popping when it changes after the header opened. */

@@ -32,7 +32,7 @@ class WebSocketTransport implements Transport {
       listener.opened();
     };
     socket.onmessage = (event: MessageEvent<unknown>) => {
-      // Binary frames carry terminal data (M6).
+      // The protocol has text frames only.
       if (typeof event.data === "string") {
         listener.received(event.data);
       }

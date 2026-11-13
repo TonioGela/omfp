@@ -89,8 +89,6 @@ describe("header", () => {
       "restart",
       false,
     ]);
-    const terminal = headerView(thread("t", "x", "w", { process: { state: "terminal" } }), NO_DETAILS, []);
-    expect(terminal.action).toBeUndefined();
   });
 
   // spec: UI-026

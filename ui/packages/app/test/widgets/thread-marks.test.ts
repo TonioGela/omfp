@@ -11,7 +11,6 @@ describe("left column rows", () => {
     expect(threadMarkState("failed", false)).toBe("failed");
     expect(threadMarkState("idle", true)).toBe("unread");
     expect(threadMarkState("stopped", false)).toBe("idle");
-    expect(threadMarkState("terminal", false)).toBe("idle");
   });
 
   // spec: UI-169

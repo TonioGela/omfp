@@ -219,14 +219,10 @@ const JOB_EVENTS: Record<JobEvent["kind"], (event: Record<string, unknown>) => b
     typeof event.endedAt === "number" && isOptionalNumber(event.code) && isOptionalNumber(event.signal),
 };
 
-const EVENT_TABLES: Record<
-  ParsedTopic["kind"],
-  Record<string, (event: Record<string, unknown>) => boolean> | undefined
-> = {
+const EVENT_TABLES: Record<ParsedTopic["kind"], Record<string, (event: Record<string, unknown>) => boolean>> = {
   index: INDEX_EVENTS,
   thread: THREAD_EVENTS,
   workspace: WORKSPACE_EVENTS,
-  terminal: undefined,
   views: VIEWS_EVENTS,
   job: JOB_EVENTS,
 };
@@ -234,9 +230,6 @@ const EVENT_TABLES: Record<
 /** Decodes the `event` of a frame on `topic`: its kind must belong to the topic's kind. */
 function decodeTopicEvent(topic: ParsedTopic, event: unknown): Decoded<TopicEvent> {
   const table = EVENT_TABLES[topic.kind];
-  if (table === undefined) {
-    return invalid("terminal output travels in binary frames, not in event frames");
-  }
   // Checked against the topic's event table.
   return checkKind(table, event) ? { ok: true, value: event as TopicEvent } : invalid(`not a ${topic.kind} event`);
 }

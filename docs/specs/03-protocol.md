@@ -1,7 +1,7 @@
 # 03 — UI ↔ daemon protocol
 
-One WebSocket per client at `/api/ws`. JSON text frames for requests, responses and events; binary frames only for
-terminal data ([05](05-terminal.md)). All types live in `omfp-protocol` (serde), shared by daemon and UI. Plain HTTP
+One WebSocket per client at `/api/ws`, JSON text frames only, for requests, responses and events (PRT-135). All types
+live in `omfp-protocol` (serde), shared by daemon and UI. Plain HTTP
 besides: the web bundle at `/` (DMN-008) and the user's theme at `/theme.css` (DMN-075), both without the token, and
 widget modules under the `widgetBase` path a client gets in `system.hello` (DMN-084, PRT-042).
 
@@ -53,8 +53,7 @@ sequenceDiagram
 
 Topics: `index` (workspaces with their discovered repositories, threads with their summaries, and the user's theme),
 `thread/<id>` (one thread), `workspace/<id>` (git status of each repository of one workspace), `views/<id>` (the views
-manifest, widget folders and widget state of one workspace, PRT-040), `job/<id>` (one job's output, PRT-041),
-`terminal/<id>` (terminal output, [05](05-terminal.md)).
+manifest, widget folders and widget state of one workspace, PRT-040), `job/<id>` (one job's output, PRT-041).
 
 The `index` state is `{ workspaces, threads, theme, settings }`; its events are
 `workspace_upserted` / `workspace_removed`, `thread_upserted` / `thread_removed`,
@@ -93,7 +92,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | --- | --- |
 | `omp` | An omp frame as received (`omp_rpc::wire` types): session events, `prompt_result`, `session_settled`, subagent frames, `available_commands_update`, `notice`, `queue_update`, … |
 | `history` | Initial history after process start (`get_messages`), applied by the reducer as a reset of the transcript |
-| `process` | Process state change (`Stopped`, `Starting`, `Idle`, `Busy`, `Failed { exitCode, stderrTail }`, `Terminal`) |
+| `process` | Process state change (`Stopped`, `Starting`, `Idle`, `Busy`, `Failed { exitCode, stderrTail }`) |
 | `interaction_opened` / `interaction_closed` | Pending interactive request opened / answered / cancelled (DMN-050..052) |
 | `presentation` | `notify`, `setStatus`, `setWidget`, `set_editor_text`, `open_url`, `setTitle` (DMN-053) |
 | `thread_meta` | Title, model, thinking level, branch, git summary changed |
@@ -146,7 +145,6 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `thread.live_stop` | `threadId` | `{}`; succeeds without a session and never starts omp (DMN-102) |
 | `thread.live_mute` | `threadId`, `muted` | `{ muted }`; `conflict` without a live session (DMN-102) |
 | `interaction.respond` | `threadId`, `interactionId`, `response` (`value` \| `confirmed` \| `cancelled` \| `answers`) | `{}` or `already_resolved` |
-| `terminal.*` | see [05](05-terminal.md) | |
 | `theme.get` | — | `{ css }`: the user's theme CSS, `null` when none (DMN-075) |
 | `theme.set` | `css` (string, at most 1 MiB, else `bad_request`; `null` restores the built-in themes) | `{}`; every client gets `theme_changed` on `index` |
 | `settings.get` | — | `settings` (DMN-009, UI-097) |
@@ -271,3 +269,9 @@ the tool definitions and the system prompt).
 | PRT-082 | `views.unmount { workspaceId, id }` → `Unmounted { views, removedViews, panel }` (AGT-063): the ids of the views it changed and of those it removed, and whether it removed the panel `id`; written and published like PRT-080. |
 | PRT-083 | `widgets.save { name, workspaceId?, widget?, code?, replace? }` → `WidgetSaved { name, reference }` (AGT-064): `workspaceId` is required with `widget`; `bad_request` for a bad name or both or neither of `widget` and `code`, `not_found` for a missing widget, `conflict` for an existing component without `replace`. |
 | PRT-084 | `widgets.library {}` → `WidgetLibrary { components: [{ name, reference, entry, files, version, description }] }` (AGT-065), by name; `entry` is `null` for a folder without one. |
+
+## No terminal
+
+| ID | Requirement |
+| --- | --- |
+| PRT-135 | **The terminal is removed** (D-06): the protocol MUST NOT have `terminal.*` methods (an unknown method, `bad_request`), a `terminal/<id>` topic (an invalid topic name), a terminal permission or a `terminal` process state; the daemon MUST answer a binary WebSocket frame with a `bad_request` response (text frames only). |

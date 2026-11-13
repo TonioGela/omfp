@@ -126,10 +126,6 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
         | Call::ThreadsUnarchive(_)
         | Call::ThreadsDelete(_)
         | Call::ThreadGit(_)) => threads::threads(services, principal, call).await,
-        Call::TerminalOpen(_)
-        | Call::TerminalResize(_)
-        | Call::TerminalClose(_)
-        | Call::TerminalList(_) => Err(bad_request("the terminal is deferred (D-06)")),
         Call::ThreadsList(params) => {
             services.refresh_index().await?;
             let threads = services.index.with_state(|index| {

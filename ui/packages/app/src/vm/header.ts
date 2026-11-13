@@ -131,7 +131,7 @@ export function headerView(
   };
 }
 
-function processAction(state: ThreadSummary["process"]["state"]): ProcessAction | undefined {
+function processAction(state: ThreadSummary["process"]["state"]): ProcessAction {
   switch (state) {
     case "running":
     case "starting":
@@ -139,8 +139,6 @@ function processAction(state: ThreadSummary["process"]["state"]): ProcessAction 
     case "stopped":
     case "failed":
       return "restart";
-    case "terminal":
-      return undefined;
   }
 }
 

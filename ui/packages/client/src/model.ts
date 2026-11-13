@@ -455,7 +455,6 @@ export class Model implements ModelView {
         this.#jobs = without(this.#jobs, parsed.id);
         this.#dirty.jobs.add(parsed.id);
         break;
-      case "terminal":
       case undefined:
         break;
     }
@@ -582,8 +581,6 @@ export class Model implements ModelView {
         this.#dirty.jobs.add(parsed.id);
         return undefined;
       }
-      case "terminal":
-        return "terminal topics have no snapshot state";
       case undefined:
         return `invalid topic ${topic}`;
     }

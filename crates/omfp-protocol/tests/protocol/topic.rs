@@ -1,9 +1,9 @@
-//! Topic names (`index`, `thread/<id>`, `workspace/<id>`, `terminal/<id>`, `views/<id>`, `job/<id>`).
+//! Topic names (`index`, `thread/<id>`, `workspace/<id>`, `views/<id>`, `job/<id>`).
 
 use omfp_protocol::Topic;
 use serde_json::json;
 
-use crate::samples::{TERMINAL_ID, THREAD_ID, WORKSPACE_ID};
+use crate::samples::{THREAD_ID, WORKSPACE_ID};
 
 // spec: PRT-040, PRT-041, TST-050
 #[test]
@@ -17,10 +17,6 @@ fn topics_round_trip_through_their_names() {
         (
             Topic::Workspace(WORKSPACE_ID.to_owned()),
             format!("workspace/{WORKSPACE_ID}"),
-        ),
-        (
-            Topic::Terminal(TERMINAL_ID.to_owned()),
-            format!("terminal/{TERMINAL_ID}"),
         ),
         (
             Topic::Views(WORKSPACE_ID.to_owned()),
@@ -38,6 +34,7 @@ fn topics_round_trip_through_their_names() {
     }
 }
 
+// spec: PRT-135
 #[test]
 fn malformed_topics_are_rejected() {
     for name in [
@@ -51,6 +48,8 @@ fn malformed_topics_are_rejected() {
         "Thread/01J",
         "threads/01J",
         "repo/01J",
+        // The terminal was removed (PRT-135).
+        "terminal/01J",
         "/01J",
         " index",
     ] {

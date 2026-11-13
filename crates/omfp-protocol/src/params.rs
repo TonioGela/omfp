@@ -8,10 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::dto::{
-    KeymapEntry, PathEntry, RepoStatus, SeenRepository, TerminalInfo, TerminalKind, UiSettings,
-    WidgetSource,
-};
+use crate::dto::{KeymapEntry, PathEntry, RepoStatus, SeenRepository, UiSettings, WidgetSource};
 use crate::topic::Topic;
 
 /// No params, or the `{}` result.
@@ -705,63 +702,6 @@ impl JsonSchema for ConstTrue {
     fn json_schema(_generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({ "const": true })
     }
-}
-
-/// `terminal.open` params (05-terminal).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenTerminalParams {
-    pub kind: TerminalKind,
-    /// Required for `omp`; for `shell`, the thread whose home is the cwd.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub thread_id: Option<String>,
-    /// For `shell`: the workspace used as cwd.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
-    pub cols: u16,
-    pub rows: u16,
-}
-
-/// `terminal.open` result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct OpenTerminalResult {
-    pub terminal_id: String,
-    /// Binary-frame channel of this terminal on this connection.
-    pub channel: u32,
-}
-
-/// `terminal.resize` params.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ResizeTerminalParams {
-    pub terminal_id: String,
-    pub cols: u16,
-    pub rows: u16,
-}
-
-/// Params naming one terminal.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalRef {
-    pub terminal_id: String,
-}
-
-/// `terminal.list` params; filters combine.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct ListTerminalsParams {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub thread_id: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub workspace_id: Option<String>,
-}
-
-/// `terminal.list` result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct TerminalList {
-    pub terminals: Vec<TerminalInfo>,
 }
 
 /// `settings.set` params: values merged into the config file (DMN-009); absent ones are unchanged.

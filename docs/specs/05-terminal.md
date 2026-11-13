@@ -1,79 +1,22 @@
-# 05 — Terminal (escape hatch to the TUI)
+# 05 — Terminal (removed)
 
-**Status:** deferred (D-06, not planned). Kept as the design to resume if TUI-only features or a shell panel become
-necessary.
-
-RPC does not expose everything the omp TUI can do (verified on omp 18.18.1: plan mode, `/vibe`, `/settings`, `/agents`,
-`/collab`, `/record`, `/pause`, `/advisor configure`, and extension UI built from TUI components are missing; see
-`docs/rpc.md` → "Extension UI Sub-Protocol" and `slash-command-internals.md` upstream). For these, a thread can be
-handed to **interactive omp in a terminal panel**, on the same session. The same panel also hosts plain shells in any
-workspace.
-
-## Terminal kinds
-
-| Kind | Command | cwd | Conflicts with the RPC process |
-| --- | --- | --- | --- |
-| `omp` | `omp --session-dir <thread session_dir> --continue --add-dir <repo>…` | the workspace folder (DMN-030) | yes: only one owner per session (ARC-005) |
-| `shell` | `$SHELL -l` | the workspace folder or one of its repositories | no |
-
-`--session-dir <dir> --continue` is the interactive equivalent of RPC's `open_session { sessionDir }`, so both sides
-open the same session. The `--add-dir` flags are passed explicitly, with the same cwd as the RPC process, so the TUI sees
-exactly the workspaces the thread has.
-
-## Handoff
-
-```mermaid
-sequenceDiagram
-  participant UI
-  participant D as daemon
-  participant R as omp rpc-ui
-  participant T as omp (pty)
-  UI->>D: terminal.open {threadId, kind: "omp"}
-  D->>D: thread Idle? no pending interactions?
-  D->>R: close stdin
-  R-->>D: exit
-  D->>D: lease free? (omp session lease)
-  D->>T: spawn in pty
-  D-->>UI: thread state Terminal, terminalId
-  Note over UI,T: user works in the TUI
-  T-->>D: exit
-  D-->>UI: thread state Stopped
-  UI->>D: (next open/prompt) start rpc-ui, open_session, reload history
-```
+**Status:** removed (D-06, PRT-135). A terminal panel running interactive omp on a thread's session (the escape hatch
+to TUI-only features) or a plain shell was designed here but never built; the `terminal.*` methods the daemon refused,
+the `terminal/<id>` topic, the terminal permission and the `terminal` process state were removed from the protocol, the
+daemon and the UI. The rows below keep their IDs so they are not reused.
 
 | ID | Requirement |
 | --- | --- |
-| TRM-001 | Opening an `omp` terminal MUST require the thread to be `Idle` or `Stopped` with no pending interactions. If it is `Busy`, the daemon MUST answer `conflict`; the UI then offers "abort and open" (abort first, then retry). |
-| TRM-002 | The daemon MUST stop the RPC process gracefully (close stdin, wait for exit, max 10 s) and check that the session lease is free before spawning the terminal process. |
-| TRM-003 | While an `omp` terminal is open, the thread's process state MUST be `Terminal` and every command that needs the RPC process MUST fail with `conflict` ("open in terminal"). |
-| TRM-004 | When the `omp` terminal process exits, the thread MUST become `Stopped`; the next start reloads history (DMN-032), so whatever happened in the TUI appears in the transcript. |
-| TRM-005 | `shell` terminals MUST NOT change the thread's process state and MAY be open while the agent runs. |
-| TRM-006 | Terminal processes MUST get `TERM=xterm-256color`, `COLORTERM=truecolor`, and `PI_TUI_NATIVE=0` (no Tern Surface Protocol probe). |
-| TRM-007 | Deleting or archiving a thread MUST close its terminals (SIGHUP, then SIGKILL after 5 s). |
-
-## Protocol
-
-| Method | Params | Result |
-| --- | --- | --- |
-| `terminal.open` | `kind: "omp"` + `threadId`, or `kind: "shell"` + `threadId?` / `workspaceId?`; `cols`, `rows` | `{ terminalId, channel }` |
-| `terminal.resize` | `terminalId`, `cols`, `rows` | `{}` |
-| `terminal.close` | `terminalId` | `{}` |
-| `terminal.list` | `threadId?`, `workspaceId?` | open terminals |
-| `subscribe` | `topic: "terminal/<id>"` | replays the scrollback buffer, then live output |
-
-Output and input travel as **binary** WebSocket frames: `[u32 channel, big-endian][bytes]`. `channel` is assigned by
-`terminal.open` and is valid for that connection only.
-
-| ID | Requirement |
-| --- | --- |
-| TRM-010 | The daemon MUST keep the last 1 MiB of output per terminal and replay it on subscribe, then nudge a redraw (resize to the same size, which sends SIGWINCH) so full-screen programs repaint. |
-| TRM-011 | Several clients MAY attach to the same terminal; all receive output and any of them can type. The most recent `terminal.resize` wins. |
-| TRM-012 | Input frames for an unknown or foreign channel MUST be dropped and logged, never written to another terminal. |
-
-## UI
-
-| ID | Requirement |
-| --- | --- |
-| TRM-020 | The terminal panel uses **xterm.js** (plus the fit addon) as a JavaScript dependency of the UI bundle (`ui/bun.lock`, from Nix like every UI dependency, ENV-001), served by the daemon with the rest of the bundle; no CDN, no Node toolchain. |
-| TRM-021 | The terminal widget MUST drive xterm.js directly from the TypeScript UI (D-18), with binary frames over the same WebSocket (`terminal/<id>`), so the web app and the desktop webview (M7) share one code path. |
-| TRM-022 | The thread view MUST show clearly when a thread is in terminal mode, with a "return to app" action that closes the `omp` terminal (sends `/exit` then SIGHUP after a grace period). |
+| TRM-001 | (Removed.) Opening an `omp` terminal required the thread to be idle or stopped with no pending interactions. |
+| TRM-002 | (Removed.) The RPC process was stopped and the session lease checked before spawning the terminal process. |
+| TRM-003 | (Removed.) A thread with an open `omp` terminal was in the `Terminal` process state. |
+| TRM-004 | (Removed.) The thread became `Stopped` when its `omp` terminal exited. |
+| TRM-005 | (Removed.) `shell` terminals did not change the thread's process state. |
+| TRM-006 | (Removed.) The terminal environment (`TERM`, `COLORTERM`, `PI_TUI_NATIVE`). |
+| TRM-007 | (Removed.) Deleting or archiving a thread closed its terminals. |
+| TRM-010 | (Removed.) The scrollback replayed on subscribe. |
+| TRM-011 | (Removed.) Several clients attached to one terminal. |
+| TRM-012 | (Removed.) Input frames for an unknown channel were dropped. |
+| TRM-020 | (Removed.) xterm.js as the terminal panel's dependency. |
+| TRM-021 | (Removed.) The terminal widget over binary WebSocket frames. |
+| TRM-022 | (Removed.) The thread view's terminal mode with a "return to app" action. |

@@ -137,7 +137,7 @@ fn status(state: &ThreadState, target: Option<&str>, explicit: bool) -> Option<&
     }
     match state.process {
         ProcessState::Failed { .. } => Some("failed"),
-        ProcessState::Stopped | ProcessState::Terminal => Some("stopped"),
+        ProcessState::Stopped => Some("stopped"),
         ProcessState::Starting | ProcessState::Running => None,
     }
 }

@@ -8,7 +8,7 @@ import type { CreateWorkspaceParams, ThreadSummary, Workspace, WorkspaceRepo } f
 import { strings } from "../strings/index.ts";
 
 /** What a thread's badge says; also its `data-status` token. */
-export type ThreadStatus = "awaiting" | "failed" | "running" | "starting" | "idle" | "stopped" | "terminal";
+export type ThreadStatus = "awaiting" | "failed" | "running" | "starting" | "idle" | "stopped";
 
 /** Attention first, then the process, then omp's settled flag. */
 export function threadStatus(thread: ThreadSummary): ThreadStatus {
@@ -20,8 +20,6 @@ export function threadStatus(thread: ThreadSummary): ThreadStatus {
       return "failed";
     case "starting":
       return "starting";
-    case "terminal":
-      return "terminal";
     case "running":
       return thread.settled ? "idle" : "running";
     case "stopped":
@@ -40,7 +38,6 @@ const GLYPHS: Readonly<Record<ThreadStatus, string>> = {
   starting: "◐",
   idle: "●",
   stopped: "○",
-  terminal: "▣",
 };
 
 /** One character shown before the title (the token and label carry the meaning). */

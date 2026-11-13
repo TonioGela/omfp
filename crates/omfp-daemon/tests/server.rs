@@ -623,8 +623,7 @@ fn superset_params(thread: &str, workspace: &str) -> Value {
         "path": "/nonexistent", "pr": "owner/repo#1", "title": "t", "text": "hello", "message": "hello",
         "name": "n", "provider": "fake", "modelId": "scripted", "level": "low", "entryId": "e1",
         "subagentId": "s1", "op": "get", "question": "why?", "command": "true", "interactionId": "i1",
-        "response": { "cancelled": true }, "kind": "shell", "cols": 80, "rows": 24, "terminalId": "x",
-        "topic": "index"
+        "response": { "cancelled": true }, "topic": "index"
     })
 }
 

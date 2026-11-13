@@ -12,7 +12,6 @@ export const shell = {
     starting: "starting",
     idle: "idle",
     stopped: "stopped",
-    terminal: "in terminal",
   },
   chip: {
     label: (name: string, repos: number) => `${name} · ${repos} ${repos === 1 ? "repo" : "repos"}`,
