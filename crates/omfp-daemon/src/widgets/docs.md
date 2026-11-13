@@ -53,8 +53,9 @@ reconnect = restart the thread, `thread.mcp_servers`, `thread.mcp_reconnect`; Re
 sends the prompt `/mcp reauth <name>` (`thread.prompt`; its output and the URL omp opens show in the chat);
 while the thread's summary has an MCP reason in `restartPending`, "Reload to load MCP tools" = `thread.mcp_reconnect { threadId }`),
 `omfp:file`
-(`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
-`HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
+(`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against `HEAD`; video and audio files play
+in the browser's player).
+Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Keep the main slot, `["tabs", {"id": "main"}, …"omfp:chat"]`, in every view: the files the
 user opens become its tabs (without it they float in a panel). `:widget add` and `omfp_ui_mount` put side tabs in the
 `tabs` container with `"id": "side"`. Props every widget accepts: `instance` and `title` (a tab's label; default: the

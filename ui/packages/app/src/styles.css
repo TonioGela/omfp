@@ -1915,6 +1915,29 @@
     max-inline-size: 100%;
   }
 
+  /* Video and audio files (UI-541): the browser's player, the video fitted into the panel, never cropped. */
+  .omfp-file__media {
+    display: grid;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    place-items: center;
+    flex: 1 1 auto;
+    min-block-size: 0;
+    padding: var(--omfp-s3);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+    background: var(--omfp-code-bg);
+  }
+
+  .omfp-file__media video {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: contain;
+  }
+
+  .omfp-file__media audio {
+    inline-size: min(100%, 40rem);
+  }
+
   /* Sized by its text up to 60vh: no size containment (the kit's UI-118 layout root). */
   .omfp-changes__merge {
     max-block-size: 60vh;

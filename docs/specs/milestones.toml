@@ -1044,4 +1044,8 @@ requirements = [
   "DMN-254",
   "PRT-150",
   "UI-540",
+  # Video and audio files in `omfp:file`
+  "UI-541",
+  "UI-542",
+  "E2E-51",
 ]

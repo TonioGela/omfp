@@ -358,6 +358,8 @@ export const shell = {
     truncated: (size: string) => `Only the beginning of this ${size} file is shown; it cannot be edited here.`,
     binary: (size: string) => `Binary file (${size}), not shown.`,
     imageTooLarge: (size: string) => `Image too large to show (${size}).`,
+    cannotPlay: (kind: "video" | "audio", size: string) => `This window cannot play this ${kind} file (${size}).`,
+    playerLabel: (kind: "video" | "audio", path: string) => `${kind === "video" ? "Video" : "Audio"} ${path}`,
     noRepository: "Not in a repository: there is no HEAD to compare with.",
     newFile: "Not in HEAD yet: every line is new.",
     conflict:

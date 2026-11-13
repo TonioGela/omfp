@@ -669,9 +669,11 @@ Intel Macs, arm64 Linux.
 Scope: `omfp:file` shows more than text and small images. The daemon serves the raw bytes of workspace files over
 HTTP ([02 — Files of a workspace](02-daemon.md#files-of-a-workspace-m5c), DMN-250..DMN-254) under the secret
 `fileBase` of `system.hello` (PRT-150), and the SDK's `useFileUrl(path)` (UI-540) gives a file's URL to widgets.
+`omfp:file` plays video and audio files in the browser's players (UI-541, UI-542).
 
 Acceptance: a media element, an image or `fetch` loads a workspace file of any size by URL alone, seeks with byte
-ranges, revalidates with its validators; a wrong key, a path leaving the workspace and a missing file are `404`.
+ranges, revalidates with its validators; a wrong key, a path leaving the workspace and a missing file are `404`; a
+WAV and a WebM opened with `:open` load and seek in their players (E2E-51).
 
 Design: media elements and `<img>` cannot send the token in a header, and the token must never travel in a URL
 (PRT-002), so the route uses a capability URL like widget modules (DMN-084): a random key made at startup, given only

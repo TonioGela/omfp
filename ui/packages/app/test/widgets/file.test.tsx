@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { CallError } from "@omfp/client";
 import type { FileCandidate, FileContent, GitStatus } from "@omfp/protocol";
 import { workspaceTopic } from "@omfp/protocol";
-import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Activity, type ReactNode, useState } from "react";
 import {
@@ -18,6 +18,7 @@ import {
 } from "../../src/sdk/index.ts";
 import { openTab } from "../../src/vm/files.ts";
 import { FileWidget } from "../../src/widgets/file/index.ts";
+import { mediaKind } from "../../src/widgets/file/media.tsx";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { FakeClient, renderWithHost, testHost } from "../support/host.tsx";
 
@@ -304,6 +305,47 @@ describe("omfp:file", () => {
         ?.reject(new CallError({ kind: "daemon", error: { code: "not_found", message: "no such file" } })),
     );
     expect((await screen.findByTestId("file-missing")).textContent).toBe("gone.rs does not exist.");
+  });
+
+  // spec: UI-541, UI-542
+  test("video and audio files play from their raw bytes, again when they change, and say when they cannot", async () => {
+    const clip: FileContent = {
+      ...text(""),
+      path: "media/clip one.WebM",
+      kind: "binary",
+      content: null,
+      size: 4096,
+      hash: "v1",
+      head: null,
+    };
+    const { setDisk, poll } = setup({ path: "media/clip one.WebM" }, clip);
+    const player = await screen.findByTestId("file-player");
+    expect(player.tagName).toBe("VIDEO");
+    expect(player.getAttribute("src")).toBe("/files/test/w1/media/clip%20one.WebM?v=v1");
+    expect(player.hasAttribute("controls")).toBe(true);
+    expect(player.getAttribute("aria-label")).toBe("Video media/clip one.WebM");
+    expect(screen.getByTestId("file-media").getAttribute("data-kind")).toBe("video");
+
+    setDisk({ ...clip, hash: "v2" });
+    poll.run();
+    await waitFor(() =>
+      expect(screen.getByTestId("file-player").getAttribute("src")).toBe("/files/test/w1/media/clip%20one.WebM?v=v2"),
+    );
+    fireEvent.error(screen.getByTestId("file-player"));
+    expect((await screen.findByTestId("file-media-error")).textContent).toBe(
+      "This window cannot play this video file (4.0 KiB).",
+    );
+    cleanup();
+
+    setup({ path: "song.flac" }, { ...clip, path: "song.flac" });
+    expect((await screen.findByTestId("file-player")).tagName).toBe("AUDIO");
+    cleanup();
+    // Only binaries with a media extension get a player.
+    setup({ path: "track.bin" }, { ...clip, path: "track.bin" });
+    expect((await screen.findByTestId("file-binary")).textContent).toBe("Binary file (4.0 KiB), not shown.");
+    expect(mediaKind("notes/.wav")).toBeUndefined();
+    expect(mediaKind("a.b/clip")).toBeUndefined();
+    expect(mediaKind("Movie.MKV")).toBe("video");
   });
 });
 
