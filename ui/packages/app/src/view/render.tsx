@@ -13,6 +13,7 @@ import {
   type KeyboardEvent,
   memo,
   type ReactNode,
+  type RefObject,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -183,6 +184,22 @@ function useRevealTab(tabs: readonly { child: LayoutTree; id: string }[], select
 }
 
 /**
+ * The ref of a tab bar (one row that scrolls sideways, UI-452) that scrolls its selected tab into view whenever the
+ * selection changes: a reveal (UI-274) may pick a tab scrolled out of the row.
+ */
+function useSelectedTabInView(selected: string | undefined): RefObject<HTMLDivElement | null> {
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selected !== undefined) {
+      bar.current
+        ?.querySelector<HTMLElement>('[role="tab"][data-selected]')
+        ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }, [selected]);
+  return bar;
+}
+
+/**
  * A `tabs` container other than `main`: one tab per child, the selected one window-local. Every tab stays mounted, the
  * ones not selected hidden with their effects paused, so they show again as they were (UI-400).
  */
@@ -199,6 +216,7 @@ function TabsNode({
   const [picked, setPicked] = useState<string | undefined>(undefined);
   useRevealTab(children, setPicked);
   const selected = children.find(({ id }) => id === picked)?.id ?? children[0]?.id;
+  const bar = useSelectedTabInView(selected);
   const [only] = children;
   if (only !== undefined && children.length === 1) {
     // One tab needs no tab bar (AGT-010): the default view's `main` slot holds the chat alone until files open.
@@ -218,13 +236,15 @@ function TabsNode({
       {...(selected === undefined ? {} : { selectedKey: selected })}
       onSelectionChange={(key) => setPicked(String(key))}
     >
-      <TabList aria-label={text.views}>
-        {children.map(({ child, id }) => (
-          <Tab key={id} id={id} data-testid="view-tab">
-            {nodeTitle(child)}
-          </Tab>
-        ))}
-      </TabList>
+      <div className="omfp-view__tabbar" ref={bar}>
+        <TabList aria-label={text.views}>
+          {children.map(({ child, id }) => (
+            <Tab key={id} id={id} data-testid="view-tab">
+              {nodeTitle(child)}
+            </Tab>
+          ))}
+        </TabList>
+      </div>
       {children.map(({ child, id }) => (
         <TabPanel key={id} id={id} className="omfp-view__panel" keepMounted>
           <Node tree={child} path={id} scope={scope} />
@@ -254,6 +274,7 @@ function MainTabs({
   useRevealTab(own, files.select);
   const ids = [...own.map(({ id }) => id), ...openedTabIds(files)];
   const selected = files.active !== undefined && ids.includes(files.active) ? files.active : ids[0];
+  const bar = useSelectedTabInView(selected);
   const [only] = own;
   if (only !== undefined && ids.length === 1) {
     return (
@@ -294,7 +315,7 @@ function MainTabs({
       {...(selected === undefined ? {} : { selectedKey: selected })}
       onSelectionChange={(key) => files.select(String(key))}
     >
-      <div className="omfp-view__tabbar" {...openedTabBarHandlers(files.closeTab)}>
+      <div className="omfp-view__tabbar" ref={bar} {...openedTabBarHandlers(files.closeTab)}>
         <TabList aria-label={text.views}>
           {[
             ...own.map(({ child, id }) => (

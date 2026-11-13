@@ -245,6 +245,29 @@ describe("frame", () => {
     expect(without.client.callsTo("views.unmount")).toEqual([]);
   });
 
+  // spec: UI-452
+  test("a side tab bar is the main slot's one-row bar and scrolls its selected tab into view", async () => {
+    const tabs = {
+      views: { work: { layout: ["row", {}, "omfp:chat", ["tabs", {}, "omfp:workspace", "omfp:background"]] } },
+    };
+    const withBackground = { registry: new Map([...registry, ["omfp:background", stub("background")]]) };
+    const scrolled: Array<string | null> = [];
+    const scroll = spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element, options) {
+      expect(options).toEqual({ block: "nearest", inline: "nearest" });
+      scrolled.push(this.textContent);
+    });
+    try {
+      const test = inWorkspace({ manifest: tabs }, withBackground);
+      const bar = document.querySelector('.omfp-view__tabs:not([data-slot]) > .omfp-view__tabbar > [role="tablist"]');
+      expect(bar?.querySelectorAll('[role="tab"]').length).toBe(2);
+      act(() => test.host.window.set(REVEAL_WIDGET, { reference: "omfp:background", nonce: 1 }));
+      test.flush();
+      await waitFor(() => expect(scrolled.at(-1)).toBe("Background"));
+    } finally {
+      scroll.mockRestore();
+    }
+  });
+
   // spec: UI-024, UI-100, UI-303
   test("the left column is the frame's; the default view renders its widgets; one view needs no view tabs", () => {
     setup();

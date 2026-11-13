@@ -521,29 +521,32 @@
   }
 
   /* Tab bars of the `main` and `side` slots (UI-154): `bar-h` tall over a rule, the selected tab's gradient indicator
-   * on the rule; the `main` bar ends with the close button of the selected file tab (UI-115). */
-  .omfp-view__tabs > .omfp-tabs__list,
+   * on the rule; the `main` bar ends with the close button of the selected file tab (UI-115). One row (UI-452): the
+   * tabs keep their width and the list scrolls sideways under a thin scrollbar, its selected tab scrolled into view. */
   .omfp-view__tabbar {
     flex: none;
-    min-block-size: var(--omfp-bar-h);
-    padding-inline: var(--omfp-s2);
-  }
-
-  .omfp-view__tabbar {
     display: flex;
     align-items: stretch;
     gap: var(--omfp-s1);
+    min-block-size: var(--omfp-bar-h);
     min-inline-size: 0;
+    padding-inline: var(--omfp-s2);
     border-block-end: var(--omfp-bw) solid var(--omfp-rule);
   }
 
   .omfp-view__tabbar > .omfp-tabs__list {
     flex: 0 1 auto;
+    flex-wrap: nowrap;
     min-inline-size: 0;
     padding-inline: 0;
     border-block-end: 0;
     overflow-x: auto;
     overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .omfp-view__tabbar > .omfp-tabs__list > .omfp-tabs__tab {
+    flex: none;
   }
 
   /* The list scrolls sideways only, so the selected tab's indicator sits inside it, on the bar's rule. */
