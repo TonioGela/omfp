@@ -3,12 +3,13 @@
  * fresh install has none, so omp refuses to start a thread until the user logs in. A {@link LOGIN} request (`:login`,
  * the Log in buttons) starts `auth.login` for a provider, or opens the provider picker first. While the login runs the
  * frame's toasts show its progress with Cancel; the daemon's `login_url`, `login_progress` and `login_input` requests
- * open the provider's page (and its toast), update the progress and ask for a pasted code. `:logout` removes omp's
- * stored credentials of a provider.
+ * open the provider's page (and its toast), update the progress and ask for a pasted code. A login this window did not
+ * start (an agent's `auth.login`, another window's) shows from the `index` topic's `login` (UI-640): the same progress
+ * toast and the page's toast. `:logout` removes omp's stored credentials of a provider.
  */
 
 import { Button, Dialog, Icon, ListBox, ListBoxItem, TextField, Toast } from "@omfp/kit";
-import type { AuthProvider, WindowAnswer } from "@omfp/protocol";
+import type { AuthProvider, LoginActivity, WindowAnswer } from "@omfp/protocol";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { keyLabel } from "../keymap/keymap.ts";
 import {
@@ -22,13 +23,19 @@ import {
   requestLogin,
   useAnnounce,
   useHost,
+  useSnapshot,
   useUrlActions,
   useWindowState,
   windowKey,
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { loginCompletions, logoutCompletions, logoutSummary, providerName, withAuthenticated } from "../vm/login.ts";
-import { OPENED_URLS } from "./opened-urls.tsx";
+import { OPENED_URLS, OpenedUrlToast } from "./opened-urls.tsx";
+
+/** The running login of the `index` topic (DMN-290), whoever started it; `undefined` when none runs. */
+function useIndexLogin(): LoginActivity | undefined {
+  return useSnapshot((snapshot) => snapshot.index.login ?? undefined);
+}
 
 const text = strings.shell.login;
 
@@ -162,6 +169,7 @@ export function Login(): ReactNode {
   const [request, setRequest] = useWindowState(LOGIN);
   const [providers] = useWindowState(AUTH_PROVIDERS);
   const [run] = useWindowState(LOGIN_RUN);
+  const indexed = useIndexLogin();
   const [picking, setPicking] = useState(false);
   const [input, setInput] = useState<InputRequest | undefined>(undefined);
 
@@ -222,15 +230,18 @@ export function Login(): ReactNode {
           case "login_url": {
             const current = host.window.get(LOGIN_RUN);
             urls.open(asked.url);
-            host.window.set(OPENED_URLS, (shown) => [
-              ...shown,
-              {
-                key: `${urlKey(current?.id ?? 0)}${id}`,
-                threadId: undefined,
-                url: asked.url,
-                login: { name: asked.name, instructions: asked.instructions ?? undefined },
-              },
-            ]);
+            // A login this window did not start shows its page's toast from the index (UI-640).
+            if (current !== undefined) {
+              host.window.set(OPENED_URLS, (shown) => [
+                ...shown,
+                {
+                  key: `${urlKey(current.id)}${id}`,
+                  threadId: undefined,
+                  url: asked.url,
+                  login: { name: asked.name, instructions: asked.instructions ?? undefined },
+                },
+              ]);
+            }
             return;
           }
           case "login_progress":
@@ -254,12 +265,13 @@ export function Login(): ReactNode {
     [host, urls, announce],
   );
 
-  // A login that ended takes its unanswered paste dialog with it.
+  // A login that ended takes its unanswered paste dialog with it: this window's, or one it did not start (UI-640).
+  const running = run !== undefined || indexed !== undefined;
   useEffect(() => {
-    if (run === undefined) {
+    if (!running) {
       setInput(undefined);
     }
-  }, [run]);
+  }, [running]);
 
   const answer = (requestId: string, value: string | null) => {
     setInput(undefined);
@@ -426,25 +438,38 @@ function LoginInputForm({
 }
 
 /** The progress toast while a login runs (UI-383): "Logging in to <name>… finish in your browser", omp's latest
- * progress message and Cancel; it stays until the login ends. */
+ * progress message and Cancel; it stays until the login ends. A login this window did not start shows the index's
+ * (UI-640). */
 export function LoginProgressToast(): ReactNode {
   const host = useHost();
   const [run] = useWindowState(LOGIN_RUN);
-  if (run === undefined) {
+  const indexed = useIndexLogin();
+  const shown =
+    run ??
+    (indexed === undefined
+      ? undefined
+      : {
+          providerId: indexed.providerId,
+          name: indexed.name,
+          progress: indexed.progress ?? undefined,
+          cancelled: false,
+        });
+  if (shown === undefined) {
     return null;
   }
   return (
     <Toast
       tone="info"
       data-testid="login-progress"
-      data-provider={run.providerId}
+      data-provider={shown.providerId}
+      data-own={run === undefined ? "false" : "true"}
       action={
         <Button
           size="sm"
           variant="quiet"
           icon={<Icon name="x" />}
-          aria-label={text.cancelLoginLabel(run.name)}
-          isPending={run.cancelled}
+          aria-label={text.cancelLoginLabel(shown.name)}
+          isPending={shown.cancelled}
           onPress={() => cancelLogin(host)}
           data-testid="login-cancel"
         >
@@ -452,12 +477,38 @@ export function LoginProgressToast(): ReactNode {
         </Button>
       }
     >
-      {text.progress(run.name)}
-      {run.progress !== undefined && (
+      {text.progress(shown.name)}
+      {shown.progress !== undefined && (
         <span className="omfp-login__progress" data-testid="login-progress-message">
-          {run.progress}
+          {shown.progress}
         </span>
       )}
     </Toast>
+  );
+}
+
+/** Dismissed page toasts of logins this window did not start, by URL. */
+const DISMISSED_LOGIN_URLS = windowKey<readonly string[]>("dismissedLoginUrls", []);
+
+/** The page of a login this window did not start (UI-640): its opened-URL toast — "Log in to <name> at <host>", omp's
+ * instructions, Open and Copy — while the index lists the login with a page, unless dismissed. */
+export function IndexLoginUrlToast(): ReactNode {
+  const [run] = useWindowState(LOGIN_RUN);
+  const indexed = useIndexLogin();
+  const [dismissed, setDismissed] = useWindowState(DISMISSED_LOGIN_URLS);
+  const url = indexed?.url ?? undefined;
+  if (run !== undefined || indexed === undefined || url === undefined || dismissed.includes(url)) {
+    return null;
+  }
+  return (
+    <OpenedUrlToast
+      opened={{
+        key: `login/index/${url}`,
+        threadId: undefined,
+        url,
+        login: { name: indexed.name, instructions: indexed.instructions ?? undefined },
+      }}
+      onDismiss={() => setDismissed((all) => [...all, url])}
+    />
   );
 }

@@ -1,15 +1,16 @@
 //! `auth.*` (PRT-129..PRT-133, PRT-140, DMN-219..DMN-224, DMN-235, DMN-236): omp's OAuth logins, run by the
 //! short-lived login omp of the supervisor (`supervisor/login.rs`), and the count of models omp can use
 //! (`supervisor/models.rs`). A login's flow — the URL to open, progress, a code to paste — reaches one window as
-//! `login_*` window requests (PRT-131); the window answers the code with `windows.answer`.
+//! `login_*` window requests (PRT-131); the window answers the code with `windows.answer`. Every window sees the
+//! running login, its page and its progress on the `index` topic (DMN-290).
 
-use std::sync::Arc;
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use omfp_protocol::{
-    AuthProvider, AuthProviders, AuthStatus, ErrorBody, ErrorCode, LoggedIn, LoggedOut,
-    WindowAnswer, WindowRequest,
+    AuthProvider, AuthProviders, AuthStatus, ErrorBody, ErrorCode, IndexEvent, LoggedIn, LoggedOut,
+    LoginActivity, WindowAnswer, WindowRequest,
 };
 use omp_rpc::{
     CancelUiResponse, Event, ExtensionUiRequest, ExtensionUiResponse, GetLoginProvidersResult,
@@ -23,7 +24,7 @@ use tracing::warn;
 
 use super::super::convert::{bad_request, internal, supervisor_error};
 use super::windows::Windows;
-use super::{Services, blocking};
+use super::{IndexLog, Services, blocking, lock};
 use crate::agent::{AgentProcess, OmpCall};
 
 /// How long the window may take to answer a `login_input`: omp's own wait for the pasted code.
@@ -92,13 +93,63 @@ fn provider(providers: Vec<AuthProvider>, id: &str) -> Result<AuthProvider, Erro
     Ok(provider)
 }
 
-/// Where a login's flow goes: the window of `connection`, the provider, and the login omp to answer.
+/// The running login as the `index` topic shows it (DMN-290): its number ([`crate::supervisor::Supervisor::begin_login`])
+/// and its activity. Every change and its `login_changed` event happen under one lock, so a login that a newer one
+/// replaced can neither overwrite nor clear the newer one's.
+#[derive(Default)]
+pub(super) struct LoginBoard(Mutex<Option<(u64, LoginActivity)>>);
+
+impl LoginBoard {
+    /// Shows login `id` of `provider`, nothing of its flow yet.
+    fn begin(&self, index: &IndexLog, id: u64, provider: &AuthProvider) {
+        let activity = LoginActivity {
+            provider_id: provider.id.clone(),
+            name: provider.name.clone(),
+            url: None,
+            instructions: None,
+            progress: None,
+        };
+        let mut shown = lock(&self.0);
+        *shown = Some((id, activity.clone()));
+        index.push(IndexEvent::LoginChanged {
+            login: Some(activity),
+        });
+    }
+
+    /// Applies `change` to login `id`'s activity, unless another login replaced it.
+    fn update(&self, index: &IndexLog, id: u64, change: impl FnOnce(&mut LoginActivity)) {
+        let mut shown = lock(&self.0);
+        if let Some((shown_id, activity)) = shown.as_mut()
+            && *shown_id == id
+        {
+            change(activity);
+            index.push(IndexEvent::LoginChanged {
+                login: Some(activity.clone()),
+            });
+        }
+    }
+
+    /// Login `id` ended: the index shows none, unless another login replaced it.
+    fn end(&self, index: &IndexLog, id: u64) {
+        let mut shown = lock(&self.0);
+        if shown.as_ref().is_some_and(|(shown_id, _)| *shown_id == id) {
+            *shown = None;
+            index.push(IndexEvent::LoginChanged { login: None });
+        }
+    }
+}
+
+/// Where a login's flow goes: the window of `connection`, the provider, the login omp to answer, and the board every
+/// window reads (login `login`).
 struct Flow {
     windows: Arc<Windows>,
     connection: u64,
     provider: AuthProvider,
     process: Arc<dyn AgentProcess>,
     runtime: Handle,
+    login: u64,
+    board: Arc<LoginBoard>,
+    index: Arc<IndexLog>,
 }
 
 impl Flow {
@@ -152,18 +203,29 @@ impl Flow {
                 continue;
             };
             match request {
-                ExtensionUiRequest::OpenUrl(open) => self.notify(WindowRequest::LoginUrl {
-                    provider_id: self.provider.id.clone(),
-                    name: self.provider.name.clone(),
-                    url: open.url,
-                    launch_url: open.launch_url,
-                    instructions: open.instructions,
-                }),
-                ExtensionUiRequest::Notify(notify) => self.notify(WindowRequest::LoginProgress {
-                    provider_id: self.provider.id.clone(),
-                    name: self.provider.name.clone(),
-                    message: notify.message,
-                }),
+                ExtensionUiRequest::OpenUrl(open) => {
+                    self.board.update(&self.index, self.login, |activity| {
+                        activity.url = Some(open.url.clone());
+                        activity.instructions.clone_from(&open.instructions);
+                    });
+                    self.notify(WindowRequest::LoginUrl {
+                        provider_id: self.provider.id.clone(),
+                        name: self.provider.name.clone(),
+                        url: open.url,
+                        launch_url: open.launch_url,
+                        instructions: open.instructions,
+                    });
+                }
+                ExtensionUiRequest::Notify(notify) => {
+                    self.board.update(&self.index, self.login, |activity| {
+                        activity.progress = Some(notify.message.clone());
+                    });
+                    self.notify(WindowRequest::LoginProgress {
+                        provider_id: self.provider.id.clone(),
+                        name: self.provider.name.clone(),
+                        message: notify.message,
+                    });
+                }
                 ExtensionUiRequest::Input(input) => {
                     asks.push(self.ask(input.id, input.title, input.placeholder));
                 }
@@ -241,12 +303,16 @@ impl Services {
         let login = self
             .supervisor
             .begin_login(&provider.id, connection, &process);
+        self.login_board.begin(&self.index, login, &provider);
         let flow = Flow {
             windows: Arc::clone(&self.windows),
             connection,
             provider: provider.clone(),
             process: Arc::clone(&process),
             runtime: Handle::current(),
+            login,
+            board: Arc::clone(&self.login_board),
+            index: Arc::clone(&self.index),
         };
         let events = omp.events;
         let pump = tokio::task::spawn_blocking(move || flow.pump(&events));
@@ -263,6 +329,7 @@ impl Services {
         if let Err(error) = pump.await {
             warn!(%error, "the login's frames stopped");
         }
+        self.login_board.end(&self.index, login);
         match result? {
             Ok(_) => {
                 self.supervisor.restart_after_login();
@@ -323,4 +390,62 @@ async fn logout(
         removed,
         remaining_source,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use omfp_protocol::{IndexSnapshot, Settings, Theme};
+
+    use super::*;
+    use crate::event_log::EventLog;
+
+    fn provider(id: &str) -> AuthProvider {
+        AuthProvider {
+            id: id.to_owned(),
+            name: id.to_uppercase(),
+            available: true,
+            authenticated: false,
+        }
+    }
+
+    fn shown(index: &IndexLog) -> Option<(String, Option<String>)> {
+        index.with_state(|state| {
+            state
+                .login
+                .as_ref()
+                .map(|login| (login.provider_id.clone(), login.progress.clone()))
+        })
+    }
+
+    // spec: DMN-290
+    #[test]
+    fn a_replaced_login_neither_updates_nor_clears_the_login_that_replaced_it() {
+        let index = EventLog::new(
+            "e",
+            IndexSnapshot {
+                workspaces: Vec::new(),
+                threads: Vec::new(),
+                theme: Theme::default(),
+                settings: Settings::default(),
+                init: None,
+                models: None,
+                login: None,
+            },
+            super::super::apply_index,
+            16,
+            16,
+        );
+        let board = LoginBoard::default();
+        board.begin(&index, 1, &provider("a"));
+        board.begin(&index, 2, &provider("b"));
+
+        board.update(&index, 1, |login| login.progress = Some("old".into()));
+        board.end(&index, 1);
+        assert_eq!(shown(&index), Some(("b".into(), None)));
+
+        board.update(&index, 2, |login| login.progress = Some("new".into()));
+        assert_eq!(shown(&index), Some(("b".into(), Some("new".into()))));
+        board.end(&index, 2);
+        assert_eq!(shown(&index), None);
+    }
 }

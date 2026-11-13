@@ -407,6 +407,10 @@ pub enum IndexEvent {
     ModelsChanged {
         models: u32,
     },
+    /// A login started, its flow moved on (its page, a progress message) or it ended (DMN-290): replaces `login`.
+    LoginChanged {
+        login: Option<crate::LoginActivity>,
+    },
 }
 
 /// Change on a `workspace/<id>` topic, whose state is the git status of each repository of the workspace.

@@ -18,6 +18,7 @@ import {
   type IndexSnapshot,
   type JobEvent,
   type JobState,
+  type LoginActivity,
   type Position,
   parseTopic,
   type RepoStatus,
@@ -63,8 +64,8 @@ export type ConnectionStatus =
 /** The `index` topic: workspaces and thread summaries keyed by id, in id order (ids are ULIDs, so this
  * is creation order), the user's theme (DMN-075; `{ css: null }` until the daemon sends one) and the UI settings of
  * the daemon's config file (DMN-009, UI-097; `{ ui: {}, keymap: [], error: null }` until the daemon sends them), the
- * version of the user's init file (PRT-095; `null` without one) and how many models omp can use (PRT-141; `null`
- * until the daemon checked, which `auth.status` asks for). */
+ * version of the user's init file (PRT-095; `null` without one), how many models omp can use (PRT-141; `null`
+ * until the daemon checked, which `auth.status` asks for) and the running login (DMN-290; `null` when none runs). */
 export interface Index {
   readonly workspaces: ReadonlyMap<string, Workspace>;
   readonly threads: ReadonlyMap<string, ThreadSummary>;
@@ -72,6 +73,7 @@ export interface Index {
   readonly settings: Settings;
   readonly init: string | null;
   readonly models: number | null;
+  readonly login: LoginActivity | null;
 }
 
 /** A pending dialog request of a thread. */
@@ -197,6 +199,7 @@ const EMPTY_INDEX: Index = {
   settings: NO_SETTINGS,
   init: null,
   models: null,
+  login: null,
 };
 
 function byId<T extends { id: string }>(items: readonly T[]): Map<string, T> {
@@ -241,6 +244,7 @@ function indexFromSnapshot(snapshot: IndexSnapshot): Index {
     settings: snapshot.settings,
     init: snapshot.init ?? null,
     models: snapshot.models ?? null,
+    login: snapshot.login ?? null,
   };
 }
 
@@ -262,6 +266,8 @@ function applyIndexEvent(index: Index, event: IndexEvent): Index {
       return { ...index, init: event.init ?? null };
     case "models_changed":
       return { ...index, models: event.models };
+    case "login_changed":
+      return { ...index, login: event.login ?? null };
   }
 }
 
@@ -627,6 +633,7 @@ export class Model implements ModelView {
       case "settings_changed":
       case "init_changed":
       case "models_changed":
+      case "login_changed":
         if (parsed?.kind === "index") {
           this.#index = applyIndexEvent(this.#index, event);
           this.#dirty.index = true;

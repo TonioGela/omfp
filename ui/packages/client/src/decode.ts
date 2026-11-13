@@ -15,6 +15,7 @@ import {
   type JobEvent,
   type JobInfo,
   type JobState,
+  type LoginActivity,
   type ParsedTopic,
   parseTopic,
   type RepoStatus,
@@ -95,6 +96,34 @@ function decodeErrorBody(value: unknown): Decoded<ErrorBody> {
   return { ok: true, value: body };
 }
 
+/** The running login of the `index` topic (DMN-290): `null` (none), or its provider with the optional parts of its
+ * flow. */
+function isLoginActivity(value: unknown): boolean {
+  return (
+    value === undefined ||
+    value === null ||
+    (isObject(value) &&
+      typeof value.providerId === "string" &&
+      typeof value.name === "string" &&
+      [value.url, value.instructions, value.progress].every(isOptionalString))
+  );
+}
+
+/** {@link isLoginActivity}'s value with its missing optional fields `null`. */
+function loginActivity(value: unknown): LoginActivity | null {
+  if (!isObject(value)) {
+    return null;
+  }
+  const login = value as unknown as LoginActivity;
+  return {
+    providerId: login.providerId,
+    name: login.name,
+    url: login.url ?? null,
+    instructions: login.instructions ?? null,
+    progress: login.progress ?? null,
+  };
+}
+
 const INDEX_EVENTS: Record<IndexEvent["kind"], (event: Record<string, unknown>) => boolean> = {
   workspace_upserted: (event) => hasId(event.workspace),
   workspace_removed: (event) => typeof event.workspaceId === "string",
@@ -104,6 +133,7 @@ const INDEX_EVENTS: Record<IndexEvent["kind"], (event: Record<string, unknown>) 
   settings_changed: (event) => isSettings(event.settings),
   init_changed: (event) => isOptionalString(event.init),
   models_changed: (event) => isSeq(event.models),
+  login_changed: (event) => isLoginActivity(event.login),
 };
 
 /** The theme when the daemon sends none (DMN-075): the built-in themes only. */
@@ -430,8 +460,8 @@ export function decodeSubscribeResult(value: unknown): Decoded<SubscribeResult> 
 }
 
 /** Decodes the state of an `index` snapshot; a missing `theme` is {@link NO_THEME}, missing `settings`
- * {@link NO_SETTINGS}, a missing `init` (the user's init file version, PRT-095) and a missing `models` (the count of
- * usable models, PRT-141) `null`. */
+ * {@link NO_SETTINGS}, a missing `init` (the user's init file version, PRT-095), a missing `models` (the count of
+ * usable models, PRT-141) and a missing `login` (the running login, DMN-290) `null`. */
 export function decodeIndexSnapshot(value: unknown): Decoded<IndexSnapshot> {
   if (
     !isObject(value) ||
@@ -455,8 +485,12 @@ export function decodeIndexSnapshot(value: unknown): Decoded<IndexSnapshot> {
     return invalid("expected `models` to be a count or `null`");
   }
   const models = typeof value.models === "number" ? value.models : null;
+  if (!isLoginActivity(value.login)) {
+    return invalid("expected `login` to be `{ providerId, name, url, instructions, progress }` or `null`");
+  }
+  const login = loginActivity(value.login);
   // Every list holds objects with a string `id`, the key the model files them under.
-  return { ok: true, value: { ...(value as IndexSnapshot), theme, settings, init, models } };
+  return { ok: true, value: { ...(value as IndexSnapshot), theme, settings, init, models, login } };
 }
 
 const THREAD_STATE_FIELDS: Record<keyof ThreadState, (field: unknown) => boolean> = {

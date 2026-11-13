@@ -11,13 +11,14 @@ import {
   useAnnounce,
   useConnection,
   useHost,
+  useSnapshot,
   useThreads,
   useWindowState,
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { announcement, banner } from "../vm/connection.ts";
 import { loginProblem } from "../vm/login.ts";
-import { LOGIN_RUN, LoginProgressToast } from "./login.tsx";
+import { IndexLoginUrlToast, LOGIN_RUN, LoginProgressToast } from "./login.tsx";
 import { OPENED_URLS, OpenedUrlToast } from "./opened-urls.tsx";
 
 /** Non-blocking: the window stays usable (and keeps its drafts) while the client reconnects. */
@@ -36,8 +37,8 @@ export function ConnectionBanner(): ReactNode {
 /**
  * The frame's one toast stack (bottom right): errors of failed actions as error toasts (UI-160), each staying until
  * dismissed — when omp says it needs a login, a short sentence with Log in and omp's own output under Details (UI-387,
- * UI-451) —, actions that worked as success toasts going by themselves (UI-385), the running login (UI-383), then the
- * URLs omp opened (UI-346).
+ * UI-451) —, actions that worked as success toasts going by themselves (UI-385), the running login (UI-383; one this
+ * window did not start too, UI-640), then the URLs omp opened (UI-346) and the page of a login started elsewhere.
  */
 export function Toasts(): ReactNode {
   const host = useHost();
@@ -45,7 +46,8 @@ export function Toasts(): ReactNode {
   const [successes, setSuccesses] = useWindowState(SUCCESSES);
   const [login] = useWindowState(LOGIN_RUN);
   const [opened, setOpened] = useWindowState(OPENED_URLS);
-  if (errors.length === 0 && successes.length === 0 && login === undefined && opened.length === 0) {
+  const indexed = useSnapshot((snapshot) => snapshot.index.login !== null);
+  if (errors.length === 0 && successes.length === 0 && login === undefined && !indexed && opened.length === 0) {
     return null;
   }
   return (
@@ -112,6 +114,7 @@ export function Toasts(): ReactNode {
           onDismiss={() => setOpened((all) => all.filter((other) => other.key !== item.key))}
         />
       ))}
+      <IndexLoginUrlToast />
     </ToastRegion>
   );
 }

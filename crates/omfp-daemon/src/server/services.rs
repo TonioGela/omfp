@@ -84,6 +84,7 @@ fn apply_index(state: &mut IndexSnapshot, event: &IndexEvent) {
         IndexEvent::SettingsChanged { settings } => state.settings.clone_from(settings),
         IndexEvent::InitChanged { init } => state.init.clone_from(init),
         IndexEvent::ModelsChanged { models } => state.models = Some(*models),
+        IndexEvent::LoginChanged { login } => state.login.clone_from(login),
     }
 }
 
@@ -133,6 +134,8 @@ pub(crate) struct Services {
     manifest_edits: Arc<tokio::sync::Mutex<()>>,
     /// The followed user init file (DMN-185), served from here; `None` follows none.
     init_file: Arc<Mutex<Option<PathBuf>>>,
+    /// The running login every window sees on the `index` topic (DMN-290).
+    login_board: Arc<logins::LoginBoard>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -170,6 +173,7 @@ impl Services {
                     settings: Settings::default(),
                     init: None,
                     models: None,
+                    login: None,
                 },
                 apply_index,
                 INDEX_CAPACITY,
@@ -186,6 +190,7 @@ impl Services {
             windows: Arc::new(Windows::new()),
             manifest_edits: Arc::new(tokio::sync::Mutex::new(())),
             init_file: Arc::new(Mutex::new(None)),
+            login_board: Arc::default(),
         };
         let workspaces = Arc::clone(&services.workspaces);
         blocking(move || {
@@ -720,6 +725,7 @@ fn load_index(
         settings,
         init: previous.init.clone(),
         models: previous.models,
+        login: previous.login.clone(),
     })
 }
 

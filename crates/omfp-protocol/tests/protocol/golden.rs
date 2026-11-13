@@ -1675,6 +1675,7 @@ fn index_snapshot_lists_workspaces_threads_the_theme_and_settings() {
         settings: settings(),
         init: None,
         models: Some(12),
+        login: None,
     };
     let text = serde_json::to_string(&snapshot).unwrap();
     assert_eq!(

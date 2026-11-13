@@ -486,6 +486,36 @@ describe("model", () => {
     expect(decodeServerFrame(changed(1.5)).ok).toBe(false);
   });
 
+  // spec: DMN-290, UI-640
+  test("the running login: the index follows it; snapshots without one have none, missing parts read as null", () => {
+    const model = new Model();
+    expect(model.index.login).toBeNull();
+    model.track(INDEX_TOPIC);
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i1", 1, indexState())).ok).toBe(true);
+    expect(model.index.login).toBeNull();
+    const login = { providerId: "kimi-code", name: "Kimi Code", url: null, instructions: null, progress: "Waiting" };
+    expect(model.applyEvent(indexFrame("i1", 2, { kind: "login_changed", login }))).toBe("applied");
+    expect(model.index.login).toEqual(login);
+    expect(model.applyEvent(indexFrame("i1", 3, { kind: "login_changed", login: null }))).toBe("applied");
+    expect(model.index.login).toBeNull();
+    const partial = { providerId: "kimi-code", name: "Kimi Code" };
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i2", 1, { ...indexState(), login: partial })).ok).toBe(true);
+    expect(model.index.login).toEqual({ ...partial, url: null, instructions: null, progress: null });
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i3", 1, { ...indexState(), login: { name: "x" } })).ok).toBe(
+      false,
+    );
+    const changed = (value: unknown) => ({
+      type: "event",
+      topic: INDEX_TOPIC,
+      epoch: "i1",
+      seq: 4,
+      event: { kind: "login_changed", login: value },
+    });
+    expect(decodeServerFrame(changed(login)).ok).toBe(true);
+    expect(decodeServerFrame(changed(null)).ok).toBe(true);
+    expect(decodeServerFrame(changed({ ...login, url: 3 })).ok).toBe(false);
+  });
+
   // spec: PRT-096
   test("the view files version follows the views topic; snapshots without one have none", () => {
     const model = new Model();

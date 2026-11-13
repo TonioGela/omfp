@@ -24,7 +24,8 @@ pub use activity::{
     PromptHistoryParams, StopThreadParams, ThreadsStopped,
 };
 pub use auth::{
-    AuthProvider, AuthProviders, AuthStatus, LoggedIn, LoggedOut, LoginCancelled, ProviderRef,
+    AuthProvider, AuthProviders, AuthStatus, LoggedIn, LoggedOut, LoginActivity, LoginCancelled,
+    ProviderRef,
 };
 pub use dto::{
     BuiltinTheme, CreatedBy, Density, DiffPage, FileCandidate, FileCandidates, FileChange,

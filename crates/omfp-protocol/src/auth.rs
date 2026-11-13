@@ -59,6 +59,22 @@ pub struct LoginCancelled {
     pub provider_id: Option<String>,
 }
 
+/// The login running now, as every window sees it on the `index` topic (DMN-290): which provider, and the latest of
+/// its flow, so a window that did not start it can show it (an agent's `auth.login`, another window's).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginActivity {
+    pub provider_id: String,
+    /// The provider's name, as `auth.providers` gives it.
+    pub name: String,
+    /// The provider's page omp opened (its `login_url`); `null` until omp opened one.
+    pub url: Option<String>,
+    /// What the provider's page asks of the user, as omp words it; `null` when omp says nothing.
+    pub instructions: Option<String>,
+    /// omp's latest progress message (its `login_progress`); `null` before the first.
+    pub progress: Option<String>,
+}
+
 /// `auth.logout` result (PRT-133).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

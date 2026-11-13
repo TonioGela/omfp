@@ -1128,4 +1128,8 @@ requirements = [
   "UI-665",
   "UI-666",
   "E2E-66",
+  # A login started elsewhere shows in every window
+  "DMN-290",
+  "UI-640",
+  "E2E-62",
 ]

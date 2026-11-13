@@ -753,6 +753,10 @@ therefore starts once with `--fork <source session file>` into its own `--sessio
 runs `fork { entryId }` there, and the daemon deletes the full copy. The transcript knows no entry ids: the window finds
 a message's entry in `thread.tree` by role and timestamp on the current branch, as omp's own transcript actions do.
 
+A login the window did not start (an agent's `auth.login` through `omfp_call`, another window's) shows in every window
+as its own does: the `index` topic carries the running login with its page and progress (DMN-290), and the window
+shows its progress toast with Cancel and its page's toast with Open and Copy until it ends (UI-640, E2E-62).
+
 ## Terminal (removed)
 
 Removed (D-06, PRT-135): the user does not rely on the TUI-only commands, so the terminal was never built; its

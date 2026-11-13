@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { CallError } from "@omfp/client";
-import type { AuthProvider, WindowRequest } from "@omfp/protocol";
+import type { AuthProvider, IndexEvent, WindowRequest } from "@omfp/protocol";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { completions } from "../../src/frame/cmdline.ts";
@@ -176,6 +176,82 @@ describe("logging in", () => {
       const [login] = test.client.callsTo("auth.login");
       await settle(() => login?.resolve(ANTHROPIC));
       expect(screen.queryAllByTestId("opened-url-toast").length).toBe(0);
+    } finally {
+      window.open = open;
+      if (clipboard === undefined) {
+        Reflect.deleteProperty(navigator, "clipboard");
+      } else {
+        Object.defineProperty(navigator, "clipboard", clipboard);
+      }
+    }
+  });
+
+  // spec: UI-640
+  test("a login this window did not start shows its progress and its page from the index, until it ends", async () => {
+    const test = setup();
+    const opened: unknown[][] = [];
+    const copied: string[] = [];
+    const open = window.open;
+    window.open = (...args: unknown[]) => {
+      opened.push(args);
+      return null;
+    };
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: (text: string) => Promise.resolve(void copied.push(text)) },
+    });
+    const url = "https://auth.kimi.com/device?code=ABCD";
+    const changed = (event: IndexEvent) =>
+      act(() => {
+        test.client.indexEvents(event);
+        test.flush();
+      });
+    const kimi = { providerId: "kimi-code", name: "Kimi Code", url: null, instructions: null, progress: null };
+    try {
+      // An agent's `auth.login`: nothing of it was started here.
+      changed({ kind: "login_changed", login: kimi });
+      const progress = screen.getByTestId("login-progress");
+      expect([progress.dataset.provider, progress.dataset.own]).toEqual(["kimi-code", "false"]);
+      expect(progress.textContent).toContain("Logging in to Kimi Code… finish in your browser");
+      expect(screen.queryAllByTestId("opened-url-toast").length).toBe(0);
+
+      // The focused window gets the flow's requests: it opens the page, whose one toast comes from the index.
+      request(test, "u1", { kind: "login_url", ...kimi, url, launchUrl: null, instructions: "Enter ABCD" });
+      changed({ kind: "login_changed", login: { ...kimi, url, instructions: "Enter ABCD" } });
+      request(test, "p1", { kind: "login_progress", ...kimi, message: "Waiting…" });
+      changed({ kind: "login_changed", login: { ...kimi, url, instructions: "Enter ABCD", progress: "Waiting…" } });
+      expect(opened).toEqual([[url, "_blank", "noopener"]]);
+      const toasts = screen.getAllByTestId("opened-url-toast");
+      expect(toasts.map((toast) => [toast.dataset.url, toast.dataset.login])).toEqual([[url, "true"]]);
+      const toast = toasts[0] as HTMLElement;
+      expect(toast.textContent).toContain("Log in to Kimi Code at auth.kimi.com");
+      expect(within(toast).getByTestId("login-instructions").textContent).toBe("Enter ABCD");
+      expect(screen.getByTestId("login-progress-message").textContent).toBe("Waiting…");
+      await test.user.click(within(toast).getByTestId("opened-url-open"));
+      await test.user.click(within(toast).getByTestId("opened-url-copy"));
+      expect([opened.length, copied]).toEqual([2, [url]]);
+
+      // Its paste dialog goes when it ends; so do its toasts.
+      request(test, "i1", { kind: "login_input", ...kimi, message: "Paste the code", placeholder: null });
+      expect(screen.queryAllByTestId("login-input-dialog").length).toBe(1);
+      changed({ kind: "login_changed", login: null });
+      await waitFor(() => expect(screen.queryAllByTestId("login-input-dialog").length).toBe(0));
+      expect(screen.queryAllByTestId("login-progress").length).toBe(0);
+      expect(screen.queryAllByTestId("opened-url-toast").length).toBe(0);
+      expect(answers(test)).toEqual([]);
+
+      // Cancel works for it too, and a dismissed page stays dismissed.
+      changed({ kind: "login_changed", login: { ...kimi, url } });
+      await test.user.click(within(screen.getByTestId("login-progress")).getByTestId("login-cancel"));
+      expect(test.client.callsTo("auth.login_cancel").length).toBe(1);
+      await test.user.click(within(screen.getByTestId("opened-url-toast")).getByRole("button", { name: "Dismiss" }));
+      expect(screen.queryAllByTestId("opened-url-toast").length).toBe(0);
+
+      // A login this window runs shows only its own toasts.
+      changed({ kind: "login_changed", login: { ...ANTHROPIC, url, instructions: null, progress: null } });
+      run(test, "login anthropic");
+      expect(screen.getAllByTestId("login-progress").map((shown) => shown.dataset.own)).toEqual(["true"]);
     } finally {
       window.open = open;
       if (clipboard === undefined) {

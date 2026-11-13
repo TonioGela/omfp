@@ -2497,6 +2497,76 @@ async fn a_cancelled_login_fails_as_cancelled() {
     );
 }
 
+/// The `login` of the next `login_changed` event on the `index` topic (DMN-290).
+async fn login_changed(client: &mut Client) -> Value {
+    loop {
+        let frame = client.event("index").await;
+        if frame["event"]["kind"] == "login_changed" {
+            return frame["event"]["login"].clone();
+        }
+    }
+}
+
+// spec: DMN-290
+#[tokio::test(flavor = "multi_thread")]
+async fn every_window_sees_the_running_login_its_page_and_its_progress_on_the_index() {
+    use omfp_core::wire::{ExtensionUiRequest, NotifyUiRequest, OpenUrlUiRequest};
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    let gate = daemon.launcher.gate("login");
+    let mut caller = daemon.client("agent").await;
+    let mut other = daemon.client("other").await;
+    let index = other.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(index["state"]["login"], Value::Null, "no login runs");
+
+    send_request(
+        &mut caller,
+        "l1",
+        "auth.login",
+        json!({ "providerId": "kimi-code" }),
+    )
+    .await;
+    gate.arrived(1).await;
+    let started = json!({
+        "providerId": "kimi-code", "name": "Kimi Code", "url": null, "instructions": null, "progress": null
+    });
+    assert_eq!(login_changed(&mut other).await, started);
+    let ui = |request| RpcNotification::ExtensionUiRequest(request);
+    daemon.launcher.process(0).emit(vec![
+        ui(ExtensionUiRequest::OpenUrl(OpenUrlUiRequest {
+            id: "u1".into(),
+            url: "https://auth.kimi.com/device?code=ABCD".into(),
+            launch_url: None,
+            instructions: Some("Enter ABCD".into()),
+        })),
+        ui(ExtensionUiRequest::Notify(NotifyUiRequest {
+            id: "u2".into(),
+            message: "Waiting for the browser…".into(),
+            notify_type: None,
+        })),
+    ]);
+
+    let opened = json!({
+        "providerId": "kimi-code", "name": "Kimi Code", "url": "https://auth.kimi.com/device?code=ABCD",
+        "instructions": "Enter ABCD", "progress": null
+    });
+    assert_eq!(login_changed(&mut other).await, opened);
+    let mut waiting = opened.clone();
+    waiting["progress"] = json!("Waiting for the browser…");
+    assert_eq!(login_changed(&mut other).await, waiting);
+    // A window opened meanwhile reads it from the snapshot.
+    let mut late = daemon.client("late").await;
+    let index = late.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(index["state"]["login"], waiting);
+
+    gate.open();
+    let response = response_to(&mut caller, "l1").await;
+    assert_eq!(response["ok"], true, "{response}");
+    assert_eq!(login_changed(&mut other).await, Value::Null, "it ended");
+}
+
 // spec: PRT-133, DMN-223
 #[tokio::test(flavor = "multi_thread")]
 async fn logout_removes_every_stored_credential_of_the_provider() {

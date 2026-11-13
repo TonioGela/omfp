@@ -498,6 +498,11 @@ export type IndexEvent =
   | {
     kind: "models_changed";
     models: number;
+  }
+  /** A login started, its flow moved on (its page, a progress message) or it ended (DMN-290): replaces `login`. */
+  | {
+    kind: "login_changed";
+    login?: LoginActivity | null;
   };
 
 /** State of the `index` topic. */
@@ -507,6 +512,8 @@ export type IndexSnapshot = {
    * `null` without one.
    */
   init?: string | null;
+  /** The login running now (DMN-290), whichever connection started it; `null` when none runs. */
+  login?: LoginActivity | null;
   /**
    * How many models omp can use (PRT-141, `auth.status`); `null` until the daemon checked, which the first
    * `auth.status` does (DMN-235).
@@ -707,6 +714,22 @@ export type LoggedOut = {
   remainingSource?: string | null;
   /** How many stored credentials (logins and stored keys) of the provider omp removed. */
   removed: number;
+};
+
+/**
+ * The login running now, as every window sees it on the `index` topic (DMN-290): which provider, and the latest of
+ * its flow, so a window that did not start it can show it (an agent's `auth.login`, another window's).
+ */
+export type LoginActivity = {
+  /** What the provider's page asks of the user, as omp words it; `null` when omp says nothing. */
+  instructions?: string | null;
+  /** The provider's name, as `auth.providers` gives it. */
+  name: string;
+  /** omp's latest progress message (its `login_progress`); `null` before the first. */
+  progress?: string | null;
+  providerId: string;
+  /** The provider's page omp opened (its `login_url`); `null` until omp opened one. */
+  url?: string | null;
 };
 
 /** `auth.login_cancel` result (PRT-132). */

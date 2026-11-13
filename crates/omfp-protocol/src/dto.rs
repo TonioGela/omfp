@@ -351,6 +351,9 @@ pub struct IndexSnapshot {
     /// `auth.status` does (DMN-235).
     #[serde(default)]
     pub models: Option<u32>,
+    /// The login running now (DMN-290), whichever connection started it; `null` when none runs.
+    #[serde(default)]
+    pub login: Option<crate::LoginActivity>,
 }
 
 /// Git status of one repository of a workspace (the `workspace/<id>` topic, DMN-026).
