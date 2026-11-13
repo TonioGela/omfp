@@ -303,7 +303,7 @@ async fn file_tabs(journey: &Journey, css: &str) -> anyhow::Result<Vec<String>> 
         .collect())
 }
 
-// spec: E2E-13, UI-115, UI-117, DMN-092
+// spec: E2E-13, UI-115, UI-117, UI-366, DMN-092
 #[tokio::test(flavor = "multi_thread")]
 async fn bare_names_open_their_file_or_a_picker_and_files_float_as_tabs_without_main()
 -> anyhow::Result<()> {
@@ -386,6 +386,26 @@ async fn bare_names_open_their_file_or_a_picker_and_files_float_as_tabs_without_
             "{panel} [data-testid=floating-file-tab][data-file=\"app/src/theme.ts\"]"
         ))
         .await?;
+    until_editor_text(&journey, "export const theme = 1;\n").await?;
+    // An unselected tab's own × closes it without selecting it (UI-366).
+    journey
+        .click(&format!(
+            "{panel} [data-testid=floating-file-tab][data-file=\"app/web/config.ts\"] [data-testid=file-tab-close]"
+        ))
+        .await?;
+    journey
+        .gone(&format!(
+            "{panel} [data-testid=floating-file-tab][data-file=\"app/web/config.ts\"]"
+        ))
+        .await?;
+    assert_eq!(
+        file_tabs(
+            &journey,
+            &format!("{panel} [data-testid=floating-file-tab]")
+        )
+        .await?,
+        ["app/src/theme.ts"]
+    );
     until_editor_text(&journey, "export const theme = 1;\n").await?;
     journey.screenshot("m5c-floating-files").await?;
     journey.finish("E2E-13-names").await

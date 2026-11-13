@@ -6,12 +6,13 @@
  * splitters.
  */
 
-import { Icon, IconButton, Tab, TabList, TabPanel, Tabs } from "@omfp/kit";
+import { Tab, TabList, TabPanel, Tabs } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
 import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { fileName, fileTabId, REVEAL_WIDGET, useFileTabs, useWindowState } from "../sdk/index.ts";
+import { fileTabId, REVEAL_WIDGET, useFileTabs, useWindowState } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { resizeSizes } from "./edit.ts";
+import { FileTabLabel, fileTabBarHandlers } from "./file-tab.tsx";
 import {
   type Area,
   chatCell,
@@ -30,7 +31,6 @@ import type { ResolvedView } from "./views.ts";
 
 const text = strings.shell.frame;
 const layoutText = strings.shell.layout;
-const filesText = strings.shell.files;
 
 export interface ViewRendererProps {
   readonly view: ResolvedView;
@@ -170,7 +170,8 @@ function TabsNode({
 
 /**
  * The `tabs` container with `"id": "main"` (UI-115): its own children, then this window's open files of the workspace
- * as tabs (`omfp:file`), the selected one window-local too. One tab alone needs no tab bar.
+ * as tabs (`omfp:file`), the selected one window-local too. One tab alone needs no tab bar. A middle click closes the
+ * file tab under the pointer (UI-365), as browsers and editors do.
  */
 function MainTabs({
   tree,
@@ -196,7 +197,6 @@ function MainTabs({
       </div>
     );
   }
-  const activeFile = files.tabs.find((tab) => fileTabId(tab.path) === selected);
   return (
     <Tabs
       className="omfp-view__tabs"
@@ -206,7 +206,7 @@ function MainTabs({
       {...(selected === undefined ? {} : { selectedKey: selected })}
       onSelectionChange={(key) => files.select(String(key))}
     >
-      <div className="omfp-view__tabbar">
+      <div className="omfp-view__tabbar" {...fileTabBarHandlers(files.close)}>
         <TabList aria-label={text.views}>
           {[
             ...own.map(({ child, id }) => (
@@ -216,19 +216,11 @@ function MainTabs({
             )),
             ...files.tabs.map((tab) => (
               <Tab key={fileTabId(tab.path)} id={fileTabId(tab.path)} data-testid="file-tab" data-file={tab.path}>
-                <span title={tab.path}>{fileName(tab.path)}</span>
+                <FileTabLabel path={tab.path} onClose={files.close} />
               </Tab>
             )),
           ]}
         </TabList>
-        {activeFile !== undefined && (
-          <IconButton
-            label={filesText.close(fileName(activeFile.path))}
-            icon={<Icon name="x" />}
-            onPress={() => files.close(activeFile.path)}
-            data-testid="file-tab-close"
-          />
-        )}
       </div>
       {own.map(({ child, id }) => (
         <TabPanel key={id} id={id} className="omfp-view__panel">

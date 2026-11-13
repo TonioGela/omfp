@@ -500,8 +500,26 @@
     inset-block-end: 0;
   }
 
-  .omfp-view__tabbar > .omfp-icon-button {
-    align-self: center;
+  /* Each file tab's own close mark, in the main slot and the floating panel (UI-366): faint until the tab is hovered,
+     selected or focused. */
+  .omfp-file-tab__close {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-start: var(--omfp-s1);
+    padding: 2px;
+    border-radius: var(--omfp-r-card);
+    color: var(--omfp-on-surface-variant);
+    opacity: 0.45;
+    cursor: pointer;
+  }
+
+  .omfp-tabs__tab:is([data-hovered], [data-selected], [data-focus-visible]) .omfp-file-tab__close {
+    opacity: 1;
+  }
+
+  .omfp-file-tab__close:hover {
+    color: var(--omfp-on-surface);
+    background: var(--omfp-hover);
   }
 
   /* Files in a view without a `main` slot float over the view as tabs, moved, resized and minimised (UI-115). */

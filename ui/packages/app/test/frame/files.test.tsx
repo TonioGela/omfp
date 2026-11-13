@@ -128,11 +128,51 @@ describe("file tabs in the main slot", () => {
     // Window-local, kept in localStorage, never written to views.json.
     expect(JSON.parse(test.storage.getItem("omfp.openFiles") ?? "{}").w1.active).toBe(fileTabId("fe/src/lib.rs"));
     expect(test.client.callsTo("views.set")).toEqual([]);
-    await test.user.click(screen.getByTestId("file-tab-close"));
+    // Each file tab has its own close mark: closing the selected one selects its neighbour.
+    const closeOf = (file: string) =>
+      within(tabElements().find((tab) => tab.dataset.file === file) as HTMLElement).getByTestId("file-tab-close");
+    await test.user.click(closeOf("fe/src/lib.rs"));
     expect(tabs()).toEqual(["Chat", "README.md"]);
-    await test.user.click(screen.getByTestId("file-tab-close"));
+    await test.user.click(closeOf("fe/README.md"));
     expect(tabs()).toEqual([]);
     expect(screen.getByTestId("stub-input")).toBeDefined();
+  });
+
+  // spec: UI-365
+  test("a middle click closes the file tab under the pointer, selected or not; other tabs ignore it", () => {
+    const test = setup();
+    act(() => openFile(test.host, "fe/src/lib.rs"));
+    act(() => openFile(test.host, "fe/README.md"));
+    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md"]);
+    const tab = (file: string) => tabElements().find((element) => element.dataset.file === file) as HTMLElement;
+    const chat = tabElements().find((element) => element.textContent === "Chat") as HTMLElement;
+    // The middle button's press must not start the browser's autoscroll.
+    expect(fireEvent.mouseDown(tab("fe/src/lib.rs"), { button: 1 })).toBe(false);
+    fireEvent(tab("fe/src/lib.rs"), new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    expect(tabs()).toEqual(["Chat", "README.md"]);
+    const selected = tabElements().find((element) => element.getAttribute("aria-selected") === "true");
+    expect(selected?.dataset.file).toBe("fe/README.md");
+    fireEvent(chat, new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    fireEvent(tab("fe/README.md"), new MouseEvent("auxclick", { button: 2, bubbles: true, cancelable: true }));
+    expect(tabs()).toEqual(["Chat", "README.md"]);
+    fireEvent(tab("fe/README.md"), new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    expect(tabs()).toEqual([]);
+  });
+
+  // spec: UI-366
+  test("every file tab carries its close mark: an unselected one closes without being selected; Delete closes the focused tab", async () => {
+    const test = setup();
+    act(() => openFile(test.host, "fe/src/lib.rs"));
+    act(() => openFile(test.host, "fe/README.md"));
+    const tab = (file: string) => tabElements().find((element) => element.dataset.file === file) as HTMLElement;
+    expect(screen.getAllByTestId("file-tab-close").length).toBe(2);
+    await test.user.click(within(tab("fe/src/lib.rs")).getByTestId("file-tab-close"));
+    expect(tabs()).toEqual(["Chat", "README.md"]);
+    const selected = tabElements().find((element) => element.getAttribute("aria-selected") === "true");
+    expect(selected?.dataset.file).toBe("fe/README.md");
+    act(() => tab("fe/README.md").focus());
+    await test.user.keyboard("{Delete}");
+    expect(tabs()).toEqual([]);
   });
 
   // spec: UI-115
@@ -145,8 +185,8 @@ describe("file tabs in the main slot", () => {
     expect(test.host.window.get(OPEN_FILES).w1?.active).toBe("0.0.1.0");
   });
 
-  // spec: UI-115
-  test("a view without a main slot opens the files as tabs of a floating panel, closed by its button or Esc", async () => {
+  // spec: UI-115, UI-366
+  test("a view without a main slot opens the files as tabs of a floating panel, closed by their own × or Esc", async () => {
     const test = setup({
       manifest: { default: "plain", views: { plain: { layout: ["row", {}, "omfp:chat", "omfp:workspace"] } } },
     });
@@ -168,14 +208,15 @@ describe("file tabs in the main slot", () => {
     await test.user.click(within(panel).getAllByTestId("floating-file-tab")[0] as HTMLElement);
     expect(JSON.parse(within(panel).getByTestId("stub-file").textContent ?? "").path).toBe("fe/src/lib.rs");
     expect(test.host.window.get(OPEN_FILES).w1?.active).toBe(fileTabId("fe/src/lib.rs"));
-    // Closing the selected file selects its neighbour.
-    await test.user.click(within(panel).getByTestId("floating-file-close"));
+    // Closing the selected file by its own × selects its neighbour.
+    const lib = within(panel).getAllByTestId("floating-file-tab")[0] as HTMLElement;
+    await test.user.click(within(lib).getByTestId("file-tab-close"));
     expect(
       within(panel)
         .getAllByTestId("floating-file-tab")
         .map((tab) => tab.dataset.file),
     ).toEqual(["fe/src/main.rs"]);
-    act(() => screen.getByTestId("floating-file-close").focus());
+    act(() => screen.getByTestId("floating-file-move").focus());
     press("Escape");
     expect(screen.queryByTestId("floating-file")).toBeNull();
   });

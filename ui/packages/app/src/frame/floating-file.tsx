@@ -1,15 +1,17 @@
 /**
  * Files in a view without a `main` slot (UI-115): a panel floating over the view holding the open files as tabs, like
- * the `main` slot's (selected tab, closing selects the neighbour, window-local). The panel moves by its grip and
- * resizes by its corner (pointer or arrow keys), minimises to its bar, and keeps its place and state in this window.
- * Esc closes the selected file (an Esc the file editor kept for itself does not count).
+ * the `main` slot's (selected tab, each tab's own `×`, middle click and Delete, closing selects the neighbour,
+ * window-local; UI-365, UI-366). The panel moves by its grip and resizes by its corner (pointer or arrow keys),
+ * minimises to its bar, and keeps its place and state in this window. Esc closes the selected file (an Esc the file
+ * editor kept for itself does not count).
  */
 
 import { IconButton, Tab, TabList, TabPanel, Tabs } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
 import type { KeyboardEvent, ReactNode } from "react";
-import { FLOATING_FILES, fileName, fileTabId, movePanel, resizePanel, useFileTabs } from "../sdk/index.ts";
+import { FLOATING_FILES, fileTabId, movePanel, resizePanel, useFileTabs } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
+import { FileTabLabel, fileTabBarHandlers } from "../view/file-tab.tsx";
 import { FILE_WIDGET, fileProps } from "../view/layout.ts";
 import type { WidgetRegistry } from "../view/resolve.ts";
 import { WidgetSlot } from "../view/slot.tsx";
@@ -38,7 +40,7 @@ export function FloatingFile({ workspaceId, views, registry }: FloatingFileProps
     }
   };
   const bar = (tabs: ReactNode) => (
-    <div className="omfp-floating-file__bar">
+    <div className="omfp-floating-file__bar" {...fileTabBarHandlers(files.close)}>
       <button
         type="button"
         className="omfp-floating-file__grip"
@@ -55,12 +57,6 @@ export function FloatingFile({ workspaceId, views, registry }: FloatingFileProps
         icon={panel.minimised ? "□" : "–"}
         onPress={() => setPanel((now) => ({ ...now, minimised: !now.minimised }))}
         data-testid="floating-file-minimise"
-      />
-      <IconButton
-        label={text.close(fileName(selected.path))}
-        icon="×"
-        onPress={() => files.close(selected.path)}
-        data-testid="floating-file-close"
       />
     </div>
   );
@@ -92,7 +88,7 @@ export function FloatingFile({ workspaceId, views, registry }: FloatingFileProps
                     data-testid="floating-file-tab"
                     data-file={tab.path}
                   >
-                    <span title={tab.path}>{fileName(tab.path)}</span>
+                    <FileTabLabel path={tab.path} onClose={files.close} />
                   </Tab>
                 ))}
               </TabList>,

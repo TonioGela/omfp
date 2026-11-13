@@ -32,6 +32,11 @@ The bar at the bottom of the view area, like vim's:
 
 In command mode the `:` line (or the file picker) replaces the title, the view tabs and the notice.
 
+## File tabs
+
+Files open as tabs of the view's `main` tabs, after its own tabs (the chat in the default view). Each file tab has its
+own `×`; a middle click on a tab or Delete on the focused tab closes it too, without selecting it first.
+
 ## The `:` line
 
 `:` (or `Space :`) opens it; it doubles as the command palette: typing filters the commands by name, Tab completes,
