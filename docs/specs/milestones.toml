@@ -873,6 +873,7 @@ requirements = [
   "UI-405",
   "UI-406",
   "UI-407",
+  "UI-408",
   # Journeys
   "E2E-22",
   "E2E-23",

@@ -150,6 +150,17 @@ describe("kit styles", () => {
     expect(region.declarations.get("max-inline-size")).toBe("100%");
   });
 
+  // spec: UI-168, UI-408
+  test("the `:` menu: a long command name keeps its width and pushes the description, which ellipsizes", () => {
+    // A flex item shrinks below its `min-inline-size` content when allowed to: the name would overprint the description.
+    const command = findRule(kitRules, [LAYER], ".omfp-cmdmenu__command");
+    expect(command.declarations.get("flex")).toBe("none");
+    expect(command.declarations.get("white-space")).toBe("nowrap");
+    const description = findRule(kitRules, [LAYER], ".omfp-cmdmenu__description");
+    expect(description.declarations.get("min-inline-size")).toBe("0");
+    expect(description.declarations.get("text-overflow")).toBe("ellipsis");
+  });
+
   // spec: UI-118
   test("CodeMirror scrolls in a layout root sized by its container; omfp:changes' text-sized diff opts out", () => {
     const view = findRule(kitRules, [LAYER], ".omfp-code-editor__view, .omfp-code-diff__view");

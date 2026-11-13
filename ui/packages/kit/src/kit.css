@@ -2421,7 +2421,9 @@
     background: var(--omfp-sel-bg);
   }
 
+  /* The name never shrinks under its text (it would overprint the description): the description gives way. */
   .omfp-cmdmenu__command {
+    flex: none;
     min-inline-size: var(--omfp-key-col);
     font-family: var(--omfp-font-code);
     white-space: nowrap;
