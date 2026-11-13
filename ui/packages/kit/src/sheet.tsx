@@ -101,18 +101,16 @@ export function SheetSection({ title, className, children, ...props }: SheetSect
 }
 
 export interface SheetRowProps extends Omit<AriaButtonProps, "children"> {
-  /** What it is called, in the code face (`:theme`). */
-  name: string;
-  /** What it does, in a few words. */
+  /** What it does, in a few words: the row's first line. */
   label: string;
-  /** A longer line under them. */
-  description?: string | undefined;
+  /** What it is called (`:theme`): the smaller, muted second line. */
+  name: string;
   /** It leads on to more choices rather than acting at once: a trailing chevron. */
   more?: boolean;
 }
 
-/** A touch-sized row of a sheet (`--omfp-touch` tall at least): name and label, the description under them. */
-export function SheetRow({ name, label, description, more = false, className, ...props }: SheetRowProps) {
+/** A touch-sized row of a sheet (`--omfp-touch` tall at least): the label, its name under it. */
+export function SheetRow({ label, name, more = false, className, ...props }: SheetRowProps) {
   return (
     <AriaButton
       {...props}
@@ -120,11 +118,8 @@ export function SheetRow({ name, label, description, more = false, className, ..
       data-more={more || undefined}
     >
       <span className="omfp-sheet__text">
-        <span className="omfp-sheet__line">
-          <span className="omfp-sheet__name">{name}</span>
-          <span className="omfp-sheet__label">{label}</span>
-        </span>
-        {description !== undefined && <span className="omfp-sheet__description">{description}</span>}
+        <span className="omfp-sheet__label">{label}</span>
+        <span className="omfp-sheet__name">{name}</span>
       </span>
       {more && <Icon name="chevron-right" className="omfp-sheet__more" />}
     </AriaButton>

@@ -3113,7 +3113,7 @@
   .omfp-sheet__heading {
     margin: 0;
     padding: var(--omfp-s3) var(--omfp-s3) var(--omfp-s1);
-    font-size: var(--omfp-fs-2xs);
+    font-size: var(--omfp-fs-xs);
     font-weight: var(--omfp-fw-strong);
     color: var(--omfp-on-surface-variant);
   }
@@ -3147,26 +3147,14 @@
     min-inline-size: 0;
   }
 
-  .omfp-sheet__line {
-    display: flex;
-    align-items: baseline;
-    gap: var(--omfp-s2);
-    min-inline-size: 0;
-  }
-
-  .omfp-sheet__name {
-    flex: none;
-    color: var(--omfp-primary);
-  }
-
   .omfp-sheet__label {
-    min-inline-size: 0;
     overflow-wrap: anywhere;
   }
 
-  .omfp-sheet__description {
-    font-size: var(--omfp-fs-xs);
+  .omfp-sheet__name {
+    font-size: var(--omfp-fs-2xs);
     color: var(--omfp-on-surface-variant);
+    overflow-wrap: anywhere;
   }
 
   .omfp-sheet__more {

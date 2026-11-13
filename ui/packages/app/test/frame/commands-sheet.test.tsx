@@ -136,16 +136,17 @@ describe("commands sheet", () => {
   test("grouped rows of what the `:` line runs; the search narrows them", async () => {
     const { user } = setup();
     await user.click(screen.getByTestId("area-action"));
-    const groups = screen.getAllByTestId("commands-group").map((group) => group.dataset.group);
-    expect(groups[0]).toBe("threads");
-    expect(groups.includes("other")).toBe(true);
-    expect(rows().includes("theme.set")).toBe(true);
+    const groups = screen.getAllByTestId("commands-group");
+    expect(groups[0]?.querySelector("h3")?.textContent).toBe("Threads");
+    expect(groups.map((group) => group.dataset.group).includes("other")).toBe(true);
+    expect([rows().includes("theme.set"), rows().includes("threads.toggle")]).toEqual([true, false]);
     const ping = screen.getAllByTestId("commands-row").find((row) => row.dataset.command === "demo.ping");
     expect([
-      ping?.querySelector(".omfp-sheet__name")?.textContent,
       ping?.querySelector(".omfp-sheet__label")?.textContent,
-      ping?.querySelector(".omfp-sheet__description")?.textContent,
-    ]).toEqual([":demo.ping", "Ping the demo", "Pings it"]);
+      ping?.querySelector(".omfp-sheet__name")?.textContent,
+    ]).toEqual(["Ping the demo", ":demo.ping"]);
+    // The description is searched, not shown.
+    expect(ping?.textContent?.includes("Pings it")).toBe(false);
     await user.type(screen.getByTestId("commands-search"), "PING");
     expect(rows()).toEqual(["demo.ping"]);
     await user.type(screen.getByTestId("commands-search"), " nothing");

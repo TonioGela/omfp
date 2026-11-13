@@ -628,5 +628,16 @@ export const shell = {
     search: "Search commands",
     placeholder: "Search",
     noMatch: "No command matches",
+    /** The headings of the which-key groups (UI-326) on the sheet. */
+    groups: {
+      threads: "Threads",
+      views: "Views",
+      workspace: "Workspace",
+      files: "Files",
+      help: "Help",
+      navigation: "Move",
+      commands: "Settings and command line",
+      other: "Other",
+    },
   },
 } as const;

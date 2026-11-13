@@ -8,13 +8,21 @@ const run = () => {};
 
 const COMMANDS: Command[] = [
   { id: "thread.new", title: "New thread", aliases: ["new"], run },
-  { id: "theme.set", title: "Theme", aliases: ["theme"], args: () => ["light", "dark"], run },
+  { id: "theme.set", title: "Colour scheme (system, light, dark)", aliases: ["theme"], args: () => ["dark"], run },
   { id: "help.open", title: "Help", aliases: ["help"], run },
   { id: "thread.archive", title: "Archive", aliases: ["archive"], enabled: () => false, run },
   { id: "composer.interrupt", title: "Interrupt", scope: "composer", run },
   // Every `useCommand` command has `args`; without completions it runs at once.
   { id: "demo.ping", title: "Ping", description: "Pings the demo", args: () => [], run },
   { id: "thread.new", title: "New thread (threads)", scope: "threads", run },
+  { id: "view.switch", title: "Switch view (:view <id>)", aliases: ["view"], args: () => ["review"], run },
+  { id: "view.pick", title: "Pick a view (opens :view with the views to complete)", run },
+  { id: "file.open", title: "Open a file (:open <path>[:<line>]), or the focused path (g f)", aliases: ["open"], run },
+  // What a phone does otherwise: the Threads button, a tap on the composer, the focus moves.
+  { id: "threads.toggle", title: "Show or hide the threads column (narrow window)", run },
+  { id: "composer.focus", title: "Focus the composer", run },
+  { id: "notice.open", title: "Open the newest notice", run },
+  { id: "nav.next", title: "Next thread", scope: "threads", run },
 ];
 
 /** `[group, [id, name, takes arguments]…]` per group. */
@@ -27,14 +35,22 @@ function shape(scopes: readonly string[], query = "") {
 
 describe("commands sheet content", () => {
   // spec: UI-462
-  test("what the `:` line runs where the focus was, in the which-key groups, each command once by its `:` name", () => {
+  test("what the `:` line runs where the focus was, less what a phone does otherwise, in the which-key groups by title", () => {
     expect(shape([])).toEqual([
       ["threads", [["thread.new", "new", false]]],
+      [
+        "views",
+        [
+          ["view.pick", "view.pick", false],
+          ["view.switch", "view", true],
+        ],
+      ],
+      ["files", [["file.open", "open", false]]],
       ["help", [["help.open", "help", false]]],
       ["commands", [["theme.set", "theme", true]]],
       ["other", [["demo.ping", "demo.ping", false]]],
     ]);
-    expect(shape(["composer"])[0]).toEqual([
+    expect(shape(["composer", "threads"])[0]).toEqual([
       "threads",
       [
         ["composer.interrupt", "composer.interrupt", false],
@@ -44,21 +60,25 @@ describe("commands sheet content", () => {
   });
 
   // spec: UI-462
-  test("a row carries the command's title and its description, the built-in one when it has none", () => {
-    const rows = sheetGroups(COMMANDS, [], "").flatMap((group) => group.commands);
-    expect(rows.map((row) => [row.id, row.title, row.description])).toEqual([
-      ["thread.new", "New thread", "New thread in the current workspace"],
-      ["help.open", "Help", "Show every key and command (this help)"],
-      ["theme.set", "Theme", "Colour scheme (system, light, dark)"],
-      ["demo.ping", "Ping", "Pings the demo"],
+  test("a row's title leaves out the usage the `:` line shows; plain parentheses stay", () => {
+    const titles = sheetGroups(COMMANDS, [], "").flatMap((group) => group.commands.map((command) => command.title));
+    expect(titles).toEqual([
+      "New thread",
+      "Pick a view",
+      "Switch view",
+      "Open a file, or the focused path (g f)",
+      "Help",
+      "Colour scheme (system, light, dark)",
+      "Ping",
     ]);
   });
 
   // spec: UI-463
-  test("the search keeps the commands whose name, id, title or description contain it, any case", () => {
-    expect(shape([], "THEME")).toEqual([["commands", [["theme.set", "theme", true]]]]);
+  test("the search looks in the ids, aliases, whole titles and descriptions, any case", () => {
+    expect(shape([], "SCHEME")).toEqual([["commands", [["theme.set", "theme", true]]]]);
     expect(shape([], "pings")).toEqual([["other", [["demo.ping", "demo.ping", false]]]]);
     expect(shape([], "help.op")).toEqual([["help", [["help.open", "help", false]]]]);
+    expect(shape([], "<id>")).toEqual([["views", [["view.switch", "view", true]]]]);
     expect(shape([], "  workspace ")).toEqual([["threads", [["thread.new", "new", false]]]]);
     expect(shape([], "nothing like it")).toEqual([]);
   });

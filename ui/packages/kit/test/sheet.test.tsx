@@ -10,14 +10,8 @@ afterEach(cleanup);
 function Example({ onClose, onRow }: { onClose: () => void; onRow: (id: string) => void }) {
   return (
     <Sheet title="Commands" closeLabel="Close" onClose={onClose} search={<input data-testid="search" />}>
-      <SheetSection title="threads" data-testid="section">
-        <SheetRow
-          name=":new"
-          label="New thread"
-          description="New thread in the current workspace"
-          data-testid="row"
-          onPress={() => onRow("new")}
-        />
+      <SheetSection title="Threads" data-testid="section">
+        <SheetRow name=":new" label="New thread" data-testid="row" onPress={() => onRow("new")} />
         <SheetRow name=":theme" label="Theme" more data-testid="row" onPress={() => onRow("theme")} />
       </SheetSection>
     </Sheet>
@@ -35,7 +29,7 @@ describe("Sheet", () => {
     expect(within(sheet).getAllByTestId("search").length).toBe(1);
     const section = screen.getByTestId("section");
     expect([section.querySelector("h3")?.textContent, section.getAttribute("aria-labelledby") !== null]).toEqual([
-      "threads",
+      "Threads",
       true,
     ]);
     await userEvent.setup().click(screen.getByRole("button", { name: "Close" }));
@@ -52,22 +46,20 @@ describe("Sheet", () => {
   });
 
   // spec: UI-462, UI-466
-  test("a row is a button: its name, label and description; one taking more shows it", async () => {
+  test("a row is a button: its label, then its name; one taking more shows it", async () => {
     const onRow = mock((_id: string) => {});
     render(<Example onClose={() => {}} onRow={onRow} />);
     const rows = screen.getAllByTestId("row");
     expect(
       rows.map((row) => [
         row.tagName,
-        row.querySelector(".omfp-sheet__name")?.textContent,
-        row.querySelector(".omfp-sheet__label")?.textContent,
-        row.querySelector(".omfp-sheet__description")?.textContent ?? null,
+        [...row.querySelectorAll(".omfp-sheet__text > span")].map((line) => `${line.className}: ${line.textContent}`),
         row.dataset.more ?? null,
         row.querySelectorAll("svg").length,
       ]),
     ).toEqual([
-      ["BUTTON", ":new", "New thread", "New thread in the current workspace", null, 0],
-      ["BUTTON", ":theme", "Theme", null, "true", 1],
+      ["BUTTON", ["omfp-sheet__label: New thread", "omfp-sheet__name: :new"], null, 0],
+      ["BUTTON", ["omfp-sheet__label: Theme", "omfp-sheet__name: :theme"], "true", 1],
     ]);
     await userEvent.setup().click(rows[1] ?? document.body);
     expect(onRow.mock.calls).toEqual([["theme"]]);

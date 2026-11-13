@@ -13,7 +13,6 @@ import { strings } from "../strings/index.ts";
 import { type SheetCommand, sheetGroups } from "./commands-sheet.ts";
 
 const text = strings.shell.commandsSheet;
-const groupTitles = strings.keys.whichKey.groups;
 
 /** The key of the history entry the open sheet adds. */
 const BACK_ENTRY = "omfpCommandsSheet";
@@ -71,13 +70,12 @@ export function CommandsSheet({ onClose }: { onClose: () => void }): ReactNode {
         </p>
       ) : (
         groups.map(({ group, commands: rows }) => (
-          <SheetSection key={group} title={groupTitles[group]} data-testid="commands-group" data-group={group}>
+          <SheetSection key={group} title={text.groups[group]} data-testid="commands-group" data-group={group}>
             {rows.map((command) => (
               <SheetRow
                 key={command.id}
                 name={`:${command.name}`}
                 label={command.title}
-                description={command.description}
                 more={command.takesArgs}
                 data-testid="commands-row"
                 data-command={command.id}

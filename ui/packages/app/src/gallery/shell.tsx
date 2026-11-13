@@ -323,13 +323,13 @@ export function ResponsiveParts() {
       <Line label="commands sheet">
         <div className="omfp-gallery__phone">
           <Sheet inline title="Commands" closeLabel="Close" search={sheetSearch("")}>
-            <SheetSection title="threads">
-              <SheetRow name=":new" label="New thread" description="New thread in the current workspace" />
-              <SheetRow name=":archive" label="Archive thread" className="is-focus" />
+            <SheetSection title="Threads">
+              <SheetRow name=":new" label="New thread in the current workspace" />
+              <SheetRow name=":archive" label="Archive the thread" className="is-focus" />
             </SheetSection>
-            <SheetSection title="command line">
-              <SheetRow name=":theme" label="Theme" description="Colour scheme (system, light, dark)" more />
-              <SheetRow name=":set" label="Set a setting" more className="is-hover" />
+            <SheetSection title="Settings and command line">
+              <SheetRow name=":theme" label="Colour scheme (system, light, dark)" more />
+              <SheetRow name=":set" label="Change a setting" more className="is-hover" />
             </SheetSection>
           </Sheet>
         </div>
