@@ -22,7 +22,7 @@ use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
 use omfp_daemon::{DaemonHandle, Ports, start_with};
 use omfp_protocol::method::ThreadsCreate;
-use omfp_protocol::{CreateThreadParams, CreateWorkspaceParams, ThreadWorkspace};
+use omfp_protocol::{ApprovalMode, CreateThreadParams, CreateWorkspaceParams, ThreadWorkspace};
 use omfp_testkit::{
     DenyProxy, FAKE_MODEL, KNOWN_DISCOVERY_HOSTS, OmpEnv, omp_bin, require_pinned_omp,
 };
@@ -575,13 +575,14 @@ impl Journey {
     /// Creates a thread whose omp asks before every tool (`always-ask`; the UI keeps the `yolo` default, DMN-074)
     /// through the protocol, then opens it from the left column; returns its id.
     pub async fn create_asking_thread(&self, workspace: &str) -> anyhow::Result<String> {
-        self.create_thread_with(workspace, Some("always-ask")).await
+        self.create_thread_with(workspace, Some(ApprovalMode::AlwaysAsk))
+            .await
     }
 
     async fn create_thread_with(
         &self,
         workspace: &str,
-        approval_mode: Option<&str>,
+        approval_mode: Option<ApprovalMode>,
     ) -> anyhow::Result<String> {
         let mut connection = self.connect().await?;
         let thread = connection
@@ -593,7 +594,7 @@ impl Journey {
                 }),
                 model: None,
                 thinking_level: None,
-                approval_mode: approval_mode.map(str::to_owned),
+                approval_mode,
                 prompt: None,
             })
             .await?;

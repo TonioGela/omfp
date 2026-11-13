@@ -36,12 +36,12 @@ pub use mcp::{
 };
 pub use method::{Call, METHODS, Method, method_description, method_schemas};
 pub use params::{
-    AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CopyWidgetParams,
-    CreateThreadParams, CreateWorkspaceParams, Empty, FindFileParams, ForkParams, GoalParams,
-    HelloParams, HelloResult, InteractionResponse, JobRef, LabelParams, ListTerminalsParams,
-    LiveConnectParams, LiveConnected, LiveMuteParams, LiveMuted, LiveStarted, MessageParams,
-    NavigateParams, OpenTerminalParams, OpenTerminalResult, PathCompletions, Position,
-    PromptBehavior, PromptParams, PromptResult, QueueMessageParams, ReadFileParams,
+    AddRepoParams, ApprovalMode, BashParams, BtwParams, CompactParams, CompletePathParams,
+    CopyWidgetParams, CreateThreadParams, CreateWorkspaceParams, Empty, FindFileParams, ForkParams,
+    GoalParams, HelloParams, HelloResult, InteractionResponse, JobRef, LabelParams,
+    ListTerminalsParams, LiveConnectParams, LiveConnected, LiveMuteParams, LiveMuted, LiveStarted,
+    MessageParams, NavigateParams, OpenTerminalParams, OpenTerminalResult, PathCompletions,
+    Position, PromptBehavior, PromptParams, PromptResult, QueueMessageParams, ReadFileParams,
     RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
     ReportWidgetsParams, ResizeTerminalParams, RespondParams, SearchThreadsParams, SetModelParams,
     SetSettingsParams, SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,

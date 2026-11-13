@@ -295,6 +295,35 @@ impl Default for ThreadWorkspace {
     }
 }
 
+/// omp's `--approval-mode` (`tools.approvalMode`): which tool calls omp asks the user to approve (DMN-074, DMN-210).
+/// omp 18.18.6 exits at startup on any other value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum ApprovalMode {
+    /// Runs read tools; asks before write and exec tools.
+    AlwaysAsk,
+    /// Like `always-ask`, but a file read or write can be approved for a file or folder, for the session or for
+    /// good.
+    AlwaysAskCached,
+    /// Runs read and write tools; asks before exec tools.
+    Write,
+    /// Runs every tool without asking (the default).
+    Yolo,
+}
+
+impl ApprovalMode {
+    /// The value omp takes, as `--approval-mode <value>`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::AlwaysAsk => "always-ask",
+            Self::AlwaysAskCached => "always-ask-cached",
+            Self::Write => "write",
+            Self::Yolo => "yolo",
+        }
+    }
+}
+
 /// `threads.create` params.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -311,10 +340,11 @@ pub struct CreateThreadParams {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(with = "Option<Value>")]
     pub thinking_level: Option<ThinkingLevel>,
-    /// omp's `--approval-mode`; default `yolo` (DMN-074).
+    /// omp's `--approval-mode`; default `yolo` (DMN-074, DMN-210).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub approval_mode: Option<String>,
-    /// First message, sent once the thread is created.
+    pub approval_mode: Option<ApprovalMode>,
+    /// First message, sent once the thread is created; when omp cannot start for it, the thread is not created
+    /// (DMN-211).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
 }
@@ -326,9 +356,9 @@ pub struct UpdateThreadParams {
     pub thread_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
-    /// omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074).
+    /// omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074, DMN-210).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub approval_mode: Option<String>,
+    pub approval_mode: Option<ApprovalMode>,
 }
 
 /// Params naming one thread.

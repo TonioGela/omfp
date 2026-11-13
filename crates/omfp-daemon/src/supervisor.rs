@@ -136,8 +136,12 @@ pub enum SupervisorError {
         "omp session {session_id} is open in another omp process (e.g. in a terminal); close it there first"
     )]
     SessionLeased { session_id: String },
-    #[error("omp failed to start: {0}")]
-    Start(String),
+    /// omp could not start; `stderr_tail` holds the last lines of its stderr log (DMN-212).
+    #[error("omp failed to start: {message}")]
+    Start {
+        message: String,
+        stderr_tail: String,
+    },
     #[error("omp `{command}` failed: {message}")]
     Omp {
         command: String,
@@ -175,6 +179,17 @@ pub enum SupervisorError {
 }
 
 pub type Result<T, E = SupervisorError> = std::result::Result<T, E>;
+
+impl SupervisorError {
+    /// Whether the thread's omp process could not be started, so it never ran for this request (DMN-211).
+    #[must_use]
+    pub fn is_start_failure(&self) -> bool {
+        matches!(
+            self,
+            Self::LimitReached(_) | Self::SessionLeased { .. } | Self::Start { .. }
+        )
+    }
+}
 
 impl From<omp_rpc::Error> for SupervisorError {
     fn from(error: omp_rpc::Error) -> Self {
@@ -1132,8 +1147,7 @@ impl Supervisor {
                     warn!(thread = %actor.id, "omp could not probe the session lease; starting anyway");
                 }
                 Err(error) => {
-                    self.fail(actor, error.to_string(), String::new());
-                    return Err(SupervisorError::Start(error.to_string()));
+                    return Err(self.failed_start(actor, error.to_string(), String::new()));
                 }
             }
         }
@@ -1158,8 +1172,7 @@ impl Supervisor {
             match host_tools::host_uris(self.inner.config.builtin_widgets.clone(), check_host) {
                 Ok(uris) => uris,
                 Err(error) => {
-                    self.fail(actor, error.to_string(), String::new());
-                    return Err(SupervisorError::Start(error.to_string()));
+                    return Err(self.failed_start(actor, error.to_string(), String::new()));
                 }
             };
         let launcher = Arc::clone(&self.inner.launcher);
@@ -1171,8 +1184,7 @@ impl Supervisor {
                 let tail = blocking(move || stderr_tail(&path, STDERR_TAIL_LINES))
                     .await
                     .unwrap_or_default();
-                self.fail(actor, error.to_string(), tail);
-                return Err(SupervisorError::Start(error.to_string()));
+                return Err(self.failed_start(actor, error.to_string(), tail));
             }
         };
 
@@ -1254,6 +1266,15 @@ impl Supervisor {
             runtime.spawn(async move { supervisor.name_session(&id, title).await });
             Ok(())
         })
+    }
+
+    /// Fails the thread whose omp could not start and returns the error carrying omp's stderr tail (DMN-212).
+    fn failed_start(&self, actor: &Actor, message: String, stderr_tail: String) -> SupervisorError {
+        self.fail(actor, message.clone(), stderr_tail.clone());
+        SupervisorError::Start {
+            message,
+            stderr_tail,
+        }
     }
 
     fn fail(&self, actor: &Actor, message: String, stderr_tail: String) {

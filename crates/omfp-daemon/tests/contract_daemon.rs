@@ -454,6 +454,64 @@ async fn approval_reconnects_crash_and_restart_with_history() {
     harness.assert_no_stray_network();
 }
 
+/// omp 18.18.6's `--approval-mode` values (`packages/coding-agent/src/tools/approval.ts`).
+const APPROVAL_MODES: [&str; 4] = ["always-ask", "always-ask-cached", "write", "yolo"];
+
+// spec: DMN-210, TST-106
+#[tokio::test(flavor = "multi_thread")]
+async fn every_approval_mode_starts_a_working_thread_and_other_values_are_refused() {
+    let harness = Harness::new(
+        APPROVAL_MODES
+            .iter()
+            .map(|mode| Step::reply(Reply::text(format!("Answering in {mode}."))))
+            .collect(),
+    )
+    .await;
+    let daemon = Daemon::start(&harness).await;
+    let mut client = daemon.client("approval-modes").await;
+
+    // omp exits at once on a value it does not know ("server closed"): refused before anything is created.
+    let refused = client
+        .call(
+            "threads.create",
+            json!({ "model": model(), "approvalMode": "ask", "prompt": "hello" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(refused["code"], "bad_request", "{refused}");
+    let message = refused["message"].as_str().unwrap();
+    for mode in APPROVAL_MODES {
+        assert!(message.contains(mode), "{message}");
+    }
+    let index = client.ok("threads.list", json!({})).await;
+    assert_eq!(index["threads"], json!([]));
+    let workspaces = client.ok("workspaces.list", json!({})).await;
+    assert_eq!(workspaces["workspaces"], json!([]));
+
+    for mode in APPROVAL_MODES {
+        let thread = client
+            .ok(
+                "threads.create",
+                json!({ "title": mode, "model": model(), "approvalMode": mode }),
+            )
+            .await;
+        let thread = thread["id"].as_str().unwrap().to_owned();
+        let mut view = Follower::snapshot(&mut client, &thread, None).await;
+        let id = prompt(&mut client, &thread, "which mode?").await;
+        view.until(&mut client, settled_after(&id)).await;
+        let texts = assistant_texts(&view.state);
+        assert!(
+            texts
+                .last()
+                .is_some_and(|text| text.contains(&format!("Answering in {mode}."))),
+            "{mode}: {texts:?}"
+        );
+        assert_eq!(view.state.process, ProcessState::Running, "{mode}");
+    }
+    daemon.handle.shutdown().await.unwrap();
+    harness.assert_no_stray_network();
+}
+
 /// Answer for the form fallback's `select` dialogs (see contract scenario `ask_answered`).
 fn choose(select: &SelectUiRequest, picked_before: usize) -> String {
     let option = |needle: &str| {

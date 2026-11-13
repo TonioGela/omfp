@@ -6,7 +6,7 @@ use omfp_protocol::{
     ActivityEntry, ActivityPage, ListActivityParams, StopThreadParams, ThreadsStopped,
 };
 use omfp_protocol::{
-    AddRepoParams, BashParams, BtwParams, Call, CompactParams, CompletePathParams,
+    AddRepoParams, ApprovalMode, BashParams, BtwParams, Call, CompactParams, CompletePathParams,
     CopyWidgetParams, CreateThreadParams, CreateWorkspaceParams, DiffPage, Empty, FileCandidate,
     FileCandidates, FileContent, FileDiff, FileKind, FileMatch, FileWritten, FindFileParams,
     ForkParams, GoalParams, HelloParams, HelloResult, IndexSnapshot, InteractionResponse, JobInfo,
@@ -328,7 +328,7 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
                 }),
                 model: Some("anthropic/claude-sonnet-4-5".to_owned()),
                 thinking_level: Some(ThinkingLevel::High),
-                approval_mode: Some("always-ask".to_owned()),
+                approval_mode: Some(ApprovalMode::AlwaysAsk),
                 prompt: Some("Implement checkout v2 as described in docs/checkout.md".to_owned()),
             },
             &thread(),
@@ -337,7 +337,7 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
             UpdateThreadParams {
                 thread_id: THREAD_ID.to_owned(),
                 title: Some("Checkout v2".to_owned()),
-                approval_mode: Some("always-ask".to_owned()),
+                approval_mode: Some(ApprovalMode::AlwaysAsk),
             },
             &thread(),
         ),

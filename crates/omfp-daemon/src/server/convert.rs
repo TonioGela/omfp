@@ -87,9 +87,15 @@ pub(crate) fn supervisor_error(error: SupervisorError) -> ErrorBody {
         | SupervisorError::ShuttingDown
         | SupervisorError::Internal(_) => ErrorCode::Internal,
         SupervisorError::LimitReached(_) => ErrorCode::LimitReached,
-        SupervisorError::SessionLeased { .. }
-        | SupervisorError::Start(_)
-        | SupervisorError::ProcessGone(_) => ErrorCode::ThreadFailed,
+        SupervisorError::SessionLeased { .. } | SupervisorError::ProcessGone(_) => {
+            ErrorCode::ThreadFailed
+        }
+        // omp's own words on why it would not start (DMN-212).
+        SupervisorError::Start { stderr_tail, .. } => {
+            let details = serde_json::json!({ "stderrTail": stderr_tail });
+            return ErrorBody::new(ErrorCode::ThreadFailed, error.to_string())
+                .with_details(details);
+        }
         SupervisorError::Omp { code, .. } => {
             let mut body = ErrorBody::new(ErrorCode::OmpError, error.to_string());
             if let Some(code) = code {

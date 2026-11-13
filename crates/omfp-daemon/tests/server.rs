@@ -1302,6 +1302,180 @@ async fn new_threads_run_in_yolo_mode_until_another_mode_is_set() {
     );
 }
 
+// spec: DMN-210
+#[tokio::test(flavor = "multi_thread")]
+async fn approval_modes_are_omps_values_and_others_are_refused_before_anything_changes() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let modes = ["always-ask", "always-ask-cached", "write", "yolo"];
+    for mode in modes {
+        let thread = client
+            .ok(
+                "threads.create",
+                json!({ "approvalMode": mode, "prompt": "hello" }),
+            )
+            .await;
+        assert!(thread["id"].is_string());
+    }
+    let launched: Vec<Option<String>> = daemon
+        .launcher
+        .launches()
+        .into_iter()
+        .map(|launch| launch.spec.approval_mode)
+        .collect();
+    assert_eq!(launched, modes.map(|mode| Some(mode.to_owned())));
+
+    let thread = create_thread(&mut client).await;
+    for (method, params) in [
+        (
+            "threads.create",
+            json!({ "approvalMode": "ask", "prompt": "hello" }),
+        ),
+        (
+            "threads.update",
+            json!({ "threadId": thread, "approvalMode": "ask" }),
+        ),
+    ] {
+        let error = client.call(method, params).await.unwrap_err();
+        assert_eq!(error["code"], "bad_request", "{error}");
+        let message = error["message"].as_str().unwrap();
+        assert!(modes.iter().all(|mode| message.contains(mode)), "{message}");
+    }
+    assert_eq!(
+        listed(&mut client, "threads.list", "threads").await.len(),
+        5
+    );
+    assert_eq!(daemon.launcher.launches().len(), 4);
+}
+
+/// The ids of `list`'s `key` array (`threads.list`, `workspaces.list`).
+async fn listed(client: &mut Client, method: &str, key: &str) -> Vec<String> {
+    client.ok(method, json!({})).await[key]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| entry["id"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+const OMP_USAGE_ERROR: &str = "Error: Invalid --approval-mode value: \"ask\". Expected one of: always-ask, \
+     always-ask-cached, write, yolo.";
+
+// spec: DMN-211, DMN-212
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_whose_first_omp_start_fails_is_not_created() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+
+    // In a new workspace: the thread, its directory and the workspace made for it are gone.
+    daemon
+        .launcher
+        .fail_next_launch(&format!("{OMP_USAGE_ERROR}\n"));
+    let error = client
+        .call("threads.create", json!({ "prompt": "hello" }))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error,
+        json!({
+            "code": "thread_failed",
+            "message": "omp failed to start: omp did not become ready: server closed",
+            "details": { "stderrTail": OMP_USAGE_ERROR },
+        })
+    );
+    assert_eq!(
+        listed(&mut client, "threads.list", "threads").await,
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        listed(&mut client, "workspaces.list", "workspaces").await,
+        Vec::<String>::new()
+    );
+    let thread_dirs =
+        std::fs::read_dir(daemon.dir.path().join("threads")).map_or(0, Iterator::count);
+    assert_eq!(thread_dirs, 0);
+
+    // In an existing workspace: the workspace stays.
+    let workspace = client
+        .ok("workspaces.create", json!({ "name": "kept" }))
+        .await["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    daemon.launcher.fail_next_launch("fatal: out of memory\n");
+    let error = client
+        .call(
+            "threads.create",
+            json!({ "workspace": { "id": workspace }, "prompt": "hello" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error["details"],
+        json!({ "stderrTail": "fatal: out of memory" })
+    );
+    assert_eq!(
+        listed(&mut client, "threads.list", "threads").await,
+        Vec::<String>::new()
+    );
+    assert_eq!(
+        listed(&mut client, "workspaces.list", "workspaces").await,
+        [workspace.as_str()]
+    );
+
+    // Calling again creates it.
+    daemon.launcher.push_run(fixture("text_reply"));
+    let thread = client
+        .ok(
+            "threads.create",
+            json!({ "workspace": { "id": workspace }, "prompt": "hello" }),
+        )
+        .await;
+    assert_eq!(
+        listed(&mut client, "threads.list", "threads").await,
+        [thread["id"].as_str().unwrap().to_owned()]
+    );
+}
+
+// spec: DMN-212
+#[tokio::test(flavor = "multi_thread")]
+async fn a_later_start_failure_keeps_the_thread_failed_with_omps_stderr_until_a_retry() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let thread = create_thread(&mut client).await;
+
+    daemon
+        .launcher
+        .fail_next_launch("booting\nfatal: out of memory\n");
+    let error = client
+        .call(
+            "thread.prompt",
+            json!({ "threadId": thread, "text": "hello" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "thread_failed");
+    assert_eq!(
+        error["details"],
+        json!({ "stderrTail": "booting\nfatal: out of memory" })
+    );
+    // `thread.state` would start omp: the topic's snapshot does not.
+    let view = Follower::snapshot(&mut client, &thread, None).await;
+    let omfp_core::ProcessState::Failed { stderr_tail, .. } = &view.state.process else {
+        panic!("{:?}", view.state.process)
+    };
+    assert_eq!(stderr_tail, "booting\nfatal: out of memory");
+
+    daemon.launcher.push_run(fixture("text_reply"));
+    client
+        .ok(
+            "thread.prompt",
+            json!({ "threadId": thread, "text": "hello" }),
+        )
+        .await;
+    assert_eq!(daemon.launcher.launches().len(), 1);
+}
+
 // spec: DMN-029
 #[tokio::test(flavor = "multi_thread")]
 async fn a_repository_linked_while_omp_starts_is_a_root_before_the_next_prompt() {

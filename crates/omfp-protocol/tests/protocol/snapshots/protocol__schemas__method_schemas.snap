@@ -2914,6 +2914,31 @@ expression: method_schemas()
   "threads.create": {
     "params": {
       "$defs": {
+        "ApprovalMode": {
+          "description": "omp's `--approval-mode` (`tools.approvalMode`): which tool calls omp asks the user to approve (DMN-074, DMN-210).\nomp 18.18.6 exits at startup on any other value.",
+          "oneOf": [
+            {
+              "const": "always-ask",
+              "description": "Runs read tools; asks before write and exec tools.",
+              "type": "string"
+            },
+            {
+              "const": "always-ask-cached",
+              "description": "Like `always-ask`, but a file read or write can be approved for a file or folder, for the session or for\ngood.",
+              "type": "string"
+            },
+            {
+              "const": "write",
+              "description": "Runs read and write tools; asks before exec tools.",
+              "type": "string"
+            },
+            {
+              "const": "yolo",
+              "description": "Runs every tool without asking (the default).",
+              "type": "string"
+            }
+          ]
+        },
         "CreateWorkspaceParams": {
           "description": "`workspaces.create` params (DMN-020).",
           "properties": {
@@ -2970,11 +2995,15 @@ expression: method_schemas()
       "description": "`threads.create` params.",
       "properties": {
         "approvalMode": {
-          "description": "omp's `--approval-mode`; default `yolo` (DMN-074).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApprovalMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "omp's `--approval-mode`; default `yolo` (DMN-074, DMN-210)."
         },
         "model": {
           "description": "`provider/id`.",
@@ -2984,7 +3013,7 @@ expression: method_schemas()
           ]
         },
         "prompt": {
-          "description": "First message, sent once the thread is created.",
+          "description": "First message, sent once the thread is created; when omp cannot start for it, the thread is not created\n(DMN-211).",
           "type": [
             "string",
             "null"
@@ -3452,15 +3481,46 @@ expression: method_schemas()
   },
   "threads.update": {
     "params": {
+      "$defs": {
+        "ApprovalMode": {
+          "description": "omp's `--approval-mode` (`tools.approvalMode`): which tool calls omp asks the user to approve (DMN-074, DMN-210).\nomp 18.18.6 exits at startup on any other value.",
+          "oneOf": [
+            {
+              "const": "always-ask",
+              "description": "Runs read tools; asks before write and exec tools.",
+              "type": "string"
+            },
+            {
+              "const": "always-ask-cached",
+              "description": "Like `always-ask`, but a file read or write can be approved for a file or folder, for the session or for\ngood.",
+              "type": "string"
+            },
+            {
+              "const": "write",
+              "description": "Runs read and write tools; asks before exec tools.",
+              "type": "string"
+            },
+            {
+              "const": "yolo",
+              "description": "Runs every tool without asking (the default).",
+              "type": "string"
+            }
+          ]
+        }
+      },
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "`threads.update` params; absent fields are unchanged.",
       "properties": {
         "approvalMode": {
-          "description": "omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074).",
-          "type": [
-            "string",
-            "null"
-          ]
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApprovalMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074, DMN-210)."
         },
         "threadId": {
           "type": "string"

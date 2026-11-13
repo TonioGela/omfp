@@ -217,6 +217,8 @@ struct Script {
     /// The `command_output` texts of local commands by message (e.g. `/mcp test fs`), sent before the answer as omp
     /// does (DMN-191).
     outputs: HashMap<String, Vec<String>>,
+    /// The stderr of the next launches that fail as omp exiting at startup does (DMN-211).
+    failures: VecDeque<String>,
 }
 
 /// The fake launcher. Without queued runs, every launch plays [`FakeRun::fresh`].
@@ -326,6 +328,12 @@ impl FakeLauncher {
             texts.iter().map(|text| (*text).to_owned()).collect(),
         );
     }
+
+    /// Fails the next launch as omp exiting at startup does (`omp did not become ready: server closed`), after
+    /// writing `stderr` to its stderr log.
+    pub fn fail_next_launch(&self, stderr: &str) {
+        lock(&self.script).failures.push_back(stderr.to_owned());
+    }
 }
 
 /// Gate key of title generations (not an omp command).
@@ -349,6 +357,10 @@ impl AgentLauncher for FakeLauncher {
             gate.pass();
         }
         let mut script = lock(&self.script);
+        if let Some(stderr) = script.failures.pop_front() {
+            std::fs::write(&spec.stderr_log, stderr)?;
+            return Err(StartError::Connect(omp_rpc::Error::Closed));
+        }
         let mut run = script.runs.pop_front().unwrap_or_else(FakeRun::fresh);
         let (sender, events) = channel();
         let startup_frames = run.segments.pop_front().unwrap_or_default();

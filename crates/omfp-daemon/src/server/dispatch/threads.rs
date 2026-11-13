@@ -14,7 +14,7 @@ use omp_rpc::{
     SetModelCommand, SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
     StreamingBehavior,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use super::workspaces::create_workspace;
 use super::{Reply, empty, ok};
@@ -78,7 +78,7 @@ async fn create_thread(
         workspace_id: workspace_id.clone(),
         model: params.model,
         thinking_level: params.thinking_level.map(thinking_name).transpose()?,
-        approval_mode: params.approval_mode,
+        approval_mode: params.approval_mode.map(|mode| mode.as_str().to_owned()),
         created_by: principal.created_by(),
     };
     let threads = Arc::clone(&services.threads);
@@ -93,15 +93,7 @@ async fn create_thread(
         Ok(thread) => thread,
         Err(error) => {
             if created {
-                // Best effort: the new folder had no other use.
-                let workspaces = Arc::clone(&services.workspaces);
-                let _ = blocking(move || {
-                    workspaces
-                        .remove(&workspace_id, false)
-                        .map_err(workspace_error)
-                })
-                .await;
-                services.refresh_index_quietly().await;
+                remove_new_workspace(services, workspace_id).await;
             }
             return Err(error);
         }
@@ -113,12 +105,53 @@ async fn create_thread(
             streaming_behavior: None,
         };
         if let Err(error) = services.supervisor.prompt(&thread.id, command).await {
+            if error.is_start_failure() {
+                // omp never ran for the thread: the call leaves nothing behind (DMN-211).
+                discard_thread(services, &thread.id).await;
+                if created {
+                    remove_new_workspace(services, workspace_id).await;
+                } else {
+                    services.refresh_index_quietly().await;
+                }
+                return Err(supervisor_error(error));
+            }
             services.refresh_index_quietly().await;
             // The thread exists; say which one so the client can retry the prompt.
-            return Err(supervisor_error(error).with_details(json!({ "threadId": thread.id })));
+            let mut body = supervisor_error(error);
+            let mut details = match body.details.take() {
+                Some(Value::Object(details)) => details,
+                _ => serde_json::Map::new(),
+            };
+            details.insert("threadId".to_owned(), Value::String(thread.id));
+            return Err(body.with_details(Value::Object(details)));
         }
     }
     ok(&services.thread_summary(&thread.id).await?)
+}
+
+/// Best effort: removes a thread `threads.create` made and whose omp could not start (DMN-211).
+async fn discard_thread(services: &Services, id: &str) {
+    if let Err(error) = services.supervisor.forget(id).await {
+        tracing::warn!(thread = %id, %error, "cannot stop the thread that failed to start");
+    }
+    let threads = Arc::clone(&services.threads);
+    let id = id.to_owned();
+    if let Err(error) = blocking(move || threads.delete(&id).map_err(thread_error)).await {
+        tracing::warn!(message = %error.message, "cannot delete the thread that failed to start");
+    }
+}
+
+/// Best effort: removes the workspace `threads.create` made for a thread it could not create; the new folder had no
+/// other use.
+async fn remove_new_workspace(services: &Services, workspace_id: String) {
+    let workspaces = Arc::clone(&services.workspaces);
+    let _ = blocking(move || {
+        workspaces
+            .remove(&workspace_id, false)
+            .map_err(workspace_error)
+    })
+    .await;
+    services.refresh_index_quietly().await;
 }
 
 pub(super) async fn threads(services: &Services, principal: &Principal, call: Call) -> Reply {
@@ -137,9 +170,9 @@ pub(super) async fn threads(services: &Services, principal: &Principal, call: Ca
             let approval_mode = params.approval_mode;
             let thread_id = id.clone();
             blocking(move || {
-                if let Some(mode) = &approval_mode {
+                if let Some(mode) = approval_mode {
                     threads
-                        .set_approval_mode(&thread_id, mode)
+                        .set_approval_mode(&thread_id, mode.as_str())
                         .map_err(thread_error)?;
                 }
                 threads.get(&thread_id).map_err(thread_error)

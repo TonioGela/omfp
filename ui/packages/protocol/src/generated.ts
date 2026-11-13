@@ -43,6 +43,23 @@ export type AddRepoParams = {
   workspaceId: string;
 };
 
+/**
+ * omp's `--approval-mode` (`tools.approvalMode`): which tool calls omp asks the user to approve (DMN-074, DMN-210).
+ * omp 18.18.6 exits at startup on any other value.
+ */
+export type ApprovalMode =
+  /** Runs read tools; asks before write and exec tools. */
+  | "always-ask"
+  /**
+   * Like `always-ask`, but a file read or write can be approved for a file or folder, for the session or for
+   * good.
+   */
+  | "always-ask-cached"
+  /** Runs read and write tools; asks before exec tools. */
+  | "write"
+  /** Runs every tool without asking (the default). */
+  | "yolo";
+
 /** `thread.bash` params. */
 export type BashParams = {
   command: string;
@@ -85,11 +102,14 @@ export type CopyWidgetParams = {
 
 /** `threads.create` params. */
 export type CreateThreadParams = {
-  /** omp's `--approval-mode`; default `yolo` (DMN-074). */
-  approvalMode?: string | null;
+  /** omp's `--approval-mode`; default `yolo` (DMN-074, DMN-210). */
+  approvalMode?: ApprovalMode | null;
   /** `provider/id`. */
   model?: string | null;
-  /** First message, sent once the thread is created. */
+  /**
+   * First message, sent once the thread is created; when omp cannot start for it, the thread is not created
+   * (DMN-211).
+   */
   prompt?: string | null;
   thinkingLevel?: unknown;
   /** For scripts and agents; without it the title is generated from the conversation (DMN-073). */
@@ -1193,8 +1213,8 @@ export type Unmounted = {
 
 /** `threads.update` params; absent fields are unchanged. */
 export type UpdateThreadParams = {
-  /** omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074). */
-  approvalMode?: string | null;
+  /** omp's `--approval-mode`, applied from the next start of the thread's omp (DMN-074, DMN-210). */
+  approvalMode?: ApprovalMode | null;
   threadId: string;
   title?: string | null;
 };

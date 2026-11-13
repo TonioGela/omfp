@@ -27,11 +27,11 @@ use omfp_protocol::method::{
     WorkspacesWriteFile,
 };
 use omfp_protocol::{
-    AddRepoParams, BashParams, BtwParams, CompactParams, CompletePathParams, CreateThreadParams,
-    CreateWorkspaceParams, Empty, FileMatch, FindFileParams, ForkParams, GoalParams, HelloParams,
-    InteractionResponse, LabelParams, MessageParams, NavigateParams, PromptParams,
-    QueueMessageParams, ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef,
-    RepoSource, RespondParams, SearchThreadsParams, SetModelParams, SetThinkingParams,
+    AddRepoParams, ApprovalMode, BashParams, BtwParams, CompactParams, CompletePathParams,
+    CreateThreadParams, CreateWorkspaceParams, Empty, FileMatch, FindFileParams, ForkParams,
+    GoalParams, HelloParams, InteractionResponse, LabelParams, MessageParams, NavigateParams,
+    PromptParams, QueueMessageParams, ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams,
+    RepoRef, RepoSource, RespondParams, SearchThreadsParams, SetModelParams, SetThinkingParams,
     SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
     SuggestReposParams, Theme, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
     UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
@@ -270,7 +270,7 @@ async fn thread_management_methods_return_their_declared_results() {
         .typed::<ThreadsUpdate>(UpdateThreadParams {
             thread_id: thread.id.clone(),
             title: Some("renamed".into()),
-            approval_mode: Some("always-ask".into()),
+            approval_mode: Some(ApprovalMode::AlwaysAsk),
         })
         .await;
     assert_eq!(updated.title, "renamed");

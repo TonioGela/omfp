@@ -777,6 +777,11 @@ requirements = [
   "UI-347",
   "UI-348",
   "UI-349",
+  # Approval modes and failed starts (agent feedback)
+  "DMN-210",
+  "DMN-211",
+  "DMN-212",
+  "TST-106",
   # Journeys
   "E2E-22",
   "E2E-23",

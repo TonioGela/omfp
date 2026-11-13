@@ -177,6 +177,9 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
   `--add-dir` root; it does not resolve symlinked roots, and tools write through symlinks. Roots saved in a session
   survive a restart without their flag: detach with `/remove-dir` (S-10).
 - `--append-system-prompt` disables every `APPEND_SYSTEM.md` (user and project); the daemon must concatenate them.
+- `--approval-mode` takes `always-ask`, `always-ask-cached`, `write` or `yolo` only; on any other value (or any
+  invalid flag value) omp prints a usage error to stderr and exits, which omp-rpc reports as `server closed`: the
+  daemon validates the value at the protocol (DMN-210) and returns omp's stderr tail with start errors (DMN-212).
 - Tools offered by default: read, bash, edit, ask, eval, glob, grep, task, wait, todo, web_search, write (`find`,
   `ast_grep` and `ast_edit` exist but are off by default — `find.enabled`, `astGrep.enabled`, `astEdit.enabled` —; no
   `fetch` tool: `read` fetches URLs). `edit` takes hashline input whose `[path#TAG]` needs a prior `read`.
