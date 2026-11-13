@@ -91,7 +91,7 @@ crates/
   omfp-daemon/     Daemon library (tokio, axum, rusqlite, omp-rpc): `omfp_daemon::start`, `omfp_daemon::run`.
   omfp/            The single `omfp` binary (D-15): `omfp daemon`, `omfp theme set`, `omfp mcp config`, and with the
                    `desktop` feature `omfp desktop` (Tauri, M7, M11).
-  fake-llm/       Scripted OpenAI-compatible server for tests (lib + bin).
+  fake-llm/       Scripted OpenAI-compatible server for tests (library).
   omfp-testkit/    Test helpers: temporary git repos, isolated omp agent dir, test daemon.
 e2e/              End-to-end tests (WebDriver) against the web build.
 ui/packages/      The TypeScript UI (Bun workspace, 04-ui): protocol (generated types), core (reducer port),

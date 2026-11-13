@@ -57,11 +57,6 @@ pub struct FakeLlm {
 impl FakeLlm {
     /// Binds a free loopback port and serves `script` in the background.
     pub async fn start(script: Script) -> anyhow::Result<Self> {
-        Self::start_on(script, SocketAddr::from(([127, 0, 0, 1], 0))).await
-    }
-
-    /// Serves `script` on `addr` (port 0 picks a free port).
-    pub async fn start_on(script: Script, addr: SocketAddr) -> anyhow::Result<Self> {
         let (model, steps) = script.into_parts();
         let gates = steps
             .iter()
@@ -85,7 +80,7 @@ impl FakeLlm {
             .route("/v1/chat/completions", post(chat_completions))
             .route("/__requests", get(recorded_requests))
             .with_state(Arc::clone(&inner));
-        let listener = TcpListener::bind(addr).await?;
+        let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0))).await?;
         let addr = listener.local_addr()?;
         let task = tokio::spawn(async move {
             // The server only stops when the task is aborted on drop.
