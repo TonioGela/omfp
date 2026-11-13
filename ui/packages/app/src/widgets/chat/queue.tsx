@@ -1,8 +1,8 @@
-/** The queue chips above the composer (UI-062). */
+/** The queue chips above the composer (UI-062): the kit's queue list and chips (UI-445). */
 import type { ThreadState } from "@omfp/core";
-import { Button, Icon, IconButton } from "omfp/kit";
+import { QueueChip, QueueList } from "omfp/kit";
 import {
-  type QueueChip,
+  type QueueChip as QueuedMessageView,
   type QueueOp,
   queueChips,
   queueOpApplied,
@@ -22,17 +22,17 @@ export function QueueChips({ threadId, state }: { threadId: string; state: Threa
     return null;
   }
   return (
-    <ul className="omfp-queue" data-testid="queue" aria-label={strings.chat.queue.label}>
+    <QueueList data-testid="queue" aria-label={strings.chat.queue.label}>
       {chips.map((chip, index) => (
         // Queue texts may repeat; the position tells them apart.
         // biome-ignore lint/suspicious/noArrayIndexKey: see above
-        <QueueChipView key={`${chip.queue}-${index}`} threadId={threadId} chip={chip} />
+        <QueuedMessage key={`${chip.queue}-${index}`} threadId={threadId} chip={chip} />
       ))}
-    </ul>
+    </QueueList>
   );
 }
 
-function QueueChipView({ threadId, chip }: { threadId: string; chip: QueueChip }) {
+function QueuedMessage({ threadId, chip }: { threadId: string; chip: QueuedMessageView }) {
   const call = useCall();
   const announce = useAnnounce();
   const [, setPending] = useWindowState(PENDING_QUEUE);
@@ -54,28 +54,19 @@ function QueueChipView({ threadId, chip }: { threadId: string; chip: QueueChip }
   };
   const busy = chip.pending !== undefined;
   return (
-    <li
-      className="omfp-queue-chip omfp-queue__chip"
-      data-kind={chip.queue === "steering" ? "steer" : "follow-up"}
+    <QueueChip
+      kind={chip.queue === "steering" ? "steer" : "follow-up"}
+      label={strings.chat.queue.kind[chip.queue]}
+      busy={busy}
       data-testid="queue-chip"
       data-queue={chip.queue}
       data-pending={chip.pending}
-      aria-busy={busy}
+      promoteLabel={strings.chat.queue.promote}
+      removeLabel={strings.chat.queue.remove}
+      {...(chip.canPromote ? { onPromote: () => run("promote") } : {})}
+      onRemove={() => run("remove")}
     >
-      <span className="omfp-queue-chip__kind">{strings.chat.queue.kind[chip.queue]}</span>
-      <span className="omfp-queue-chip__text">{chip.text}</span>
-      {chip.canPromote && (
-        <Button size="sm" variant="quiet" data-testid="queue-promote" isDisabled={busy} onPress={() => run("promote")}>
-          {strings.chat.queue.promote}
-        </Button>
-      )}
-      <IconButton
-        label={strings.chat.queue.remove}
-        icon={<Icon name="x" />}
-        data-testid="queue-remove"
-        isDisabled={busy}
-        onPress={() => run("remove")}
-      />
-    </li>
+      {chip.text}
+    </QueueChip>
   );
 }

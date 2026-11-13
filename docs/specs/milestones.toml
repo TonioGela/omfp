@@ -904,6 +904,7 @@ requirements = [
   "UI-466",
   # QA fixes: one definition per kit component, the gallery shows what users see
   "UI-440",
+  "UI-445",
   "UI-446",
   "UI-447",
   "TST-109",

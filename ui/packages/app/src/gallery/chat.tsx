@@ -14,6 +14,7 @@ import {
   Markdown,
   Message,
   QueueChip,
+  QueueList,
   Select,
   SILENT_SOURCE,
   Spectrum,
@@ -113,12 +114,17 @@ export function Composers() {
       </div>
       <div className="omfp-gallery__pair">
         <div className="omfp-gallery__stack">
-          <div className="omfp-gallery__line">
-            <QueueChip kind="follow-up" onRemove={() => undefined}>
+          <QueueList aria-label="Queued messages">
+            <QueueChip kind="follow-up" onPromote={() => undefined} onRemove={() => undefined}>
               and a follow-up after that
             </QueueChip>
-            <QueueChip kind="steer">use the gradient tokens</QueueChip>
-          </div>
+            <QueueChip kind="steer" onRemove={() => undefined}>
+              use the gradient tokens
+            </QueueChip>
+            <QueueChip kind="follow-up" busy onPromote={() => undefined} onRemove={() => undefined}>
+              removing: wait for the daemon
+            </QueueChip>
+          </QueueList>
           <Composer mode="insert">
             <textarea
               className="omfp-prose omfp-compose__input"

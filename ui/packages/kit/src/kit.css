@@ -3407,6 +3407,16 @@
     color: var(--omfp-on-surface-variant);
   }
 
+  /* The queue list (UI-445): its chips wrap, `s2` apart. */
+  .omfp-queue {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--omfp-s2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
   .omfp-queue-chip {
     display: inline-flex;
     align-items: center;
@@ -3439,6 +3449,15 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* Busy while an action on it waits for an answer (UI-445). */
+  .omfp-queue-chip[aria-busy="true"] {
+    opacity: var(--omfp-disabled);
+  }
+
+  .omfp-queue-chip .omfp-button:not(.omfp-icon-button) {
+    block-size: calc(var(--omfp-ctl-h-sm) - var(--omfp-s1));
   }
 
   /* CodeMirror (S-13): the editor fills its box and scrolls inside it; its colors come from editor/theme.ts. */

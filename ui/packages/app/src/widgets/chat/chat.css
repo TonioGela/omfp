@@ -667,21 +667,9 @@
     margin-block-end: var(--omfp-s2);
   }
 
-  .omfp-queue {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--omfp-s2);
-    margin-block: 0 var(--omfp-s2);
-    padding: 0;
-    list-style: none;
-  }
-
-  .omfp-queue__chip[aria-busy="true"] {
-    opacity: var(--omfp-disabled);
-  }
-
-  .omfp-queue__chip .omfp-button:not(.omfp-icon-button) {
-    block-size: calc(var(--omfp-ctl-h-sm) - var(--omfp-s1));
+  /* The kit's queue list (UI-445) over the composer. */
+  .omfp-composer-area > .omfp-queue {
+    margin-block-end: var(--omfp-s2);
   }
 
   /* The kit's text area inside the composer box: no box of its own, prose input (UI-172), its text and caret starting

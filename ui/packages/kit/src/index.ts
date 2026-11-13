@@ -267,6 +267,8 @@ export {
   type MessageProps,
   QueueChip,
   type QueueChipProps,
+  QueueList,
+  type QueueListProps,
   StreamCaret,
   type StreamCaretProps,
   Thinking,

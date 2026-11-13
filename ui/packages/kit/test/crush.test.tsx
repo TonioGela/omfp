@@ -29,6 +29,8 @@ import {
   ModeSegment,
   motionLevel,
   PathField,
+  QueueChip,
+  QueueList,
   ResolvedLine,
   Select,
   StateBadge,
@@ -746,5 +748,43 @@ describe("cards and code", () => {
   test("the stream caret is decorative", () => {
     render(<StreamCaret data-testid="caret" />);
     expect(screen.getByTestId("caret").getAttribute("aria-hidden")).toBe("true");
+  });
+});
+
+describe("QueueChip", () => {
+  // spec: UI-445, UI-172
+  test("a queued message in the queue list: its kind, its text, promote and remove, both off while busy", async () => {
+    const user = userEvent.setup();
+    const onPromote = mock(() => undefined);
+    const onRemove = mock(() => undefined);
+    const { rerender } = render(
+      <QueueList aria-label="Queued messages" data-testid="queue">
+        <QueueChip kind="follow-up" onPromote={onPromote} onRemove={onRemove} data-testid="chip">
+          later please
+        </QueueChip>
+      </QueueList>,
+    );
+    const list = screen.getByRole("list", { name: "Queued messages" });
+    expect(list.getAttribute("data-testid")).toBe("queue");
+    const chip = screen.getByRole("listitem");
+    expect([chip.getAttribute("data-testid"), chip.dataset.kind, chip.getAttribute("aria-busy")]).toEqual([
+      "chip",
+      "follow-up",
+      "false",
+    ]);
+    expect(chip.querySelector(".omfp-queue-chip__text")?.textContent).toBe("later please");
+    await user.click(screen.getByTestId("queue-promote"));
+    await user.click(screen.getByRole("button", { name: "Remove" }));
+    expect([onPromote.mock.calls.length, onRemove.mock.calls.length]).toEqual([1, 1]);
+    rerender(
+      <QueueList aria-label="Queued messages">
+        <QueueChip kind="steer" busy onPromote={onPromote} onRemove={onRemove}>
+          now
+        </QueueChip>
+      </QueueList>,
+    );
+    expect(screen.getByRole("listitem").getAttribute("aria-busy")).toBe("true");
+    expect(screen.getByTestId("queue-promote").hasAttribute("disabled")).toBe(true);
+    expect(screen.getByTestId("queue-remove").hasAttribute("disabled")).toBe(true);
   });
 });

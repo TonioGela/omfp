@@ -4,7 +4,7 @@
  */
 import { type HTMLAttributes, type ReactNode, useId } from "react";
 import { Button as AriaButton } from "react-aria-components";
-import { IconButton } from "./button.tsx";
+import { Button, IconButton } from "./button.tsx";
 import { cx } from "./class.ts";
 import { Icon } from "./icons.tsx";
 
@@ -136,33 +136,59 @@ export function ComposerHint({ className, ...props }: ComposerHintProps) {
   return <span {...props} className={cx("omfp-compose__hint", className)} />;
 }
 
-export interface QueueChipProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+export type QueueListProps = HTMLAttributes<HTMLUListElement>;
+
+/** The queued messages above the composer (UI-172, UI-445): a wrapping list of {@link QueueChip}s; label it. */
+export function QueueList({ className, ...props }: QueueListProps) {
+  return <ul {...props} className={cx("omfp-queue", className)} />;
+}
+
+export interface QueueChipProps extends Omit<HTMLAttributes<HTMLLIElement>, "children"> {
   kind: "follow-up" | "steer";
   /** The kind's word (`follow-up` / `steer` by default). */
   label?: ReactNode;
   /** The queued text, cut with an ellipsis. */
   children: ReactNode;
+  /** An action on it waits for an answer: faded, its actions disabled. */
+  busy?: boolean;
+  /** Shows the promote action (a follow-up sent as a steer now). */
+  onPromote?: () => void;
+  promoteLabel?: string;
   onRemove?: () => void;
   removeLabel?: string;
 }
 
-/** A queued follow-up or steering message above the composer: a dashed chip (UI-172). */
+/** A queued follow-up or steering message in a {@link QueueList}: a dashed chip (UI-172, UI-445). */
 export function QueueChip({
   kind,
   label,
   children,
+  busy = false,
+  onPromote,
+  promoteLabel = "Steer now",
   onRemove,
   removeLabel = "Remove",
   className,
   ...props
 }: QueueChipProps) {
   return (
-    <span {...props} className={cx("omfp-queue-chip", className)} data-kind={kind}>
+    <li {...props} className={cx("omfp-queue-chip", className)} data-kind={kind} aria-busy={busy}>
       <span className="omfp-queue-chip__kind">{label ?? kind}</span>
       <span className="omfp-queue-chip__text">{children}</span>
-      {onRemove !== undefined && (
-        <IconButton label={removeLabel} icon={<Icon name="x" />} onPress={onRemove} data-testid="queue-remove" />
+      {onPromote !== undefined && (
+        <Button size="sm" variant="quiet" data-testid="queue-promote" isDisabled={busy} onPress={onPromote}>
+          {promoteLabel}
+        </Button>
       )}
-    </span>
+      {onRemove !== undefined && (
+        <IconButton
+          label={removeLabel}
+          icon={<Icon name="x" />}
+          onPress={onRemove}
+          isDisabled={busy}
+          data-testid="queue-remove"
+        />
+      )}
+    </li>
   );
 }
