@@ -35,7 +35,7 @@ import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useStat
 import { ImageFile } from "./image.tsx";
 import { extension, MediaFile, mediaKind } from "./media.tsx";
 import { PdfFile } from "./pdf.tsx";
-import { viewerOf } from "./viewers.tsx";
+import { type ViewerFailure, viewerOf } from "./viewers.tsx";
 
 const text = strings.shell.file;
 
@@ -177,6 +177,13 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
   // A file with a viewer shows it while read-only, until the toggle shows the source (UI-560).
   const viewer = viewerOf(file.path);
   const [preview, setPreview] = useState(true);
+  // A viewer that cannot show this version of the file hands it back to the source (UI-569).
+  const [failure, setFailure] = useState<{ readonly hash: string; readonly failure: ViewerFailure } | undefined>();
+  const failed = failure?.hash === file.hash ? failure.failure : undefined;
+  const onViewerError = useCallback(
+    (viewerFailure: ViewerFailure) => setFailure({ hash: file.hash, failure: viewerFailure }),
+    [file.hash],
+  );
 
   // The file on disk changed: follow it while nothing is unsaved (UI-110).
   useEffect(() => {
@@ -228,7 +235,7 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
   );
 
   const editing = mode !== "view";
-  const previewing = mode === "view" && !showDiff && preview && viewer !== undefined;
+  const previewing = mode === "view" && !showDiff && preview && viewer !== undefined && failed === undefined;
   const showEditor = mode !== "view" || (!showDiff && !previewing);
   return (
     <>
@@ -245,9 +252,11 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
               variant="quiet"
               aria-pressed={previewing}
               onPress={() => {
-                // Over the diff, the toggle shows the viewer; else it switches between the viewer and the source.
-                setPreview((on) => showDiff || !on);
+                // Over the diff, the toggle shows the viewer; else it switches between the viewer and the source. A
+                // viewer that failed tries again.
+                setPreview((on) => showDiff || failed !== undefined || !on);
                 setShowDiff(false);
+                setFailure(undefined);
               }}
               data-testid="file-view-toggle"
             >
@@ -308,6 +317,11 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
           {notice}
         </p>
       )}
+      {mode === "view" && failed !== undefined && (
+        <p className="omfp-file__notice" data-tone="error" data-testid="file-viewer-error">
+          {failed.message}
+        </p>
+      )}
       {mode === "conflict" && mine !== undefined && (
         <Conflict
           path={file.path}
@@ -329,7 +343,7 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
       {mode === "view" && showDiff && <HeadDiff file={file} content={content} layout={layout} />}
       {previewing && (
         <div className="omfp-file__viewer" data-testid="file-viewer" data-viewer={viewer.name}>
-          <viewer.View file={file} content={content} />
+          <viewer.View file={file} content={content} onError={onViewerError} />
         </div>
       )}
       {showEditor && (
@@ -339,7 +353,7 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
           value={base.content}
           path={file.path}
           readOnly={!editing}
-          line={line}
+          line={failed?.line ?? line}
           jump={jump}
           handle={editor}
           aria-label={text.editorLabel(file.path)}

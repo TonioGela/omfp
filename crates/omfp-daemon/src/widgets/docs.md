@@ -55,8 +55,8 @@ while the thread's summary has an MCP reason in `restartPending`, "Reload to loa
 `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against `HEAD`; video and audio files play
 in the browser's player; `.pdf` files show in `PdfView`; images, any size, in `ImageView`, compared with `HEAD` when
-they differ; Markdown files show rendered and CSV/TSV files as a sortable table while read-only, with a toggle to the
-source).
+they differ; Markdown files show rendered, CSV/TSV files as a sortable table and JSON/YAML files as a tree while
+read-only, with a toggle to the source).
 Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Keep the main slot, `["tabs", {"id": "main"}, …"omfp:chat"]`, in every view: the files the
 user opens become its tabs (without it they float in a panel). `:widget add` and `omfp_ui_mount` put side tabs in the
@@ -428,6 +428,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useAnnounce()` | `announce(message)` for screen readers. |
 | `useReportError()` | `report(error)`: adds a failure (an `Error`, a `CallError`, any value) to the window's error list, which the frame shows until dismissed. Use it in the `catch` of every user action. |
 | `useReportSuccess()` | `report(text)`: the result of a user action (`Copied …`, `Saved …`) as a success toast that goes by itself, also announced to screen readers. Every action the user starts shows its result this way; thread and agent events are notices (`useNotify`). Toasts and notices stay in `:messages`. |
+| `parseYaml(text)` | `Promise<YamlResult>`: the values of a YAML text's documents (`{ ok: true, documents }`), or its first error (`{ ok: false, message, line, column }`, from 1). The parser loads on first use. |
 | `useUrlActions()` | `{ open(url), copy(url) }`: opens a URL in a new browser tab (without access to this window), or copies it to the clipboard with a success toast (a refusal goes to the error list). |
 | `useNotify()` | `notify({ title, body, threadId? })`: tells the user something without covering anything. While the window has focus it is a notice at the right end of the mode line (`◆ title body`, `g n` or a click opens it, gone after 8 s); while it has not, a system notification (when the user allowed them; `[ui] notifications = "never"` shows neither). With `threadId`, opening it selects that thread, visiting the thread clears it, and nothing is shown about the thread the user is on. Use it for results worth a look (a build turned red, a long job finished), not for every update. |
 | `useSettings()` | `{ ui, keymap, error }`: the daemon's settings (`ui.density`, `ui.fontSize`, `ui.motion`, `ui.notifications`, `ui.fonts`, `ui.theme`: the built-in theme; `error` when the config file failed to load), live. |

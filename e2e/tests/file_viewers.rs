@@ -191,3 +191,91 @@ async fn a_csv_file_too_large_to_read_whole_shows_as_a_sorted_virtual_table_unde
         .await?;
     Ok(())
 }
+
+/// The paths of the tree nodes rendered in the selected file's tree, in order.
+async fn tree_paths(journey: &Journey) -> anyhow::Result<Vec<Option<String>>> {
+    journey
+        .attrs(&format!("{FILE} [data-testid=file-tree-node]"), "data-path")
+        .await
+}
+
+// spec: E2E-59, UI-567, UI-568, UI-569
+#[tokio::test(flavor = "multi_thread")]
+async fn json_and_yaml_files_show_as_trees_and_an_invalid_one_falls_back_to_its_source()
+-> anyhow::Result<()> {
+    let repo = TempRepo::new()?;
+    repo.commit_file(
+        "package.json",
+        "{\n  \"name\": \"demo\",\n  \"scripts\": { \"test\": \"bun test\", \"build\": \"bun build\" },\n  \
+         \"files\": [\"dist\"]\n}\n",
+        "package",
+    )?;
+    repo.commit_file(
+        "ci.yaml",
+        "on: push\njobs:\n  test:\n    runs-on: ubuntu\n",
+        "ci",
+    )?;
+    repo.commit_file("broken.json", "{\n  \"a\": 1\n  \"b\": 2\n}\n", "broken")?;
+    let journey = workspace_with(&repo).await?;
+
+    journey.command("open app/package.json").await?;
+    let tree = format!("{FILE} [data-testid=file-viewer][data-viewer=tree]");
+    journey
+        .element(&format!("{tree} [data-testid=file-tree-node]"))
+        .await?;
+    assert_eq!(
+        tree_paths(&journey).await?,
+        [".", ".name", ".scripts", ".files"].map(|path| Some(path.to_owned()))
+    );
+    let scripts = format!("{tree} [data-path=\".scripts\"] > .omfp-file__node");
+    journey
+        .click(&format!("{scripts} [data-testid=file-tree-toggle]"))
+        .await?;
+    journey
+        .element(&format!("{tree} [data-path=\".scripts.build\"]"))
+        .await?;
+    journey
+        .click(&format!("{scripts} [data-testid=file-tree-copy-path]"))
+        .await?;
+    journey
+        .until("the copy's toast", async |page| {
+            let texts = page
+                .texts("[data-testid=toasts] [data-testid=success]")
+                .await?;
+            Ok(texts
+                .iter()
+                .any(|text| text.contains("Copied the path .scripts"))
+                .then_some(()))
+        })
+        .await?;
+    journey.screenshot("file-viewer-tree").await?;
+
+    // YAML: its keys, through the parser loaded on first use.
+    journey.command("open app/ci.yaml").await?;
+    journey
+        .until("the YAML tree", async |page| {
+            let paths = tree_paths(page).await?;
+            Ok((paths == [".", ".on", ".jobs"].map(|path| Some(path.to_owned()))).then_some(()))
+        })
+        .await?;
+
+    // Invalid JSON: the error with its place, and the source instead of the tree.
+    journey.command("open app/broken.json").await?;
+    let error = format!("{FILE} [data-testid=file-viewer-error]");
+    journey.element(&error).await?;
+    assert_eq!(
+        journey.text(&error).await?,
+        "Cannot show this file as a tree: Expected `,` or `}` (line 3, column 3)."
+    );
+    journey
+        .element(&format!("{FILE} [data-testid=file-editor] .cm-content"))
+        .await?;
+    assert_eq!(
+        journey
+            .count(&format!("{FILE} [data-testid=file-viewer]"))
+            .await?,
+        0
+    );
+    journey.screenshot("file-viewer-tree-error").await?;
+    Ok(())
+}

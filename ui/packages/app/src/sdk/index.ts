@@ -403,3 +403,4 @@ export {
   WidgetScope,
 } from "./widget.ts";
 export { type KeyValueStorage, type Update, type WindowKey, windowKey } from "./window-store.ts";
+export { parseYaml, type YamlResult } from "./yaml.ts";

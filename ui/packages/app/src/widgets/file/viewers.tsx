@@ -8,11 +8,19 @@ import { strings } from "omfp/sdk";
 import type { ComponentType } from "react";
 import { MarkdownViewer } from "./markdown.tsx";
 import { CsvViewer, TsvViewer } from "./table.tsx";
+import { JsonViewer, YamlViewer } from "./tree.tsx";
 
-/** What a viewer gets: the file as read and its text. */
+/** Why a viewer cannot show a file (UI-569): the sentence to show, and the line of the source to show instead. */
+export interface ViewerFailure {
+  readonly message: string;
+  readonly line: number;
+}
+
+/** What a viewer gets: the file as read and its text, and where to say it cannot show it (the source shows then). */
 export interface ViewerProps {
   readonly file: FileContent;
   readonly content: string;
+  readonly onError: (failure: ViewerFailure) => void;
 }
 
 export interface Viewer {
@@ -33,6 +41,10 @@ const VIEWERS: ReadonlyMap<string, Viewer> = new Map([
   ["mdx", markdown],
   ["csv", { name: "table", label: text.viewers.table, View: CsvViewer }],
   ["tsv", { name: "table", label: text.viewers.table, View: TsvViewer }],
+  ["json", { name: "tree", label: text.viewers.tree, View: JsonViewer }],
+  ["jsonc", { name: "tree", label: text.viewers.tree, View: JsonViewer }],
+  ["yaml", { name: "tree", label: text.viewers.tree, View: YamlViewer }],
+  ["yml", { name: "tree", label: text.viewers.tree, View: YamlViewer }],
 ]);
 
 /** The viewer of the file at `path`, by its extension (case aside), if it has one. */

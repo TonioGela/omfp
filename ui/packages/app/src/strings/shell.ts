@@ -352,7 +352,7 @@ export const shell = {
     split: "Side by side",
     layout: "Diff layout",
     /** The toggle between a file's source and its viewer (UI-560), named by the viewer. */
-    viewers: { markdown: "Preview", table: "Table" },
+    viewers: { markdown: "Preview", table: "Table", tree: "Tree" },
     previewLabel: (path: string) => `${path} rendered`,
     tableLabel: (path: string) => `${path} as a table`,
     /** The table viewer's line under the table (UI-563, UI-565); `cutSize` when the daemon read only the beginning. */
@@ -360,6 +360,20 @@ export const shell = {
       `${rows} ${rows === 1 ? "row" : "rows"}, ${columns} ${columns === 1 ? "column" : "columns"}${
         cutSize === undefined ? "" : `: the first rows of this ${cutSize} file, which is too large to read whole`
       }`,
+    /** The tree viewer (UI-567..569). */
+    treeLabel: (path: string) => `${path} as a tree`,
+    treeKeys: (count: number) => `${count} ${count === 1 ? "key" : "keys"}`,
+    treeItems: (count: number) => `${count} ${count === 1 ? "item" : "items"}`,
+    treeDocuments: (count: number) => `${count} documents`,
+    treeMore: (count: number) => `Show more (${count} left)`,
+    copyPath: "Path",
+    copyValue: "Value",
+    copyPathLabel: (path: string) => `Copy the path ${path}`,
+    copyValueLabel: (path: string) => `Copy the value of ${path}`,
+    copiedPath: (path: string) => `Copied the path ${path}`,
+    copiedValue: (path: string) => `Copied the value of ${path}`,
+    treeFailed: (message: string, line: number, column: number) =>
+      `Cannot show this file as a tree: ${message} (line ${line}, column ${column}).`,
     saved: (path: string) => `Saved ${path}`,
     saveFailed: (error: string) => `Cannot save: ${error}`,
     unsaved: "Unsaved changes: save with :w, or drop them with :q!",

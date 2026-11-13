@@ -2007,9 +2007,99 @@
     border-block-end: var(--omfp-bw) solid var(--omfp-rule);
   }
 
-  .omfp-file__viewer[data-viewer="table"] + .omfp-file__notice,
   .omfp-file__viewer[data-viewer="table"] > .omfp-file__notice {
     padding: var(--omfp-s1) var(--omfp-s2);
+  }
+
+  /* The tree viewer (UI-567, UI-568): nested lists, a disclosure mark on containers, the value colored as the code
+     highlighting colors it; the copy buttons are faint until the row is hovered or focused (always there: UI-415). */
+  .omfp-file__tree,
+  .omfp-file__tree ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .omfp-file__tree ul {
+    padding-inline-start: var(--omfp-s4);
+    border-inline-start: var(--omfp-bw) solid var(--omfp-rule);
+  }
+
+  .omfp-file__tree {
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-file__node {
+    display: flex;
+    align-items: baseline;
+    gap: var(--omfp-s2);
+    min-block-size: var(--omfp-row-h);
+    padding-inline: var(--omfp-s1);
+    border-radius: var(--omfp-r-card);
+  }
+
+  .omfp-file__node:is(:hover, :focus-within) {
+    background: var(--omfp-sel-bg);
+  }
+
+  .omfp-file__key {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--omfp-secondary);
+    font: inherit;
+    white-space: nowrap;
+  }
+
+  button.omfp-file__key {
+    cursor: pointer;
+  }
+
+  button.omfp-file__key::before {
+    content: "▸ ";
+    color: var(--omfp-outline);
+  }
+
+  button.omfp-file__key[aria-expanded="true"]::before {
+    content: "▾ ";
+  }
+
+  .omfp-file__value {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    color: var(--omfp-warn);
+  }
+
+  .omfp-file__value[data-kind="string"] {
+    color: var(--omfp-ok);
+  }
+
+  .omfp-file__summary {
+    color: var(--omfp-on-surface-variant);
+    white-space: nowrap;
+  }
+
+  .omfp-file__node-actions {
+    display: flex;
+    gap: var(--omfp-s1);
+    margin-inline-start: auto;
+    opacity: 0.45;
+  }
+
+  .omfp-file__node:is(:hover, :focus-within) .omfp-file__node-actions {
+    opacity: 1;
+  }
+
+  .omfp-file__node-actions button,
+  .omfp-file__more {
+    padding: 0 var(--omfp-s1);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+    background: none;
+    color: var(--omfp-on-surface);
+    font: inherit;
+    cursor: pointer;
   }
 
   /* Sized by its text up to 60vh: no size containment (the kit's UI-118 layout root). */

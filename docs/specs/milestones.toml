@@ -1078,4 +1078,11 @@ requirements = [
   "UI-565",
   "UI-566",
   "E2E-58",
+  # The tree viewer of JSON, JSONC and YAML files, and the SDK's parseYaml
+  "UI-567",
+  "UI-568",
+  "UI-569",
+  "UI-570",
+  "UI-571",
+  "E2E-59",
 ]

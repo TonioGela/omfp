@@ -1,11 +1,12 @@
-/** L4: `omfp:file`'s viewers of text formats over a fake client: Markdown preview (UI-560..562), table (UI-563..565). */
+/** L4: `omfp:file`'s viewers of text formats over a fake client: Markdown preview (UI-560..562), table (UI-563..565),
+ * tree (UI-567..569). */
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import type { FileContent } from "@omfp/protocol";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Markdown } from "omfp/kit";
-import { type FilePoll, OPEN_FILES, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { type FilePoll, OPEN_FILES, SELECTED_THREAD, SUCCESSES } from "../../src/sdk/index.ts";
 import { FileWidget } from "../../src/widgets/file/index.ts";
 import { FileImage, FileUrlHook } from "../../src/widgets/file/markdown.tsx";
 import { viewerOf } from "../../src/widgets/file/viewers.tsx";
@@ -149,7 +150,7 @@ describe("Markdown preview", () => {
     expect(screen.getByTestId("file-image-alt").textContent).toBe("gone");
   });
 
-  // spec: UI-560, UI-563
+  // spec: UI-560, UI-563, UI-567
   test("the viewer is chosen by the file's extension, case aside", () => {
     const paths = ["a.md", "b/c.MARKDOWN", "d.mdx", "e.rs", "md", "f.md.bak", "g.csv", "h.Tsv", "csv"];
     expect(paths.map((path) => viewerOf(path)?.name)).toEqual([
@@ -162,6 +163,12 @@ describe("Markdown preview", () => {
       "table",
       "table",
       undefined,
+    ]);
+    expect(["a.json", "b.JSONC", "c.yaml", "d.yml"].map((path) => viewerOf(path)?.name)).toEqual([
+      "tree",
+      "tree",
+      "tree",
+      "tree",
     ]);
   });
 });
@@ -259,5 +266,114 @@ describe("table viewer", () => {
     expect(screen.getByTestId("file-table-summary").textContent).toBe(
       "1 row, 2 columns: the first rows of this 4.0 MiB file, which is too large to read whole",
     );
+  });
+});
+
+/** The tree's rendered nodes as `path kind summary`. */
+function nodes(): string[] {
+  return screen
+    .getAllByTestId("file-tree-node")
+    .map(
+      (node) => `${node.dataset.path} ${node.dataset.kind} ${node.querySelector(".omfp-file__summary")?.textContent}`,
+    );
+}
+
+/** The tree node at `path`. */
+function node(path: string): HTMLElement {
+  const found = screen.getAllByTestId("file-tree-node").find((element) => element.dataset.path === path);
+  if (found === undefined) {
+    throw new Error(`no node ${path}`);
+  }
+  return found;
+}
+
+/** The node's own control (not its children's) with `testId`. */
+function control(path: string, testId: string): HTMLElement {
+  const found = node(path).querySelector(`:scope > .omfp-file__node [data-testid="${testId}"]`);
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`no ${testId} on ${path}`);
+  }
+  return found;
+}
+
+const PACKAGE = '{"name": "omfp", "version": 1.10, "private": true, "files": ["a", "b c"], "bin": null, "odd key": {}}';
+
+describe("tree viewer", () => {
+  // spec: UI-567
+  test("JSON shows as a tree: the root open, keys with their types and counts, containers opened on click", async () => {
+    const test = setup("fe/package.json", PACKAGE);
+    expect((await screen.findByTestId("file-viewer")).dataset.viewer).toBe("tree");
+    expect(nodes()).toEqual([
+      ". object 6 keys",
+      ".name string string",
+      ".version number number",
+      ".private boolean boolean",
+      ".files array 2 items",
+      ".bin null null",
+      '.["odd key"] object 0 keys',
+    ]);
+    expect(node(".name").textContent).toContain('"omfp"');
+    expect(node(".version").textContent).toContain("1.10");
+    expect(control(".files", "file-tree-toggle").getAttribute("aria-expanded")).toBe("false");
+    await test.user.click(control(".files", "file-tree-toggle"));
+    expect(control(".files", "file-tree-toggle").getAttribute("aria-expanded")).toBe("true");
+    expect(nodes().slice(5, 7)).toEqual([".files[0] string string", ".files[1] string string"]);
+    await test.user.click(control(".", "file-tree-toggle"));
+    expect(nodes()).toEqual([". object 6 keys"]);
+    const toggle = screen.getByTestId("file-view-toggle");
+    expect([toggle.textContent, toggle.getAttribute("aria-pressed")]).toEqual(["Tree", "true"]);
+    await test.user.click(toggle);
+    expect((await editorText()).startsWith('{"name"')).toBe(true);
+  });
+
+  // spec: UI-568
+  test("each node copies its path or its value, with a success toast", async () => {
+    const test = setup("fe/package.json", PACKAGE);
+    await screen.findByTestId("file-viewer");
+    await test.user.click(control('.["odd key"]', "file-tree-copy-path"));
+    expect(await navigator.clipboard.readText()).toBe('.["odd key"]');
+    await test.user.click(control(".name", "file-tree-copy-value"));
+    expect(await navigator.clipboard.readText()).toBe("omfp");
+    await test.user.click(control(".files", "file-tree-copy-value"));
+    expect(await navigator.clipboard.readText()).toBe('[\n  "a",\n  "b c"\n]');
+    await test.user.click(control(".version", "file-tree-copy-value"));
+    expect(await navigator.clipboard.readText()).toBe("1.10");
+    await waitFor(() =>
+      expect(test.host.window.get(SUCCESSES).map((success) => success.text)).toEqual([
+        'Copied the path .["odd key"]',
+        "Copied the value of .name",
+        "Copied the value of .files",
+        "Copied the value of .version",
+      ]),
+    );
+  });
+
+  // spec: UI-567, UI-570
+  test("JSONC takes comments and trailing commas; YAML shows its documents", async () => {
+    setup("fe/tsconfig.json", '{\n  // strict\n  "compilerOptions": { "strict": true, },\n}\n');
+    await screen.findByTestId("file-viewer");
+    expect(nodes()).toEqual([". object 1 key", ".compilerOptions object 1 key"]);
+    cleanup();
+    setup("fe/ci.yml", "on: push\njobs:\n  test:\n    steps: [a, b]\n");
+    await waitFor(() => expect(nodes()).toEqual([". object 2 keys", ".on string string", ".jobs object 1 key"]));
+    cleanup();
+    setup("fe/k8s.yaml", "kind: A\n---\nkind: B\n");
+    await waitFor(() => expect(nodes()).toEqual([". array 2 documents", ".[0] object 1 key", ".[1] object 1 key"]));
+  });
+
+  // spec: UI-569
+  test("an invalid file says where it fails and shows its source instead; the toggle tries again", async () => {
+    const test = setup("fe/data.json", '{\n  "a": 1,\n  "b" 2\n}\n');
+    const error = await screen.findByTestId("file-viewer-error");
+    expect(error.textContent).toBe("Cannot show this file as a tree: Expected `:` (line 3, column 7).");
+    expect((await editorText()).split("\n")[2]).toBe('  "b" 2');
+    expect(screen.queryAllByTestId("file-viewer").length).toBe(0);
+    expect(screen.getByTestId("file-view-toggle").getAttribute("aria-pressed")).toBe("false");
+    // The toggle tries again, and fails again.
+    await test.user.click(screen.getByTestId("file-view-toggle"));
+    expect((await screen.findByTestId("file-viewer-error")).textContent).toContain("line 3, column 7");
+    cleanup();
+    setup("fe/ci.yaml", "a: [1, 2\nb: 3\n");
+    expect((await screen.findByTestId("file-viewer-error")).textContent).toMatch(/\(line \d+, column \d+\)\.$/);
   });
 });

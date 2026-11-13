@@ -677,7 +677,9 @@ compare with their `HEAD` version, which the daemon serves under `?rev=HEAD` (DM
 preview (UI-560), their relative links opening the files they name next to them (UI-561) and their relative images
 loaded from the daemon's raw-file URL when the SDK serves one, else named by their alt text (UI-562); CSV and TSV
 files as a table under a sticky header, sorted by a click on a column's header, with only the rows in view rendered
-(UI-563..UI-565), parsed by a small RFC 4180 parser (UI-566).
+(UI-563..UI-565), parsed by a small RFC 4180 parser (UI-566); JSON, JSONC and YAML files as a tree of their values
+whose nodes copy their path or value (UI-567, UI-568, UI-570), YAML parsed by the SDK's `parseYaml` (UI-571), a file
+that does not parse showing its error over its source (UI-569).
 
 Acceptance: a media element, an image or `fetch` loads a workspace file of any size by URL alone, seeks with byte
 ranges, revalidates with its validators; a wrong key, a path leaving the workspace and a missing file are `404`; a
@@ -685,7 +687,8 @@ WAV and a WebM opened with `:open` load and seek in their players (E2E-51); a PD
 with their text and follows the scroll and the zoom (E2E-52); an image over 8 MiB changed since `HEAD` zooms, pans and
 compares with `HEAD` (E2E-53); the component tests of the viewers pass; journeys open a Markdown file of a workspace,
 follow its relative link and toggle to the source (E2E-57), and open a CSV file larger than the daemon reads, sort it,
-scroll it under its header and toggle to the source (E2E-58).
+scroll it under its header and toggle to the source (E2E-58), and open JSON and YAML files as trees and an invalid
+JSON file as its source with the error's place (E2E-59).
 
 Design: media elements and `<img>` cannot send the token in a header, and the token must never travel in a URL
 (PRT-002), so the route uses a capability URL like widget modules (DMN-084): a random key made at startup, given only
@@ -703,6 +706,12 @@ against (`linkBase`) and a component for relative images; the raw-file route's h
 preview does not depend on it at compile time. CSV is parsed in the widget's folder (`csv.ts`, about sixty lines)
 rather than with a dependency: the format is small, and a widget folder imports only `react`, `omfp/sdk` and
 `omfp/kit`. The table renders its rows with the SDK's virtualizer (`@tanstack/react-virtual`, as the transcript).
+JSON is parsed by the widget too (`structured.ts`): `JSON.parse` neither gives an error's place in every engine nor
+keeps keys in order and numbers as written, nor takes JSONC. YAML is not: anchors, block scalars, tags and flow
+collections make a correct parser a project of its own, so the SDK's `parseYaml` wraps the `yaml` package (no
+dependencies of its own, YAML 1.2, errors with their place, alias bombs capped), loaded as a chunk on first use so
+the bundle's first load does not grow; it is in the SDK because a widget folder imports only `react`, `omfp/sdk` and
+`omfp/kit`, and agents' widgets get it as well.
 
 ## Terminal (removed)
 
