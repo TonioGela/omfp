@@ -23,7 +23,7 @@ conversations with the agent at once, each with its own oh-my-pi running in the 
   omfp ships with work the same way, so you can change those too.
 - **Almost no opinions.** A small core, a keyboard-driven shell, and the rest is panels you can copy, replace or
   throw away.
-- **Emacs at heart.** You change the tool from inside it, while it runs. No rebuilds.
+- **Emacs philosophy at heart.** You change the tool from inside it, while it runs. No rebuilds.
 
 Early and changing fast.
 
