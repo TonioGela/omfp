@@ -120,7 +120,7 @@ fn script() -> Vec<Step> {
             Reply::tool_calls(vec![ToolCall::new(
                 "mount_activity",
                 "omfp_ui_mount",
-                json!({ "id": "activity", "widget": "omfp:activity", "view": "dashboard", "where": "end" }),
+                json!({ "id": "activity", "widget": "omfp:activity", "view": "dashboard", "place": "end" }),
             )]),
         )
         .any_order(),

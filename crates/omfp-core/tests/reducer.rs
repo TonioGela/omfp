@@ -1273,7 +1273,7 @@ fn live_end_clears_the_session_and_names_its_failure() {
     assert_eq!(
         state.live_error.as_deref(),
         Some(
-            "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
+            "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again"
         )
     );
 
@@ -1361,7 +1361,7 @@ fn the_last_notify_request_is_kept_with_its_window_and_survives_the_process() {
 fn live_failures_read_as_what_the_user_can_do() {
     use omfp_core::live_error_message;
 
-    let login = "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again";
+    let login = "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again";
     assert_eq!(
         live_error_message("No Codex OAuth credential is available for a live call."),
         login

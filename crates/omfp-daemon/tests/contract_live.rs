@@ -268,7 +268,7 @@ async fn the_daemon_names_the_missing_codex_login() {
     assert_eq!(error["code"], "omp_error", "{error}");
     assert_eq!(
         error["message"],
-        "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
+        "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again"
     );
     assert_eq!(error["details"]["ompError"], NO_CREDENTIAL);
     view.until(&mut web, |state| {

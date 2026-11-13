@@ -8,7 +8,6 @@ use omp_rpc::{HostTool, HostToolError, HostToolOutput, HostUri, ToolLoadMode};
 use serde_json::{Map, Value, json};
 
 use crate::agent_tools::catalog;
-use crate::widgets::layout::{Addition, Place};
 use crate::widgets::{self, BUILTIN_URL, CHECK_URL, DOCS_URL, SCHEMA_URL, SCHEME, keymap, shell};
 
 /// Name of the tool that opens a file in omfp for the user (DMN-060).
@@ -19,15 +18,6 @@ pub const NOTIFY: &str = "omfp_notify";
 
 /// Name of the tool that renames the agent's thread (DMN-073).
 pub const SET_THREAD_TITLE: &str = "set_thread_title";
-
-/// Name of the tool that checks a widget (DMN-063).
-pub const WIDGET_CHECK: &str = "omfp_widget_check";
-
-/// Name of the tool that adds a widget to a view (DMN-064).
-pub const VIEW_ADD: &str = "omfp_view_add";
-
-/// Name of the tool that lists the init file and TSX view errors windows report (DMN-196).
-pub const VIEWS_ERRORS: &str = "omfp_views_errors";
 
 /// Longest title `set_thread_title` accepts, in characters.
 pub const MAX_TITLE_CHARS: usize = 200;
@@ -52,23 +42,15 @@ pub type Notify = Arc<dyn Fn(&str, &str) -> Result<(), String> + Send + Sync>;
 /// Stores a title the agent set for its thread; the error goes back to the agent.
 pub type SetTitle = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
-/// What the widget tools need from the daemon (DMN-063, DMN-064, DMN-196, DMN-199); the server implements it. They
-/// run on an `omp-rpc` handler thread and may block it.
+/// What the `omfp://` URIs of a thread's workspace need from the daemon (DMN-108, DMN-199, AGT-081); the server
+/// implements it. They run on an `omp-rpc` handler thread and may block it.
 pub trait WidgetHost: Send + Sync {
     /// The `omfp_widget_check` answer for `name` of workspace `workspace_id`: a widget, an init file or a TSX view.
     fn check_widget(
         &self,
         workspace_id: &str,
         name: &str,
-        is_cancelled: &dyn Fn() -> bool,
-    ) -> Result<String, String>;
-    /// Adds a widget to a view of workspace `workspace_id`, writes `views.json` and says what it did.
-    fn add_to_view(&self, workspace_id: &str, addition: &Addition<'_>) -> Result<String, String>;
-    /// The `omfp_views_errors` answer for workspace `workspace_id`.
-    fn views_errors(
-        &self,
-        workspace_id: &str,
-        is_cancelled: &dyn Fn() -> bool,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
     ) -> Result<String, String>;
     /// What the daemon's config file and the `.omfp/keymap.json` of workspace `workspace_id` add to the default keys.
     fn keymap_additions(&self, workspace_id: &str) -> shell::Additions;
@@ -84,16 +66,13 @@ pub trait AgentHost: Send + Sync {
 }
 
 /// The host tools of one thread: `opener` opens files and `notifier` notifies the user in their window, `set_title`
-/// renames the thread, `widgets` (absent in tests that need no widget tools) backs the widget tools of workspace
-/// `workspace_id`, and `agent_tools` are the registry's tools for this thread (AGT-040). Every tool is `essential`: a
-/// direct tool of the agent, not only an `xd://` device (DMN-106).
+/// renames the thread, and `agent_tools` are the registry's tools for this thread (AGT-040), the widget checks among
+/// them. Every tool is `essential`: a direct tool of the agent, not only an `xd://` device (DMN-106).
 #[must_use]
 pub fn thread_tools(
     opener: OpenFile,
     notifier: Notify,
     set_title: SetTitle,
-    workspace_id: &str,
-    widgets: Option<Arc<dyn WidgetHost>>,
     agent_tools: Vec<HostTool>,
 ) -> Vec<HostTool> {
     let mut tools = vec![
@@ -101,11 +80,6 @@ pub fn thread_tools(
         notify(notifier),
         set_thread_title(set_title),
     ];
-    if let Some(host) = widgets {
-        tools.push(widget_check(workspace_id.to_owned(), Arc::clone(&host)));
-        tools.push(view_add(workspace_id.to_owned(), Arc::clone(&host)));
-        tools.push(views_errors(workspace_id.to_owned(), host));
-    }
     tools.extend(agent_tools);
     tools
         .into_iter()
@@ -156,184 +130,6 @@ pub fn host_uris(
 
 fn schema(value: &Value) -> Map<String, Value> {
     value.as_object().cloned().unwrap_or_default()
-}
-
-/// `omfp_widget_check { name }` (DMN-063, DMN-197).
-#[must_use]
-pub fn widget_check(workspace_id: String, host: Arc<dyn WidgetHost>) -> HostTool {
-    let parameters = schema(&json!({
-        "type": "object",
-        "properties": {
-            "name": {
-                "type": "string",
-                "minLength": 1,
-                "description": "A widget: its folder name (`tests` for .omfp/widgets/tests/), `./widgets/<name>` or `user:<name>`. An init file: `init` (or `.omfp/init.ts`, the workspace's) or `user:init` (the user's). A TSX view: `views/<file>` (or `.omfp/views/<file>`, e.g. `views/ops.tsx`)."
-            }
-        },
-        "required": ["name"],
-        "additionalProperties": false
-    }));
-    HostTool::new(
-        WIDGET_CHECK,
-        "Checks a workspace or user widget, an init file (`init`, `user:init`) or a TSX view (`views/<file>`) without \
-         a browser: the daemon compiles it as it serves it, then reports what every open omfp window shows of it \
-         (for a widget: render, import and console errors, the rendered text, its jobs; for an init file or a TSX \
-         view: the runtime, render and layout errors the windows report) or that no window shows it. Use it after \
-         writing or changing one.",
-        parameters,
-        move |arguments, context| {
-            run_widget_check(&arguments, || context.is_cancelled(), &workspace_id, &*host)
-        },
-    )
-    .label("Check widget")
-}
-
-/// The body of [`widget_check`], without the `omp-rpc` context (DMN-061).
-pub fn run_widget_check(
-    arguments: &Map<String, Value>,
-    is_cancelled: impl Fn() -> bool,
-    workspace_id: &str,
-    host: &dyn WidgetHost,
-) -> Result<HostToolOutput, HostToolError> {
-    if is_cancelled() {
-        return Err("cancelled".into());
-    }
-    let name = match arguments.get("name") {
-        Some(Value::String(name)) if !name.trim().is_empty() => name.trim(),
-        _ => return Err("`name` must be a non-empty string".into()),
-    };
-    Ok(HostToolOutput::Text(host.check_widget(
-        workspace_id,
-        name,
-        &is_cancelled,
-    )?))
-}
-
-/// `omfp_views_errors {}` (DMN-196): the init file and TSX view errors the windows showing the thread's workspace
-/// report.
-#[must_use]
-pub fn views_errors(workspace_id: String, host: Arc<dyn WidgetHost>) -> HostTool {
-    let parameters = schema(&json!({
-        "type": "object",
-        "properties": {},
-        "additionalProperties": false
-    }));
-    HostTool::new(
-        VIEWS_ERRORS,
-        "Lists the errors the open omfp windows showing this workspace report for its init files (the workspace's \
-         .omfp/init.ts and the user's init file) and TSX views (.omfp/views/): compile errors, throws, render and \
-         layout errors, window by window, after they caught up with the latest change. Use it after changing an init \
-         file or a TSX view; omfp_widget_check { name: \"init\" } checks one file.",
-        parameters,
-        move |arguments, context| {
-            run_views_errors(&arguments, || context.is_cancelled(), &workspace_id, &*host)
-        },
-    )
-    .label("View errors")
-}
-
-/// The body of [`views_errors`], without the `omp-rpc` context (DMN-061).
-pub fn run_views_errors(
-    _arguments: &Map<String, Value>,
-    is_cancelled: impl Fn() -> bool,
-    workspace_id: &str,
-    host: &dyn WidgetHost,
-) -> Result<HostToolOutput, HostToolError> {
-    if is_cancelled() {
-        return Err("cancelled".into());
-    }
-    Ok(HostToolOutput::Text(
-        host.views_errors(workspace_id, &is_cancelled)?,
-    ))
-}
-
-/// `omfp_view_add { widget, props?, view?, where? }` (DMN-064).
-#[must_use]
-pub fn view_add(workspace_id: String, host: Arc<dyn WidgetHost>) -> HostTool {
-    let parameters = schema(&json!({
-        "type": "object",
-        "properties": {
-            "widget": {
-                "type": "string",
-                "minLength": 1,
-                "description": "The widget reference: `./widgets/<name>`, `user:<name>`, `omfp:<name>`; a bare name means `./widgets/<name>`."
-            },
-            "props": { "type": "object", "description": "The widget's props (an `instance` string tells two copies apart)." },
-            "view": { "type": "string", "minLength": 1, "description": "The view to change (default: the default view); a new id creates a view showing only the widget." },
-            "where": {
-                "type": "string",
-                "enum": ["side-tab", "main-tab", "end"],
-                "description": "side-tab (default): a tab next to the workspace and changes widgets; main-tab: a tab next to the conversation; end: the end of the view's root container."
-            }
-        },
-        "required": ["widget"],
-        "additionalProperties": false
-    }));
-    HostTool::new(
-        VIEW_ADD,
-        "Adds a widget to a view of this workspace's .omfp/views.json (open windows show it at once), without \
-         rewriting the file by hand. Keep the main slot, the [\"tabs\", {\"id\": \"main\"}, …\"omfp:chat\"] container: \
-         files the user opens become its tabs (without it they float over the view), so never remove or replace it.",
-        parameters,
-        move |arguments, context| {
-            run_view_add(&arguments, || context.is_cancelled(), &workspace_id, &*host)
-        },
-    )
-    .label("Add widget to view")
-}
-
-/// The body of [`view_add`], without the `omp-rpc` context (DMN-061).
-pub fn run_view_add(
-    arguments: &Map<String, Value>,
-    is_cancelled: impl Fn() -> bool,
-    workspace_id: &str,
-    host: &dyn WidgetHost,
-) -> Result<HostToolOutput, HostToolError> {
-    if is_cancelled() {
-        return Err("cancelled".into());
-    }
-    let widget = match arguments.get("widget") {
-        Some(Value::String(widget)) if !widget.trim().is_empty() => widget.trim(),
-        _ => return Err("`widget` must be a non-empty string".into()),
-    };
-    let reference = if widget.starts_with("./widgets/")
-        || widget.starts_with("user:")
-        || widget.starts_with("omfp:")
-    {
-        widget.to_owned()
-    } else {
-        format!("./widgets/{widget}")
-    };
-    let props = match arguments.get("props") {
-        None | Some(Value::Null) => Map::new(),
-        Some(Value::Object(props)) => props.clone(),
-        Some(_) => return Err("`props` must be an object".into()),
-    };
-    let view = match arguments.get("view") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(view)) if !view.trim().is_empty() => Some(view.trim()),
-        Some(_) => return Err("`view` must be a non-empty string".into()),
-    };
-    let place = match arguments.get("where") {
-        None | Some(Value::Null) => Place::SideTab,
-        Some(Value::String(place)) => {
-            Place::parse(place).ok_or("`where` must be \"side-tab\", \"main-tab\" or \"end\"")?
-        }
-        Some(_) => return Err("`where` must be \"side-tab\", \"main-tab\" or \"end\"".into()),
-    };
-    if is_cancelled() {
-        return Err("cancelled".into());
-    }
-    let addition = Addition {
-        reference: &reference,
-        props,
-        view,
-        place,
-        argument: "where",
-    };
-    Ok(HostToolOutput::Text(
-        host.add_to_view(workspace_id, &addition)?,
-    ))
 }
 
 /// `set_thread_title { title }`: renames the thread; a title set this way is never replaced by a generated one
@@ -626,8 +422,6 @@ mod tests {
             Arc::new(|_, _| Ok(())),
             Arc::new(|_, _| Ok(())),
             Arc::new(|_| Ok(())),
-            "01WS",
-            None,
             Vec::new(),
         );
         let definitions: Vec<_> = tools.iter().map(HostTool::definition).collect();
@@ -660,11 +454,15 @@ mod tests {
         }
         assert_eq!(definitions[2].name, SET_THREAD_TITLE);
         assert_eq!(definitions[2].parameters["required"], json!(["title"]));
-        assert_eq!(
-            definitions.len(),
-            3,
-            "no widget tools without a widget host"
-        );
+        assert_eq!(definitions.len(), 3, "no registry tools given");
+        for definition in &definitions {
+            assert_eq!(
+                definition.load_mode,
+                Some(ToolLoadMode::Essential),
+                "{} is a direct tool of the agent",
+                definition.name
+            );
+        }
     }
 
     /// Runs `omfp_notify` with a notifier that records its calls and fails with `refusal` when given.
@@ -745,215 +543,12 @@ mod tests {
         assert_eq!(sent, Vec::new());
     }
 
-    /// A widget host that records what the tools asked for.
-    #[derive(Default)]
-    struct FakeWidgets {
-        asked: Mutex<Vec<String>>,
-    }
-
-    impl WidgetHost for FakeWidgets {
-        fn check_widget(
-            &self,
-            workspace_id: &str,
-            name: &str,
-            _is_cancelled: &dyn Fn() -> bool,
-        ) -> Result<String, String> {
-            self.asked
-                .lock()
-                .unwrap()
-                .push(format!("check {workspace_id} {name}"));
-            if name == "missing" {
-                return Err("no widget missing".to_owned());
-            }
-            Ok(format!("checked {name}"))
-        }
-
-        fn add_to_view(
-            &self,
-            workspace_id: &str,
-            addition: &Addition<'_>,
-        ) -> Result<String, String> {
-            self.asked.lock().unwrap().push(format!(
-                "add {workspace_id} {} {} {:?} {:?}",
-                addition.reference,
-                Value::Object(addition.props.clone()),
-                addition.view,
-                addition.place
-            ));
-            Ok("added".to_owned())
-        }
-
-        fn views_errors(
-            &self,
-            workspace_id: &str,
-            _is_cancelled: &dyn Fn() -> bool,
-        ) -> Result<String, String> {
-            self.asked
-                .lock()
-                .unwrap()
-                .push(format!("errors {workspace_id}"));
-            Ok("1 window(s) show this workspace.".to_owned())
-        }
-
-        fn keymap_additions(&self, _workspace_id: &str) -> shell::Additions {
-            shell::Additions::default()
-        }
-
-        fn windows(&self, workspace_id: &str) -> String {
-            format!("windows of {workspace_id}")
-        }
-    }
-
     fn text(output: Result<HostToolOutput, HostToolError>) -> Result<String, String> {
         match output {
             Ok(HostToolOutput::Text(text)) => Ok(text),
             Ok(other) => panic!("unexpected output {other:?}"),
             Err(error) => Err(error.to_string()),
         }
-    }
-
-    // spec: DMN-060, DMN-063, DMN-064, DMN-106, DMN-125, DMN-196
-    #[test]
-    fn the_widget_tools_are_registered_and_reach_the_widget_host_of_the_threads_workspace() {
-        let host = Arc::new(FakeWidgets::default());
-        let tools = thread_tools(
-            Arc::new(|_, _| Ok(())),
-            Arc::new(|_, _| Ok(())),
-            Arc::new(|_| Ok(())),
-            "01WS",
-            Some(Arc::clone(&host) as Arc<dyn WidgetHost>),
-            Vec::new(),
-        );
-        let names: Vec<&str> = tools
-            .iter()
-            .map(|tool| tool.definition().name.as_str())
-            .collect();
-        assert_eq!(
-            names,
-            [
-                OPEN_FILE,
-                NOTIFY,
-                SET_THREAD_TITLE,
-                WIDGET_CHECK,
-                VIEW_ADD,
-                VIEWS_ERRORS
-            ]
-        );
-        for tool in &tools {
-            assert_eq!(
-                tool.definition().load_mode,
-                Some(ToolLoadMode::Essential),
-                "{} is a direct tool of the agent",
-                tool.definition().name
-            );
-        }
-        assert_eq!(
-            tools[3].definition().parameters["required"],
-            json!(["name"])
-        );
-        assert_eq!(
-            tools[4].definition().parameters["properties"]["where"]["enum"],
-            json!(["side-tab", "main-tab", "end"])
-        );
-        assert_eq!(
-            tools[5].definition().parameters["properties"],
-            json!({}),
-            "no arguments: the thread's workspace"
-        );
-        let check_description = &tools[3].definition().description;
-        for form in ["`init`", "`user:init`", "`views/<file>`"] {
-            assert!(
-                check_description.contains(form),
-                "{form}: {check_description}"
-            );
-        }
-
-        let check =
-            |arguments: Value| text(run_widget_check(&args(arguments), || false, "01WS", &*host));
-        assert_eq!(
-            check(json!({ "name": " tests " })),
-            Ok("checked tests".to_owned())
-        );
-        assert_eq!(
-            check(json!({ "name": "missing" })),
-            Err("no widget missing".to_owned())
-        );
-
-        let add = |arguments: Value| text(run_view_add(&args(arguments), || false, "01WS", &*host));
-        assert_eq!(add(json!({ "widget": "tests" })), Ok("added".to_owned()));
-        assert_eq!(
-            add(
-                json!({ "widget": "user:clock", "props": { "zone": "UTC" }, "view": "dash", "where": "end" })
-            ),
-            Ok("added".to_owned())
-        );
-        assert_eq!(
-            text(run_views_errors(&Map::new(), || false, "01WS", &*host)),
-            Ok("1 window(s) show this workspace.".to_owned())
-        );
-        assert_eq!(
-            *host.asked.lock().unwrap(),
-            [
-                "check 01WS tests",
-                "check 01WS missing",
-                "add 01WS ./widgets/tests {} None SideTab",
-                "add 01WS user:clock {\"zone\":\"UTC\"} Some(\"dash\") End",
-                "errors 01WS",
-            ]
-        );
-    }
-
-    // spec: DMN-061
-    #[test]
-    fn the_widget_tools_refuse_bad_arguments_and_honour_cancellation() {
-        let host = FakeWidgets::default();
-        for arguments in [json!({}), json!({ "name": "" }), json!({ "name": 3 })] {
-            assert!(
-                text(run_widget_check(
-                    &args(arguments.clone()),
-                    || false,
-                    "w",
-                    &host
-                ))
-                .is_err(),
-                "{arguments}"
-            );
-        }
-        for arguments in [
-            json!({}),
-            json!({ "widget": " " }),
-            json!({ "widget": "t", "props": [] }),
-            json!({ "widget": "t", "view": "" }),
-            json!({ "widget": "t", "where": "left" }),
-        ] {
-            assert!(
-                text(run_view_add(&args(arguments.clone()), || false, "w", &host)).is_err(),
-                "{arguments}"
-            );
-        }
-        assert_eq!(
-            text(run_widget_check(
-                &args(json!({ "name": "t" })),
-                || true,
-                "w",
-                &host
-            )),
-            Err("cancelled".to_owned())
-        );
-        assert_eq!(
-            text(run_view_add(
-                &args(json!({ "widget": "t" })),
-                || true,
-                "w",
-                &host
-            )),
-            Err("cancelled".to_owned())
-        );
-        assert_eq!(
-            text(run_views_errors(&Map::new(), || true, "w", &host)),
-            Err("cancelled".to_owned())
-        );
-        assert_eq!(*host.asked.lock().unwrap(), Vec::<String>::new());
     }
 
     fn rename(arguments: Value, cancelled: bool) -> (Result<String, String>, Vec<String>) {

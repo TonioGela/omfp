@@ -7,17 +7,17 @@ use omfp_protocol::{METHODS, method_description, method_schemas};
 use omp_rpc::{HostUriRead, HostUriResultContentType};
 use serde_json::{Value, json};
 
-use super::{CALL, CONNECTION_ONLY};
+use super::{CALL, not_for_agents};
 
 /// Host URI listing the methods; `<METHODS_URL>/<name>` reads one method's schemas.
 pub const METHODS_URL: &str = "omfp://protocol/methods";
 
-/// The methods an agent may call with `omfp_call`, in method-table order.
+/// The methods an agent may call with `omfp_call`, in method-table order: neither connection-only nor deferred.
 pub fn methods() -> impl Iterator<Item = &'static str> {
     METHODS
         .iter()
         .copied()
-        .filter(|method| !CONNECTION_ONLY.contains(method))
+        .filter(|method| not_for_agents(method).is_none())
 }
 
 /// `omfp://protocol/methods`: one line per method with its description (Markdown).
@@ -36,11 +36,8 @@ pub fn list() -> String {
 
 /// `omfp://protocol/methods/<name>`: `{ method, description, params, result }`, or why there is no such method.
 pub fn method(name: &str) -> Result<Value, String> {
-    if CONNECTION_ONLY.contains(&name) {
-        return Err(format!(
-            "`{name}` needs a window's connection, so agents cannot call it; {METHODS_URL} lists the methods {CALL} \
-             accepts"
-        ));
+    if let Some(why) = not_for_agents(name) {
+        return Err(why);
     }
     let schemas = method_schemas();
     match (method_description(name), schemas.get(name)) {
@@ -81,6 +78,7 @@ pub fn read_uri(url: &str) -> Option<Result<HostUriRead, String>> {
 
 #[cfg(test)]
 mod tests {
+    use super::super::{CONNECTION_ONLY, DEFERRED};
     use super::*;
 
     // spec: AGT-042, PRT-092
@@ -99,7 +97,10 @@ mod tests {
             .lines()
             .filter(|line| line.starts_with("- `"))
             .collect();
-        assert_eq!(lines.len(), METHODS.len() - CONNECTION_ONLY.len());
+        assert_eq!(
+            lines.len(),
+            METHODS.len() - CONNECTION_ONLY.len() - DEFERRED.len()
+        );
         assert!(
             lines.contains(
                 &"- `threads.list` — Thread summaries as on the `index` topic, without archived threads unless \
@@ -107,9 +108,10 @@ mod tests {
             ),
             "{text}"
         );
-        for method in CONNECTION_ONLY {
+        for method in CONNECTION_ONLY.iter().chain(DEFERRED) {
             assert!(!text.contains(&format!("`{method}`")), "{method}: {text}");
         }
+        assert!(!text.contains("terminal"), "{text}");
         // Table order: the first callable method comes first.
         assert!(lines[0].starts_with("- `repos.suggest` — "), "{text}");
     }
@@ -148,6 +150,7 @@ mod tests {
                 "omfp://protocol/methods/subscribe",
                 "needs a window's connection",
             ),
+            ("omfp://protocol/methods/terminal.open", "deferred (D-06)"),
         ] {
             let error = read_uri(url).unwrap().unwrap_err();
             assert!(error.contains(reason), "{url}: {error}");

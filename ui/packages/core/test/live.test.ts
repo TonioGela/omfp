@@ -4,8 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { emptyThreadState, liveErrorMessage, reduce, replay, type ThreadEvent } from "../src/index.ts";
 import { deepFreeze, event, omp } from "./helpers.ts";
 
-const LOGIN =
-  "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again";
+const LOGIN = "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again";
 
 function running(): ThreadEvent {
   return event({ kind: "process", state: { state: "running" } });

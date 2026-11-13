@@ -944,7 +944,7 @@ pub struct JobRef {
     pub job_id: String,
 }
 
-/// Where `views.mount` puts a widget in a view (PRT-080, as `omfp_view_add` does, DMN-064).
+/// Where `views.mount` puts a widget in a view (PRT-080); `omfp_ui_mount` takes the same `place` (AGT-061).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MountPlace {

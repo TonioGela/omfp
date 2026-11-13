@@ -154,3 +154,37 @@ fn sessions_remember_their_client_and_forget_the_least_recently_used_beyond_256(
     assert!(!sessions.end(&first));
     assert_eq!(sessions.client(&first), None);
 }
+
+// spec: AGT-050, AGT-052, DMN-198
+#[test]
+fn every_tool_and_uri_an_mcp_client_reads_about_exists_over_mcp() {
+    use crate::agent_tools::{mentions, registry};
+
+    let registry = registry();
+    let tools: Vec<&str> = registry.iter().map(|tool| tool.name).collect();
+    let uris = methods::resource_uris();
+    for uri in mentions::STATIC_URIS {
+        assert!(uris.contains(&uri), "{uri} is no MCP resource: {uris:?}");
+    }
+    let index = crate::widgets::shell::index();
+    for uri in mentions::STATIC_URIS {
+        assert!(
+            uri == crate::widgets::shell::INDEX_URL || index.contains(&format!("- {uri} — ")),
+            "the docs index has no line for {uri}: {index}"
+        );
+    }
+
+    let mut texts = mentions::static_texts();
+    texts.push(("instructions".to_owned(), methods::INSTRUCTIONS.to_owned()));
+    for tool in &registry {
+        texts.push((
+            tool.name.to_owned(),
+            format!("{} {}", tool.description, tool.parameters),
+        ));
+    }
+    let missing: Vec<String> = texts
+        .iter()
+        .flat_map(|(served, text)| mentions::missing(served, text, &tools, &uris))
+        .collect();
+    assert_eq!(missing, Vec::<String>::new());
+}

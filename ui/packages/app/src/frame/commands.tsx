@@ -297,9 +297,8 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
     },
   });
   useCommand({
-    id: "widget.copy",
+    id: "widget",
     title: titles.widget,
-    aliases: ["widget"],
     // `:widget add ` completes the widgets it can add; the other actions take a reference or a name freely.
     args: ([action, ...rest] = []) =>
       action === undefined ? WIDGET_ACTIONS : action === "add" && rest.length === 0 ? widgets : [],

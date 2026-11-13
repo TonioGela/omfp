@@ -756,7 +756,7 @@ export type MountParams = {
   workspaceId: string;
 };
 
-/** Where `views.mount` puts a widget in a view (PRT-080, as `omfp_view_add` does, DMN-064). */
+/** Where `views.mount` puts a widget in a view (PRT-080); `omfp_ui_mount` takes the same `place` (AGT-061). */
 export type MountPlace =
   /** A tab of the view's `tabs` container whose `id` prop is `side`. */
   | "side_tab"

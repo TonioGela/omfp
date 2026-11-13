@@ -235,13 +235,13 @@ methods! {
     ThreadLiveMute = "thread.live_mute" (params::LiveMuteParams) -> params::LiveMuted;
     /// Answers an interactive request; `already_resolved` if another client answered first.
     InteractionRespond = "interaction.respond" (params::RespondParams) -> params::Empty;
-    /// Opens a terminal.
+    /// Opens a terminal. The terminal is deferred (D-06): the daemon refuses it.
     TerminalOpen = "terminal.open" (params::OpenTerminalParams) -> params::OpenTerminalResult;
-    /// Resizes a terminal.
+    /// Resizes a terminal. Deferred (D-06): refused.
     TerminalResize = "terminal.resize" (params::ResizeTerminalParams) -> params::Empty;
-    /// Closes a terminal.
+    /// Closes a terminal. Deferred (D-06): refused.
     TerminalClose = "terminal.close" (params::TerminalRef) -> params::Empty;
-    /// Lists open terminals.
+    /// Lists open terminals. Deferred (D-06): refused.
     TerminalList = "terminal.list" (params::ListTerminalsParams) -> params::TerminalList;
     /// The user's theme CSS (DMN-075).
     ThemeGet = "theme.get" (params::Empty) -> Theme;

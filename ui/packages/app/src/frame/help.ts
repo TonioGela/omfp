@@ -80,7 +80,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "view.next": commandTitles.nextView,
   "view.prev": commandTitles.prevView,
   "view.pick": commandTitles.pickView,
-  "widget.copy": commandTitles.widget,
+  widget: commandTitles.widget,
 };
 
 /** The transcript's moves (its `nav.*` commands in the `transcript` scope). */

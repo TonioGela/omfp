@@ -36,14 +36,16 @@ fn mount() -> AgentTool {
     AgentTool {
         name: UI_MOUNT,
         label: "Mount UI",
-        description: "Shows a widget to the user, live in every open omfp window: in a view of the workspace \
-                      (`view` names one; a new name makes a dashboard view showing only it) or as a floating panel \
-                      over every view (`panel: true`). The widget is `code` (a React component in TSX, default \
-                      export, imports only from react, omfp/sdk and omfp/kit; written to \
-                      .omfp/widgets/<id>/index.tsx) or `widget`, a reference such as `user:<name>` (a saved \
-                      component, see omfp_component_list) or `./widgets/<name>`. Mounting an id again replaces it. \
-                      Pass data as `props` and change them later with omfp_ui_update; check new code with \
-                      omfp_widget_check { name: \"<id>\" }. Read omfp://docs/widgets for the SDK and kit.",
+        description: "Shows a widget to the user, live in every open omfp window: in a view of the workspace at \
+                      `place` (`view` names the view; a new name makes a dashboard view showing only it) or as a \
+                      floating panel over every view (`panel: true`). The widget is `code` (a React component in \
+                      TSX, default export, imports only from react, omfp/sdk and omfp/kit; written to \
+                      .omfp/widgets/<id>/index.tsx) or `widget`, a reference: `user:<name>` (a saved component, see \
+                      omfp_component_list), `./widgets/<name>` or `omfp:<name>`. Mounting an id again replaces it \
+                      and omfp_ui_remove { id } removes it. Pass data as `props` and change them later with \
+                      omfp_ui_update. Keep the main slot, `[\"tabs\", {\"id\": \"main\"}, …\"omfp:chat\"]`, in every \
+                      view: the files the user opens become its tabs (without it they float in a panel). Check new \
+                      code with omfp_widget_check { name: \"<id>\" }; omfp://docs/widgets documents the SDK and kit.",
         parameters: json!({
             "type": "object",
             "properties": {
@@ -52,10 +54,10 @@ fn mount() -> AgentTool {
                 "widget": { "type": "string", "minLength": 1, "description": "A widget reference: `user:<name>`, `./widgets/<name>` (a bare name), `omfp:<name>`; exclusive with `code`." },
                 "props": { "type": "object", "description": "The widget's props; `title` labels its tab or panel." },
                 "view": { "type": "string", "minLength": 1, "description": "The view (default: the default view); a new id creates a view showing only this widget." },
-                "where": {
+                "place": {
                     "type": "string",
-                    "enum": ["side-tab", "main-tab", "end"],
-                    "description": "Where in the view: side-tab (default), main-tab (next to the conversation) or end (the end of the view's root container)."
+                    "enum": ["side_tab", "main_tab", "end"],
+                    "description": "Where in the view, as views.mount takes it: side_tab (default: the last tab of the view's `tabs` with \"id\": \"side\"), main_tab (the last tab of its main slot, next to the conversation) or end (the end of the view's root container)."
                 },
                 "panel": { "type": "boolean", "description": "Float it over every view instead of placing it in a view." },
                 "workspaceId": { "type": "string", "minLength": 1, "description": WORKSPACE_ID }
@@ -213,22 +215,15 @@ fn placed(mounted: &Mounted) -> String {
     }
 }
 
-/// An error of `views.mount` in the tool's own words: the method's `place` is the tool's `where`.
-fn as_tool_arguments(error: &str) -> String {
-    error
-        .replace("`place`", "`where`")
-        .replace("place: \"", "where: \"")
-}
-
 fn run_mount(context: ToolContext, arguments: Map<String, Value>) -> ToolFuture {
     Box::pin(async move {
-        let place = match text(&arguments, "where")?.as_deref() {
+        let place = match text(&arguments, "place")?.as_deref() {
             None => None,
-            Some("side-tab") => Some(MountPlace::SideTab),
-            Some("main-tab") => Some(MountPlace::MainTab),
+            Some("side_tab") => Some(MountPlace::SideTab),
+            Some("main_tab") => Some(MountPlace::MainTab),
             Some("end") => Some(MountPlace::End),
             Some(_) => {
-                return Err("`where` must be \"side-tab\", \"main-tab\" or \"end\"".to_owned());
+                return Err("`place` must be \"side_tab\", \"main_tab\" or \"end\"".to_owned());
             }
         };
         let params = MountParams {
@@ -242,9 +237,7 @@ fn run_mount(context: ToolContext, arguments: Map<String, Value>) -> ToolFuture 
             panel: flag(&arguments, "panel")?,
         };
         let inline = params.code.is_some();
-        let mounted: Mounted = run_call(&context, Call::ViewsMount(params))
-            .await
-            .map_err(|error| as_tool_arguments(&error))?;
+        let mounted: Mounted = run_call(&context, Call::ViewsMount(params)).await?;
         let mut answer = format!(
             "Mounted {} as {:?} {}{}; open windows show it now.",
             mounted.reference,
@@ -658,11 +651,11 @@ mod tests {
             ),
             (
                 json!({ "id": "x", "widget": "y", "panel": true, "view": "v" }),
-                "bad_request: a panel floats over every view: `view` and `where` do not apply",
+                "bad_request: a panel floats over every view: `view` and `place` do not apply",
             ),
             (
-                json!({ "id": "x", "widget": "y", "where": "left" }),
-                "`where` must be",
+                json!({ "id": "x", "widget": "y", "place": "side-tab" }),
+                "`place` must be \"side_tab\", \"main_tab\" or \"end\"",
             ),
             (
                 json!({ "id": "x", "widget": "y", "props": [] }),
@@ -698,11 +691,11 @@ mod tests {
         );
     }
 
-    // spec: AGT-061, PRT-080, DMN-064
+    // spec: AGT-061, PRT-080
     #[tokio::test]
-    async fn placement_errors_name_the_callers_argument() {
+    async fn the_tool_places_with_the_methods_words() {
         let harness = harness().await;
-        // A view without the `side` tabs: the fix names the caller's argument, `where` here, `place` in the method.
+        // A view without the `side` tabs: the tool and the method name the same argument and values.
         std::fs::create_dir_all(harness.folder.join(".omfp")).unwrap();
         std::fs::write(
             harness.folder.join(".omfp/views.json"),
@@ -712,7 +705,12 @@ mod tests {
         let error = run(&harness, run_mount, json!({ "id": "x", "widget": "y" }))
             .await
             .unwrap_err();
-        assert!(error.contains("use where: \"end\""), "{error}");
+        assert!(error.contains("use place: \"end\""), "{error}");
+        assert_eq!(
+            mount().parameters["properties"]["place"]["enum"],
+            json!(["side_tab", "main_tab", "end"]),
+            "views.mount's MountPlace values"
+        );
         let mount = |params: Value| {
             let mut params = params;
             params["workspaceId"] = json!(harness.context.workspace_id);
@@ -736,6 +734,17 @@ mod tests {
             error.message.contains("`view` and `place` do not apply"),
             "{}",
             error.message
+        );
+        let answer = run(
+            &harness,
+            run_mount,
+            json!({ "id": "z", "widget": "y", "place": "end" }),
+        )
+        .await
+        .unwrap();
+        assert!(
+            answer.starts_with("Mounted ./widgets/y as \"z\" in view \"a\""),
+            "{answer}"
         );
     }
 

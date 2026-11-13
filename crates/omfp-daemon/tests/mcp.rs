@@ -460,6 +460,47 @@ async fn the_current_revision_is_served_statelessly_with_its_metadata() {
     assert_eq!(missing.message["error"]["code"], -32601);
 }
 
+// spec: AGT-052, DMN-198
+#[tokio::test(flavor = "multi_thread")]
+async fn the_docs_are_resources_and_a_threads_workspace_uris_are_not() {
+    let daemon = daemon().await;
+    let resources = answer(modern(&daemon, 1, "resources/list", json!({}))).await;
+    let listed: Vec<&str> = resources.message["result"]["resources"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|resource| resource["uri"].as_str())
+        .collect();
+    for uri in [
+        "omfp://docs",
+        "omfp://docs/widgets",
+        "omfp://docs/shell",
+        "omfp://keymap",
+    ] {
+        assert!(listed.contains(&uri), "{uri}: {listed:?}");
+    }
+    let docs = answer(modern(
+        &daemon,
+        2,
+        "resources/read",
+        json!({ "uri": "omfp://docs/widgets" }),
+    ))
+    .await;
+    let contents = &docs.message["result"]["contents"][0];
+    assert_eq!(contents["mimeType"], "text/markdown");
+    assert!(
+        contents["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("# omfp widgets\n")
+    );
+    // A thread's workspace URIs are no resources: their tools are (`omfp_widget_check`, `omfp_windows`).
+    for (id, uri) in [(3, "omfp://windows"), (4, "omfp://widgets/check/tests")] {
+        let refused = answer(modern(&daemon, id, "resources/read", json!({ "uri": uri }))).await;
+        assert_eq!(refused.message["error"]["code"], -32602, "{uri}");
+    }
+}
+
 // spec: DMN-156
 #[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::too_many_lines)] // Every header check in turn.

@@ -275,8 +275,8 @@ fn delegation_script() -> Vec<Step> {
             Matcher::LastUserContains("CLOCK-BUILT".into()),
             Reply::tool_calls(vec![ToolCall::new(
                 "add1",
-                "omfp_view_add",
-                json!({ "widget": "./widgets/clock", "where": "side-tab" }),
+                "omfp_ui_mount",
+                json!({ "id": "clock", "widget": "./widgets/clock", "place": "side_tab" }),
             )]),
         ),
         Step::reply(Reply::text("Your clock is in a side tab.")),
@@ -317,7 +317,7 @@ async fn the_main_agent_delegates_a_widget_to_the_widget_builder_which_checks_it
         "omfp_open_file",
         "omfp_notify",
         "omfp_widget_check",
-        "omfp_view_add",
+        "omfp_ui_mount",
         "omfp_views_errors",
     ] {
         assert!(

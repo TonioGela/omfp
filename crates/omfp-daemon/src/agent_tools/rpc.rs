@@ -113,8 +113,6 @@ mod tests {
             Arc::new(|_, _| Ok(())),
             Arc::new(|_, _| Ok(())),
             Arc::new(|_| Ok(())),
-            &harness.workspace,
-            None,
             host.tools(&harness.thread, &harness.workspace),
         );
         let registry = registry();

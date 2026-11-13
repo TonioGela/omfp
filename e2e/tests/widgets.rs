@@ -75,7 +75,7 @@ fn assert_contains(text: &str, needles: &[&str]) {
     }
 }
 
-// spec: E2E-10, AGT-012, AGT-013, AGT-014, AGT-019, AGT-026, DMN-063, DMN-064, UI-105
+// spec: E2E-10, AGT-012, AGT-013, AGT-014, AGT-019, AGT-026, AGT-061, DMN-063, UI-105
 #[tokio::test(flavor = "multi_thread")]
 async fn an_agent_widget_follows_a_daemon_job_live_and_recovers_from_a_syntax_error()
 -> anyhow::Result<()> {
@@ -94,9 +94,9 @@ async fn an_agent_widget_follows_a_daemon_job_live_and_recovers_from_a_syntax_er
         )])),
         check("call_check_hidden"),
         Step::reply(Reply::tool_calls(vec![ToolCall::new(
-            "call_view_add",
-            "omfp_view_add",
-            json!({ "widget": "./widgets/tests", "where": "end" }),
+            "call_mount",
+            "omfp_ui_mount",
+            json!({ "id": "tests", "widget": "./widgets/tests", "place": "end" }),
         )])),
         check("call_check_shown"),
         Step::reply(Reply::text("Added a tests widget.")),
@@ -110,8 +110,8 @@ async fn an_agent_widget_follows_a_daemon_job_live_and_recovers_from_a_syntax_er
         .await?;
     journey.screenshot("m4-default-view").await?;
 
-    // The agent writes the widget, checks it (it compiles; the window shows the workspace but not the widget), adds
-    // it to the view and checks again: the window rendered it and its job runs, started by the daemon.
+    // The agent writes the widget, checks it (it compiles; the window shows the workspace but not the widget), mounts
+    // it in the view and checks again: the window rendered it and its job runs, started by the daemon.
     journey.send("add a tests widget").await?;
     journey.reply("Added a tests widget.").await?;
     let requests = journey.fake.requests();
@@ -121,12 +121,12 @@ async fn an_agent_widget_follows_a_daemon_job_live_and_recovers_from_a_syntax_er
             "Widget ./widgets/tests (folder ",
             "Daemon compile: every file compiles",
             "1 window(s) show this workspace, but none shows ./widgets/tests",
-            "omfp_view_add",
+            "omfp_ui_mount { \"id\": \"tests\", \"widget\": \"./widgets/tests\" }",
         ],
     );
     assert_contains(
-        &tool_result(&requests, "call_view_add"),
-        &["Added ./widgets/tests at the end of view \"default\" in .omfp/views.json"],
+        &tool_result(&requests, "call_mount"),
+        &["Mounted ./widgets/tests as \"tests\" in view \"default\"; open windows show it now."],
     );
     let shown = tool_result(&requests, "call_check_shown");
     assert_contains(
@@ -134,7 +134,7 @@ async fn an_agent_widget_follows_a_daemon_job_live_and_recovers_from_a_syntax_er
         &[
             "Daemon compile: every file compiles",
             "Window 1 (",
-            "- ./widgets/tests: rendered (version ",
+            "- tests: rendered (version ",
             "  errors: none\n",
             &format!("`{JOB}`: running, run 1"),
             "Tests 0/3",

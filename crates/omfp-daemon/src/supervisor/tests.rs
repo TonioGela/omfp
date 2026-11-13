@@ -1318,7 +1318,7 @@ async fn a_missing_codex_login_reads_as_a_login_hint() {
     };
     assert_eq!(omp, crate::agent::NO_CREDENTIAL);
     assert!(message.contains("`openai-codex` login"), "{message}");
-    assert!(message.contains("/login openai-codex"), "{message}");
+    assert!(message.contains(":login openai-codex"), "{message}");
     h.wait(&id, "the end of the session", |state| {
         state.live.is_none() && state.live_error.is_some()
     })
@@ -1538,7 +1538,7 @@ async fn a_failed_live_start_reads_like_live_connect() {
         panic!("{error:?}");
     };
     assert_eq!(omp, crate::agent::NO_CREDENTIAL);
-    assert!(message.contains("/login openai-codex"), "{message}");
+    assert!(message.contains(":login openai-codex"), "{message}");
     h.wait(&id, "the end of the session", |state| {
         state.live.is_none() && state.live_error.as_deref() == Some(message.as_str())
     })

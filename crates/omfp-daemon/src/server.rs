@@ -27,7 +27,7 @@ pub use auth::{Permission, Principal, authorize, origin_allowed, parse_origin, p
 #[cfg(test)]
 pub(crate) use connection::Outbound;
 pub(crate) use mcp::Sessions as McpSessions;
-pub(crate) use services::Services;
+pub(crate) use services::{CHECK_WAIT, Services};
 
 use crate::token::Token;
 use crate::widgets::{Served, init, views_folder, workspace_widgets};

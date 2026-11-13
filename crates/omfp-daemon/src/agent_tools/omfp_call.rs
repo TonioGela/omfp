@@ -4,14 +4,14 @@ use omfp_protocol::decode_request;
 use serde_json::{Map, Value, json};
 
 use super::catalog::METHODS_URL;
-use super::{AgentTool, CALL, CONNECTION_ONLY, ToolContext, ToolFuture, call, error_text};
+use super::{AgentTool, CALL, ToolContext, ToolFuture, call, error_text, not_for_agents};
 
 pub(super) fn tool() -> AgentTool {
     AgentTool {
         name: CALL,
         label: "omfp call",
         description: "Calls any omfp protocol method, as the user's omfp windows do: list, create and drive threads \
-                      (threads.list, threads.create, thread.prompt, thread.state, interaction.respond), manage \
+                      (threads.list, threads.create, thread.prompt, thread.session, interaction.respond), manage \
                       workspaces and their repositories, read git status and files, run jobs, change views. \
                       omfp://protocol/methods lists every method; omfp://protocol/methods/<name> gives its params \
                       and result JSON Schemas. Answers the method's JSON result.",
@@ -46,11 +46,8 @@ fn run(context: ToolContext, arguments: Map<String, Value>) -> ToolFuture {
             Some(params @ Value::Object(_)) => params.clone(),
             Some(_) => return Err("`params` must be an object".to_owned()),
         };
-        if CONNECTION_ONLY.contains(&method.as_str()) {
-            return Err(format!(
-                "`{method}` needs a window's connection, so agents cannot call it; {METHODS_URL} lists the methods \
-                 {CALL} accepts"
-            ));
+        if let Some(why) = not_for_agents(&method) {
+            return Err(why);
         }
         let frame = json!({ "id": CALL, "type": "request", "method": method, "params": params });
         let request = decode_request(&frame.to_string()).map_err(|error| {
@@ -155,6 +152,10 @@ mod tests {
             (
                 json!({ "method": "thread.live_start", "params": { "threadId": harness.thread } }),
                 "needs a window's connection",
+            ),
+            (
+                json!({ "method": "terminal.list", "params": {} }),
+                "deferred (D-06)",
             ),
         ] {
             let error = call_tool(&harness, arguments.clone()).await.unwrap_err();

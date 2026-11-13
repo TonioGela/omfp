@@ -30,8 +30,8 @@ The bar at the bottom of the view area, like vim's:
   the last 3 views shown in the workspace shows it at once as it was left (its widgets' content, typed text and the
   focus), then updates it;
 - at the right end the newest **notice** (`◆ title body`, `+n` when more wait): a thread that needs the user, failed
-  or finished while the user looked elsewhere, or what a widget or agent notified (`omfp_notify`). `g n` or a click
-  opens its thread; it goes after 8 s.
+  or finished while the user looked elsewhere, or what a widget, an init file or a thread's agent notified. `g n` or a
+  click opens its thread; it goes after 8 s.
 
 In command mode the `:` line (or the file picker) replaces the title, the view tabs and the notice.
 
@@ -110,8 +110,8 @@ layer wins over the ones before it).
 ## Logging in
 
 omp needs a model it can use: a provider it is logged in to, or an API key. A fresh install has neither, and every
-thread then fails to start with omp's `No default model selected. Use /login, …`. omp keeps its credentials on the
-daemon's host, shared by every thread and window.
+thread then fails to start with omp's `No default model selected. Use /login, …` (`/login` is omp's own command; in
+omfp it is `:login`). omp keeps its credentials on the daemon's host, shared by every thread and window.
 
 - `:login` opens the provider picker: the providers omp can log in to (asking omp takes a few seconds), each with its
   id and `logged in` on those omp already holds a credential for; those it cannot log in to here are greyed out.
@@ -136,7 +136,7 @@ keys in `~/.omp/agent/models.yml`, or keys stored in `~/.omp/agent/agent.db`.
 ## Agents and the window
 
 Each window reports to the daemon what it shows — its thread, focus, views and where each comes from, the commands
-init files and widgets added, its errors — which agents read with `omfp_windows` (`omfp://windows`). An agent runs a
-command in a window with `omfp_window_run` (`view.switch` with a view id shows that view), as `:<command> <args>`
-would: only registered commands, never code. `omfp_widget_check` mounts a widget no view shows out of sight for a
-moment to report how it renders; nothing of it appears on screen.
+init files and widgets added, its errors — which agents read with `omfp_windows`. An agent runs a command in a window
+with `omfp_window_run` (`view.switch` with a view id shows that view), as `:<command> <args>` would: only registered
+commands, never code. `omfp_widget_check` mounts a widget no view shows out of sight for a moment to report how it
+renders; nothing of it appears on screen.

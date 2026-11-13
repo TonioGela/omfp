@@ -21,8 +21,7 @@ import { THREAD } from "./harness.tsx";
 const OTHER = "01U";
 const OFFER = "v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\n";
 const ANSWER = "v=0\r\no=- 3 4 IN IP4 127.0.0.1\r\n";
-const LOGIN =
-  "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again";
+const LOGIN = "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again";
 
 afterEach(() => {
   cleanup();
@@ -428,7 +427,7 @@ describe("live voice", () => {
     // The next failure shows again.
     live.events(session(2), phase("error"), end("Codex live signaling failed (401): unauthorized"));
     expect(screen.getByRole("alert").textContent).toBe(
-      "live voice: the `openai-codex` login was rejected; log in again with `/login openai-codex` in omp",
+      "live voice: the `openai-codex` login was rejected; log in again with `:login openai-codex`",
     );
   });
 

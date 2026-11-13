@@ -77,10 +77,26 @@ const EXAMPLE: &str = "```tsx\n\
 /// Name of the daemon's subagent that builds widgets (AGT-029).
 pub const WIDGET_BUILDER: &str = "widget-builder";
 
+/// The `main` slot rule (AGT-028), word for word in the widgets note, `omfp_ui_mount`'s description and
+/// `omfp://docs/widgets`.
+pub const MAIN_SLOT_RULE: &str = "Keep the main slot, `[\"tabs\", {\"id\": \"main\"}, …\"omfp:chat\"]`, in every \
+    view: the files the user opens become its tabs (without it they float in a panel).";
+
+/// How an agent places a widget (AGT-061, AGT-063), word for word in the widgets note and `omfp://docs/widgets`.
+pub const PLACEMENT_RULE: &str = "Place a widget with omfp_ui_mount { id, widget | code, props?, view?, place?, \
+    panel? } (`place`: `side_tab`, the default, `main_tab` or `end`), never by rewriting views.json: mounting an id \
+    again replaces it, omfp_ui_update { id, props } drives it, omfp_ui_remove { id } removes it.";
+
+/// The verification loop (AGT-084), word for word in the widgets note and `omfp://docs/widgets`.
+pub const VERIFY_LOOP: &str = "Verify in the user's window: write → omfp_widget_check { name } (it renders a widget \
+    no view shows out of sight) → omfp_windows (each window's views and where each comes from, added commands, \
+    errors) → omfp_window_run { command: \"view.switch\", args: [\"<view>\"] } to show a view → omfp_windows again \
+    for its errors.";
+
 /// The widgets note (AGT-024): where the views manifest, the workspace's widgets and the user library (`user_library`)
-/// live, the host URIs of the built-in sources, what a widget may import, the tools that check and place a widget, how
-/// to delegate building one to the `widget-builder` agent (AGT-029), when to notify the user (AGT-032), an example, and
-/// where to read more.
+/// live, the host URIs of the built-in sources, what a widget may import, the rules for the `main` slot, placing a
+/// widget and checking it, how to delegate building one to the `widget-builder` agent (AGT-029), when to notify the
+/// user (AGT-032), an example, and where to read more.
 #[must_use]
 pub fn widgets_note(path: &Path, user_library: &Path) -> String {
     let display = path.display();
@@ -88,19 +104,14 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
         "# omfp widgets\n\
          \n\
          The user's omfp window shows this workspace through React widgets that you can write and arrange too.\n\
-         - Views: {display}/.omfp/views.json (schema omfp://schemas/views.json), the user's and yours to change. Keep the \
-         `[\"tabs\", {{\"id\":\"main\"}}, …\"omfp:chat\"]` slot in every view you change: the user's files open as its tabs. \
-         A view may instead be a TSX file, `{{ \"view\": \"./views/<name>.tsx\" }}` for \
+         - Views: {display}/.omfp/views.json (schema omfp://schemas/views.json), the user's and yours to change. \
+         {MAIN_SLOT_RULE} A view may instead be a TSX file, `{{ \"view\": \"./views/<name>.tsx\" }}` for \
          {display}/.omfp/views/<name>.tsx (see omfp://docs/widgets); it takes no mounts: edit the file.\n\
          {facts}\n\
-         - After writing a widget call omfp_widget_check {{ name }} (compile errors, what open windows render; it also \
-         checks init files, `init` and `user:init`, and TSX views, `views/<file>`); omfp_views_errors lists the runtime \
-         errors windows show for init files and TSX views. Place a widget with omfp_view_add {{ widget, where }} rather \
-         than rewriting views.json. Verify in the user's window: write → omfp_widget_check (it renders a widget no \
-         view shows out of sight) → \
-         omfp_windows (each window's views and where each comes from, added commands, errors) → omfp_window_run \
-         {{ command: \"view.switch\", args: [\"<view>\"] }} to show a view → omfp_windows again for its errors. \
-         omfp_window_run runs only registered commands, never code.\n\
+         - {PLACEMENT_RULE} omfp_component_save / omfp_component_list keep widgets for every workspace \
+         (`user:<name>`). {VERIFY_LOOP} omfp_widget_check also checks init files (`init`, `user:init`) and TSX views \
+         (`views/<file>`); omfp_views_errors lists the runtime errors windows show for them. omfp_window_run runs \
+         only registered commands, never code.\n\
          - Keys: {display}/.omfp/keymap.json (schema omfp://schemas/keymap.json) binds keys to commands, built-in or a \
          widget's useCommand, in windows showing this workspace; give a widget a command and bind it there.\n\
          - Notify the user with omfp_notify {{ title, body }} when a long task finished or you need them; once per \
@@ -108,7 +119,7 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
          - When something would read better as a visualization or controls (progress, a table, a chart, buttons), \
          propose a widget in one sentence and build it only after the user agrees.\n\
          - Once the user agrees, delegate the building: a `task` with `agent: \"{WIDGET_BUILDER}\"` and a complete brief \
-         (what to show, its data sources, where it goes); keep talking, and place the widget with omfp_view_add when \
+         (what to show, its data sources, where it goes); keep talking, and place the widget with omfp_ui_mount when \
          the task's result arrives.\n\
          \n\
          {EXAMPLE}\n\
@@ -165,13 +176,10 @@ pub fn write_widget_builder(data: &DataDir) -> std::io::Result<bool> {
 }
 
 /// The control note (AGT-045): the thread's own id, `omfp_call` over every protocol method and its catalogue,
-/// `thread.session` for a thread's session facts (AGT-085), `omfp_thread_wait`, the UI mount and component tools
-/// (AGT-061..065), and that new MCP tools arrive without a restart (AGT-080).
+/// `thread.session` for a thread's session facts (AGT-085), `omfp_thread_wait`, and that new MCP tools arrive without
+/// a restart (AGT-080). The widget tools are the widgets note's.
 #[must_use]
 pub fn control_note(thread_id: &str) -> String {
-    use crate::agent_tools::mounts::{
-        COMPONENT_LIST, COMPONENT_SAVE, UI_MOUNT, UI_REMOVE, UI_UPDATE,
-    };
     format!(
         "# omfp control\n\
          \n\
@@ -182,9 +190,6 @@ pub fn control_note(thread_id: &str) -> String {
          never starts omp, while thread.state is omp's whole state (tool definitions, system prompt).\n\
          - {wait} {{ threadId, promptId? }} waits until another thread is done or needs the user and answers its \
          last reply: use it instead of polling.\n\
-         - Show UI to the user with {UI_MOUNT} {{ id, code | widget, props?, view?, panel? }} (a view, a new \
-         dashboard view, or a floating panel), drive it with {UI_UPDATE} {{ id, props }}, remove it with \
-         {UI_REMOVE}; reuse components with {COMPONENT_LIST} / {COMPONENT_SAVE} (`user:<name>`).\n\
          - MCP servers added (`/mcp add`, an MCP config file) or reauthorized (`/mcp reauth`) give you their tools \
          from your next turn: omfp reloads your omp once you are idle, so never ask the user to restart.",
         call = crate::agent_tools::CALL,
@@ -285,10 +290,13 @@ mod tests {
             "omfp://widgets/builtin/<name>",
             "react, react/jsx-runtime, react-dom, omfp/sdk, omfp/kit",
             "omfp_widget_check { name }",
-            "omfp_view_add { widget, where }",
+            PLACEMENT_RULE,
+            MAIN_SLOT_RULE,
+            VERIFY_LOOP,
+            "omfp_component_save / omfp_component_list",
             "propose a widget in one sentence and build it only after the user agrees",
             "a `task` with `agent: \"widget-builder\"` and a complete brief \
-             (what to show, its data sources, where it goes); keep talking, and place the widget with omfp_view_add \
+             (what to show, its data sources, where it goes); keep talking, and place the widget with omfp_ui_mount \
              when the task's result arrives",
             "import { Card, Log, Progress } from \"omfp/kit\";",
             "useJob(command)",
@@ -297,11 +305,9 @@ mod tests {
             "- Keys: /ws/checkout/.omfp/keymap.json (schema omfp://schemas/keymap.json) binds keys to commands",
             "- Notify the user with omfp_notify { title, body } when a long task finished or you need them; once per \
              occasion, never for progress.\n",
-            "Keep the `[\"tabs\", {\"id\":\"main\"}, …\"omfp:chat\"]` slot",
             "`{ \"view\": \"./views/<name>.tsx\" }` for /ws/checkout/.omfp/views/<name>.tsx (see omfp://docs/widgets)",
-            "it also checks init files, `init` and `user:init`, and TSX views, `views/<file>`",
-            "omfp_views_errors lists the runtime errors windows show for init files and TSX views",
-            "Verify in the user's window: write → omfp_widget_check",
+            "omfp_widget_check also checks init files (`init`, `user:init`) and TSX views (`views/<file>`)",
+            "omfp_views_errors lists the runtime errors windows show for them",
             "omfp_window_run runs only registered commands, never code.",
             "omfp://docs indexes the docs: omfp://docs/shell (the window and its `:` commands), omfp://keymap (its keys \
              and commands)",
@@ -361,15 +367,46 @@ mod tests {
             "omfp://protocol/methods/<name>",
             "omfp_thread_wait { threadId, promptId? }",
             "instead of polling",
-            "omfp_ui_mount { id, code | widget, props?, view?, panel? }",
-            "omfp_ui_update { id, props }",
-            "omfp_ui_remove",
-            "omfp_component_list / omfp_component_save",
         ] {
             assert!(text.contains(rule), "{rule:?} missing: {text}");
         }
-        assert!(text.lines().count() <= 8, "short: {text}");
+        assert!(
+            !text.contains("omfp_ui_"),
+            "the widget tools are the widgets note's: {text}"
+        );
+        assert!(text.lines().count() <= 6, "short: {text}");
         assert!(!text.ends_with('\n'));
+    }
+
+    // spec: AGT-024, AGT-028, AGT-084, AGT-061
+    #[test]
+    fn the_note_the_docs_and_the_mount_tool_state_the_rules_word_for_word() {
+        let note = widgets_note(Path::new("/ws"), Path::new("/data/widgets"));
+        // Markdown wraps lines and sets code in backticks: compare single spaces, without backticks.
+        let plain = |text: &str| {
+            text.replace('`', "")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let docs = plain(crate::widgets::DOCS);
+        for rule in [MAIN_SLOT_RULE, PLACEMENT_RULE, VERIFY_LOOP] {
+            assert_eq!(note.matches(rule).count(), 1, "{rule:?} once in: {note}");
+            assert!(
+                docs.contains(&plain(rule)),
+                "{rule:?} missing from omfp://docs/widgets"
+            );
+        }
+        let registry = crate::agent_tools::registry();
+        let mount = registry
+            .iter()
+            .find(|tool| tool.name == crate::agent_tools::mounts::UI_MOUNT)
+            .unwrap();
+        assert!(
+            mount.description.contains(MAIN_SLOT_RULE),
+            "{}",
+            mount.description
+        );
     }
 
     // spec: AGT-080
@@ -445,8 +482,8 @@ mod tests {
             assert!(body.contains(rule), "{rule:?} missing: {body}");
         }
         assert!(
-            !body.contains("omfp_widget_check") && !body.contains("omfp_view_add"),
-            "no host tools in a subagent"
+            !body.contains("omfp_"),
+            "no tools of the main agent in a subagent: {body}"
         );
     }
 

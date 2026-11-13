@@ -70,7 +70,7 @@ async fn an_agent_mounts_a_widget_into_the_view_and_a_floating_panel_and_drives_
         Step::reply(Reply::tool_calls(vec![ToolCall::new(
             "call_mount_view",
             "omfp_ui_mount",
-            json!({ "id": "progress", "code": PROGRESS, "where": "end", "props": { "value": 1 } }),
+            json!({ "id": "progress", "code": PROGRESS, "place": "end", "props": { "value": 1 } }),
         )])),
         Step::reply(Reply::tool_calls(vec![ToolCall::new(
             "call_mount_panel",

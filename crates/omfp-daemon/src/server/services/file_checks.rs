@@ -320,7 +320,7 @@ impl Services {
     pub async fn describe_view_errors(
         &self,
         workspace_id: &str,
-        is_cancelled: &dyn Fn() -> bool,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
         wait: Duration,
     ) -> Result<String, String> {
         self.view_errors(workspace_id)
@@ -341,7 +341,7 @@ impl Services {
         &self,
         workspace_id: &str,
         file: CheckedFile,
-        is_cancelled: &dyn Fn() -> bool,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
         wait: Duration,
     ) -> Result<String, String> {
         let (store, widgets) = (Arc::clone(&self.store), Arc::clone(&self.widgets));

@@ -11,12 +11,12 @@ const NO_CREDENTIAL: [&str; 2] = [
 #[must_use]
 pub fn live_error_message(message: &str) -> String {
     if NO_CREDENTIAL.iter().any(|known| message.contains(known)) {
-        "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
+        "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again"
             .to_owned()
     } else if message.contains("Codex live signaling failed (401)")
         || message.contains("Codex live signaling failed (403)")
     {
-        "live voice: the `openai-codex` login was rejected; log in again with `/login openai-codex` in omp"
+        "live voice: the `openai-codex` login was rejected; log in again with `:login openai-codex`"
             .to_owned()
     } else if message.contains("A live session is already active") {
         "a live session is already running on this thread".to_owned()

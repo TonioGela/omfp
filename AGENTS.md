@@ -79,7 +79,7 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       session files (search.rs), threads, git port + FakeGit, host tools and the `omfp://` host URIs
                       (host_tools.rs), the agent tool registry (agent_tools/: `omfp_call`, `omfp_thread_wait`, the
                       method catalogue `omfp://protocol/methods`, the RPC host tool adapter, the mount tools, the
-                      window tools `omfp_windows`/`omfp_window_run` in agent_tools/windows.rs),
+                      check tools `omfp_widget_check`/`omfp_views_errors` in agent_tools/checks.rs, the window tools `omfp_windows`/`omfp_window_run` in agent_tools/windows.rs),
                       jobs (jobs.rs: shell commands of a workspace, `job/<id>`), widgets (widgets.rs: views manifest
                       check, widget folders and versions, oxc transpiling and the `/widgets/<key>/…` route, copies;
                       widgets/docs.md is `omfp://docs/widgets`, widgets/shell.md `omfp://docs/shell`,
@@ -89,12 +89,12 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       TSX view files); widgets/keymap.rs: the workspace `.omfp/keymap.json`;
                       widgets/init.rs: the init files; widgets/mounts.rs: mounts and floating panels as `views.json`
                       edits; widgets/library.rs: the component library; widgets/native.rs: the native form controls
-                      `omfp_widget_check` warns about), WebSocket server (polling of watched workspaces:
+                      `omfp_widget_check` warns about; server/services/widget_tools.rs: what the widget check does), WebSocket server (polling of watched workspaces:
                       server/services/polls.rs; the windows' reports, `windows.*` and the requests to windows:
                       server/services/windows.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
                       and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs),
                       the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
-                      token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue as resources);
+                      token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue and the static docs as resources);
                       the logins to omp's providers (supervisor/login.rs: the short-lived login omp, one login at a
                       time, the reload of running threads after a login; server/services/logins.rs: `auth.*` and the
                       `login_*` window requests of a login's flow);
@@ -160,7 +160,7 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
                       logo sheet), keymap (which-key.ts: the which-key panel's model and the leader groups), theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
-                      map, widget-exports.json, builtin-widgets/, the favicon from docs/brand)
+                      map, widget-exports.json, builtin-widgets/ from the BUILTINS table of builtins.ts, the favicon from docs/brand)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)

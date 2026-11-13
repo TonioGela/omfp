@@ -46,8 +46,7 @@ fn windows() -> AgentTool {
                       and their transforms (where each comes from, which TSX file, which widgets, the active one); \
                       the commands init files and widgets added, with their keys; and the errors it shows (init \
                       files, TSX views, widgets). Read it after changing views, an init file or a widget (with \
-                      omfp_widget_check), and to find the command or view to pass omfp_window_run. omfp://windows \
-                      reads the same.",
+                      omfp_widget_check), and to find the command or view to pass omfp_window_run.",
         parameters: json!({
             "type": "object",
             "properties": {

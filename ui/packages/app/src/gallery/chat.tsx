@@ -248,7 +248,7 @@ export function LiveVoice() {
           title="Live voice"
           status="error"
           statusLabel="error"
-          message="live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
+          message="live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again"
           hints={[{ keys: "esc", label: "dismiss" }]}
           actions={<IconButton label="Dismiss" icon={<Icon name="x" />} />}
         />

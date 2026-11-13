@@ -1,62 +1,12 @@
 /**
  * `omfp/sdk` (AGT-016): what every widget builds on, built-in or written by an agent (docs/specs/08-agent-control.md);
- * the bundle exposes this module to widget modules through the page's import map (AGT-012), and
- * `crates/omfp-daemon/src/widgets/docs.md` documents it for agents.
+ * the bundle exposes this module to widget modules through the page's import map (AGT-012).
  *
  * A window creates one {@link OmfpHost} over its protocol client ({@link createHost}) and provides it with
- * {@link OmfpProvider}; widgets then use only the hooks:
+ * {@link OmfpProvider}; widgets then use only the hooks.
  *
- * | Hook | Gives |
- * | --- | --- |
- * | `useConnection()` | connection status (connecting, connected, reconnecting, …) |
- * | `useIndex()`, `useThreads()`, `useThreadSummary(id)`, `useWorkspaces()` | the `index` topic |
- * | `useThread(id)` | the thread's `ThreadView` (reducer state + closed interactions), following `thread/<id>` |
- * | `useWorkspace(id)` | the workspace and its repositories' git status, following `workspace/<id>` |
- * | `useViews(id)` | the workspace's views manifest, widget folders and stored values, following `views/<id>` |
- * | `useWidget()` | the widget instance being rendered: `{ instance, reference, workspaceId }` |
- * | `useStored(key, initial)` | `[value, set, loaded]`: JSON kept by the daemon per workspace, instance and key (AGT-018) |
- * | `useJob(command, { key? })` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, refreshing, restart, kill }`: one daemon job per instance and command, or per key (AGT-019, AGT-086); the window's last copy while a new mount follows it again (UI-392) |
- * | `useToolRun(id \| { match, threadId? })` | a tool run of a thread with its live output (AGT-020) |
- * | `useSlotReport()` | the report of the module widget slot being rendered (`widgets.report`, AGT-026); `undefined` in built-ins |
- * | `useTopic(topic)` | any topic's subscription state, followed while mounted |
- * | `useSnapshot(select)` | anything else from the per-frame model snapshot |
- * | `useCall()` | `call(method, params)`: every protocol method, typed |
- * | `useCall(method, params)` | `{ data, error, refreshing, refresh }`: the call's result, the window's last one while a new mount refreshes it (UI-392) |
- * | `useWindowState(key)` | window-local state by {@link WindowKey} (`SELECTED_THREAD`, `draftKey(id)`, …) |
- * | `useCommand(command)` / `useRunCommand()` | commands for the keymap and the `:` line (UI-095); `registerCommand(host, command)` outside React |
- * | `useAnnounce()` | the ARIA live region (UI-092) |
- * | `useThreadActions()` | select, draft threads (open, discard, send the first message), archive/unarchive, delete (`requestDelete` asks first), rename, stop, restart; archiving or deleting forgets the selection and the draft (UI-023, UI-026) |
- * | `useReportError()` | puts a failure in the frame's error list (`ERRORS`) |
- * | `useUrlActions()` | `open(url)` in a new tab, `copy(url)` to the clipboard: the URLs omp opened (UI-346) |
- * | `useCurrentWorkspaceId()` | the workspace this window works in: the selected thread's, else the draft thread's |
- * | `useActiveView(viewIds)` / `chooseView(host, viewId)` | the view this window shows for the selected thread (its own, else its workspace's last chosen, else the default: `undefined`) / switches it, for the thread and its workspace (UI-367) |
- * | `usePathSources()` | `suggest`/`complete` for the kit's `PathField`, on the daemon's machine |
- * | `useHost()` | the host itself (registry, window store), for frame-level code |
- * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.motion`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
- * | `useSetSettings()` | `settings.set(patch)`: merges `ui`/`keymap` into the config file; failures go to `ERRORS` |
- * | `useFile(path, { follow? })` | a workspace file (`workspaces.read_file`), followed, with `refreshing`, `reload` and `save(content, expectedHash?)` (AGT-027, UI-392) |
- * | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file tab (UI-115) |
- * | `useMissingFile(path, missing, options)` | finds the file a path that does not exist names (`workspaces.find_file`): one opens in its place, several open the frame's picker (UI-117) |
- * | `useFileTabs(workspaceId)` | this window's opened tabs of a workspace's `main` slot (files, then revealed widgets, UI-373), `select`, `close(path)` and `closeTab(id)` |
- * | `useLive()` | `[live, snapshot]`: this window's live voice session (start, end, mute, spectrum source, UI-180..UI-189) |
- * | `useNotify()` | `notify({ title, body, threadId? })`: a notice in this window's mode line, a system notification while the window has no focus (UI-194) |
- *
- * Init files (UI-260..UI-263, UI-267) are `export default function init(omfp: InitApi)`: the
- * {@link InitApi} gives `command`, `bind`, `notify`, `on`, `views` (a {@link ViewsApi}: `load`, `use`, `transform` over
- * {@link InitViews} and {@link Layout}), `workspace`, `panel`, `run`, `call`, `onCleanup` and the `host` itself; the
- * window's {@link InitFiles} runs them. TSX views (UI-268) return the layout components `Row`, `Col`, `Tabs`, `Stack`
- * and `Widget`.
- *
- * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
- * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `VIEW_CHOICES` (persisted: the views chosen per thread
- * and per workspace, UI-367), `DELETE_THREAD`,
- * `DELETE_WORKSPACE`,
- * `RENAMING_THREAD`, `FOCUS_COMPOSER`, `ERRORS`, `OPEN_FILES`, `FLOATING_FILES` and `floatingWidgetKey(workspaceId, panelId)`
- * (persisted), `FILE_PICKER`, `EDITOR_MODE`, `NOTICES`, `SUCCESSES` (success toasts, `reportSuccess`), `LOGIN` (a
- * login request the frame takes, `requestLogin(host, providerId?)`, UI-382) and `AUTH_REVISION` (counts this window's
- * logins and logouts, UI-385).
- * A widget is a {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own
- * scoped commands.
+ * `crates/omfp-daemon/src/widgets/docs.md` (`omfp://docs/widgets`) is the reference of every hook and component agents
+ * use: keep it complete there.
  */
 
 // View models, strings and helpers the built-in widgets use (AGT-016, AGT-021): a copied built-in imports them from

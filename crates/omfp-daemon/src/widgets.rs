@@ -27,11 +27,10 @@ use omp_rpc::{HostUriRead, HostUriResultContentType};
 use serde_json::Value;
 use tracing::warn;
 
-use crate::host_tools::{WidgetHost, run_widget_check};
+use crate::host_tools::WidgetHost;
 use crate::store::new_id;
 use compile::{CompileError, Exports};
 use folders::{files, is_widget_name};
-use omp_rpc::HostToolOutput;
 
 /// The widget SDK and kit reference, served as [`DOCS_URL`] (AGT-025).
 pub const DOCS: &str = include_str!("widgets/docs.md");
@@ -150,8 +149,7 @@ pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String
                  accepts) and {}/<name> (one's schemas), {DOCS_URL} (the widget SDK and kit reference), {} (the \
                  window: left column, mode line, view tabs, `:` commands), {} (the default keys and commands), \
                  {SCHEMA_URL} (the views manifest schema), {} (the workspace keymap schema), {BUILTIN_URL} (the \
-                 built-in widgets), {BUILTIN_URL}/<name>[/<path>] (their sources) and {CHECK_URL}/<name> (the check \
-                 report of a widget, of an init file with `init` or `user:init`, of a TSX view with `views/<file>`)",
+                 built-in widgets) and {BUILTIN_URL}/<name>[/<path>] (their sources)",
                 shell::INDEX_URL,
                 crate::agent_tools::catalog::METHODS_URL,
                 crate::agent_tools::catalog::METHODS_URL,
@@ -300,7 +298,7 @@ fn read_builtin(builtin: &Path, rest: &str) -> Result<HostUriRead, String> {
 /// `workspace_id`, read fresh every time; `None` when `url` is no check URL.
 pub fn read_check(
     url: &str,
-    is_cancelled: impl Fn() -> bool,
+    is_cancelled: impl Fn() -> bool + Sync,
     workspace_id: &str,
     host: Option<&dyn WidgetHost>,
 ) -> Option<Result<HostUriRead, String>> {
@@ -315,19 +313,21 @@ pub fn read_check(
                 .to_owned(),
         ));
     };
-    let mut arguments = serde_json::Map::new();
-    arguments.insert("name".to_owned(), Value::String(name.to_owned()));
+    if is_cancelled() {
+        return Some(Err("cancelled".to_owned()));
+    }
+    let name = name.trim();
+    if name.is_empty() {
+        return Some(Err("`name` must be a non-empty string".to_owned()));
+    }
     Some(
-        match run_widget_check(&arguments, is_cancelled, workspace_id, host) {
-            Ok(HostToolOutput::Text(content)) => Ok(HostUriRead {
+        host.check_widget(workspace_id, name, &is_cancelled)
+            .map(|content| HostUriRead {
                 content,
                 content_type: Some(HostUriResultContentType::TextPlain),
                 immutable: Some(false),
                 ..HostUriRead::default()
             }),
-            Ok(other) => Err(format!("unexpected check output {other:?}")),
-            Err(error) => Err(error.to_string()),
-        },
     )
 }
 
@@ -746,6 +746,10 @@ mod tests {
         ] {
             assert!(error.contains(url), "{url} missing: {error}");
         }
+        assert!(
+            !error.contains(CHECK_URL) && !error.contains(shell::WINDOWS_URL),
+            "only what every reader (threads, MCP) gets: {error}"
+        );
         let schema = read_uri("omfp://schemas/keymap.json", None).unwrap();
         assert_eq!(schema.content, keymap::SCHEMA);
         assert_eq!(
@@ -888,20 +892,12 @@ mod tests {
             &self,
             workspace_id: &str,
             name: &str,
-            _is_cancelled: &dyn Fn() -> bool,
+            _is_cancelled: &(dyn Fn() -> bool + Sync),
         ) -> Result<String, String> {
             if name == "broken" {
                 return Err("no widget broken".to_owned());
             }
             Ok(format!("report {workspace_id} {name}"))
-        }
-
-        fn add_to_view(&self, _: &str, _: &layout::Addition<'_>) -> Result<String, String> {
-            unreachable!("the check URI never places a widget")
-        }
-
-        fn views_errors(&self, _: &str, _: &dyn Fn() -> bool) -> Result<String, String> {
-            unreachable!("no URI reads the views errors")
         }
 
         fn keymap_additions(&self, workspace_id: &str) -> shell::Additions {
@@ -979,9 +975,9 @@ mod tests {
         );
         assert_eq!(check("omfp://docs/widgets", false, Some(&Checks)), None);
         assert!(
-            read_uri("omfp://nothing", None)
+            read_uri("omfp://widgets/check", None)
                 .unwrap_err()
-                .contains("omfp://widgets/check/<name>")
+                .starts_with("unknown omfp URL omfp://widgets/check: ")
         );
     }
 

@@ -39,7 +39,7 @@ fn mount_id(id: &str) -> Result<&str, ErrorBody> {
     }
 }
 
-/// A widget reference as the agent wrote it: a bare name means `./widgets/<name>` (AGT-061, DMN-064).
+/// A widget reference as the agent wrote it: a bare name means `./widgets/<name>` (AGT-061).
 fn reference(widget: &str) -> Result<String, ErrorBody> {
     let widget = widget.trim();
     if widget.is_empty() {

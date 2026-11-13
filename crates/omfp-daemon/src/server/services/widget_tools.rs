@@ -1,7 +1,6 @@
-//! What the widget host tools do with the windows' reports (`widgets.report`, PRT-043, AGT-026, kept by `windows`) and
+//! What the widget check does with the windows' reports (`widgets.report`, PRT-043, AGT-026, kept by `windows`) and
 //! with the views manifest: `omfp_widget_check` (DMN-063, with the out-of-sight render of DMN-207 and the views that
-//! use the widget, DMN-209) and `omfp_view_add` (DMN-064). The init file and TSX view checks and errors (DMN-196,
-//! DMN-197) are in `file_checks`.
+//! use the widget, DMN-209). The init file and TSX view checks and errors (DMN-196, DMN-197) are in `file_checks`.
 
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -12,14 +11,14 @@ use omfp_protocol::{Position, WidgetChecked, WidgetReport, WidgetReportState, Wi
 
 use super::file_checks::CheckedFile;
 use super::windows::Window;
-use super::{Services, blocking, write_atomically};
+use super::{Services, blocking};
 use crate::agent_tools::windows::view_source_name;
 use crate::host_tools::WidgetHost;
 use crate::server::convert::internal;
 use crate::widgets::compile::{CompileError, IMPORT_MAP};
-use crate::widgets::layout::{self, Addition};
+use crate::widgets::layout;
 use crate::widgets::native::{self, NativeControl};
-use crate::widgets::{Widgets, folders, keymap, manifest, manifest_path, shell, views_folder};
+use crate::widgets::{Widgets, folders, keymap, shell, views_folder};
 
 /// How long `omfp_widget_check` waits for the windows to report the current version (DMN-063).
 pub(crate) const CHECK_WAIT: Duration = Duration::from_secs(5);
@@ -190,7 +189,7 @@ fn describe(
         text.push_str(
             "Warning: no view of views.json has the main slot [\"tabs\", {\"id\": \"main\"}, …\"omfp:chat\"], so files \
              the user opens float over the view instead of opening as tabs next to the conversation. Keep that slot: \
-             put it back around omfp:chat, and place widgets with omfp_view_add.\n",
+             put it back around omfp:chat, and place widgets with omfp_ui_mount.\n",
         );
     }
     text.push('\n');
@@ -211,7 +210,7 @@ fn describe(
             "{} window(s) show this workspace, but none shows {reference} in its current view.",
             windows.len()
         );
-        describe_uses(&mut text, &reference, uses);
+        describe_uses(&mut text, target, uses);
         if let Some(offscreen) = offscreen {
             describe_offscreen(&mut text, windows, offscreen);
         }
@@ -234,12 +233,14 @@ fn describe(
     text
 }
 
-/// Where the widget is placed, when no window shows it (DMN-209): `omfp_view_add` only when no view holds it.
-fn describe_uses(text: &mut String, reference: &str, uses: &[Use]) {
+/// Where the widget is placed, when no window shows it (DMN-209): `omfp_ui_mount` only when no view holds it.
+fn describe_uses(text: &mut String, target: &Target, uses: &[Use]) {
     let Some(first) = uses.first() else {
         let _ = writeln!(
             text,
-            " No view uses it: add it with omfp_view_add {{ \"widget\": \"{reference}\" }}."
+            " No view uses it: mount it with omfp_ui_mount {{ \"id\": \"{}\", \"widget\": \"{}\" }}.",
+            target.name,
+            target.reference()
         );
         return;
     };
@@ -250,7 +251,7 @@ fn describe_uses(text: &mut String, reference: &str, uses: &[Use]) {
     let _ = writeln!(
         text,
         " It is in view {}: show it with omfp_window_run {{ \"command\": \"view.switch\", \"args\": [\"{}\"] }} \
-         instead of adding it again with omfp_view_add.",
+         instead of mounting it again.",
         views.join(", "),
         first.view
     );
@@ -366,7 +367,7 @@ impl Services {
         &self,
         workspace_id: &str,
         name: &str,
-        is_cancelled: &dyn Fn() -> bool,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
         wait: Duration,
     ) -> Result<String, String> {
         if let Some(file) = CheckedFile::parse(name) {
@@ -510,7 +511,7 @@ fn placed_in_files(
 /// Runs `work` until it ends or `is_cancelled` says so, looking every [`CANCEL_POLL`].
 async fn until_cancelled<T>(
     work: impl Future<Output = T>,
-    is_cancelled: &dyn Fn() -> bool,
+    is_cancelled: &(dyn Fn() -> bool + Sync),
 ) -> Result<T, String> {
     let mut work = std::pin::pin!(work);
     loop {
@@ -531,7 +532,7 @@ impl Services {
     pub(super) async fn settled_windows(
         &self,
         workspace_id: &str,
-        is_cancelled: &dyn Fn() -> bool,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
         wait: Duration,
         unsettled: impl Fn(&Window, Option<&Position>) -> Option<String>,
     ) -> Result<Vec<(Window, Option<String>)>, String> {
@@ -564,49 +565,6 @@ impl Services {
             let tick = deadline.min(tokio::time::Instant::now() + CANCEL_POLL);
             let _ = tokio::time::timeout_at(tick, changes.changed()).await;
         }
-    }
-
-    /// `omfp_view_add` (DMN-064): adds the widget to a view of the workspace's manifest (the default manifest without
-    /// a file), writes `views.json` as `views.set` does and publishes it.
-    pub async fn add_to_view(
-        &self,
-        workspace_id: &str,
-        addition: &Addition<'_>,
-    ) -> Result<String, String> {
-        // A read, a change and a write, like the mounts (PRT-080..082).
-        let _edit = self.manifest_edits.lock().await;
-        let store = Arc::clone(&self.store);
-        let id = workspace_id.to_owned();
-        let path = blocking(move || Ok(store.workspace(&id)?.path))
-            .await
-            .map_err(|error| error.message)?;
-        let (current, error) = Widgets::manifest(&path);
-        if let Some(error) = error {
-            return Err(format!(
-                ".omfp/views.json is invalid ({error}); fix it first (or ask the user to run `:view reset`), then \
-                 add the widget"
-            ));
-        }
-        let (manifest, said) = layout::add(current.as_ref(), addition)?;
-        let file = manifest_path(&path);
-        write_atomically(&file, &manifest::to_text(&manifest))
-            .map_err(|error| format!("cannot write {}: {error}", file.display()))?;
-        let missing = addition
-            .reference
-            .strip_prefix("./widgets/")
-            .filter(|name| !crate::widgets::workspace_widgets(&path).join(name).is_dir());
-        self.refresh_views(workspace_id).await;
-        let mut text = format!(
-            "Added {} {said} in .omfp/views.json; open windows show it now.",
-            addition.reference
-        );
-        if let Some(name) = missing {
-            let _ = write!(
-                text,
-                " There is no folder .omfp/widgets/{name}/ yet: windows show an error in its place until there is."
-            );
-        }
-        Ok(text)
     }
 
     /// What the daemon's `[keymap]` and the `.omfp/keymap.json` of workspace `workspace_id` add to the default keys,
@@ -648,28 +606,11 @@ impl WidgetHost for ServicesWidgetHost {
         &self,
         workspace_id: &str,
         name: &str,
-        is_cancelled: &dyn Fn() -> bool,
+        is_cancelled: &(dyn Fn() -> bool + Sync),
     ) -> Result<String, String> {
         self.runtime.block_on(self.services.check_widget(
             workspace_id,
             name,
-            is_cancelled,
-            CHECK_WAIT,
-        ))
-    }
-
-    fn add_to_view(&self, workspace_id: &str, addition: &Addition<'_>) -> Result<String, String> {
-        self.runtime
-            .block_on(self.services.add_to_view(workspace_id, addition))
-    }
-
-    fn views_errors(
-        &self,
-        workspace_id: &str,
-        is_cancelled: &dyn Fn() -> bool,
-    ) -> Result<String, String> {
-        self.runtime.block_on(self.services.describe_view_errors(
-            workspace_id,
             is_cancelled,
             CHECK_WAIT,
         ))
@@ -700,7 +641,6 @@ mod tests {
         ViewErrors, ViewSource, WidgetJobReport, WindowAnswer, WindowFileErrors, WindowReport,
         WindowRequest, WindowView,
     };
-    use serde_json::{Map, json};
     use tempfile::TempDir;
 
     use super::*;
@@ -711,7 +651,6 @@ mod tests {
     use crate::store::{Store, Workspace};
     use crate::supervisor::{Supervisor, SupervisorConfig};
     use crate::threads::Threads;
-    use crate::widgets::layout::Place;
     use crate::workspaces::{NewWorkspace, Workspaces};
 
     struct Harness {
@@ -985,7 +924,7 @@ mod tests {
 
     // spec: DMN-063, PRT-043, AGT-026, DMN-209
     #[tokio::test]
-    async fn the_check_reports_what_each_window_shows_and_names_omfp_view_add_when_no_view_uses_it()
+    async fn the_check_reports_what_each_window_shows_and_names_omfp_ui_mount_when_no_view_uses_it()
     {
         let h = harness().await;
         h.report(7, None, Vec::new());
@@ -996,7 +935,7 @@ mod tests {
         );
         assert!(
             text.contains(
-                "No view uses it: add it with omfp_view_add { \"widget\": \"./widgets/tests\" }."
+                "No view uses it: mount it with omfp_ui_mount { \"id\": \"tests\", \"widget\": \"./widgets/tests\" }."
             ),
             "{text}"
         );
@@ -1051,7 +990,7 @@ mod tests {
 
     // spec: DMN-209
     #[tokio::test]
-    async fn the_check_names_the_views_that_hold_the_widget_instead_of_omfp_view_add() {
+    async fn the_check_names_the_views_that_hold_the_widget_instead_of_mounting_it_again() {
         let h = harness().await;
         // An init file's view holds it, a TSX view no window rendered names it, views.json holds it too.
         write(
@@ -1088,7 +1027,7 @@ mod tests {
             text.contains(
                 " It is in view \"solo\" (the workspace's init file), \"ops\" (the user's init file, TSX view \
                  ./views/ops.tsx): show it with omfp_window_run { \"command\": \"view.switch\", \"args\": [\"solo\"] } \
-                 instead of adding it again with omfp_view_add."
+                 instead of mounting it again."
             ),
             "{text}"
         );
@@ -1552,16 +1491,6 @@ mod tests {
         assert!(matches!(unknown.workspace, Some(Err(_))), "{unknown:?}");
     }
 
-    fn addition(reference: &str) -> Addition<'_> {
-        Addition {
-            reference,
-            props: Map::new(),
-            view: None,
-            place: Place::SideTab,
-            argument: "where",
-        }
-    }
-
     // spec: DMN-120, DMN-121, PRT-060
     #[tokio::test]
     async fn the_views_topic_carries_the_workspace_keymap_and_an_invalid_file_keeps_the_last_valid_one()
@@ -1615,64 +1544,6 @@ mod tests {
             next(),
             Some((Vec::new(), None)),
             "a removed file drops them"
-        );
-    }
-
-    // spec: DMN-064, DMN-088
-    #[tokio::test]
-    async fn view_add_writes_views_json_and_refuses_an_invalid_one() {
-        let h = harness().await;
-        let file = h.folder.join(".omfp/views.json");
-        assert_eq!(
-            std::fs::read_to_string(&file).unwrap(),
-            crate::widgets::DEFAULT_MANIFEST,
-            "a new workspace has the default views.json"
-        );
-        let log = h.services.views_log(&h.workspace).await.unwrap();
-
-        let said = h
-            .services
-            .add_to_view(&h.workspace, &addition("./widgets/tests"))
-            .await
-            .unwrap();
-        assert_eq!(
-            said,
-            "Added ./widgets/tests as a tab of the side tabs of view \"default\" in .omfp/views.json; open windows \
-             show it now."
-        );
-        let written: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-        assert_eq!(
-            written["views"]["default"]["layout"][3],
-            json!(["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "omfp:background", "./widgets/tests"])
-        );
-        assert_eq!(
-            log.with_state(|state| state.manifest.clone()),
-            Some(written),
-            "published before answering"
-        );
-
-        let said = h
-            .services
-            .add_to_view(&h.workspace, &addition("./widgets/later"))
-            .await
-            .unwrap();
-        assert!(
-            said.contains("There is no folder .omfp/widgets/later/ yet"),
-            "{said}"
-        );
-
-        std::fs::write(&file, "not json").unwrap();
-        let error = h
-            .services
-            .add_to_view(&h.workspace, &addition("user:clock"))
-            .await
-            .unwrap_err();
-        assert!(error.contains(".omfp/views.json is invalid ("), "{error}");
-        assert_eq!(
-            std::fs::read_to_string(&file).unwrap(),
-            "not json",
-            "never overwritten"
         );
     }
 

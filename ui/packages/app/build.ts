@@ -16,6 +16,7 @@
 import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, join } from "node:path";
+import { BUILTINS } from "./builtins.ts";
 import { FAVICONS, indexHtml } from "./index-html.ts";
 
 const require = createRequire(import.meta.url);
@@ -40,23 +41,6 @@ const SHARED: readonly Shared[] = [
   { specifier: "react-dom", name: "react-dom", source: { kind: "commonjs" } },
   { specifier: "omfp/sdk", name: "sdk", source: { kind: "esm", path: join(root, "src/sdk/index.ts") } },
   { specifier: "omfp/kit", name: "kit", source: { kind: "esm", path: join(root, "../kit/src/index.ts") } },
-];
-
-/** Built-in widgets shipped as folders: `<name>` ← `src/widgets/<folder>`, with `part` as the entry's default export
- * when the folder's own entry is another widget. */
-const BUILTINS: readonly { name: string; folder: string; part?: { file: string; exportName: string } }[] = [
-  { name: "header", folder: "header" },
-  { name: "workspace", folder: "workspace" },
-  { name: "changes", folder: "changes" },
-  { name: "subagents", folder: "subagents" },
-  { name: "todos", folder: "todos" },
-  { name: "tree", folder: "tree" },
-  { name: "activity", folder: "activity" },
-  { name: "file", folder: "file" },
-  { name: "chat", folder: "chat" },
-  { name: "transcript", folder: "chat", part: { file: "transcript.tsx", exportName: "TranscriptWidget" } },
-  { name: "interactions", folder: "chat", part: { file: "interactions.tsx", exportName: "InteractionsWidget" } },
-  { name: "composer", folder: "chat", part: { file: "composer.tsx", exportName: "ComposerWidget" } },
 ];
 
 const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;

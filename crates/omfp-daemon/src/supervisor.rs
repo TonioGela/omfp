@@ -59,7 +59,8 @@ enum SessionChange {
     Navigate,
 }
 
-/// omp tools that never change files; their end needs no rescan (DMN-023). Unknown tools count as writers.
+/// Tools that never change workspace files, omp's and omfp's own; their end needs no rescan (DMN-023). Unknown tools
+/// count as writers. omp has no `fetch` tool: `read` fetches URLs.
 const READ_ONLY_TOOLS: &[&str] = &[
     "read",
     "grep",
@@ -67,10 +68,16 @@ const READ_ONLY_TOOLS: &[&str] = &[
     "find",
     "ast_grep",
     "web_search",
-    "fetch",
     "todo",
     "ask",
     "lsp",
+    host_tools::NOTIFY,
+    host_tools::SET_THREAD_TITLE,
+    crate::agent_tools::THREAD_WAIT,
+    crate::agent_tools::checks::WIDGET_CHECK,
+    crate::agent_tools::checks::VIEWS_ERRORS,
+    crate::agent_tools::windows::WINDOWS,
+    crate::agent_tools::mounts::COMPONENT_LIST,
 ];
 
 /// How many `live_levels` a slow subscriber may miss before it skips to the latest (DMN-110).
@@ -403,8 +410,8 @@ struct Inner {
     tool_ends: broadcast::Sender<String>,
     /// Clients watching each workspace (subscribers of `workspace/<id>`), which polls it (DMN-023).
     workspace_watchers: Mutex<HashMap<String, usize>>,
-    /// Backs the widget host tools of every thread launched from now on (DMN-063, DMN-064); set by the server once
-    /// its services exist, dropped at shutdown (the services hold the supervisor too).
+    /// Backs the `omfp://` URIs of the workspace of every thread launched from now on (DMN-108, DMN-199, AGT-081);
+    /// set by the server once its services exist, dropped at shutdown (the services hold the supervisor too).
     widget_host: Mutex<Option<Arc<dyn host_tools::WidgetHost>>>,
     /// Backs the agent tools of every thread launched from now on (AGT-040, DMN-151); set and dropped like
     /// `widget_host`.
@@ -514,7 +521,7 @@ impl Supervisor {
         }
     }
 
-    /// Gives the threads launched from now on the widget host tools (DMN-063, DMN-064).
+    /// Gives the threads launched from now on the `omfp://` URIs of their workspace (DMN-108, DMN-199, AGT-081).
     pub fn set_widget_host(&self, host: Arc<dyn host_tools::WidgetHost>) {
         *lock(&self.inner.widget_host) = Some(host);
     }
@@ -1170,7 +1177,6 @@ impl Supervisor {
             }
         }
 
-        let widget_host = lock(&self.inner.widget_host).clone();
         let agent_tools = lock(&self.inner.agent_host)
             .clone()
             .map(|host| host.tools(&actor.id, &thread.workspace_id))
@@ -1179,8 +1185,6 @@ impl Supervisor {
             self.file_opener(&actor.id),
             self.notifier(&actor.id),
             self.title_setter(&actor.id),
-            &thread.workspace_id,
-            widget_host,
             agent_tools,
         );
         let check_host = lock(&self.inner.widget_host)

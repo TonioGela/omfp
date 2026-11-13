@@ -86,7 +86,7 @@ function addToSide(node: LayoutNode, reference: string): LayoutNode | undefined 
 
 /**
  * Adds `reference` as the last tab of the `tabs` with `"id": "side"`, else at the end of the root container (a root
- * widget becomes a `row` of both), as `omfp_view_add` places it (UI-300, DMN-064).
+ * widget becomes a `row` of both), as the daemon's `views.mount` places it (UI-300, PRT-080).
  */
 export function addWidget(layout: LayoutNode, reference: string): LayoutNode {
   const side = addToSide(layout, reference);

@@ -24,7 +24,7 @@
       "type": "object",
       "description": "A layout (`layout`) or a TSX view file (`view`, AGT-074); not both.",
       "properties": {
-        "title": { "type": "string", "description": "Shown in the view switcher; default: the id." },
+        "title": { "type": "string", "description": "Shown in the mode line's view tabs; default: the id." },
         "layout": { "$ref": "#/$defs/node" },
         "view": {
           "type": "string",
@@ -68,7 +68,7 @@
     "reference": {
       "type": "string",
       "pattern": "\\S",
-      "description": "`omfp:<name>` (built-in: omfp:header, omfp:chat, omfp:transcript, omfp:interactions, omfp:composer, omfp:workspace, omfp:changes, omfp:background, omfp:subagents, omfp:todos, omfp:tree, omfp:activity, omfp:mcp; a workspace widget of the same name replaces it), `./widgets/<name>` (<workspace>/.omfp/widgets/<name>/) or `user:<name>` (<data-dir>/widgets/<name>/). An unknown reference shows an error in place of the widget."
+      "description": "`omfp:<name>` (built-in: omfp:header, omfp:chat, omfp:transcript, omfp:interactions, omfp:composer, omfp:workspace, omfp:changes, omfp:background, omfp:subagents, omfp:todos, omfp:tree, omfp:activity, omfp:mcp, omfp:file; a workspace widget of the same name replaces it), `./widgets/<name>` (<workspace>/.omfp/widgets/<name>/) or `user:<name>` (<data-dir>/widgets/<name>/). An unknown reference shows an error in place of the widget."
     },
     "props": {
       "type": "object",

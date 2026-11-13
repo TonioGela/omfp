@@ -4308,7 +4308,7 @@ expression: method_schemas()
     "params": {
       "$defs": {
         "MountPlace": {
-          "description": "Where `views.mount` puts a widget in a view (PRT-080, as `omfp_view_add` does, DMN-064).",
+          "description": "Where `views.mount` puts a widget in a view (PRT-080); `omfp_ui_mount` takes the same `place` (AGT-061).",
           "oneOf": [
             {
               "const": "side_tab",

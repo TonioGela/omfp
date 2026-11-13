@@ -3,6 +3,9 @@
 //! every thread ([`rpc`], DMN-151) and the MCP server.
 
 pub mod catalog;
+pub(crate) mod checks;
+#[cfg(test)]
+pub(crate) mod mentions;
 pub(crate) mod mounts;
 mod omfp_call;
 pub(crate) mod rpc;
@@ -34,6 +37,30 @@ pub const CONNECTION_ONLY: &[&str] = &[
     "thread.live_connect",
     "thread.live_start",
 ];
+
+/// The methods of the deferred terminal (D-06): the daemon refuses every one, so `omfp_call` refuses them and the
+/// catalogue leaves them out like [`CONNECTION_ONLY`] (AGT-041, AGT-042).
+pub const DEFERRED: &[&str] = &[
+    "terminal.open",
+    "terminal.resize",
+    "terminal.close",
+    "terminal.list",
+];
+
+/// Why agents cannot call `method`, naming the catalogue; `None` when they can (AGT-041, AGT-042).
+pub(crate) fn not_for_agents(method: &str) -> Option<String> {
+    let why = if CONNECTION_ONLY.contains(&method) {
+        "needs a window's connection, so agents cannot call it"
+    } else if DEFERRED.contains(&method) {
+        "belongs to the terminal, which is deferred (D-06): omfp refuses it"
+    } else {
+        return None;
+    };
+    Some(format!(
+        "`{method}` {why}; {} lists the methods {CALL} accepts",
+        catalog::METHODS_URL
+    ))
+}
 
 /// What a tool runs with: the daemon's services, the principal it acts as (DMN-150) and the calling thread's
 /// workspace (`None` when no thread calls, e.g. MCP with a user token).
@@ -74,6 +101,7 @@ pub(crate) struct AgentTool {
 pub(crate) fn registry() -> Vec<AgentTool> {
     let mut tools = vec![omfp_call::tool(), wait::tool()];
     tools.extend(mounts::tools());
+    tools.extend(checks::tools());
     tools.extend(windows::tools());
     tools
 }
@@ -207,5 +235,72 @@ pub(super) mod tests {
             assert!(!tool.description.is_empty(), "{}", tool.name);
             assert!(!tool.label.is_empty(), "{}", tool.name);
         }
+    }
+
+    // spec: AGT-024, AGT-029, AGT-045, DMN-062, DMN-198
+    #[test]
+    fn every_tool_and_uri_a_thread_reads_about_exists_for_that_thread() {
+        use crate::{conventions, host_tools};
+
+        let host = host_tools::thread_tools(
+            std::sync::Arc::new(|_, _| Ok(())),
+            std::sync::Arc::new(|_, _| Ok(())),
+            std::sync::Arc::new(|_| Ok(())),
+            Vec::new(),
+        );
+        let registry = registry();
+        let tools: Vec<&str> = host
+            .iter()
+            .map(|tool| tool.definition().name.as_str())
+            .chain(registry.iter().map(|tool| tool.name))
+            .collect();
+        let uris: Vec<&str> = mentions::STATIC_URIS
+            .into_iter()
+            .chain(mentions::THREAD_URIS)
+            .collect();
+        let library = std::path::Path::new("/data/widgets");
+        let mut texts = mentions::static_texts();
+        texts.push((
+            "the appended prompt".to_owned(),
+            conventions::daemon_text("w", std::path::Path::new("/ws"), library, "01THREAD"),
+        ));
+        for tool in &host {
+            let definition = tool.definition();
+            texts.push((
+                definition.name.clone(),
+                format!("{} {:?}", definition.description, definition.parameters),
+            ));
+        }
+        for tool in &registry {
+            texts.push((
+                tool.name.to_owned(),
+                format!("{} {}", tool.description, tool.parameters),
+            ));
+        }
+        let scheme = host_tools::host_uris(None, None).unwrap();
+        texts.push((
+            "the omfp:// scheme".to_owned(),
+            scheme[0]
+                .definition()
+                .description
+                .clone()
+                .unwrap_or_default(),
+        ));
+        let missing: Vec<String> = texts
+            .iter()
+            .flat_map(|(served, text)| mentions::missing(served, text, &tools, &uris))
+            .collect();
+        assert_eq!(missing, Vec::<String>::new());
+
+        // The widget builder, a subagent, gets no omfp tool, only the URIs (S-14).
+        let builder = conventions::widget_builder_definition(library);
+        let uris: Vec<&str> = mentions::STATIC_URIS
+            .into_iter()
+            .chain([crate::widgets::CHECK_URL])
+            .collect();
+        assert_eq!(
+            mentions::missing("widget-builder", &builder, &[], &uris),
+            Vec::<String>::new()
+        );
     }
 }

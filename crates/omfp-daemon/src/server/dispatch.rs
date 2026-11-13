@@ -129,7 +129,7 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
         Call::TerminalOpen(_)
         | Call::TerminalResize(_)
         | Call::TerminalClose(_)
-        | Call::TerminalList(_) => Err(bad_request("terminals are not available yet (M6)")),
+        | Call::TerminalList(_) => Err(bad_request("the terminal is deferred (D-06)")),
         Call::ThreadsList(params) => {
             services.refresh_index().await?;
             let threads = services.index.with_state(|index| {

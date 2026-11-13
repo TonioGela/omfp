@@ -12,8 +12,8 @@ use omfp_protocol::method::ThreadLiveConnect;
 use thirtyfour::prelude::*;
 
 const PANEL: &str = "[data-testid=live-panel]";
-const LOGIN: &str = "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try \
-                     again";
+const LOGIN: &str =
+    "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again";
 
 /// The live commands the thread's omp received, in order: `connect`, `start`, `mute <bool>`, `stop`.
 fn live_calls(launcher: &FakeLauncher) -> Vec<String> {

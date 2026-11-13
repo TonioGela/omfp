@@ -1,12 +1,12 @@
-//! Adding a widget to a view of the manifest (`omfp_view_add`, DMN-064): a pure function over the manifest's JSON,
-//! with the same placement rules as the window's layout edits (UI-104: a cell added to a container with `sizes`
-//! weighs the mean of its siblings).
+//! Adding a widget to a view of the manifest (`views.mount`, PRT-080, the placement `omfp_ui_mount` takes): a pure
+//! function over the manifest's JSON; a cell added to a container with `sizes` weighs the mean of its siblings, as
+//! `:widget add` does in the window (UI-300).
 
 use serde_json::{Map, Value, json};
 
 use super::{default_manifest, manifest};
 
-/// Where the widget goes in an existing view (DMN-064).
+/// Where the widget goes in an existing view (`views.mount`'s `place`, PRT-080).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Place {
     /// A tab of the `tabs` container whose `id` prop is `side`.
@@ -18,17 +18,6 @@ pub enum Place {
 }
 
 impl Place {
-    /// `side-tab`, `main-tab` or `end`.
-    #[must_use]
-    pub fn parse(text: &str) -> Option<Self> {
-        match text {
-            "side-tab" => Some(Self::SideTab),
-            "main-tab" => Some(Self::MainTab),
-            "end" => Some(Self::End),
-            _ => None,
-        }
-    }
-
     fn slot(self) -> Option<&'static str> {
         match self {
             Self::SideTab => Some("side"),
@@ -48,8 +37,6 @@ pub struct Addition<'a> {
     /// The view to change; `None` for the manifest's default view.
     pub view: Option<&'a str>,
     pub place: Place,
-    /// The caller's name for `place` in its errors: `where` for the agent tools, `place` for `views.mount`.
-    pub argument: &'a str,
 }
 
 const CONTAINERS: [&str; 4] = ["row", "col", "tabs", "stack"];
@@ -210,9 +197,8 @@ pub fn add(manifest: Option<&Value>, addition: &Addition<'_>) -> Result<(Value, 
             Some(slot) => {
                 let container = find_slot(layout, slot).ok_or_else(|| {
                     format!(
-                        "view {view_id:?} has no `tabs` container with \"id\": \"{slot}\"; use {}: \"end\", or \
-                         another view",
-                        addition.argument
+                        "view {view_id:?} has no `tabs` container with \"id\": \"{slot}\"; use place: \"end\", or \
+                         another view"
                     )
                 })?;
                 append(container, node);
@@ -279,7 +265,6 @@ mod tests {
             props: Map::new(),
             view: None,
             place,
-            argument: "where",
         }
     }
 
@@ -287,7 +272,7 @@ mod tests {
         &manifest["views"]["default"]["layout"]
     }
 
-    // spec: DMN-064, DMN-088
+    // spec: PRT-080, DMN-088
     #[test]
     fn without_a_file_the_default_view_gets_the_widget_as_a_side_tab() {
         let (manifest, said) = add(None, &addition("./widgets/tests", Place::SideTab)).unwrap();
@@ -299,7 +284,7 @@ mod tests {
         assert_eq!(manifest["$schema"], "omfp://schemas/views.json");
     }
 
-    // spec: DMN-064
+    // spec: PRT-080
     #[test]
     fn main_tabs_and_the_end_of_the_root_take_the_widget_with_its_props() {
         let mut main = addition("user:clock", Place::MainTab);
@@ -321,7 +306,7 @@ mod tests {
         assert_eq!(said, "at the end of view \"default\"");
     }
 
-    // spec: DMN-064
+    // spec: PRT-080
     #[test]
     fn a_root_widget_becomes_a_row_and_an_unknown_view_is_created() {
         let manifest = json!({ "views": { "solo": { "layout": "omfp:chat" } } });
@@ -341,7 +326,7 @@ mod tests {
         assert_eq!(said, "as the new view \"dash\"");
     }
 
-    // spec: DMN-064
+    // spec: PRT-080
     #[test]
     fn duplicates_and_missing_slots_are_refused_with_the_fix() {
         let (manifest, _) = add(None, &addition("./widgets/tests", Place::SideTab)).unwrap();
@@ -357,10 +342,6 @@ mod tests {
             json!({ "default": "a", "views": { "a": { "layout": ["row", {}, "omfp:chat"] } } });
         let error = add(Some(&plain), &addition("./widgets/tests", Place::SideTab)).unwrap_err();
         assert!(error.contains("\"id\": \"side\""), "{error}");
-        assert!(error.contains("where: \"end\""), "{error}");
-        let mut named = addition("./widgets/tests", Place::SideTab);
-        named.argument = "place";
-        let error = add(Some(&plain), &named).unwrap_err();
         assert!(error.contains("use place: \"end\""), "{error}");
     }
 
@@ -400,13 +381,5 @@ mod tests {
             "b": { "layout": "./widgets/tests" },
         } });
         assert!(!has_main_slot(&without));
-    }
-
-    #[test]
-    fn places_parse_from_their_names() {
-        assert_eq!(Place::parse("side-tab"), Some(Place::SideTab));
-        assert_eq!(Place::parse("main-tab"), Some(Place::MainTab));
-        assert_eq!(Place::parse("end"), Some(Place::End));
-        assert_eq!(Place::parse("left"), None);
     }
 }

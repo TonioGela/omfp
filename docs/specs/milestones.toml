@@ -303,13 +303,13 @@ requirements = [
   "UI-098",
   # write card preview (item 5)
   "UI-053",
-  # Agent widget loop: reports, host tools, URIs, useJob
+  # Agent widget loop: reports, host tools, URIs, useJob (DMN-064 `omfp_view_add` was removed: `omfp_ui_mount`,
+  # AGT-061, places widgets)
   "AGT-019",
   "AGT-024",
   "AGT-026",
   "DMN-062",
   "DMN-063",
-  "DMN-064",
   "PRT-043",
   # views.json always present
   "DMN-088",

@@ -12,10 +12,10 @@ const NO_CREDENTIAL = [
 /** The readable form of omp's live failure `message`. */
 export function liveErrorMessage(message: string): string {
   if (NO_CREDENTIAL.some((known) => message.includes(known))) {
-    return "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again";
+    return "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again";
   }
   if (message.includes("Codex live signaling failed (401)") || message.includes("Codex live signaling failed (403)")) {
-    return "live voice: the `openai-codex` login was rejected; log in again with `/login openai-codex` in omp";
+    return "live voice: the `openai-codex` login was rejected; log in again with `:login openai-codex`";
   }
   if (message.includes("A live session is already active")) {
     return "a live session is already running on this thread";

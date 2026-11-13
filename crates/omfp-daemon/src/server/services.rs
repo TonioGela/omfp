@@ -35,6 +35,7 @@ use crate::watch::{self, WatchedFile};
 use crate::widgets::Widgets;
 use crate::workspaces::{WorkspaceView, Workspaces};
 use views::ViewsLog;
+pub(crate) use widget_tools::CHECK_WAIT;
 use widget_tools::ServicesWidgetHost;
 use windows::Windows;
 

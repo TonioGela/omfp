@@ -3,6 +3,9 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { BUILTINS } from "../../builtins.ts";
+import { BUILTIN_WIDGETS } from "../../src/view/registry.ts";
+import background from "../../src/widgets/background/index.ts";
 import changes from "../../src/widgets/changes/index.ts";
 import * as chat from "../../src/widgets/chat/index.ts";
 import file from "../../src/widgets/file/index.ts";
@@ -14,7 +17,8 @@ import tree from "../../src/widgets/tree/index.ts";
 import workspace from "../../src/widgets/workspace/index.ts";
 
 const WIDGETS = join(import.meta.dir, "../../src/widgets");
-const COPYABLE = ["chat", "header", "workspace", "changes", "file", "subagents", "todos", "tree", "activity", "mcp"];
+/** The folders the build ships as copyable widget folders (`builtins.ts`). */
+const COPYABLE = [...new Set(BUILTINS.map(({ folder }) => folder))];
 /** What an agent widget may import (AGT-012), besides files of its own folder. */
 const ALLOWED = new Set(["react", "react/jsx-runtime", "react-dom", "omfp/sdk", "omfp/kit"]);
 
@@ -56,8 +60,14 @@ describe("copyable built-ins", () => {
     expect(typeof workspace).toBe("function");
     expect(typeof changes).toBe("function");
     expect(typeof file).toBe("function");
-    for (const widget of [subagents, todos, tree, mcp]) {
+    for (const widget of [background, subagents, todos, tree, mcp]) {
       expect(typeof widget).toBe("function");
     }
+  });
+
+  // spec: AGT-021
+  test("every built-in `omfp:<name>` a view can hold ships as a copyable folder, and only those", () => {
+    const shipped = BUILTINS.map(({ name }) => `omfp:${name}`).sort();
+    expect(shipped).toEqual([...BUILTIN_WIDGETS.keys()].sort());
   });
 });

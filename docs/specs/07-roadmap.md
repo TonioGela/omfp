@@ -228,12 +228,12 @@ is covered by fixtures, but the journey edits with `write` because a hashline `e
 
 Scope (the user's second round of changes after M5): a mode line in the frame (UI-098); the agent checks and places
 widgets without a browser — window reports (AGT-026) behind the host tools `omfp_widget_check` (DMN-063) and
-`omfp_view_add` (DMN-064), built-in widget sources and docs as `omfp://` URIs named in the prompt note (DMN-062,
+`omfp_view_add` (DMN-064; later replaced by `omfp_ui_mount`, DMN-064 removed), built-in widget sources and docs as `omfp://` URIs named in the prompt note (DMN-062,
 AGT-024); `useJob` with a status, separate stdout and stderr and its runs (AGT-019); `views.json` always present in a
 workspace, written at creation and at startup, `:view reset` (DMN-088, UI-107; DMN-030 narrowed to repositories); the
 `write` card shows the first lines of the content (UI-053).
 
-Acceptance: E2E-10's scripted agent checks its widget with `omfp_widget_check` and adds it with `omfp_view_add`;
+Acceptance: E2E-10's scripted agent checks its widget with `omfp_widget_check` and adds it with `omfp_view_add` (later `omfp_ui_mount`);
 headless screenshots of the mode line in both modes and of a collapsed `write` card.
 
 ## M5c — Files (done)
@@ -325,7 +325,7 @@ it changed) and passes `--extension <data-dir>/omp` to every omp (DMN-107). The 
 grep`, `@smol`, background) carries the widgets facts generated from the same text as the widgets note, with relative
 paths, and the check loop through the new read-only host URI `omfp://widgets/check/<name>` (DMN-108), which returns the
 `omfp_widget_check` report (AGT-029). The widgets note tells the main agent to delegate once the user agrees, keep
-talking and place the widget with `omfp_view_add` when the result arrives; the host tools are registered `essential`
+talking and place the widget with `omfp_view_add` (later replaced by `omfp_ui_mount`, DMN-064 removed) when the result arrives; the host tools are registered `essential`
 so they are direct tools of the main agent (DMN-106). A contract test runs the pinned omp on the fake LLM: the main
 agent starts the builder in the background, the builder writes the widget and reads its check report from the
 daemon, and the main agent places it from the follow-up turn (the fake LLM's `any_order` steps make the concurrent

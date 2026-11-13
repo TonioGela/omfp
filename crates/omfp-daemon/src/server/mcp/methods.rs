@@ -1,5 +1,5 @@
 //! The MCP server's methods (AGT-050, AGT-052, DMN-156, DMN-157): the identity and capabilities, the agent tool
-//! registry as tools, the method catalogue as resources.
+//! registry as tools, the method catalogue and the static `omfp://` docs as resources.
 
 use axum::http::StatusCode;
 use omp_rpc::HostUriResultContentType;
@@ -9,19 +9,119 @@ use super::{Era, LEGACY, RpcError, UNNAMED_CLIENT, code, supported};
 use crate::agent_tools::catalog::{self, METHODS_URL};
 use crate::agent_tools::{ToolContext, ToolFuture, registry};
 use crate::server::{Principal, Services};
+use crate::widgets::{self, BUILTIN_URL, DOCS_URL, SCHEMA_URL, keymap, shell};
 
 /// How long the lists, `server/discover` and `resources/read` stay fresh: they change only with the daemon (DMN-156).
 const TTL_MS: u64 = 3_600_000;
 
-/// The URI template of one method's schemas (AGT-052).
-const METHOD_TEMPLATE: &str = "omfp://protocol/methods/{name}";
+/// The URI templates (AGT-052): one method's schemas, one built-in widget's folder.
+const TEMPLATES: [(&str, &str, &str, &str, &str); 2] = [
+    (
+        "omfp://protocol/methods/{name}",
+        "omfp-protocol-method",
+        "omfp protocol method",
+        "One method's description and its params and result JSON Schemas.",
+        "application/json",
+    ),
+    (
+        "omfp://widgets/builtin/{name}",
+        "omfp-builtin-widget",
+        "omfp built-in widget",
+        "One built-in widget's files and its entry's source; `/<path>` after the name reads one file.",
+        "text/markdown",
+    ),
+];
 
 /// What the server tells the model about itself.
-const INSTRUCTIONS: &str = "omfp runs omp agent threads in workspace folders and shows them in its UI. `omfp_call` \
+pub(super) const INSTRUCTIONS: &str = "omfp runs omp agent threads in workspace folders and shows them in its UI. `omfp_call` \
     calls any omfp protocol method (the resource omfp://protocol/methods lists them, \
     omfp://protocol/methods/<name> gives one's params and result schemas), e.g. `threads.list`, `threads.create`, \
     `thread.prompt`; `omfp_thread_wait` waits for a thread instead of polling it; the UI mount and component tools \
-    put widgets in front of the user and need `workspaceId` (from `workspaces.list`).";
+    put widgets in front of the user and need `workspaceId` (from `workspaces.list`). Read omfp://docs/widgets before \
+    writing a widget and check it with `omfp_widget_check`; omfp://docs indexes the docs.";
+
+/// The resources (AGT-052): the method catalogue, then the static docs and schemas threads read as host URIs
+/// (DMN-062, DMN-198); `uri`, name, title, description and MIME type.
+fn resources() -> [(
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+); 8] {
+    [
+        (
+            METHODS_URL,
+            "omfp-protocol-methods",
+            "omfp protocol methods",
+            "Every method omfp_call accepts, one line each.",
+            "text/markdown",
+        ),
+        (
+            shell::INDEX_URL,
+            "omfp-docs",
+            "omfp docs",
+            "The index of these docs.",
+            "text/markdown",
+        ),
+        (
+            DOCS_URL,
+            "omfp-docs-widgets",
+            "omfp widgets",
+            "Widgets, views, init files, TSX views, the omfp/sdk SDK and the omfp/kit kit.",
+            "text/markdown",
+        ),
+        (
+            shell::SHELL_URL,
+            "omfp-docs-shell",
+            "The omfp window",
+            "The window: left column, mode line and view tabs, `:` commands, default keys.",
+            "text/markdown",
+        ),
+        (
+            shell::KEYMAP_URL,
+            "omfp-keymap",
+            "omfp keys and commands",
+            "The default key bindings and built-in commands.",
+            "text/markdown",
+        ),
+        (
+            SCHEMA_URL,
+            "omfp-schema-views",
+            "views.json schema",
+            "The JSON Schema of .omfp/views.json.",
+            "application/json",
+        ),
+        (
+            keymap::SCHEMA_URL,
+            "omfp-schema-keymap",
+            "keymap.json schema",
+            "The JSON Schema of .omfp/keymap.json.",
+            "application/json",
+        ),
+        (
+            BUILTIN_URL,
+            "omfp-builtin-widgets",
+            "omfp built-in widgets",
+            "The built-in widgets with their files.",
+            "text/markdown",
+        ),
+    ]
+}
+
+/// Every resource URI and template prefix the server offers (before `{`), for the description checks.
+#[cfg(test)]
+pub(crate) fn resource_uris() -> Vec<&'static str> {
+    resources()
+        .iter()
+        .map(|resource| resource.0)
+        .chain(
+            TEMPLATES
+                .iter()
+                .map(|template| template.0.split('{').next().unwrap_or_default()),
+        )
+        .collect()
+}
 
 /// A method's answer: a result, or a tool call answered on its own stream (DMN-155).
 pub(crate) enum Reply {
@@ -96,26 +196,26 @@ pub(crate) fn call(
         "tools/list" => value(json!({ "tools": tools() }), true),
         "tools/call" => tool_call(services, principal, era, params).map(Reply::Tool),
         "resources/list" => value(
-            json!({ "resources": [{
-                "uri": METHODS_URL,
-                "name": "omfp-protocol-methods",
-                "title": "omfp protocol methods",
-                "description": "Every method omfp_call accepts, one line each.",
-                "mimeType": "text/markdown",
-            }] }),
+            json!({ "resources": resources().map(|(uri, name, title, description, mime)| json!({
+                "uri": uri,
+                "name": name,
+                "title": title,
+                "description": description,
+                "mimeType": mime,
+            })) }),
             true,
         ),
         "resources/templates/list" => value(
-            json!({ "resourceTemplates": [{
-                "uriTemplate": METHOD_TEMPLATE,
-                "name": "omfp-protocol-method",
-                "title": "omfp protocol method",
-                "description": "One method's description and its params and result JSON Schemas.",
-                "mimeType": "application/json",
-            }] }),
+            json!({ "resourceTemplates": TEMPLATES.map(|(template, name, title, description, mime)| json!({
+                "uriTemplate": template,
+                "name": name,
+                "title": title,
+                "description": description,
+                "mimeType": mime,
+            })) }),
             true,
         ),
-        "resources/read" => value(read(&params)?, true),
+        "resources/read" => value(read(services, &params)?, true),
         _ => Err(RpcError::new(
             match era {
                 Era::Modern => StatusCode::NOT_FOUND,
@@ -179,21 +279,24 @@ fn tool_call(
     })
 }
 
-/// `resources/read { uri }` (AGT-052): a catalogue URL, read as the host URI is.
-fn read(params: &Map<String, Value>) -> Result<Value, RpcError> {
+/// `resources/read { uri }` (AGT-052): a catalogue URL or a static `omfp://` doc, read as the host URI is; the URIs of
+/// a thread's workspace (`omfp://widgets/check/…`, `omfp://windows`) are not resources (their tools are).
+fn read(services: &Services, params: &Map<String, Value>) -> Result<Value, RpcError> {
     let uri = params
         .get("uri")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    if !uri.starts_with("omfp://") {
+        return Err(RpcError::invalid_params(format!(
+            "Resource not found: `{uri}`; resources/list and resources/templates/list name the resources"
+        )));
+    }
     let read = catalog::read_uri(uri)
-        .ok_or_else(|| {
-            RpcError::invalid_params(format!(
-                "Resource not found: `{uri}`; resources/list and resources/templates/list name the resources"
-            ))
-        })?
+        .unwrap_or_else(|| widgets::read_uri(uri, services.widgets.builtin_dir()))
         .map_err(RpcError::invalid_params)?;
     let mime_type = match read.content_type {
         Some(HostUriResultContentType::ApplicationJson) => "application/json",
+        Some(HostUriResultContentType::TextPlain) => "text/plain",
         _ => "text/markdown",
     };
     Ok(json!({ "contents": [{ "uri": uri, "mimeType": mime_type, "text": read.content }] }))

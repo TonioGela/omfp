@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 use omfp_protocol::{KeymapEntry, KeymapMode, WorkspaceBinding};
 use serde::Deserialize;
 
-use super::{BUILTIN_URL, CHECK_URL, DOCS_URL, SCHEMA_URL, keymap};
+use super::{BUILTIN_URL, DOCS_URL, SCHEMA_URL, keymap};
 
 /// Host URI of the docs index (DMN-198).
 pub const INDEX_URL: &str = "omfp://docs";
@@ -108,17 +108,15 @@ pub fn index() -> String {
          - {DOCS_URL} — widgets, views (`.omfp/views.json`), init files, TSX views, the `omfp/sdk` SDK and the \
          `omfp/kit` kit.\n\
          - {SHELL_URL} — the window: left column, mode line and view tabs, `:` commands, default keys.\n\
-         - {KEYMAP_URL} — the default key bindings and commands, with what this daemon's config and this workspace's \
-         `.omfp/keymap.json` add.\n\
+         - {KEYMAP_URL} — the default key bindings and commands; a thread's agent also sees what this daemon's \
+         config and its workspace's `.omfp/keymap.json` add.\n\
          - {SCHEMA_URL} — the JSON Schema of `.omfp/views.json`.\n\
          - {} — the JSON Schema of `.omfp/keymap.json`.\n\
          - {BUILTIN_URL} — the built-in widgets; {BUILTIN_URL}/<name>[/<path>] their sources.\n\
-         - {CHECK_URL}/<name> — checks a widget (`<name>`, `./widgets/<name>`, `user:<name>`), an init file (`init`, \
-         `user:init`) or a TSX view (`views/<file>`): compile errors and what open windows report, a widget no \
-         window shows rendered out of sight.\n\
-         - {WINDOWS_URL} — the open windows showing this workspace (as `omfp_windows`): their views and where each \
-         comes from, the commands init files and widgets add, their errors.\n\
-         - {} — the protocol methods `omfp_call` accepts; {}/<name> gives one's params and result schemas.\n",
+         - {} — the protocol methods `omfp_call` accepts; {}/<name> gives one's params and result schemas.\n\
+         \n\
+         Check a widget, an init file (`init`, `user:init`) or a TSX view (`views/<file>`) with `omfp_widget_check`, \
+         and what the open windows show with `omfp_windows` ({DOCS_URL}, \"Checking your work in the window\").\n",
         keymap::SCHEMA_URL,
         crate::agent_tools::catalog::METHODS_URL,
         crate::agent_tools::catalog::METHODS_URL,
@@ -371,7 +369,7 @@ mod tests {
         );
     }
 
-    // spec: DMN-198, AGT-081
+    // spec: DMN-198
     #[test]
     fn the_docs_index_names_every_docs_resource_once() {
         let text = index();
@@ -382,14 +380,14 @@ mod tests {
             SCHEMA_URL,
             keymap::SCHEMA_URL,
             BUILTIN_URL,
-            "omfp://widgets/check/<name>",
-            WINDOWS_URL,
             crate::agent_tools::catalog::METHODS_URL,
         ] {
-            assert!(
+            assert_eq!(
                 text.lines()
-                    .any(|line| line.starts_with(&format!("- {url} — "))),
-                "{url} has no line: {text}"
+                    .filter(|line| line.starts_with(&format!("- {url} — ")))
+                    .count(),
+                1,
+                "{url} has no line or several: {text}"
             );
         }
         assert!(text.contains("`user:init`"), "{text}");

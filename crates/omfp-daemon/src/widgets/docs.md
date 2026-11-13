@@ -8,8 +8,9 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 - `<workspace>/.omfp/views.json` — the views of the window (schema: `omfp://schemas/views.json`). Without it the window
   shows the default view:
   `["row", { "sizes": [3, 1] }, ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]], ["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "omfp:background"]]`.
-  A workspace that has its own `views.json` keeps it as it is (omfp never rewrites it): `:view reset` there, or an
-  agent with `omfp_ui_mount`, adds a widget the default view gained later, such as `omfp:background`.
+  A workspace that has its own `views.json` keeps it as it is (omfp never rewrites it): a widget the default view
+  gained later, such as `omfp:background`, comes in with `:widget add omfp:background` there, or an agent's
+  `omfp_ui_mount`.
 - `<workspace>/.omfp/widgets/<name>/index.tsx` (or `index.ts`, `index.jsx`, `index.js`) — a workspace widget,
   referenced as `./widgets/<name>`. Its default export is a React component; its props are the layout node's props.
   Other files of the folder are imported with relative paths (`./chart.tsx` or `./chart`).
@@ -30,8 +31,8 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
     "work": {
       "title": "Work",
       "layout": ["row", { "sizes": [3, 1] },
-        ["col", {}, "omfp:header", "omfp:chat"],
-        ["tabs", {}, "omfp:workspace", ["./widgets/tests", { "command": "make test" }]]]
+        ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]],
+        ["tabs", { "id": "side" }, "omfp:workspace", ["./widgets/tests", { "command": "make test" }]]]
     }
   }
 }
@@ -52,13 +53,14 @@ while the thread's summary has `mcpReloadPending`, "Reload to load MCP tools" = 
 `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
 `HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
-written to `views.json`: keep that slot (`["tabs", { "id": "main" }, "omfp:chat"]`) in every view, else files float in
-a panel. Props every widget accepts: `instance` and `title` (a tab's label; default: the built-in's name, else the
-reference). `instance` names the node's state: `useStored` and `useJob` keep their state per workspace, instance and
-key (default instance: the reference), so two nodes of the same widget with the same instance share it — give each
-its own `instance` when a widget appears twice (`["./widgets/tests", { "instance": "tests-api" }]`). It also names
-the node in `omfp_widget_check`'s report. Built-ins keep no stored state (`omfp:changes` twice, one per `repo`, works
-without it), but an `instance` per node costs nothing.
+written to `views.json`. Keep the main slot, `["tabs", {"id": "main"}, …"omfp:chat"]`, in every view: the files the
+user opens become its tabs (without it they float in a panel). `:widget add` and `omfp_ui_mount` put side tabs in the
+`tabs` container with `"id": "side"`. Props every widget accepts: `instance` and `title` (a tab's label; default: the
+built-in's name, else the reference). `instance` names the node's state: `useStored` and `useJob` keep their state per
+workspace, instance and key (default instance: the reference), so two nodes of the same widget with the same instance
+share it — give each its own `instance` when a widget appears twice (`["./widgets/tests", { "instance": "tests-api" }]`).
+It also names the node in `omfp_widget_check`'s report. Built-ins keep no stored state (`omfp:changes` twice, one per
+`repo`, works without it), but an `instance` per node costs nothing.
 
 ## Views in the window
 
@@ -96,15 +98,17 @@ without it), but an `instance` per node costs nothing.
 
 ## Mounts, panels and the library
 
-An agent shows UI to the user without editing `views.json` by hand:
+An agent shows UI to the user without editing `views.json` by hand. Place a widget with omfp_ui_mount { id, widget |
+code, props?, view?, place?, panel? } (`place`: `side_tab`, the default, `main_tab` or `end`), never by rewriting
+views.json: mounting an id again replaces it, omfp_ui_update { id, props } drives it, omfp_ui_remove { id } removes it.
 
-- `omfp_ui_mount { id, code | widget, props?, view?, where?, panel? }` mounts a widget: `code` (a component's source,
-  written to `.omfp/widgets/<id>/index.tsx`) or `widget` (a reference: `user:<name>`, `./widgets/<name>`). It goes
-  into the view `view` (default: the default view; a new id creates a view showing only it, a dashboard) at `where`
-  (`side-tab`, `main-tab`, `end`), or with `panel: true` floats over every view. The node gets `instance: <id>`, so
-  `useStored` state follows the mount; mounting the same id again replaces it. `code` is refused (`conflict`) when
-  `.omfp/widgets/<id>/` holds a widget no mount with `code` wrote, or when `<id>` names a built-in (`chat`, `file`…):
-  pick another id.
+- `omfp_ui_mount` mounts a widget: `code` (a component's source, written to `.omfp/widgets/<id>/index.tsx`) or
+  `widget` (a reference: `user:<name>`, `./widgets/<name>`, `omfp:<name>`). It goes into the view `view` (default: the
+  default view; a new id creates a view showing only it, a dashboard) at `place`: `side_tab` (the last tab of the
+  `tabs` with `"id": "side"`), `main_tab` (the last tab of the main slot) or `end` (the end of the view's root
+  container); with `panel: true` it floats over every view instead. The node gets `instance: <id>`, so `useStored`
+  state follows the mount. `code` is refused (`conflict`) when `.omfp/widgets/<id>/` holds a widget no mount with
+  `code` wrote, or when `<id>` names a built-in (`chat`, `file`…): pick another id.
 - `omfp_ui_update { id, props?, code? }` merges `props` into the mounted widget (`null` deletes one) or replaces its
   inline code; windows re-render it in place, its state kept. Drive a mounted widget (a progress, a status) this way.
 - `omfp_ui_remove { id }` removes it (a view it filled goes too); its folder stays.
@@ -113,8 +117,8 @@ An agent shows UI to the user without editing `views.json` by hand:
 - The component library is the user library: `omfp_component_save { name, widget | code, replace? }` saves a
   workspace widget or code as `user:<name>`, `omfp_component_list` lists it. Start a component's entry with a comment
   saying what it shows and which props it takes: the list shows it.
-- Widgets reach the same through `useCall()`: `views.mount`, `views.mount_update`, `views.unmount`, `widgets.save`,
-  `widgets.library`.
+- Widgets reach the same through `useCall()`, with the same arguments (`place` included) plus `workspaceId`:
+  `views.mount`, `views.mount_update`, `views.unmount`, `widgets.save`, `widgets.library`.
 
 ## Keys
 
@@ -226,8 +230,7 @@ promise of the run, of a cleanup, of a transform, of a command or listener it re
 file; the window keeps working without it, and the next save that runs cleanly removes the banner. Windows report these
 errors, and those of TSX views, to the daemon: `omfp_views_errors` (or `views.errors { workspaceId }`) lists what each
 window showing the workspace sees now. Before that, `omfp_widget_check { name: "init" }` (`user:init` for the user's
-file, `views/ops.tsx` for a TSX view; `omfp://widgets/check/init` reads the same) compiles the file as the windows
-import it and adds the windows' errors for it.
+file, `views/ops.tsx` for a TSX view) compiles the file as the windows import it and adds the windows' errors for it.
 
 ### Views of init files
 
@@ -331,16 +334,19 @@ at them to check what an init file did.
 
 ## Checking your work in the window
 
-Errors mostly show only in the user's window, so check there, step by step:
+Errors mostly show only in the user's window, so check there. Verify in the user's window: write → omfp_widget_check {
+name } (it renders a widget no view shows out of sight) → omfp_windows (each window's views and where each comes from,
+added commands, errors) → `omfp_window_run { command: "view.switch", args: ["<view>"] }` to show a view → omfp_windows
+again for its errors. Step by step:
 
 1. Write the widget, `.omfp/init.ts` or the TSX view.
 2. `omfp_widget_check { name }` (`init`, `user:init`, `views/<file>` for the others): the daemon's compile, then what
    each window showing the workspace renders. A widget no window shows in its current view (placed only in an init
    file's or a TSX view, or not placed yet) is mounted out of sight in the most recently focused window — a hidden
    container outside every view, with the same error boundary and SDK — for a few seconds, and its render or error is
-   reported; without a window only the compile check applies. When no view holds the widget it names `omfp_view_add`,
-   else the views that hold it.
-3. `omfp_windows` (or `omfp://windows`): each window showing the workspace by id, the most recently focused first —
+   reported; without a window only the compile check applies. When no view holds the widget it names the
+   `omfp_ui_mount` call that places it, else the views that hold it.
+3. `omfp_windows`: each window showing the workspace by id, the most recently focused first —
    its thread, its views after `views.json`, the init files and their transforms (where each comes from, its TSX
    file, its widgets, the active one), the commands init files and widgets added with their keys, and its errors.
 4. `omfp_window_run { command: "view.switch", args: ["<view>"] }` shows a view in that window (`windowId` picks one);
@@ -392,10 +398,14 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useCall()` | `call(method, params)`: any daemon protocol method, e.g. `call("thread.prompt", { threadId, text })`; `call("thread.session", { threadId })` gives a thread's session id, session file, model, cwd, roots and cost without starting omp. |
 | `useCall(method, params)` | `{ data, error, refreshing, refresh }`: calls `method` on mount, whenever `params` change (compared as JSON) and on `refresh()`; `params` `null` calls nothing. A new mount (the widget mounted again, its view pushed out and shown again) shows the window's last result of the same widget instance, method and params at once with `refreshing: true` until the new one replaces it; `data` is `undefined` only before the first. A failure keeps `data` and sets `error` (a `CallError` for the daemon's errors), cleared by the next success. Show "updating…" from `refreshing` if you want; otherwise the old data simply gives way to the new. |
 | `useTopic(topic)` | Follows a topic (`index`, `thread/<id>`, `workspace/<id>`, `views/<id>`, `job/<id>`) while mounted; returns its subscription state. The 5 threads most recently unmounted stay followed, so showing one again is immediate. |
+| `useSnapshot(select)` | `select(snapshot)` over the window's per-frame model (`connection`, `index`, `threads`, `workspaces`, `views`, `jobs` by id, `topics`), rendering again only when its result changes (by identity): for what no other hook gives. Return a part of the snapshot, never a new object or array (it would change on every call); `useTopic` follows what is not followed yet. |
 | `useIndex()` | Workspaces, threads, theme and settings (the `index` topic). |
 | `useThreads()` | Thread summaries by id. |
 | `useThreadSummary(threadId)` | One thread's summary (title, process state, workspace). |
 | `useThread(threadId)` | `{ state, closed }`: the thread's full state (transcript, tools, queue, pending interactions). |
+| `useBackground(threadId)` | What `omfp:background` shows: `{ rows, running, stop(jobId), cancel(subagentId) }`, the thread's background jobs and subagents (`rows`: `{ kind, id, toolCallId, label, state, durationMs, lastLine, stopRequested }`, running durations ticking every second) and how many still run; `stop` asks the agent to stop a job (a steer: omp has no kill command), `cancel` cancels a subagent (`thread.subagent_cancel`). |
+| `useRunningInBackground(threadId)` | How many background jobs and subagents of the thread run (the header's badge). |
+| `useSubagentRows(threadId)` | `{ rows, refresh }`: the thread's subagents (`{ id, index, agent, status, description, task, activity, meta, durationMs, live }`), from its state plus `thread.subagents` while omp runs, read again when one starts or ends and on `refresh()`. |
 | `useWorkspaces()` | Workspaces by id. |
 | `useWorkspace(workspaceId)` | The workspace and its repositories' git status. |
 | `useViews(workspaceId)` | The workspace's views manifest, keymap (`keymap`, `keymapError`), widget folders and stored state (the `views/<id>` topic). |
@@ -403,18 +413,28 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useWindowState(key)` | Window-local state; `SELECTED_THREAD` is the thread this window shows. |
 | `useCurrentWorkspaceId()` | The workspace this window works in: the selected thread's, else the draft thread's. |
 | `useActiveView(viewIds)`, `chooseView(host, viewId)` | The id among the current workspace's view ids this window shows for the selected thread (its own, else its workspace's last chosen; `undefined`: the default view), and switching it (`host` from `useHost()`), as `:view <id>` does. |
+| `useHost()` | The window's host (`client`, `window` store, `commands`, …): the `host` that `chooseView`, `requestLogin(host, providerId?)` and `registerCommand(host, command)` take; widgets otherwise use the hooks. |
 | `useThreadActions()` | `select`, `rename`, `archive`, `stop`, `restart`, … for threads. |
-| `useCommand(command)` | Registers a `:` command or key binding target while mounted (`description` shows in `:describe-command`). |
+| `useCommand(command)` | Registers a `:` command or key binding target while mounted: `{ id, title, description?, aliases?, scope?, args?, enabled?, run(args) }` (`description` shows in `:describe-command`, `args(before)` completes the argument being typed, `enabled()` returning `false` hides it). With `scope`, it answers only while the focus is inside an element of that scope (`SCOPE_ATTRIBUTE`), before a global command of the same id. |
+| `SCOPE_ATTRIBUTE` | `"data-omfp-scope"`: put `{ [SCOPE_ATTRIBUTE]: "my-scope" }` on your widget's root to own the commands registered with `scope: "my-scope"`; the innermost scope around the focus wins. |
 | `useAnnounce()` | `announce(message)` for screen readers. |
+| `useReportError()` | `report(error)`: adds a failure (an `Error`, a `CallError`, any value) to the window's error list, which the frame shows until dismissed. Use it in the `catch` of every user action. |
+| `useUrlActions()` | `{ open(url), copy(url) }`: opens a URL in a new browser tab (without access to this window), or copies it to the clipboard and announces it (a refusal goes to the error list). |
 | `useNotify()` | `notify({ title, body, threadId? })`: tells the user something without covering anything. While the window has focus it is a notice at the right end of the mode line (`◆ title body`, `g n` or a click opens it, gone after 8 s); while it has not, a system notification (when the user allowed them; `[ui] notifications = "never"` shows neither). With `threadId`, opening it selects that thread, visiting the thread clears it, and nothing is shown about the thread the user is on. Use it for results worth a look (a build turned red, a long job finished), not for every update. |
-| `useSettings()` | The daemon's UI settings. |
+| `useSettings()` | `{ ui, keymap, error }`: the daemon's settings (`ui.density`, `ui.fontSize`, `ui.motion`, `ui.notifications`, `ui.fonts`; `error` when the config file failed to load), live. |
+| `useSetSettings()` | `set(patch)`: `settings.set` with `{ ui?, keymap? }`, merged into the daemon's config file (`ui`: `density`, `fontSize`, `fonts`, `motion`, `notifications`); a failure goes to the error list. |
 | `useFile(path, { follow? })` | `{ status, file, error, refreshing, reload, save }`: a file of the current workspace (`workspaces.read_file`: `file.content`, `file.hash`, `file.head`, …). `status` is `"loading"`, `"ready"`, `"missing"` or `"error"` (an error keeps the `file` read before). With `follow` (default `true`) it is checked every 2 s and on every git status change. A new mount shows the window's last copy of the file at once (`ready`, `refreshing: true`) until its first read answers. `save(content, expectedHash?)` writes it only if the file still has that hash (default: the one read) and resolves to `{ ok: true, file }` or `{ ok: false, conflict, error }`. |
 | `useLive()` | `[live, snapshot]`: this window's live voice session (M6). `live.start(threadId)` opens the microphone and a WebRTC call relayed to omp's realtime voice (`thread.live_connect`), or, without WebRTC on the daemon's machine (`#local=1`, the desktop app), omp's own session (`thread.live_start`, the spectrum then draws omp's levels), `live.end()`, `live.endThread(threadId)` (any window's session), `live.toggleMute()`, `live.source()` (the audio for `Spectrum`), `live.support()` (`"webrtc"`, `"host"`, `"insecure"`, `"unsupported"`); `snapshot.local` is the session (`idle`, `starting`, `running`, `failed`). The thread's `state.live` has omp's phase and transcript. |
 | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file of the current workspace in a tab next to the chat (the view's `tabs` with `"id": "main"`; keep that slot in your views), else as a tab of a floating panel; `diff: true` shows it against `HEAD`. A bare or partial name (`theme.ts`, `src/theme.ts`) that does not exist as given opens the file it names, or lets the user pick when several match. |
 | `useMissingFile(path, missing, { line?, diff? })` | For a widget showing a file: while `missing`, looks for the file `path` names (`workspaces.find_file`); one match opens in its place, several open the window's picker. Gives `"finding"`, `"opened"`, `"choosing"` or `"none"`. |
+| `useFileTabs(workspaceId)` | This window's opened tabs of the workspace's `main` slot: `{ tabs, widgets, active, select(id), close(path), closeTab(id) }` (files, then revealed widgets); `select(undefined)` shows the slot's first tab. |
+| `usePathSources()` | `{ suggest(query), complete(path) }` for the kit's `PathField`: repositories the daemon has seen (`repos.suggest`) and directories on the daemon's machine (`fs.complete`), even when the browser is remote. |
 | `Row`, `Col`, `Tabs`, `Stack`, `Widget` | The layout components of TSX views (see TSX views); they render only in a view file of `.omfp/views/`. |
 | `SELECTED_THREAD` | Window key of the selected thread id (`useWindowState(SELECTED_THREAD)`). |
 | `REVEAL_WIDGET` | Window key of the latest reveal request, `{ reference, nonce }` (`nonce`: a new number per request): shows that widget in its tab of the view, else in a tab of the `main` slot, else in a floating panel (see Views in the window). |
+| `OPEN_SUBAGENT` | Window key of a request to open a subagent's transcript in `omfp:subagents`: set `{ threadId, subagentId, nonce }` (`nonce`: a new number per request). |
+| `FOCUS_COMPOSER` | Window key of the thread whose composer takes the focus once it shows; the composer clears it. |
+| `DRAFT_THREAD` | Window key of the draft thread, `{ workspaceId }` (`undefined` without one): a new thread being written before its first message is sent. |
 
 ### Jobs
 
@@ -455,14 +475,20 @@ blue highlight), whatever the page's styles say. `omfp_widget_check` warns about
 | Export | What it is |
 | --- | --- |
 | `Card` | A bordered surface: `title`, `actions`, `tone` (`default`, `error`, `warning`, `success`). |
+| `BorderBox` | A box whose title sits on its top border (`╭─ title ──╮`): `title`, `level` (a heading level for the title), `end` (metadata at the right end of the border), children as the body. |
+| `EmptyState` | What shows where nothing is yet: `icon` (an `Icon` name), `title`, the hint as children, `action` (a button under it), `bare` (without the dashed box). |
 | `Button` | A button: `onPress`, `variant` (`primary`, `secondary`, `quiet`, `danger`), `size` (`sm`, `md`), `isDisabled`. |
 | `IconButton` | An icon-only button: `label`, `icon`, `onPress`. |
 | `Progress` | A progress bar: `label` (required), `value` (omit for indeterminate), `max` (default 100), `hideLabel`. |
 | `Spectrum` | The live voice spectrum: `source` (`useLive()[0].source()`), `status`, `label`; a static meter below motion `full`. |
 | `LivePanel` | The live voice panel: `status`, `statusLabel`, `spectrum`, `lines`, `message`, `hints`, `actions`. |
 | `Log` | Monospace lines that follow the end: `lines`. |
+| `Meter` | A small usage bar with `value/max` beside it: `value`, `max`, `label` (accessible name), `threshold` (fraction of `max` above which it turns warn, default 0.8). |
 | `Badge` | A small status label: `tone` (`default`, `primary`, `error`, `warning`, `success`). |
 | `Chip` | A compact labelled item: `tone`, `onRemove`. |
+| `StateMark` | The glyph of a state in its status color: `state` (`running`, `awaiting`, `failed`, `unread`, `idle`, `done`), `label` (decorative without one), `spinner` (`activity` or `status`). |
+| `Icon` | A decorative Lucide icon (`aria-hidden`; the control around it carries the name): `name` (`archive`, `check`, `circle-alert`, `copy`, `file`, `folder`, `inbox`, `play`, `plus`, `refresh-cw`, `search`, `x`, …). |
+| `Kbd` | A key chip: the key or sequence as lowercase words (`spc n`, `enter`) as children. |
 | `Markdown` | Renders Markdown text (no raw HTML): `text`. |
 | `Code` | Code: `code`, `block`, `language` (a name or file extension; highlights a block). |
 | `Diff` | A unified patch (`git diff` output) as numbered lines: `patch`, `language` (highlighting). |
@@ -477,10 +503,16 @@ blue highlight), whatever the page's styles say. `omfp_widget_check` warns about
 | `TextField` | A text input: `label`, `hideLabel`, `value`, `onChange`, `placeholder`. |
 | `TextArea` | A multi-line text input: `label`, `hideLabel`, `value`, `onChange`. |
 | `SearchField` | A search input (Escape clears it): `label`, `hideLabel`, `value`, `onChange`. |
+| `PathField` | A path input completing on the daemon's machine: `label`, `value`, `onChange`, `onSubmit`, `suggest` and `complete` (from `usePathSources()`), `placeholder`. |
 | `Checkbox` | A checkbox with its label as children: `isSelected`, `onChange(selected)`. |
 | `RadioGroup` | One choice among a few `Radio` children (`value` each): `label`, `hideLabel`, `value`, `onChange(value)`. |
 | `Disclosure` | An expandable section. |
 | `Toolbar` | A row of controls. |
+| `Dialog` | A modal dialog (focus trapped, returned on close): `title`, children (or a function of `{ close }`), `isOpen` and `onOpenChange` (omit both inside a `DialogTrigger` with its trigger button), `isDismissable`. |
+| `ConfirmDialog` | A confirmation step before an action: `isOpen`, `onOpenChange`, `title`, `message`, `confirmLabel`, `cancelLabel`, `onConfirm` (then it closes), `tone: "danger"` (destructive; Cancel focused first), `busy` (the caller closes it once the action settles), `error`. Use it for every confirmation: never `window.confirm` or a native `<dialog>`. |
+| `Popover` | A non-modal overlay anchored to a trigger: inside a `DialogTrigger`, or `triggerRef`, `isOpen`, `onOpenChange`, `placement`. |
+| `PopoverDialog` | A non-modal dialog in a popover, inside a `DialogTrigger` after its trigger button: `title` (on the top border), `placement`, children (or a function of `{ close }`); Escape and a click outside close it. |
+| `Tooltip` | A hint shown on hover and focus: `<TooltipTrigger><Button …/><Tooltip>hint</Tooltip></TooltipTrigger>`; `placement`. |
 
 ### Form controls
 

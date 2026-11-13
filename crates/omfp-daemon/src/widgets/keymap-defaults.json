@@ -559,11 +559,9 @@
       ]
     },
     {
-      "id": "widget.copy",
+      "id": "widget",
       "title": "Add a widget to the view, copy one into the workspace or save one to the user library (:widget add <reference>, :widget copy|save[!] <widget> [<name>])",
-      "aliases": [
-        "widget"
-      ]
+      "aliases": []
     },
     {
       "id": "workspace.new",

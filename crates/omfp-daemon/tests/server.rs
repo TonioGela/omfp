@@ -2027,7 +2027,7 @@ async fn live_errors_have_their_codes_and_readable_messages() {
     assert_eq!(login["code"], "omp_error", "{login}");
     assert_eq!(
         login["message"],
-        "live voice needs an `openai-codex` login in omp: log in with `/login openai-codex` in omp, then try again"
+        "live voice needs an `openai-codex` login in omp: run `:login openai-codex`, then try again"
     );
     assert_eq!(
         login["details"]["ompError"],
