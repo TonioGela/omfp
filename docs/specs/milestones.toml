@@ -940,6 +940,8 @@ requirements = [
   # QA fixes: the thread header gives its title the room, controls look like controls
   "UI-482",
   "UI-483",
+  # QA fixes: the header's workspace chip is a button that opens the workspace
+  "UI-484",
   # Journeys
   "E2E-22",
   "E2E-23",

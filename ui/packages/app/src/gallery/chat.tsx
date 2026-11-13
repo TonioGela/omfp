@@ -38,7 +38,7 @@ export function Transcript() {
       <ChatHeader
         bar={
           <>
-            <Button size="sm" variant="quiet" icon={<Icon name="folder" />}>
+            <Button size="sm" icon={<Icon name="folder" />}>
               omfp · 2 repos
             </Button>
             <Select

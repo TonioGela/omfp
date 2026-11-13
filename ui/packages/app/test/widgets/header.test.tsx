@@ -101,6 +101,24 @@ describe("omfp:header", () => {
     expect(test.host.window.get(REVEAL_WIDGET)?.reference).toBe("omfp:workspace");
   });
 
+  // spec: UI-484
+  test("the workspace chip is a bordered button; in the compact ⋯ a press closes the popover and shows omfp:workspace", async () => {
+    const restore = installResizeObserver();
+    try {
+      const test = setup();
+      const chip = screen.getByTestId("workspace-chip");
+      expect([chip.tagName, chip.dataset.variant]).toEqual(["BUTTON", "secondary"]);
+      resize(screen.getByTestId("thread-header"), 600);
+      await test.user.click(screen.getByTestId("header-more"));
+      const more = await screen.findByTestId("header-more-dialog");
+      await test.user.click(within(more).getByTestId("workspace-chip"));
+      expect(screen.queryAllByTestId("header-more-dialog").length).toBe(0);
+      expect(test.host.window.get(REVEAL_WIDGET)?.reference).toBe("omfp:workspace");
+    } finally {
+      restore();
+    }
+  });
+
   // spec: UI-030
   test("without a selected thread the header says so", () => {
     renderWithHost(<HeaderWidget />);

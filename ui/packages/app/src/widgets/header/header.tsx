@@ -198,7 +198,7 @@ function More({ threadId, view, onChanged, compact }: SessionProps & { compact: 
             {compact && (
               <>
                 <ThinkingSelect threadId={threadId} view={view} onChanged={onChanged} />
-                <Chips view={view} />
+                <Chips view={view} onDone={close} />
                 <div className="omfp-thread-header__actions">
                   <Usage threadId={threadId} view={view} />
                 </div>
@@ -353,19 +353,26 @@ function InlineEditor({
   );
 }
 
-function Chips({ view }: { view: HeaderView }): ReactNode {
+function Chips({ view, onDone }: { view: HeaderView; onDone?: () => void }): ReactNode {
   return (
     <div className="omfp-thread-header__chips">
-      <WorkspaceChipButton chip={view.workspace} />
+      <WorkspaceChipButton chip={view.workspace} onDone={onDone} />
     </div>
   );
 }
 
 /**
- * The thread's workspace (UI-340): its name and repository count, the repositories as its tooltip and description; a
- * press shows `omfp:workspace`, which lists them — its tab, or a floating panel when the view lacks it.
+ * The thread's workspace (UI-340, UI-484): a bordered button with its name and repository count, the repositories as
+ * its tooltip and description; a press shows `omfp:workspace`, which lists them — its tab, or a floating panel when
+ * the view lacks it — after `onDone` (closing the compact header's popover).
  */
-function WorkspaceChipButton({ chip }: { chip: WorkspaceChip | undefined }): ReactNode {
+function WorkspaceChipButton({
+  chip,
+  onDone,
+}: {
+  chip: WorkspaceChip | undefined;
+  onDone?: (() => void) | undefined;
+}): ReactNode {
   const [, reveal] = useWindowState(REVEAL_WIDGET);
   const reposId = useId();
   if (chip === undefined) {
@@ -375,13 +382,15 @@ function WorkspaceChipButton({ chip }: { chip: WorkspaceChip | undefined }): Rea
     <>
       <Button
         size="sm"
-        variant="quiet"
         icon={<Icon name="folder" />}
         className="omfp-thread-header__workspace"
         data-testid="workspace-chip"
         data-repos={chip.repoCount}
         aria-describedby={reposId}
-        onPress={() => reveal({ reference: "omfp:workspace", nonce: Date.now() })}
+        onPress={() => {
+          onDone?.();
+          reveal({ reference: "omfp:workspace", nonce: Date.now() });
+        }}
       >
         <span className="omfp-thread-header__workspace-label" title={chip.tooltip}>
           {chip.label}

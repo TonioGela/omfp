@@ -297,7 +297,46 @@ async fn composer_at(
 /// The window widths of E2E-41: the wide frame's narrowest, a 13" laptop's, and two larger.
 const COMPOSER_WIDTHS: [u32; 4] = [1920, 1440, 1280, 1100];
 
-// spec: E2E-41, UI-480, UI-481
+/// The selected tab of the side slot.
+async fn side_tab(journey: &Journey) -> anyhow::Result<Option<String>> {
+    let value = journey
+        .eval(
+            "const tab = document.querySelector(
+               '[data-testid=view] .omfp-view__tabs:not([data-slot]) [data-testid=view-tab][aria-selected=true]');
+             return tab === null ? null : tab.textContent;",
+            Vec::new(),
+        )
+        .await?;
+    Ok(value.as_str().map(str::to_owned))
+}
+
+/// The header's workspace chip is a button that shows `omfp:workspace` (UI-484): at 1920 px (the full header), with
+/// Changes selected in the side slot, pressing it selects the Workspace tab again.
+async fn chip_reveals_workspace(journey: &Journey) -> anyhow::Result<()> {
+    window(journey, 1920).await?;
+    journey
+        .eval(
+            "[...document.querySelectorAll('[data-testid=view] .omfp-view__tabs:not([data-slot]) [data-testid=view-tab]')]
+               .find((t) => t.textContent === 'Changes').click();",
+            Vec::new(),
+        )
+        .await?;
+    journey
+        .until("the Changes tab", async |page| {
+            Ok((side_tab(page).await?.as_deref() == Some("Changes")).then_some(()))
+        })
+        .await?;
+    journey
+        .click("[data-testid=thread-header] [data-testid=workspace-chip]")
+        .await?;
+    journey
+        .until("the Workspace tab", async |page| {
+            Ok((side_tab(page).await?.as_deref() == Some("Workspace")).then_some(()))
+        })
+        .await
+}
+
+// spec: E2E-41, UI-480, UI-481, UI-484
 #[tokio::test(flavor = "multi_thread")]
 async fn the_composer_keeps_its_primary_bottom_right_and_the_transcript_its_column()
 -> anyhow::Result<()> {
@@ -342,5 +381,6 @@ async fn the_composer_keeps_its_primary_bottom_right_and_the_transcript_its_colu
     anyhow::ensure!(wrong.is_empty(), "the composer's layout: {wrong:#?}");
     journey.fake.release_gate(1);
     journey.status(&thread, "idle").await?;
+    chip_reveals_workspace(&journey).await?;
     journey.finish("E2E-41").await
 }
