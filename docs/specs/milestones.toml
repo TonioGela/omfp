@@ -973,6 +973,8 @@ requirements = [
   "UI-527",
   "UI-528",
   "UI-529",
+  # QA fixes: journeys act on a settled window (the index in, the composer following the width)
+  "TST-111",
   # Journeys
   "E2E-22",
   "E2E-23",

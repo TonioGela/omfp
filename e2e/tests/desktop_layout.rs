@@ -207,7 +207,7 @@ async fn panels_at(journey: &Journey, workspace_id: &str, width: u32) -> anyhow:
     Ok(())
 }
 
-// spec: E2E-38, UI-452, UI-453, UI-454
+// spec: E2E-38, UI-452, UI-453, UI-454, TST-111
 #[tokio::test(flavor = "multi_thread")]
 async fn repository_rows_side_tabs_and_floating_panels_at_desktop_widths() -> anyhow::Result<()> {
     let shared = TempRepo::new()?;
@@ -262,6 +262,25 @@ return {
   scrollbar: transcript.offsetWidth - transcript.clientWidth,
 };";
 
+/// The composer's width in `rem` and whether it is tight (`data-tight`).
+const TIGHT: &str = "
+const form = document.querySelector('[data-testid=composer]');
+const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
+return [form.getBoundingClientRect().width / rem, form.dataset.tight === 'true'];";
+
+/// Waits until the composer follows the window's width: tight exactly below 34rem (UI-481). Its `ResizeObserver` sets
+/// `data-tight` a frame or more after a resize, so a measure before that has the long labels of the width before:
+/// coming from 1280 px, the busy actions wrapped at 1100 px under a loaded machine (TST-111).
+async fn composer_follows(journey: &Journey) -> anyhow::Result<()> {
+    journey
+        .until("the composer to follow the width (UI-481)", async |page| {
+            let (width, tight): (f64, bool) =
+                serde_json::from_value(page.eval(TIGHT, Vec::new()).await?)?;
+            Ok(((width < 34.0) == tight).then_some(()))
+        })
+        .await
+}
+
 /// The composer at `width` in `state` (`idle`, `busy`): its measures, a screenshot, and what is wrong with them.
 async fn composer_at(
     journey: &Journey,
@@ -269,6 +288,7 @@ async fn composer_at(
     state: &str,
 ) -> anyhow::Result<(Value, Vec<String>)> {
     window(journey, width).await?;
+    composer_follows(journey).await?;
     let value = journey.eval(COMPOSER, Vec::new()).await?;
     eprintln!("composer at {width} px, {state}: {value}");
     journey
@@ -382,7 +402,7 @@ async fn menus_not_cut(journey: &Journey) -> anyhow::Result<()> {
     Ok(())
 }
 
-// spec: E2E-41, UI-480, UI-481, UI-484, UI-485, UI-486
+// spec: E2E-41, UI-480, UI-481, UI-484, UI-485, UI-486, TST-111
 #[tokio::test(flavor = "multi_thread")]
 async fn the_composer_keeps_its_primary_bottom_right_and_the_transcript_its_column()
 -> anyhow::Result<()> {

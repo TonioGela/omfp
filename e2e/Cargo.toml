@@ -21,6 +21,8 @@ serde_json.workspace = true
 tempfile.workspace = true
 thirtyfour.workspace = true
 tokio.workspace = true
+# The in-process daemon's logs in a failed journey's output.
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

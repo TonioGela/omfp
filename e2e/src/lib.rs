@@ -7,6 +7,7 @@
 //! threads keep the placeholder title of their first message.
 
 use std::ffi::OsString;
+use std::fmt::Write as _;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -34,6 +35,14 @@ use thirtyfour::prelude::*;
 /// Longest wait for any condition (omp startup and a model turn included).
 pub const TIMEOUT: Duration = Duration::from_secs(60);
 const POLL: Duration = Duration::from_millis(50);
+
+/// The element that has the focus, for [`Journey::report`]: its tag, test id and text field value.
+const FOCUSED: &str = "
+const e = document.activeElement;
+if (e === null || e === document.body) { return 'nothing'; }
+const id = e.getAttribute('data-testid');
+const value = typeof e.value === 'string' && e.value !== '' ? ` holding ${JSON.stringify(e.value)}` : '';
+return `<${e.tagName.toLowerCase()}${id === null ? '' : ` data-testid=${id}`}>${value}`;";
 
 /// The web bundle in `OMFP_WEB_BUNDLE` (`just test-e2e` sets it to a bundle no other build writes, TST-074), else the
 /// one built by `just build-web` (`ui/packages/app/dist`).
@@ -305,6 +314,7 @@ impl Journey {
         launcher: Option<FakeLauncher>,
         bundle: PathBuf,
     ) -> anyhow::Result<Self> {
+        trace_daemon();
         let started = Instant::now();
         if !bundle.join("index.html").is_file() {
             bail!(
@@ -371,7 +381,8 @@ impl Journey {
         Connection::open(&self.target()).await
     }
 
-    /// Polls `probe` until it returns `Some`, failing after [`TIMEOUT`] with `what` and the page's state.
+    /// Polls `probe` until it returns `Some`, failing after [`TIMEOUT`] with `what` and the page's state
+    /// ([`Journey::report`]).
     pub async fn until<T>(
         &self,
         what: &str,
@@ -383,11 +394,35 @@ impl Journey {
                 return Ok(value);
             }
             if Instant::now() > deadline {
-                let page = self.text("body").await.unwrap_or_default();
-                bail!("timed out waiting for {what}; the page shows:\n{page}");
+                bail!("timed out waiting for {what}; {}", self.report().await);
             }
             tokio::time::sleep(POLL).await;
         }
+    }
+
+    /// What a failed wait says about the page: its text, the element that has the focus (the text alone hides it: a
+    /// key typed into the wrong field leaves no trace) and the browser's console since the last report.
+    pub async fn report(&self) -> String {
+        let page = self.text("body").await.unwrap_or_default();
+        let focus = match self.eval(FOCUSED, Vec::new()).await {
+            Ok(Value::String(focus)) => focus,
+            Ok(other) => other.to_string(),
+            Err(error) => format!("unknown ({error})"),
+        };
+        let mut report =
+            format!("the page shows:\n{page}\nthe focus is on {focus}\nthe browser's console:");
+        match self.driver.browser_log().await {
+            Ok(entries) if entries.is_empty() => report.push_str(" empty"),
+            Ok(entries) => {
+                for entry in entries {
+                    let _ = write!(report, "\n{} {}", entry.level, entry.message);
+                }
+            }
+            Err(error) => {
+                let _ = write!(report, " unavailable ({error})");
+            }
+        }
+        report
     }
 
     /// Evaluates `script` (a function body getting `arguments`) in the page.
@@ -519,10 +554,16 @@ impl Journey {
         Ok(())
     }
 
-    /// Waits until the page is connected and shows its view.
+    /// Waits until the page is connected, shows its view and has its index: the left column is no longer `aria-busy`
+    /// (TST-111). Connected comes first; until the index arrives, the window can still move the focus (UI-023).
     pub async fn connected(&self) -> anyhow::Result<()> {
         self.element("[data-testid=view]").await?;
-        self.gone("[data-testid=connection-banner]").await
+        self.gone("[data-testid=connection-banner]").await?;
+        self.until("the index in the left column", async |page| {
+            let loaded = page.count("[data-testid=sidebar][aria-busy=false]").await?;
+            Ok((loaded == 1).then_some(()))
+        })
+        .await
     }
 
     /// The ids of the threads in the sidebar.
@@ -880,6 +921,17 @@ pub fn workspace_roots(prompt: &str) -> Vec<String> {
         .collect()
 }
 
+/// The in-process daemon's logs in the test's output, which nextest shows for a failed journey: `RUST_LOG`, else
+/// warnings and errors. A second journey in one process keeps the subscriber of the first.
+fn trace_daemon() {
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_test_writer()
+        .try_init();
+}
+
 async fn start_daemon(
     env: &OmpEnv,
     data: &Path,
@@ -926,7 +978,8 @@ fn config_file(data: &Path) -> PathBuf {
     data.join("config.toml")
 }
 
-/// Headless Chromium with its own profile; every non-loopback request goes to a closed proxy port.
+/// Headless Chromium with its own profile; every non-loopback request goes to a closed proxy port. The page's console
+/// is kept for [`Journey::report`].
 fn chrome(profile: &Path) -> anyhow::Result<ChromeCapabilities> {
     let mut caps = DesiredCapabilities::chrome();
     if let Some(binary) = std::env::var_os("CHROME_BIN") {
@@ -952,6 +1005,7 @@ fn chrome(profile: &Path) -> anyhow::Result<ChromeCapabilities> {
         caps.add_arg(arg)?;
     }
     caps.add_arg(&format!("--user-data-dir={}", profile.display()))?;
+    caps.set_browser_log_level(thirtyfour::LoggingPrefsLogLevel::All)?;
     Ok(caps)
 }
 
