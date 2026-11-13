@@ -596,7 +596,8 @@ prompts first, then the workspace's, then the rest (DMN-216..DMN-218, PRT-127, P
 build their controls from the kit, whose popovers follow the theme, not from native `<select>` or popup `<input>`s,
 whose opened lists the platform draws: the widget docs and notes say so with the `Select` pattern (AGT-088),
 `omfp_widget_check` warns about each native control left (AGT-089), and the root's `color-scheme` and `accent-color`
-keep those at least in the light or dark scheme (UI-374).
+keep those at least in the light or dark scheme (UI-374). Big files: the box CodeMirror scrolls in is a layout root,
+so in `omfp desktop` (WebKitGTK) a scroll step or a key lays out that box instead of the whole window (UI-118, TST-107).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and

@@ -459,8 +459,8 @@ blue highlight), whatever the page's styles say. `omfp_widget_check` warns about
 | `Code` | Code: `code`, `block`, `language` (a name or file extension; highlights a block). |
 | `Diff` | A unified patch (`git diff` output) as numbered lines: `patch`, `language` (highlighting). |
 | `languageOfPath` | `languageOfPath("src/lib.rs")` → `"rust"`: the language to pass to `Code` or `Diff`. |
-| `CodeEditor` | CodeMirror with vim bindings: `value`, `path` (picks the language), `readOnly`, `line`, `onSave(text)` (`:w`, Ctrl-S), `onDirtyChange`, `onRequestEdit` (`i` while read-only). Loaded on first use. |
-| `CodeDiff` | Two texts compared with CodeMirror: `original`, `value`, `path`, `layout` (`"unified"` or `"split"`). |
+| `CodeEditor` | CodeMirror with vim bindings: `value`, `path` (picks the language), `readOnly`, `line`, `onSave(text)` (`:w`, Ctrl-S), `onDirtyChange`, `onRequestEdit` (`i` while read-only). Loaded on first use. It fills the height its container gives it (a flex child or a fixed height), never takes one from its text, and scrolls inside. |
+| `CodeDiff` | Two texts compared with CodeMirror: `original`, `value`, `path`, `layout` (`"unified"` or `"split"`). Sized like `CodeEditor`. |
 | `PathLink` | An inline button opening a file path: `reference` (`{ path, line }`), `onOpen` (e.g. from `useOpenFile()`). |
 | `Tabs` | Tabs with `TabList`, `Tab` and `TabPanel`. |
 | `ListBox` | A selectable list with `ListBoxItem`. |

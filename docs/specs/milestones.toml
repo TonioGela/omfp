@@ -839,6 +839,9 @@ requirements = [
   "AGT-088",
   "AGT-089",
   "UI-374",
+  # Big files: CodeMirror's boxes as layout roots
+  "UI-118",
+  "TST-107",
   # Journeys
   "E2E-22",
   "E2E-23",

@@ -1,28 +1,37 @@
-//! Transcript and composer performance (M9) against a daemon on the fake launcher: a thread resumes a session of
-//! 10,000 messages (prose, Markdown with code blocks, tool calls with their results), and the test plays omp's
-//! streaming frames into it. A probe installed before the page's scripts (`perf/probe.js`) stands in for the React
-//! developer tools to count commits and component renders per transcript item, and records frames, long tasks, the
-//! time spent handling WebSocket messages, and per key press the time to the next frame and the event timing entries.
+//! Transcript, composer and file performance (M9, UI-118) against a daemon on the fake launcher: a thread resumes a
+//! session of 10,000 messages (prose, Markdown with code blocks, tool calls with their results), and the test plays
+//! omp's streaming frames into it; a linked repository holds big files changed since `HEAD`. A probe installed before
+//! the page's scripts (`perf/probe.js`) stands in for the React developer tools to count commits and component renders
+//! per transcript item, and records frames, long tasks, the time spent handling WebSocket messages, and per key press
+//! the time to the next frame and the event timing entries.
 //!
-//! The tests run in headless Chromium and assert structure only (TST-052): the DOM stays bounded with 10,000 messages
-//! (UI-190), a streamed delta re-renders the streaming row and no other transcript item (UI-191), and a key press in
-//! the composer renders the input and nothing else (UI-197). The benchmarks print timings and assert nothing; they
-//! are not part of `just ci`:
+//! The tests run in headless Chromium and assert structure only (TST-052, TST-107): the DOM stays bounded with 10,000
+//! messages (UI-190), a streamed delta re-renders the streaming row and no other transcript item (UI-191), a key press
+//! in the composer renders the input and nothing else (UI-197), and a 20,000-line file scrolls in the editor's own
+//! scroller, inside a layout root, with a bounded DOM, read-only and as a diff (UI-118). The benchmarks print timings
+//! and assert nothing; they are not part of `just ci`:
 //!
 //! ```sh
 //! just build-web
 //! cargo test -p e2e --release --test perf benchmark_transcript -- --ignored --nocapture
 //! cargo test -p e2e --release --test perf benchmark_typing_chromium -- --ignored --nocapture
-//! OMFP_WEBKIT_WEBDRIVER=$(command -v WebKitWebDriver) \
-//!   cargo test -p e2e --release --test perf benchmark_typing_webkit -- --ignored --nocapture
+//! cargo test -p e2e --release --test perf benchmark_file_chromium -- --ignored --nocapture
+//! export OMFP_WEBKIT_WEBDRIVER=$(command -v WebKitWebDriver)
+//! cargo test -p e2e --release --test perf benchmark_typing_webkit -- --ignored --nocapture
+//! cargo test -p e2e --release --test perf benchmark_file_webkit -- --ignored --nocapture
 //! ```
 //!
 //! `OMFP_PERF_MESSAGES` (default 10000 for the transcript, 300 for typing), `OMFP_PERF_RATE` (events per second,
-//! default 100) and `OMFP_PERF_SECONDS` (default 10) change the load; with `OMFP_PERF_PROFILE=1` the transcript
-//! benchmark also prints the functions with the most self time while scrolling and streaming (Chromium's sampling
-//! profiler; build the bundle without `minify` for readable names, and point `OMFP_WEB_BUNDLE` at it). The `webkit`
-//! benchmark drives nixpkgs' `MiniBrowser` (the engine of `omfp desktop`) through `WebKitWebDriver` under `xvfb-run`,
-//! never the user's display, on a copy of the bundle whose `index.html` loads the probe (no CDP there).
+//! default 100) and `OMFP_PERF_SECONDS` (default 10) change the load; with `OMFP_PERF_PROFILE=1` the Chromium
+//! benchmarks also print the functions with the most self time while scrolling, streaming or pressing `j` (Chromium's
+//! sampling profiler; build the bundle without `minify` for readable names, and point `OMFP_WEB_BUNDLE` at it). The
+//! file benchmarks open `small.ts` (60 lines), `hunks.ts` and `rewrite.ts` (`OMFP_PERF_HUNKS_LINES`,
+//! `OMFP_PERF_REWRITE_LINES`, default 1000: a changed line in every 20, one rewritten block) and `big.ts`
+//! (`OMFP_PERF_BIG_LINES`, default 20000, long lines among them), or those of `OMFP_PERF_FILES`, in the modes of
+//! `OMFP_PERF_MODES` (default `diff,view,edit`), scrolling `OMFP_PERF_FRAMES` frames (default 240) each way. The
+//! `webkit` benchmarks drive nixpkgs' `MiniBrowser` (the engine of `omfp desktop`) through `WebKitWebDriver` under
+//! `xvfb-run`, never the user's display, on a copy of the bundle whose `index.html` loads the probe (no CDP there);
+//! their wheel turns are wheel buttons clicked on that X server with `xdotool`.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -1246,4 +1255,583 @@ async fn benchmark_typing_webkit() -> anyhow::Result<()> {
     driver.quit().await?;
     drop(webkit);
     journey.finish("typing benchmark (webkitgtk)").await
+}
+
+/// Line `index` of a TypeScript module of functions of 12 lines; with `long`, every 5th function holds a line of
+/// about 1,500 characters (an array literal). `variant` changes the line the way an edit would (0: as committed).
+fn source_line(index: usize, long: bool, variant: usize) -> String {
+    let function = index / 12;
+    let suffix = if variant == 0 {
+        String::new()
+    } else {
+        format!(" + {variant}")
+    };
+    match index % 12 {
+        0 => format!(
+            "export function handler{function}(cache: Cache, input: readonly number[]): Result<number> {{"
+        ),
+        1 => format!(
+            "  // Takes the lock first: the early return only happens on a real error ({function})."
+        ),
+        2 => "  const guard = cache.lock();".to_owned(),
+        3 => "  if (guard.isCold()) {".to_owned(),
+        4 => format!("    guard.refill({{ size: input.length, label: \"handler {function}\" }});"),
+        5 | 10 => "  }".to_owned(),
+        6 if long && function.is_multiple_of(5) => format!(
+            "  const table = [{}];",
+            (0..300)
+                .map(|n| (n * 7 + function).to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        6 => "  const table = [1, 2, 3];".to_owned(),
+        7 => "  let total = 0;".to_owned(),
+        8 => "  for (const value of input) {".to_owned(),
+        9 => format!("    total += value * {function} + guard.get(value % 64){suffix};"),
+        _ => format!("  return {{ ok: true, value: total + table.length{suffix} }}; }}"),
+    }
+}
+
+/// A module of `lines` lines (see [`source_line`]); `changed` picks the lines an edit changes (their variant).
+fn source(lines: usize, long: bool, changed: impl Fn(usize) -> usize) -> String {
+    let mut text = String::new();
+    for index in 0..lines {
+        text.push_str(&source_line(index, long, changed(index)));
+        text.push('\n');
+    }
+    text
+}
+
+/// What a file's editor or diff shows.
+#[derive(Debug)]
+#[expect(
+    dead_code,
+    reason = "the page and the heights are printed by the benchmarks only"
+)]
+struct Editor {
+    /// Elements under `.cm-content` (every editor of a split diff).
+    nodes: u64,
+    /// `.cm-line` elements.
+    lines: u64,
+    /// Elements of the whole page.
+    page: u64,
+    /// The class of the element that scrolls, its scroll height and client height.
+    scroller: String,
+    scroll_height: u64,
+    client_height: u64,
+    /// The computed `contain` of the kit's box around the scroller (UI-118).
+    contain: String,
+}
+
+/// The script locating the element that scrolls `css`'s code: the nearest ancestor of its first `.cm-content` with
+/// more content than room and a scrolling overflow.
+const SCROLLER: &str = "const scrollerOf = (css) => {
+      let t = document.querySelector(css + ' .cm-content');
+      while (t && !(t.scrollHeight > t.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(t).overflowY))) {
+        t = t.parentElement;
+      }
+      return t;
+    };";
+
+async fn editor_dom(driver: &WebDriver, css: &str) -> anyhow::Result<Editor> {
+    let value = eval_on(
+        driver,
+        &format!(
+            "{SCROLLER}
+             const root = document.querySelector(arguments[0]);
+             const t = scrollerOf(arguments[0]);
+             const box = root.querySelector('.omfp-code-editor__view, .omfp-code-diff__view');
+             return {{ nodes: root.querySelectorAll('.cm-content *').length,
+                      lines: root.querySelectorAll('.cm-line').length,
+                      page: document.getElementsByTagName('*').length,
+                      scroller: t ? t.className : 'none',
+                      scrollHeight: t ? t.scrollHeight : 0,
+                      clientHeight: t ? t.clientHeight : 0,
+                      contain: box ? getComputedStyle(box).contain : 'none' }};"
+        ),
+        vec![json!(css)],
+    )
+    .await?;
+    let text = |key: &str| value[key].as_str().unwrap_or_default().to_owned();
+    Ok(Editor {
+        nodes: count(&value, "nodes"),
+        lines: count(&value, "lines"),
+        page: count(&value, "page"),
+        scroller: text("scroller"),
+        scroll_height: count(&value, "scrollHeight"),
+        client_height: count(&value, "clientHeight"),
+        contain: text("contain"),
+    })
+}
+
+/// Stops the probe's recording after `settle_ms` (the long tasks of the last frames, the end of a smooth scroll),
+/// and lets its frame loop end.
+async fn stop_after(driver: &WebDriver, settle_ms: u64) -> anyhow::Result<Recording> {
+    let value = driver
+        .execute_async(
+            "const [ms, done] = arguments;
+             setTimeout(() => {
+               const recording = window.__omfpPerf.stop();
+               requestAnimationFrame(() => requestAnimationFrame(() => done(recording)));
+             }, ms);",
+            vec![json!(settle_ms)],
+        )
+        .await?
+        .json()
+        .clone();
+    Ok(Recording::from_json(&value))
+}
+
+/// Scrolls `css`'s code by `step` px per frame for `frames` frames (negative: up), recording.
+async fn scroll_code(
+    driver: &WebDriver,
+    css: &str,
+    frames: u64,
+    step: i64,
+) -> anyhow::Result<Recording> {
+    let script = format!(
+        "{SCROLLER}
+        const [css, frames, step, done] = arguments;
+        const t = scrollerOf(css);
+        window.__omfpPerf.start(false);
+        let frame = 0;
+        const tick = () => {{
+          if (frame >= frames) {{
+            done();
+            return;
+          }}
+          t.scrollTop += step;
+          frame += 1;
+          requestAnimationFrame(tick);
+        }};
+        requestAnimationFrame(tick);"
+    );
+    driver
+        .execute_async(&script, vec![json!(css), json!(frames), json!(step)])
+        .await?;
+    stop_after(driver, 200).await
+}
+
+/// Where wheel turns come from.
+enum Turns {
+    /// CDP's `Input.dispatchMouseEvent`, 100 px a notch (Chromium).
+    Cdp,
+    /// Wheel buttons on the X server in this environment (`DISPLAY`, `XAUTHORITY`) by `xdotool`, 16 ms apart: the
+    /// platform's own smooth wheel scrolling (`WebKitGTK`, whose WebDriver wheel actions scroll nothing).
+    X(Vec<(String, String)>),
+}
+
+/// Turns the mouse wheel `notches` times (down when positive) over `css`'s code, recording.
+async fn wheel_code(
+    driver: &WebDriver,
+    turns: &Turns,
+    css: &str,
+    notches: i64,
+) -> anyhow::Result<Recording> {
+    let at = eval_on(
+        driver,
+        &format!(
+            "{SCROLLER}
+             const r = scrollerOf(arguments[0]).getBoundingClientRect();
+             const x = r.left + r.width / 2, y = r.top + r.height / 2;
+             return [Math.round(x), Math.round(y), Math.round(window.screenX + x),
+                     Math.round(window.screenY + window.outerHeight - window.innerHeight + y)];"
+        ),
+        vec![json!(css)],
+    )
+    .await?;
+    let (x, y, screen_x, screen_y): (i64, i64, i64, i64) = serde_json::from_value(at)?;
+    start_recording(driver, false).await?;
+    match turns {
+        Turns::Cdp => {
+            let cdp = driver.cdp();
+            for _ in 0..notches.unsigned_abs() {
+                cdp.send_raw(
+                    "Input.dispatchMouseEvent",
+                    json!({ "type": "mouseWheel", "x": x, "y": y, "deltaX": 0, "deltaY": 100 * notches.signum() }),
+                )
+                .await?;
+            }
+        }
+        Turns::X(environment) => {
+            let status = std::process::Command::new("xdotool")
+                .envs(environment.iter().map(|(name, value)| (name, value)))
+                .args(["mousemove", &screen_x.to_string(), &screen_y.to_string()])
+                .args(["click", "--repeat", &notches.unsigned_abs().to_string()])
+                .args(["--delay", "16", if notches < 0 { "4" } else { "5" }])
+                .status()?;
+            anyhow::ensure!(status.success(), "xdotool failed: {status}");
+        }
+    }
+    stop_after(driver, 1000).await
+}
+
+/// Puts the focus in `css`'s code with a click, then presses `keys` there in one WebDriver action (as fast as key
+/// repeat or faster), recording until `settle_ms` after the last key.
+async fn keys_code(
+    driver: &WebDriver,
+    css: &str,
+    keys: impl Into<TypingData>,
+    settle_ms: u64,
+) -> anyhow::Result<Recording> {
+    driver
+        .find(By::Css(format!("{css} .cm-content")))
+        .await?
+        .click()
+        .await?;
+    start_recording(driver, false).await?;
+    driver.action_chain().send_keys(keys).perform().await?;
+    stop_after(driver, settle_ms).await
+}
+
+/// The scroll position of `css`'s code (px).
+async fn scroll_top(driver: &WebDriver, css: &str) -> anyhow::Result<f64> {
+    Ok(eval_on(
+        driver,
+        &format!("{SCROLLER} return scrollerOf(arguments[0]).scrollTop;"),
+        vec![json!(css)],
+    )
+    .await?
+    .as_f64()
+    .unwrap_or_default())
+}
+
+/// Runs `text` on the `:` command line from normal mode and waits until the line closes.
+async fn command_on(driver: &WebDriver, text: &str) -> anyhow::Result<()> {
+    eval_on(
+        driver,
+        "if (document.activeElement) { document.activeElement.blur(); }",
+        Vec::new(),
+    )
+    .await?;
+    driver.action_chain().send_keys(":").perform().await?;
+    until_true(
+        driver,
+        "the command line",
+        "const e = document.activeElement; return e !== null && e.dataset.testid === 'command-line-input';",
+        Vec::new(),
+    )
+    .await?;
+    driver.action_chain().send_keys(text).perform().await?;
+    driver
+        .action_chain()
+        .send_keys(Key::Enter)
+        .perform()
+        .await?;
+    until_true(
+        driver,
+        "the command line to close",
+        "return document.querySelector('[data-testid=command-line]') === null;",
+        Vec::new(),
+    )
+    .await
+}
+
+async fn click_on(driver: &WebDriver, css: &str) -> anyhow::Result<()> {
+    until_shown(driver, css).await?;
+    eval_on(
+        driver,
+        "document.querySelector(arguments[0]).click();",
+        vec![json!(css)],
+    )
+    .await?;
+    Ok(())
+}
+
+/// A test file: its name, its committed text and its text in the working tree.
+struct BigFile {
+    name: &'static str,
+    head: String,
+    text: String,
+}
+
+/// The benchmark's files (line counts from `OMFP_PERF_*_LINES`), committed in a repository linked into thread
+/// `thread`'s workspace as `app` and changed in the working tree; the repository lives as long as the result.
+async fn link_big_files(
+    journey: &Journey,
+    thread: &str,
+) -> anyhow::Result<(omfp_testkit::TempRepo, Vec<BigFile>)> {
+    let lines = |name: &str, default: u64| usize::try_from(env_number(name, default));
+    let hunks = lines("OMFP_PERF_HUNKS_LINES", 1000)?;
+    let rewrite = lines("OMFP_PERF_REWRITE_LINES", 1000)?;
+    let big = lines("OMFP_PERF_BIG_LINES", 20_000)?;
+    let files = vec![
+        // The reference: a small file, one screen and a half.
+        BigFile {
+            name: "small.ts",
+            head: source(60, false, |_| 0),
+            text: source(60, false, |i| usize::from(i % 20 == 9)),
+        },
+        // Many hunks: one changed line in every 20.
+        BigFile {
+            name: "hunks.ts",
+            head: source(hunks, false, |_| 0),
+            text: source(hunks, false, |i| usize::from(i % 20 == 9)),
+        },
+        // One big rewritten block in the middle.
+        BigFile {
+            name: "rewrite.ts",
+            head: source(rewrite, false, |_| 0),
+            text: source(rewrite, false, |i| {
+                usize::from((rewrite * 3 / 10..rewrite * 7 / 10).contains(&i)) * 2
+            }),
+        },
+        BigFile {
+            name: "big.ts",
+            head: source(big, true, |_| 0),
+            text: source(big, true, |i| usize::from(i % 600 == 9)),
+        },
+    ];
+    let repo = omfp_testkit::TempRepo::new()?;
+    for file in &files {
+        repo.commit_file(file.name, &file.head, file.name)?;
+        std::fs::write(repo.path().join(file.name), &file.text)?;
+    }
+    let folder = journey.workspace_folder(thread).await?;
+    std::os::unix::fs::symlink(repo.path(), folder.join("app"))?;
+    // Rescans the workspace: `app` is one of its repositories now.
+    journey.workspace_folder(thread).await?;
+    Ok((repo, files))
+}
+
+/// Measures `css`'s code: its DOM, steady scrolling down and up, the wheel; with `profile`, Chromium's profile of
+/// the scroll down.
+async fn measure_code(
+    driver: &WebDriver,
+    profile: Option<&Journey>,
+    turns: &Turns,
+    label: &str,
+    css: &str,
+) -> anyhow::Result<()> {
+    eprintln!("{label}: {:?}", editor_dom(driver, css).await?);
+    let frames = env_number("OMFP_PERF_FRAMES", 240);
+    if let Some(journey) = profile {
+        start_profile(journey).await?;
+    }
+    let down = scroll_code(driver, css, frames, 120).await?;
+    report(
+        &format!("{label}: {frames} frames down at 120 px"),
+        &down,
+        0,
+    );
+    if let Some(journey) = profile {
+        report_profile(journey).await?;
+    }
+    eprintln!("  after: {:?}", editor_dom(driver, css).await?);
+    let up = scroll_code(driver, css, frames, -120).await?;
+    report(&format!("{label}: {frames} frames up at 120 px"), &up, 0);
+    let wheel = wheel_code(driver, turns, css, 40).await?;
+    report(&format!("{label}: 40 wheel notches down"), &wheel, 0);
+    eprintln!("  at {} px", scroll_top(driver, css).await?);
+    let wheel = wheel_code(driver, turns, css, -40).await?;
+    report(&format!("{label}: 40 wheel notches up"), &wheel, 0);
+    eprintln!("  at {} px", scroll_top(driver, css).await?);
+    for (name, keys) in [
+        ("150 × j", "j".repeat(150)),
+        ("150 × k", "k".repeat(150)),
+        (
+            "10 × PageDown",
+            Key::PageDown.value().to_string().repeat(10),
+        ),
+        ("10 × PageUp", Key::PageUp.value().to_string().repeat(10)),
+    ] {
+        let profiled = profile.filter(|_| name.ends_with('j'));
+        if let Some(journey) = profiled {
+            start_profile(journey).await?;
+        }
+        let recording = keys_code(driver, css, keys, 500).await?;
+        report(&format!("{label}: {name}"), &recording, 0);
+        if let Some(journey) = profiled {
+            report_profile(journey).await?;
+        }
+        eprintln!("  at {} px", scroll_top(driver, css).await?);
+    }
+    Ok(())
+}
+
+/// Opens each of `files` (`OMFP_PERF_FILES`: a comma-separated subset) in `driver`'s page and measures it in the
+/// modes of `OMFP_PERF_MODES` (default `diff,view,edit`).
+async fn file_runs(
+    driver: &WebDriver,
+    profile: Option<&Journey>,
+    turns: &Turns,
+    files: &[BigFile],
+) -> anyhow::Result<()> {
+    let only = std::env::var("OMFP_PERF_FILES").unwrap_or_default();
+    let modes = std::env::var("OMFP_PERF_MODES").unwrap_or_else(|_| "diff,view,edit".to_owned());
+    for file in files {
+        if !only.is_empty() && !only.split(',').any(|name| name == file.name) {
+            continue;
+        }
+        eprintln!(
+            "{}: {} lines, {} bytes",
+            file.name,
+            file.text.lines().count(),
+            file.text.len()
+        );
+        let root = format!("[data-testid=file][data-path$=\"{}\"]", file.name);
+        let editor = format!("{root} [data-testid=file-editor]");
+        let started = std::time::Instant::now();
+        command_on(driver, &format!("open app/{}", file.name)).await?;
+        until_shown(driver, &format!("{editor} .cm-line")).await?;
+        eprintln!("  code shown after {} ms", started.elapsed().as_millis());
+        for mode in modes.split(',') {
+            let label = format!("{} {mode}", file.name);
+            match mode {
+                "diff" => {
+                    let started = std::time::Instant::now();
+                    click_on(driver, &format!("{root} [data-testid=file-diff]")).await?;
+                    let diff = format!("{root} [data-testid=file-head-diff]");
+                    until_shown(driver, &format!("{diff} .cm-line")).await?;
+                    eprintln!("  diff shown after {} ms", started.elapsed().as_millis());
+                    measure_code(driver, profile, turns, &label, &diff).await?;
+                    click_on(driver, &format!("{root} [data-testid=file-diff]")).await?;
+                    until_shown(driver, &format!("{editor} .cm-line")).await?;
+                }
+                "view" => measure_code(driver, profile, turns, &label, &editor).await?,
+                "edit" => {
+                    click_on(driver, &format!("{root} [data-testid=file-edit]")).await?;
+                    let editing = format!("{editor}[data-mode=edit]");
+                    until_shown(driver, &editing).await?;
+                    // Editing starts in insert mode: vim's normal mode moves with `j`/`k`.
+                    driver
+                        .action_chain()
+                        .send_keys(Key::Escape)
+                        .perform()
+                        .await?;
+                    until_shown(driver, "[data-testid=mode-line][data-vim=normal]").await?;
+                    measure_code(driver, profile, turns, &label, &editing).await?;
+                    click_on(driver, &format!("{root} [data-testid=file-done]")).await?;
+                    until_shown(driver, &format!("{editor}[data-mode=view]")).await?;
+                }
+                _ => anyhow::bail!("unknown mode {mode}"),
+            }
+        }
+    }
+    Ok(())
+}
+
+// spec: TST-107
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "benchmark: prints timings, asserts nothing"]
+async fn benchmark_file_chromium() -> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh());
+    let journey = Journey::start_fake(launcher).await?;
+    journey
+        .driver
+        .set_script_timeout(Duration::from_secs(300))
+        .await?;
+    install_probe(&journey).await?;
+    let thread = journey.create_thread("files").await?;
+    let (_repo, files) = link_big_files(&journey, &thread).await?;
+    let profile = std::env::var_os("OMFP_PERF_PROFILE").map(|_| &journey);
+    file_runs(&journey.driver, profile, &Turns::Cdp, &files).await?;
+    journey.finish("file benchmark (chromium)").await
+}
+
+// spec: TST-107
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "benchmark: prints timings, asserts nothing"]
+async fn benchmark_file_webkit() -> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh());
+    let scratch = tempfile::tempdir()?;
+    let bundle = probed_bundle(&e2e::web_bundle(), scratch.path())?;
+    let journey = Journey::start_fake_with_bundle(launcher, bundle).await?;
+    journey.connected().await?;
+    let thread = create_thread(&journey, "files").await?;
+    let (_repo, files) = link_big_files(&journey, &thread).await?;
+    let webkit = WebKitDriver::start().await?;
+    let driver = webkit.session().await?;
+    let result = async {
+        driver.set_script_timeout(Duration::from_secs(300)).await?;
+        driver.goto(journey.daemon().url()).await?;
+        until_true(
+            &driver,
+            "the page with the probe",
+            "return document.querySelector('[data-testid=view]') !== null && window.__omfpPerf !== undefined;",
+            Vec::new(),
+        )
+        .await?;
+        click_on(&driver, &row(&thread)).await?;
+        until_shown(&driver, COMPOSER).await?;
+        let agent = eval_on(&driver, "return navigator.userAgent;", Vec::new()).await?;
+        eprintln!("file benchmark: {agent}");
+        file_runs(&driver, None, &Turns::X(webkit.x_environment()?), &files).await
+    }
+    .await;
+    driver.quit().await?;
+    drop(webkit);
+    result?;
+    journey.finish("file benchmark (webkitgtk)").await
+}
+
+/// Elements under `.cm-content` of the 20,000-line file wherever it is scrolled (TST-107): the lines in view and
+/// the editor's margin around them with their highlighting (up to about 1,600 measured), never the whole document.
+const MAX_CODE_NODES: u64 = 3000;
+/// `.cm-line`s of the 20,000-line file wherever it is scrolled (up to about 85 measured).
+const MAX_CODE_LINES: u64 = 200;
+
+/// `css`'s code at `place` scrolls in `.cm-scroller`, inside a layout root, with a bounded DOM (UI-118).
+async fn assert_bounded(driver: &WebDriver, css: &str, place: &str) -> anyhow::Result<()> {
+    let editor = editor_dom(driver, css).await?;
+    assert!(
+        editor
+            .scroller
+            .split(' ')
+            .any(|class| class == "cm-scroller"),
+        "{place}: CodeMirror's scroller scrolls: {editor:?}"
+    );
+    assert_eq!(editor.contain, "strict", "{place}: {editor:?}");
+    assert!(
+        editor.lines >= 20 && editor.lines <= MAX_CODE_LINES && editor.nodes <= MAX_CODE_NODES,
+        "{place}: {editor:?}"
+    );
+    Ok(())
+}
+
+/// Scrolls `css`'s code to the middle of the file and waits two frames (the editor draws the lines there).
+async fn scroll_to_middle(driver: &WebDriver, css: &str) -> anyhow::Result<()> {
+    driver
+        .execute_async(
+            &format!(
+                "{SCROLLER}
+                 const [css, done] = arguments;
+                 const t = scrollerOf(css);
+                 t.scrollTop = t.scrollHeight / 2;
+                 requestAnimationFrame(() => requestAnimationFrame(() => done()));"
+            ),
+            vec![json!(css)],
+        )
+        .await?;
+    Ok(())
+}
+
+// spec: TST-107, UI-118
+#[tokio::test(flavor = "multi_thread")]
+async fn a_big_file_scrolls_in_a_layout_root_with_a_bounded_dom() -> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh());
+    let journey = Journey::start_fake(launcher).await?;
+    install_probe(&journey).await?;
+    let thread = journey.create_thread("files").await?;
+    let (_repo, _files) = link_big_files(&journey, &thread).await?;
+    let driver = &journey.driver;
+    let root = "[data-testid=file][data-path$=\"big.ts\"]";
+    command_on(driver, "open app/big.ts").await?;
+    let editor = format!("{root} [data-testid=file-editor]");
+    let diff = format!("{root} [data-testid=file-head-diff]");
+    for (mode, css) in [("view", &editor), ("diff", &diff)] {
+        if mode == "diff" {
+            click_on(driver, &format!("{root} [data-testid=file-diff]")).await?;
+        }
+        until_shown(driver, &format!("{css} .cm-line")).await?;
+        assert_bounded(driver, css, &format!("{mode} at the top")).await?;
+        scroll_code(driver, css, 60, 120).await?;
+        assert_bounded(driver, css, &format!("{mode} after a steady scroll")).await?;
+        scroll_to_middle(driver, css).await?;
+        assert_bounded(driver, css, &format!("{mode} in the middle")).await?;
+    }
+    journey.finish("big file").await
 }

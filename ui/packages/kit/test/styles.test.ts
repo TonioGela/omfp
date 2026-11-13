@@ -145,6 +145,16 @@ describe("kit styles", () => {
     expect(region.declarations.get("max-inline-size")).toBe("100%");
   });
 
+  // spec: UI-118
+  test("CodeMirror scrolls in a layout root sized by its container; omfp:changes' text-sized diff opts out", () => {
+    const view = findRule(kitRules, [LAYER], ".omfp-code-editor__view, .omfp-code-diff__view");
+    expect(view.declarations.get("contain")).toBe("strict");
+    expect(view.declarations.get("overflow")).toBe("auto");
+    const appRules = parseCss(readFileSync(join(APP_SRC, "styles.css"), "utf8"));
+    const changes = findRule(appRules, ["@layer omfp-widgets"], ".omfp-changes__merge .omfp-code-diff__view");
+    expect(changes.declarations.get("contain")).toBe("none");
+  });
+
   // spec: UI-145
   test("motion none stops every animation and transition and makes scrolling instant; the effective level is data-motion", () => {
     const none = findRule(

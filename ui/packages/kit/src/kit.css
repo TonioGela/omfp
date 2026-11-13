@@ -3284,11 +3284,15 @@
     border-radius: var(--omfp-r-card);
   }
 
+  /* A layout root (UI-118): CodeMirror rewrites its DOM at every scroll step and key, and without size and layout
+     containment WebKitGTK (`omfp desktop`) lays out the whole window each time. Its size comes from its container,
+     never from the text; a content-sized diff opts out (omfp:changes). */
   .omfp-code-editor__view,
   .omfp-code-diff__view {
     flex: 1;
     min-block-size: 0;
     overflow: auto;
+    contain: strict;
   }
 
   .omfp-code-editor__view > .cm-editor,

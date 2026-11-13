@@ -1918,7 +1918,12 @@
     max-inline-size: 100%;
   }
 
+  /* Sized by its text up to 60vh: no size containment (the kit's UI-118 layout root). */
   .omfp-changes__merge {
     max-block-size: 60vh;
+  }
+
+  .omfp-changes__merge .omfp-code-diff__view {
+    contain: none;
   }
 }
