@@ -188,6 +188,15 @@ describe("kit styles", () => {
     expect(Object.fromEntries(hidden.declarations)).toEqual({ display: "none" });
   });
 
+  // spec: UI-455
+  test("a running boxed card's glow stays below its body's top edge, off the border line around the label", () => {
+    const running = '.omfp-tool.omfp-bbox[data-status="running"] > .omfp-tool__body';
+    const body = findRule(kitRules, [LAYER], `:root[data-motion="full"] ${running}`);
+    expect(body.declarations.get("animation")).toBe("omfp-breathe 1.6s ease-in-out infinite");
+    // Clipped at the top edge only: the glow (a 1rem blur) still shows on the sides and below.
+    expect(body.declarations.get("clip-path")).toBe("inset(0 -1.5rem -1.5rem)");
+  });
+
   // spec: UI-118
   test("CodeMirror scrolls in a layout root sized by its container; omfp:changes' text-sized diff opts out", () => {
     const view = findRule(kitRules, [LAYER], ".omfp-code-editor__view, .omfp-code-diff__view");

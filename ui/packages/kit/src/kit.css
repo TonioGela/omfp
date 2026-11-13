@@ -3763,10 +3763,16 @@
       omfp-flow 2s ease-in-out infinite alternate;
   }
 
-  /* A boxed card breathes with its body, the line of its top border being drawn in pieces around the head. */
-  :root[data-motion="full"] .omfp-tool[data-status="running"]:not(.omfp-bbox),
+  /* A running card breathes; a boxed one with its body, the line of its top border being drawn in pieces around the
+     head, whose label shimmers instead. */
+  :root[data-motion="full"] .omfp-tool[data-status="running"]:not(.omfp-bbox) {
+    animation: omfp-breathe 1.6s ease-in-out infinite;
+  }
+
+  /* The body's glow is clipped at its top edge, so none of it spills onto the border line beside the label (UI-455). */
   :root[data-motion="full"] .omfp-tool.omfp-bbox[data-status="running"] > .omfp-tool__body {
     animation: omfp-breathe 1.6s ease-in-out infinite;
+    clip-path: inset(0 -1.5rem -1.5rem);
   }
 
   :root[data-motion="full"] .omfp-tool[data-status="running"] {

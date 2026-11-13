@@ -921,6 +921,8 @@ requirements = [
   "UI-453",
   # QA fixes: floating panels open below the header, side by side
   "UI-454",
+  # QA fixes: a running boxed card's glow stays off its border line
+  "UI-455",
   # Journeys
   "E2E-22",
   "E2E-23",
