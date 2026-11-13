@@ -620,7 +620,7 @@ async fn created_entities_record_the_creating_client() {
 fn superset_params(thread: &str, workspace: &str) -> Value {
     json!({
         "threadId": thread, "workspaceId": workspace, "repo": "01NOREPO", "query": "hi",
-        "path": "/nonexistent", "pr": "owner/repo#1", "title": "t", "text": "hello", "message": "hello",
+        "path": "/nonexistent", "title": "t", "text": "hello", "message": "hello",
         "name": "n", "provider": "fake", "modelId": "scripted", "level": "low", "entryId": "e1",
         "subagentId": "s1", "op": "get", "question": "why?", "command": "true", "interactionId": "i1",
         "response": { "cancelled": true }, "topic": "index"

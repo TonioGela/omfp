@@ -45,8 +45,6 @@ pub enum WorkspaceError {
     Dirty(String),
     #[error("workspace {0} still has threads; delete them first")]
     HasThreads(String),
-    #[error("{0} is not supported yet")]
-    Unsupported(&'static str),
     #[error("{0:?} is outside the workspace folder")]
     OutsideFolder(String),
     #[error("{0:?} is a directory")]

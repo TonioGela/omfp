@@ -58,7 +58,6 @@ pub(crate) fn workspace_error(error: WorkspaceError) -> ErrorBody {
         | WorkspaceError::DetachedHead(_)
         | WorkspaceError::InvalidName(_)
         | WorkspaceError::IsRoot(_)
-        | WorkspaceError::Unsupported(_)
         | WorkspaceError::OutsideFolder(_)
         | WorkspaceError::IsADirectory(_)
         | WorkspaceError::Git(GitError::NotARepository(_)) => ErrorCode::BadRequest,

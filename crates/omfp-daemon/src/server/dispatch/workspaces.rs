@@ -13,9 +13,9 @@ use crate::server::services::{Services, blocking};
 use crate::store::Provenance;
 use crate::workspaces::{NewWorkspace, RepoSource, WorkspaceError, named_files};
 
-/// A `workspaces.add_repo` source in the daemon's terms; PR sources wait for S-08.
-fn repo_source(source: omfp_protocol::RepoSource) -> Result<RepoSource, ErrorBody> {
-    Ok(match source {
+/// A `workspaces.add_repo` source in the daemon's terms.
+fn repo_source(source: omfp_protocol::RepoSource) -> RepoSource {
+    match source {
         omfp_protocol::RepoSource::Link { path } => RepoSource::Link(PathBuf::from(path)),
         omfp_protocol::RepoSource::Worktree {
             repo,
@@ -27,12 +27,7 @@ fn repo_source(source: omfp_protocol::RepoSource) -> Result<RepoSource, ErrorBod
             base_ref,
         },
         omfp_protocol::RepoSource::Clone { url } => RepoSource::Clone(url),
-        omfp_protocol::RepoSource::Pr { .. } => {
-            return Err(workspace_error(WorkspaceError::Unsupported(
-                "adding a pull request (S-08)",
-            )));
-        }
-    })
+    }
 }
 
 /// Creates a workspace as `workspaces.create` does; `fallback_name` names it when the params do not.
@@ -100,7 +95,7 @@ pub(super) async fn workspaces(services: &Services, principal: &Principal, call:
         Call::WorkspacesRescan(params) => params.workspace_id,
         Call::WorkspacesAddRepo(params) => {
             let id = params.workspace_id.clone();
-            let source = repo_source(params.source)?;
+            let source = repo_source(params.source);
             blocking(move || {
                 workspaces
                     .add_repo(&params.workspace_id, params.name.as_deref(), source)

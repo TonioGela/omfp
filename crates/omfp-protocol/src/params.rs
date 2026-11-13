@@ -189,11 +189,6 @@ pub enum RepoSource {
     },
     /// `git clone <url> <name>`.
     Clone { url: String },
-    /// A pull request's head as a worktree (after S-08).
-    Pr {
-        /// PR URL or `owner/repo#N`.
-        pr: String,
-    },
 }
 
 /// `workspaces.remove_repo` params (DMN-025).

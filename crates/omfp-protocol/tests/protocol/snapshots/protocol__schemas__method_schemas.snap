@@ -6426,24 +6426,6 @@ expression: method_schemas()
                 "url"
               ],
               "type": "object"
-            },
-            {
-              "description": "A pull request's head as a worktree (after S-08).",
-              "properties": {
-                "kind": {
-                  "const": "pr",
-                  "type": "string"
-                },
-                "pr": {
-                  "description": "PR URL or `owner/repo#N`.",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "kind",
-                "pr"
-              ],
-              "type": "object"
             }
           ]
         }

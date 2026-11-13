@@ -116,7 +116,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `workspaces.update` | `workspaceId`, `name` | workspace |
 | `workspaces.remove` | `workspaceId`, `force?` | `{}`; removes the repositories and deletes the folder (DMN-028) |
 | `workspaces.rescan` | `workspaceId` | workspace (DMN-023; the daemon also rescans watched workspaces on its own) |
-| `workspaces.add_repo` | `workspaceId`, `name?`, `source`: `link { path }` \| `worktree { repo (id or path), branch?, baseRef? }` \| `clone { url }` \| `pr { pr }` (later, S-08) | workspace (DMN-024) |
+| `workspaces.add_repo` | `workspaceId`, `name?`, `source`: `link { path }` \| `worktree { repo (id or path), branch?, baseRef? }` \| `clone { url }` | workspace (DMN-024) |
 | `workspaces.remove_repo` | `workspaceId`, `name`, `force?`, `deleteBranch?` | workspace (DMN-025) |
 | `workspaces.status` / `.diff` | `workspaceId`, `repo` (name), `path?`, `cursor?` | status / paged diff of one repository; `status` rescans the workspace first and publishes the fresh status of all its repositories on `workspace/<id>` when it changed (what `omfp:changes` uses to refresh, UI-080) |
 | `workspaces.read_file` | `workspaceId`, `path`, `knownHash?` | `{ path, kind: "text" \| "image" \| "binary", size, hash, unchanged, content?, truncated, mime?, repo?, head? }`: a file of the workspace with its `HEAD` text (DMN-089) |

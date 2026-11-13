@@ -996,12 +996,6 @@ export type RepoSource =
   | {
     kind: "clone";
     url: string;
-  }
-  /** A pull request's head as a worktree (after S-08). */
-  | {
-    kind: "pr";
-    /** PR URL or `owner/repo#N`. */
-    pr: string;
   };
 
 /** Git status of one repository of a workspace (the `workspace/<id>` topic, DMN-026). */
