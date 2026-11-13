@@ -937,6 +937,9 @@ requirements = [
   # QA fixes: the composer's primary action stays bottom-right, its actions on one row from 1100 px
   "UI-480",
   "UI-481",
+  # QA fixes: the thread header gives its title the room, controls look like controls
+  "UI-482",
+  "UI-483",
   # Journeys
   "E2E-22",
   "E2E-23",

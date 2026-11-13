@@ -1060,6 +1060,12 @@
     color: var(--omfp-ok);
   }
 
+  /* A bare state (UI-483): glyph and word in the state's color, no box, so it never reads as a control. */
+  .omfp-state-badge[data-bare] {
+    padding-inline: 0;
+    border-color: transparent;
+  }
+
   /* State marks (UI-122, UI-137): the glyph in its status color; running cycles a braille spinner (UI-216): the
      activity frames, or omp's status frames on tool cards. */
   .omfp-state-mark {

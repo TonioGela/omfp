@@ -270,6 +270,20 @@ describe("marks", () => {
     expect(badge.getAttribute("data-fresh")).toBe("true");
   });
 
+  // spec: UI-483
+  test("a bare state badge says so (no box); a badge is boxed by default", () => {
+    render(
+      <>
+        <StateBadge state="running" bare data-testid="bare" />
+        <StateBadge state="running" data-testid="boxed" />
+      </>,
+    );
+    expect([screen.getByTestId("bare").dataset.bare, screen.getByTestId("boxed").dataset.bare]).toEqual([
+      "true",
+      undefined,
+    ]);
+  });
+
   // spec: UI-137, UI-157
   test("exit codes: 0 is ok, anything else is not", () => {
     render(

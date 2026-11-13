@@ -64,6 +64,12 @@ async function choose(user: UserEvent, testid: string, option: string): Promise<
   await user.click(await screen.findByRole("option", { name: option }));
 }
 
+/** Presses `testid` in the header's `⋯` popover (UI-482). */
+async function fromMore(user: UserEvent, testid: string): Promise<void> {
+  await user.click(screen.getByTestId("header-more"));
+  await user.click(within(await screen.findByTestId("header-more-dialog")).getByTestId(testid));
+}
+
 describe("omfp:header", () => {
   // spec: UI-274
   test("a badge counts what runs in the background and shows omfp:background", async () => {
@@ -126,7 +132,7 @@ describe("omfp:header", () => {
     const { client, user } = setup(thread("t1", "", "w1"));
     const title = screen.getByTestId("thread-title");
     expect([title.textContent, title.dataset.placeholder]).toEqual(["New thread", "true"]);
-    await user.click(screen.getByTestId("rename-thread"));
+    await fromMore(user, "rename-thread");
     const input = screen.getByTestId("title-input");
     expect(document.activeElement === input).toBe(true);
     expect((input as HTMLInputElement).value).toBe("");
@@ -136,7 +142,7 @@ describe("omfp:header", () => {
     ]);
     // The focus stays on the renamed item: its title.
     expect(document.activeElement?.getAttribute("data-testid")).toBe("thread-title");
-    await user.click(screen.getByTestId("rename-thread"));
+    await fromMore(user, "rename-thread");
     await user.type(screen.getByTestId("title-input"), "x{Escape}");
     expect(screen.queryByTestId("title-input")).toBeNull();
     expect(document.activeElement?.getAttribute("data-testid")).toBe("thread-title");
@@ -158,7 +164,7 @@ describe("omfp:header", () => {
     await waitFor(() => expect(client.callsTo("thread.state")).toHaveLength(3));
   });
 
-  // spec: UI-030
+  // spec: UI-030, UI-482
   test("stop for a running process, restart with the failure for a failed one", async () => {
     const { client, user } = setup();
     expect(screen.getByTestId("process-action").textContent).toBe("Stop");
@@ -166,31 +172,74 @@ describe("omfp:header", () => {
     expect(client.callsTo("thread.stop")).toHaveLength(1);
     cleanup();
     const failed = setup(thread("t1", "x", "w1", { process: { state: "failed", message: "omp exited" } }));
-    expect(screen.getByTestId("thread-failure").textContent).toBe("omp exited");
+    // Why it failed: the state's tooltip and description, and the ⋯ popover's first line; not a text of the row.
+    const state = screen.getByTestId("thread-state");
+    expect([state.getAttribute("title"), state.getAttribute("aria-description")]).toEqual(["omp exited", "omp exited"]);
+    expect(screen.queryAllByTestId("thread-failure").length).toBe(0);
+    await failed.user.click(screen.getByTestId("header-more"));
+    expect((await screen.findByTestId("thread-failure")).textContent).toBe("omp exited");
+    await failed.user.keyboard("{Escape}");
     await failed.user.click(screen.getByTestId("process-action"));
     expect(failed.client.callsTo("thread.restart")).toHaveLength(1);
   });
 
-  // spec: UI-026
+  // spec: UI-026, UI-482
   test("archiving the selected thread clears the selection and its draft; delete asks first", async () => {
     const { client, host, user } = setup();
     host.window.set(draftKey("t1"), { text: "half", images: [], pastes: [] });
-    await user.click(screen.getByTestId("delete-thread"));
+    await fromMore(user, "delete-thread");
     expect(host.window.get(DELETE_THREAD)).toBe("t1");
     expect(client.callsTo("threads.delete")).toHaveLength(0);
-    await user.click(screen.getByTestId("archive-thread"));
+    await fromMore(user, "archive-thread");
     expect(client.callsTo("threads.archive").map((call) => call.params)).toEqual([{ threadId: "t1" }]);
     expect(host.window.get(SELECTED_THREAD)).toBeUndefined();
     expect(host.window.get(draftKey("t1")).text).toBe("");
     expect(host.window.get(DELETE_THREAD)).toBeUndefined();
   });
 
-  // spec: UI-026
+  // spec: UI-026, UI-482
   test("an archived thread offers unarchive", async () => {
     const { client, user } = setup(thread("t1", "x", "w1", { archivedAt: 2 }));
-    expect(screen.getByTestId("archive-thread").textContent).toBe("Unarchive");
-    await user.click(screen.getByTestId("archive-thread"));
+    await user.click(screen.getByTestId("header-more"));
+    const archive = within(await screen.findByTestId("header-more-dialog")).getByTestId("archive-thread");
+    expect(archive.textContent).toBe("Unarchive");
+    await user.click(archive);
     expect(client.callsTo("threads.unarchive")).toHaveLength(1);
+  });
+
+  // spec: UI-482
+  test("the title row: the title, the state, its one action and ⋯; rename, archive and delete only in the ⋯", async () => {
+    const { user } = setup();
+    const top = screen.getByTestId("thread-header").querySelector(".omfp-chat-header__top");
+    const ids = [...(top?.querySelectorAll("[data-testid]") ?? [])].map((e) => e.getAttribute("data-testid"));
+    expect(ids).toEqual(["thread-title", "thread-state", "process-action", "header-more"]);
+    await user.click(screen.getByTestId("header-more"));
+    const more = await screen.findByTestId("header-more-dialog");
+    expect(
+      ["rename-thread", "archive-thread", "delete-thread", "process-action", "thinking-select", "workspace-chip"].map(
+        (testid) => within(more).queryAllByTestId(testid).length,
+      ),
+    ).toEqual([1, 1, 1, 0, 0, 0]);
+  });
+
+  // spec: UI-483
+  test("what is not a control has no box; the controls are bordered buttons, the one call to action primary", () => {
+    setup(
+      thread("t1", "x", "w1", {
+        process: {
+          state: "failed",
+          message: "omp failed to start: server closed",
+          stderr_tail: "No default model selected. Use /login, or pass --model.",
+        },
+      }),
+    );
+    expect(screen.getByTestId("thread-state").dataset.bare).toBe("true");
+    const variant = (testid: string) => screen.getByTestId(testid).dataset.variant;
+    expect(["process-action", "header-more", "header-login"].map(variant)).toEqual([
+      "secondary",
+      "secondary",
+      "primary",
+    ]);
   });
 
   // spec: UI-202
@@ -199,7 +248,7 @@ describe("omfp:header", () => {
     try {
       const { client, user } = setup();
       const header = screen.getByTestId("thread-header");
-      expect(screen.queryAllByTestId("header-more").length).toBe(0);
+      expect(within(header).queryAllByTestId("header-more").length).toBe(1);
       resize(header, 600);
       expect(header.dataset.compact).toBe("true");
       const inHeader = (testid: string) => within(header).queryAllByTestId(testid).length;

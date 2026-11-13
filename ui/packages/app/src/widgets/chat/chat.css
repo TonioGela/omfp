@@ -60,16 +60,17 @@
     margin-inline-start: auto;
   }
 
-  .omfp-thread-header__lifecycle {
+  /* The state, the state-dependent action and `⋯` at the row's end (UI-482). */
+  .omfp-thread-header__process {
     margin-inline-start: auto;
   }
 
+  /* Why the process failed, first in the `⋯` popover (UI-482): it wraps, never cut. */
   .omfp-thread-header__failure {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    max-inline-size: 28rem;
+    margin: 0;
     font-size: var(--omfp-fs-xs);
+    overflow-wrap: anywhere;
     color: var(--omfp-error);
   }
 

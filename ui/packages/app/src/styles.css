@@ -248,6 +248,7 @@
     display: inline-flex;
     align-items: center;
     gap: var(--omfp-s2);
+    white-space: nowrap;
     color: var(--omfp-on-surface-variant);
   }
 
@@ -488,7 +489,7 @@
     flex: none;
   }
 
-  /* Its top row stays one line too: the title gives way (ellipsis) to the rename, state and lifecycle controls. */
+  /* Its top row stays one line too: the title gives way (ellipsis) to the state, its action and `⋯` (UI-482). */
   .omfp-thread-header:not([data-compact])
     .omfp-chat-header__top
     > :not(.omfp-chat-header__title, .omfp-thread-header__editor) {

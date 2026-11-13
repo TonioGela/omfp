@@ -1056,7 +1056,7 @@ async fn hover(journey: &Journey, css: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-// spec: UI-020, UI-026, UI-092, DMN-028
+// spec: UI-020, UI-026, UI-092, UI-482, DMN-028
 #[tokio::test(flavor = "multi_thread")]
 async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted_with_workspaces()
 -> anyhow::Result<()> {
@@ -1065,7 +1065,8 @@ async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted_with
     let survivor = journey.create_thread("survivor").await?;
     let doomed = journey.create_thread("doomed").await?;
 
-    // Archiving hides it and leaves no thread selected.
+    // Archiving (from the header's ⋯, UI-482) hides it and leaves no thread selected.
+    journey.click("[data-testid=header-more]").await?;
     journey.click("[data-testid=archive-thread]").await?;
     until_rows(&journey, &doomed, 0).await?;
     journey.element("[data-testid=no-thread]").await?;
@@ -1075,6 +1076,7 @@ async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted_with
     until_rows(&journey, &doomed, 1).await?;
     journey.click(&row(&doomed)).await?;
     journey.opened(&doomed).await?;
+    journey.click("[data-testid=header-more]").await?;
     journey.click("[data-testid=archive-thread]").await?;
     journey.gone("[data-testid=archived-toggle]").await?;
     until_rows(&journey, &doomed, 1).await?;

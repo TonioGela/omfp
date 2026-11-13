@@ -44,13 +44,21 @@ export interface StateBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   children?: ReactNode;
   /** Just changed: pops once at motion `full` (UI-146). */
   fresh?: boolean;
+  /** No box: glyph and word only, where a box would read as a control among buttons (the chat header, UI-483). */
+  bare?: boolean;
 }
 
 /** A thread or tool state as a bordered badge: glyph + word (UI-157); the word in its own span, which a phone's chat
  * header hides visually (UI-419). */
-export function StateBadge({ state, fresh = false, className, children, ...props }: StateBadgeProps) {
+export function StateBadge({ state, fresh = false, bare = false, className, children, ...props }: StateBadgeProps) {
   return (
-    <span {...props} className={cx("omfp-state-badge", className)} data-state={state} data-fresh={fresh || undefined}>
+    <span
+      {...props}
+      className={cx("omfp-state-badge", className)}
+      data-state={state}
+      data-fresh={fresh || undefined}
+      data-bare={bare || undefined}
+    >
       <StateMark state={state} />
       <span className="omfp-state-badge__word">{children ?? state}</span>
     </span>

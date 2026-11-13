@@ -2,9 +2,11 @@
  * `omfp:header`, the selected thread's header (UI-030): title with rename in place, the workspace chip (UI-340),
  * model and thinking selectors, context usage, session cost, the process state with stop/restart, the restart the
  * daemon holds back named by its reasons (UI-349), and archive/unarchive/delete (UI-026; delete asks first, in the
- * frame's confirmation dialog). For the draft thread (UI-023): its placeholder title and its workspace's chip. Narrower
- * than {@link COMPACT_BELOW_REM} it is one row (UI-202): title, state and model, the rest in a `⋯` popover. When omp
- * has no model it can use — its start failed saying so, or it lists no model — it offers Log in (UI-388).
+ * frame's confirmation dialog). For the draft thread (UI-023): its placeholder title and its workspace's chip. The
+ * title row gives the title the room (UI-482): the state, one state-dependent action and a `⋯` popover holding rename,
+ * archive and delete. Narrower than {@link COMPACT_BELOW_REM} it is one row (UI-202): title, state and model, the rest
+ * in the `⋯` popover. When omp has no model it can use — its start failed saying so, or it lists no model — it offers
+ * Log in (UI-388).
  */
 
 import type { ThreadSummary } from "@omfp/protocol";
@@ -138,23 +140,23 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
     >
       {compact ? (
         <>
-          <Title threadId={summary.id} view={view} compact />
-          <HeaderState status={view.status} />
+          <Title threadId={summary.id} view={view} />
+          <HeaderState status={view.status} failure={view.failure} />
           <BackgroundBadge threadId={summary.id} />
           <PendingRestart threadId={summary.id} view={view} />
           <ModelSelect threadId={summary.id} view={view} onChanged={refreshSession} />
-          <More threadId={summary.id} view={view} onChanged={refreshSession} />
+          <More threadId={summary.id} view={view} onChanged={refreshSession} compact />
         </>
       ) : (
         <>
           <Title threadId={summary.id} view={view} />
           <div className="omfp-thread-header__process">
-            <HeaderState status={view.status} />
+            <HeaderState status={view.status} failure={view.failure} />
             <BackgroundBadge threadId={summary.id} />
             <ProcessAction threadId={summary.id} view={view} />
             <PendingRestart threadId={summary.id} view={view} />
+            <More threadId={summary.id} view={view} onChanged={refreshSession} compact={false} />
           </div>
-          <Lifecycle threadId={summary.id} archived={view.archived} />
         </>
       )}
     </ChatHeader>
@@ -162,21 +164,25 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
 }
 
 /**
- * The compact header's `⋯` (UI-202): a popover with rename, stop or restart, archive and delete, the thinking level,
- * the chips, context usage and cost. An action closes it.
+ * The header's `⋯` (UI-482): a popover with why the process failed, rename, archive and delete; the compact header's
+ * (UI-202) adds stop or restart, the thinking level, the chips, context usage and cost. An action closes it.
  */
-function More({ threadId, view, onChanged }: SessionProps): ReactNode {
+function More({ threadId, view, onChanged, compact }: SessionProps & { compact: boolean }): ReactNode {
   const [, setRenaming] = useWindowState(RENAMING_THREAD);
   return (
     <DialogTrigger>
-      <IconButton label={text.more} icon={<Icon name="ellipsis" />} data-testid="header-more" />
+      <IconButton variant="secondary" label={text.more} icon={<Icon name="ellipsis" />} data-testid="header-more" />
       <PopoverDialog title={text.moreTitle} className="omfp-thread-header__more" data-testid="header-more-dialog">
         {({ close }) => (
           <>
+            {view.failure !== undefined && (
+              <p className="omfp-thread-header__failure" data-testid="thread-failure">
+                {view.failure}
+              </p>
+            )}
             <div className="omfp-thread-header__actions">
               <Button
                 size="sm"
-                variant="quiet"
                 icon={<Icon name="pencil" />}
                 data-testid="rename-thread"
                 onPress={() => {
@@ -186,14 +192,18 @@ function More({ threadId, view, onChanged }: SessionProps): ReactNode {
               >
                 {text.rename}
               </Button>
-              <ProcessAction threadId={threadId} view={view} onDone={close} />
+              {compact && <ProcessAction threadId={threadId} view={view} onDone={close} />}
             </div>
             <Lifecycle threadId={threadId} archived={view.archived} onDone={close} />
-            <ThinkingSelect threadId={threadId} view={view} onChanged={onChanged} />
-            <Chips view={view} />
-            <div className="omfp-thread-header__actions">
-              <Usage threadId={threadId} view={view} />
-            </div>
+            {compact && (
+              <>
+                <ThinkingSelect threadId={threadId} view={view} onChanged={onChanged} />
+                <Chips view={view} />
+                <div className="omfp-thread-header__actions">
+                  <Usage threadId={threadId} view={view} />
+                </div>
+              </>
+            )}
           </>
         )}
       </PopoverDialog>
@@ -247,9 +257,9 @@ async function fetchDetails(call: SdkClient["call"], threadId: string): Promise<
   };
 }
 
-/** The title, or its editor while renaming (`Space r`, `:rename`); the compact header renames from its `⋯`. Saving or
- * cancelling leaves the focus on the title (UI-286). */
-function Title({ threadId, view, compact = false }: { threadId: string; view: HeaderView; compact?: boolean }) {
+/** The title, or its editor while renaming (`Space r`, `:rename`, the `⋯` popover's Rename). Saving or cancelling
+ * leaves the focus on the title (UI-286). */
+function Title({ threadId, view }: { threadId: string; view: HeaderView }) {
   const [renaming, setRenaming] = useWindowState(RENAMING_THREAD);
   const actions = useThreadActions();
   const title = useRef<HTMLHeadingElement>(null);
@@ -266,29 +276,16 @@ function Title({ threadId, view, compact = false }: { threadId: string; view: He
   };
   if (renaming !== threadId) {
     return (
-      <>
-        <ChatTitle
-          ref={title}
-          // A focus target only, after renaming (UI-286).
-          tabIndex={-1}
-          placeholder={view.placeholder}
-          data-testid="thread-title"
-          title={view.title}
-        >
-          {view.title}
-        </ChatTitle>
-        {!compact && (
-          <Button
-            size="sm"
-            variant="quiet"
-            icon={<Icon name="pencil" />}
-            data-testid="rename-thread"
-            onPress={() => setRenaming(threadId)}
-          >
-            {text.rename}
-          </Button>
-        )}
-      </>
+      <ChatTitle
+        ref={title}
+        // A focus target only, after renaming (UI-286).
+        tabIndex={-1}
+        placeholder={view.placeholder}
+        data-testid="thread-title"
+        title={view.title}
+      >
+        {view.title}
+      </ChatTitle>
     );
   }
   return (
@@ -507,18 +504,13 @@ function SessionCost({ threadId }: { threadId: string }): ReactNode {
   );
 }
 
-/** The failure reason, Log in when omp needs one (UI-388), and stop/restart; `onDone` runs after pressing one (closes
- * the compact header's popover). */
+/** Log in when omp needs one (UI-388), and stop/restart; `onDone` runs after pressing one (closes the compact header's
+ * popover). Why the process failed is the state's tooltip and the `⋯` popover's first line (UI-482). */
 function ProcessAction({ threadId, view, onDone }: { threadId: string; view: HeaderView; onDone?: () => void }) {
   const actions = useThreadActions();
   const host = useHost();
   return (
     <>
-      {view.failure !== undefined && (
-        <span className="omfp-thread-header__failure" data-testid="thread-failure">
-          {view.failure}
-        </span>
-      )}
       {view.login && (
         <Button
           size="sm"
@@ -536,7 +528,6 @@ function ProcessAction({ threadId, view, onDone }: { threadId: string; view: Hea
       {view.action !== undefined && (
         <Button
           size="sm"
-          variant="quiet"
           icon={<Icon name={view.action === "stop" ? "square" : "refresh-cw"} />}
           data-testid="process-action"
           data-action={view.action}
@@ -589,7 +580,6 @@ function Lifecycle({ threadId, archived, onDone }: { threadId: string; archived:
     <div className="omfp-thread-header__lifecycle">
       <Button
         size="sm"
-        variant="quiet"
         icon={<Icon name="archive" />}
         data-testid="archive-thread"
         onPress={() => {
@@ -624,14 +614,18 @@ const BADGE_STATE: Readonly<Record<ThreadStatus, ThreadState>> = {
   stopped: "idle",
 };
 
-/** The thread's state as a badge (UI-157): glyph and word, popping when it changes after the header opened. */
-function HeaderState({ status }: { status: ThreadStatus }): ReactNode {
+/** The thread's state (UI-157, UI-483): glyph and word without a box, popping when it changes after the header opened;
+ * why the process failed as its tooltip and accessible description. */
+function HeaderState({ status, failure }: { status: ThreadStatus; failure: string | undefined }): ReactNode {
   const first = useRef(status);
   return (
     <StateBadge
       key={status}
       state={BADGE_STATE[status]}
       fresh={status !== first.current}
+      bare
+      title={failure}
+      aria-description={failure}
       data-testid="thread-state"
       data-status={status}
     >
@@ -653,7 +647,6 @@ function BackgroundBadge({ threadId }: { threadId: string }): ReactNode {
   return (
     <Button
       size="sm"
-      variant="quiet"
       data-testid="background-badge"
       data-count={running}
       onPress={() => reveal({ reference: "omfp:background", nonce: Date.now() })}

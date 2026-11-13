@@ -33,7 +33,8 @@ export function Transcript() {
   const [open, setOpen] = useState(true);
   return (
     <Section title="Transcript" note="UI-171 · UI-147 · UI-338" wide>
-      {/* The thread header as the app fills it (UI-443): title, rename, state, stop; the workspace, model, usage. */}
+      {/* The thread header as the app fills it (UI-443, UI-482, UI-483): the title, the bare state, its one action and
+          `⋯`; the workspace, model, usage. */}
       <ChatHeader
         bar={
           <>
@@ -53,13 +54,13 @@ export function Transcript() {
         }
       >
         <ChatTitle>Redesign kit tokens</ChatTitle>
-        <Button size="sm" variant="quiet" icon={<Icon name="pencil" />}>
-          Rename
-        </Button>
-        <StateBadge state="running">running</StateBadge>
-        <Button size="sm" variant="quiet" icon={<Icon name="square" />}>
+        <StateBadge state="running" bare>
+          running
+        </StateBadge>
+        <Button size="sm" icon={<Icon name="square" />}>
           Stop
         </Button>
+        <IconButton variant="secondary" label="More" icon={<Icon name="ellipsis" />} />
       </ChatHeader>
       <ChatHeader bar={<Chip icon={<Icon name="link-2" />}>pmo</Chip>}>
         <ChatTitle placeholder>Untitled</ChatTitle>
