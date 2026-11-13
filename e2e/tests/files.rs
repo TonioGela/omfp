@@ -466,22 +466,27 @@ async fn bare_names_open_their_file_or_a_picker_and_files_float_as_tabs_without_
     until_editor_text(&journey, "export const theme = 1;\n").await?;
     journey.screenshot("m5c-floating-files").await?;
 
-    // Minimised, the panel keeps its file mounted, hidden: restored, the unsaved edit is still there (UI-401, E2E-35).
-    start_editing(&journey).await?;
+    edit_survives_minimise(&journey).await?;
+    journey.finish("E2E-13-names").await
+}
+
+/// Minimised, the floating panel keeps its file mounted, hidden: restored, the unsaved edit is still there (UI-401,
+/// E2E-35).
+async fn edit_survives_minimise(journey: &Journey) -> anyhow::Result<()> {
+    start_editing(journey).await?;
     journey.keys(Key::Control + Key::End).await?;
     journey.keys("// kept").await?;
     let edited = "export const theme = 1;\n// kept";
-    until_editor_text(&journey, edited).await?;
+    until_editor_text(journey, edited).await?;
     journey
         .click("[data-testid=floating-file-minimise]")
         .await?;
     journey
         .element("[data-testid=floating-file][data-minimised]")
         .await?;
-    until_file_hidden(&journey).await?;
+    until_file_hidden(journey).await?;
     journey
         .click("[data-testid=floating-file-minimise]")
         .await?;
-    still_edited(&journey, edited).await?;
-    journey.finish("E2E-13-names").await
+    still_edited(journey, edited).await
 }
