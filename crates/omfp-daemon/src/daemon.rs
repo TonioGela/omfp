@@ -2,9 +2,10 @@
 //! as `omfp daemon` with [`run`]; one daemon per data directory, published in `daemon.json` (DMN-007).
 
 use std::ffi::OsString;
-use std::fs::{File, TryLockError};
-use std::io::{IsTerminal as _, Write as _};
+use std::fs::{File, Permissions, TryLockError};
+use std::io::IsTerminal as _;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -21,7 +22,9 @@ use crate::conventions;
 use crate::git::{Git, GitCli};
 use crate::jobs::Jobs;
 use crate::omp_binary;
-use crate::paths::{DataDir, create_private_dir, make_private_file, private_file_options};
+use crate::paths::{
+    DataDir, create_private_dir, make_private_file, private_file_options, replace_file,
+};
 use crate::server::{self, AppState, Services};
 use crate::store::Store;
 use crate::supervisor::{Supervisor, SupervisorConfig};
@@ -162,16 +165,13 @@ fn lock_data_dir(data_dir: &Path) -> anyhow::Result<File> {
 }
 
 fn write_info(data_dir: &Path, info: &DaemonInfo) -> std::io::Result<()> {
-    let temporary = data_dir.join(format!("{INFO_FILE}.tmp"));
-    let mut file = private_file_options()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&temporary)?;
-    file.write_all(serde_json::to_string_pretty(info)?.as_bytes())?;
-    file.write_all(b"\n")?;
-    file.sync_all()?;
-    std::fs::rename(temporary, data_dir.join(INFO_FILE))
+    let mut text = serde_json::to_string_pretty(info)?;
+    text.push('\n');
+    replace_file(
+        &data_dir.join(INFO_FILE),
+        text.as_bytes(),
+        Some(Permissions::from_mode(0o600)),
+    )
 }
 
 /// Asks a running daemon to stop as SIGTERM does (DMN-005); the tray's `Quit daemon` sends it (DMN-130). Cheap to

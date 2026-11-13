@@ -11,8 +11,9 @@ use omfp_protocol::{
 };
 use tracing::warn;
 
-use super::{LIVE_BUFFER, Services, blocking, write_atomically};
+use super::{LIVE_BUFFER, Services, blocking};
 use crate::event_log::EventLog;
+use crate::paths::replace_file;
 use crate::server::convert::{bad_request, internal};
 use crate::store::{Store, new_id};
 use crate::widgets::{
@@ -232,7 +233,7 @@ impl Services {
         let id = params.workspace_id.clone();
         blocking(move || {
             let path = manifest_path(&workspace_path(&store, &id)?);
-            write_atomically(&path, &manifest::to_text(&params.manifest))
+            replace_file(&path, manifest::to_text(&params.manifest).as_bytes(), None)
                 .map_err(|error| internal(format!("{}: {error}", path.display())))
         })
         .await?;

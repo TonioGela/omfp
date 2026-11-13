@@ -6,7 +6,7 @@
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
-use crate::paths::DataDir;
+use crate::paths::{DataDir, replace_file};
 
 /// The daemon's workspace conventions for the agent of a thread living in workspace `name` at `path`.
 #[must_use]
@@ -168,10 +168,7 @@ pub fn write_widget_builder(data: &DataDir) -> std::io::Result<bool> {
     if std::fs::read_to_string(&path).is_ok_and(|current| current == content) {
         return Ok(false);
     }
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    std::fs::write(&path, content)?;
+    replace_file(&path, content.as_bytes(), None)?;
     Ok(true)
 }
 

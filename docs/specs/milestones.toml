@@ -888,6 +888,8 @@ requirements = [
   # QA fixes: the view reset asks first
   "UI-430",
   "UI-431",
+  # QA fixes: the daemon (atomic writes, steer/follow-up bookkeeping, one restart routine)
+  "DMN-225",
   # Journeys
   "E2E-22",
   "E2E-23",

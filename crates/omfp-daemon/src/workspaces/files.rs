@@ -4,11 +4,9 @@
 //! Paths are relative to the workspace folder or absolute; `..` is resolved without following links and nothing may
 //! leave the folder, while links inside it (linked repositories) are followed: they are the workspace's.
 
-use std::ffi::OsString;
-use std::fs::{File, OpenOptions, Permissions};
-use std::io::{Read, Write};
+use std::fs::File;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -16,6 +14,7 @@ use omfp_protocol::{FileContent, FileKind, FileWritten};
 use sha1::{Digest, Sha1};
 
 use super::{Discovered, Result, WorkspaceError, Workspaces};
+use crate::paths::replace_file;
 
 /// Text beyond this many bytes is cut at the last line end before it (DMN-089).
 pub const TEXT_CAP: usize = 2 * 1024 * 1024;
@@ -247,42 +246,6 @@ fn new_file_target(full: &Path, path: &str) -> Result<PathBuf> {
     Ok(parent.join(name))
 }
 
-/// Replaces `target` with `bytes` in one step: a temporary file in its folder (with `permissions` when given), renamed
-/// over it.
-fn replace(target: &Path, bytes: &[u8], permissions: Option<Permissions>) -> std::io::Result<()> {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
-        return Err(std::io::Error::other(format!(
-            "{} has no folder",
-            target.display()
-        )));
-    };
-    let mut temporary = OsString::from(".");
-    temporary.push(name);
-    temporary.push(format!(
-        ".omfp-{}-{}.tmp",
-        std::process::id(),
-        COUNTER.fetch_add(1, Ordering::Relaxed)
-    ));
-    let temporary = folder.join(temporary);
-    let written = (|| {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temporary)?;
-        if let Some(permissions) = permissions {
-            file.set_permissions(permissions)?;
-        }
-        file.write_all(bytes)?;
-        file.sync_all()?;
-        std::fs::rename(&temporary, target)
-    })();
-    if written.is_err() {
-        let _ = std::fs::remove_file(&temporary);
-    }
-    written
-}
-
 impl Workspaces {
     /// The file `path` of workspace `id` (DMN-089). A relative path the folder does not hold is looked up in each
     /// repository, in scan order. With `known_hash` equal to the file's hash the result is `unchanged`, without its
@@ -395,7 +358,7 @@ impl Workspaces {
             }
             Err(error) => return Err(error.into()),
         };
-        replace(&target, content.as_bytes(), permissions)?;
+        replace_file(&target, content.as_bytes(), permissions)?;
         Ok(FileWritten {
             path: text(&relative),
             hash: hash(content.as_bytes()),

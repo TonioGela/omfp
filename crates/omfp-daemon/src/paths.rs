@@ -1,12 +1,14 @@
 //! Layout of the daemon's data directory (00-overview, "On-disk data"), and keeping it private to its owner
 //! (DMN-180): the directory `0700`, the files the daemon and the desktop write in it `0600`.
 
+use std::ffi::OsString;
 use std::fs::{File, OpenOptions, Permissions};
-use std::io::ErrorKind;
+use std::io::{ErrorKind, Write as _};
 use std::os::unix::fs::{
     DirBuilderExt as _, MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _,
 };
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// The daemon's data directory and the paths inside it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -162,6 +164,59 @@ pub fn open_private_log(path: &Path) -> std::io::Result<File> {
     Ok(file)
 }
 
+/// Replaces the file `target` with `bytes` in one step (DMN-225): a temporary file in its folder, named after it,
+/// this process and a per-call counter (so concurrent writes never share one), flushed to disk and renamed over it; a
+/// failure removes the temporary file. The new file takes `permissions` when given, else those of the file it
+/// replaces (a new file: the default mode). A missing folder is created.
+pub fn replace_file(
+    target: &Path,
+    bytes: &[u8],
+    permissions: Option<Permissions>,
+) -> std::io::Result<()> {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let (Some(folder), Some(name)) = (target.parent(), target.file_name()) else {
+        return Err(std::io::Error::other(format!(
+            "{} has no folder",
+            target.display()
+        )));
+    };
+    if !folder.as_os_str().is_empty() {
+        std::fs::create_dir_all(folder)?;
+    }
+    let permissions = match permissions {
+        Some(permissions) => Some(permissions),
+        None => match std::fs::metadata(target) {
+            Ok(metadata) => Some(metadata.permissions()),
+            Err(error) if error.kind() == ErrorKind::NotFound => None,
+            Err(error) => return Err(error),
+        },
+    };
+    let mut temporary = OsString::from(".");
+    temporary.push(name);
+    temporary.push(format!(
+        ".omfp-{}-{}.tmp",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
+    let temporary = folder.join(temporary);
+    let written = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)?;
+        if let Some(permissions) = permissions {
+            file.set_permissions(permissions)?;
+        }
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        std::fs::rename(&temporary, target)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
+    written
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +284,62 @@ mod tests {
         assert_eq!(make_private_file(&other).unwrap(), Some(0o640));
         assert_eq!(make_private_file(&other).unwrap(), None);
         assert_eq!(mode(&other), 0o600);
+    }
+
+    fn entries(dir: &Path) -> Vec<String> {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    // spec: DMN-225
+    #[test]
+    fn a_replaced_file_keeps_its_mode_and_leaves_no_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config/config.toml");
+
+        replace_file(&file, b"a = 1\n", None).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "a = 1\n");
+
+        std::fs::set_permissions(&file, Permissions::from_mode(0o640)).unwrap();
+        replace_file(&file, b"a = 2\n", None).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "a = 2\n");
+        assert_eq!(mode(&file), 0o640);
+
+        replace_file(&file, b"a = 3\n", Some(Permissions::from_mode(0o600))).unwrap();
+        assert_eq!(mode(&file), 0o600);
+        assert_eq!(entries(&dir.path().join("config")), vec!["config.toml"]);
+    }
+
+    // spec: DMN-225
+    #[test]
+    fn a_failed_replace_removes_its_temporary_file_and_keeps_the_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("views.json");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("inside"), "kept").unwrap();
+
+        assert!(replace_file(&target, b"{}", None).is_err());
+        assert_eq!(entries(dir.path()), vec!["views.json"]);
+        assert_eq!(entries(&target), vec!["inside"]);
+    }
+
+    // spec: DMN-225
+    #[test]
+    fn concurrent_replaces_of_one_file_never_share_a_temporary_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("views.json");
+        let texts: Vec<String> = (0..16).map(|n| format!("{{\"n\":{n}}}")).collect();
+        std::thread::scope(|scope| {
+            for text in &texts {
+                let file = &file;
+                scope.spawn(move || replace_file(file, text.as_bytes(), None).unwrap());
+            }
+        });
+        assert!(texts.contains(&std::fs::read_to_string(&file).unwrap()));
+        assert_eq!(entries(dir.path()), vec!["views.json"]);
     }
 }

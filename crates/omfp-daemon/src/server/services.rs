@@ -27,6 +27,7 @@ use super::convert::{self, bad_request, internal, workspace_error};
 use crate::config_file::{ConfigFile, DaemonOptions, write_back};
 use crate::event_log::EventLog;
 use crate::jobs::Jobs;
+use crate::paths::replace_file;
 use crate::store::{Store, StoreError, new_id, now_ms};
 use crate::supervisor::Supervisor;
 use crate::theme;
@@ -38,18 +39,6 @@ use views::ViewsLog;
 pub(crate) use widget_tools::CHECK_WAIT;
 use widget_tools::ServicesWidgetHost;
 use windows::Windows;
-
-/// Replaces `path` with `text` in one step (a temporary file renamed over it), so a reader never sees half a file;
-/// the parent directory is created when missing.
-fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(format!(".{}.tmp", std::process::id()));
-    std::fs::write(&temporary, text)?;
-    std::fs::rename(&temporary, path)
-}
 
 /// Aborts a task when dropped: a background task's helper ends with it.
 struct AbortOnDrop(JoinHandle<()>);
@@ -532,7 +521,7 @@ impl Services {
             let text = write_back(&current, &update).map_err(bad_request)?;
             let parsed = ConfigFile::parse(&text).map_err(bad_request)?;
             if let Some(path) = &file {
-                write_atomically(path, &text)
+                replace_file(path, text.as_bytes(), None)
                     .map_err(|error| internal(format!("{}: {error}", path.display())))?;
             }
             Ok((text, parsed))

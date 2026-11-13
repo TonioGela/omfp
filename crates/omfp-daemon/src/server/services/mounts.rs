@@ -11,7 +11,8 @@ use omfp_protocol::{
 use serde_json::Value;
 
 use super::views::copy_error;
-use super::{Services, blocking, write_atomically};
+use super::{Services, blocking};
+use crate::paths::replace_file;
 use crate::server::convert::{bad_request, internal};
 use crate::store::Store;
 use crate::widgets::folders::{ENTRIES, MOUNT_MARKER, is_widget_name};
@@ -128,18 +129,21 @@ fn claim_folder(
 fn write_code(workspace: &std::path::Path, id: &str, code: &str) -> Result<(), ErrorBody> {
     let folder = workspace_widgets(workspace).join(id);
     let marker = folder.join(MOUNT_MARKER);
-    write_atomically(
+    replace_file(
         &marker,
-        &format!("Written by views.mount `{id}`: its code (index.tsx) is replaced by the next mount with code.\n"),
+        format!("Written by views.mount `{id}`: its code (index.tsx) is replaced by the next mount with code.\n")
+            .as_bytes(),
+        None,
     )
     .map_err(|error| internal(format!("{}: {error}", marker.display())))?;
     let file = folder.join("index.tsx");
-    write_atomically(&file, code).map_err(|error| internal(format!("{}: {error}", file.display())))
+    replace_file(&file, code.as_bytes(), None)
+        .map_err(|error| internal(format!("{}: {error}", file.display())))
 }
 
 fn write_manifest(workspace: &std::path::Path, manifest: &Value) -> Result<(), ErrorBody> {
     let file = manifest_path(workspace);
-    write_atomically(&file, &manifest::to_text(manifest))
+    replace_file(&file, manifest::to_text(manifest).as_bytes(), None)
         .map_err(|error| internal(format!("{}: {error}", file.display())))
 }
 
