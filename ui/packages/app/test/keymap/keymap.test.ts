@@ -337,15 +337,17 @@ describe("global key handler", () => {
   // spec: UI-095
   test("the leader waits for its next key and prevents the page's own Space", () => {
     document.body.innerHTML = `<p id="out" tabindex="-1"></p>`;
-    const { register, ran, press } = setup([{ mode: "normal", keys: "Space t", command: "theme.set", args: ["dark"] }]);
-    register("theme.set");
+    const { register, ran, press } = setup([
+      { mode: "normal", keys: "Space t", command: "window.theme", args: ["dark"] },
+    ]);
+    register("window.theme");
     const out = document.getElementById("out");
     if (out === null) {
       throw new Error("fixture");
     }
     expect(press(out, " ")).toBe(true);
     expect(press(out, "t")).toBe(true);
-    expect(ran).toEqual(["global:theme.set dark"]);
+    expect(ran).toEqual(["global:window.theme dark"]);
   });
 });
 
@@ -388,5 +390,22 @@ describe("init layers", () => {
     expect(describeKeys(bindings, "Space n")).toEqual({ kind: "done", keys: "Space n", bindings: bindings.slice(2) });
     expect(describeKeys(bindings, "Ctrl-c")).toEqual({ kind: "done", keys: "Ctrl-c", bindings: bindings.slice(0, 2) });
     expect(describeKeys(bindings, "q")).toEqual({ kind: "done", keys: "q", bindings: [] });
+  });
+});
+
+describe("former command ids", () => {
+  // spec: UI-527
+  test("config, workspace and init entries naming a former built-in id bind its current id", () => {
+    const merged = effectiveBindings(
+      [],
+      [{ mode: "normal", keys: "Space t", command: "theme.set", args: ["dark"] }],
+      [{ mode: "normal", keys: "Space w", command: "widget", args: ["add"] }],
+      { user: [{ mode: "normal", keys: "Space u", command: "theme.set" }], workspace: [] },
+    );
+    expect(merged.map((binding) => [binding.keys, binding.command, binding.source])).toEqual([
+      ["Space t", "window.theme", "config"],
+      ["Space w", "widget.manage", "workspace"],
+      ["Space u", "window.theme", "init:user"],
+    ]);
   });
 });

@@ -65,7 +65,7 @@ fn window_run() -> AgentTool {
         label: "Run in window",
         description: "Runs a command in an open omfp window, as the user's `:<command> <args>` would: a registered \
                       command id or alias with string args, never JavaScript. Built-ins such as view.switch (args: \
-                      the view id), view.next, theme.set, or a command an init file or widget registered \
+                      the view id), view.next, window.theme (args: a colour scheme and/or a built-in theme), or a command an init file or widget registered \
                       (omfp_windows lists them, omfp://keymap the built-ins). E.g. { command: \"view.switch\", args: \
                       [\"ops\"] } shows the view ops so you can check it. Default window: the most recently focused \
                       one showing the workspace. Answers whether the window ran it (unknown command, disabled, \

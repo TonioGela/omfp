@@ -8,6 +8,8 @@
  * separated by spaces: `g g`, `Space n`.
  */
 
+import { currentCommandId } from "../sdk/commands.ts";
+
 /** `normal`: focus not in a text field; `insert`: a text field has the focus; `cmdline`: the `:` line is open. */
 export type Mode = "normal" | "insert" | "cmdline";
 
@@ -286,7 +288,8 @@ export function normalizeKeys(keys: string): string {
 /**
  * The defaults with `overrides` applied one by one (UI-097): an entry replaces the binding with the same mode and
  * keys (keeping its place), `""` removes it, any other entry is added after the defaults. Later entries win. The
- * bindings an entry makes carry its `args` and `source`.
+ * bindings an entry makes carry its `args` and `source`; an entry naming a former built-in id binds its current id
+ * (UI-527).
  */
 export function mergeBindings(
   defaults: readonly Binding[],
@@ -304,7 +307,7 @@ export function mergeBindings(
     const replacement: Binding = {
       mode: override.mode,
       keys,
-      command: override.command,
+      command: currentCommandId(override.command),
       ...(override.args === undefined || override.args.length === 0 ? {} : { args: override.args }),
       ...(source === undefined ? {} : { source }),
     };

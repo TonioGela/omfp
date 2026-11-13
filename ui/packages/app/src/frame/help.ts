@@ -74,7 +74,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "threads.spawnedBy": commandTitles.spawnedBy,
   "thread.restart": commandTitles.restart,
   "threads.toggle": commandTitles.toggleThreads,
-  "theme.set": commandTitles.theme,
+  "window.theme": commandTitles.theme,
   "density.set": commandTitles.density,
   "settings.set": commandTitles.set,
   "view.switch": commandTitles.view,
@@ -82,7 +82,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "view.prev": commandTitles.prevView,
   "view.pick": commandTitles.pickView,
   "view.reset": commandTitles.resetViews,
-  widget: commandTitles.widget,
+  "widget.manage": commandTitles.widget,
 };
 
 /** The transcript's moves (its `nav.*` commands in the `transcript` scope). */

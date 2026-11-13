@@ -16,7 +16,7 @@ describe("keymap overrides", () => {
       mergeBindings(defaults, [
         { mode: "normal", keys: "j", command: "nav.prev" },
         { mode: "normal", keys: "k", command: "" },
-        { mode: "normal", keys: "  Space   t ", command: "theme.set" },
+        { mode: "normal", keys: "  Space   t ", command: "window.theme" },
         { mode: "insert", keys: "Ctrl-s", command: "composer.send" },
         { mode: "normal", keys: "Space t", command: "density.set" },
         { mode: "cmdline", keys: "nope", command: "" },
@@ -112,9 +112,9 @@ describe(":set", () => {
 
   // spec: UI-097
   test("keymap keys bind in normal mode by default, or in the named mode; an empty value unbinds", () => {
-    expect(parseSet("keymap.Space t=theme.set")).toEqual({
+    expect(parseSet("keymap.Space t=window.theme")).toEqual({
       ok: true,
-      patch: { keymap: [{ mode: "normal", keys: "Space t", command: "theme.set" }] },
+      patch: { keymap: [{ mode: "normal", keys: "Space t", command: "window.theme" }] },
     });
     expect(parseSet('keymap.insert.Ctrl-s=""')).toEqual({
       ok: true,

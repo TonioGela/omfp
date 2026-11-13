@@ -139,7 +139,7 @@ describe("commands sheet", () => {
     const groups = screen.getAllByTestId("commands-group");
     expect(groups[0]?.querySelector("h3")?.textContent).toBe("Threads");
     expect(groups.map((group) => group.dataset.group).includes("other")).toBe(true);
-    expect([rows().includes("theme.set"), rows().includes("threads.toggle")]).toEqual([true, false]);
+    expect([rows().includes("window.theme"), rows().includes("threads.toggle")]).toEqual([true, false]);
     const ping = screen.getAllByTestId("commands-row").find((row) => row.dataset.command === "demo.ping");
     expect([
       ping?.querySelector(".omfp-sheet__label")?.textContent,
@@ -173,7 +173,7 @@ describe("commands sheet", () => {
   test("a command taking arguments opens the `:` line on its name, with their completions", async () => {
     const { user } = setup();
     await user.click(screen.getByTestId("area-action"));
-    const theme = screen.getAllByTestId("commands-row").find((row) => row.dataset.command === "theme.set");
+    const theme = screen.getAllByTestId("commands-row").find((row) => row.dataset.command === "window.theme");
     expect(theme?.dataset.more).toBe("true");
     await user.click(theme ?? document.body);
     expect(screen.queryAllByTestId("commands-sheet").length).toBe(0);

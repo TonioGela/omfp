@@ -389,6 +389,18 @@ describe("frame", () => {
     expect(client.callsTo("settings.set").length).toBe(1);
   });
 
+  // spec: UI-526, UI-527
+  test("the `:` line runs `window.theme` by its id, its alias and its former id `theme.set`", async () => {
+    const { user } = setup();
+    const schemes: Array<string | undefined> = [];
+    for (const line of ["window.theme dark", "theme light", "theme.set dark"]) {
+      press(":");
+      await user.type(screen.getByTestId("command-line-input"), `${line}{Enter}`);
+      schemes.push(document.documentElement.dataset.colorScheme);
+    }
+    expect(schemes).toEqual(["dark", "light", "dark"]);
+  });
+
   // spec: UI-336
   test("the arrows scroll the highlighted option of the `:` menu into view", async () => {
     const { user } = setup();

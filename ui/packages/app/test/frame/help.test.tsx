@@ -109,7 +109,7 @@ describe("help panel", () => {
     ]);
     expect(rows("transcript", "nav.halfDown")).toEqual([["ctrl+d", "", "Scroll half a page down"]]);
     expect(rows("insert", "focus.leave")).toEqual([["esc", "", "Leave the composer"]]);
-    expect(rows("commands", "theme.set")).toEqual([
+    expect(rows("commands", "window.theme")).toEqual([
       [
         ":theme",
         "system | light | dark | synth | catppuccin | gruvbox | tokyo-night | nord | solarized | rose-pine | accent",

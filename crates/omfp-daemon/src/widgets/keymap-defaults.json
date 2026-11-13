@@ -462,13 +462,6 @@
       ]
     },
     {
-      "id": "theme.set",
-      "title": "Colour scheme (system, light, dark) and built-in theme (synth, catppuccin, gruvbox, …)",
-      "aliases": [
-        "theme"
-      ]
-    },
-    {
       "id": "thread.abort",
       "title": "Interrupt the agent",
       "aliases": []
@@ -579,9 +572,18 @@
       ]
     },
     {
-      "id": "widget",
+      "id": "widget.manage",
       "title": "Add a widget to the view, copy one into the workspace or save one to the user library (:widget add <reference>, :widget copy|save[!] <widget> [<name>])",
-      "aliases": []
+      "aliases": [
+        "widget"
+      ]
+    },
+    {
+      "id": "window.theme",
+      "title": "Colour scheme (system, light, dark) and built-in theme (synth, catppuccin, gruvbox, …)",
+      "aliases": [
+        "theme"
+      ]
     },
     {
       "id": "workspace.new",

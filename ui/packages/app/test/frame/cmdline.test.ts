@@ -10,7 +10,7 @@ const noop = () => {};
 const commands: Command[] = [
   { id: "thread.archive", title: "Archive", aliases: ["archive"], run: noop },
   { id: "thread.unarchive", title: "Unarchive", aliases: ["unarchive"], enabled: () => false, run: noop },
-  { id: "theme.set", title: "Theme", aliases: ["theme"], args: () => ["system", "light", "dark"], run: noop },
+  { id: "window.theme", title: "Theme", aliases: ["theme"], args: () => ["system", "light", "dark"], run: noop },
   { id: "nav.next", title: "Next message", scope: "transcript", run: noop },
   { id: "nav.next", title: "Next thread", run: noop },
   { id: "composer.interrupt", title: "Interrupt", aliases: ["interrupt"], scope: "composer", run: noop },

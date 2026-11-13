@@ -54,7 +54,9 @@ reloads, per workspace, in this window only.
 
 `:` (or `Space :`) opens it; it doubles as the command palette: typing filters the commands by name, Tab completes,
 the arrows move, Enter runs, Escape closes. After a space it completes the command's arguments. Commands run where the
-focus was before the line opened. The built-in ones (`omfp://keymap` has them all):
+focus was before the line opened. Every built-in command id is a dotted `<area>.<verb>` (`window.theme`,
+`widget.manage`); the short names below are its aliases, and the former ids `theme.set` and `widget` still run and
+bind. The built-in ones (`omfp://keymap` has them all):
 
 | Command | What it does |
 | --- | --- |

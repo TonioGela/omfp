@@ -354,7 +354,8 @@ again for its errors. Step by step:
    its thread, its views after `views.json`, the init files and their transforms (where each comes from, its TSX
    file, its widgets, the active one), the commands init files and widgets added with their keys, and its errors.
 4. `omfp_window_run { command: "view.switch", args: ["<view>"] }` shows a view in that window (`windowId` picks one);
-   any registered command id or alias runs the same way, as `:<command> <args>` would. It never runs code: an unknown
+   any registered command id or alias runs the same way, as `:<command> <args>` would (`window.theme` with a scheme
+   and/or a built-in theme; the former ids `theme.set` and `widget` still name `window.theme` and `widget.manage`). It never runs code: an unknown
    command, a disabled one or a failure comes back as the tool's error.
 5. `omfp_windows` again (or `omfp_views_errors`) for the errors of what it shows now; fix and repeat.
 

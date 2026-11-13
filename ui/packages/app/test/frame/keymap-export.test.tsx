@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { act, cleanup } from "@testing-library/react";
 import { Frame } from "../../src/frame/frame.tsx";
 import { DEFAULT_BINDINGS } from "../../src/keymap/keymap.ts";
+import { FORMER_COMMAND_IDS } from "../../src/sdk/commands.ts";
 import { SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { BUILTIN_WIDGETS } from "../../src/view/registry.ts";
 import { thread, workspace } from "../support/fixtures.ts";
@@ -66,5 +67,21 @@ describe("the keymap agents read", () => {
     expect(parsed.bindings.filter((binding) => !ids.has(binding.command)).map((binding) => binding.command)).toEqual(
       [],
     );
+  });
+
+  // spec: UI-525, UI-526, UI-529
+  test("every built-in command id is a dotted `<area>.<verb>`; the short names stay aliases", () => {
+    const { commands } = JSON.parse(exported()) as { commands: { id: string; aliases: string[] }[] };
+    expect(commands.filter((command) => !/^[a-z]+\.[A-Za-z]+$/.test(command.id)).map((command) => command.id)).toEqual(
+      [],
+    );
+    const byId = new Map(commands.map((command) => [command.id, command.aliases]));
+    expect([byId.get("window.theme"), byId.get("widget.manage"), byId.has("theme.set")]).toEqual([
+      ["theme"],
+      ["widget"],
+      false,
+    ]);
+    // Former ids name current commands.
+    expect(Object.values(FORMER_COMMAND_IDS).filter((id) => !byId.has(id))).toEqual([]);
   });
 });

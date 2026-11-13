@@ -96,7 +96,7 @@ const NAMESPACE_GROUPS: Readonly<Record<string, KeyGroup>> = {
   notice: "navigation",
   focus: "navigation",
   cmdline: "commands",
-  theme: "commands",
+  window: "commands",
   density: "commands",
   settings: "commands",
 };

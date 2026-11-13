@@ -185,6 +185,19 @@ describe("commands the daemon runs in the window", () => {
       },
     ]);
   });
+
+  // spec: UI-527, UI-528
+  test("a former built-in id and the short names run the renamed commands", async () => {
+    const test = setup();
+    test.request("r1", { kind: "run_command", command: "theme.set", args: ["dark"] });
+    test.request("r2", { kind: "run_command", command: "theme", args: ["light"] });
+    await settle(test);
+    expect(test.answers()).toEqual([
+      { requestId: "r1", answer: { kind: "ran", command: "window.theme" } },
+      { requestId: "r2", answer: { kind: "ran", command: "window.theme" } },
+    ]);
+    expect(document.documentElement.dataset.colorScheme).toBe("light");
+  });
 });
 
 describe("widgets checked out of sight", () => {

@@ -117,7 +117,7 @@ async fn a_phone_runs_commands_from_the_commands_sheet() -> anyhow::Result<()> {
     // A command taking arguments opens the `:` line on its name; its completion runs it.
     journey.click(COMMANDS).await?;
     journey
-        .click("[data-testid=commands-row][data-command='theme.set']")
+        .click("[data-testid=commands-row][data-command='window.theme']")
         .await?;
     journey.gone(SHEET).await?;
     journey

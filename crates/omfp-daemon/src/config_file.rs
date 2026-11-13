@@ -21,7 +21,7 @@
 //! prose = "Literata, serif"
 //!
 //! [keymap]                      # normal mode
-//! "Space t" = "theme.set"
+//! "Space t" = "window.theme"
 //! "g g" = ""                    # removes the default binding
 //!
 //! [keymap.insert]
@@ -362,7 +362,7 @@ theme = "gruvbox"
 prose = "Literata, serif"
 
 [keymap]
-"Space t" = "theme.set"
+"Space t" = "window.theme"
 "g g" = ""
 
 [keymap.insert]
@@ -401,7 +401,7 @@ prose = "Literata, serif"
         assert_eq!(
             file.keymap,
             [
-                entry(KeymapMode::Normal, "Space t", "theme.set"),
+                entry(KeymapMode::Normal, "Space t", "window.theme"),
                 entry(KeymapMode::Normal, "g g", ""),
                 entry(KeymapMode::Insert, "Ctrl-j", "nav.next"),
             ]

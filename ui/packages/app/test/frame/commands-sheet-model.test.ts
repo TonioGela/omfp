@@ -8,7 +8,7 @@ const run = () => {};
 
 const COMMANDS: Command[] = [
   { id: "thread.new", title: "New thread", aliases: ["new"], run },
-  { id: "theme.set", title: "Colour scheme (system, light, dark)", aliases: ["theme"], args: () => ["dark"], run },
+  { id: "window.theme", title: "Colour scheme (system, light, dark)", aliases: ["theme"], args: () => ["dark"], run },
   { id: "help.open", title: "Help", aliases: ["help"], run },
   { id: "thread.archive", title: "Archive", aliases: ["archive"], enabled: () => false, run },
   { id: "composer.interrupt", title: "Interrupt", scope: "composer", run },
@@ -47,7 +47,7 @@ describe("commands sheet content", () => {
       ],
       ["files", [["file.open", "open", false]]],
       ["help", [["help.open", "help", false]]],
-      ["commands", [["theme.set", "theme", true]]],
+      ["commands", [["window.theme", "theme", true]]],
       ["other", [["demo.ping", "demo.ping", false]]],
     ]);
     expect(shape(["composer", "threads"])[0]).toEqual([
@@ -75,7 +75,7 @@ describe("commands sheet content", () => {
 
   // spec: UI-463
   test("the search looks in the ids, aliases, whole titles and descriptions, any case", () => {
-    expect(shape([], "SCHEME")).toEqual([["commands", [["theme.set", "theme", true]]]]);
+    expect(shape([], "SCHEME")).toEqual([["commands", [["window.theme", "theme", true]]]]);
     expect(shape([], "pings")).toEqual([["other", [["demo.ping", "demo.ping", false]]]]);
     expect(shape([], "help.op")).toEqual([["help", [["help.open", "help", false]]]]);
     expect(shape([], "<id>")).toEqual([["views", [["view.switch", "view", true]]]]);

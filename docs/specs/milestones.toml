@@ -967,6 +967,12 @@ requirements = [
   "UI-523",
   # QA fixes: Stop process is not Abort (user decision D9a)
   "UI-524",
+  # QA fixes: one command id convention, former ids keep working (user decision D9b)
+  "UI-525",
+  "UI-526",
+  "UI-527",
+  "UI-528",
+  "UI-529",
   # Journeys
   "E2E-22",
   "E2E-23",
