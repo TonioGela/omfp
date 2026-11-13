@@ -41,4 +41,11 @@ describe("index.html", () => {
       html.includes('<script type="module" src="/main-1.js"></script>'),
     ]).toEqual(['{"imports":{"react":"/react-1.js"}}', ["/main-1.css", "/theme.css"], "/theme.css", true]);
   });
+
+  // spec: UI-424
+  test("the viewport follows the on-screen keyboard: it resizes the layout, not only the visual viewport", () => {
+    expect(head.querySelector("meta[name=viewport]")?.getAttribute("content")).toBe(
+      "width=device-width, initial-scale=1, interactive-widget=resizes-content",
+    );
+  });
 });

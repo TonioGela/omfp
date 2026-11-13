@@ -16,7 +16,8 @@ export const FAVICONS: readonly { source: string; name: string; link: string }[]
 
 /**
  * The favicon, the import map, the bundle's CSS, then the user theme (`/theme.css`, UI-091, so its tokens win), and
- * the app entry.
+ * the app entry. The on-screen keyboard resizes the layout viewport (`interactive-widget=resizes-content`, UI-424),
+ * so the app, as tall as the window, ends above it instead of being panned out of view.
  */
 export function indexHtml({
   importMap,
@@ -34,7 +35,7 @@ export function indexHtml({
     '<html lang="en">',
     "<head>",
     '<meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">',
     "<title>omfp</title>",
     ...FAVICONS.map(({ link }) => link),
     `<script type="importmap">${JSON.stringify(importMap)}</script>`,
