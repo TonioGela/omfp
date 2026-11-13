@@ -13,6 +13,7 @@ import header from "../../src/widgets/header/index.ts";
 import mcp from "../../src/widgets/mcp/index.ts";
 import todos from "../../src/widgets/todos/index.ts";
 import tree from "../../src/widgets/tree/index.ts";
+import web from "../../src/widgets/web/index.ts";
 import workspace from "../../src/widgets/workspace/index.ts";
 
 const WIDGETS = join(import.meta.dir, "../../src/widgets");
@@ -38,7 +39,7 @@ function valueImports(folder: string): { file: string; path: string }[] {
 }
 
 describe("copyable built-ins", () => {
-  // spec: AGT-021, AGT-012, UI-082, UI-083, UI-273, UI-290
+  // spec: AGT-021, AGT-012, UI-082, UI-083, UI-273, UI-290, UI-679
   test("value imports come only from react, omfp/sdk, omfp/kit and the widget's own folder", () => {
     const imports = COPYABLE.flatMap(valueImports);
     expect(imports.length).toBeGreaterThan(0);
@@ -48,7 +49,7 @@ describe("copyable built-ins", () => {
     expect(forbidden).toEqual([]);
   });
 
-  // spec: AGT-021
+  // spec: AGT-021, UI-679
   test("each folder's entry default-exports its widget; the chat folder also exports its parts", () => {
     expect(typeof chat.default).toBe("function");
     expect(chat.default).toBe(chat.ChatWidget);
@@ -59,7 +60,7 @@ describe("copyable built-ins", () => {
     expect(typeof workspace).toBe("function");
     expect(typeof changes).toBe("function");
     expect(typeof file).toBe("function");
-    for (const widget of [background, todos, tree, mcp]) {
+    for (const widget of [background, todos, tree, mcp, web]) {
       expect(typeof widget).toBe("function");
     }
   });

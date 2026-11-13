@@ -1137,4 +1137,16 @@ requirements = [
   "UI-642",
   "UI-643",
   "E2E-63",
+  # Web frames: omfp:web and the kit's WebFrame
+  "UI-670",
+  "UI-671",
+  "UI-672",
+  "UI-673",
+  "UI-674",
+  "UI-675",
+  "UI-676",
+  "UI-677",
+  "UI-678",
+  "UI-679",
+  "E2E-67",
 ]

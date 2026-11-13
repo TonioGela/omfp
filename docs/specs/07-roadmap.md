@@ -761,6 +761,17 @@ shows its progress toast with Cancel and its page's toast with Open and Copy unt
 finished stay in sight (a failed one until it is opened), the older ones collapse under `Finished (N)`, and Clear
 finished hides them from the window, remembered across reloads (UI-641..UI-643, E2E-63).
 
+Web frames: `omfp:web { url, title? }` and the kit's `WebFrame` show a web page — a dashboard, docs, a local dev
+server's preview — in a sandboxed frame under a toolbar (URL, Reload, Open in browser); agents place it with
+`omfp_ui_mount { widget: "omfp:web", props: { url } }` (UI-670..UI-679, E2E-67). Design: the frame gets its own origin
+(`allow-same-origin` with `allow-scripts`) only because the daemon's origin and its loopback aliases are refused,
+since a frame of the window's origin could lift its sandbox and read the token; no `allow-top-navigation`, so the page
+cannot navigate the window. Whether a site refuses framing (`X-Frame-Options`, CSP `frame-ancestors`) cannot be
+detected from outside, so a hint shows when no `load` came in 10 s, and on demand. The desktop window's navigation
+handler cannot tell a frame from the page, so it lets other `http(s)` pages load and the top-level page turns back to
+the daemon's (opening the URL in the system's browser) as soon as its load starts. Not done: a daemon proxy
+(`/proxy/<port>/…`) for a remote daemon's `localhost`, the pages of sites that refuse framing (see Later).
+
 ## Terminal (removed)
 
 Removed (D-06, PRT-135): the user does not rely on the TUI-only commands, so the terminal was never built; its
@@ -773,7 +784,7 @@ E2E-07 are kept in [05](05-terminal.md) and [06](06-testing.md) as removed rows.
 - PR repositories (DMN-024 `pr`, spike S-08; moved out of M5): fetching a PR head into a worktree and tracking the PR.
   The agent can already do it with `gh pr checkout` or `git fetch origin pull/N/head`, and GitHub cannot be tested
   offline; the user decided to leave it to the agent (no UI).
-- Web content in widgets (idea, to discuss): sites that allow framing work today in an `<iframe>` (a dev server,
+- Web content in widgets (idea, to discuss): sites that allow framing show in `omfp:web` (M17: a dev server,
   Storybook, Grafana); a daemon proxy (`/proxy/<port>/…`) would make `localhost` mean the daemon's machine when the
   daemon is remote. Sites that refuse framing (Linear, GitHub, Google) need their API instead: a `useFetch` that goes
   through the daemon (no CORS, keys kept by the daemon) so a widget can list and update Linear issues with the kit;

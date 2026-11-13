@@ -512,6 +512,7 @@ export const shell = {
       "omfp:tree": "Tree",
       "omfp:activity": "Activity",
       "omfp:mcp": "MCP servers",
+      "omfp:web": "Web",
     } as Readonly<Record<string, string>>,
   },
   /** The narrow and mobile frame (UI-200..UI-205). */

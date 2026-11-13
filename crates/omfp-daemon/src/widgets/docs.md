@@ -57,7 +57,13 @@ while the thread's summary has an MCP reason in `restartPending`, "Reload to loa
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against `HEAD`; video and audio files play
 in the browser's player; `.pdf` files show in `PdfView`; images, any size, in `ImageView`, compared with `HEAD` when
 they differ; Markdown files show rendered, CSV/TSV files as a sortable table and JSON/YAML files as a tree while
-read-only, with a toggle to the source).
+read-only, with a toggle to the source), `omfp:web` (`{ url, title? }`: a web page — a dashboard, docs, a local dev
+server's preview — in a sandboxed frame under a toolbar with the URL, Reload and Open in browser; `url` is any absolute `http://` or `https://` URL,
+`localhost` and `127.0.0.1` included, except omfp's own address; `title` labels the tab. Place one with
+`omfp_ui_mount { id: "preview", widget: "omfp:web", props: { url: "http://localhost:5173/" } }` and point it elsewhere
+with `omfp_ui_update { id: "preview", props: { url } }`. The page cannot navigate the window; its new windows open in the
+browser. Sites that refuse framing (`X-Frame-Options`, CSP `frame-ancestors`: GitHub, Linear, Google) stay blank, and
+the frame says so when nothing loaded in 10 s: reach them through their API in a widget of your own)
 Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Keep the main slot, `["tabs", {"id": "main"}, …"omfp:chat"]`, in every view: the files the
 user opens become its tabs (without it they float in a panel). `:widget add` and `omfp_ui_mount` put side tabs in the
@@ -509,6 +515,7 @@ blue highlight), whatever the page's styles say. `omfp_widget_check` warns about
 | `CodeDiff` | Two texts compared with CodeMirror: `original`, `value`, `path`, `layout` (`"unified"` or `"split"`). Sized like `CodeEditor`. |
 | `PdfView` | A PDF document with pdf.js: `url` (same-origin, e.g. `` `${useFileUrl(path)}?v=${hash}` ``), `labels` (`{ loading, failed(error), zoomIn, zoomOut, fitWidth, page(page, pages), pageLabel(page), toolbar, pages }`). Its pages scroll inside it, drawn when near the view, with selectable text; a toolbar zooms out, in and to the width, and names the page at the top (`3 / 12`). Loaded on first use; sized like `CodeEditor`. |
 | `ImageView` | An image fitted, zoomed (buttons, Ctrl with the wheel, a pinch) and panned by dragging: `src`, `alt`, `labels` (`{ zoomIn, zoomOut, fit, actualSize, toolbar, failed, before, after, slider }`); with `before` (`{ src, alt }`) and `compare` (`"split"` or `"slider"`) it compares the two versions side by side or under a slider. Sized like `CodeEditor`. |
+| `WebFrame` | A web page in a sandboxed frame under a toolbar (the URL, Reload, Open in browser), filling its container like `CodeEditor`: `url` (an absolute `http(s)` URL other than omfp's own origin; another shows why it is refused), `title` (the frame's accessible name), `loadTimeoutMs` (default 10000: then it says the site may refuse framing). `omfp:web` is one. |
 | `PathLink` | An inline button opening a file path: `reference` (`{ path, line }`), `onOpen` (e.g. from `useOpenFile()`). |
 | `Tabs` | Tabs with `TabList`, `Tab` and `TabPanel`. |
 | `ListBox` | A selectable list with `ListBoxItem`. |

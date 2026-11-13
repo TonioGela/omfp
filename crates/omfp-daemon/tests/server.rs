@@ -1081,6 +1081,7 @@ async fn archive_unarchive_and_delete_update_the_index() {
     assert_eq!(error["code"], "not_found");
 }
 
+// spec: UI-676
 #[tokio::test(flavor = "multi_thread")]
 async fn the_web_ui_is_served_from_the_static_directory() {
     let site = tempfile::tempdir().unwrap();
@@ -1104,6 +1105,9 @@ async fn the_web_ui_is_served_from_the_static_directory() {
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains("text/html"));
     assert!(response.ends_with("<main>omfp</main>"));
+    // No policy of the daemon's keeps the UI's web frames (omfp:web) from loading other sites.
+    let head = response.split_once("\r\n\r\n").unwrap().0.to_lowercase();
+    assert!(!head.contains("content-security-policy"), "{head}");
 }
 
 /// The raw HTTP/1.1 response to `GET path`, without credentials.

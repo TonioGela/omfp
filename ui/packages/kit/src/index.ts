@@ -291,3 +291,14 @@ export {
   Thinking,
   type ThinkingProps,
 } from "./transcript.tsx";
+export {
+  WEB_FRAME_SANDBOX,
+  WEB_FRAME_TEXTS,
+  WEB_FRAME_TIMEOUT_MS,
+  WebFrame,
+  type WebFrameProps,
+  type WebFrameRefusal,
+  type WebFrameTexts,
+  type WebFrameUrl,
+  webFrameUrl,
+} from "./web-frame.tsx";

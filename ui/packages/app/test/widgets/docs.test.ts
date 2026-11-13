@@ -10,6 +10,7 @@ import * as kit from "omfp/kit";
 import type { InitApi, ViewsApi } from "omfp/sdk";
 import * as sdk from "omfp/sdk";
 import { DEFAULT_BINDINGS } from "../../src/keymap/keymap.ts";
+import { BUILTIN_WIDGETS } from "../../src/view/registry.ts";
 
 const WIDGETS = join(import.meta.dir, "../../../../../crates/omfp-daemon/src/widgets");
 const DOCS = readFileSync(join(WIDGETS, "docs.md"), "utf8");
@@ -229,6 +230,27 @@ describe("logging in", () => {
       "`~/.omp/agent/agent.db`",
     ]) {
       expect(SHELL.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+  });
+});
+
+describe("built-ins for agents", () => {
+  // spec: UI-679, AGT-025
+  test("the widget docs and the views schema name every built-in, omfp:web with the mount that places it", () => {
+    const schema = readFileSync(join(WIDGETS, "views.schema.json"), "utf8");
+    const missing = [...BUILTIN_WIDGETS.keys()].filter(
+      (name) => !DOCS.includes(`\`${name}\``) || !schema.includes(name),
+    );
+    expect(missing).toEqual([]);
+    for (const fact of [
+      "`omfp:web` (`{ url, title? }`",
+      'omfp_ui_mount { id: "preview", widget: "omfp:web", props: { url: "http://localhost:5173/" } }',
+      "except omfp's own address",
+      "The page cannot navigate the window",
+      "`X-Frame-Options`, CSP `frame-ancestors`",
+      "| `WebFrame` |",
+    ]) {
+      expect(DOCS.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
     }
   });
 });

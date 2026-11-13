@@ -15,7 +15,9 @@ use omfp_daemon::theme::default_theme_file;
 use omfp_daemon::watch::{self, WatchedFile};
 use omfp_protocol::Theme;
 use omfp_protocol::method::ThemeSet;
-use tauri::webview::{NewWindowResponse, PermissionKind, PermissionResponse};
+use tauri::webview::{
+    NewWindowResponse, PageLoadEvent, PageLoadPayload, PermissionKind, PermissionResponse,
+};
 use tauri::{Manager as _, Url, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::remote::{
@@ -264,8 +266,8 @@ impl BrowserUrl {
 pub enum Navigation {
     /// The daemon's own origin, or a document without one of its own (`about:`, `blob:`, `data:`).
     Allow,
-    /// Another web page or a mail link: cancelled; a new-window request for it opens in the system's browser or mail
-    /// client.
+    /// Another web page or a mail link: a web page loads in a frame (a web frame, UI-677) but the top-level page turns
+    /// back from it (UI-678); a new-window request for either opens in the system's browser or mail client.
     External,
     /// Anything else (`file:`, other schemes): cancelled.
     Deny,
@@ -280,6 +282,30 @@ pub fn navigation(url: &Url, origin: &str) -> Navigation {
         "http" | "https" | "mailto" => Navigation::External,
         "about" | "blob" | "data" => Navigation::Allow,
         _ => Navigation::Deny,
+    }
+}
+
+/// What the window does once its top-level page starts loading a URL (UI-678).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PageStart {
+    /// A page of the daemon's origin or a document without an origin of its own: it loads.
+    Stay,
+    /// Another page: the window goes back to the daemon's page it showed last, and `browser`, a web page, opens in the
+    /// system's browser.
+    Return { browser: Option<Url> },
+}
+
+/// Sorts the start of a top-level page load of the window on the daemon at `origin` (UI-678). Neither `WebKitGTK` nor
+/// `WKWebView` tells the navigation handler whether a frame or the page navigates, so web pages pass it for the web
+/// frames (UI-677); the page loads report the top-level page only, so the window turns back there instead.
+#[must_use]
+pub fn page_start(url: &Url, origin: &str) -> PageStart {
+    match navigation(url, origin) {
+        Navigation::Allow => PageStart::Stay,
+        Navigation::External => PageStart::Return {
+            browser: Some(url.clone()),
+        },
+        Navigation::Deny => PageStart::Return { browser: None },
     }
 }
 
@@ -404,15 +430,10 @@ fn open_window(
     let page = Arc::new(Mutex::new(url.clone()));
     #[cfg(target_os = "macos")]
     let nonce = macos::notify_nonce();
-    let builder = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(url))
+    let builder = WebviewWindowBuilder::new(&app, "main", WebviewUrl::External(url.clone()))
         .title("omfp")
         .inner_size(1280.0, 800.0)
-        .on_page_load({
-            let page = Arc::clone(&page);
-            move |_, payload| {
-                *page.lock().unwrap_or_else(PoisonError::into_inner) = payload.url().clone();
-            }
-        })
+        .on_page_load(on_page_load(Arc::clone(&page), origin.clone(), url))
         // WebKitGTK denies requests nobody handles: allow the UI's thread notifications. WKWebView answers an unhandled
         // media request with its own prompt on every page load: grant the microphone (live voice, UI-251); macOS still
         // asks the user once per app through TCC (the embedded Info.plist's NSMicrophoneUsageDescription). Only the
@@ -472,12 +493,48 @@ fn open_window(
     Ok(app.run_return(|_, _| {}))
 }
 
-/// Whether a navigation of the window's page or of one of its frames loads (DMN-182): only the daemon's own pages
-/// and documents without an origin of their own. Every other navigation is cancelled without a word, an external web
-/// page or `mailto:` link too: neither `WebKitGTK` nor `WKWebView` tells Tauri whether a frame or the page navigates, and
-/// a widget's frame on another site must not open the browser at every render of every window.
+/// Whether a navigation of the window's page or of one of its frames loads (DMN-182): the daemon's own pages, documents
+/// without an origin of their own and other web pages, for the web frames (UI-677) — the top-level page turns back from
+/// those once it starts loading one (UI-678, [`page_start`]). Every other navigation is cancelled without a word, a
+/// `mailto:` link too: neither `WebKitGTK` nor `WKWebView` tells Tauri whether a frame or the page navigates, and a
+/// widget's frame must not open the mail client at every render of every window.
 fn follow(url: &Url, origin: &str) -> bool {
-    navigation(url, origin) == Navigation::Allow
+    match navigation(url, origin) {
+        Navigation::Allow => true,
+        Navigation::External => matches!(url.scheme(), "http" | "https"),
+        Navigation::Deny => false,
+    }
+}
+
+/// The window's page-load handler: records the top-level page in `page` (the permission handler reads it) and, when it
+/// starts loading a page off the daemon's origin, turns back to the daemon's page it showed last (`home` until then),
+/// opening a web page in the system's browser (UI-678).
+fn on_page_load(
+    page: Arc<Mutex<Url>>,
+    origin: String,
+    home: Url,
+) -> impl Fn(WebviewWindow, PageLoadPayload<'_>) + Send + Sync + 'static {
+    let home = Mutex::new(home);
+    move |window, payload| {
+        let url = payload.url();
+        *page.lock().unwrap_or_else(PoisonError::into_inner) = url.clone();
+        if payload.event() != PageLoadEvent::Started {
+            return;
+        }
+        let mut home = home.lock().unwrap_or_else(PoisonError::into_inner);
+        match page_start(url, &origin) {
+            PageStart::Stay if url.origin().ascii_serialization() == origin => *home = url.clone(),
+            PageStart::Stay => {}
+            PageStart::Return { browser } => {
+                if let Some(browser) = browser {
+                    crate::tray::open_in_browser(browser.as_str());
+                }
+                if let Err(error) = window.navigate(home.clone()) {
+                    eprintln!("omfp desktop: cannot go back to {home}: {error}");
+                }
+            }
+        }
+    }
 }
 
 /// Whether a new-window request (`target="_blank"`, `window.open`) goes to the system (DMN-182): an external web page
@@ -796,36 +853,68 @@ mod tests {
         );
     }
 
-    // spec: DMN-182
+    // spec: DMN-182, UI-677
     #[test]
     fn the_window_stays_on_the_daemons_origin() {
         let origin = "http://127.0.0.1:7420";
         let url = |text: &str| Url::parse(text).unwrap();
-        for (target, expected) in [
-            ("http://127.0.0.1:7420/#token=t&local=1", Navigation::Allow),
-            ("http://127.0.0.1:7420/widgets/k/x", Navigation::Allow),
-            ("about:blank", Navigation::Allow),
-            ("blob:http://127.0.0.1:7420/1234", Navigation::Allow),
-            ("https://example.com/docs", Navigation::External),
-            ("http://127.0.0.1:7421/", Navigation::External),
-            ("http://localhost:7420/", Navigation::External),
-            ("mailto:someone@example.com", Navigation::External),
-            ("file:///etc/passwd", Navigation::Deny),
-            ("omfp-notify:?title=x", Navigation::Deny),
+        for (target, expected, loads) in [
+            (
+                "http://127.0.0.1:7420/#token=t&local=1",
+                Navigation::Allow,
+                true,
+            ),
+            ("http://127.0.0.1:7420/widgets/k/x", Navigation::Allow, true),
+            ("about:blank", Navigation::Allow, true),
+            ("blob:http://127.0.0.1:7420/1234", Navigation::Allow, true),
+            // Web frames (UI-677): other web pages load in a frame; the page turns back from them (UI-678).
+            ("https://example.com/docs", Navigation::External, true),
+            ("http://127.0.0.1:7421/", Navigation::External, true),
+            ("http://localhost:7420/", Navigation::External, true),
+            ("mailto:someone@example.com", Navigation::External, false),
+            ("file:///etc/passwd", Navigation::Deny, false),
+            ("omfp-notify:?title=x", Navigation::Deny, false),
         ] {
             assert_eq!(navigation(&url(target), origin), expected, "{target}");
             // Navigations of the page or a frame never reach the system; new windows do when they are external.
-            assert_eq!(
-                follow(&url(target), origin),
-                expected == Navigation::Allow,
-                "{target}"
-            );
+            assert_eq!(follow(&url(target), origin), loads, "{target}");
             assert_eq!(
                 opens_externally(&url(target), origin),
                 expected == Navigation::External,
                 "{target}"
             );
         }
+    }
+
+    // spec: UI-678
+    #[test]
+    fn the_top_level_page_turns_back_from_another_origin_and_the_browser_opens_it() {
+        let origin = "http://127.0.0.1:7420";
+        let url = |text: &str| Url::parse(text).unwrap();
+        for page in [
+            "http://127.0.0.1:7420/#token=t&local=1",
+            "http://127.0.0.1:7420/?thread=t1",
+            "about:blank",
+        ] {
+            assert_eq!(page_start(&url(page), origin), PageStart::Stay, "{page}");
+        }
+        for page in [
+            "https://example.com/docs",
+            "http://localhost:5173/",
+            "http://127.0.0.1:7421/",
+        ] {
+            assert_eq!(
+                page_start(&url(page), origin),
+                PageStart::Return {
+                    browser: Some(url(page))
+                },
+                "{page}"
+            );
+        }
+        assert_eq!(
+            page_start(&url("file:///etc/passwd"), origin),
+            PageStart::Return { browser: None }
+        );
     }
 
     // spec: DMN-182, UI-251

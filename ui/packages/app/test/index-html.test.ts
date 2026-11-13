@@ -44,4 +44,10 @@ describe("index.html", () => {
       "width=device-width, initial-scale=1, interactive-widget=resizes-content",
     );
   });
+
+  // spec: UI-676
+  test("sets no Content-Security-Policy, so web frames (omfp:web) of any http(s) site load", () => {
+    expect(head.querySelectorAll("meta[http-equiv]").length).toBe(0);
+    expect(html.toLowerCase()).not.toContain("content-security-policy");
+  });
 });

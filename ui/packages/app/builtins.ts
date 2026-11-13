@@ -8,6 +8,7 @@ export const BUILTINS: readonly { name: string; folder: string; part?: { file: s
   { name: "todos", folder: "todos" },
   { name: "tree", folder: "tree" },
   { name: "activity", folder: "activity" },
+  { name: "web", folder: "web" },
   { name: "mcp", folder: "mcp" },
   { name: "file", folder: "file" },
   { name: "chat", folder: "chat" },

@@ -1,0 +1,174 @@
+/** L1: the kit's web frame (UI-670..UI-675): the URLs it shows, its sandbox, its toolbar and its refusal hint. */
+
+import { afterAll, afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { WEB_FRAME_SANDBOX, WebFrame, webFrameUrl } from "../src/index.ts";
+
+afterEach(cleanup);
+
+// happy-dom loads no frame: it reports each one on the console, which says nothing here.
+const original = console.error.bind(console);
+const quiet = spyOn(console, "error");
+beforeAll(() => {
+  quiet.mockImplementation((...args: unknown[]) => {
+    if (!String(args[0]).includes("Iframe page loading is disabled")) {
+      original(...args);
+    }
+  });
+});
+afterAll(() => quiet.mockRestore());
+
+/** The window's origin in the component tests (`ui/test/dom.ts`): the daemon's for the frame. */
+const OWN = "http://127.0.0.1:7421";
+
+function frame(): HTMLIFrameElement {
+  return screen.getByTestId("web-frame-frame") as HTMLIFrameElement;
+}
+
+describe("webFrameUrl", () => {
+  // spec: UI-671
+  test("any http or https page shows, local dev servers included", () => {
+    for (const [text, href] of [
+      ["https://grafana.example.com/d/abc?orgId=1", "https://grafana.example.com/d/abc?orgId=1"],
+      ["http://localhost:5173", "http://localhost:5173/"],
+      ["  http://127.0.0.1:3000/storybook  ", "http://127.0.0.1:3000/storybook"],
+      ["http://[::1]:8080/", "http://[::1]:8080/"],
+      ["http://127.0.0.1/", "http://127.0.0.1/"],
+    ] as const) {
+      expect([text, webFrameUrl(text, OWN)]).toEqual([text, { ok: true, href }]);
+    }
+  });
+
+  // spec: UI-671
+  test("other schemes, relative URLs and the daemon's own origin are refused", () => {
+    for (const [text, reason] of [
+      [undefined, "missing"],
+      [42, "missing"],
+      ["   ", "missing"],
+      ["not a url", "invalid"],
+      ["/widgets/x", "invalid"],
+      ["javascript:alert(1)", "scheme"],
+      ["JavaScript:alert(1)", "scheme"],
+      ["data:text/html,<script>parent.postMessage(1)</script>", "scheme"],
+      ["blob:http://127.0.0.1:7421/1234", "scheme"],
+      ["file:///etc/passwd", "scheme"],
+      ["about:blank", "scheme"],
+      ["http://127.0.0.1:7421/", "own-origin"],
+      ["http://127.0.0.1:7421/#token=t", "own-origin"],
+      // Loopback aliases of the daemon's address are the daemon too.
+      ["http://localhost:7421/", "own-origin"],
+      ["http://[::1]:7421/", "own-origin"],
+      ["http://127.0.0.2:7421/x", "own-origin"],
+    ] as const) {
+      expect([text, webFrameUrl(text, OWN)]).toEqual([text, { ok: false, reason }]);
+    }
+  });
+
+  // spec: UI-671
+  test("a remote daemon's origin is refused with its default port; loopback pages of the user's machine are not", () => {
+    const remote = "https://omfp.example.com";
+    expect(webFrameUrl("https://omfp.example.com:443/", remote)).toEqual({ ok: false, reason: "own-origin" });
+    expect(webFrameUrl("http://omfp.example.com/", remote)).toEqual({ ok: true, href: "http://omfp.example.com/" });
+    expect(webFrameUrl("http://localhost:443/", remote)).toEqual({ ok: true, href: "http://localhost:443/" });
+  });
+});
+
+describe("WebFrame", () => {
+  // spec: UI-670, UI-672
+  test("the page shows in a sandboxed frame that never navigates the window nor shares its origin", () => {
+    render(<WebFrame url="http://localhost:5173/app" title="Dev server" />);
+    const element = frame();
+    expect(element.getAttribute("src")).toBe("http://localhost:5173/app");
+    expect(element.getAttribute("title")).toBe("Dev server");
+    expect(element.getAttribute("referrerpolicy")).toBe("no-referrer");
+    const sandbox = (element.getAttribute("sandbox") ?? "").split(" ").sort();
+    expect(sandbox).toEqual([
+      "allow-forms",
+      "allow-popups",
+      "allow-popups-to-escape-sandbox",
+      "allow-same-origin",
+      "allow-scripts",
+    ]);
+    expect(element.getAttribute("sandbox")).toBe(WEB_FRAME_SANDBOX);
+    expect(sandbox.filter((flag) => flag.startsWith("allow-top-navigation"))).toEqual([]);
+  });
+
+  // spec: UI-670
+  test("without a title the frame is named by the page's host", () => {
+    render(<WebFrame url="https://docs.example.com/guide" />);
+    expect(frame().getAttribute("title")).toBe("docs.example.com");
+  });
+
+  // spec: UI-675
+  test("a refused URL shows why and how to fix it, and no frame", () => {
+    render(<WebFrame url="javascript:alert(1)" />);
+    const refused = screen.getByTestId("web-frame-refused");
+    expect(refused.dataset.reason).toBe("scheme");
+    expect(refused.textContent).toContain("Only http and https pages can show here");
+    expect(refused.textContent).toContain("http://localhost:5173/");
+    expect(screen.queryAllByTestId("web-frame-frame").length).toBe(0);
+    cleanup();
+    render(<WebFrame url="http://127.0.0.1:7421/" />);
+    expect(screen.getByTestId("web-frame-refused").dataset.reason).toBe("own-origin");
+    expect(screen.getByTestId("web-frame-refused").textContent).toContain("omfp's own pages cannot show in a frame");
+  });
+
+  // spec: UI-673
+  test("the toolbar shows the URL, reloads the frame and opens the page in the browser", async () => {
+    const user = userEvent.setup();
+    const open = spyOn(globalThis, "open").mockImplementation(() => null);
+    try {
+      render(<WebFrame url="https://grafana.example.com/d/abc" />);
+      expect(screen.getByRole("toolbar").getAttribute("aria-label")).toBe("Web page");
+      expect(screen.getByTestId("web-frame-url").textContent).toBe("https://grafana.example.com/d/abc");
+      frame().dataset.marked = "before";
+      await user.click(screen.getByRole("button", { name: "Reload" }));
+      // A new frame: the page loads again (a cross-origin frame cannot be told to reload).
+      expect(frame().dataset.marked).toBeUndefined();
+      expect(frame().getAttribute("src")).toBe("https://grafana.example.com/d/abc");
+      await user.click(screen.getByRole("button", { name: "Open in browser" }));
+      expect(open.mock.calls).toEqual([["https://grafana.example.com/d/abc", "_blank", "noopener,noreferrer"]]);
+    } finally {
+      open.mockRestore();
+    }
+  });
+
+  // spec: UI-674
+  test("a page that has not loaded in time gets the hint that the site may refuse framing", async () => {
+    render(<WebFrame url="https://linear.app/" loadTimeoutMs={20} />);
+    expect(screen.queryAllByTestId("web-frame-hint").length).toBe(0);
+    const hint = await screen.findByTestId("web-frame-hint");
+    expect(hint.textContent).toContain("X-Frame-Options");
+    expect(hint.textContent).toContain("Open it in the browser");
+    // A late load takes it back.
+    fireEvent.load(frame());
+    expect(screen.queryAllByTestId("web-frame-hint").length).toBe(0);
+    expect(screen.getByTestId("web-frame").dataset.loaded).toBe("true");
+  });
+
+  // spec: UI-674
+  test("a loaded page gets no hint by itself, but Blank? shows it and Dismiss hides it", async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <WebFrame url="https://github.com/" loadTimeoutMs={20} data-testid="loaded" />
+        <WebFrame url="https://example.com/" loadTimeoutMs={20} data-testid="waiting" />
+      </>,
+    );
+    const [loaded] = screen.getAllByTestId("web-frame-frame");
+    fireEvent.load(loaded as HTMLIFrameElement);
+    // Once the frame that never loaded says it, the loaded one's wait (started first, as long) is over too.
+    await screen.findByTestId("web-frame-hint");
+    expect(screen.getByTestId("loaded").querySelectorAll("[data-testid=web-frame-hint]").length).toBe(0);
+    expect(screen.getByTestId("waiting").querySelectorAll("[data-testid=web-frame-hint]").length).toBe(1);
+    cleanup();
+    render(<WebFrame url="https://github.com/" />);
+    fireEvent.load(frame());
+    expect(screen.queryAllByTestId("web-frame-hint").length).toBe(0);
+    await user.click(screen.getByRole("button", { name: "Blank?" }));
+    expect(screen.getByTestId("web-frame-hint").textContent).toContain("frame-ancestors");
+    await user.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryAllByTestId("web-frame-hint").length).toBe(0);
+  });
+});
