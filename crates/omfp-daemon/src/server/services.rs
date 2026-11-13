@@ -695,10 +695,12 @@ fn load_index(
                 updated_at,
                 position(&thread.id),
             );
+            // A new place, in its workspace or another one, is the user's own doing: not news (DMN-284).
             if before.is_some_and(|before| {
                 *before
                     != ThreadSummary {
                         position: before.position,
+                        workspace_id: before.workspace_id.clone(),
                         ..summary.clone()
                     }
             }) {

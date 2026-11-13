@@ -2969,3 +2969,39 @@ async fn a_reorder_before_what_another_window_moved_away_is_a_conflict() {
     assert_eq!(listed["threads"][0]["id"], second.as_str());
     assert_eq!(listed["threads"][0]["position"], 0);
 }
+
+// spec: DMN-283, DMN-284
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_moved_to_another_workspace_keeps_its_updated_at() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let shop = client
+        .ok("workspaces.create", json!({ "name": "shop" }))
+        .await["id"]
+        .clone();
+    let docs = client
+        .ok("workspaces.create", json!({ "name": "docs" }))
+        .await["id"]
+        .clone();
+    let thread = thread_in(&mut client, "moved", &shop).await;
+    let updated_at = async |client: &mut Client| {
+        client.ok("threads.list", json!({})).await["threads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|summary| summary["id"] == thread.as_str())
+            .map(|summary| (summary["workspaceId"].clone(), summary["updatedAt"].clone()))
+            .unwrap()
+    };
+    let (_, before) = updated_at(&mut client).await;
+
+    client
+        .ok(
+            "threads.reorder",
+            json!({ "threadId": thread, "workspaceId": docs }),
+        )
+        .await;
+
+    // The user moved it: not news, so no window marks it unread (UI-020).
+    assert_eq!(updated_at(&mut client).await, (docs, before));
+}

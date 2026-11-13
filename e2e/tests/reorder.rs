@@ -1,7 +1,7 @@
 //! Reordering the left column (E2E-60), against a daemon on the fake launcher in headless Chromium: WebDriver pointer
 //! actions drag a thread within its workspace, a thread onto another workspace and a workspace section (UI-621,
 //! UI-622); `Alt-ArrowDown` moves the focused thread and the live region says where it went (UI-624, UI-625); the
-//! order is the daemon's, so it survives a reload (UI-620, DMN-280, DMN-284).
+//! order is the daemon's, so it survives a reload, and a moved thread is not unread (UI-620, DMN-280, DMN-284).
 
 use e2e::Journey;
 use omfp_daemon::agent::FakeLauncher;
@@ -36,6 +36,11 @@ async fn until_column(journey: &Journey, what: &str, expected: &Column) -> anyho
 
 fn row(id: &str) -> String {
     format!("[data-testid=thread-row][data-thread-id=\"{id}\"]")
+}
+
+/// The unread mark of thread `id`'s row.
+fn unread(id: &str) -> String {
+    format!("{} [data-testid=unread]", row(id))
 }
 
 fn section_name(id: &str) -> String {
@@ -142,6 +147,8 @@ async fn threads_and_workspaces_are_dragged_into_an_order_that_survives_a_reload
         &order(&[(&alpha, &[&a2]), (&beta, &[&a1, &b1])]),
     )
     .await?;
+    // The user moved it: not news (DMN-284), so it is not unread.
+    assert_eq!(journey.count(&unread(&a1)).await?, 0, "a1 is not unread");
 
     // A section by its name (UI-622).
     drag(&journey, &section_name(&beta), &section_name(&alpha)).await?;
@@ -186,6 +193,7 @@ async fn threads_and_workspaces_are_dragged_into_an_order_that_survives_a_reload
         )
         .await?;
     assert_eq!(focused, json!(a1), "the focus stays on the moved row");
+    assert_eq!(journey.count(&unread(&a1)).await?, 0, "a1 is not unread");
     journey.screenshot("reorder").await?;
 
     // The order is the daemon's: a reload shows it again.
