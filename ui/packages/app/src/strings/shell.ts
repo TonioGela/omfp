@@ -160,7 +160,8 @@ export const shell = {
     refresh: "Refresh the changes",
     loading: "Reading the git status…",
     loadingDiff: "Reading the diff…",
-    clean: "No changes",
+    /** The disclosure grouping the clean repositories (UI-342). */
+    cleanRepos: (count: number) => (count === 1 ? "1 clean repository" : `${count} clean repositories`),
     truncated: "The diff is too large and was cut.",
     renamedFrom: (path: string) => `from ${path}`,
     /** One letter per kind of change, as `git status --short` writes them. */

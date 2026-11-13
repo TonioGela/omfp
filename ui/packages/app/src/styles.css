@@ -1300,8 +1300,9 @@
     cursor: pointer;
   }
 
-  /* omfp:changes (UI-080): per repository a head (name, branch, ahead/behind, summary), then file rows (status letter,
-   * path, `+n −m`) that expand to the file's diff card (UI-165). */
+  /* omfp:changes (UI-080): per repository a head (name, branch, ahead/behind, summary) on one line (UI-343), then file
+   * rows (status letter, path, `+n −m`) that expand to the file's diff card (UI-165); the clean repositories in one
+   * disclosure at the bottom (UI-342). */
   .omfp-changes {
     display: flex;
     flex-direction: column;
@@ -1325,22 +1326,37 @@
     flex-direction: column;
   }
 
+  /* One line whatever the width (UI-343): the name and the branch shrink with an ellipsis, in proportion to their
+   * length (both stay readable), the ahead/behind and the summary never shrink nor wrap. */
   .omfp-changes__repo-head {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     gap: var(--omfp-s2);
+    min-inline-size: 0;
     margin: 0;
     padding: 0 var(--omfp-s1) var(--omfp-s1);
     font-size: var(--omfp-fs-2xs);
     font-weight: var(--omfp-fw-regular);
+    white-space: nowrap;
     color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-changes__repo-head > * {
+    flex: none;
   }
 
   .omfp-changes__repo-name {
     font-size: var(--omfp-fs-sm);
     font-weight: var(--omfp-fw-strong);
     color: var(--omfp-primary);
+  }
+
+  .omfp-changes__repo-head > .omfp-changes__repo-name {
+    flex: 0 1 auto;
+    min-inline-size: 3ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   /* The workspace folder's own repository (UI-341): its icon and mark, and a rule before the repositories after it. */
@@ -1350,7 +1366,8 @@
     color: var(--omfp-primary);
   }
 
-  .omfp-changes__repo[data-workspace] + .omfp-changes__repo {
+  .omfp-changes__repo[data-workspace] + .omfp-changes__repo,
+  .omfp-changes__repo[data-workspace] + .omfp-changes__clean {
     padding-block-start: var(--omfp-s3);
     border-block-start: 1px solid var(--omfp-outline-variant);
   }
@@ -1367,9 +1384,23 @@
 
   .omfp-changes__branch .omfp-ic,
   .omfp-workspace__branch .omfp-ic {
+    flex: none;
     inline-size: 0.75rem;
     block-size: 0.75rem;
     color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-changes__repo-head > .omfp-changes__branch {
+    flex: 0 1 auto;
+    /* The icon and four characters (`main` whole). */
+    min-inline-size: calc(0.75rem + var(--omfp-s1) + 4ch);
+    overflow: hidden;
+  }
+
+  .omfp-changes__branch-name {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .omfp-changes__meta,
@@ -1385,8 +1416,29 @@
     padding: 0 var(--omfp-s1);
   }
 
-  .omfp-changes__repo-head > [data-testid="changes-summary"] {
+  .omfp-changes__repo-head > .omfp-changes__summary {
     margin-inline-start: auto;
+  }
+
+  /* The clean repositories (UI-342): a disclosure whose rows are repository heads alone. */
+  .omfp-changes__clean .omfp-disclosure__trigger {
+    inline-size: 100%;
+    padding-inline: var(--omfp-s1);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-changes__clean-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s1);
+    margin: 0;
+    padding: var(--omfp-s1) 0 0;
+    list-style: none;
+  }
+
+  .omfp-changes__clean-list .omfp-changes__repo-head {
+    padding-block-end: 0;
   }
 
   .omfp-changes__files {

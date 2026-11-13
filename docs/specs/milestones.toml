@@ -761,6 +761,8 @@ requirements = [
   "UI-339",
   "UI-340",
   "UI-341",
+  "UI-342",
+  "UI-343",
   # MCP follow-ups
   "DMN-200",
   "DMN-201",

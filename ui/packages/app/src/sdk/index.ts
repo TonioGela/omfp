@@ -69,7 +69,14 @@ export {
   runningInBackground,
   stopJobMessage,
 } from "../vm/background.ts";
-export { type ChangedFile, type ChangesRepo, changeRunsKey, changesView } from "../vm/changes.ts";
+export {
+  type ChangedFile,
+  type ChangesRepo,
+  type ChangesSections,
+  changeRunsKey,
+  changesSections,
+  changesView,
+} from "../vm/changes.ts";
 export {
   alternative,
   behavior,

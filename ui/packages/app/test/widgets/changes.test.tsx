@@ -1,11 +1,14 @@
 /** L4: `omfp:changes` over a fake client. */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import type { FileContent, GitStatus } from "@omfp/protocol";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { FileContent, GitStatus, RepoStatus } from "@omfp/protocol";
 import { workspaceTopic } from "@omfp/protocol";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type OmfpHost, OPEN_FILES, SELECTED_THREAD, type WidgetProps } from "../../src/sdk/index.ts";
+import type { ReactNode } from "react";
+import { type OmfpHost, OPEN_FILES, SELECTED_THREAD, type WidgetProps, WidgetScope } from "../../src/sdk/index.ts";
 import { ChangesWidget } from "../../src/widgets/changes/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { renderWithHost, type TestHost, testHost } from "../support/host.tsx";
@@ -33,6 +36,15 @@ const STATUS: GitStatus = {
   files: [{ path: "src/lib.rs", oldPath: null, status: "modified", additions: 1, deletions: 1 }],
 };
 
+const CLEAN: GitStatus = { branch: "main", ahead: 0, behind: 0, dirty: false, files: [] };
+
+/** The widget in the slot of the default view's `omfp:changes` (what `useStored` keys its state by). */
+function inScope(ui: ReactNode): ReactNode {
+  return (
+    <WidgetScope value={{ instance: "omfp:changes", reference: "omfp:changes", workspaceId: "w1" }}>{ui}</WidgetScope>
+  );
+}
+
 /** What `workspaces.read_file` answers: the file now (the patch's new side). */
 let current: FileContent = {
   path: "fe/src/lib.rs",
@@ -55,7 +67,7 @@ function setup(
   }));
   base.client.answers.set("workspaces.read_file", () => current);
   select(base.host);
-  const test = renderWithHost(<ChangesWidget {...props} />, base);
+  const test = renderWithHost(inScope(<ChangesWidget {...props} />), base);
   test.client.connected();
   test.client.index({
     workspaces: [workspace("w1", [repo("w1", "fe", "feat"), repo("w1", "be", "main")]), workspace("w2")],
@@ -66,17 +78,20 @@ function setup(
 }
 
 function pushStatus(test: TestHost, status: GitStatus): void {
-  test.client.model.applySubscribed(workspaceTopic("w1"), {
-    mode: "snapshot",
-    epoch: "e1",
-    seq: 0,
-    state: [
-      { name: "fe", status },
-      { name: "be", status: { branch: "main", ahead: 0, behind: 0, dirty: false, files: [] } },
-    ],
-  });
+  pushStatuses(test, [
+    { name: "fe", status },
+    { name: "be", status: CLEAN },
+  ]);
+}
+
+function pushStatuses(test: TestHost, state: RepoStatus[]): void {
+  test.client.model.applySubscribed(workspaceTopic("w1"), { mode: "snapshot", epoch: "e1", seq: 0, state });
   test.client.notify();
   test.flush();
+}
+
+function repoNames(): (string | undefined)[] {
+  return screen.queryAllByTestId("changes-repo").map((element) => element.dataset.repo);
 }
 
 function repoSection(name: string): HTMLElement {
@@ -93,22 +108,157 @@ describe("omfp:changes", () => {
     document.documentElement.dataset.motion = "none";
     const test = setup();
     expect(test.client.subscribed).toContain(workspaceTopic("w1"));
-    expect(screen.getAllByTestId("changes-repo").map((element) => element.dataset.repo)).toEqual(["fe", "be"]);
+    expect(repoNames()).toEqual(["fe", "be"]);
     pushStatus(test, STATUS);
     const fe = repoSection("fe");
     expect(within(fe).getByTestId("changes-summary").textContent).toBe("1 file +1 −1");
     const file = within(fe).getByTestId("changes-file");
     expect([file.dataset.path, file.dataset.status]).toEqual(["src/lib.rs", "modified"]);
     expect(within(file).getByTestId("changes-counts").textContent).toBe("+1 −1");
-    expect(within(repoSection("be")).getByTestId("changes-summary").textContent).toBe("clean");
-    expect(within(repoSection("be")).queryByTestId("changes-file")).toBeNull();
+    // The clean repository went to the collapsed group (UI-342).
+    expect(repoNames()).toEqual(["fe"]);
+    expect(screen.getByTestId("changes-clean-toggle").textContent).toBe("1 clean repository");
+  });
+
+  // spec: UI-342
+  test("the clean repositories are one collapsed disclosure at the bottom whose state the instance keeps", async () => {
+    const test = setup();
+    test.client.views("w1");
+    pushStatuses(test, [
+      { name: "fe", status: CLEAN },
+      { name: "be", status: { ...CLEAN, branch: "feat", behind: 2 } },
+    ]);
+    expect(repoNames()).toEqual([]);
+    const toggle = screen.getByTestId("changes-clean-toggle");
+    expect([toggle.textContent, toggle.getAttribute("aria-expanded")]).toEqual(["2 clean repositories", "false"]);
+    const panel = toggle.getAttribute("aria-controls");
+    expect(panel === null ? null : document.getElementById(panel)?.className).toContain("omfp-disclosure__panel");
+
+    await test.user.click(toggle);
+    expect(test.client.callsTo("widgets.state_set").map((call) => call.params)).toEqual([
+      { workspaceId: "w1", instance: "omfp:changes", key: "cleanExpanded", value: true },
+    ]);
+    test.client.viewsEvents("w1", {
+      kind: "widget_stored",
+      instance: "omfp:changes",
+      key: "cleanExpanded",
+      value: true,
+    });
+    test.flush();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    // One line each: the head with name, branch and ahead/behind; no summary, no "no changes" line.
+    expect(repoNames()).toEqual(["fe", "be"]);
+    const be = repoSection("be");
+    expect([
+      within(be).getByTestId("changes-branch").textContent,
+      within(be).getByTestId("changes-ahead-behind").textContent,
+      within(be).queryAllByTestId("changes-summary").length,
+      be.querySelectorAll(".omfp-changes__empty").length,
+      be.children.length,
+    ]).toEqual(["feat", "↑0 ↓2", 0, 0, 1]);
+
+    // The keyboard toggles it too.
+    toggle.focus();
+    await test.user.keyboard("{Enter}");
+    expect(test.client.callsTo("widgets.state_set").at(-1)?.params).toEqual({
+      workspaceId: "w1",
+      instance: "omfp:changes",
+      key: "cleanExpanded",
+      value: false,
+    });
+
+    // Another mount of the instance opens as stored.
+    cleanup();
+    const again = setup();
+    again.client.views("w1", { stored: { "omfp:changes": { cleanExpanded: true } } });
+    pushStatuses(again, [
+      { name: "fe", status: CLEAN },
+      { name: "be", status: CLEAN },
+    ]);
+    expect([screen.getByTestId("changes-clean-toggle").getAttribute("aria-expanded"), repoNames()]).toEqual([
+      "true",
+      ["fe", "be"],
+    ]);
+  });
+
+  // spec: UI-342, UI-341
+  test("the workspace folder's own repository stays first and on one line when clean, before the changed and the group", () => {
+    const base = testHost();
+    base.host.window.set(SELECTED_THREAD, "t1");
+    const test = renderWithHost(inScope(<ChangesWidget />), base);
+    test.client.connected();
+    test.client.index({
+      workspaces: [
+        workspace("w1", [
+          repo("w1", "api", "main"),
+          repo("w1", "fe", "feat"),
+          { ...repo("w1", "geo", "main"), isRoot: true },
+          repo("w1", "be", "main"),
+        ]),
+      ],
+      threads: [thread("t1", "one", "w1")],
+    });
+    test.flush();
+    pushStatuses(test, [
+      { name: "api", status: CLEAN },
+      { name: "fe", status: STATUS },
+      { name: "geo", status: CLEAN },
+      { name: "be", status: CLEAN },
+    ]);
+    expect(repoNames()).toEqual(["geo", "fe"]);
+    const geo = repoSection("geo");
+    expect([
+      within(geo).getByTestId("changes-summary").textContent,
+      geo.querySelectorAll(".omfp-changes__empty, .omfp-changes__files").length,
+      geo.children.length,
+    ]).toEqual(["clean", 0, 1]);
+    const order = [...screen.getByTestId("changes").children].map(
+      (element) => element.getAttribute("data-repo") ?? element.getAttribute("data-testid"),
+    );
+    expect(order.slice(1)).toEqual(["geo", "fe", "changes-clean"]);
+    expect(screen.getByTestId("changes-clean-toggle").textContent).toBe("2 clean repositories");
+  });
+
+  // spec: UI-343
+  test("a repository's head names its repository and branch in full as their tooltips", () => {
+    const long = "grim-monolith-classifier-home-path";
+    const base = testHost();
+    base.host.window.set(SELECTED_THREAD, "t1");
+    const test = renderWithHost(inScope(<ChangesWidget />), base);
+    test.client.connected();
+    test.client.index({
+      workspaces: [workspace("w1", [repo("w1", long, "feature/a-very-long-branch-name-that-cannot-fit")])],
+      threads: [thread("t1", "one", "w1")],
+    });
+    test.flush();
+    const head = repoSection(long);
+    expect([
+      head.querySelector(".omfp-changes__repo-name")?.getAttribute("title"),
+      within(head).getByTestId("changes-branch").getAttribute("title"),
+    ]).toEqual([long, "feature/a-very-long-branch-name-that-cannot-fit"]);
+  });
+
+  // spec: UI-343
+  test("a repository's head stays on one line: the name and the branch shrink with an ellipsis, the rest never", () => {
+    // happy-dom lays nothing out: the rules themselves are checked.
+    const css = readFileSync(join(import.meta.dir, "../../src/styles.css"), "utf8");
+    const rule = (selector: string) =>
+      new RegExp(`${selector.replaceAll(".", "\\.").replaceAll("*", "\\*")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+    expect(rule(".omfp-changes__repo-head")).toMatch(/flex-wrap:\s*nowrap/);
+    expect(rule(".omfp-changes__repo-head > *")).toMatch(/flex:\s*none/);
+    for (const shrinking of [".omfp-changes__repo-head > .omfp-changes__repo-name", ".omfp-changes__branch-name"]) {
+      expect(rule(shrinking)).toMatch(
+        /min-inline-size:[^;]*;[\s\S]*overflow:\s*hidden;[\s\S]*text-overflow:\s*ellipsis/,
+      );
+    }
+    expect(rule(".omfp-changes__repo-head > .omfp-changes__branch")).toMatch(/flex:\s*0 \d+ auto/);
   });
 
   // spec: UI-341
   test("the workspace folder's own repository has the workspace icon, mark and name; the repositories keep their look", () => {
     const base = testHost();
     base.host.window.set(SELECTED_THREAD, "t1");
-    const test = renderWithHost(<ChangesWidget />, base);
+    const test = renderWithHost(inScope(<ChangesWidget />), base);
     test.client.connected();
     test.client.index({
       workspaces: [workspace("w1", [{ ...repo("w1", "geo", "main"), isRoot: true }, repo("w1", "fe", "feat")])],
@@ -128,7 +278,7 @@ describe("omfp:changes", () => {
   // spec: UI-080, UI-267
   test("with a repo prop it lists only that repository", () => {
     setup(undefined, { repo: "be" });
-    expect(screen.getAllByTestId("changes-repo").map((element) => element.dataset.repo)).toEqual(["be"]);
+    expect(repoNames()).toEqual(["be"]);
   });
 
   // spec: UI-146, UI-165

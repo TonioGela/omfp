@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { GitStatus, WorkspaceRepo } from "@omfp/protocol";
-import { changeRunsKey, changesView } from "../../src/vm/changes.ts";
+import { changeRunsKey, changesSections, changesView } from "../../src/vm/changes.ts";
 import { repo, workspace } from "../support/fixtures.ts";
 import { fixture, fixtureUntil, isFrame } from "../widgets/chat/fixtures.ts";
 
@@ -31,6 +31,7 @@ describe("changes", () => {
         branch: "feat",
         aheadBehind: "↑2 ↓1",
         summary: "3 files +10 −1",
+        clean: false,
         files: [
           { path: "src/lib.rs", from: undefined, status: "modified", additions: 3, deletions: 1 },
           { path: "docs/new.md", from: "docs/old.md", status: "renamed", additions: 0, deletions: 0 },
@@ -38,7 +39,15 @@ describe("changes", () => {
         ],
       },
       // No status yet: the files are unknown, not empty.
-      { name: "be", isWorkspace: false, branch: "main", aheadBehind: undefined, summary: undefined, files: undefined },
+      {
+        name: "be",
+        isWorkspace: false,
+        branch: "main",
+        aheadBehind: undefined,
+        summary: undefined,
+        clean: false,
+        files: undefined,
+      },
     ]);
   });
 
@@ -56,7 +65,58 @@ describe("changes", () => {
   test("a clean repository says so; a detached HEAD has no branch", () => {
     const clean: GitStatus = { branch: null, ahead: 0, behind: 0, dirty: false, files: [] };
     const [row] = changesView(workspace("w1", [repo("w1", "fe", null)]), [{ name: "fe", status: clean }]);
-    expect([row?.branch, row?.aheadBehind, row?.summary, row?.files]).toEqual(["detached", undefined, "clean", []]);
+    expect([row?.branch, row?.aheadBehind, row?.summary, row?.clean, row?.files]).toEqual([
+      "detached",
+      undefined,
+      "clean",
+      true,
+      [],
+    ]);
+  });
+
+  // spec: UI-342, UI-341
+  test("the clean repositories go to one group at the bottom; the workspace folder's own stays first, clean or not", () => {
+    const clean: GitStatus = { branch: "main", ahead: 0, behind: 0, dirty: false, files: [] };
+    const ahead: GitStatus = { ...clean, ahead: 3 };
+    const repos = [repo("w1", "api", "main"), repo("w1", "fe", "main"), repo("w1", "be", "main")];
+    // The workspace folder's own repository comes last in the workspace's order here: it is still listed first.
+    const root: WorkspaceRepo = { ...repo("w1", "geo", "main"), isRoot: true };
+    const view = changesView(workspace("w1", [...repos, root, repo("w1", "docs", "main")]), [
+      { name: "api", status: clean },
+      { name: "fe", status },
+      { name: "be", status: ahead },
+      { name: "geo", status: clean },
+    ]);
+    const sections = changesSections(view, undefined);
+    // `docs` has no status yet: listed (reading), not counted as clean.
+    expect([sections.listed.map((row) => row.name), sections.clean.map((row) => row.name)]).toEqual([
+      ["geo", "fe", "docs"],
+      ["api", "be"],
+    ]);
+    expect(sections.clean.map((row) => row.aheadBehind)).toEqual([undefined, "↑3 ↓0"]);
+  });
+
+  // spec: UI-342, UI-080
+  test("with a repo prop only that repository is listed, clean or not, and nothing is grouped", () => {
+    const clean: GitStatus = { branch: "main", ahead: 0, behind: 0, dirty: false, files: [] };
+    const view = changesView(workspace("w1", [repo("w1", "fe", "main"), repo("w1", "be", "main")]), [
+      { name: "fe", status },
+      { name: "be", status: clean },
+    ]);
+    const sections = changesSections(view, "be");
+    expect([sections.listed.map((row) => row.name), sections.clean.length]).toEqual([["be"], 0]);
+    expect(changesSections(view, "gone")).toEqual({ listed: [], clean: [] });
+  });
+
+  // spec: UI-342
+  test("every repository clean and no workspace folder repository: only the group", () => {
+    const clean: GitStatus = { branch: "main", ahead: 0, behind: 0, dirty: false, files: [] };
+    const view = changesView(workspace("w1", [repo("w1", "fe", "main"), repo("w1", "be", "main")]), [
+      { name: "fe", status: clean },
+      { name: "be", status: clean },
+    ]);
+    const sections = changesSections(view, undefined);
+    expect([sections.listed.length, sections.clean.map((row) => row.name)]).toEqual([0, ["fe", "be"]]);
   });
 
   // spec: UI-080

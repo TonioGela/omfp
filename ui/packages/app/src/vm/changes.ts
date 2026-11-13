@@ -1,8 +1,8 @@
 /**
  * The `omfp:changes` widget (UI-080): for each repository of the current workspace (the workspace folder's own marked,
  * UI-341), its branch, ahead/behind and
- * changed files with +/− counts (the `workspace/<id>` topic's git status, DMN-026), and the key that changes when the
- * selected thread's agent may have changed files.
+ * changed files with +/− counts (the `workspace/<id>` topic's git status, DMN-026), the clean repositories grouped at
+ * the bottom (UI-342), and the key that changes when the selected thread's agent may have changed files.
  */
 
 import type { ToolRun } from "@omfp/core";
@@ -37,6 +37,8 @@ export interface ChangesRepo {
   readonly aheadBehind: string | undefined;
   /** `3 files +10 −1`, or `clean`; `undefined` until the status is known. */
   readonly summary: string | undefined;
+  /** The status is known and lists no changed file. */
+  readonly clean: boolean;
   /** `undefined` until the status is known. */
   readonly files: readonly ChangedFile[] | undefined;
 }
@@ -52,6 +54,7 @@ export function changesView(workspace: Workspace, status: readonly RepoStatus[] 
         branch: repo.branch ?? text.detached,
         aheadBehind: undefined,
         summary: undefined,
+        clean: false,
         files: undefined,
       };
     }
@@ -61,6 +64,7 @@ export function changesView(workspace: Workspace, status: readonly RepoStatus[] 
       branch: git.branch ?? text.detached,
       aheadBehind: git.ahead > 0 || git.behind > 0 ? text.aheadBehind(git.ahead, git.behind) : undefined,
       summary: gitSummary({ ...git, ahead: 0, behind: 0, dirty: false }),
+      clean: git.files.length === 0,
       files: git.files.map((file) => ({
         path: file.path,
         from: file.oldPath ?? undefined,
@@ -70,6 +74,33 @@ export function changesView(workspace: Workspace, status: readonly RepoStatus[] 
       })),
     };
   });
+}
+
+/** What `omfp:changes` shows (UI-342). */
+export interface ChangesSections {
+  /**
+   * The workspace folder's own repository first (UI-341), clean or not, then the repositories with changes or whose
+   * status is not known yet, in the workspace's order.
+   */
+  readonly listed: readonly ChangesRepo[];
+  /** The other clean repositories, in the workspace's order: one collapsed group at the bottom. */
+  readonly clean: readonly ChangesRepo[];
+}
+
+/**
+ * Splits `repos` (from {@link changesView}) into the listed repositories and the clean group (UI-342); with `only`
+ * (the widget's `repo` prop) just that repository, listed whatever its status.
+ */
+export function changesSections(repos: readonly ChangesRepo[], only: string | undefined): ChangesSections {
+  if (only !== undefined) {
+    return { listed: repos.filter((repo) => repo.name === only), clean: [] };
+  }
+  const workspace = repos.filter((repo) => repo.isWorkspace);
+  const others = repos.filter((repo) => !repo.isWorkspace);
+  return {
+    listed: [...workspace, ...others.filter((repo) => !repo.clean)],
+    clean: others.filter((repo) => repo.clean),
+  };
 }
 
 /** The ids of the thread's ended `edit`, `write` and `bash` runs: it changes each time one of them ends. */

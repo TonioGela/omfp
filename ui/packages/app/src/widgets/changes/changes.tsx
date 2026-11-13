@@ -1,8 +1,10 @@
 /**
  * `omfp:changes` (UI-080): for each repository of the current workspace, its branch, ahead/behind and changed files
- * with +/− counts, from the `workspace/<id>` topic (DMN-026); a file expands to its diff (`workspaces.diff`). The
- * status refreshes after each `edit`, `write` or `bash` run of the selected thread ends, and from the refresh button:
- * `workspaces.status` rescans the workspace and publishes the fresh status of every repository on the topic.
+ * with +/− counts, from the `workspace/<id>` topic (DMN-026); a file expands to its diff (`workspaces.diff`). The clean
+ * repositories other than the workspace folder's are one collapsed group at the bottom (UI-342); a repository's head is
+ * one line (UI-343). The status refreshes after each `edit`, `write` or `bash` run of the selected thread ends, and
+ * from the refresh button: `workspaces.status` rescans the workspace and publishes the fresh status of every
+ * repository on the topic.
  */
 
 import type { FileContent, FileDiff } from "@omfp/protocol";
@@ -11,6 +13,7 @@ import {
   type ChangedFile,
   type ChangesRepo,
   changeRunsKey,
+  changesSections,
   changesView,
   errorCode,
   originalFromPatch,
@@ -20,6 +23,7 @@ import {
   useCurrentWorkspaceId,
   useOpenFile,
   useReportError,
+  useStored,
   useThread,
   useWindowState,
   useWorkspace,
@@ -65,11 +69,8 @@ function Changes({ workspaceId, only }: { workspaceId: string; only: string | un
     }
   }, [runs, refresh]);
 
-  const repos = useMemo(
-    () =>
-      workspace === undefined
-        ? []
-        : changesView(workspace, status).filter((repo) => only === undefined || repo.name === only),
+  const sections = useMemo(
+    () => (workspace === undefined ? { listed: [], clean: [] } : changesSections(changesView(workspace, status), only)),
     [workspace, status, only],
   );
   return (
@@ -82,12 +83,54 @@ function Changes({ workspaceId, only }: { workspaceId: string; only: string | un
           data-testid="changes-refresh"
         />
       </div>
-      {repos.length === 0 ? (
+      {sections.listed.length === 0 && sections.clean.length === 0 ? (
         <EmptyState icon="folder-git-2" title={text.noRepos} data-testid="changes-no-repo" />
       ) : (
-        repos.map((repo) => <RepoChanges key={repo.name} workspaceId={workspaceId} repo={repo} runs={runs} />)
+        <>
+          {sections.listed.map((repo) => (
+            <RepoChanges key={repo.name} workspaceId={workspaceId} repo={repo} runs={runs} />
+          ))}
+          {sections.clean.length > 0 && <CleanRepos repos={sections.clean} />}
+        </>
       )}
     </section>
+  );
+}
+
+/**
+ * The clean repositories (UI-342): one disclosure, collapsed by default, whose state the widget instance keeps
+ * (`useStored`); expanded, one line per repository.
+ */
+function CleanRepos({ repos }: { repos: readonly ChangesRepo[] }): ReactNode {
+  const [expanded, setExpanded] = useStored("cleanExpanded", false);
+  return (
+    <Disclosure
+      className="omfp-changes__clean"
+      data-testid="changes-clean"
+      level={2}
+      toggleTestId="changes-clean-toggle"
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+      title={text.cleanRepos(repos.length)}
+    >
+      {expanded && (
+        <ul className="omfp-changes__clean-list">
+          {repos.map((repo) => (
+            <li key={repo.name}>
+              <section
+                className="omfp-changes__repo"
+                data-testid="changes-repo"
+                data-repo={repo.name}
+                data-clean="true"
+                aria-label={repo.name}
+              >
+                <RepoHead repo={repo} level={3} summary={false} />
+              </section>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Disclosure>
   );
 }
 
@@ -97,7 +140,10 @@ interface RepoChangesProps {
   readonly runs: string;
 }
 
-/** A repository's changes; the workspace folder's own one (UI-341) has the workspace icon and mark, and a rule below. */
+/**
+ * A repository's changes; the workspace folder's own one (UI-341) has the workspace icon and mark, and a rule below. A
+ * clean one is its head alone (UI-342).
+ */
 function RepoChanges({ workspaceId, repo, runs }: RepoChangesProps): ReactNode {
   return (
     <section
@@ -105,32 +151,13 @@ function RepoChanges({ workspaceId, repo, runs }: RepoChangesProps): ReactNode {
       data-testid="changes-repo"
       data-repo={repo.name}
       data-workspace={repo.isWorkspace ? "true" : undefined}
+      data-clean={repo.clean ? "true" : undefined}
       aria-label={repo.isWorkspace ? text.workspaceLabel(repo.name) : repo.name}
     >
-      <h2 className="omfp-changes__repo-head">
-        {repo.isWorkspace && <Icon name="folder" className="omfp-changes__workspace-icon" />}
-        <span className="omfp-changes__repo-name">{repo.name}</span>
-        {repo.isWorkspace && (
-          <Badge className="omfp-changes__workspace-mark" data-testid="changes-workspace-mark">
-            {text.workspace}
-          </Badge>
-        )}
-        <span className="omfp-changes__branch">
-          <Icon name="git-branch" />
-          {repo.branch}
-        </span>
-        {repo.aheadBehind !== undefined && <span className="omfp-changes__meta">{repo.aheadBehind}</span>}
-        {repo.summary !== undefined && (
-          <span className="omfp-changes__meta" data-testid="changes-summary">
-            {repo.summary}
-          </span>
-        )}
-      </h2>
+      <RepoHead repo={repo} level={2} summary={true} />
       {repo.files === undefined ? (
         <p className="omfp-changes__empty">{text.loading}</p>
-      ) : repo.files.length === 0 ? (
-        <p className="omfp-changes__empty">{text.clean}</p>
-      ) : (
+      ) : repo.files.length === 0 ? null : (
         <ul className="omfp-changes__files">
           {repo.files.map((file) => (
             <li key={file.path}>
@@ -146,6 +173,41 @@ function RepoChanges({ workspaceId, repo, runs }: RepoChangesProps): ReactNode {
         </ul>
       )}
     </section>
+  );
+}
+
+/**
+ * A repository's head on one line (UI-343): the name, then the branch, each cut with an ellipsis when the line is
+ * short (the whole text as their tooltip), then ahead/behind and the summary, never cut nor wrapped.
+ */
+function RepoHead({ repo, level, summary }: { repo: ChangesRepo; level: 2 | 3; summary: boolean }): ReactNode {
+  const Heading = level === 2 ? "h2" : "h3";
+  return (
+    <Heading className="omfp-changes__repo-head">
+      {repo.isWorkspace && <Icon name="folder" className="omfp-changes__workspace-icon" />}
+      <span className="omfp-changes__repo-name" title={repo.name}>
+        {repo.name}
+      </span>
+      {repo.isWorkspace && (
+        <Badge className="omfp-changes__workspace-mark" data-testid="changes-workspace-mark">
+          {text.workspace}
+        </Badge>
+      )}
+      <span className="omfp-changes__branch" title={repo.branch} data-testid="changes-branch">
+        <Icon name="git-branch" />
+        <span className="omfp-changes__branch-name">{repo.branch}</span>
+      </span>
+      {repo.aheadBehind !== undefined && (
+        <span className="omfp-changes__meta" data-testid="changes-ahead-behind">
+          {repo.aheadBehind}
+        </span>
+      )}
+      {summary && repo.summary !== undefined && (
+        <span className="omfp-changes__meta omfp-changes__summary" data-testid="changes-summary">
+          {repo.summary}
+        </span>
+      )}
+    </Heading>
   );
 }
 
