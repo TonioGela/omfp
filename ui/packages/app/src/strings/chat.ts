@@ -121,8 +121,8 @@ export const chat = {
     /** A touch screen has none of those keys (UI-423). */
     placeholderBusyTouch: "Steer the agent, or queue a follow-up",
     send: { prompt: "Send", "follow-up": "Queue follow-up", steer: "Steer now" },
-    /** The send buttons' short labels on a touch screen, all on one row (UI-423). */
-    sendTouch: { prompt: "Send", "follow-up": "Queue", steer: "Steer" },
+    /** The send buttons' short labels on a touch screen (UI-423) and in a tight composer (UI-481), all on one row. */
+    sendShort: { prompt: "Send", "follow-up": "Queue", steer: "Steer" },
     abort: "Abort",
     /** Composer bar hints after their key chips (UI-148, UI-172). */
     hint: { newline: "newline", leave: "normal", interrupt: "interrupt" },

@@ -153,11 +153,23 @@ export function Composer({ mode = "normal", disabled = false, className, ...prop
   );
 }
 
-export type ComposerBarProps = HTMLAttributes<HTMLDivElement>;
+export interface ComposerBarProps extends HTMLAttributes<HTMLDivElement> {
+  /** What the bar starts with: attachment chips, key hints ({@link ComposerHint}). They give way to the actions: one
+   * that does not fit on the row is not shown at all, so the bar stays one row (UI-480). */
+  hints?: ReactNode;
+  /** The actions, the primary one last: one group at the bar's end (UI-480). */
+  children?: ReactNode;
+}
 
-/** The row under the composer's input: attachment chips, key hints, the send button. */
-export function ComposerBar({ className, ...props }: ComposerBarProps) {
-  return <div {...props} className={cx("omfp-compose__bar", className)} />;
+/** The row under the composer's input (UI-172, UI-480): the hints at its start, the actions at its end, the primary
+ * one last, so it sits at the composer's bottom-right whatever else shows. */
+export function ComposerBar({ hints, className, children, ...props }: ComposerBarProps) {
+  return (
+    <div {...props} className={cx("omfp-compose__bar", className)}>
+      {hints !== undefined && <div className="omfp-compose__hints">{hints}</div>}
+      <div className="omfp-compose__actions">{children}</div>
+    </div>
+  );
 }
 
 export type ComposerHintProps = HTMLAttributes<HTMLSpanElement>;

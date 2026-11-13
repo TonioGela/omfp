@@ -12,6 +12,8 @@ import {
   Checkbox,
   Code,
   CommandItem,
+  ComposerBar,
+  ComposerHint,
   ConfirmDialog,
   compactNumber,
   Diff,
@@ -924,6 +926,29 @@ describe("ChatHeader", () => {
       false,
     ]);
     expect(screen.getByTestId("header").querySelector(".omfp-chat-header__bar")).toBeNull();
+  });
+});
+
+describe("ComposerBar", () => {
+  // spec: UI-480, UI-172
+  test("the hints in a group at its start, the actions in a group at its end, in their order", () => {
+    const { rerender } = render(
+      <ComposerBar data-testid="bar" hints={<ComposerHint>esc normal</ComposerHint>}>
+        <button type="button">Abort</button>
+        <button type="submit">Send</button>
+      </ComposerBar>,
+    );
+    const bar = screen.getByTestId("bar");
+    expect([...bar.children].map((child) => [child.className, child.textContent])).toEqual([
+      ["omfp-compose__hints", "esc normal"],
+      ["omfp-compose__actions", "AbortSend"],
+    ]);
+    rerender(
+      <ComposerBar data-testid="bar">
+        <button type="submit">Send</button>
+      </ComposerBar>,
+    );
+    expect([...screen.getByTestId("bar").children].map((child) => child.className)).toEqual(["omfp-compose__actions"]);
   });
 });
 

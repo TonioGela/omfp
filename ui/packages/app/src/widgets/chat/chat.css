@@ -713,15 +713,6 @@
     caret-color: var(--omfp-primary);
   }
 
-  .omfp-composer__spacer {
-    flex: 1 1 auto;
-  }
-
-  /* The app's bar pushes its buttons right with the spacer; scoped so the kit composer elsewhere keeps its layout. */
-  .omfp-composer .omfp-compose__bar > .omfp-button:last-child {
-    margin-inline-start: 0;
-  }
-
   .omfp-composer__interrupt {
     color: var(--omfp-warn);
   }
@@ -729,12 +720,8 @@
   /* A touch screen (UI-423): the actions on one row, whatever the width; the text area grows up to a quarter of the
    * visual viewport (`--vvh` on a phone, else the dynamic viewport, which the on-screen keyboard shrinks with
    * `interactive-widget=resizes-content`, UI-424) and then scrolls, so the transcript keeps the rest. */
-  .omfp-composer[data-touch] .omfp-compose__bar {
+  .omfp-composer[data-touch] .omfp-compose__actions {
     flex-wrap: nowrap;
-  }
-
-  .omfp-composer[data-touch] .omfp-compose__bar > .omfp-button {
-    flex: none;
   }
 
   .omfp-composer[data-touch] .omfp-compose__field .omfp-textarea {

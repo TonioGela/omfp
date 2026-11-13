@@ -3541,15 +3541,45 @@
     color: color-mix(in oklab, var(--omfp-on-surface-variant) 78%, transparent);
   }
 
+  /* The bar (UI-480): one row, the hints at its start, the actions at its end. */
   .omfp-compose__bar {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: var(--omfp-s2);
     padding: var(--omfp-s1) var(--omfp-s2) var(--omfp-s2);
   }
 
-  .omfp-compose__bar > .omfp-button:last-child {
+  /* The hints give way to the actions: one row tall, they wrap onto rows below it, out of sight, so a hint shows whole
+   * or not at all. The zero-width `::before` (its gap taken back) keeps the first row from taking a hint wider than
+   * the room left. */
+  .omfp-compose__hints {
+    display: flex;
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: flex-start;
+    gap: var(--omfp-ctl-h-sm) var(--omfp-s2);
+    min-inline-size: 0;
+    block-size: var(--omfp-ctl-h-sm);
+    overflow: hidden;
+  }
+
+  .omfp-compose__hints::before {
+    content: "";
+    block-size: var(--omfp-ctl-h-sm);
+    margin-inline-end: calc(-1 * var(--omfp-s2));
+  }
+
+  /* The actions keep together at the end, the primary one last; in a box too narrow for them they wrap, ending with
+   * the primary at the bottom-right. */
+  .omfp-compose__actions {
+    display: flex;
+    flex: 0 1 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
     margin-inline-start: auto;
   }
 

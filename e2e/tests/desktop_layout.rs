@@ -1,17 +1,21 @@
 //! The desktop layout at 1100, 1440 and 1920 px (E2E-38), headless Chromium (omp and git for real: the rows need git statuses): the workspace
 //! widget's repository rows with a long name, a dirty status, an origin and an "also in" warning never draw one cell
 //! over another nor past the row (UI-453); the side tab bar stays one row (UI-452); floating panels open below the
-//! view's top bars and do not hide each other's title bars (UI-454). Screenshots land in `/tmp` as
-//! `omfp-desktop-<width>.png` and `omfp-desktop-<width>-panels.png` (or `OMFP_SCREENSHOT_DIR`); nothing compares
-//! pixels.
+//! view's top bars and do not hide each other's title bars (UI-454). The composer and the transcript (E2E-41) at 1100,
+//! 1280, 1440 and 1920 px: the composer's buttons on one row, the primary last at its bottom-right, idle and busy
+//! alike (UI-480, UI-481), and the transcript's column where the composer's is (UI-485). Screenshots land in `/tmp` as
+//! `omfp-desktop-<width>.png`, `omfp-desktop-<width>-panels.png` and `omfp-composer-<width>-<state>.png` (or
+//! `OMFP_SCREENSHOT_DIR`); nothing compares pixels.
 
 use e2e::{Journey, row};
+use fake_llm::{Reply, Step};
 use omfp_protocol::method::{ThreadsCreate, ViewsMount, WorkspacesAddRepo};
 use omfp_protocol::{
     AddRepoParams, CreateThreadParams, CreateWorkspaceParams, MountParams, RepoSource,
     ThreadWorkspace,
 };
 use omfp_testkit::TempRepo;
+use serde_json::Value;
 
 /// The repository name of the QA report that broke the rows.
 const LONG: &str = "infra-terraform-modules-shared-configuration";
@@ -114,8 +118,8 @@ const rem = parseFloat(getComputedStyle(document.documentElement).fontSize);
 const height = bar.getBoundingClientRect().height;
 return [...(tops.size === 1 ? [] : [`tabs on ${tops.size} rows`]), ...(height <= 2.6 * rem ? [] : [`bar ${height} px`])];";
 
-/// The rows and the side tabs at `width`, then a screenshot.
-async fn layout_at(journey: &Journey, width: u32) -> anyhow::Result<()> {
+/// Sizes the window `width` px wide and waits for the wide frame.
+async fn window(journey: &Journey, width: u32) -> anyhow::Result<()> {
     journey.driver.set_window_rect(0, 0, width, 900).await?;
     journey
         .until(&format!("a {width} px window"), async |page| {
@@ -128,7 +132,12 @@ async fn layout_at(journey: &Journey, width: u32) -> anyhow::Result<()> {
             let layout = page.attr("[data-testid=app]", "data-layout").await?;
             Ok((layout.as_deref() == Some("wide")).then_some(()))
         })
-        .await?;
+        .await
+}
+
+/// The rows and the side tabs at `width`, then a screenshot.
+async fn layout_at(journey: &Journey, width: u32) -> anyhow::Result<()> {
+    window(journey, width).await?;
     none(journey, &format!("repository rows at {width} px"), ROWS).await?;
     journey.fits("[data-widget=\"omfp:workspace\"]").await?;
     none(journey, &format!("side tabs at {width} px"), SIDE_TABS).await?;
@@ -217,4 +226,121 @@ async fn repository_rows_side_tabs_and_floating_panels_at_desktop_widths() -> an
     journey
         .finish("desktop layout: repository rows, side tabs, floating panels")
         .await
+}
+
+/// The composer's box, its bar's buttons and the transcript's column: the visible buttons' tops (one row: one top),
+/// their test ids in order, the gap between the last one's right edge and the bar's content edge, the box's bottom and
+/// the last button's (both from the box's bottom), the box's height, the transcript content's left and right edges
+/// less the box's, the key hints cut or drawn over a button, and the transcript's scrollbar width.
+const COMPOSER: &str = "
+const box = document.querySelector('[data-testid=composer] .omfp-compose');
+const b = box.getBoundingClientRect();
+const bar = box.querySelector('.omfp-compose__bar');
+const style = getComputedStyle(bar);
+const end = bar.getBoundingClientRect().right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth);
+const buttons = [...bar.querySelectorAll('button')].map((e) => [e.dataset.testid ?? '', e.getBoundingClientRect()])
+  .filter(([, r]) => r.width > 0);
+const last = buttons.at(-1)[1];
+const transcript = document.querySelector('[data-testid=transcript]');
+const column = transcript.querySelector('.omfp-transcript__content').getBoundingClientRect();
+const hints = [...bar.querySelectorAll('.omfp-compose__hint')].map((e) => [e.textContent, e.getBoundingClientRect()]);
+const shown = hints.filter(([, r]) => r.width > 0 && r.top < b.bottom && r.bottom > b.top);
+const cut = shown.filter(([, r]) => r.left < b.left || r.right > b.right || r.bottom > b.bottom
+  || buttons.some(([, q]) => Math.min(r.right, q.right) > Math.max(r.left, q.left)
+    && Math.min(r.bottom, q.bottom) > Math.max(r.top, q.top))).map(([text]) => text);
+return {
+  tops: [...new Set(buttons.map(([, r]) => Math.round(r.top)))],
+  order: buttons.map(([id]) => id),
+  end: end - last.right,
+  right: b.right - last.right,
+  bottom: b.bottom - last.bottom,
+  height: b.height,
+  left: column.left - b.left,
+  width: column.right - b.right,
+  cut,
+  scrollbar: transcript.offsetWidth - transcript.clientWidth,
+};";
+
+/// The composer at `width` in `state` (`idle`, `busy`): its measures, a screenshot, and what is wrong with them.
+async fn composer_at(
+    journey: &Journey,
+    width: u32,
+    state: &str,
+) -> anyhow::Result<(Value, Vec<String>)> {
+    window(journey, width).await?;
+    let value = journey.eval(COMPOSER, Vec::new()).await?;
+    eprintln!("composer at {width} px, {state}: {value}");
+    journey
+        .screenshot(&format!("composer-{width}-{state}"))
+        .await?;
+    let number = |key: &str| value[key].as_f64().unwrap_or(f64::NAN);
+    let mut wrong = Vec::new();
+    let at = format!("at {width} px, {state}");
+    if value["tops"].as_array().map(Vec::len) != Some(1) {
+        wrong.push(format!("buttons on several rows {at}: {}", value["tops"]));
+    }
+    if value["order"].as_array().and_then(|order| order.last()) != Some(&Value::from("send")) {
+        wrong.push(format!("the primary is not last {at}: {}", value["order"]));
+    }
+    if number("end").abs() > 0.5 {
+        wrong.push(format!(
+            "the primary ends {} px before the bar {at}",
+            number("end")
+        ));
+    }
+    if value["cut"].as_array().is_some_and(|cut| !cut.is_empty()) {
+        wrong.push(format!("key hints cut or covered {at}: {}", value["cut"]));
+    }
+    Ok((value, wrong))
+}
+
+/// The window widths of E2E-41: the wide frame's narrowest, a 13" laptop's, and two larger.
+const COMPOSER_WIDTHS: [u32; 4] = [1920, 1440, 1280, 1100];
+
+// spec: E2E-41, UI-480, UI-481
+#[tokio::test(flavor = "multi_thread")]
+async fn the_composer_keeps_its_primary_bottom_right_and_the_transcript_its_column()
+-> anyhow::Result<()> {
+    let long = (1..=40)
+        .map(|line| format!("Line {line} of a reply long enough to scroll the transcript."))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    let journey = Journey::start(vec![
+        Step::reply(Reply::text(long)),
+        Step::reply(Reply::text("Held reply.")).gated(),
+    ])
+    .await?;
+    journey.connected().await?;
+    journey.scheme("light").await?;
+    let thread = journey.create_thread("composer layout journey").await?;
+    journey.send("first").await?;
+    journey.reply("Line 40").await?;
+    journey.status(&thread, "idle").await?;
+    let mut wrong = Vec::new();
+    let mut idle = Vec::new();
+    for width in COMPOSER_WIDTHS {
+        let (value, found) = composer_at(&journey, width, "idle").await?;
+        idle.push(value);
+        wrong.extend(found);
+    }
+    journey.send("second").await?;
+    journey.fake.wait_for_gate(1).await;
+    journey.busy().await?;
+    for (width, idle) in COMPOSER_WIDTHS.into_iter().zip(idle) {
+        let (busy, found) = composer_at(&journey, width, "busy").await?;
+        wrong.extend(found);
+        // The primary stays where it was and the composer keeps its height when a turn starts.
+        for key in ["right", "bottom", "height"] {
+            let (before, after) = (idle[key].as_f64(), busy[key].as_f64());
+            if before.zip(after).is_none_or(|(a, b)| (a - b).abs() > 0.5) {
+                wrong.push(format!(
+                    "{key} at {width} px: {before:?} idle, {after:?} busy"
+                ));
+            }
+        }
+    }
+    anyhow::ensure!(wrong.is_empty(), "the composer's layout: {wrong:#?}");
+    journey.fake.release_gate(1);
+    journey.status(&thread, "idle").await?;
+    journey.finish("E2E-41").await
 }

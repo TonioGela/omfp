@@ -107,10 +107,13 @@ export function Composers() {
             aria-label="Normal"
             placeholder="Message omp…"
           />
-          <ComposerBar>
-            <ComposerHint>
-              <Kbd>i</Kbd> write
-            </ComposerHint>
+          <ComposerBar
+            hints={
+              <ComposerHint>
+                <Kbd>i</Kbd> write
+              </ComposerHint>
+            }
+          >
             <Button variant="primary" size="sm" icon={<Icon name="arrow-up" />} kbd="enter">
               Send
             </Button>
@@ -123,13 +126,18 @@ export function Composers() {
             aria-label="Insert"
             defaultValue="Insert mode: the composer border changes"
           />
-          <ComposerBar>
-            <Chip icon={<Icon name="paperclip" />} onRemove={() => undefined} removeLabel="Remove attachment">
-              shot.png
-            </Chip>
-            <ComposerHint>
-              <Kbd>ctrl+enter</Kbd> queue
-            </ComposerHint>
+          <ComposerBar
+            hints={
+              <>
+                <Chip icon={<Icon name="paperclip" />} onRemove={() => undefined} removeLabel="Remove attachment">
+                  shot.png
+                </Chip>
+                <ComposerHint>
+                  <Kbd>ctrl+enter</Kbd> queue
+                </ComposerHint>
+              </>
+            }
+          >
             <Button variant="primary" size="sm" icon={<Icon name="arrow-up" />} kbd="enter">
               Send
             </Button>
@@ -156,12 +164,22 @@ export function Composers() {
               aria-label="Busy"
               defaultValue="One more thing"
             />
-            <ComposerBar>
-              <ComposerHint>
-                <Kbd>enter</Kbd> queue
-              </ComposerHint>
-              <Button variant="danger" size="sm" icon={<Icon name="square" />} kbd="ctrl+c">
+            {/* Busy (UI-480): the actions in their order, the primary last at the bottom-right. */}
+            <ComposerBar
+              hints={
+                <ComposerHint>
+                  <Kbd>ctrl+c</Kbd> interrupt
+                </ComposerHint>
+              }
+            >
+              <Button variant="danger" size="sm" icon={<Icon name="square" />}>
                 Abort
+              </Button>
+              <Button size="sm" kbd="ctrl+enter">
+                Queue follow-up
+              </Button>
+              <Button variant="primary" size="sm" icon={<Icon name="arrow-up" />} kbd="enter">
+                Steer now
               </Button>
             </ComposerBar>
           </Composer>

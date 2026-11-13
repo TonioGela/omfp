@@ -934,6 +934,9 @@ requirements = [
   "UI-472",
   "UI-473",
   "UI-474",
+  # QA fixes: the composer's primary action stays bottom-right, its actions on one row from 1100 px
+  "UI-480",
+  "UI-481",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -947,6 +950,7 @@ requirements = [
   "E2E-39",
   "E2E-38",
   "E2E-40",
+  "E2E-41",
   # Touch phones: sizes at the root, sideways phones, no invisible or tiny targets, no key hints
   "UI-413",
   "UI-414",

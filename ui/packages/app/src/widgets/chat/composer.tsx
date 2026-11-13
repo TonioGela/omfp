@@ -21,6 +21,7 @@ import {
   MenuItem,
   Popover,
   TextArea,
+  useWidthClass,
 } from "omfp/kit";
 import {
   alternative,
@@ -212,8 +213,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
             onPaste: pastes.onPaste,
           }}
         />
-        <ComposerBar>
-          {touch ? <span className="omfp-composer__spacer" /> : <KeyHints abortable={false} interruptHint={false} />}
+        <ComposerBar hints={touch ? undefined : <KeyHints abortable={false} interruptHint={false} />}>
           <Button
             type="submit"
             variant="primary"
@@ -250,16 +250,11 @@ function proseInput(touch: boolean) {
   } as const;
 }
 
-/** The key hints of the composer's bar (UI-148, UI-172); a touch screen has no such keys and shows none (UI-423). */
+/** The key hints of the composer's bar (UI-148, UI-172); a touch screen has no such keys and shows none (UI-423). The
+ * `ctrl+c` hint comes first: when the row is short, the hints at its end give way (UI-480). */
 function KeyHints({ abortable, interruptHint }: { abortable: boolean; interruptHint: boolean }) {
   return (
     <>
-      <ComposerHint>
-        <Kbd>{keyLabel("Alt-Enter")}</Kbd> {text.hint.newline}
-      </ComposerHint>
-      <ComposerHint>
-        <Kbd>{keyLabel("Esc")}</Kbd> {text.hint.leave}
-      </ComposerHint>
       {abortable &&
         (interruptHint ? (
           <ComposerHint className="omfp-composer__interrupt" role="status" data-testid="interrupt-hint">
@@ -270,6 +265,12 @@ function KeyHints({ abortable, interruptHint }: { abortable: boolean; interruptH
             <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.hint.interrupt}
           </ComposerHint>
         ))}
+      <ComposerHint>
+        <Kbd>{keyLabel("Alt-Enter")}</Kbd> {text.hint.newline}
+      </ComposerHint>
+      <ComposerHint>
+        <Kbd>{keyLabel("Esc")}</Kbd> {text.hint.leave}
+      </ComposerHint>
     </>
   );
 }
@@ -384,6 +385,8 @@ export const Composer = memo(function Composer({
   /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
   const [insert, setInsert] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const box = useRef<HTMLFormElement>(null);
+  const tight = useWidthClass(box, (width, rem) => width > 0 && width < TIGHT_BELOW_REM * rem);
   const touch = useCoarsePointer();
   const [focusRequest, setFocusRequest] = useWindowState(FOCUS_COMPOSER);
   // Asked to take the focus once shown, e.g. after `g n` (UI-286).
@@ -576,10 +579,12 @@ export const Composer = memo(function Composer({
 
   return (
     <form
+      ref={box}
       className="omfp-composer"
       data-testid="composer"
       data-busy={busy}
       data-touch={touch || undefined}
+      data-tight={tight || undefined}
       {...{ [SCOPE_ATTRIBUTE]: "composer" }}
       onSubmit={(event) => {
         event.preventDefault();
@@ -659,6 +664,7 @@ export const Composer = memo(function Composer({
           threadId={threadId}
           abortable={abortable}
           touch={touch}
+          tight={tight}
           interruptHint={interruptHint}
           mode={mode}
           other={other}
@@ -670,14 +676,21 @@ export const Composer = memo(function Composer({
   );
 });
 
+/** Narrower than this (in `rem`) the composer is tight: the busy actions with their long labels would not fit on one
+ * row (UI-481). */
+const TIGHT_BELOW_REM = 34;
+
 /**
- * The hints and buttons under the input; memoized with stable callbacks, so typing does not render them (UI-197). On
- * a touch screen one row without key hints: the mic and Abort as icons, then the short-labelled send buttons (UI-423).
+ * The hints and buttons under the input; memoized with stable callbacks, so typing does not render them (UI-197). The
+ * actions in one order at the bar's end, the primary last (UI-480): the mic, Abort, the other send mode, then the
+ * send button. On a touch screen (UI-423) and in a tight composer (UI-481) the mic and Abort are icons and the send
+ * buttons have short labels; only a touch screen drops the key hints and chips.
  */
 const ComposerActions = memo(function ComposerActions({
   threadId,
   abortable,
   touch,
+  tight,
   interruptHint,
   mode,
   other,
@@ -687,20 +700,20 @@ const ComposerActions = memo(function ComposerActions({
   threadId: string;
   abortable: boolean;
   touch: boolean;
+  tight: boolean;
   interruptHint: boolean;
   mode: SendMode;
   other: SendMode | undefined;
   onAbort: () => void;
   onSend: (mode: SendMode) => void;
 }) {
-  const labels = touch ? text.sendTouch : text.send;
+  const short = touch || tight;
+  const labels = short ? text.sendShort : text.send;
   return (
-    <ComposerBar>
-      {!touch && <KeyHints abortable={abortable} interruptHint={interruptHint} />}
-      <span className="omfp-composer__spacer" />
+    <ComposerBar hints={touch ? undefined : <KeyHints abortable={abortable} interruptHint={interruptHint} />}>
       <ThreadMicButton threadId={threadId} />
       {abortable &&
-        (touch ? (
+        (short ? (
           <IconButton
             variant="danger"
             label={text.abort}

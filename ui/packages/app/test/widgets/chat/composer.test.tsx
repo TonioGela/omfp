@@ -9,6 +9,7 @@ import { DEFAULT_BINDINGS } from "../../../src/keymap/keymap.ts";
 import { draftKey, FOCUS_COMPOSER, type OmfpHost, SELECTED_THREAD } from "../../../src/sdk/index.ts";
 import { ChatWidget, ComposerWidget } from "../../../src/widgets/chat/index.ts";
 import { PointerMedia } from "../../support/pointer.ts";
+import { installResizeObserver, resize } from "../../support/resize.ts";
 import { eventsUntil, fixtureEvents, isFrame } from "./fixtures.ts";
 import { ManualClock, renderThread, THREAD } from "./harness.tsx";
 
@@ -392,7 +393,7 @@ describe("queue chips", () => {
   });
 });
 
-describe("touch screens", () => {
+describe("the composer's bar by pointer and width", () => {
   let pointer: PointerMedia | undefined;
 
   afterEach(() => {
@@ -466,6 +467,60 @@ describe("touch screens", () => {
       "Abort",
       "Steer nowenter",
     ]);
+  });
+
+  /** The composer bar's two groups: the hints' text, and the actions' test ids in order. */
+  function bar(): { hints: string[]; actions: string[] } {
+    const composer = screen.getByTestId("composer");
+    const hints = composer.querySelectorAll(".omfp-compose__bar > .omfp-compose__hints > .omfp-compose__hint");
+    const actions = composer.querySelectorAll(".omfp-compose__bar > .omfp-compose__actions [data-testid]");
+    return {
+      hints: [...hints].map((hint) => hint.textContent ?? ""),
+      actions: [...actions].map((action) => action.getAttribute("data-testid") ?? ""),
+    };
+  }
+
+  // spec: UI-480
+  test("the hints at the bar's start, the actions in one group at its end, the primary last, idle and busy", () => {
+    pointer = new PointerMedia(false);
+    renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+    const idle = bar();
+    expect(idle.hints).toEqual(["alt+enter newline", "esc normal"]);
+    expect(idle.actions.filter((id) => id !== "live-mic")).toEqual(["send"]);
+    cleanup();
+    renderThread(<ComposerWidget />, queuedEvents());
+    const busy = bar();
+    // The ctrl+c hint first: when the row is short, the hints at its end give way.
+    expect(busy.hints).toEqual(["ctrl+c interrupt", "alt+enter newline", "esc normal"]);
+    expect(busy.actions.filter((id) => id !== "live-mic")).toEqual(["abort", "send-alternative", "send"]);
+    expect(busy.actions.indexOf("live-mic")).toBe(idle.actions.indexOf("live-mic"));
+  });
+
+  // spec: UI-481
+  test("narrower than 34rem the composer is tight: Abort as an icon, short send labels, the key chips kept", () => {
+    pointer = new PointerMedia(false);
+    const restore = installResizeObserver();
+    try {
+      renderThread(<ComposerWidget />, queuedEvents());
+      const composer = screen.getByTestId("composer");
+      resize(composer, 400);
+      expect(composer.dataset.tight).toBe("true");
+      const abort = screen.getByTestId("abort");
+      expect([abort.getAttribute("aria-label"), abort.textContent]).toEqual(["Abort", ""]);
+      expect([screen.getByTestId("send").textContent, screen.getByTestId("send-alternative").textContent]).toEqual([
+        "Steerenter",
+        "Queuectrl+enter",
+      ]);
+      expect(bar().hints.length).toBe(3);
+      resize(composer, 800);
+      expect(composer.dataset.tight).toBeUndefined();
+      expect([screen.getByTestId("abort").textContent, screen.getByTestId("send").textContent]).toEqual([
+        "Abort",
+        "Steer nowenter",
+      ]);
+    } finally {
+      restore();
+    }
   });
 });
 
