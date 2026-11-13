@@ -164,6 +164,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `windows.answer` | `requestId`, `answer` | `{}`; a window's answer to a `window_request` frame, on the connection it came on (PRT-124) |
 | `jobs.kill` | `jobId` | `{}` (DMN-081) |
 | `activity.list` | `threadId?`, `before?`, `after?`, `limit?` | `{ entries: [{ seq, at, threadId, client, method, params, error }], more }`: the activity log, newest first (PRT-086) |
+| `prompts.history` | `threadId?`, `workspaceId?`, `query?`, `limit?` | `{ prompts: [{ text, threadId, workspaceId, at }] }`: the user's prompts, the thread's first, then its workspace's, then the others (PRT-127) |
 | `workspaces.mcp_servers` | `workspaceId` | `McpServers`: the MCP servers configured for the workspace, unchecked (PRT-110) |
 | `thread.mcp_servers` | `threadId` | `McpServers`: the servers of the thread's workspace, checked by its running omp (PRT-111) |
 | `thread.mcp_reconnect` | `threadId`, `name?` | `McpServers` after restarting the idle thread; `conflict` while it works (PRT-112) |
@@ -205,6 +206,8 @@ record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 | --- | --- |
 | PRT-085 | `thread.stop { threadId, cascade? }` MUST answer `{ threadIds }`: the stopped threads, the thread first, then, with `cascade: true`, the other members of its spawned tree (AGT-070) in the order the daemon stopped them (DMN-162); `cascade` defaults to `false`. Stopping a thread that runs no process succeeds; an unknown thread is `not_found`. |
 | PRT-086 | `activity.list { threadId?, before?, after?, limit? }` (permission `Read`) MUST answer `{ entries, more }` from the activity log (DMN-160), newest first: each entry `{ seq, at, threadId, client, method, params, error }` (`error` `null` for a success); `threadId` keeps the entries of that calling thread, `before` those with a smaller `seq`, `after` those with a greater one; `limit` defaults to 50 and is capped at 500; `more` tells whether entries matching the query were left out by the limit. |
+| PRT-127 | `prompts.history { threadId?, workspaceId?, query?, limit? }` (permission `Read`) MUST answer `PromptHistory { prompts }` read as DMN-217 orders it: `threadId` and `workspaceId` rank the prompts (this thread's first, then this workspace's, then the rest; newest first within each), `query` filters them, `limit` (default 100, at most 1,000) cuts the list. |
+| PRT-128 | A `PromptHistoryEntry` MUST carry `text`, `threadId` (the thread it was last sent to), `workspaceId` (that thread's workspace then) and `at` (when, Unix ms); each text appears once (DMN-216). |
 
 ## MCP servers (M13)
 

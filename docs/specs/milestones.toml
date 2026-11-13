@@ -817,6 +817,16 @@ requirements = [
   "UI-352",
   "UI-353",
   "UI-354",
+  # Composer: prompt history
+  "DMN-216",
+  "DMN-217",
+  "DMN-218",
+  "PRT-127",
+  "PRT-128",
+  "UI-361",
+  "UI-362",
+  "UI-363",
+  "UI-364",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -824,4 +834,5 @@ requirements = [
   "E2E-27",
   "E2E-28",
   "E2E-29",
+  "E2E-30",
 ]

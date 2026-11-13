@@ -453,3 +453,40 @@ describe("large pastes", () => {
     expect(chipLabels()).toEqual(["Pasted text #1 · 11 lines"]);
   });
 });
+
+describe("prompt history", () => {
+  const entry = (text: string) => ({ text, threadId: THREAD, workspaceId: "w", at: 1 });
+
+  // spec: UI-361, UI-362, UI-363
+  test("Up on the first line recalls older prompts, Down goes back and restores the draft; typing ends the walk", async () => {
+    const { client } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+    await userEvent.click(input());
+    await userEvent.keyboard("half typed");
+    press("ArrowUp");
+    const asked = client.callsTo("prompts.history");
+    expect(asked.length).toBe(1);
+    expect(asked[0]?.params).toMatchObject({ threadId: THREAD, limit: 100 });
+    await act(async () => asked[0]?.resolve({ prompts: [entry("second"), entry("first\nline two")] }));
+    expect(input().value).toBe("second");
+    press("ArrowUp");
+    expect(input().value).toBe("first\nline two");
+    // The caret is on the recalled text's last line: Up moves it, the walk waits.
+    press("ArrowUp");
+    expect(input().value).toBe("first\nline two");
+    press("ArrowDown");
+    expect(input().value).toBe("second");
+    press("ArrowDown");
+    expect(input().value).toBe("half typed");
+    expect(client.callsTo("prompts.history").length).toBe(1);
+
+    press("ArrowUp");
+    await act(async () => client.callsTo("prompts.history")[1]?.resolve({ prompts: [entry("second")] }));
+    expect(input().value).toBe("second");
+    await userEvent.keyboard("!");
+    press("ArrowDown");
+    expect(input().value).toBe("second!");
+    // Modifiers leave the arrows to the keymap and the field.
+    press("ArrowUp", { shiftKey: true });
+    expect(client.callsTo("prompts.history").length).toBe(2);
+  });
+});

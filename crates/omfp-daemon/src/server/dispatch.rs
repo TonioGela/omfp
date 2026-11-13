@@ -14,6 +14,7 @@ use serde_json::Value;
 use super::activity;
 use super::auth::Principal;
 use super::convert::{bad_request, internal, supervisor_error, workspace_error};
+use super::prompts;
 use super::services::{Services, blocking};
 use crate::store::Provenance;
 use crate::{fs_complete, search};
@@ -187,6 +188,7 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
         }
         call @ (Call::JobsStart(_) | Call::JobsKill(_)) => jobs(services, principal, call).await,
         Call::ActivityList(params) => ok(&activity::list(services, params).await?),
+        Call::PromptsHistory(params) => ok(&prompts::history(services, params).await?),
         call => threads::thread(services, principal, call).await,
     }
 }

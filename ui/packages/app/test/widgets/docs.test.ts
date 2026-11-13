@@ -147,3 +147,16 @@ describe("jobs for agents", () => {
     }
   });
 });
+
+describe("prompt history", () => {
+  // spec: UI-364
+  test("the shell docs say how Up and Down walk the sent prompts and in which order", () => {
+    for (const fact of [
+      "`Up` with the caret on the\ncomposer's first line recalls the prompts you sent",
+      "this thread's first, then its workspace's, then every other",
+      "`Down` on the last line goes back and, past the newest, restores what you had typed",
+    ]) {
+      expect(SHELL.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+  });
+});

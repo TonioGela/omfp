@@ -587,7 +587,9 @@ retention; AGT-087), and `useJob(command, { key })` keeps one job per key, the d
 comes from) and added commands (PRT-122, UI-350, UI-351, DMN-205), agents read them with `windows.list`/`windows.state`
 and `omfp_windows` (PRT-123, AGT-081), run a command in a window with `windows.run`/`omfp_window_run` (PRT-124,
 DMN-206, UI-352, UI-354, AGT-082), and `omfp_widget_check` renders a widget no window shows out of sight and names the
-views that already hold it (DMN-207..DMN-209, UI-353), documented step by step (AGT-083, AGT-084).
+views that already hold it (DMN-207..DMN-209, UI-353), documented step by step (AGT-083, AGT-084). The composer walks
+a prompt history with `Up`/`Down` like omp's TUI, kept by the daemon since omp records no RPC prompt: the thread's
+prompts first, then the workspace's, then the rest (DMN-216..DMN-218, PRT-127, PRT-128, UI-361..UI-364, E2E-30).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and

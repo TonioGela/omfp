@@ -94,6 +94,7 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       the MCP servers omp loads for a workspace (omp_mcp.rs: the config files omp reads, the `/mcp test`
                       reply; supervisor/mcp.rs: checks by the thread's omp, reconnect by restart, M13);
                       `thread.session`, a thread's session facts without omp's whole state (server/dispatch/session.rs);
+                      the prompt history and `prompts.history` (server/prompts.rs; store migration 0010);
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` and `omfp desktop`;
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
 crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI),

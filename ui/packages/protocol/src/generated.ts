@@ -803,6 +803,35 @@ export type Position = {
 /** How a prompt sent while the agent is busy is queued. */
 export type PromptBehavior = "steer" | "followUp";
 
+/** `prompts.history` result (PRT-127). */
+export type PromptHistory = {
+  /** The given thread's prompts, then the given workspace's, then the others; newest first within each. */
+  prompts: PromptHistoryEntry[];
+};
+
+/** One prompt of the history (PRT-128, DMN-216): each text once, with its latest submission. */
+export type PromptHistoryEntry = {
+  /** When it was last sent (Unix milliseconds). */
+  at: number;
+  text: string;
+  /** The thread it was last sent to. */
+  threadId: string;
+  /** That thread's workspace when it was sent. */
+  workspaceId: string;
+};
+
+/** `prompts.history` params (PRT-127): the prompts the user sent from omfp, ranked for one composer. */
+export type PromptHistoryParams = {
+  /** At most this many prompts; default 100, capped at 1000. */
+  limit?: number | null;
+  /** Only prompts containing this text, case-insensitive (ASCII); absent or empty: all. */
+  query?: string | null;
+  /** Ranks this thread's prompts first (it filters nothing). */
+  threadId?: string | null;
+  /** Ranks this workspace's prompts next (it filters nothing). */
+  workspaceId?: string | null;
+};
+
 /** `thread.prompt` params. */
 export type PromptParams = {
   behavior?: PromptBehavior | null;
@@ -1866,6 +1895,7 @@ export interface Methods {
   "widgets.save": { params: SaveWidgetParams; result: WidgetSaved };
   "widgets.library": { params: Empty; result: WidgetLibrary };
   "activity.list": { params: ListActivityParams; result: ActivityPage };
+  "prompts.history": { params: PromptHistoryParams; result: PromptHistory };
   "threads.list": { params: ListThreadsParams; result: ThreadList };
   "workspaces.list": { params: Empty; result: WorkspaceList };
   "workspaces.mcp_servers": { params: WorkspaceRef; result: McpServers };
@@ -1960,6 +1990,7 @@ export const METHODS: readonly MethodName[] = [
   "widgets.save",
   "widgets.library",
   "activity.list",
+  "prompts.history",
   "threads.list",
   "workspaces.list",
   "workspaces.mcp_servers",

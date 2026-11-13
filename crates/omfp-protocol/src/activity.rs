@@ -70,3 +70,42 @@ pub struct ActivityEntry {
     /// `null` when the call succeeded, else the error's message.
     pub error: Option<String>,
 }
+
+/// `prompts.history` params (PRT-127): the prompts the user sent from omfp, ranked for one composer.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptHistoryParams {
+    /// Ranks this thread's prompts first (it filters nothing).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    /// Ranks this workspace's prompts next (it filters nothing).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    /// Only prompts containing this text, case-insensitive (ASCII); absent or empty: all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+    /// At most this many prompts; default 100, capped at 1000.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<u32>,
+}
+
+/// `prompts.history` result (PRT-127).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptHistory {
+    /// The given thread's prompts, then the given workspace's, then the others; newest first within each.
+    pub prompts: Vec<PromptHistoryEntry>,
+}
+
+/// One prompt of the history (PRT-128, DMN-216): each text once, with its latest submission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptHistoryEntry {
+    pub text: String,
+    /// The thread it was last sent to.
+    pub thread_id: String,
+    /// That thread's workspace when it was sent.
+    pub workspace_id: String,
+    /// When it was last sent (Unix milliseconds).
+    pub at: i64,
+}

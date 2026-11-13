@@ -8,6 +8,7 @@ mod connection;
 pub(crate) mod convert;
 pub(crate) mod dispatch;
 mod mcp;
+mod prompts;
 mod services;
 
 use std::path::{Component, Path, PathBuf};

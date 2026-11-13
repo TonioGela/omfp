@@ -4,7 +4,8 @@
 use omfp_core::ProcessState;
 use omfp_core::wire::{AskAnswer, GoalOp, ImageContent, QueuedMessageQueue, ThinkingLevel};
 use omfp_protocol::{
-    ActivityEntry, ActivityPage, ListActivityParams, StopThreadParams, ThreadsStopped,
+    ActivityEntry, ActivityPage, ListActivityParams, PromptHistory, PromptHistoryEntry,
+    PromptHistoryParams, StopThreadParams, ThreadsStopped,
 };
 use omfp_protocol::{
     AddRepoParams, ApprovalMode, BashParams, BtwParams, Call, CompactParams, CompletePathParams,
@@ -1125,26 +1126,44 @@ fn mount_examples() -> Vec<(&'static str, Value)> {
 
 /// The activity log of agent-originated actions (PRT-086, AGT-072).
 fn activity_examples() -> Vec<(&'static str, Value)> {
-    vec![example::<method::ActivityList>(
-        ListActivityParams {
-            thread_id: Some(THREAD_ID.to_owned()),
-            before: Some(42),
-            after: None,
-            limit: Some(1),
-        },
-        &ActivityPage {
-            entries: vec![ActivityEntry {
-                seq: 41,
-                at: 1_731_000_000_000,
+    vec![
+        example::<method::ActivityList>(
+            ListActivityParams {
                 thread_id: Some(THREAD_ID.to_owned()),
-                client: "omfp-agent".to_owned(),
-                method: "threads.create".to_owned(),
-                params: json!({ "workspace": { "id": WORKSPACE_ID }, "prompt": "Fix the flaky test" }),
-                error: None,
-            }],
-            more: true,
-        },
-    )]
+                before: Some(42),
+                after: None,
+                limit: Some(1),
+            },
+            &ActivityPage {
+                entries: vec![ActivityEntry {
+                    seq: 41,
+                    at: 1_731_000_000_000,
+                    thread_id: Some(THREAD_ID.to_owned()),
+                    client: "omfp-agent".to_owned(),
+                    method: "threads.create".to_owned(),
+                    params: json!({ "workspace": { "id": WORKSPACE_ID }, "prompt": "Fix the flaky test" }),
+                    error: None,
+                }],
+                more: true,
+            },
+        ),
+        example::<method::PromptsHistory>(
+            PromptHistoryParams {
+                thread_id: Some(THREAD_ID.to_owned()),
+                workspace_id: Some(WORKSPACE_ID.to_owned()),
+                query: Some("flaky".to_owned()),
+                limit: Some(2),
+            },
+            &PromptHistory {
+                prompts: vec![PromptHistoryEntry {
+                    text: "Fix the flaky test".to_owned(),
+                    thread_id: THREAD_ID.to_owned(),
+                    workspace_id: WORKSPACE_ID.to_owned(),
+                    at: 1_731_000_000_000,
+                }],
+            },
+        ),
+    ]
 }
 
 /// The `index` topic's entities without a subscription (PRT-090, PRT-091).

@@ -90,9 +90,11 @@ help, `Space p` workspace, `Space f` files, `Space v` views); Escape cancels the
 In insert mode `Esc` leaves the text field, `Ctrl-c` clears then aborts, `Alt-a` / `Alt-n` work too; in the composer
 Enter sends, Shift-Enter steers the running turn, Alt-Enter adds a line. A paste of more than 10 lines or 1000
 characters becomes a chip (`Pasted text #1 · 120 lines`) and a `[Paste #1, +120 lines]` token, expanded when the
-message is sent; `Ctrl-Shift-v` (`Cmd-Shift-v` on macOS) pastes it as plain text instead. Keys are rebindable: the
-daemon's `[keymap]` config, the workspace's `.omfp/keymap.json`, then the init files' `bind` (each layer wins over the
-ones before it).
+message is sent; `Ctrl-Shift-v` (`Cmd-Shift-v` on macOS) pastes it as plain text instead. `Up` with the caret on the
+composer's first line recalls the prompts you sent (this thread's first, then its workspace's, then every other, newest
+first within each); `Down` on the last line goes back and, past the newest, restores what you had typed. Keys are
+rebindable: the daemon's `[keymap]` config, the workspace's `.omfp/keymap.json`, then the init files' `bind` (each
+layer wins over the ones before it).
 
 ## Agents and the window
 

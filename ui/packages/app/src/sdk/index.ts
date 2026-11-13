@@ -131,6 +131,14 @@ export {
   type ThreadDetails,
 } from "../vm/header.ts";
 export {
+  type HistoryStep,
+  type HistoryWalk,
+  historyDown,
+  historyUp,
+  onFirstLine,
+  onLastLine,
+} from "../vm/history.ts";
+export {
   type AskForm,
   cardKey,
   checkAsk,

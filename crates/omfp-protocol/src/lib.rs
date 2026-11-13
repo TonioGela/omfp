@@ -18,7 +18,8 @@ mod topic;
 mod windows;
 
 pub use activity::{
-    ActivityEntry, ActivityPage, ListActivityParams, StopThreadParams, ThreadsStopped,
+    ActivityEntry, ActivityPage, ListActivityParams, PromptHistory, PromptHistoryEntry,
+    PromptHistoryParams, StopThreadParams, ThreadsStopped,
 };
 pub use dto::{
     CreatedBy, Density, DiffPage, FileCandidate, FileCandidates, FileChange, FileContent, FileDiff,

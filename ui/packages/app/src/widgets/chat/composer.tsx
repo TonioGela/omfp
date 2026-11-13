@@ -73,6 +73,7 @@ import {
   useState,
 } from "react";
 import { Attachments } from "./attachments.tsx";
+import { usePromptHistory } from "./history.ts";
 import { LiveVoicePanel, MicButton } from "./live.tsx";
 import { PasteChips, usePastes } from "./pastes.tsx";
 import { testId, type WidgetProps } from "./props.ts";
@@ -353,6 +354,7 @@ export const Composer = memo(function Composer({
     const images = draft.images;
     const queued = behavior(chosen);
     const sent = draft;
+    history.end();
     setDraft(EMPTY_DRAFT);
     call("thread.prompt", {
       threadId,
@@ -454,6 +456,7 @@ export const Composer = memo(function Composer({
   });
 
   const pastes = usePastes(draft, setDraft, inputRef);
+  const history = usePromptHistory(threadId, draft, setDraft, inputRef);
   // Captured before React Aria's Autocomplete: while no suggestion list is open the text area keeps its own keys
   // (arrows move the caret), and the composer's bindings apply. Chords other than the send ones (Ctrl-C, Alt-a, …)
   // go on to the keymap (UI-095).
@@ -479,6 +482,11 @@ export const Composer = memo(function Composer({
         event.stopPropagation();
         setDismissed(true);
       }
+      return;
+    }
+    // Up on the first line, Down on the last line: the prompt history (UI-361, UI-362).
+    if (history.onKey(event)) {
+      event.stopPropagation();
       return;
     }
     if ((modifiers.ctrl || modifiers.alt || modifiers.meta) && event.key !== "Enter") {
@@ -536,6 +544,8 @@ export const Composer = memo(function Composer({
           inputValue={draft.text}
           onInputChange={(value) => {
             pastes.onChange(value);
+            // Typing ends a history walk; the recalled text stays as the draft (UI-362).
+            history.end();
             setDismissed(false);
             // Typing ends a `Ctrl-C` sequence: the next press clears what was typed rather than aborting (UI-063).
             lastInterrupt.current = undefined;

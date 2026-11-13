@@ -45,11 +45,11 @@ allowed_origins = ["https://omfp.example.ts.net"]  # exactly scheme://host[:port
 
 ## Persistence (SQLite)
 
-Schema (`PRAGMA user_version = 9`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11;
+Schema (`PRAGMA user_version = 10`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11;
 migration 4 adds `title_source`, DMN-073; migration 5 drops the old `repositories` registry and adds `seen_repositories`;
 migration 6 drops `thread_tags` and `workspaces.owned` and moves every workspace into a folder under the workspaces
 root, DMN-020; migration 7 adds `widget_state`, DMN-086; migration 8 adds `activity`, DMN-160; migration 9 makes
-`activity.thread_id` nullable for the MCP principal's calls, AGT-053):
+`activity.thread_id` nullable for the MCP principal's calls, AGT-053; migration 10 adds `prompt_history`, DMN-216):
 
 | Table | Main columns |
 | --- | --- |
@@ -60,6 +60,7 @@ root, DMN-020; migration 7 adds `widget_state`, DMN-086; migration 8 adds `activ
 | `settings` | `key`, `value` (JSON); `theme`: the user's theme CSS, a string or `null` (DMN-075) |
 | `widget_state` | `workspace_id`, `instance`, `key`, `value` (JSON) — what widgets keep with `useStored` (DMN-086); deleted with the workspace |
 | `activity` | `seq` (increasing), `at`, `thread_id` (nullable: `null` for the MCP principal), `client`, `method`, `params` (JSON), `error` (nullable) — the agent-originated actions (AGT-072, DMN-160); no foreign key, so entries outlive their thread |
+| `prompt_history` | `text` (primary key), `thread_id`, `workspace_id`, `at` — the prompts the user sent from omfp, each text once with its latest submission (DMN-216); no foreign key, so prompts outlive their thread and workspace |
 
 Repositories inside a workspace are not stored: they are discovered from the folder (DMN-022).
 
@@ -223,6 +224,9 @@ without a model turn (08, AGT-019). Jobs are in memory only.
 | DMN-160 | **Activity log** (AGT-072): the `activity` table (migration 8; migration 9 makes `thread_id` nullable) holds one row per logged call: `seq` (an increasing integer the daemon assigns), `at` (Unix ms), `thread_id` (the calling agent's thread; `null` for the MCP principal, AGT-053), `client` (its principal's client, PRT-033), `method`, `params` (JSON, DMN-161) and `error` (`null` when the call succeeded, else the error's message). Rows have no foreign key and stay when their thread is deleted; the table keeps the newest 10,000 rows, older ones are deleted as new ones arrive. |
 | DMN-161 | The dispatcher MUST log a call once it answered, so the row carries the outcome, for every principal whose provenance is a thread or `mcp` (AGT-053) and every method whose permission is not `Connect` or `Read` (`auth::permission`, PRT-034). The logged params are the call's params with every string longer than 200 characters cut to its first 200 characters followed by `…` (file contents and prompts stay short). A failure to write the row is a warning in the daemon's log and never fails the call. |
 | DMN-162 | **Cascade stop** (AGT-071): the supervisor stops the thread first (so it spawns nothing more), then the members of its spawned tree (AGT-070) read from the store in creation order, reading the tree again after each pass until a pass finds no member it has not stopped, so threads spawned meanwhile are stopped too; each stop takes the thread's lifecycle lock like `thread.stop`. Every running job started by an agent principal of a stopped thread (`jobs.start` records the starting thread, DMN-080) is killed as `jobs.kill` does (DMN-081). A failure stops nothing less: every member is tried, then the first error is returned. |
+| DMN-216 | **Prompt history**: the `prompt_history` table (migration 10) MUST hold each prompt text the user sent from omfp once (`text` is the key): sending a text again replaces its `thread_id`, `workspace_id` (the thread's workspace) and `at` (Unix ms) with this submission's; the table keeps the 1,000 newest prompts, the oldest deleted as new ones arrive. omp's own prompt history (`history.db` of its TUI) never sees RPC prompts, so omfp keeps its own. |
+| DMN-217 | `prompts.history` (PRT-127) MUST read the history in this order: the prompts last sent to `threadId`, then those of `workspaceId`, then all the others, newest first within each (`threadId` and `workspaceId` rank, they filter nothing); `query` keeps the prompts containing it, case-insensitive (ASCII); `limit` defaults to 100 and is capped at 1,000. |
+| DMN-218 | The daemon MUST record a prompt only once omp admitted it (`thread.prompt`, and the first message of `threads.create`), only for the user's principal (the owner token: windows and scripts; not an agent principal nor the MCP principal) and only when it is not blank. What the daemon sends omp itself (a root sync's `/add-dir` and `/remove-dir`, DMN-029; `/mcp test` checks, DMN-191; anything through the supervisor rather than the dispatcher) is never recorded. A failure to record is a warning in the daemon's log and never fails the call. |
 
 ## MCP servers of a workspace and a thread (M13)
 

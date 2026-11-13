@@ -172,6 +172,26 @@ pub struct ActivityQuery {
     pub limit: u32,
 }
 
+/// One prompt of the prompt history (DMN-216): its text, the thread and workspace it was last sent to, and when.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SentPrompt {
+    pub text: String,
+    pub thread_id: String,
+    pub workspace_id: String,
+    /// Unix milliseconds.
+    pub at: i64,
+}
+
+/// How to read the prompt history (DMN-217): `thread_id`'s prompts first, then `workspace_id`'s, then the others,
+/// newest first within each; only those containing `query` (case-insensitive) when given.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptQuery {
+    pub thread_id: Option<String>,
+    pub workspace_id: Option<String>,
+    pub query: Option<String>,
+    pub limit: u32,
+}
+
 /// A new ULID as a string. IDs are monotonic within the process, so ordering by id is ordering by creation.
 #[must_use]
 pub fn new_id() -> String {
@@ -677,6 +697,62 @@ impl Store {
         Ok((entries, more))
     }
 
+    // Prompt history (DMN-216, DMN-217)
+
+    /// Records a prompt the user sent: a text already kept takes this submission's thread, workspace and time; the
+    /// history then keeps the newest `keep` prompts.
+    pub fn record_prompt(&self, prompt: &SentPrompt, keep: u32) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute(
+            "INSERT INTO prompt_history (text, thread_id, workspace_id, at) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (text) DO UPDATE SET thread_id = ?2, workspace_id = ?3, at = ?4",
+            params![
+                prompt.text,
+                prompt.thread_id,
+                prompt.workspace_id,
+                prompt.at
+            ],
+        )?;
+        tx.execute(
+            "DELETE FROM prompt_history WHERE rowid NOT IN
+                 (SELECT rowid FROM prompt_history ORDER BY at DESC, rowid DESC LIMIT ?1)",
+            [keep],
+        )?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The prompts `query` selects, in its order (DMN-217).
+    pub fn prompts(&self, query: &PromptQuery) -> Result<Vec<SentPrompt>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT text, thread_id, workspace_id, at FROM prompt_history
+             WHERE ?3 IS NULL OR ?3 = '' OR instr(lower(text), lower(?3)) > 0
+             ORDER BY thread_id IS ?1 DESC, workspace_id IS ?2 DESC, at DESC, rowid DESC
+             LIMIT ?4",
+        )?;
+        let prompts = stmt
+            .query_map(
+                params![
+                    query.thread_id,
+                    query.workspace_id,
+                    query.query,
+                    query.limit
+                ],
+                |row| {
+                    Ok(SentPrompt {
+                        text: row.get(0)?,
+                        thread_id: row.get(1)?,
+                        workspace_id: row.get(2)?,
+                        at: row.get(3)?,
+                    })
+                },
+            )?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(prompts)
+    }
+
     // Settings
 
     pub fn setting(&self, key: &str) -> Result<Option<serde_json::Value>> {
@@ -831,5 +907,55 @@ mod tests {
         assert_eq!(Provenance::parse("user"), Provenance::User);
         assert_eq!(Provenance::parse("mcp"), Provenance::Mcp);
         assert_eq!(Provenance::parse("01J"), Provenance::Thread("01J".into()));
+    }
+
+    fn sent(text: &str, thread_id: &str, workspace_id: &str, at: i64) -> SentPrompt {
+        SentPrompt {
+            text: text.into(),
+            thread_id: thread_id.into(),
+            workspace_id: workspace_id.into(),
+            at,
+        }
+    }
+
+    fn ranked(store: &Store, thread_id: Option<&str>, workspace_id: Option<&str>) -> Vec<String> {
+        store
+            .prompts(&PromptQuery {
+                thread_id: thread_id.map(str::to_owned),
+                workspace_id: workspace_id.map(str::to_owned),
+                query: None,
+                limit: 100,
+            })
+            .unwrap()
+            .into_iter()
+            .map(|prompt| prompt.text)
+            .collect()
+    }
+
+    // spec: DMN-216, DMN-217
+    #[test]
+    fn prompts_are_kept_once_per_text_bounded_and_ranked_thread_then_workspace_then_newest() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("omfp.db"), &dir.path().join("ws")).unwrap();
+        store.record_prompt(&sent("a1", "t1", "w1", 1), 3).unwrap();
+        store.record_prompt(&sent("b", "t2", "w1", 2), 3).unwrap();
+        store.record_prompt(&sent("c", "t3", "w2", 3), 3).unwrap();
+        // The same text again: one row, with the latest submission.
+        store.record_prompt(&sent("a1", "t1", "w1", 4), 3).unwrap();
+        assert_eq!(ranked(&store, None, None), ["a1", "c", "b"]);
+        assert_eq!(ranked(&store, Some("t2"), Some("w2")), ["b", "c", "a1"]);
+        assert_eq!(ranked(&store, Some("t9"), Some("w1")), ["a1", "b", "c"]);
+        // A fourth text drops the oldest.
+        store.record_prompt(&sent("d", "t3", "w2", 5), 3).unwrap();
+        assert_eq!(ranked(&store, None, None), ["d", "a1", "c"]);
+        let only = store
+            .prompts(&PromptQuery {
+                thread_id: None,
+                workspace_id: None,
+                query: Some("A".into()),
+                limit: 1,
+            })
+            .unwrap();
+        assert_eq!(only, [sent("a1", "t1", "w1", 4)]);
     }
 }

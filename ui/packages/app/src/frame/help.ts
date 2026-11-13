@@ -106,6 +106,7 @@ const COMPOSER_KEYS: readonly HelpRow[] = [
   { keys: [keyLabel("Alt-Enter")], description: keys.newline },
   { keys: [keyLabel("Tab")], description: keys.complete },
   { keys: [keyLabel(rawPasteKeys())], description: keys.pasteRaw },
+  { keys: [keyLabel("ArrowUp"), keyLabel("ArrowDown")], description: keys.history },
 ];
 
 /** Keys the transcript handles itself (UI-095). */

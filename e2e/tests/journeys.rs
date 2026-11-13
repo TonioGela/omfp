@@ -1469,3 +1469,40 @@ async fn a_long_paste_is_a_chip_in_the_composer_and_the_agent_gets_the_whole_tex
     journey.status(&thread, "idle").await?;
     journey.finish("E2E-29").await
 }
+
+// spec: E2E-30, UI-361, UI-362, DMN-216, DMN-218, PRT-127
+#[tokio::test(flavor = "multi_thread")]
+async fn up_recalls_the_sent_prompts_newest_first_and_down_restores_the_draft() -> anyhow::Result<()>
+{
+    let journey = Journey::start(vec![
+        Step::reply(Reply::text("First answer.")),
+        Step::reply(Reply::text("Second answer.")),
+    ])
+    .await?;
+    journey.connected().await?;
+    let thread = journey.create_thread("history thread").await?;
+    journey.send("first prompt").await?;
+    journey.reply("First answer.").await?;
+    journey.status(&thread, "idle").await?;
+    journey.send("second prompt").await?;
+    journey.reply("Second answer.").await?;
+    journey.status(&thread, "idle").await?;
+
+    journey
+        .type_into("[data-testid=composer-input]", "half typed")
+        .await?;
+    for expected in ["second prompt", "first prompt"] {
+        journey.keys(Key::Up).await?;
+        journey
+            .until(
+                &format!("the composer to show {expected:?}"),
+                async |page| Ok((draft(page).await? == expected).then_some(())),
+            )
+            .await?;
+    }
+    journey.keys(Key::Down).await?;
+    assert_eq!(draft(&journey).await?, "second prompt");
+    journey.keys(Key::Down).await?;
+    assert_eq!(draft(&journey).await?, "half typed");
+    journey.finish("E2E-30").await
+}

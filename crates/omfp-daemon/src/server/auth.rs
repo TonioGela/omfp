@@ -70,6 +70,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "fs.complete"
         | "threads.search"
         | "activity.list"
+        | "prompts.history"
         | "threads.list"
         | "workspaces.list"
         | "workspaces.status"

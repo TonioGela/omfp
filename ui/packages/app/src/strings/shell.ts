@@ -548,6 +548,7 @@ export const shell = {
       newline: "New line",
       complete: "Complete the / command",
       pasteRaw: "Paste a large text as it is, not as a chip",
+      history: "Previous / next sent prompt (caret on the first / last line)",
       page: "Scroll a page up or down",
       ends: "Scroll to the top or the bottom",
       cmdComplete: "Complete the command or its argument",

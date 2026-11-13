@@ -21,6 +21,7 @@ use super::{Reply, empty, ok};
 use crate::agent::OmpCall;
 use crate::server::auth::Principal;
 use crate::server::convert::{internal, supervisor_error, thread_error, workspace_error};
+use crate::server::prompts;
 use crate::server::services::{Services, blocking};
 use crate::store::TitleSource;
 use crate::threads::NewThread;
@@ -100,7 +101,7 @@ async fn create_thread(
     };
     if let Some(text) = params.prompt {
         let command = PromptCommand {
-            message: text,
+            message: text.clone(),
             images: None,
             streaming_behavior: None,
         };
@@ -125,6 +126,14 @@ async fn create_thread(
             details.insert("threadId".to_owned(), Value::String(thread.id));
             return Err(body.with_details(Value::Object(details)));
         }
+        prompts::record(
+            services,
+            principal,
+            &thread.id,
+            Some(thread.workspace_id.clone()),
+            &text,
+        )
+        .await;
     }
     ok(&services.thread_summary(&thread.id).await?)
 }
@@ -237,8 +246,9 @@ pub(super) async fn thread(services: &Services, principal: &Principal, call: Cal
                 }
                 None => None,
             };
+            let text = params.text;
             let command = PromptCommand {
-                message: params.text,
+                message: text.clone(),
                 images: images(params.images),
                 streaming_behavior: behavior.map(|behavior| match behavior {
                     PromptBehavior::Steer => StreamingBehavior::Steer,
@@ -249,6 +259,7 @@ pub(super) async fn thread(services: &Services, principal: &Principal, call: Cal
                 .prompt(&params.thread_id, command)
                 .await
                 .map_err(supervisor_error)?;
+            prompts::record(services, principal, &params.thread_id, None, &text).await;
             ok(&PromptResult {
                 prompt_id: admission.prompt_id,
                 agent_invoked: admission.agent_invoked,

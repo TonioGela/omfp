@@ -291,6 +291,9 @@ methods! {
     WidgetsLibrary = "widgets.library" (params::Empty) -> params::WidgetLibrary;
     /// The activity log of agent-originated actions, newest first (PRT-086, AGT-072).
     ActivityList = "activity.list" (activity::ListActivityParams) -> activity::ActivityPage;
+    /// The prompts the user sent from omfp: the thread's first, then its workspace's, then the rest, newest first
+    /// within each (PRT-127, DMN-216).
+    PromptsHistory = "prompts.history" (activity::PromptHistoryParams) -> activity::PromptHistory;
     /// Thread summaries as on the `index` topic, without archived threads unless asked (PRT-090).
     ThreadsList = "threads.list" (lists::ListThreadsParams) -> lists::ThreadList;
     /// Every workspace as on the `index` topic (PRT-091).

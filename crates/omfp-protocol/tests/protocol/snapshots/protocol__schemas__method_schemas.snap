@@ -397,6 +397,94 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "prompts.history": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`prompts.history` params (PRT-127): the prompts the user sent from omfp, ranked for one composer.",
+      "properties": {
+        "limit": {
+          "description": "At most this many prompts; default 100, capped at 1000.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "description": "Only prompts containing this text, case-insensitive (ASCII); absent or empty: all.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "description": "Ranks this thread's prompts first (it filters nothing).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "description": "Ranks this workspace's prompts next (it filters nothing).",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "PromptHistoryParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "PromptHistoryEntry": {
+          "description": "One prompt of the history (PRT-128, DMN-216): each text once, with its latest submission.",
+          "properties": {
+            "at": {
+              "description": "When it was last sent (Unix milliseconds).",
+              "format": "int64",
+              "type": "integer"
+            },
+            "text": {
+              "type": "string"
+            },
+            "threadId": {
+              "description": "The thread it was last sent to.",
+              "type": "string"
+            },
+            "workspaceId": {
+              "description": "That thread's workspace when it was sent.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "text",
+            "threadId",
+            "workspaceId",
+            "at"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`prompts.history` result (PRT-127).",
+      "properties": {
+        "prompts": {
+          "description": "The given thread's prompts, then the given workspace's, then the others; newest first within each.",
+          "items": {
+            "$ref": "#/$defs/PromptHistoryEntry"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "prompts"
+      ],
+      "title": "PromptHistory",
+      "type": "object"
+    }
+  },
   "repos.suggest": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
