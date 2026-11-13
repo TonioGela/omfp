@@ -1,11 +1,10 @@
 /** The frame's status surfaces: connection banner (UI-003), the toasts of failed actions, actions that worked, the
  * running login and opened URLs, and the live region (UI-092). */
 
-import { Button, LiveRegion, Toast, ToastRegion } from "@omfp/kit";
+import { Button, Disclosure, LiveRegion, Toast, ToastRegion } from "@omfp/kit";
 import { type ReactNode, useEffect, useMemo, useSyncExternalStore } from "react";
 import {
   ERRORS,
-  needsLogin,
   requestLogin,
   SELECTED_THREAD,
   SUCCESSES,
@@ -17,6 +16,7 @@ import {
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { announcement, banner } from "../vm/connection.ts";
+import { loginProblem } from "../vm/login.ts";
 import { LOGIN_RUN, LoginProgressToast } from "./login.tsx";
 import { OPENED_URLS, OpenedUrlToast } from "./opened-urls.tsx";
 
@@ -35,8 +35,9 @@ export function ConnectionBanner(): ReactNode {
 
 /**
  * The frame's one toast stack (bottom right): errors of failed actions as error toasts (UI-160), each staying until
- * dismissed — with Log in when omp says it needs one (UI-387) —, actions that worked as success toasts going by
- * themselves (UI-385), the running login (UI-383), then the URLs omp opened (UI-346).
+ * dismissed — when omp says it needs a login, a short sentence with Log in and omp's own output under Details (UI-387,
+ * UI-451) —, actions that worked as success toasts going by themselves (UI-385), the running login (UI-383), then the
+ * URLs omp opened (UI-346).
  */
 export function Toasts(): ReactNode {
   const host = useHost();
@@ -51,6 +52,7 @@ export function Toasts(): ReactNode {
     <ToastRegion data-testid="toasts">
       {errors.map((error, index) => {
         const dismiss = () => setErrors((all) => all.filter((_, at) => at !== index));
+        const problem = loginProblem(error);
         return (
           <Toast
             // biome-ignore lint/suspicious/noArrayIndexKey: the same message may repeat; its place is its identity
@@ -61,7 +63,7 @@ export function Toasts(): ReactNode {
             dismissLabel={strings.shell.frame.dismiss}
             onDismiss={dismiss}
             action={
-              needsLogin(error) && (
+              problem !== undefined && (
                 <Button
                   size="sm"
                   variant="primary"
@@ -76,7 +78,18 @@ export function Toasts(): ReactNode {
               )
             }
           >
-            {error}
+            {problem === undefined ? (
+              error
+            ) : (
+              <>
+                <span className="omfp-error-toast__problem">{problem}</span>
+                <Disclosure title={strings.shell.login.details} level={2} toggleTestId="error-details">
+                  <span className="omfp-error-toast__raw" data-testid="error-raw">
+                    {error}
+                  </span>
+                </Disclosure>
+              </>
+            )}
           </Toast>
         );
       })}

@@ -913,6 +913,8 @@ requirements = [
   "TST-109",
   # QA fixes: an ask's options look alike
   "UI-450",
+  # QA fixes: the login error toast in words, omp's output under Details
+  "UI-451",
   # Journeys
   "E2E-22",
   "E2E-23",

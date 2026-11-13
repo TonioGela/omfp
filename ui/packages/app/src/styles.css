@@ -182,6 +182,19 @@
     overflow-wrap: anywhere;
   }
 
+  /* omp needs a login (UI-451): the short sentence, then omp's output under Details, small and scrolling when long. */
+  .omfp-error-toast__problem {
+    display: block;
+  }
+
+  .omfp-error-toast__raw {
+    display: block;
+    max-block-size: 12em;
+    overflow-y: auto;
+    color: var(--omfp-on-surface-variant);
+    font-size: var(--omfp-fs-xs);
+  }
+
   /* Logging in (UI-380..UI-388): the progress and URL toasts' second line, the provider picker, the header's offer. */
   .omfp-login__progress,
   .omfp-login__instructions {

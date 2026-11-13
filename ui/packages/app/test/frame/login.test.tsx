@@ -255,8 +255,8 @@ describe("logging in", () => {
     expect(test.host.window.get(ERRORS)).toEqual(["Usage: :logout <provider>"]);
   });
 
-  // spec: UI-381, UI-387
-  test("an error toast with omp's no-model stderr shows it and offers Log in, which opens the picker", async () => {
+  // spec: UI-381, UI-387, UI-451
+  test("an error toast with omp's no-model stderr says so in short, keeps omp's words under Details and offers Log in", async () => {
     const test = setup();
     act(() =>
       reportError(
@@ -273,7 +273,16 @@ describe("logging in", () => {
     );
     act(() => reportError(test.host, new Error("git failed")));
     const [needing, other] = screen.getAllByTestId("error");
-    expect(needing?.textContent).toContain(`omp failed to start: server closed (thread_failed)\n${NO_DEFAULT}`);
+    const text = needing?.querySelector(".omfp-toast__text");
+    expect(text?.firstChild?.textContent).toBe("No model available: log in to a provider.");
+    const details = within(needing as HTMLElement).getByTestId("error-details");
+    expect(details.getAttribute("aria-expanded")).toBe("false");
+    await test.user.click(details);
+    expect(details.getAttribute("aria-expanded")).toBe("true");
+    expect(within(needing as HTMLElement).getByTestId("error-raw").textContent).toBe(
+      `omp failed to start: server closed (thread_failed)\n${NO_DEFAULT}`,
+    );
+    expect(other?.querySelector(".omfp-toast__text")?.textContent).toBe("git failed");
     expect(other !== undefined && within(other).queryAllByTestId("error-login").length).toBe(0);
     await test.user.click(within(needing as HTMLElement).getByTestId("error-login"));
     await screen.findByTestId("login-picker");

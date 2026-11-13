@@ -6,6 +6,7 @@ import type { AuthProvider } from "@omfp/protocol";
 import { errorMessage } from "../../src/sdk/actions.ts";
 import {
   loginCompletions,
+  loginProblem,
   logoutCompletions,
   logoutSummary,
   needsLogin,
@@ -65,6 +66,25 @@ describe("needsLogin", () => {
     });
     expect(errorMessage(blank)).toBe("omp failed (thread_failed)");
     expect([errorMessage(new Error("x")), errorMessage("plain")]).toEqual(["x", "plain"]);
+  });
+
+  // spec: UI-451
+  test("omp's login errors read as one short sentence without its CLI advice", () => {
+    const keyless =
+      "No API key found for anthropic.\n\nUse /login, set an API key environment variable, or create /home/u/.omp/agent/agent.db";
+    expect([
+      loginProblem(`omp failed to start: omp did not become ready: server closed (thread_failed)\n${NO_DEFAULT}`),
+      loginProblem(`prompt failed (agent_error)\n${keyless}`),
+      loginProblem("No models available."),
+      loginProblem("omp failed to start: server closed (thread_failed)"),
+      loginProblem(undefined),
+    ]).toEqual([
+      "No model available: log in to a provider.",
+      "No credential for anthropic: log in to use its models.",
+      "No model available: log in to a provider.",
+      undefined,
+      undefined,
+    ]);
   });
 });
 

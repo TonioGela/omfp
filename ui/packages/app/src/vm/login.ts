@@ -23,6 +23,22 @@ export function needsLogin(message: string | null | undefined): boolean {
   return message !== null && message !== undefined && NEEDS_LOGIN.test(message);
 }
 
+/** omp's prompt preflight naming the provider it holds no credential of. */
+const NO_API_KEY = /\bNo API key found for ([^\s.]+)/i;
+
+/**
+ * The short sentence an error toast shows instead of `message` when omp needs a login (UI-451): the provider without a
+ * credential when omp names one, else that no model is usable; never omp's CLI advice (`/login`, `--model`).
+ * `undefined` when `message` says nothing about a login.
+ */
+export function loginProblem(message: string | null | undefined): string | undefined {
+  if (message === null || message === undefined || !needsLogin(message)) {
+    return undefined;
+  }
+  const provider = NO_API_KEY.exec(message)?.[1];
+  return provider === undefined ? text.noModel : text.noCredential(provider);
+}
+
 /** `:login`'s completions (UI-386): the ids of the providers omp can log in to here, for the first argument only. */
 export function loginCompletions(
   providers: readonly AuthProvider[] | undefined,

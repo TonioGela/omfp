@@ -509,6 +509,10 @@ export const shell = {
   /** Logging in to a provider (UI-380..UI-389). */
   login: {
     logIn: "Log in",
+    /** An error toast's text when omp needs a login (UI-451); omp's own output goes under Details. */
+    noModel: "No model available: log in to a provider.",
+    noCredential: (provider: string) => `No credential for ${provider}: log in to use its models.`,
+    details: "Details",
     /** The provider picker (UI-382). */
     pickerTitle: "Log in to a provider",
     pickerLabel: "Providers",
