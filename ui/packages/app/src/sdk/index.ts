@@ -26,6 +26,7 @@
  * | `useAnnounce()` | the ARIA live region (UI-092) |
  * | `useThreadActions()` | select, draft threads (open, discard, send the first message), archive/unarchive, delete (`requestDelete` asks first), rename, stop, restart; archiving or deleting forgets the selection and the draft (UI-023, UI-026) |
  * | `useReportError()` | puts a failure in the frame's error list (`ERRORS`) |
+ * | `useUrlActions()` | `open(url)` in a new tab, `copy(url)` to the clipboard: the URLs omp opened (UI-346) |
  * | `useCurrentWorkspaceId()` | the workspace this window works in: the selected thread's, else the draft thread's |
  * | `usePathSources()` | `suggest`/`complete` for the kit's `PathField`, on the daemon's machine |
  * | `useHost()` | the host itself (registry, window store), for frame-level code |
@@ -149,8 +150,17 @@ export {
   ownStatus,
 } from "../vm/live.ts";
 export { markdownChunks } from "../vm/markdown.ts";
-export { MCP_IDLE, type McpMark, type McpPending, type McpRow, mcpRows, mcpStatus } from "../vm/mcp.ts";
+export {
+  MCP_IDLE,
+  type McpMark,
+  type McpPending,
+  type McpRow,
+  mcpRows,
+  mcpStatus,
+  reauthPrompt,
+} from "../vm/mcp.ts";
 export { type NoticeRow, noticeRow } from "../vm/notice.ts";
+export { OpenedUrlWatch, openedUrls, threadOpenedUrls, urlHost } from "../vm/opened-url.ts";
 export {
   type PendingQueueOp,
   type QueueChip,
@@ -235,9 +245,11 @@ export {
   reportError,
   type ThreadActions,
   threadActions,
+  type UrlActions,
   useCurrentWorkspaceId,
   useReportError,
   useThreadActions,
+  useUrlActions,
 } from "./actions.ts";
 export { type Background, useBackground, useRunningInBackground, useSubagentRows } from "./background.ts";
 export { type Command, CommandRegistry, SCOPE_ATTRIBUTE, scopesAt } from "./commands.ts";

@@ -93,6 +93,19 @@ export const chat = {
     frameError: (error: string) => `omp rejected a frame: ${error}`,
     unrecognizedOf: (kind: string) => `Unrecognized ${kind} frame`,
     unrecognized: "Unrecognized frame",
+    /** An `open_url` request without instructions (UI-345). */
+    openUrl: "omp asks to open this page in a browser",
+    /** The command-output card (UI-345) and its opened URLs (UI-347). */
+    commandOutput: "Command output",
+    openedUrl: "Opened in the browser",
+    openUrlAction: "Open",
+    copyUrlAction: "Copy",
+    openUrlLabel: (url: string) => `Open ${url} in this browser`,
+    copyUrlLabel: (url: string) => `Copy ${url}`,
+    copied: "Copied the URL",
+    loopbackNote:
+      "OAuth sign-ins send the browser back to a loopback address (localhost) on the daemon's host: if the daemon " +
+      "runs on another machine, finish the last step in a browser on that machine.",
   },
   composer: {
     label: "Message",

@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { McpServer, McpServers } from "@omfp/protocol";
-import { mcpRows, mcpStatus } from "../../src/vm/mcp.ts";
+import { mcpRows, mcpStatus, reauthPrompt } from "../../src/vm/mcp.ts";
 
 function server(name: string, extra: Partial<McpServer> = {}): McpServer {
   return {
@@ -89,5 +89,23 @@ describe("mcpRows", () => {
       "No thread selected: the servers configured for this workspace, not checked.",
     );
     expect(mcpRows(listing([server("x", { checkable: false })], { running: false }))[0]?.note).toBeUndefined();
+  });
+
+  // spec: UI-348
+  test("enabled HTTP and SSE servers can be reauthorized with /mcp reauth <name>", () => {
+    const servers = [
+      ...SERVERS,
+      server("events", { transport: "sse" }),
+      server("off", { transport: "http", state: "disabled" }),
+    ];
+    expect(mcpRows(listing(servers)).map((row) => [row.name, row.reauthorizable])).toEqual([
+      ["docs", true],
+      ["fs", false],
+      ["old", false],
+      ["cursor", false],
+      ["events", true],
+      ["off", false],
+    ]);
+    expect(reauthPrompt("docs")).toBe("/mcp reauth docs");
   });
 });

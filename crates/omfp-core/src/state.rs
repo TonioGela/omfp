@@ -9,8 +9,8 @@ use serde_json::Value;
 use crate::event::{LiveOwner, NotifyRequest, OpenFileRequest, ProcessState, SessionInfo};
 use crate::wire::{
     AgentMessage, AssistantMessage, AutoCompactionEndEvent, AutoCompactionStartEvent,
-    AutoRetryEndEvent, AutoRetryStartEvent, AvailableSlashCommand, ExtensionError,
-    ExtensionUiRequest, Goal, LivePhase, LiveRole, ManualCompactionEndEvent,
+    AutoRetryEndEvent, AutoRetryStartEvent, AvailableSlashCommand, CommandOutputEvent,
+    ExtensionError, ExtensionUiRequest, Goal, LivePhase, LiveRole, ManualCompactionEndEvent,
     ManualCompactionStartEvent, NoticeEvent, NotifyUiRequest, OpenUrlUiRequest, PromptResultEvent,
     RpcFrameErrorEvent, SubagentLifecyclePayload, SubagentProgressPayload, TodoPhase,
     WidgetPlacement,
@@ -47,7 +47,8 @@ pub struct ThreadState {
     pub goal: Option<Goal>,
     /// The todo list: the phases of the transcript's last `todo` result that committed some (PRT-057).
     pub todo_phases: Vec<TodoPhase>,
-    /// Noteworthy frames outside the transcript, shown as inline rows (UI-043).
+    /// Noteworthy frames outside the transcript, shown as inline rows (UI-043), among them the output of local slash
+    /// commands and the URLs omp asks to open (PRT-120, UI-345).
     pub notices: Vec<Notice>,
     /// The live voice session (PRT-052): opened by a `live_session` event, closed by `live_end`, a `live_session`
     /// without owner, or the end of the process.
@@ -236,6 +237,10 @@ pub enum NoticeFrame {
     AutoRetryEnd(AutoRetryEndEvent),
     Notice(NoticeEvent),
     ExtensionError(ExtensionError),
+    /// Output of a local slash command (`/dirs`, `/mcp reauth …`, background ones arriving later), PRT-120.
+    CommandOutput(CommandOutputEvent),
+    /// An `open_url` request (`login`): omp asks the client to open a URL, PRT-120.
+    OpenUrl(OpenUrlUiRequest),
     RpcFrameError(RpcFrameErrorEvent),
     /// A frame the reducer cannot interpret (DMN-042), as received.
     Unknown(Value),

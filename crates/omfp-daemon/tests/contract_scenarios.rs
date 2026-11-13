@@ -420,3 +420,41 @@ async fn restart_resumes_with_history() {
     recorder.record(&harness, "restart_with_history");
     harness.assert_no_stray_network();
 }
+
+// spec: TST-012, TST-105, PRT-120
+#[tokio::test(flavor = "multi_thread")]
+async fn local_command_output() {
+    let harness = Harness::new(Vec::new()).await;
+    let spec = harness.spec(&[]);
+
+    let recorder = tokio::task::spawn_blocking(move || {
+        let (mut process, startup) = start(&spec);
+        let recorder = Recorder::attach(&mut process, &startup);
+        let turn = process
+            .client()
+            .prompt_and_wait(&prompt("/dirs"), TIMEOUT)
+            .unwrap();
+        // A local command: no model turn, so no `prompt_result`.
+        assert!(turn.result.is_none());
+        recorder.wait_until("command_output", |events| {
+            Recorder::count(events, "command_output") >= 1
+        });
+        recorder
+    })
+    .await
+    .unwrap();
+
+    let outputs: Vec<String> = recorder
+        .events()
+        .iter()
+        .filter_map(|event| match event {
+            ThreadEvent::Omp {
+                frame: RpcNotification::CommandOutput(output),
+            } => Some(output.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(outputs.len(), 1, "{outputs:?}");
+    recorder.record(&harness, "local_command_output");
+    harness.assert_no_stray_network();
+}

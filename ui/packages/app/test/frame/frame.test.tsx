@@ -576,7 +576,7 @@ describe("frame", () => {
       ["boom", "error", "alert"],
     ]);
     await user.click(screen.getByTestId("toast-dismiss"));
-    expect(screen.queryByTestId("errors")).toBeNull();
+    expect(screen.queryByTestId("toasts")).toBeNull();
   });
 });
 

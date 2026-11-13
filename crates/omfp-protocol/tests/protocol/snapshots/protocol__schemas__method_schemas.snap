@@ -3113,6 +3113,10 @@ expression: method_schemas()
         "id": {
           "type": "string"
         },
+        "mcpReloadPending": {
+          "description": "The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon\ndid not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.",
+          "type": "boolean"
+        },
         "needsAttention": {
           "description": "Interactive requests are waiting for an answer.",
           "type": "boolean"
@@ -3283,6 +3287,10 @@ expression: method_schemas()
             },
             "id": {
               "type": "string"
+            },
+            "mcpReloadPending": {
+              "description": "The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon\ndid not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.",
+              "type": "boolean"
             },
             "needsAttention": {
               "description": "Interactive requests are waiting for an answer.",
@@ -3573,6 +3581,10 @@ expression: method_schemas()
         },
         "id": {
           "type": "string"
+        },
+        "mcpReloadPending": {
+          "description": "The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon\ndid not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.",
+          "type": "boolean"
         },
         "needsAttention": {
           "description": "Interactive requests are waiting for an answer.",

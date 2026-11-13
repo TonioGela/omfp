@@ -179,6 +179,63 @@ describe("transcript", () => {
     }
   });
 
+  // spec: UI-345, UI-347
+  test("a command's output is a monospace card; a URL omp opened has Open, Copy and the loopback note", async () => {
+    const url = "https://auth.example.com/authorize?state=s1";
+    const events: ThreadEvent[] = [
+      ...fixtureEvents("text_reply"),
+      { kind: "omp", frame: { type: "command_output", text: "Workspace roots:\n  /w/app" } },
+      {
+        kind: "omp",
+        frame: {
+          type: "command_output",
+          text: `━━━ OAuth Authorization Required ━━━\nOpening your browser to authorize. If it did not open:\n${url}`,
+        },
+      },
+    ];
+    const opened: unknown[][] = [];
+    const copied: string[] = [];
+    const open = window.open;
+    window.open = (...args: unknown[]) => {
+      opened.push(args);
+      return null;
+    };
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: async (text: string) => void copied.push(text) },
+    });
+    try {
+      renderThread(<TranscriptWidget />, events);
+      const cards = screen.getAllByTestId("command-output");
+      expect(cards.map((card) => [card.dataset.kind, within(card).getByTestId("command-output-text").tagName])).toEqual(
+        [
+          ["command", "PRE"],
+          ["command", "PRE"],
+        ],
+      );
+      const [dirs, oauth] = cards;
+      expect(dirs && within(dirs).getByTestId("command-output-text").textContent).toBe("Workspace roots:\n  /w/app");
+      expect(dirs && within(dirs).queryByTestId("opened-url")).toBeNull();
+      expect(dirs && within(dirs).queryByTestId("loopback-note")).toBeNull();
+      if (oauth === undefined) {
+        throw new Error("no OAuth card");
+      }
+      expect(
+        within(oauth)
+          .getAllByTestId("opened-url")
+          .map((row) => row.dataset.url),
+      ).toEqual([url]);
+      expect(within(oauth).getByTestId("loopback-note").textContent).toContain("loopback address");
+      await userEvent.click(within(oauth).getByRole("button", { name: `Open ${url} in this browser` }));
+      expect(opened).toEqual([[url, "_blank", "noopener"]]);
+      await userEvent.click(within(oauth).getByRole("button", { name: `Copy ${url}` }));
+      expect(copied).toEqual([url]);
+    } finally {
+      window.open = open;
+      Reflect.deleteProperty(navigator, "clipboard");
+    }
+  });
+
   // spec: UI-043
   test("omp's startup records are collapsed system rows; a record with nothing to summarize has no disclosure", async () => {
     const startup: ThreadEvent[] = [

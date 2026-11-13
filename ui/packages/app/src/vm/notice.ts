@@ -1,17 +1,27 @@
 /**
  * Inline notice rows (UI-043): compaction, retries, omp notices, extension and frame errors as compact rows; frames
- * the reducer could not interpret as a generic row with expandable JSON.
+ * the reducer could not interpret as a generic row with expandable JSON. A local command's output and a URL omp asks
+ * to open are cards (UI-345, UI-347) with the URLs omp opened (UI-346).
  */
 
 import type { NoticeFrame } from "@omfp/core";
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
+import { openedUrls } from "./opened-url.ts";
 import { prettyJson } from "./tool.ts";
 
 export type Level = "info" | "warning" | "error";
 
-/** Stable kind token of a row. */
-export type NoticeKind = "compaction" | "retry" | "notice" | "extension-error" | "frame-error" | "unknown";
+/** Stable kind token of a row: `command` the output of a local slash command, `open-url` omp's `open_url` request. */
+export type NoticeKind =
+  | "compaction"
+  | "retry"
+  | "notice"
+  | "extension-error"
+  | "frame-error"
+  | "unknown"
+  | "command"
+  | "open-url";
 
 export interface NoticeRow {
   readonly kind: NoticeKind;
@@ -19,12 +29,14 @@ export interface NoticeRow {
   readonly text: string;
   /** Pretty JSON of an unknown frame, shown on demand. */
   readonly json: string | undefined;
+  /** The URLs omp opened in the browser of the daemon's host or asks to open (UI-346, UI-347). */
+  readonly urls: readonly string[];
 }
 
 const text = strings.chat.notice;
 
 function row(kind: NoticeKind, level: Level, message: string): NoticeRow {
-  return { kind, level, text: message, json: undefined };
+  return { kind, level, text: message, json: undefined, urls: [] };
 }
 
 /** The row of a notice frame. */
@@ -61,6 +73,10 @@ export function noticeRow(frame: NoticeFrame): NoticeRow {
         originalType === undefined ? text.frameError(error) : text.frameErrorOf(originalType, error),
       );
     }
+    case "command_output":
+      return { ...row("command", "info", frame.data.text), urls: openedUrls(frame) };
+    case "open_url":
+      return { ...row("open-url", "info", frame.data.instructions ?? text.openUrl), urls: openedUrls(frame) };
     case "unknown": {
       const kind = isObject(frame.data) ? frame.data.type : undefined;
       return {
@@ -68,6 +84,7 @@ export function noticeRow(frame: NoticeFrame): NoticeRow {
         level: "info",
         text: typeof kind === "string" ? text.unrecognizedOf(kind) : text.unrecognized,
         json: prettyJson(frame.data),
+        urls: [],
       };
     }
   }

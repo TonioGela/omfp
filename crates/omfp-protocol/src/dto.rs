@@ -131,6 +131,10 @@ pub struct ThreadSummary {
     pub settled: bool,
     /// Interactive requests are waiting for an answer.
     pub needs_attention: bool,
+    /// The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon
+    /// did not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub mcp_reload_pending: bool,
     pub provenance: Provenance,
     pub created_at: i64,
     pub updated_at: i64,

@@ -1,9 +1,9 @@
 /**
  * `omfp:header`, the selected thread's header (UI-030): title with rename in place, the workspace chip (UI-340),
- * model and thinking selectors, context usage, session cost, the process state with stop/restart,
- * and archive/unarchive/delete (UI-026; delete asks first, in the frame's confirmation dialog). For the draft thread
- * (UI-023): its placeholder title and its workspace's chip. Narrower than {@link COMPACT_BELOW_REM} it is one row
- * (UI-202): title, state and model, the rest in a `⋯` popover.
+ * model and thinking selectors, context usage, session cost, the process state with stop/restart, "Reload to load MCP
+ * tools" while the daemon holds that restart (UI-349), and archive/unarchive/delete (UI-026; delete asks first, in the
+ * frame's confirmation dialog). For the draft thread (UI-023): its placeholder title and its workspace's chip. Narrower
+ * than {@link COMPACT_BELOW_REM} it is one row (UI-202): title, state and model, the rest in a `⋯` popover.
  */
 
 import type { ThreadSummary } from "@omfp/protocol";
@@ -123,6 +123,7 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
           <Title threadId={summary.id} view={view} compact />
           <HeaderState status={view.status} />
           <BackgroundBadge threadId={summary.id} />
+          <McpReload threadId={summary.id} view={view} />
           <ModelSelect threadId={summary.id} view={view} onChanged={refreshSession} />
           <More threadId={summary.id} view={view} onChanged={refreshSession} />
         </div>
@@ -134,6 +135,7 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
               <HeaderState status={view.status} />
               <BackgroundBadge threadId={summary.id} />
               <ProcessAction threadId={summary.id} view={view} />
+              <McpReload threadId={summary.id} view={view} />
             </div>
             <Lifecycle threadId={summary.id} archived={view.archived} />
           </div>
@@ -501,6 +503,35 @@ function ProcessAction({ threadId, view, onDone }: { threadId: string; view: Hea
         </Button>
       )}
     </>
+  );
+}
+
+/** "Reload to load MCP tools" (UI-349): `thread.mcp_reconnect` restarts the thread's omp now; a refusal (`busy` while
+ * the turn runs) goes to the error toasts. */
+function McpReload({ threadId, view }: { threadId: string; view: HeaderView }): ReactNode {
+  const call = useCall();
+  const report = useReportError();
+  const [pending, setPending] = useState(false);
+  if (!view.mcpReload) {
+    return null;
+  }
+  return (
+    <Button
+      size="sm"
+      variant="primary"
+      icon={<Icon name="refresh-cw" />}
+      isPending={pending}
+      aria-description={strings.shell.mcp.reloadPendingHint}
+      data-testid="mcp-reload-tools"
+      onPress={() => {
+        setPending(true);
+        call("thread.mcp_reconnect", { threadId })
+          .catch(report)
+          .finally(() => setPending(false));
+      }}
+    >
+      {strings.shell.mcp.reloadPending}
+    </Button>
   );
 }
 

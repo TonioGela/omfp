@@ -1044,6 +1044,8 @@ fn noteworthy_frames_become_positioned_notices() {
             NoticeFrame::AutoRetryEnd(_) => "auto_retry_end",
             NoticeFrame::Notice(_) => "notice",
             NoticeFrame::ExtensionError(_) => "extension_error",
+            NoticeFrame::CommandOutput(_) => "command_output",
+            NoticeFrame::OpenUrl(_) => "open_url",
             NoticeFrame::RpcFrameError(_) => "rpc_frame_error",
             NoticeFrame::Unknown(_) => "unknown",
         })
@@ -1084,6 +1086,46 @@ fn history_drops_notices_placed_in_the_previous_transcript() {
         history(json!([])),
     ]);
     assert_eq!(state.notices, Vec::new());
+}
+
+// spec: TST-010, PRT-120
+#[test]
+fn command_output_and_open_url_become_notices_that_survive_history() {
+    let state = replay(&vec![
+        message_end("m1", user_message("hi")),
+        omp(json!({ "type": "notice", "level": "info", "message": "dropped" })),
+        omp(json!({ "type": "command_output", "text": "Added /w/app." })),
+        message_end("m2", assistant_message("done")),
+        ui_request(
+            json!({ "id": "10", "method": "open_url", "url": "https://example.test/login", "instructions": "Paste the code" }),
+        ),
+        // A restart resumes a shorter branch: positions past its end move to its end.
+        history(json!([user_message("hi")])),
+    ]);
+    assert_eq!(
+        state
+            .notices
+            .iter()
+            .map(|notice| (notice.position, &notice.frame))
+            .collect::<Vec<_>>(),
+        [
+            (
+                1,
+                &NoticeFrame::CommandOutput(serde_json::from_value(json!({ "text": "Added /w/app." })).unwrap())
+            ),
+            (
+                1,
+                &NoticeFrame::OpenUrl(
+                    serde_json::from_value(json!({ "id": "10", "url": "https://example.test/login", "instructions": "Paste the code" }))
+                        .unwrap()
+                )
+            ),
+        ]
+    );
+    assert_eq!(
+        state.presentation.open_url.as_ref().map(|r| r.url.as_str()),
+        Some("https://example.test/login")
+    );
 }
 
 // spec: TST-010, PRT-030

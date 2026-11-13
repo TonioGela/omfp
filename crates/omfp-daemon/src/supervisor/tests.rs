@@ -1647,3 +1647,199 @@ async fn a_cascade_stop_stops_the_whole_spawned_tree_and_nothing_else() {
             .is_err()
     );
 }
+
+fn frame(value: serde_json::Value) -> RpcNotification {
+    serde_json::from_value(value).unwrap()
+}
+
+fn subagent(status: &str) -> RpcNotification {
+    frame(json!({ "type": "subagent_lifecycle", "payload": {
+        "id": "Counter", "agent": "task", "agentSource": "bundled", "status": status, "index": 0,
+    } }))
+}
+
+fn write_mcp_config(folder: &Path, servers: &serde_json::Value) {
+    std::fs::create_dir_all(folder.join(".omp")).unwrap();
+    std::fs::write(
+        folder.join(".omp/mcp.json"),
+        json!({ "mcpServers": servers }).to_string(),
+    )
+    .unwrap();
+}
+
+impl Harness {
+    /// Waits until the launcher started `count` processes and the last one runs.
+    async fn launched(&self, id: &str, count: usize) {
+        while self.launcher.launches().len() < count {
+            tokio::task::yield_now().await;
+        }
+        self.wait(id, "the new process", |state| {
+            state.process == ProcessState::Running
+        })
+        .await;
+    }
+}
+
+fn command_outputs(state: &ThreadState) -> Vec<String> {
+    state
+        .notices
+        .iter()
+        .filter_map(|notice| match &notice.frame {
+            omfp_core::NoticeFrame::CommandOutput(output) => Some(output.text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+// spec: DMN-200
+#[tokio::test]
+async fn the_daemons_own_checks_stay_out_of_the_transcript_and_the_users_commands_show() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let (_, folder) = workspace_of(&h, &id);
+    write_mcp_config(&folder, &json!({ "fs": { "command": "fs" } }));
+    h.launcher
+        .local_output("/mcp test fs", &["Server \"fs\" connected (2 tools)."]);
+    h.launcher
+        .local_output("/dirs", &["Workspace directories:\n  /w"]);
+    h.supervisor.start(&id).await.unwrap();
+
+    let listing = h.supervisor.thread_mcp_servers(&id).await.unwrap();
+    h.supervisor.prompt(&id, prompt("/dirs")).await.unwrap();
+    h.wait(&id, "the output of /dirs", |state| {
+        !state.notices.is_empty()
+    })
+    .await;
+
+    assert_eq!(listing.servers[0].tools, Some(2));
+    let log = h.log(&id).await;
+    assert_eq!(
+        log.with_state(command_outputs),
+        ["Workspace directories:\n  /w"]
+    );
+}
+
+// spec: DMN-201, DMN-203
+#[tokio::test]
+async fn an_idle_thread_restarts_at_once_when_its_mcp_configs_change() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let (_, folder) = workspace_of(&h, &id);
+    h.supervisor.start(&id).await.unwrap();
+    h.supervisor.check_mcp_configs().await;
+    assert_eq!(h.launcher.launches().len(), 1, "nothing changed");
+
+    write_mcp_config(&folder, &json!({ "fs": { "command": "fs" } }));
+    h.supervisor.check_mcp_configs().await;
+    h.launched(&id, 2).await;
+    h.supervisor.check_mcp_configs().await;
+
+    assert_eq!(h.launcher.launches().len(), 2, "the new process read them");
+    assert!(!h.supervisor.status(&id).mcp_reload_pending);
+}
+
+// spec: DMN-203
+#[tokio::test]
+async fn a_stopped_thread_needs_no_reload() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let (_, folder) = workspace_of(&h, &id);
+    h.supervisor.start(&id).await.unwrap();
+    h.supervisor.stop(&id).await.unwrap();
+
+    write_mcp_config(&folder, &json!({ "fs": { "command": "fs" } }));
+    h.supervisor.check_mcp_configs().await;
+
+    assert_eq!(h.launcher.launches().len(), 1);
+    assert!(!h.supervisor.is_running(&id));
+}
+
+// spec: DMN-202, DMN-203
+#[tokio::test]
+async fn a_reauthorized_server_restarts_a_busy_thread_once_its_turn_settles() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.supervisor.start(&id).await.unwrap();
+    h.launcher.process(0).emit(vec![agent_start()]);
+    h.wait(&id, "the busy agent", |state| !state.settled).await;
+    let reauthorized = "✓ Reauthorized \"gh\" (user config). Credentials apply on the next connection; restart the \
+                        session if the server stays disconnected.";
+
+    h.launcher.process(0).emit(vec![frame(
+        json!({ "type": "command_output", "text": reauthorized }),
+    )]);
+    h.wait(&id, "the output", |state| !state.notices.is_empty())
+        .await;
+    assert_eq!(h.launcher.launches().len(), 1, "the turn goes on");
+    assert!(!h.supervisor.status(&id).mcp_reload_pending);
+
+    h.launcher
+        .process(0)
+        .emit(vec![frame(json!({ "type": "session_settled" }))]);
+    h.launched(&id, 2).await;
+
+    // Same session (`--continue`), and the card stays.
+    let log = h.log(&id).await;
+    assert_eq!(log.with_state(command_outputs), [reauthorized]);
+}
+
+// spec: DMN-202, DMN-203
+#[tokio::test]
+async fn mcp_add_restarts_the_idle_thread_after_answering_the_prompt() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher
+        .local_output("/mcp add fs -- fs", &["Added MCP server \"fs\" (project)."]);
+    h.supervisor.start(&id).await.unwrap();
+
+    let admission = h.supervisor.prompt(&id, prompt("/mcp add fs -- fs")).await;
+    h.launched(&id, 2).await;
+
+    assert!(!admission.unwrap().agent_invoked);
+}
+
+// spec: DMN-204, PRT-121
+#[tokio::test]
+async fn background_work_holds_the_reload_back_and_flags_the_thread_until_it_ends() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let (_, folder) = workspace_of(&h, &id);
+    h.supervisor.start(&id).await.unwrap();
+    h.launcher.process(0).emit(vec![subagent("started")]);
+    h.wait(&id, "the subagent", |state| !state.subagents.is_empty())
+        .await;
+    let mut changes = h.supervisor.subscribe_changes();
+
+    write_mcp_config(&folder, &json!({ "fs": { "command": "fs" } }));
+    h.supervisor.check_mcp_configs().await;
+
+    assert_eq!(changes.recv().await.unwrap(), id);
+    assert!(h.supervisor.status(&id).mcp_reload_pending);
+    assert_eq!(h.launcher.launches().len(), 1);
+
+    h.launcher.process(0).emit(vec![subagent("completed")]);
+    h.launched(&id, 2).await;
+    assert!(!h.supervisor.status(&id).mcp_reload_pending);
+}
+
+// spec: DMN-204, PRT-121
+#[tokio::test]
+async fn a_reconnect_loads_the_held_back_tools_and_clears_the_flag() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let (_, folder) = workspace_of(&h, &id);
+    h.launcher
+        .local_output("/mcp test fs", &["Server \"fs\" connected (1 tool)."]);
+    h.supervisor.start(&id).await.unwrap();
+    h.launcher.process(0).emit(vec![subagent("started")]);
+    h.wait(&id, "the subagent", |state| !state.subagents.is_empty())
+        .await;
+    write_mcp_config(&folder, &json!({ "fs": { "command": "fs" } }));
+    h.supervisor.check_mcp_configs().await;
+    assert!(h.supervisor.status(&id).mcp_reload_pending);
+
+    h.supervisor.mcp_reconnect(&id, None).await.unwrap();
+
+    assert_eq!(h.launcher.launches().len(), 2);
+    assert!(!h.supervisor.status(&id).mcp_reload_pending);
+}

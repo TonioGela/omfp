@@ -156,7 +156,8 @@ pub fn write_widget_builder(data: &DataDir) -> std::io::Result<bool> {
 }
 
 /// The control note (AGT-045): the thread's own id, `omfp_call` over every protocol method and its catalogue,
-/// `omfp_thread_wait`, and the UI mount and component tools (AGT-061..065).
+/// `omfp_thread_wait`, the UI mount and component tools (AGT-061..065), and that new MCP tools arrive without a
+/// restart (AGT-080).
 #[must_use]
 pub fn control_note(thread_id: &str) -> String {
     use crate::agent_tools::mounts::{
@@ -172,7 +173,9 @@ pub fn control_note(thread_id: &str) -> String {
          last reply: use it instead of polling.\n\
          - Show UI to the user with {UI_MOUNT} {{ id, code | widget, props?, view?, panel? }} (a view, a new \
          dashboard view, or a floating panel), drive it with {UI_UPDATE} {{ id, props }}, remove it with \
-         {UI_REMOVE}; reuse components with {COMPONENT_LIST} / {COMPONENT_SAVE} (`user:<name>`).",
+         {UI_REMOVE}; reuse components with {COMPONENT_LIST} / {COMPONENT_SAVE} (`user:<name>`).\n\
+         - MCP servers added (`/mcp add`, an MCP config file) or reauthorized (`/mcp reauth`) give you their tools \
+         from your next turn: omfp reloads your omp once you are idle, so never ask the user to restart.",
         call = crate::agent_tools::CALL,
         wait = crate::agent_tools::THREAD_WAIT,
         methods = crate::agent_tools::catalog::METHODS_URL,
@@ -352,8 +355,22 @@ mod tests {
         ] {
             assert!(text.contains(rule), "{rule:?} missing: {text}");
         }
-        assert!(text.lines().count() <= 7, "short: {text}");
+        assert!(text.lines().count() <= 8, "short: {text}");
         assert!(!text.ends_with('\n'));
+    }
+
+    // spec: AGT-080
+    #[test]
+    fn the_control_note_says_new_mcp_tools_arrive_without_a_restart() {
+        let text = control_note("01THREAD");
+        for rule in [
+            "/mcp add",
+            "/mcp reauth",
+            "from your next turn",
+            "never ask the user to restart",
+        ] {
+            assert!(text.contains(rule), "{rule:?} missing: {text}");
+        }
     }
 
     // spec: AGT-029

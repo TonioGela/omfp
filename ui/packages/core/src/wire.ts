@@ -520,6 +520,11 @@ export interface RpcFrameErrorEvent {
   originalType?: string;
 }
 
+/** Output of a builtin slash command. */
+export interface CommandOutputEvent {
+  text: string;
+}
+
 const compactionAction = oneOf<AutoCompactionAction>(["context-full", "remote", "handoff", "shake", "snapcompact"]);
 
 const compactionResult = record<CompactionResult>({
@@ -577,6 +582,8 @@ export const noticeEvent = record<NoticeEvent>({ level: notifyType, message: str
 export const extensionError = record<ExtensionError>({ extensionPath: str, event: str, error: str });
 
 export const rpcFrameErrorEvent = record<RpcFrameErrorEvent>({ error: str, originalType: optional(str) });
+
+export const commandOutputEvent = record<CommandOutputEvent>({ text: str });
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Extension UI requests (closed structs, discriminated by `method`)

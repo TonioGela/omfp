@@ -211,6 +211,8 @@ pub struct ThreadStatus {
     pub process: ProcessState,
     pub settled: bool,
     pub needs_attention: bool,
+    /// New MCP tools wait for a restart that background work holds back (DMN-204).
+    pub mcp_reload_pending: bool,
 }
 
 impl Default for ThreadStatus {
@@ -219,6 +221,7 @@ impl Default for ThreadStatus {
             process: ProcessState::Stopped,
             settled: true,
             needs_attention: false,
+            mcp_reload_pending: false,
         }
     }
 }
@@ -281,6 +284,13 @@ struct Actor {
     last_prompt: Mutex<Option<String>>,
     /// Serializes the daemon's own local commands (`/mcp test`), whose `command_output` frames carry no id (DMN-191).
     local_commands: tokio::sync::Mutex<()>,
+    /// The daemon's `/mcp test` in flight: its `command_output` goes here, not into the transcript (DMN-200).
+    mcp_check: Mutex<Option<mcp::PendingCheck>>,
+    /// The thread's omp should connect anew to load new MCP tools (DMN-201..204).
+    mcp_reload: Mutex<mcp::Reload>,
+    /// Held (shared) while a prompt is on its way to omp, so a reload never cuts the answer of the prompt that asked
+    /// for it (`/mcp add`, DMN-203).
+    prompting: tokio::sync::RwLock<()>,
 }
 
 impl Actor {
@@ -306,6 +316,9 @@ impl Actor {
             levels: broadcast::channel(LEVELS_BUFFER).0,
             last_prompt: Mutex::new(None),
             local_commands: tokio::sync::Mutex::new(()),
+            mcp_check: Mutex::new(None),
+            mcp_reload: Mutex::new(mcp::Reload::default()),
+            prompting: tokio::sync::RwLock::new(()),
         }
     }
 
@@ -316,10 +329,12 @@ impl Actor {
     }
 
     fn status(&self) -> ThreadStatus {
+        let mcp_reload_pending = lock(&self.mcp_reload).blocked();
         self.log.with_state(|state| ThreadStatus {
             process: state.process.clone(),
             settled: state.settled,
             needs_attention: !state.interactions.is_empty(),
+            mcp_reload_pending,
         })
     }
 
@@ -723,7 +738,10 @@ impl Supervisor {
         self.roots_before_prompt(&actor).await;
         actor.touch();
         let message = command.message.clone();
-        let admission = blocking(move || process.prompt(command)).await??;
+        let sending = actor.prompting.read().await;
+        let admission = blocking(move || process.prompt(command)).await;
+        drop(sending);
+        let admission = admission??;
         actor.touch();
         if admission.agent_invoked {
             *lock(&actor.last_prompt) = Some(admission.prompt_id.clone());
@@ -974,6 +992,18 @@ impl Supervisor {
                 frame: RpcNotification::RpcAgentEvent(RpcAgentEvent::ToolExecutionEnd(end))
             } if !READ_ONLY_TOOLS.contains(&end.tool_name.as_str())
         );
+        if let ThreadEvent::Omp {
+            frame: RpcNotification::CommandOutput(output),
+        } = &event
+        {
+            // The daemon's own check answers the daemon, not the user (DMN-200).
+            if Self::take_check_output(actor, &output.text) {
+                return;
+            }
+            if crate::omp_mcp::wants_reload(&output.text) {
+                lock(&actor.mcp_reload).want();
+            }
+        }
         if matches!(
             &event,
             ThreadEvent::Omp {
@@ -993,6 +1023,7 @@ impl Supervisor {
         if tool_end {
             let _ = self.inner.tool_ends.send(actor.id.clone());
         }
+        self.reload_mcp_when_free(actor);
         if after.settled && !before.settled && actor.roots_pending.load(Ordering::SeqCst) {
             let supervisor = self.clone();
             let id = actor.id.clone();
@@ -1075,6 +1106,8 @@ impl Supervisor {
 
     async fn launch(&self, actor: &Arc<Actor>) -> Result<Arc<dyn AgentProcess>> {
         let (thread, spec, mut recorded, add_dirs) = self.launch_spec(actor).await?;
+        // Taken before omp reads the files: a change while it starts reloads it once more (DMN-201).
+        self.loading_mcp_configs(actor, spec.cwd.clone()).await;
         self.push(
             actor,
             ThreadEvent::Process {
@@ -1304,6 +1337,8 @@ impl Supervisor {
         blocking(move || drop(process)).await?;
         let _ = ended.wait_for(|ended| *ended).await;
         self.inner.running.fetch_sub(1, Ordering::SeqCst);
+        // The next process reads the MCP configs anew (DMN-203).
+        lock(&actor.mcp_reload).loaded(None);
         self.push(
             actor,
             ThreadEvent::Process {

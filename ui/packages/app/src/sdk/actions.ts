@@ -4,8 +4,9 @@
  */
 
 import { useMemo } from "react";
+import { strings } from "../strings/index.ts";
 import { currentWorkspaceId as workspaceOf } from "../vm/workspaces.ts";
-import { useThreadSummary, useWindowState } from "./hooks.ts";
+import { useAnnounce, useThreadSummary, useWindowState } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
 import {
   DELETE_THREAD,
@@ -52,6 +53,37 @@ export function reportError(host: OmfpHost, error: unknown): void {
 export function useReportError(): (error: unknown) => void {
   const host = useHost();
   return useMemo(() => (error: unknown) => reportError(host, error), [host]);
+}
+
+/** Opening and copying a URL omp opened on the daemon's host (UI-346, UI-347). */
+export interface UrlActions {
+  /** Opens `url` in a new tab of this browser, without access to this window. */
+  open(url: string): void;
+  /** Copies `url` to the clipboard and announces it; a refusal (or no clipboard: a page served over plain HTTP from
+   * another machine) goes to the error list. */
+  copy(url: string): void;
+}
+
+export function useUrlActions(): UrlActions {
+  const host = useHost();
+  const announce = useAnnounce();
+  return useMemo(
+    () => ({
+      open: (url) => {
+        window.open(url, "_blank", "noopener");
+      },
+      copy: (url) => {
+        // `navigator.clipboard` is missing outside secure contexts: the throw becomes the rejection.
+        Promise.resolve()
+          .then(() => navigator.clipboard.writeText(url))
+          .then(
+            () => announce(strings.chat.notice.copied),
+            (error: unknown) => reportError(host, error),
+          );
+      },
+    }),
+    [host, announce],
+  );
 }
 
 /** The workspace this window works in, live: the selected thread's, else the draft thread's (UI-100). */

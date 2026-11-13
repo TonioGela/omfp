@@ -322,6 +322,43 @@ pub fn configured(workspace: &Path, homes: &Homes) -> Vec<McpServer> {
     servers
 }
 
+/// The server entries of every MCP config file omp reads for `workspace` plus the user config's enable lists, as a
+/// hash: a change means omp would load other servers or other settings of one (DMN-201). Only the server sections
+/// count, so `~/.claude.json`, which Claude Code rewrites all the time, changes it only when its servers change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConfigFingerprint(u64);
+
+/// The [`ConfigFingerprint`] of the files [`configured`] reads now.
+#[must_use]
+pub fn fingerprint(workspace: &Path, homes: &Homes) -> ConfigFingerprint {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::hash::DefaultHasher::new();
+    let user = user_config(homes).and_then(|path| read_json(&path));
+    names(user.as_ref(), "disabledServers").hash(&mut hasher);
+    names(user.as_ref(), "enabledServers").hash(&mut hasher);
+    for group in config_files(workspace, homes) {
+        let (Group::Every(files) | Group::First(files)) = group;
+        for file in files {
+            file.path.hash(&mut hasher);
+            servers_of(&file.path, file.key)
+                .unwrap_or_default()
+                .iter()
+                .map(|(name, config)| (name.as_str(), config.to_string()))
+                .for_each(|entry| entry.hash(&mut hasher));
+        }
+    }
+    ConfigFingerprint(hasher.finish())
+}
+
+/// Whether one `command_output` text of omp says the thread's omp must connect anew to get new MCP tools (DMN-202):
+/// `✓ Reauthorized "<name>" …` (over RPC omp applies the credential on the next connection, unless it says it
+/// reconnected the server itself) or `Added MCP server "<name>" …` (`/mcp add` wrote a config file).
+#[must_use]
+pub fn wants_reload(text: &str) -> bool {
+    (text.starts_with("✓ Reauthorized \"") && !text.trim_end().ends_with("Server reconnected."))
+        || text.starts_with("Added MCP server \"")
+}
+
 /// omp's answer to `/mcp test <name>` (DMN-191).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Check {
@@ -560,5 +597,59 @@ mod tests {
         );
         let server = configured(Path::new("/nowhere"), &Homes::default());
         assert_eq!(server, Vec::new());
+    }
+
+    // spec: DMN-201
+    #[test]
+    fn the_fingerprint_changes_with_the_servers_omp_reads_only() {
+        let l = layout();
+        let home = l.homes.home.clone().unwrap();
+        let empty = fingerprint(&l.workspace, &l.homes);
+        write(&l.workspace.join(".omp/mcp.json"), r#"{"mcpServers":{}}"#);
+        assert_eq!(fingerprint(&l.workspace, &l.homes), empty);
+
+        write(
+            &l.workspace.join(".omp/mcp.json"),
+            r#"{"mcpServers":{"fs":{"command":"fs"}}}"#,
+        );
+        let project = fingerprint(&l.workspace, &l.homes);
+        assert_ne!(project, empty);
+        write(
+            &l.workspace.join(".omp/mcp.json"),
+            r#"{"mcpServers":{"fs":{"command":"fs","args":["--ro"]}}}"#,
+        );
+        let changed = fingerprint(&l.workspace, &l.homes);
+        assert_ne!(changed, project);
+
+        // Claude Code rewrites `~/.claude.json` all the time: only its servers count.
+        write(&home.join(".claude.json"), r#"{"numStartups":1}"#);
+        assert_eq!(fingerprint(&l.workspace, &l.homes), changed);
+        write(
+            &home.join(".claude.json"),
+            r#"{"numStartups":2,"mcpServers":{"gh":{"type":"http","url":"https://gh.example/mcp"}}}"#,
+        );
+        let imported = fingerprint(&l.workspace, &l.homes);
+        assert_ne!(imported, changed);
+
+        write(
+            &home.join(".omp/agent/mcp.json"),
+            r#"{"mcpServers":{},"disabledServers":["gh"]}"#,
+        );
+        assert_ne!(fingerprint(&l.workspace, &l.homes), imported);
+    }
+
+    // spec: DMN-202
+    #[test]
+    fn reauthorized_and_added_servers_want_a_reload() {
+        assert!(wants_reload(
+            "✓ Reauthorized \"gh\" (user config). Credentials apply on the next connection; restart the session if \
+             the server stays disconnected."
+        ));
+        assert!(wants_reload("Added MCP server \"fs\" (project)."));
+        assert!(!wants_reload(
+            "✓ Reauthorized \"gh\" (user config). Server reconnected."
+        ));
+        assert!(!wants_reload("Reauthorization cancelled for \"gh\"."));
+        assert!(!wants_reload("Server \"gh\" connected (2 tools)."));
     }
 }

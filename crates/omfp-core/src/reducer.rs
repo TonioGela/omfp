@@ -34,8 +34,17 @@ impl ThreadState {
                     .find_map(committed_todo_phases)
                     .unwrap_or_default();
                 self.streaming = None;
-                // Their positions referred to the replaced transcript.
-                self.notices.clear();
+                // Their positions referred to the replaced transcript; a command's output and the URLs omp opened
+                // stay (a restart after `/mcp reauth` resumes the same transcript), at most after its last message.
+                let len = self.transcript.len();
+                self.notices.retain_mut(|notice| {
+                    let keep = matches!(
+                        notice.frame,
+                        NoticeFrame::CommandOutput(_) | NoticeFrame::OpenUrl(_)
+                    );
+                    notice.position = notice.position.min(len);
+                    keep
+                });
                 // A new process numbers its requests from scratch, so old prompt ids would collide.
                 self.prompts.clear();
             }
@@ -102,6 +111,9 @@ impl ThreadState {
                 self.notice(NoticeFrame::RpcFrameError(error.clone()));
             }
             RpcNotification::Unknown(raw) => self.notice(NoticeFrame::Unknown(raw.clone())),
+            RpcNotification::CommandOutput(output) => {
+                self.notice(NoticeFrame::CommandOutput(output.clone()));
+            }
             RpcNotification::LivePhase(event) => self.live_phase(event.phase),
             RpcNotification::LiveTranscript(event) => self.live_transcript(event),
             RpcNotification::LiveEnd(end) => {
@@ -116,7 +128,6 @@ impl ThreadState {
             | RpcNotification::DictationEnd(_)
             | RpcNotification::BtwDelta(_)
             | RpcNotification::BtwRecord(_)
-            | RpcNotification::CommandOutput(_)
             | RpcNotification::SessionInfoUpdate(_)
             | RpcNotification::ConfigUpdate(_) => {}
         }
@@ -359,7 +370,10 @@ impl ThreadState {
             ExtensionUiRequest::SetEditorText(text) => {
                 presentation.editor_text = Some(text.text.clone());
             }
-            ExtensionUiRequest::OpenUrl(open) => presentation.open_url = Some(open.clone()),
+            ExtensionUiRequest::OpenUrl(open) => {
+                presentation.open_url = Some(open.clone());
+                self.notice(NoticeFrame::OpenUrl(open.clone()));
+            }
         }
     }
 

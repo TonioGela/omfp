@@ -5,7 +5,7 @@ import type { CallMethod } from "@omfp/client";
 import type { ThreadSummary } from "@omfp/protocol";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { DELETE_THREAD, draftKey, REVEAL_WIDGET, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { DELETE_THREAD, draftKey, ERRORS, REVEAL_WIDGET, SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { HeaderWidget } from "../../src/widgets/header/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { type FakeClient, renderWithHost, testHost } from "../support/host.tsx";
@@ -227,5 +227,19 @@ describe("omfp:header", () => {
     } finally {
       restore();
     }
+  });
+
+  // spec: UI-349
+  test("Reload to load MCP tools shows while the daemon holds the restart; a refusal is an error toast", async () => {
+    expect(setup().view.container.querySelector("[data-testid=mcp-reload-tools]")).toBeNull();
+    cleanup();
+    const { client, host, user } = setup(thread("t1", "checkout", "w1", { mcpReloadPending: true }));
+    const reload = screen.getByTestId("mcp-reload-tools");
+    expect(reload.textContent).toBe("Reload to load MCP tools");
+    await user.click(reload);
+    const [reconnect] = client.callsTo("thread.mcp_reconnect");
+    expect(reconnect?.params).toEqual({ threadId: "t1" });
+    reconnect?.reject(new Error("busy: the turn has not settled"));
+    await waitFor(() => expect(host.window.get(ERRORS)).toEqual(["busy: the turn has not settled"]));
   });
 });

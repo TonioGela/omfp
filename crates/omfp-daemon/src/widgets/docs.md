@@ -46,7 +46,10 @@ line; stop a job, cancel a subagent), `omfp:subagents` (the selected thread's su
 (its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:activity`
 (`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:mcp` (the MCP servers of
 the selected thread, checked by its omp, or those configured for the workspace: state, tools, error, config file;
-reconnect = restart the thread, `thread.mcp_servers`, `thread.mcp_reconnect`), `omfp:file`
+reconnect = restart the thread, `thread.mcp_servers`, `thread.mcp_reconnect`; Reauthorize on an `http`/`sse` server
+sends the prompt `/mcp reauth <name>` (`thread.prompt`; its output and the URL omp opens show in the chat; experimental);
+while the thread's summary has `mcpReloadPending`, "Reload to load MCP tools" = `thread.mcp_reconnect { threadId }`),
+`omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
 `HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`: keep that slot (`["tabs", { "id": "main" }, "omfp:chat"]`) in every view, else files float in

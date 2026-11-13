@@ -38,6 +38,7 @@ import {
   autoRetryEndEvent,
   autoRetryStartEvent,
   availableCommandsUpdateEvent,
+  commandOutputEvent,
   type ExtensionUiRequest,
   extensionError,
   extensionUiRequest,
@@ -73,7 +74,6 @@ const IGNORED_FRAMES: Record<string, true> = {
   dictation_end: true,
   btw_delta: true,
   btw_record: true,
-  command_output: true,
   session_info_update: true,
   config_update: true,
   // `agent_end.messages` can be compacted: the transcript comes from `message_end` only (DMN-043).
@@ -95,7 +95,8 @@ const IGNORED_FRAMES: Record<string, true> = {
   thinking_level_changed: true,
 };
 
-type NoticeType = Exclude<NoticeFrame["type"], "unknown">;
+/** `open_url` notices come from the `extension_ui_request` frame. */
+type NoticeType = Exclude<NoticeFrame["type"], "unknown" | "open_url">;
 
 /** Frames kept as notices, with the decoder of their payload. */
 const NOTICE_FRAMES: { [T in NoticeType]: Decoder<Extract<NoticeFrame, { type: T }>["data"]> } = {
@@ -108,6 +109,7 @@ const NOTICE_FRAMES: { [T in NoticeType]: Decoder<Extract<NoticeFrame, { type: T
   notice: noticeEvent,
   extension_error: extensionError,
   rpc_frame_error: rpcFrameErrorEvent,
+  command_output: commandOutputEvent,
 };
 
 /** The id of a dialog request (`select`, `confirm`, `input`, `editor`, `ask`); `undefined` for other methods. */
@@ -238,7 +240,7 @@ function applyUiRequest(state: ThreadState, request: ExtensionUiRequest): Thread
       return { ...state, presentation: { ...presentation, editor_text: request.text } };
     case "open_url": {
       const { type: _type, method: _method, ...open } = request;
-      return { ...state, presentation: { ...presentation, open_url: open } };
+      return notice({ ...state, presentation: { ...presentation, open_url: open } }, { type: "open_url", data: open });
     }
   }
 }
@@ -459,8 +461,11 @@ export function reduce(state: ThreadState, event: ThreadEvent): ThreadState {
             undefined,
           ) ?? [],
         streaming: null,
-        // Their positions referred to the replaced transcript.
-        notices: [],
+        // Their positions referred to the replaced transcript; a command's output and the URLs omp opened stay (a
+        // restart after `/mcp reauth` resumes the same transcript), at most after its last message.
+        notices: state.notices
+          .filter(({ frame }) => frame.type === "command_output" || frame.type === "open_url")
+          .map((kept) => ({ ...kept, position: Math.min(kept.position, messages.length) })),
         // A new process numbers its requests from scratch, so old prompt ids would collide.
         prompts: {},
       };

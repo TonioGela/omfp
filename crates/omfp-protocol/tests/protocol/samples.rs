@@ -108,6 +108,7 @@ pub fn thread() -> ThreadSummary {
         process: ProcessState::Stopped,
         settled: true,
         needs_attention: false,
+        mcp_reload_pending: false,
         provenance: user_provenance(),
         created_at: CREATED_AT,
         updated_at: CREATED_AT + 60_000,

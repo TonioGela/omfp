@@ -73,6 +73,8 @@ export interface HeaderView {
   readonly action: ProcessAction | undefined;
   /** The header offers unarchive instead of archive (UI-026). */
   readonly archived: boolean;
+  /** The daemon holds a restart that loads new MCP tools while background work runs: offer it (UI-349). */
+  readonly mcpReload: boolean;
 }
 
 /** The header of a thread; the session cost comes from {@link costLabel}, so the header does not depend on the
@@ -115,6 +117,7 @@ export function headerView(
     failure: process.state === "failed" ? process.message : undefined,
     action: processAction(process.state),
     archived: isArchived(summary),
+    mcpReload: summary.mcpReloadPending === true,
   };
 }
 

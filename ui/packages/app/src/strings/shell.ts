@@ -250,6 +250,13 @@ export const shell = {
     reloadAllHint: "Restarts the thread's omp, which connects every MCP server again",
     reconnect: "Reconnect",
     reconnectLabel: (name: string) => `Reconnect ${name} (restarts the thread's omp)`,
+    /** `/mcp reauth <name>` in the thread (UI-348). */
+    reauthorize: "Reauthorize",
+    reauthorizeLabel: (name: string) => `Reauthorize ${name} (sends /mcp reauth ${name} to the thread)`,
+    /** The daemon holds a restart for new MCP tools while background work runs (UI-349). */
+    reloadPending: "Reload to load MCP tools",
+    reloadPendingHint:
+      "The MCP servers changed while background work ran, so the thread's omp was not restarted; this restarts it now",
   },
   /** `omfp:todos` (UI-082). */
   todos: {
@@ -398,6 +405,8 @@ export const shell = {
     viewTabs: "Views",
     invalidView: (error: string) => `The view is invalid, showing the default view: ${error}`,
     dismiss: "Dismiss",
+    /** A URL omp opened in a browser (UI-346). */
+    openedUrl: (host: string) => `omp opened ${host} in the browser`,
     commandLine: "Command line",
     /** The completion menu's `╭─` title and its key row (UI-168). */
     commandMenu: "commands",

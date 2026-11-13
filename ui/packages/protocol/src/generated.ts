@@ -1093,6 +1093,11 @@ export type ThreadSummary = {
   archivedAt?: number | null;
   createdAt: number;
   id: string;
+  /**
+   * The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon
+   * did not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.
+   */
+  mcpReloadPending?: boolean;
   /** Interactive requests are waiting for an answer. */
   needsAttention: boolean;
   /** `omfp_core::ProcessState`. */

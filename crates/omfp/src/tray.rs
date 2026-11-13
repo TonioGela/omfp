@@ -378,6 +378,7 @@ mod tests {
             process,
             settled: true,
             needs_attention: false,
+            mcp_reload_pending: false,
             provenance: Provenance {
                 created_by: CreatedBy::User,
                 client: None,

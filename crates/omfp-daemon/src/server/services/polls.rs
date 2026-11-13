@@ -4,7 +4,7 @@
 //! touch no git file). The fingerprint does not see `.omfp/`, so every round also reads the views and widget folders
 //! again (DMN-082; a full scan does it as part of the rescan). A workspace is watched while a client subscribes to
 //! `workspace/<id>` or `views/<id>` or to the `thread/<id>` of one of its threads, or while one of its threads runs
-//! omp.
+//! omp. Every round also compares the MCP configs of the running threads with the ones their omp read (DMN-201).
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -53,6 +53,7 @@ impl Services {
 
     /// One round: a full scan of each watched workspace that has none yet, changed, or is due; the views of the others.
     async fn poll(&self, scanned: &mut HashMap<String, Scanned>) -> Result<(), ErrorBody> {
+        self.supervisor.check_mcp_configs().await;
         let (store, supervisor) = (Arc::clone(&self.store), self.supervisor.clone());
         let watched = blocking(move || watched(&store, &supervisor)).await?;
         // A workspace watched again starts with a full scan.

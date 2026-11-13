@@ -245,3 +245,38 @@ async fn omp_checks_the_thread_servers_and_a_reconnect_connects_them_again() {
     stub.wait_for(before + 4);
     harness.assert_no_stray_network();
 }
+
+// spec: DMN-201, DMN-203
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_added_to_the_config_reaches_the_running_thread_without_a_manual_restart() {
+    let harness = Harness::new(Vec::new()).await;
+    let stub = StubMcp::start();
+    let (daemon, _data) = daemon(&harness).await;
+    let mut client = Client::hello(daemon.addr(), daemon.token().expose(), "test").await;
+    let thread = client.ok("threads.create", json!({ "title": "mcp" })).await;
+    let id = thread["id"].as_str().unwrap().to_owned();
+    let index = client.ok("subscribe", json!({ "topic": "index" })).await;
+    let folder =
+        std::path::PathBuf::from(index["state"]["workspaces"][0]["path"].as_str().unwrap());
+    client.ok("thread.state", json!({ "threadId": id })).await;
+    let listing = client
+        .ok("thread.mcp_servers", json!({ "threadId": id }))
+        .await;
+    assert_eq!(
+        (&listing["running"], &listing["servers"]),
+        (&json!(true), &json!([]))
+    );
+    assert_eq!(stub.initializes(), 0);
+
+    std::fs::create_dir_all(folder.join(".omp")).unwrap();
+    std::fs::write(
+        folder.join(".omp/mcp.json"),
+        json!({ "mcpServers": { "late": { "type": "http", "url": stub.url("late") } } })
+            .to_string(),
+    )
+    .unwrap();
+
+    // The workspace poll sees the change and restarts the idle thread, whose new omp connects the server.
+    stub.wait_for(1);
+    harness.assert_no_stray_network();
+}

@@ -13,6 +13,7 @@ describe("notice rows", () => {
       level: "warning",
       text: "Retrying (2/5) in 1.5 s: overloaded",
       json: undefined,
+      urls: [],
     });
     const notice = noticeRow({
       type: "notice",
@@ -33,5 +34,28 @@ describe("notice rows", () => {
     const row = noticeRow({ type: "unknown", data: { type: "irc_card", from: "advisor" } });
     expect([row.kind, row.text]).toEqual(["unknown", "Unrecognized irc_card frame"]);
     expect(row.json).toBe('{\n  "type": "irc_card",\n  "from": "advisor"\n}');
+  });
+
+  // spec: UI-345, UI-347
+  test("a command's output and an open_url request are command cards with the URLs omp opened", () => {
+    const dirs = noticeRow({ type: "command_output", data: { text: "Workspace roots:\n  /w/app" } });
+    expect(dirs).toEqual({
+      kind: "command",
+      level: "info",
+      text: "Workspace roots:\n  /w/app",
+      json: undefined,
+      urls: [],
+    });
+    const text =
+      "━━━ OAuth Authorization Required ━━━\nOpening your browser to authorize. If it did not open:\nhttps://a.example/x";
+    expect(noticeRow({ type: "command_output", data: { text } }).urls).toEqual(["https://a.example/x"]);
+    const open = noticeRow({
+      type: "open_url",
+      data: { id: "1", url: "https://a.example/y", instructions: "Code: 42" },
+    });
+    expect([open.kind, open.text, open.urls]).toEqual(["open-url", "Code: 42", ["https://a.example/y"]]);
+    expect(noticeRow({ type: "open_url", data: { id: "2", url: "https://a.example/z" } }).text).toBe(
+      "omp asks to open this page in a browser",
+    );
   });
 });

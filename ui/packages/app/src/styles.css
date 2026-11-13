@@ -1207,6 +1207,7 @@
   }
 
   .omfp-mcp__bar,
+  .omfp-mcp__reload,
   .omfp-mcp__source {
     display: flex;
     flex-wrap: wrap;

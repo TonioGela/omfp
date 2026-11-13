@@ -98,6 +98,12 @@ describe("header", () => {
     expect(headerView(thread("t", "x", "w"), NO_DETAILS, []).archived).toBe(false);
   });
 
+  // spec: UI-349
+  test("a thread whose daemon holds a restart for new MCP tools offers the reload", () => {
+    expect(headerView(thread("t", "x", "w", { mcpReloadPending: true }), NO_DETAILS, []).mcpReload).toBe(true);
+    expect(headerView(thread("t", "x", "w"), NO_DETAILS, []).mcpReload).toBe(false);
+  });
+
   // spec: UI-030
   test("cost sums the assistant usage of the transcript", () => {
     expect(sessionCost(withCosts())).toBe(0);

@@ -14,6 +14,7 @@ import type {
   AutoRetryEndEvent,
   AutoRetryStartEvent,
   AvailableSlashCommand,
+  CommandOutputEvent,
   ExtensionError,
   ExtensionUiRequest,
   Goal,
@@ -201,6 +202,10 @@ export type NoticeFrame =
   | { type: "auto_retry_end"; data: AutoRetryEndEvent }
   | { type: "notice"; data: NoticeEvent }
   | { type: "extension_error"; data: ExtensionError }
+  /** Output of a local slash command (`/dirs`, `/mcp reauth …`, background ones arriving later), PRT-120. */
+  | { type: "command_output"; data: CommandOutputEvent }
+  /** An `open_url` request (`login`): omp asks the client to open a URL, PRT-120. */
+  | { type: "open_url"; data: OpenUrlUiRequest }
   | { type: "rpc_frame_error"; data: RpcFrameErrorEvent }
   | { type: "unknown"; data: JsonValue };
 

@@ -489,6 +489,37 @@
     flex-basis: 100%;
   }
 
+  /* A command's output and the URLs omp opened (UI-345, UI-347). */
+  .omfp-command {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--omfp-s1);
+  }
+
+  .omfp-command__text {
+    margin: 0;
+    font-family: var(--omfp-font-code);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-command__url {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--omfp-s2);
+    align-items: baseline;
+  }
+
+  .omfp-command__url-text {
+    flex: 1 1 16rem;
+    min-inline-size: 0;
+    font-family: var(--omfp-font-code);
+    overflow-wrap: anywhere;
+    user-select: all;
+    color: var(--omfp-on-surface);
+  }
+
   /* omp's own bookkeeping (UI-043): one muted line, expandable to the whole text. */
   .omfp-system {
     display: flex;

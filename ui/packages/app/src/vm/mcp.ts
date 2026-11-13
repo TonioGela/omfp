@@ -32,6 +32,8 @@ export interface McpRow {
   /** Why the row has no live state although a thread runs (omp checks only its own files). */
   readonly note: string | undefined;
   readonly disabled: boolean;
+  /** An enabled `http` or `sse` server: omp can authorize it again with OAuth (`/mcp reauth <name>`, UI-348). */
+  readonly reauthorizable: boolean;
 }
 
 /** What is in flight: nothing, a check of every server, or a reconnect of one server (`name`) or all (`all`). */
@@ -41,6 +43,12 @@ export type McpPending =
   | { readonly kind: "reconnect"; readonly name: string | undefined };
 
 export const MCP_IDLE: McpPending = { kind: "none" };
+
+/** The prompt that makes the thread's omp authorize `name` again (UI-348): a local slash command, answered by
+ * `command_output` notices. */
+export function reauthPrompt(name: string): string {
+  return `/mcp reauth ${name}`;
+}
 
 /** Whether `server` is being checked by `pending`. */
 function inFlight(server: McpServer, pending: McpPending, running: boolean): boolean {
@@ -87,6 +95,7 @@ export function mcpRows(listing: McpServers, pending: McpPending = MCP_IDLE): Mc
       openPath: server.source.workspacePath ?? undefined,
       note: threadRuns && !server.checkable && server.state !== "disabled" ? text.notCheckable : undefined,
       disabled: server.state === "disabled",
+      reauthorizable: server.state !== "disabled" && (server.transport === "http" || server.transport === "sse"),
     };
   });
 }

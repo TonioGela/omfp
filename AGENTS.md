@@ -192,6 +192,9 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 - omp exposes no MCP server state over RPC (MCP tools are `xd://` devices, absent from `get_state.dumpTools`). Over
   `prompt`, `/mcp test <name>` (omp-native configs only) answers one `command_output` frame before its response;
   `/mcp reconnect` is refused outside the TUI and `/mcp reload` reconnects nothing: restart the thread instead (M13).
+  `/mcp reauth <name>` runs in the background (the prompt returns at once), opens the browser on omp's host itself and
+  reports in later `command_output` frames (the OAuth URL, then `✓ Reauthorized "<name>" …`); the daemon reloads a
+  thread whose MCP configs changed or whose server was reauthorized once it is free (DMN-200..204).
 - Our harness docs (`omp://…`) may describe a different omp version than the pinned one: verify against the source at
   `~/.cargo/git/checkouts/oh-my-pi-*/<rev>/` (docs in `docs/`, Rust client in `sdk/rust/omp-rpc/`).
 

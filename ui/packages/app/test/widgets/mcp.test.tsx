@@ -1,10 +1,10 @@
-/** L4: `omfp:mcp` over a fake client (UI-290..UI-294). */
+/** L4: `omfp:mcp` over a fake client (UI-290..UI-294, UI-348, UI-349). */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import type { McpServer, McpServers } from "@omfp/protocol";
+import type { McpServer, McpServers, ThreadSummary } from "@omfp/protocol";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DRAFT_THREAD, OPEN_FILES, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { DRAFT_THREAD, ERRORS, OPEN_FILES, SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { BUILTIN_WIDGETS } from "../../src/view/registry.ts";
 import { DEFAULT_MANIFEST } from "../../src/view/views.ts";
 import { McpWidget } from "../../src/widgets/mcp/index.ts";
@@ -52,13 +52,13 @@ const CHECKED = listing([
 ]);
 
 /** The widget on thread `t1` of workspace `w1`, whose omp checked {@link CHECKED}. */
-function setup() {
+function setup(summary: Partial<ThreadSummary> = {}) {
   const base = testHost(new FakeClient());
   base.client.answers.set("thread.mcp_servers", () => CHECKED);
   base.host.window.set(SELECTED_THREAD, "t1");
   const test = renderWithHost(<McpWidget />, base);
   test.client.connected();
-  test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "work", "w1")] });
+  test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "work", "w1", summary)] });
   test.flush();
   return { ...test, user: userEvent.setup() };
 }
@@ -196,5 +196,30 @@ describe("omfp:mcp", () => {
   test("a built-in `:widget add` offers, not in the default view", () => {
     expect(BUILTIN_WIDGETS.has("omfp:mcp")).toBe(true);
     expect(JSON.stringify(DEFAULT_MANIFEST)).not.toContain("omfp:mcp");
+  });
+
+  // spec: UI-348
+  test("Reauthorize, on HTTP and SSE servers only, sends /mcp reauth <name> to the thread; a refusal is an error toast", async () => {
+    const { client, host, user } = setup();
+    await waitFor(() => expect(boxes().length).toBe(3));
+    const buttons = screen.getAllByTestId("mcp-reauthorize");
+    expect(buttons.map((button) => button.closest<HTMLElement>("[data-testid=mcp-server]")?.dataset.name)).toEqual([
+      "docs",
+    ]);
+    await user.click(screen.getByRole("button", { name: "Reauthorize docs (sends /mcp reauth docs to the thread)" }));
+    const [prompt] = client.callsTo("thread.prompt");
+    expect(prompt?.params).toEqual({ threadId: "t1", text: "/mcp reauth docs" });
+    prompt?.reject(new Error("the thread is busy"));
+    await waitFor(() => expect(host.window.get(ERRORS)).toEqual(["the thread is busy"]));
+  });
+
+  // spec: UI-349
+  test("while the daemon holds a restart for new MCP tools, one click reloads the thread", async () => {
+    const { client, user } = setup({ mcpReloadPending: true });
+    await waitFor(() => expect(boxes().length).toBe(3));
+    const reload = screen.getByTestId("mcp-reload-tools");
+    expect(reload.textContent).toBe("Reload to load MCP tools");
+    await user.click(reload);
+    expect(client.callsTo("thread.mcp_reconnect").map((call) => call.params)).toEqual([{ threadId: "t1" }]);
   });
 });

@@ -58,6 +58,7 @@ import { useAddWidget, widgetReferences } from "./layout.tsx";
 import { ModeLine, type ModeLineViews, useMode } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
+import { OpenedUrls } from "./opened-urls.tsx";
 import { breakpointOf, LEFT_OPEN, MOBILE_AREA } from "./responsive.ts";
 import {
   Areas,
@@ -68,7 +69,7 @@ import {
   useLeftDrawer,
   useVisualViewport,
 } from "./responsive.tsx";
-import { ConnectionBanner, Errors, StatusLiveRegion } from "./status.tsx";
+import { ConnectionBanner, StatusLiveRegion, Toasts } from "./status.tsx";
 import { WhichKey } from "./which-key.tsx";
 
 export interface FrameProps {
@@ -235,7 +236,7 @@ export function Frame({
       {breakpoint === "mobile" && <Areas side={side} />}
       <ToggleThreadsCommand breakpoint={breakpoint} />
       {view !== undefined && <SafetyNet view={view} workspaceId={workspaceId} views={state} registry={registry} />}
-      <Errors />
+      <Toasts />
       <StatusLiveRegion />
       <DeleteThreadDialog />
       <DeleteWorkspaceDialog />
@@ -250,6 +251,7 @@ export function Frame({
       <Notifier port={notifications} hasFocus={hasFocus} focusWindow={focusWindow} />
       <AgentFiles />
       <AgentNotices />
+      <OpenedUrls />
       <InitLoader workspaceId={workspaceId} views={state} />
       {file.source}
     </div>

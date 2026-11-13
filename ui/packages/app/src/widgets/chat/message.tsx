@@ -2,9 +2,11 @@
 
 import {
   Badge,
+  Button,
   Code,
   Disclosure,
   ExitCode,
+  Icon,
   Markdown,
   Message,
   StreamCaret,
@@ -21,6 +23,7 @@ import {
   markdownChunks,
   strings,
   useOpenFile,
+  useUrlActions,
 } from "omfp/sdk";
 import { memo, type ReactNode, useCallback } from "react";
 import { useExpanded } from "./state.ts";
@@ -271,9 +274,13 @@ function ToolMeta({ card, exitCode }: { card: Card; exitCode: number | undefined
   );
 }
 
-/** An inline notice row (UI-043); unknown frames expand to their JSON. */
+/** An inline notice row (UI-043); unknown frames expand to their JSON. A command's output and an `open_url` request
+ * are cards (UI-345). */
 export function NoticeRowView({ cardKey, row }: { cardKey: string; row: NoticeRow }) {
   const [expanded, setExpanded] = useExpanded(cardKey, false);
+  if (row.kind === "command" || row.kind === "open-url") {
+    return <CommandOutputCard row={row} />;
+  }
   return (
     <div className="omfp-notice" data-testid="notice" data-kind={row.kind} data-level={row.level}>
       <span className="omfp-notice__text">{row.text}</span>
@@ -283,6 +290,59 @@ export function NoticeRowView({ cardKey, row }: { cardKey: string; row: NoticeRo
         </Disclosure>
       )}
     </div>
+  );
+}
+
+/**
+ * The output of a local slash command (`/dirs`, `/mcp reauth …`) or omp's `open_url` request as a compact card
+ * (UI-345): the text as omp wrote it, then each URL omp opened on the daemon's host, selectable with Open and Copy,
+ * and where an OAuth sign-in returns to (UI-347).
+ */
+function CommandOutputCard({ row }: { row: NoticeRow }): ReactNode {
+  const urls = useUrlActions();
+  return (
+    <section
+      className="omfp-notice omfp-command"
+      data-testid="command-output"
+      data-kind={row.kind}
+      data-level={row.level}
+      aria-label={text.notice.commandOutput}
+    >
+      <pre className="omfp-command__text" data-testid="command-output-text">
+        {row.text}
+      </pre>
+      {row.urls.map((url) => (
+        <div key={url} className="omfp-command__url" data-testid="opened-url" data-url={url}>
+          <span className="omfp-command__url-label">{text.notice.openedUrl}</span>
+          <code className="omfp-command__url-text">{url}</code>
+          <Button
+            size="sm"
+            variant="quiet"
+            icon={<Icon name="link-2" />}
+            aria-label={text.notice.openUrlLabel(url)}
+            onPress={() => urls.open(url)}
+            data-testid="opened-url-open"
+          >
+            {text.notice.openUrlAction}
+          </Button>
+          <Button
+            size="sm"
+            variant="quiet"
+            icon={<Icon name="copy" />}
+            aria-label={text.notice.copyUrlLabel(url)}
+            onPress={() => urls.copy(url)}
+            data-testid="opened-url-copy"
+          >
+            {text.notice.copyUrlAction}
+          </Button>
+        </div>
+      ))}
+      {row.urls.length > 0 && (
+        <p className="omfp-command__note" data-testid="loopback-note">
+          {text.notice.loopbackNote}
+        </p>
+      )}
+    </section>
   );
 }
 

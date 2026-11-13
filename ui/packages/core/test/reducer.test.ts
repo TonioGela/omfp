@@ -650,6 +650,26 @@ describe("reducer", () => {
     expect(state.notices).toEqual([]);
   });
 
+  // spec: TST-010, PRT-120
+  test("command output and open_url become notices that survive history", () => {
+    const state = replay([
+      messageEnd("m1", userMessage("hi")),
+      omp({ type: "notice", level: "info", message: "dropped" }),
+      omp({ type: "command_output", text: "Added /w/app." }),
+      messageEnd("m2", assistantMessage("done")),
+      uiRequest({ id: "10", method: "open_url", url: "https://example.test/login", instructions: "Paste the code" }),
+      // A restart resumes a shorter branch: positions past its end move to its end.
+      history([userMessage("hi")]),
+    ]);
+    const kept: NoticeFrame[] = [
+      { type: "command_output", data: { text: "Added /w/app." } },
+      { type: "open_url", data: { id: "10", url: "https://example.test/login", instructions: "Paste the code" } },
+    ];
+    expect(state.notices.map((notice) => notice.frame)).toEqual(kept);
+    expect(state.notices.map((notice) => notice.position)).toEqual([1, 1]);
+    expect(state.presentation.open_url?.url).toBe("https://example.test/login");
+  });
+
   // spec: TST-010, PRT-030
   test("history drops prompt results of the previous process", () => {
     // omp numbers requests `req_N` per process, so ids restart after a restart (a new History).

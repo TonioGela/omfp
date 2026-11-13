@@ -4,7 +4,9 @@
  * (`workspaces.mcp_servers`, PRT-110). One box per server, in omp's precedence order: its state mark (● connected or
  * failed, the spinner while checked), tool count, error line, command or URL, and the config file it comes from (a
  * workspace file opens in a file tab). "Reconnect" and "Reload all" restart the thread's omp, the only reconnect omp
- * offers over RPC (`thread.mcp_reconnect`, PRT-112).
+ * offers over RPC (`thread.mcp_reconnect`, PRT-112). "Reauthorize" sends `/mcp reauth <name>` to the thread for an
+ * HTTP or SSE server (UI-348); while the daemon holds a restart for new MCP tools, "Reload to load MCP tools" does it
+ * (UI-349).
  */
 
 import type { McpServers } from "@omfp/protocol";
@@ -14,11 +16,13 @@ import {
   type McpPending,
   mcpRows,
   mcpStatus,
+  reauthPrompt,
   SELECTED_THREAD,
   strings,
   useCall,
   useCurrentWorkspaceId,
   useOpenFile,
+  useReportError,
   useThreadSummary,
   useWindowState,
   type WidgetProps,
@@ -43,8 +47,10 @@ export function McpWidget(_props: WidgetProps): ReactNode {
 function Mcp({ workspaceId, threadId }: { workspaceId: string; threadId: string | undefined }): ReactNode {
   const call = useCall();
   const openFile = useOpenFile();
+  const report = useReportError();
+  const summary = useThreadSummary(threadId);
   // A thread that starts or stops changes what its omp can check: list again.
-  const process = useThreadSummary(threadId)?.process.state;
+  const process = summary?.process.state;
   const [listing, setListing] = useState<McpServers | undefined>(undefined);
   const [pending, setPending] = useState<McpPending>(MCP_IDLE);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -103,6 +109,13 @@ function Mcp({ workspaceId, threadId }: { workspaceId: string; threadId: string 
   const rows = useMemo(() => (listing === undefined ? [] : mcpRows(listing, pending)), [listing, pending]);
   const busy = pending.kind !== "none";
 
+  // The output and the URL omp opens arrive in the thread as a command card and a toast (UI-345, UI-346).
+  const reauthorize = (name: string) => {
+    if (threadId !== undefined) {
+      call("thread.prompt", { threadId, text: reauthPrompt(name) }).catch(report);
+    }
+  };
+
   return (
     <section className="omfp-mcp" data-testid="mcp" aria-label={text.label} aria-busy={busy}>
       <div className="omfp-mcp__bar">
@@ -134,6 +147,21 @@ function Mcp({ workspaceId, threadId }: { workspaceId: string; threadId: string 
           </>
         )}
       </div>
+      {threadId !== undefined && summary?.mcpReloadPending === true && (
+        <div className="omfp-mcp__reload" data-testid="mcp-reload-pending">
+          <Button
+            size="sm"
+            variant="primary"
+            icon={<Icon name="refresh-cw" />}
+            isDisabled={busy}
+            onPress={() => reconnect(undefined)}
+            aria-description={text.reloadPendingHint}
+            data-testid="mcp-reload-tools"
+          >
+            {text.reloadPending}
+          </Button>
+        </div>
+      )}
       {error !== undefined && (
         <p className="omfp-mcp__error" role="alert" data-testid="mcp-error">
           {error}
@@ -200,6 +228,18 @@ function Mcp({ workspaceId, threadId }: { workspaceId: string; threadId: string 
                   data-testid="mcp-reconnect"
                 >
                   {text.reconnect}
+                </Button>
+              )}
+              {threadId !== undefined && row.reauthorizable && (
+                <Button
+                  size="sm"
+                  variant="quiet"
+                  isDisabled={busy}
+                  onPress={() => reauthorize(row.name)}
+                  aria-label={text.reauthorizeLabel(row.name)}
+                  data-testid="mcp-reauthorize"
+                >
+                  {text.reauthorize}
                 </Button>
               )}
             </p>
