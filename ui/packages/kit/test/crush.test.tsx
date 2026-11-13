@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import {
@@ -27,6 +27,7 @@ import {
   ModeLine,
   ModeNotice,
   ModeSegment,
+  ModeViews,
   motionLevel,
   PathField,
   QueueChip,
@@ -629,6 +630,49 @@ describe("shell", () => {
     expect(notice.querySelector("kbd")?.textContent).toBe("g n");
     await user.click(notice);
     expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  // spec: UI-441, UI-167
+  test("the mode line's view tabs sit between the segments and the notice; the pill takes its own props", async () => {
+    const user = userEvent.setup();
+    const onSelect = mock((_id: string) => undefined);
+    render(
+      <ModeLine
+        mode="normal"
+        data-testid="line"
+        modeLabel="VISUAL"
+        pillProps={{ "data-testid": "pill", "data-vim": "visual" }}
+        views={
+          <ModeViews
+            label="Views"
+            views={[
+              { id: "default", title: "Default" },
+              { id: "review", title: "Review" },
+            ]}
+            current="review"
+            onSelect={onSelect}
+          />
+        }
+        notice={<ModeNotice tone="info" title="CI" body="is green" />}
+      />,
+    );
+    expect([...screen.getByTestId("line").children].map((child) => child.className)).toEqual([
+      "omfp-mode-pill",
+      "omfp-modeline__segments",
+      "omfp-modeline__views",
+      "omfp-modeline__notice",
+    ]);
+    expect([screen.getByTestId("pill").textContent, screen.getByTestId("pill").dataset.vim]).toEqual([
+      "VISUAL",
+      "visual",
+    ]);
+    const tabs = within(screen.getByRole("navigation", { name: "Views" })).getAllByRole("button");
+    expect(tabs.map((tab) => [tab.textContent, tab.getAttribute("aria-current"), tab.dataset.view])).toEqual([
+      ["Default", null, "default"],
+      ["Review", "true", "review"],
+    ]);
+    await user.click(tabs[0] as HTMLElement);
+    expect(onSelect.mock.calls).toEqual([["default"]]);
   });
 
   // spec: UI-168

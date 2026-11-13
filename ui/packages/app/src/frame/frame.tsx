@@ -60,7 +60,7 @@ import { Help } from "./help.tsx";
 import { InitErrors, InitLoader, useInit } from "./init.tsx";
 import { useAddWidget, widgetReferences } from "./layout.tsx";
 import { Login } from "./login.tsx";
-import { ModeLine, type ModeLineViews, useMode } from "./mode-line.tsx";
+import { type ModeLineViews, useMode, WindowModeLine } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
 import { OpenedUrls } from "./opened-urls.tsx";
@@ -319,11 +319,11 @@ function FrameModeLine({
     appRef.current?.setAttribute("data-mode", mode);
   }, [appRef, mode]);
   return (
-    <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} bindings={bindings} views={views}>
+    <WindowModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} bindings={bindings} views={views}>
       <CommandLine bindings={bindings} />
       <WhichKey state={whichKey} bindings={bindings} />
       <FilePickerLine />
-    </ModeLine>
+    </WindowModeLine>
   );
 }
 

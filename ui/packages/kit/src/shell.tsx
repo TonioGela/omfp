@@ -15,6 +15,7 @@ import {
 import { IconButton } from "./button.tsx";
 import { BorderBox, BoxRule } from "./cards.tsx";
 import { cx, withClass } from "./class.ts";
+import type { DataAttributes } from "./field.tsx";
 import { Icon, type IconName } from "./icons.tsx";
 import { Kbd } from "./kbd.tsx";
 import { LogoMark, Wordmark } from "./logo.tsx";
@@ -42,6 +43,10 @@ export interface ModeLineProps extends HTMLAttributes<HTMLDivElement> {
   mode: Mode;
   /** The mode pill's text. */
   modeLabel?: ReactNode;
+  /** Props of the mode pill: a test id, data attributes (vim's mode while an editor has the focus). */
+  pillProps?: Omit<ModePillProps, "mode" | "children"> & DataAttributes;
+  /** The window's views as tabs ({@link ModeViews}), after the segments. */
+  views?: ReactNode;
   /** A {@link ModeNotice} at the right end, outside the segments that drop when narrow. */
   notice?: ReactNode;
   /** Segments ({@link ModeSegment}), or the command line in command mode. */
@@ -50,13 +55,16 @@ export interface ModeLineProps extends HTMLAttributes<HTMLDivElement> {
 
 /**
  * The bottom bar (UI-167): a gradient hairline on top, the mode pill, then segments separated by `·`; segments that do
- * not fit drop from the right; a notice (UI-193) keeps the right end.
+ * not fit drop from the right; the view tabs (UI-301) and a notice (UI-193) keep the right end.
  */
-export function ModeLine({ mode, modeLabel, notice, className, children, ...props }: ModeLineProps) {
+export function ModeLine({ mode, modeLabel, pillProps, views, notice, className, children, ...props }: ModeLineProps) {
   return (
     <div {...props} className={cx("omfp-modeline", className)} data-mode={mode}>
-      <ModePill mode={mode}>{modeLabel}</ModePill>
+      <ModePill {...pillProps} mode={mode}>
+        {modeLabel}
+      </ModePill>
       <div className="omfp-modeline__segments">{children}</div>
+      {views}
       {notice}
     </div>
   );
@@ -70,6 +78,44 @@ export interface ModeSegmentProps extends HTMLAttributes<HTMLSpanElement> {
 /** One segment of the mode line. */
 export function ModeSegment({ kind = "plain", className, ...props }: ModeSegmentProps) {
   return <span {...props} className={cx("omfp-modeline__segment", className)} data-kind={kind} />;
+}
+
+/** A view of the window, as the mode line's tabs show it. */
+export interface ModeView {
+  readonly id: string;
+  readonly title: ReactNode;
+}
+
+export interface ModeViewsProps extends Omit<HTMLAttributes<HTMLElement>, "onSelect"> {
+  /** The tabs' accessible name. */
+  label: string;
+  views: readonly ModeView[];
+  /** The view the window shows. */
+  current: string | undefined;
+  onSelect: (id: string) => void;
+}
+
+/** The window's views as small tabs in the mode line, `Default · Review · Ops` (UI-301, UI-441): the current one in
+ * `primary` bold; a click switches. */
+export function ModeViews({ label, views, current, onSelect, className, ...props }: ModeViewsProps) {
+  return (
+    <nav {...props} className={cx("omfp-modeline__views", className)} aria-label={label}>
+      {views.map(({ id, title }) => (
+        <button
+          key={id}
+          type="button"
+          className="omfp-modeline__view omfp-focus-inset"
+          aria-current={id === current || undefined}
+          data-current={id === current || undefined}
+          data-testid="mode-view"
+          data-view={id}
+          onClick={() => onSelect(id)}
+        >
+          {title}
+        </button>
+      ))}
+    </nav>
+  );
 }
 
 /** The tone of a mode-line notice: a thread awaiting the user, a failure, a finished turn, anything else. */

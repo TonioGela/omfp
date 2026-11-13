@@ -2416,6 +2416,41 @@
     color: var(--omfp-on-surface-variant);
   }
 
+  /* The window's views as small tabs (UI-301, UI-441), before the notice: `Default · Review · Ops`. */
+  .omfp-modeline__views {
+    display: flex;
+    flex: 0 1 auto;
+    align-items: center;
+    min-inline-size: 0;
+    overflow: hidden;
+  }
+
+  .omfp-modeline__view {
+    flex: none;
+    padding: 0 var(--omfp-s1);
+    border: none;
+    border-radius: var(--omfp-r-chip);
+    font: inherit;
+    color: var(--omfp-on-surface-variant);
+    background: none;
+    cursor: pointer;
+  }
+
+  .omfp-modeline__view + .omfp-modeline__view::before {
+    content: "·";
+    margin-inline-end: var(--omfp-s2);
+    color: var(--omfp-rule-strong);
+  }
+
+  .omfp-modeline__view:hover {
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-modeline__view[data-current] {
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
+  }
+
   .omfp-cmd {
     display: flex;
     flex: 1;

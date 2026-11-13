@@ -18,6 +18,7 @@ import {
   ModeLine,
   ModeNotice,
   ModeSegment,
+  ModeViews,
   Sheet,
   SheetRow,
   SheetSection,
@@ -38,6 +39,27 @@ import { Line, Section } from "./parts.tsx";
 export function ModeLines() {
   return (
     <Section title="Mode line · command line · which-key" note="UI-167 · UI-168 · UI-193 · UI-320" wide>
+      {/* The window's mode line as the app fills it (UI-441): the thread's title and state, the views, a notice. */}
+      <ModeLine
+        mode="normal"
+        modeLabel="NORMAL"
+        views={
+          <ModeViews
+            label="Views"
+            views={[
+              { id: "default", title: "Default" },
+              { id: "review", title: "Review" },
+              { id: "ops", title: "Ops" },
+            ]}
+            current="review"
+            onSelect={() => undefined}
+          />
+        }
+        notice={<ModeNotice tone="attention" title="Fix flaky checkout test" body="needs you" more={1} kbd="g n" />}
+      >
+        <ModeSegment kind="title">Redesign kit tokens</ModeSegment>
+        <ModeSegment>running</ModeSegment>
+      </ModeLine>
       <ModeLine mode="normal">
         <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
         <ModeSegment>
