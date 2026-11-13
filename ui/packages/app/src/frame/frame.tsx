@@ -30,18 +30,20 @@ import { BUILTIN_WIDGETS, INTERACTION_WIDGETS } from "../view/registry.ts";
 import { ViewRenderer } from "../view/render.tsx";
 import { resolveWidget, type WidgetRegistry } from "../view/resolve.ts";
 import { WidgetBoundary } from "../view/slot.tsx";
-import { type ResolvedView, resolveViews, type Views } from "../view/views.ts";
+import { type ResolvedView, resolveViews, type Views, withInitViews } from "../view/views.ts";
 import { InteractionsWidget } from "../widgets/chat/index.ts";
 import { ThreadsWidget } from "../widgets/threads/index.ts";
 import { AgentFiles } from "./agent-files.tsx";
 import { AgentNotices } from "./agent-notices.tsx";
 import { CommandLine } from "./command-line.tsx";
 import { GlobalCommands } from "./commands.tsx";
+import { Describe } from "./describe.tsx";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "./dialogs.tsx";
 import { FilePickerLine } from "./file-picker.tsx";
 import { FloatingFile } from "./floating-file.tsx";
 import { FloatingWidgets, RevealedWidget } from "./floating-widgets.tsx";
 import { Help } from "./help.tsx";
+import { InitErrors, InitLoader, useInit } from "./init.tsx";
 import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
 import { ModeLine, useMode } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
@@ -88,7 +90,9 @@ export function Frame({
   useWindowReports(workspaceId);
   const manifest = state?.manifest;
   const manifestError = state?.error;
-  const views = useMemo(() => viewsOf(manifest, manifestError), [manifest, manifestError]);
+  // What the init files add to this window: views and panels over the manifest's, bindings over every keymap (UI-261).
+  const init = useInit();
+  const views = useMemo(() => withInitViews(viewsOf(manifest, manifestError), init), [manifest, manifestError, init]);
   const [active, setActive] = useWindowState(ACTIVE_VIEW);
   const view =
     views.views.find((candidate) => candidate.id === active) ??
@@ -97,8 +101,9 @@ export function Frame({
   const editing = layoutEdit && workspaceId !== undefined;
   const write = useLayoutWriter(workspaceId, state, view?.id ?? views.defaultId);
   const settings = useSettings();
-  // The defaults < the daemon's `[keymap]` entries < the current workspace's `.omfp/keymap.json`, live (UI-097, UI-210).
-  const bindings = useBindings(defaults, settings.keymap, state);
+  // The defaults < the daemon's `[keymap]` entries < the current workspace's `.omfp/keymap.json` < the init files',
+  // live (UI-097, UI-210, UI-262).
+  const bindings = useBindings(defaults, settings.keymap, state, init.bindings);
   useKeymap(bindings, now);
   useAppearance();
   useUserTheme();
@@ -121,6 +126,7 @@ export function Frame({
         </div>
       )}
       <KeymapError views={state} />
+      <InitErrors errors={init.errors} />
       {settings.error !== null && settings.error !== undefined && (
         <div className="omfp-banner" data-tone="error" role="alert" data-testid="settings-error">
           {strings.shell.settings.error(settings.error)}
@@ -199,10 +205,12 @@ export function Frame({
       <DeleteThreadDialog />
       <DeleteWorkspaceDialog />
       <Help bindings={bindings} now={now} />
+      <Describe bindings={bindings} />
       <GlobalCommands viewIds={viewIds} />
       <Notifier port={notifications} hasFocus={hasFocus} focusWindow={focusWindow} />
       <AgentFiles />
       <AgentNotices />
+      <InitLoader workspaceId={workspaceId} views={state} />
     </div>
   );
 }

@@ -7,6 +7,7 @@
 
 pub mod compile;
 pub mod folders;
+pub mod init;
 pub mod keymap;
 pub mod layout;
 pub mod library;

@@ -398,6 +398,10 @@ pub enum IndexEvent {
     SettingsChanged {
         settings: Settings,
     },
+    /// (Experimental) The user's init file appeared, changed or went away (PRT-095): replaces `init`.
+    InitChanged {
+        init: Option<String>,
+    },
 }
 
 /// Change on a `workspace/<id>` topic, whose state is the git status of each repository of the workspace.
@@ -425,6 +429,8 @@ pub enum ViewsEvent {
         keymap: Vec<WorkspaceBinding>,
         error: Option<String>,
     },
+    /// (Experimental) The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`.
+    ViewsInit { init: Option<String> },
     /// A widget stored a value (`null`: removed the key, DMN-086).
     WidgetStored {
         instance: String,

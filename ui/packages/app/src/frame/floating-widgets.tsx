@@ -2,7 +2,7 @@
  * Floating panels (UI-230, AGT-060): each panel of the current workspace's valid manifest floats over whatever view the
  * window shows, with a bar (grip, title, minimise, close) over its node and a resize corner. Panels start cascaded;
  * each keeps its box and minimised state per workspace and id in this window. Closing one removes it from
- * `views.json` with `views.unmount` (UI-231).
+ * `views.json` with `views.unmount` (UI-231); closing one an init file added hides it in this window (UI-261).
  */
 
 import { IconButton } from "@omfp/kit";
@@ -109,6 +109,10 @@ function FloatingWidget({ panel, index, workspaceId, views, registry, onClose }:
   const close = () => {
     if (onClose !== undefined) {
       onClose();
+      return;
+    }
+    if (panel.init !== undefined) {
+      host.init.closePanel(panel.id);
       return;
     }
     host.client

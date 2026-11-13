@@ -92,27 +92,43 @@ pub fn files(folder: &Path) -> Vec<(PathBuf, Metadata)> {
 /// makes a new version; no file content is read.
 #[must_use]
 pub fn version(folder: &Path) -> String {
-    // FNV-1a: stable across Rust releases and daemon restarts, unlike `DefaultHasher`.
-    const OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-    const PRIME: u64 = 0x0100_0000_01b3;
-    let mut hash = OFFSET;
-    let mut feed = |bytes: &[u8]| {
-        for byte in bytes {
-            hash = (hash ^ u64::from(*byte)).wrapping_mul(PRIME);
-        }
-    };
+    let mut hash = Fnv::default();
     for (path, metadata) in files(folder) {
         let modified = metadata
             .modified()
             .ok()
             .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
             .map_or(0, |since| since.as_nanos());
-        feed(path.as_os_str().as_encoded_bytes());
-        feed(&[0]);
-        feed(&metadata.len().to_le_bytes());
-        feed(&modified.to_le_bytes());
+        hash.feed(path.as_os_str().as_encoded_bytes());
+        hash.feed(&[0]);
+        hash.feed(&metadata.len().to_le_bytes());
+        hash.feed(&modified.to_le_bytes());
     }
-    format!("{hash:016x}")
+    hash.finish()
+}
+
+/// FNV-1a 64: stable across Rust releases and daemon restarts, unlike `DefaultHasher`.
+pub(crate) struct Fnv(u64);
+
+impl Default for Fnv {
+    fn default() -> Self {
+        Self(0xcbf2_9ce4_8422_2325)
+    }
+}
+
+impl Fnv {
+    const PRIME: u64 = 0x0100_0000_01b3;
+
+    pub(crate) fn feed(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 = (self.0 ^ u64::from(*byte)).wrapping_mul(Self::PRIME);
+        }
+    }
+
+    /// The hash as 16 lowercase hex digits.
+    pub(crate) fn finish(&self) -> String {
+        format!("{:016x}", self.0)
+    }
 }
 
 #[cfg(test)]

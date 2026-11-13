@@ -29,6 +29,7 @@ use crate::theme::default_theme_file;
 use crate::threads::Threads;
 use crate::token::Token;
 use crate::widgets::Widgets;
+use crate::widgets::init::default_init_file;
 use crate::workspaces::Workspaces;
 
 /// The system dependencies a daemon runs on (ARC-012).
@@ -386,6 +387,15 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
                 .map_err(|error| anyhow::anyhow!(error.message))?,
         );
     }
+    if let Some(path) = config.init_file.clone() {
+        info!(init = %path.display(), "following the init file");
+        background.push(
+            services
+                .watch_init_file(path)
+                .await
+                .map_err(|error| anyhow::anyhow!(error.message))?,
+        );
+    }
     if let Some(path) = config.config_file.clone() {
         info!(config = %path.display(), "following the config file");
         background.push(
@@ -478,7 +488,10 @@ pub fn run_with<A>(mut cli: Cli, attach: impl FnOnce(&DaemonHandle) -> A) -> any
     .map_err(anyhow::Error::msg)?;
     config.theme_file = config
         .theme_file
-        .or_else(|| default_theme_file(xdg_config_home, home));
+        .or_else(|| default_theme_file(xdg_config_home.clone(), home.clone()));
+    config.init_file = config
+        .init_file
+        .or_else(|| default_init_file(xdg_config_home, home));
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?

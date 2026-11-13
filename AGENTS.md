@@ -79,8 +79,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       jobs (jobs.rs: shell commands of a workspace, `job/<id>`), widgets (widgets.rs: views manifest
                       check, widget folders and versions, oxc transpiling and the `/widgets/<key>/…` route, copies;
                       widgets/docs.md is `omfp://docs/widgets`; widgets/keymap.rs: the workspace `.omfp/keymap.json`;
-                      widgets/mounts.rs: mounts and floating panels as `views.json` edits; widgets/library.rs: the
-                      component library), WebSocket server (polling of watched workspaces:
+                      widgets/init.rs: the init files; widgets/mounts.rs: mounts and floating panels as `views.json`
+                      edits; widgets/library.rs: the component library), WebSocket server (polling of watched workspaces:
                       server/services/polls.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
                       and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs),
                       the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
@@ -124,13 +124,16 @@ ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token 
                       live panel), editor/ (CodeMirror and its theme)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs, live.ts:
-                      the window's live voice session `LiveClient` and its browser `LiveMedia`), vm
+                      the window's live voice session `LiveClient` and its browser `LiveMedia`, init.ts: the init files'
+                      runs and their API, experimental), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
                       column, mode line with the `:` line and file picker, view switcher, layout editing, floating
                       file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
                       state), toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
-                      bar, the left column's splitter), view (layout tree, edits, reference resolution, widget slot,
+                      bar, the left column's splitter; init.tsx: loading the init files and their banner;
+                      describe.ts(x): `:describe-key` / `:describe-command`), view (layout tree, edits, reference
+                      resolution, widget slot,
                       the `main` slot's file tabs; sizes.ts and splitter.tsx: the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
                       logo sheet), keymap, theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import

@@ -133,5 +133,6 @@ expression: snapshot
       }
     ],
     "error": null
-  }
+  },
+  "init": null
 }

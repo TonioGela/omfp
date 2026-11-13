@@ -22,7 +22,7 @@
  * | `useSnapshot(select)` | anything else from the per-frame model snapshot |
  * | `useCall()` | `call(method, params)`: every protocol method, typed |
  * | `useWindowState(key)` | window-local state by {@link WindowKey} (`SELECTED_THREAD`, `draftKey(id)`, …) |
- * | `useCommand(command)` / `useRunCommand()` | commands for the keymap and the `:` line (UI-095) |
+ * | `useCommand(command)` / `useRunCommand()` | commands for the keymap and the `:` line (UI-095); `registerCommand(host, command)` outside React |
  * | `useAnnounce()` | the ARIA live region (UI-092) |
  * | `useThreadActions()` | select, draft threads (open, discard, send the first message), archive/unarchive, delete (`requestDelete` asks first), rename, stop, restart; archiving or deleting forgets the selection and the draft (UI-023, UI-026) |
  * | `useReportError()` | puts a failure in the frame's error list (`ERRORS`) |
@@ -37,6 +37,9 @@
  * | `useFileTabs(workspaceId)` | this window's file tabs of a workspace, `select` and `close` |
  * | `useLive()` | `[live, snapshot]`: this window's live voice session (start, end, mute, spectrum source, UI-180..UI-189) |
  * | `useNotify()` | `notify({ title, body, threadId? })`: a notice in this window's mode line, a system notification while the window has no focus (UI-194) |
+ *
+ * Init files (UI-260..UI-263, experimental) export a function taking an {@link InitApi}: `command`, `bind`, `notify`,
+ * `on`, `view`, `panel`, `run`, `call`, `onCleanup` and the `host` itself; the window's {@link InitFiles} runs them.
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
  * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,
@@ -268,6 +271,7 @@ export {
   type Snapshot,
 } from "./frame-store.ts";
 export {
+  registerCommand,
   useAnnounce,
   useCall,
   useCommand,
@@ -297,6 +301,17 @@ export {
   TopicRefs,
   useHost,
 } from "./host.tsx";
+export {
+  type InitApi,
+  type InitBinding,
+  type InitCommand,
+  type InitError,
+  type InitFile,
+  InitFiles,
+  type InitSnapshot,
+  type InitView,
+  type ThreadEventKind,
+} from "./init.ts";
 export {
   ACTIVE_VIEW,
   COLOR_SCHEME,

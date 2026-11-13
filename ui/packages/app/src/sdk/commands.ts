@@ -14,6 +14,10 @@ export interface Command {
   readonly id: string;
   /** Shown in the command line's completion list. */
   readonly title: string;
+  /** A longer explanation for `:describe-command` (UI-265); the title stands alone without one. */
+  readonly description?: string;
+  /** The init file that registered it (UI-261), for `:describe-command`; `undefined` for widgets and the frame. */
+  readonly init?: "user" | "workspace";
   /** Names typed after `:` besides the id, e.g. `archive` for `thread.archive`. */
   readonly aliases?: readonly string[];
   /** Widget scope it belongs to; global when absent. */

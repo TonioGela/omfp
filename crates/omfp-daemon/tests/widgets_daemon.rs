@@ -17,7 +17,7 @@ use omfp_daemon::{DaemonHandle, Ports, start_with};
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
-/// A daemon on port 0 over `data`; `static_dir` is its web bundle.
+/// A daemon on port 0 over `data`; `static_dir` is its web bundle; it follows the user init file `<data>/init.ts`.
 async fn start(data: &Path, static_dir: Option<&Path>) -> DaemonHandle {
     let workspaces = data.join("workspaces");
     let mut args = vec![
@@ -32,7 +32,8 @@ async fn start(data: &Path, static_dir: Option<&Path>) -> DaemonHandle {
     if let Some(dir) = static_dir {
         args.extend(["--static-dir".into(), dir.display().to_string()]);
     }
-    let config = Config::from_cli(Cli::try_parse_from(args).unwrap(), None, None).unwrap();
+    let mut config = Config::from_cli(Cli::try_parse_from(args).unwrap(), None, None).unwrap();
+    config.init_file = Some(data.join("init.ts"));
     let ports = Ports {
         launcher: Arc::new(FakeLauncher::new()),
         git: Arc::new(FakeGit::new()),
@@ -104,6 +105,11 @@ impl Daemon {
             .await
             .unwrap();
         hello["widgetBase"].as_str().unwrap().to_owned()
+    }
+
+    /// The user init file the daemon follows (DMN-185).
+    fn user_init(&self) -> PathBuf {
+        self.data.path().join("init.ts")
     }
 
     fn user_library(&self) -> PathBuf {
@@ -875,4 +881,137 @@ async fn saves_the_mounted_widget_to_the_user_library(
         .await
         .unwrap_err();
     assert_eq!(error["code"], "conflict");
+}
+
+fn is_version(value: &Value) -> bool {
+    value
+        .as_str()
+        .is_some_and(|v| v.len() == 16 && v.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+// spec: DMN-185, PRT-095
+#[tokio::test(flavor = "multi_thread")]
+async fn a_workspace_init_file_is_versioned_on_the_views_topic_and_served_compiled() {
+    let daemon = Daemon::with_bundle().await;
+    let mut client = daemon.client().await;
+    let (id, folder) = workspace(&mut client).await;
+    let base = daemon.widget_base().await;
+    assert_eq!(views(&mut client, &id).await["init"], Value::Null);
+    let file = folder.join(".omfp/init.ts");
+    assert_eq!(
+        daemon.get(&format!("{base}/init/{id}/v/init.ts")).await.0,
+        404,
+        "no init file"
+    );
+
+    write(
+        &file,
+        "import { useStored } from \"omfp/sdk\";\nexport const n: number = 1;\nexport { useStored };\n",
+    );
+    client
+        .ok("workspaces.rescan", json!({ "workspaceId": id }))
+        .await;
+    let event = views_event(&mut client, &id).await;
+    assert_eq!(event["kind"], "views_init");
+    assert!(is_version(&event["init"]), "{event}");
+    let first = event["init"].clone();
+    let url = format!("{base}/init/{id}/{}/init.ts", first.as_str().unwrap());
+    let (status, headers, body) = daemon.get(&url).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        header(&headers, "content-type"),
+        Some("text/javascript; charset=utf-8")
+    );
+    assert_eq!(header(&headers, "cache-control"), Some("no-store"));
+    assert!(body.contains("useStored"), "{body}");
+    assert!(!body.contains(": number"), "types stripped: {body}");
+
+    // An unknown `omfp/sdk` name does not compile: the stand-in module is served; any version serves the file.
+    write(&file, "import { nothing } from \"omfp/sdk\";\n");
+    client
+        .ok("workspaces.rescan", json!({ "workspaceId": id }))
+        .await;
+    let event = views_event(&mut client, &id).await;
+    assert_eq!(event["kind"], "views_init");
+    assert!(
+        is_version(&event["init"]) && event["init"] != first,
+        "{event}"
+    );
+    let (status, _, body) = daemon.get(&format!("{base}/init/{id}/old/init.ts")).await;
+    assert_eq!(status, 200);
+    assert!(body.contains("compileError"), "{body}");
+
+    let other_key = format!("/widgets/{}", "0".repeat(32));
+    for path in [
+        format!("{other_key}/init/{id}/v/init.ts"),
+        format!("{base}/init/NOPE/v/init.ts"),
+        format!("{base}/init/{id}/v/other.ts"),
+        format!("{base}/init/{id}/v/../init.ts"),
+        format!("{base}/init/user/v/init.ts"),
+    ] {
+        let (status, headers, _) = daemon.get(&path).await;
+        assert_eq!(status, 404, "{path}");
+        assert_eq!(header(&headers, "cache-control"), Some("no-store"));
+    }
+
+    std::fs::remove_file(&file).unwrap();
+    client
+        .ok("workspaces.rescan", json!({ "workspaceId": id }))
+        .await;
+    assert_eq!(
+        views_event(&mut client, &id).await,
+        json!({ "kind": "views_init", "init": null })
+    );
+    assert_eq!(
+        daemon.get(&format!("{base}/init/{id}/v/init.ts")).await.0,
+        404
+    );
+}
+
+/// The next `init_changed` event of the `index` topic.
+async fn init_changed(client: &mut Client) -> Value {
+    loop {
+        let event = client.event("index").await["event"].clone();
+        if event["kind"] == "init_changed" {
+            return event;
+        }
+    }
+}
+
+// spec: DMN-185, PRT-095
+#[tokio::test(flavor = "multi_thread")]
+async fn the_user_init_file_is_followed_on_the_index_topic_and_served_compiled() {
+    let daemon = Daemon::with_bundle().await;
+    let mut client = daemon.client().await;
+    let index = client.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(index["state"]["init"], Value::Null);
+    let base = daemon.widget_base().await;
+
+    write(
+        &daemon.user_init(),
+        "import { useJob } from \"omfp/sdk\";\nexport const job: string = String(useJob);\n",
+    );
+    let event = init_changed(&mut client).await;
+    assert!(is_version(&event["init"]), "{event}");
+    let (status, headers, body) = daemon.get(&format!("{base}/init/user/x/init.ts")).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(header(&headers, "cache-control"), Some("no-store"));
+    assert!(body.contains("useJob"), "{body}");
+    assert!(!body.contains(": string"), "{body}");
+
+    // Index refreshes keep it.
+    workspace(&mut client).await;
+    let mut other = daemon.client().await;
+    let index = other.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(index["state"]["init"], event["init"]);
+
+    std::fs::remove_file(daemon.user_init()).unwrap();
+    assert_eq!(
+        init_changed(&mut client).await,
+        json!({ "kind": "init_changed", "init": null })
+    );
+    assert_eq!(
+        daemon.get(&format!("{base}/init/user/x/init.ts")).await.0,
+        404
+    );
 }

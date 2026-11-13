@@ -37,6 +37,8 @@ export interface ResolvedView {
   readonly title: string;
   readonly layout: LayoutNode;
   readonly tree: LayoutTree;
+  /** The init file that added it to this window (UI-261); `undefined` for the manifest's. */
+  readonly init?: "user" | "workspace";
 }
 
 /** A floating panel (AGT-060): its node as written and as a tree, with its title (the node's `title` prop, else the
@@ -46,6 +48,8 @@ export interface ResolvedPanel {
   readonly title: string;
   readonly node: LayoutNode;
   readonly tree: LayoutTree;
+  /** The init file that added it to this window (UI-261): closing it only hides it here. */
+  readonly init?: "user" | "workspace";
 }
 
 export interface Views {
@@ -77,6 +81,32 @@ export function resolveViews(manifest: unknown): Views {
   }
   const parsed = parseManifest(manifest);
   return parsed.ok ? parsed.value : { ...DEFAULT_VIEWS, error: parsed.error };
+}
+
+/**
+ * `views` with the views and panels the init files add (UI-261): one with the id of a manifest view or panel replaces
+ * it in place, the others follow in the order given. The manifest's default view and error stay.
+ */
+export function withInitViews(
+  views: Views,
+  extra: { readonly views: readonly ResolvedView[]; readonly panels: readonly ResolvedPanel[] },
+): Views {
+  if (extra.views.length === 0 && extra.panels.length === 0) {
+    return views;
+  }
+  const merge = <T extends { readonly id: string }>(base: readonly T[], added: readonly T[]): T[] => {
+    const merged = [...base];
+    for (const item of added) {
+      const index = merged.findIndex((existing) => existing.id === item.id);
+      if (index < 0) {
+        merged.push(item);
+      } else {
+        merged[index] = item;
+      }
+    }
+    return merged;
+  };
+  return { ...views, views: merge(views.views, extra.views), panels: merge(views.panels, extra.panels) };
 }
 
 /** Checks a manifest (AGT-010, AGT-060): views, then panels, then the default; the error names the JSON path and the

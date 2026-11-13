@@ -87,6 +87,9 @@ pub struct Config {
     /// The theme file to follow (DMN-075); `None` follows none. [`Config::from_cli`] takes `--theme-file` or the
     /// config file's `theme_file`; `omfp daemon` ([`crate::run`]) adds the default location.
     pub theme_file: Option<PathBuf>,
+    /// (Experimental) The user's init file to follow and serve (DMN-185); `None` follows none. [`Config::from_cli`]
+    /// leaves it `None`; `omfp daemon` ([`crate::run`]) sets the default location.
+    pub init_file: Option<PathBuf>,
     /// Generate thread titles after the first message (DMN-073).
     pub title_generation: bool,
     /// The config file the daemon follows for `[ui]` / `[keymap]` and writes `settings.set` into (DMN-009); `None`
@@ -190,6 +193,7 @@ impl Config {
             event_buffer: cli.event_buffer.or(options.event_buffer).unwrap_or(2000),
             allowed_origins,
             theme_file: cli.theme_file.or(options.theme_file),
+            init_file: None,
             title_generation: !cli.no_title_generation && options.title_generation.unwrap_or(true),
             config_file: cli.config,
             file_options,

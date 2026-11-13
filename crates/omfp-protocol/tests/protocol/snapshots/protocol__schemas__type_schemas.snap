@@ -679,6 +679,25 @@ expression: type_schemas()
           "settings"
         ],
         "type": "object"
+      },
+      {
+        "description": "(Experimental) The user's init file appeared, changed or went away (PRT-095): replaces `init`.",
+        "properties": {
+          "init": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "const": "init_changed",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
       }
     ],
     "title": "IndexEvent"
@@ -1182,6 +1201,14 @@ expression: type_schemas()
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "description": "State of the `index` topic.",
     "properties": {
+      "init": {
+        "default": null,
+        "description": "(Experimental) The version of the user's init file (`~/.config/omfp/init.ts`, PRT-095): a hash of its bytes;\n`null` without one.",
+        "type": [
+          "string",
+          "null"
+        ]
+      },
       "settings": {
         "$ref": "#/$defs/Settings"
       },
@@ -1725,6 +1752,25 @@ expression: type_schemas()
         "type": "object"
       },
       {
+        "description": "(Experimental) The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`.",
+        "properties": {
+          "init": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "const": "views_init",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      {
         "description": "A widget stored a value (`null`: removed the key, DMN-086).",
         "properties": {
           "instance": {
@@ -1841,6 +1887,14 @@ expression: type_schemas()
     "properties": {
       "error": {
         "description": "Why the file is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or absent.",
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "init": {
+        "default": null,
+        "description": "(Experimental) The version of the workspace's `.omfp/init.ts` (PRT-095): a hash of its bytes; `null` without\none.",
         "type": [
           "string",
           "null"

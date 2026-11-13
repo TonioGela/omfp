@@ -284,6 +284,44 @@ fn views_keymap_event_frames_and_the_state_without_a_keymap() {
     assert_eq!(state.keymap_error, None);
 }
 
+// spec: PRT-095
+#[test]
+fn init_events_replace_the_init_versions_and_older_states_have_none() {
+    let user = event(
+        Topic::Index,
+        TopicEvent::Index(IndexEvent::InitChanged {
+            init: Some("0123456789abcdef".to_owned()),
+        }),
+    );
+    assert_eq!(
+        round_trip(&user)["event"],
+        json!({ "kind": "init_changed", "init": "0123456789abcdef" })
+    );
+    let workspace = event(
+        Topic::Views(WORKSPACE_ID.to_owned()),
+        TopicEvent::Views(ViewsEvent::ViewsInit { init: None }),
+    );
+    assert_eq!(
+        round_trip(&workspace)["event"],
+        json!({ "kind": "views_init", "init": null })
+    );
+
+    // States without the field (an older daemon) read as no init file.
+    let state: ViewsState = serde_json::from_value(
+        json!({ "manifest": null, "error": null, "widgets": [], "stored": {} }),
+    )
+    .unwrap();
+    assert_eq!(state.init, None);
+    let index: omfp_protocol::IndexSnapshot = serde_json::from_value(json!({
+        "workspaces": [],
+        "threads": [],
+        "theme": theme(),
+        "settings": settings()
+    }))
+    .unwrap();
+    assert_eq!(index.init, None);
+}
+
 // spec: PRT-041
 #[test]
 fn job_event_frames() {

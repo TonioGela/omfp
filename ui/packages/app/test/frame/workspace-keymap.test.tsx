@@ -117,7 +117,7 @@ describe("workspace keymap", () => {
       { mode: "normal", keys: "g n", command: "demo.ping", args: ["one"], source: "workspace" },
       { mode: "normal", keys: "?", command: "help.open" },
       { mode: "normal", keys: "j", command: "nav.next" },
-      { mode: "normal", keys: "g h", command: "help.open" },
+      { mode: "normal", keys: "g h", command: "help.open", source: "config" },
       { mode: "insert", keys: "j", command: "demo.ping", source: "workspace" },
     ]);
     expect(effectiveBindings(defaults, [], [])).toEqual(defaults);

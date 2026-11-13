@@ -328,6 +328,7 @@ describe("model", () => {
       stored: { tests: { "job:make": "01JOB" } },
       keymap: [],
       keymapError: null,
+      init: null,
     };
     expect(model.applySubscribed(topic, snapshot("v1", 0, state))).toEqual({ ok: true, mode: "snapshot" });
     expect(model.views.get("01W")).toEqual(state);
@@ -352,6 +353,7 @@ describe("model", () => {
       stored: { tests: { count: 3 }, other: { k: { a: [1] } } },
       keymap: [],
       keymapError: null,
+      init: null,
     });
     expect([...model.takeDirty().views]).toEqual(["01W"]);
 
@@ -375,7 +377,7 @@ describe("model", () => {
     model.track(topic);
     const older = { manifest: null, error: null, widgets: [], stored: {} };
     expect(model.applySubscribed(topic, snapshot("v1", 0, older))).toEqual({ ok: true, mode: "snapshot" });
-    expect(model.views.get("01W")).toEqual({ ...older, keymap: [], keymapError: null });
+    expect(model.views.get("01W")).toEqual({ ...older, keymap: [], keymapError: null, init: null });
 
     const keymap: WorkspaceBinding[] = [
       { mode: "normal", keys: "g t", command: "tests.run", args: ["unit"] },
@@ -399,6 +401,58 @@ describe("model", () => {
     expect(decodeServerFrame(frame(keymap)).ok).toBe(true);
     expect(decodeServerFrame(frame([{ keys: "g t" }])).ok).toBe(false);
     expect(decodeServerFrame(frame([{ mode: "normal", keys: "g t", command: "x", args: [1] }])).ok).toBe(false);
+  });
+
+  // spec: PRT-095
+  test("the init versions: the index and views topics follow them; snapshots without one have none", () => {
+    const model = new Model();
+    expect(model.index.init).toBeNull();
+    model.track(INDEX_TOPIC);
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i1", 1, indexState())).ok).toBe(true);
+    expect(model.index.init).toBeNull();
+    model.takeDirty();
+    expect(model.applyEvent(indexFrame("i1", 2, { kind: "init_changed", init: "0123456789abcdef" }))).toBe("applied");
+    expect(model.index.init).toBe("0123456789abcdef");
+    expect(model.takeDirty().index).toBe(true);
+    expect(model.applyEvent(indexFrame("i1", 3, { kind: "init_changed", init: null }))).toBe("applied");
+    expect(model.index.init).toBeNull();
+    expect(
+      model.applySubscribed(INDEX_TOPIC, snapshot("i2", 1, { ...indexState(), init: "aaaaaaaaaaaaaaaa" })).ok,
+    ).toBe(true);
+    expect(model.index.init).toBe("aaaaaaaaaaaaaaaa");
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i3", 1, { ...indexState(), init: 1 })).ok).toBe(false);
+
+    const topic = viewsTopic("01W");
+    model.track(topic);
+    const older = { manifest: null, error: null, widgets: [], stored: {} };
+    expect(model.applySubscribed(topic, snapshot("v1", 0, older)).ok).toBe(true);
+    expect(model.views.get("01W")?.init).toBeNull();
+    const changed: TopicEvent = { kind: "views_init", init: "fedcba9876543210" };
+    expect(model.applyEvent({ type: "event", topic, epoch: "v1", seq: 1, event: changed })).toBe("applied");
+    expect(model.views.get("01W")?.init).toBe("fedcba9876543210");
+    const removed: TopicEvent = { kind: "views_init", init: null };
+    expect(model.applyEvent({ type: "event", topic, epoch: "v1", seq: 2, event: removed })).toBe("applied");
+    expect(model.views.get("01W")?.init).toBeNull();
+    expect(model.applySubscribed(topic, snapshot("v2", 0, { ...older, init: 2 })).ok).toBe(false);
+
+    const frame = (kind: string, init: unknown) => ({
+      type: "event",
+      topic,
+      epoch: "v1",
+      seq: 3,
+      event: { kind, init },
+    });
+    expect(decodeServerFrame(frame("views_init", "x")).ok).toBe(true);
+    expect(decodeServerFrame(frame("views_init", 3)).ok).toBe(false);
+    const indexEvent = (init: unknown) => ({
+      type: "event",
+      topic: INDEX_TOPIC,
+      epoch: "i1",
+      seq: 4,
+      event: { kind: "init_changed", init },
+    });
+    expect(decodeServerFrame(indexEvent(null)).ok).toBe(true);
+    expect(decodeServerFrame(indexEvent({})).ok).toBe(false);
   });
 
   // spec: PRT-040

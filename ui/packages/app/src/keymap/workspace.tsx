@@ -7,17 +7,19 @@
 import type { ViewsState } from "@omfp/protocol";
 import { type ReactNode, useMemo } from "react";
 import { strings } from "../strings/index.ts";
-import { type Binding, effectiveBindings, type KeymapOverride } from "./keymap.ts";
+import { type Binding, effectiveBindings, type InitBindings, type KeymapOverride } from "./keymap.ts";
 
 /** The window's bindings, live: `defaults` < `global` (`[keymap]`) < the bindings of `views`, the current
- * workspace's views topic (none while there is no current workspace or before its topic answers). */
+ * workspace's views topic (none while there is no current workspace or before its topic answers) < the init files'
+ * (UI-262). */
 export function useBindings(
   defaults: readonly Binding[],
   global: readonly KeymapOverride[],
   views: ViewsState | undefined,
+  init: InitBindings,
 ): readonly Binding[] {
   const workspace = views?.keymap;
-  return useMemo(() => effectiveBindings(defaults, global, workspace ?? []), [defaults, global, workspace]);
+  return useMemo(() => effectiveBindings(defaults, global, workspace ?? [], init), [defaults, global, workspace, init]);
 }
 
 /** The error banner of the current workspace's `.omfp/keymap.json` (UI-212); nothing while it is valid or absent. */

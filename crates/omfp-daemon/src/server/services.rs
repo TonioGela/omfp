@@ -88,6 +88,7 @@ fn apply_index(state: &mut IndexSnapshot, event: &IndexEvent) {
         }
         IndexEvent::ThemeChanged { theme } => state.theme.clone_from(theme),
         IndexEvent::SettingsChanged { settings } => state.settings.clone_from(settings),
+        IndexEvent::InitChanged { init } => state.init.clone_from(init),
     }
 }
 
@@ -135,6 +136,8 @@ pub(crate) struct Services {
     reports: Arc<WidgetReports>,
     /// Serializes the mount edits of `views.json` (PRT-080..082), each a read, a change and a write.
     manifest_edits: Arc<tokio::sync::Mutex<()>>,
+    /// The followed user init file (DMN-185), served from here; `None` follows none.
+    init_file: Arc<Mutex<Option<PathBuf>>>,
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -170,6 +173,7 @@ impl Services {
                     threads: Vec::new(),
                     theme: Theme::default(),
                     settings: Settings::default(),
+                    init: None,
                 },
                 apply_index,
                 INDEX_CAPACITY,
@@ -185,6 +189,7 @@ impl Services {
             views_refresh: Arc::new(tokio::sync::Mutex::new(())),
             reports: Arc::new(WidgetReports::new()),
             manifest_edits: Arc::new(tokio::sync::Mutex::new(())),
+            init_file: Arc::new(Mutex::new(None)),
         };
         let workspaces = Arc::clone(&services.workspaces);
         blocking(move || {
@@ -385,6 +390,36 @@ impl Services {
         if let Err(error) = self.set_theme(css).await {
             warn!(error = %error.message, "cannot apply the theme file");
         }
+    }
+
+    /// (Experimental) Reads the user's init file now (startup) and then follows its changes, publishing its version
+    /// as `init_changed` on the `index` topic (DMN-185).
+    pub async fn watch_init_file(&self, path: PathBuf) -> Result<JoinHandle<()>, ErrorBody> {
+        *lock(&self.init_file) = Some(path.clone());
+        let (file, change) = Self::first_read(path.clone()).await?;
+        if let Some(text) = change {
+            self.apply_init_file(&path, text).await;
+        }
+        let services = self.clone();
+        Ok(Self::follow(file, move |text| {
+            let (services, path) = (services.clone(), path.clone());
+            async move { services.apply_init_file(&path, text).await }
+        }))
+    }
+
+    async fn apply_init_file(&self, path: &Path, text: Option<String>) {
+        info!(path = %path.display(), "init file changed");
+        let init = text.map(|text| crate::widgets::init::version(text.as_bytes()));
+        // Held like a refresh, so the event never interleaves with a refresh's.
+        let _serial = self.refresh.lock().await;
+        if self.index.with_state(|index| index.init != init) {
+            self.index.push(IndexEvent::InitChanged { init });
+        }
+    }
+
+    /// The followed user init file, if any (DMN-185).
+    pub fn init_file(&self) -> Option<PathBuf> {
+        lock(&self.init_file).clone()
     }
 
     /// The file's first read (startup): it applies only when an immediate second read agrees, else the watcher
@@ -652,6 +687,7 @@ fn load_index(
             css: store.theme()?,
         },
         settings,
+        init: previous.init.clone(),
     })
 }
 

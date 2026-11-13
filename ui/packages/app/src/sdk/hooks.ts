@@ -25,7 +25,7 @@ import {
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import { type Command, scopesAt } from "./commands.ts";
 import type { Snapshot } from "./frame-store.ts";
-import { type SdkClient, useHost } from "./host.tsx";
+import { type OmfpHost, type SdkClient, useHost } from "./host.tsx";
 import type { LiveClient, LiveSnapshot } from "./live.ts";
 import type { Update, WindowKey } from "./window-store.ts";
 
@@ -117,25 +117,33 @@ export function useWindowState<T>(key: WindowKey<T>): [T, (update: Update<T>) =>
 
 /**
  * Registers `command` while mounted. The latest `command` object is the one run, so it may close over fresh state;
- * the registration itself changes only with `id`, `scope` or `title`.
+ * the registration itself changes only with `id`, `scope`, `title` or `description`. Init files and other code outside
+ * React use its sibling {@link registerCommand} (UI-261).
  */
 export function useCommand(command: Command): void {
   const { commands } = useHost();
   const latest = useRef(command);
   latest.current = command;
-  const { id, scope, title } = command;
+  const { id, scope, title, description } = command;
   useEffect(() => {
     const { aliases } = latest.current;
     return commands.register({
       id,
       title,
+      ...(description === undefined ? {} : { description }),
       ...(scope === undefined ? {} : { scope }),
       ...(aliases === undefined ? {} : { aliases }),
       args: () => latest.current.args?.() ?? [],
       enabled: () => latest.current.enabled?.() ?? true,
       run: (args) => latest.current.run(args),
     });
-  }, [commands, id, scope, title]);
+  }, [commands, id, scope, title, description]);
+}
+
+/** Registers `command` in `host`'s registry until the returned function is called: {@link useCommand} outside React,
+ * for init files (UI-261) and frame-level code. */
+export function registerCommand(host: OmfpHost, command: Command): () => void {
+  return host.commands.register(command);
 }
 
 /** Runs a command by id or alias in the scopes around the focused element; `false` when nothing answers. */

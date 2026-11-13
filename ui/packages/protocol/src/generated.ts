@@ -347,10 +347,20 @@ export type IndexEvent =
   | {
     kind: "settings_changed";
     settings: Settings;
+  }
+  /** (Experimental) The user's init file appeared, changed or went away (PRT-095): replaces `init`. */
+  | {
+    init?: string | null;
+    kind: "init_changed";
   };
 
 /** State of the `index` topic. */
 export type IndexSnapshot = {
+  /**
+   * (Experimental) The version of the user's init file (`~/.config/omfp/init.ts`, PRT-095): a hash of its bytes;
+   * `null` without one.
+   */
+  init?: string | null;
   settings: Settings;
   theme: Theme;
   threads: ThreadSummary[];
@@ -1195,6 +1205,11 @@ export type ViewsEvent =
     keymap: WorkspaceBinding[];
     kind: "views_keymap";
   }
+  /** (Experimental) The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`. */
+  | {
+    init?: string | null;
+    kind: "views_init";
+  }
   /** A widget stored a value (`null`: removed the key, DMN-086). */
   | {
     instance: string;
@@ -1207,6 +1222,11 @@ export type ViewsEvent =
 export type ViewsState = {
   /** Why the file is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or absent. */
   error?: string | null;
+  /**
+   * (Experimental) The version of the workspace's `.omfp/init.ts` (PRT-095): a hash of its bytes; `null` without
+   * one.
+   */
+  init?: string | null;
   /**
    * The bindings of the workspace's `.omfp/keymap.json` (DMN-120, UI-210); an invalid file keeps the last valid
    * ones (DMN-121); empty without a file.

@@ -276,6 +276,10 @@ pub struct IndexSnapshot {
     pub threads: Vec<ThreadSummary>,
     pub theme: Theme,
     pub settings: Settings,
+    /// (Experimental) The version of the user's init file (`~/.config/omfp/init.ts`, PRT-095): a hash of its bytes;
+    /// `null` without one.
+    #[serde(default)]
+    pub init: Option<String>,
 }
 
 /// Git status of one repository of a workspace (the `workspace/<id>` topic, DMN-026).
@@ -517,6 +521,10 @@ pub struct ViewsState {
     /// absent.
     #[serde(default)]
     pub keymap_error: Option<String>,
+    /// (Experimental) The version of the workspace's `.omfp/init.ts` (PRT-095): a hash of its bytes; `null` without
+    /// one.
+    #[serde(default)]
+    pub init: Option<String>,
 }
 
 /// A job's process state (DMN-080).

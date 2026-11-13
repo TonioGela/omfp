@@ -17,6 +17,8 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 - A workspace widget named like a built-in (`.omfp/widgets/chat/` for `omfp:chat`) replaces the built-in in that
   workspace. The built-ins' sources can be copied as a starting point (`:widget copy omfp:workspace` in the window).
 - `<workspace>/.omfp/keymap.json` — this workspace's key bindings (schema: `omfp://schemas/keymap.json`, see Keys).
+- `<workspace>/.omfp/init.ts` and the user's `init.ts` (`$XDG_CONFIG_HOME/omfp/init.ts`, else `~/.config/omfp/init.ts`,
+  next to `theme.css`) — init files run by every window (experimental, see Init files).
 
 ```json
 {
@@ -95,6 +97,61 @@ line is open). `keys` are tokens separated by spaces: a printable key is its cha
 their name (`Space`, `Esc`, `Enter`, `Tab`), prefixed by `Ctrl-`, `Alt-`, `Meta-` (`g g`, `Space t`, `Ctrl-k`). `args`
 are passed to the command's `run(args)`; `"command": ""` removes a binding.
 
+## Init files (experimental)
+
+An init file is the window's `init.el`: an ES module every window imports at startup and runs again whenever it changes.
+The user's `init.ts` runs first, then the current workspace's `.omfp/init.ts` (switching to a thread of another
+workspace swaps the latter). Both compile like widget files (TypeScript, JSX, the same imports; a single file: no
+relative imports). Do the work in the default export, which receives the init API; return a cleanup function if
+something must be undone. Before the file runs again, or when it goes away, the window calls that cleanup and removes
+everything the run registered through the API, so a run never needs to undo its own `command`, `bind`, `view`, `panel`
+or `on`.
+
+```ts
+export default function init(omfp) {
+  omfp.command({
+    id: "tests.run",
+    title: "Run the tests",
+    description: "Asks the selected thread's agent to run the test suite.",
+    aliases: ["tests"],
+    run: () => omfp.notify({ title: "tests", body: "started" }),
+  });
+  omfp.bind([
+    { keys: "Space T", command: "tests.run" },
+    { mode: "insert", keys: "Ctrl-t", command: "tests.run" },
+    { keys: "Space x", command: "" },
+  ]);
+  omfp.view("logs", { title: "Logs", layout: ["row", {}, "omfp:chat", "./widgets/logs"] });
+  omfp.panel("clock", ["user:clock", { title: "Clock" }]);
+  omfp.on("attention", (thread) => omfp.notify({ title: thread.title ?? thread.id, body: "needs you", threadId: thread.id }));
+  const timer = setInterval(() => {}, 60_000);
+  return () => clearInterval(timer);
+}
+```
+
+| API | What it does |
+| --- | --- |
+| `file`, `workspaceId` | `"user"` or `"workspace"`; the workspace whose file this is (`undefined` for the user's). |
+| `command(command)` | Registers a `:` command / key binding target: `{ id, title, description?, aliases?, scope?, args?, enabled?, run(args) }` (`useCommand`'s shape; `registerCommand(host, command)` from `omfp/sdk` is the same outside an init file). |
+| `bind(binding \| bindings)` | `{ keys, command, args?, mode? }` (`mode` default `normal`, `command: ""` removes a binding), applied after the defaults, the user's `[keymap]` and `.omfp/keymap.json`: the user's init file, then the workspace's, win last. |
+| `view(id, { title?, layout })` | Adds a view to this window's view switcher (a manifest view with that id is replaced here); `views.json` is not written. |
+| `panel(id, node)` | Floats a layout node over every view (its `title` prop labels it); closing it hides it until the file runs again. |
+| `on(event, listener)` | `"attention"` (a thread starts needing the user), `"failed"`, `"finished"` (a turn ended): `listener(thread)` gets the thread summary. Use it for auto-actions, e.g. select or notify. |
+| `notify({ title, body, threadId? })` | Like `useNotify()`. |
+| `run(name, args?)` | Runs any command by id or alias, e.g. `run("view.switch", ["logs"])`. |
+| `call(method, params)` | Any protocol method, like `useCall()`. |
+| `onCleanup(fn)` | Called before the file runs again or goes away. |
+| `host` | The window's SDK host (`commands`, `window` state, `notices`, `client`), for anything else. |
+
+A layout node is checked like `views.json`'s: an invalid one throws. Any failure — a compile error, a throw or rejected
+promise of the run, of a cleanup, of a command or listener it registered — shows in a banner naming the file; the
+window keeps working without it, and the next save that runs cleanly removes the banner.
+
+`:describe-key` then a key sequence shows what it runs in every mode, the command's title and description, and where
+it was bound (default keymap, `[keymap]`, `.omfp/keymap.json`, the user's or the workspace's init file);
+`:describe-command <name>` shows a command's names, scope, who registered it and every key bound to it. Point the user
+at them to check what an init file did.
+
 ## Imports
 
 Only these specifiers resolve; everything else must be a relative file of the widget's folder:
@@ -146,7 +203,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useWindowState(key)` | Window-local state; `SELECTED_THREAD` is the thread this window shows. |
 | `useCurrentWorkspaceId()` | The workspace this window works in: the selected thread's, else the draft thread's. |
 | `useThreadActions()` | `select`, `rename`, `archive`, `stop`, `restart`, … for threads. |
-| `useCommand(command)` | Registers a `:` command or key binding target while mounted. |
+| `useCommand(command)` | Registers a `:` command or key binding target while mounted (`description` shows in `:describe-command`). |
 | `useAnnounce()` | `announce(message)` for screen readers. |
 | `useNotify()` | `notify({ title, body, threadId? })`: tells the user something without covering anything. While the window has focus it is a notice at the right end of the mode line (`◆ title body`, `g n` or a click opens it, gone after 8 s); while it has not, a system notification (when the user allowed them; `[ui] notifications = "never"` shows neither). With `threadId`, opening it selects that thread, visiting the thread clears it, and nothing is shown about the thread the user is on. Use it for results worth a look (a build turned red, a long job finished), not for every update. |
 | `useSettings()` | The daemon's UI settings. |

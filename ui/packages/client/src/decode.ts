@@ -101,6 +101,7 @@ const INDEX_EVENTS: Record<IndexEvent["kind"], (event: Record<string, unknown>) 
   thread_removed: (event) => typeof event.threadId === "string",
   theme_changed: (event) => isTheme(event.theme),
   settings_changed: (event) => isSettings(event.settings),
+  init_changed: (event) => isOptionalString(event.init),
 };
 
 /** The theme when the daemon sends none (DMN-075): the built-in themes only. */
@@ -198,6 +199,7 @@ const VIEWS_EVENTS: Record<ViewsEvent["kind"], (event: Record<string, unknown>) 
   views_manifest: (event) => isOptionalString(event.error),
   views_widgets: (event) => isWidgetList(event.widgets),
   views_keymap: (event) => isWorkspaceKeymap(event.keymap) && isOptionalString(event.error),
+  views_init: (event) => isOptionalString(event.init),
   widget_stored: (event) => typeof event.instance === "string" && typeof event.key === "string" && "value" in event,
 };
 
@@ -352,7 +354,7 @@ export function decodeSubscribeResult(value: unknown): Decoded<SubscribeResult> 
 }
 
 /** Decodes the state of an `index` snapshot; a missing `theme` is {@link NO_THEME}, missing `settings`
- * {@link NO_SETTINGS}. */
+ * {@link NO_SETTINGS}, a missing `init` (the user's init file version, PRT-095) `null`. */
 export function decodeIndexSnapshot(value: unknown): Decoded<IndexSnapshot> {
   if (
     !isObject(value) ||
@@ -368,8 +370,12 @@ export function decodeIndexSnapshot(value: unknown): Decoded<IndexSnapshot> {
   if (!isSettings(settings)) {
     return invalid("expected `settings` to be `{ ui, keymap: { mode, keys, command }[], error }`");
   }
+  if (!isOptionalString(value.init)) {
+    return invalid("expected `init` to be a string or `null`");
+  }
+  const init = typeof value.init === "string" ? value.init : null;
   // Every list holds objects with a string `id`, the key the model files them under.
-  return { ok: true, value: { ...(value as IndexSnapshot), theme, settings } };
+  return { ok: true, value: { ...(value as IndexSnapshot), theme, settings, init } };
 }
 
 const THREAD_STATE_FIELDS: Record<keyof ThreadState, (field: unknown) => boolean> = {
@@ -420,8 +426,8 @@ function isStoredMap(value: unknown): value is Record<string, Record<string, unk
   return isObject(value) && Object.values(value).every(isObject);
 }
 
-/** Decodes the state of a `views/<workspaceId>` snapshot (PRT-040, PRT-060); `manifest`, `error` and `keymapError`
- * default to `null`, `keymap` to no bindings. */
+/** Decodes the state of a `views/<workspaceId>` snapshot (PRT-040, PRT-060, PRT-095); `manifest`, `error`,
+ * `keymapError` and `init` default to `null`, `keymap` to no bindings. */
 export function decodeViewsState(value: unknown): Decoded<ViewsState> {
   if (
     !isObject(value) ||
@@ -429,7 +435,8 @@ export function decodeViewsState(value: unknown): Decoded<ViewsState> {
     !isWidgetList(value.widgets) ||
     !isStoredMap(value.stored) ||
     !(value.keymap === undefined || isWorkspaceKeymap(value.keymap)) ||
-    !isOptionalString(value.keymapError)
+    !isOptionalString(value.keymapError) ||
+    !isOptionalString(value.init)
   ) {
     return invalid("expected `{ manifest, error, widgets: { source, name, version, entry }[], stored, keymap? }`");
   }
@@ -442,6 +449,7 @@ export function decodeViewsState(value: unknown): Decoded<ViewsState> {
       stored: value.stored,
       keymap: value.keymap ?? [],
       keymapError: typeof value.keymapError === "string" ? value.keymapError : null,
+      init: typeof value.init === "string" ? value.init : null,
     },
   };
 }

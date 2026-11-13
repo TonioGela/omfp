@@ -27,7 +27,7 @@ pub(crate) use mcp::Sessions as McpSessions;
 pub(crate) use services::Services;
 
 use crate::token::Token;
-use crate::widgets::{Served, workspace_widgets};
+use crate::widgets::{Served, init, workspace_widgets};
 
 /// Protocol versions the daemon accepts in `system.hello`: the current one and, during a transition, the previous
 /// one (PRT-032). There is no previous version yet.
@@ -85,6 +85,9 @@ async fn theme_css(State(state): State<Arc<AppState>>) -> Response {
 /// `GET /widgets/<key>/<source>/<name>/<version>/<path>` (DMN-084, DMN-085): a file of a workspace's widget folder
 /// (`<source>` = its id) or of the user library (`user`), compiled when it is TypeScript or JSX. A wrong key, an
 /// unknown source, folder or file, or a path leaving the folder is `404`; nothing is cached.
+///
+/// (Experimental) `GET /widgets/<key>/init/<scope>/<version>/init.ts` (DMN-185, PRT-095): the user's init file
+/// (`<scope>` = `user`) or a workspace's `.omfp/init.ts` (`<scope>` = its id), compiled; the version only busts caches.
 async fn widget_file(
     State(state): State<Arc<AppState>>,
     extract::Path(rest): extract::Path<String>,
@@ -111,6 +114,17 @@ async fn widget_file(
     let services = state.services.clone();
     let (source, name, path) = (source.to_owned(), name.to_owned(), path.to_owned());
     let served = tokio::task::spawn_blocking(move || {
+        if source == "init" {
+            if path != init::FILE {
+                return None;
+            }
+            let file = if name == "user" {
+                services.init_file()?
+            } else {
+                init::workspace_init(&services.store.workspace(&name).ok()?.path)
+            };
+            return services.widgets.serve_init(&file).map(Served::Module);
+        }
         let library = if source == "user" {
             services.widgets.user_library().to_path_buf()
         } else {

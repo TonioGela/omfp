@@ -5,6 +5,8 @@ import { CMDLINE_ATTRIBUTE, createKeyHandler, modeAt } from "../../src/keymap/ha
 import {
   type Binding,
   DEFAULT_BINDINGS,
+  describeKeys,
+  effectiveBindings,
   KeymapMatcher,
   keyLabel,
   keysFor,
@@ -300,5 +302,47 @@ describe("global key handler", () => {
     expect(press(out, " ")).toBe(true);
     expect(press(out, "t")).toBe(true);
     expect(ran).toEqual(["global:theme.set dark"]);
+  });
+});
+
+describe("init layers", () => {
+  // spec: UI-262
+  test("the init files' bindings apply after the workspace's, the workspace's file last; each carries its layer", () => {
+    const defaults: Binding[] = [
+      { mode: "normal", keys: "g h", command: "help.open" },
+      { mode: "normal", keys: "j", command: "nav.next" },
+    ];
+    const merged = effectiveBindings(
+      defaults,
+      [{ mode: "normal", keys: "j", command: "nav.prev" }],
+      [{ mode: "normal", keys: "g h", command: "demo.ping" }],
+      {
+        user: [
+          { mode: "normal", keys: "g h", command: "my.hello", args: ["user"] },
+          { mode: "normal", keys: "Space h", command: "my.hello" },
+        ],
+        workspace: [
+          { mode: "normal", keys: "Space h", command: "my.other" },
+          { mode: "normal", keys: "j", command: "" },
+        ],
+      },
+    );
+    expect(merged).toEqual([
+      { mode: "normal", keys: "g h", command: "my.hello", args: ["user"], source: "init:user" },
+      { mode: "normal", keys: "Space h", command: "my.other", source: "init:workspace" },
+    ]);
+  });
+
+  // spec: UI-264
+  test("described keys wait while they start a longer binding and answer with every mode's binding", () => {
+    const bindings: Binding[] = [
+      { mode: "normal", keys: "Ctrl-c", command: "composer.interrupt" },
+      { mode: "insert", keys: "Ctrl-c", command: "composer.interrupt", source: "config" },
+      { mode: "normal", keys: "Space n", command: "thread.new" },
+    ];
+    expect(describeKeys(bindings, "Space")).toEqual({ kind: "pending" });
+    expect(describeKeys(bindings, "Space n")).toEqual({ kind: "done", keys: "Space n", bindings: bindings.slice(2) });
+    expect(describeKeys(bindings, "Ctrl-c")).toEqual({ kind: "done", keys: "Ctrl-c", bindings: bindings.slice(0, 2) });
+    expect(describeKeys(bindings, "q")).toEqual({ kind: "done", keys: "q", bindings: [] });
   });
 });

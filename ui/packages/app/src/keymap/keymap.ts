@@ -11,6 +11,13 @@
 /** `normal`: focus not in a text field; `insert`: a text field has the focus; `cmdline`: the `:` line is open. */
 export type Mode = "normal" | "insert" | "cmdline";
 
+/**
+ * Where a binding comes from when it is not a default: the daemon's `[keymap]` entries (`config`, UI-097), the current
+ * workspace's `.omfp/keymap.json` (`workspace`, UI-210), or an init file's `bind` (`init:user`, `init:workspace`,
+ * UI-262).
+ */
+export type BindingSource = "config" | "workspace" | "init:user" | "init:workspace";
+
 export interface Binding {
   readonly mode: Mode;
   /** Tokens separated by spaces, e.g. `g g`. */
@@ -18,9 +25,8 @@ export interface Binding {
   readonly command: string;
   /** Arguments passed to the command. */
   readonly args?: readonly string[];
-  /** Where the binding comes from when it is not a default or a `[keymap]` entry: the current workspace's
-   * `.omfp/keymap.json` (UI-210). */
-  readonly source?: "workspace";
+  /** Where the binding comes from; a default without one. */
+  readonly source?: BindingSource;
 }
 
 /** The defaults: vim-style navigation, `:` command line, `Space` leader (UI-095). */
@@ -276,15 +282,45 @@ export function mergeBindings(
   return bindings;
 }
 
+/** The bindings the init files make (UI-262), applied after the workspace's: the user's, then the workspace's. */
+export interface InitBindings {
+  readonly user: readonly KeymapOverride[];
+  readonly workspace: readonly KeymapOverride[];
+}
+
+export const NO_INIT_BINDINGS: InitBindings = { user: [], workspace: [] };
+
 /**
- * The window's effective keymap (UI-210): the defaults, then the daemon's `[keymap]` entries (UI-097), then the
- * current workspace's `.omfp/keymap.json` bindings, each layer applied with {@link mergeBindings}, so the workspace
- * wins over the global entries and both over the defaults.
+ * The window's effective keymap (UI-210, UI-262): the defaults, then the daemon's `[keymap]` entries (UI-097), then the
+ * current workspace's `.omfp/keymap.json` bindings, then the user's init file's and the workspace's init file's, each
+ * layer applied with {@link mergeBindings}, so every layer wins over the ones before it. Each binding a layer makes
+ * carries that layer as its `source`.
  */
 export function effectiveBindings(
   defaults: readonly Binding[],
   global: readonly KeymapOverride[],
   workspace: readonly KeymapOverride[],
+  init: InitBindings = NO_INIT_BINDINGS,
 ): Binding[] {
-  return mergeBindings(mergeBindings(defaults, global), workspace, "workspace");
+  const configured = mergeBindings(mergeBindings(defaults, global, "config"), workspace, "workspace");
+  return mergeBindings(mergeBindings(configured, init.user, "init:user"), init.workspace, "init:workspace");
+}
+
+/** What a key sequence typed for `:describe-key` is (UI-264). */
+export type Described =
+  /** The keys so far start at least one binding: wait for the next. */
+  | { readonly kind: "pending" }
+  /** The bindings of exactly these keys, in every mode (none: not bound). */
+  | { readonly kind: "done"; readonly keys: string; readonly bindings: readonly Binding[] };
+
+/**
+ * The bindings of `keys` (tokens separated by spaces) in any mode: complete as soon as a binding has exactly these
+ * keys or none starts with them, like {@link KeymapMatcher} where a complete binding wins over longer ones.
+ */
+export function describeKeys(bindings: readonly Binding[], keys: string): Described {
+  const exact = bindings.filter((binding) => binding.keys === keys);
+  if (exact.length === 0 && bindings.some((binding) => binding.keys.startsWith(`${keys} `))) {
+    return { kind: "pending" };
+  }
+  return { kind: "done", keys, bindings: exact };
 }

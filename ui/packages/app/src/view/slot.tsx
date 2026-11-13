@@ -47,7 +47,7 @@ const NO_ENTRY: LoadedWidget = {
 };
 
 /** The `widgetBase` of the latest `system.hello` (PRT-042), kept while reconnecting. */
-function useWidgetBase(): string | undefined {
+export function useWidgetBase(): string | undefined {
   const current = useSnapshot((snapshot) =>
     snapshot.connection.kind === "connected" ? snapshot.connection.hello.widgetBase : undefined,
   );

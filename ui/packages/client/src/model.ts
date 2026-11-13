@@ -62,12 +62,14 @@ export type ConnectionStatus =
 
 /** The `index` topic: workspaces and thread summaries keyed by id, in id order (ids are ULIDs, so this
  * is creation order), the user's theme (DMN-075; `{ css: null }` until the daemon sends one) and the UI settings of
- * the daemon's config file (DMN-009, UI-097; `{ ui: {}, keymap: [], error: null }` until the daemon sends them). */
+ * the daemon's config file (DMN-009, UI-097; `{ ui: {}, keymap: [], error: null }` until the daemon sends them), and
+ * (experimental) the version of the user's init file (PRT-095; `null` without one). */
 export interface Index {
   readonly workspaces: ReadonlyMap<string, Workspace>;
   readonly threads: ReadonlyMap<string, ThreadSummary>;
   readonly theme: Theme;
   readonly settings: Settings;
+  readonly init: string | null;
 }
 
 /** A pending dialog request of a thread. */
@@ -191,6 +193,7 @@ const EMPTY_INDEX: Index = {
   threads: new Map(),
   theme: NO_THEME,
   settings: NO_SETTINGS,
+  init: null,
 };
 
 function byId<T extends { id: string }>(items: readonly T[]): Map<string, T> {
@@ -233,6 +236,7 @@ function indexFromSnapshot(snapshot: IndexSnapshot): Index {
     threads: byId(snapshot.threads),
     theme: snapshot.theme,
     settings: snapshot.settings,
+    init: snapshot.init ?? null,
   };
 }
 
@@ -250,6 +254,8 @@ function applyIndexEvent(index: Index, event: IndexEvent): Index {
       return { ...index, theme: event.theme };
     case "settings_changed":
       return { ...index, settings: event.settings };
+    case "init_changed":
+      return { ...index, init: event.init ?? null };
   }
 }
 
@@ -261,6 +267,8 @@ function applyViewsEvent(views: ViewsState, event: ViewsEvent): ViewsState {
       return { ...views, widgets: event.widgets };
     case "views_keymap":
       return { ...views, keymap: event.keymap, keymapError: event.error ?? null };
+    case "views_init":
+      return { ...views, init: event.init ?? null };
     case "widget_stored": {
       const keys = { ...views.stored[event.instance] };
       if (event.value === null) {
@@ -612,6 +620,7 @@ export class Model implements ModelView {
       case "thread_removed":
       case "theme_changed":
       case "settings_changed":
+      case "init_changed":
         if (parsed?.kind === "index") {
           this.#index = applyIndexEvent(this.#index, event);
           this.#dirty.index = true;
@@ -626,6 +635,7 @@ export class Model implements ModelView {
       case "views_manifest":
       case "views_widgets":
       case "views_keymap":
+      case "views_init":
       case "widget_stored": {
         const views = parsed?.kind === "views" ? this.#views.get(parsed.id) : undefined;
         if (parsed?.kind === "views" && views !== undefined) {

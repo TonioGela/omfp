@@ -255,6 +255,12 @@ by X", a cascade stop for everything a thread spawned, and an activity log of ag
 | AGT-071 | **Cascade stop**: `thread.stop { threadId, cascade: true }` (PRT-085) MUST stop the omp process of every thread of the spawned tree (AGT-070) and kill the jobs their agents started (DMN-162), whoever asks (the user, a script, an agent); it archives, deletes and removes nothing, and a stopped thread starts again on its next command (DMN-070). Without `cascade` only the thread's process stops, as before. |
 | AGT-072 | **Activity log**: every protocol method an agent principal calls (a principal whose provenance is a thread, ARC-009, or the MCP principal, AGT-053) that needs more than the `Connect` or `Read` permission (PRT-034) MUST be appended to the activity log (DMN-160, DMN-161) with its time, the calling thread (`null` for the MCP principal), its client, the method, its params and its outcome, whether it succeeded or failed; reads and the user's own calls are not logged. The log is readable with `activity.list` (PRT-086) and shown by the built-in widget `omfp:activity` (UI-241). |
 
+### Init files (experimental, branch idea/init)
+
+| ID | Requirement |
+| --- | --- |
+| AGT-073 | (experimental, branch idea/init) **Agents write init files too**: a workspace's `.omfp/init.ts` (and the user's `init.ts`, DMN-185) is an ordinary file an agent writes with its own tools, like a widget (AGT-012); `omfp://docs/widgets` (`widgets/docs.md`) MUST document the init API (UI-261), the binding order (UI-262), the thread events (UI-266), where errors show (UI-263) and `:describe-key` / `:describe-command` (UI-264, UI-265), so an agent can set up keys, commands, views and reactions to thread events for the user without editing `views.json` or `keymap.json`. |
+
 ## Constraints that apply from day one
 
 | ID | Requirement |

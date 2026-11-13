@@ -1328,6 +1328,7 @@ fn index_snapshot_lists_workspaces_threads_the_theme_and_settings() {
         threads: vec![thread()],
         theme: theme(),
         settings: settings(),
+        init: None,
     };
     let text = serde_json::to_string(&snapshot).unwrap();
     assert_eq!(

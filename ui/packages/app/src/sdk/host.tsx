@@ -11,6 +11,7 @@ import { strings } from "../strings/index.ts";
 import { CommandRegistry } from "./commands.ts";
 import { type FilePoll, intervalPoll } from "./files.ts";
 import { type FrameScheduler, FrameStore, type ModelSource } from "./frame-store.ts";
+import { InitFiles } from "./init.ts";
 import { browserLiveMedia, LiveClient, type LiveMedia } from "./live.ts";
 import { browserImporter, type Importer, WidgetModules } from "./modules.ts";
 import { Notices, type NoticeTimers } from "./notify.ts";
@@ -104,6 +105,8 @@ export interface OmfpHost {
   readonly live: LiveClient;
   /** Notices to the user: the mode line or a system notification (UI-192, UI-194). */
   readonly notices: Notices;
+  /** The user's and the current workspace's init files (UI-260..UI-263, experimental). */
+  readonly init: InitFiles;
 }
 
 export interface HostOptions {
@@ -111,7 +114,7 @@ export interface HostOptions {
   readonly schedule?: FrameScheduler;
   /** Where persisted window state lives; default: none (tests), the frame passes `localStorage`. */
   readonly storage?: KeyValueStorage;
-  /** How widget modules are imported; default: the browser's `import()` (tests pass a fake). */
+  /** How widget modules and init files are imported; default: the browser's `import()` (tests pass a fake). */
   readonly importer?: Importer;
   /** How widget reports are batched; default: the global timers. */
   readonly reportTimers?: ReportTimers;
@@ -130,14 +133,15 @@ export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHo
   const frames = new FrameStore(client, options.schedule);
   const topics = new TopicRefs(client);
   const window = new WindowStore(options.storage);
-  return {
+  const importer = options.importer ?? browserImporter;
+  const host: OmfpHost = {
     client,
     frames,
     topics,
     window,
     commands: new CommandRegistry(),
     announcer: new Announcer(),
-    modules: new WidgetModules(options.importer ?? browserImporter, strings.widgets.noDefaultExport),
+    modules: new WidgetModules(importer, strings.widgets.noDefaultExport),
     reports: new WidgetReporter({ report: (params) => client.call("widgets.report", params) }, options.reportTimers),
     filePoll: options.filePoll ?? intervalPoll,
     live: new LiveClient({
@@ -148,7 +152,9 @@ export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHo
       media: options.liveMedia ?? browserLiveMedia(options.local ?? false),
     }),
     notices: new Notices(window, options.noticeTimers),
+    init: new InitFiles(() => host, importer),
   };
+  return host;
 }
 
 const HostContext = createContext<OmfpHost | undefined>(undefined);

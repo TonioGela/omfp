@@ -1,6 +1,6 @@
-//! The `views/<workspaceId>` topics (DMN-082, PRT-040): each workspace's views manifest, keymap (DMN-121), widget
-//! folders and widget state, refreshed on every rescan and poll round, plus the methods that change them (DMN-083,
-//! DMN-086, DMN-087).
+//! The `views/<workspaceId>` topics (DMN-082, PRT-040): each workspace's views manifest, keymap (DMN-121), init file
+//! version (DMN-185), widget folders and widget state, refreshed on every rescan and poll round, plus the methods that
+//! change them (DMN-083, DMN-086, DMN-087).
 
 use std::path::PathBuf;
 use std::sync::{Arc, PoisonError};
@@ -15,7 +15,7 @@ use super::{LIVE_BUFFER, Services, blocking, write_atomically};
 use crate::event_log::EventLog;
 use crate::server::convert::{bad_request, internal};
 use crate::store::{Store, new_id};
-use crate::widgets::{CopyError, Widgets, keymap, manifest, manifest_path};
+use crate::widgets::{CopyError, Widgets, init, keymap, manifest, manifest_path};
 
 /// A `views/<workspaceId>` topic (PRT-040).
 pub(crate) type ViewsLog = EventLog<ViewsEvent, ViewsState>;
@@ -36,6 +36,7 @@ fn apply_views(state: &mut ViewsState, event: &ViewsEvent) {
             state.keymap.clone_from(keymap);
             state.keymap_error.clone_from(error);
         }
+        ViewsEvent::ViewsInit { init } => state.init.clone_from(init),
         ViewsEvent::ViewsWidgets { widgets } => state.widgets.clone_from(widgets),
         ViewsEvent::WidgetStored {
             instance,
@@ -111,6 +112,7 @@ impl Services {
                 stored: store.widget_state(&workspace_id)?,
                 keymap,
                 keymap_error,
+                init: init::read_version(&init::workspace_init(&path)),
             })
         })
         .await?;
@@ -141,8 +143,8 @@ impl Services {
         self.views_log_entry(id).map(|log| log.position())
     }
 
-    /// Reads the workspace's manifest, keymap and widget folders again and publishes what changed on `views/<id>`, if
-    /// the topic exists (DMN-082, DMN-121). A removed workspace's topic goes away.
+    /// Reads the workspace's manifest, keymap, init file and widget folders again and publishes what changed on
+    /// `views/<id>`, if the topic exists (DMN-082, DMN-121, DMN-185). A removed workspace's topic goes away.
     pub async fn refresh_views(&self, id: &str) {
         let _serial = self.views_refresh.lock().await;
         let Some(log) = self.views_log_entry(id) else {
@@ -167,22 +169,25 @@ impl Services {
             Arc::clone(&self.widgets),
             id.to_owned(),
         );
-        let (manifest, error, keymap_read, widgets) = blocking(move || {
+        let (manifest, error, keymap_read, init, widgets) = blocking(move || {
             let path = workspace_path(&store, &workspace_id)?;
             let (manifest, error) = Widgets::manifest(&path);
             let keymap_read = keymap::read(&keymap::path(&path));
-            Ok((manifest, error, keymap_read, widgets.widgets(&path)))
+            let init = init::read_version(&init::workspace_init(&path));
+            Ok((manifest, error, keymap_read, init, widgets.widgets(&path)))
         })
         .await?;
         let (keymap, keymap_error) =
             log.with_state(|state| workspace_keymap(keymap_read, &state.keymap));
-        let (manifest_changed, keymap_changed, widgets_changed) = log.with_state(|state| {
-            (
-                state.manifest != manifest || state.error != error,
-                state.keymap != keymap || state.keymap_error != keymap_error,
-                state.widgets != widgets,
-            )
-        });
+        let (manifest_changed, keymap_changed, init_changed, widgets_changed) =
+            log.with_state(|state| {
+                (
+                    state.manifest != manifest || state.error != error,
+                    state.keymap != keymap || state.keymap_error != keymap_error,
+                    state.init != init,
+                    state.widgets != widgets,
+                )
+            });
         if manifest_changed {
             log.push(ViewsEvent::ViewsManifest { manifest, error });
         }
@@ -191,6 +196,9 @@ impl Services {
                 keymap,
                 error: keymap_error,
             });
+        }
+        if init_changed {
+            log.push(ViewsEvent::ViewsInit { init });
         }
         if widgets_changed {
             log.push(ViewsEvent::ViewsWidgets { widgets });
