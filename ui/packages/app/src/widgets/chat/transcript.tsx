@@ -27,6 +27,8 @@ import {
   refocusAfterScroll,
   transcriptRowContent as rowContent,
   SCOPE_ATTRIBUTE,
+  type ScrollPosition,
+  scrollPosition,
   strings,
   useAnnounce,
   useCommand,
@@ -122,7 +124,7 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
     [setPin],
   );
   /** Where the last scroll event or follow left the view; a scroll up from there unpins (UI-042). */
-  const lastScrollTop = useRef<number | undefined>(undefined);
+  const lastPosition = useRef<ScrollPosition | undefined>(undefined);
   // The same list (and so the same item keys) while only the streaming reply changes (UI-191).
   const rows = items(state);
   // Mounting returns to where the user had scrolled up to, else to the bottom. Until the content is tall enough to
@@ -161,14 +163,14 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
         if (container.scrollTop >= target - 1) {
           restoring.current = undefined;
         }
-      } else if (pinned.current && movedUpByUser(lastScrollTop.current, container)) {
+      } else if (pinned.current && movedUpByUser(lastPosition.current, container)) {
         dispatch({ type: "userScrollUp" });
       } else if (pinned.current) {
         // Instant: a smooth follow keeps animating while the user scrolls up, and its scroll events near the bottom pin
         // the view again.
         container.scrollTop = container.scrollHeight;
       }
-      lastScrollTop.current = container.scrollTop;
+      lastPosition.current = scrollPosition(container);
     },
     [dispatch],
   );
@@ -344,10 +346,10 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
         if (restoring.current !== undefined) {
           return;
         }
-        const { scrollTop, scrollHeight, clientHeight } = event.currentTarget;
-        const previousScrollTop = lastScrollTop.current;
-        lastScrollTop.current = scrollTop;
-        dispatch({ type: "scroll", scrollTop, scrollHeight, clientHeight, previousScrollTop });
+        const now = scrollPosition(event.currentTarget);
+        const previous = lastPosition.current;
+        lastPosition.current = now;
+        dispatch({ type: "scroll", ...now, previous });
       }}
       onWheel={(event) => {
         userScrolls();

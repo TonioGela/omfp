@@ -232,6 +232,8 @@ export {
   pagerScroll,
   pinReducer,
   refocusAfterScroll,
+  type ScrollPosition,
+  scrollPosition,
 } from "../vm/virtual.ts";
 export {
   ADD_KINDS,

@@ -37,11 +37,16 @@ export interface ScrollPosition {
   readonly clientHeight: number;
 }
 
+/** A copy of a scroll container's position as it is now (an element's own values change as it scrolls). */
+export function scrollPosition({ scrollTop, scrollHeight, clientHeight }: ScrollPosition): ScrollPosition {
+  return { scrollTop, scrollHeight, clientHeight };
+}
+
 export type PinEvent =
   | ({
       readonly type: "scroll";
       /** The position before this scroll (the last scroll event's, or where following the bottom put it). */
-      readonly previousScrollTop: number | undefined;
+      readonly previous: ScrollPosition | undefined;
     } & ScrollPosition)
   /** Wheel up, a scroll-up key outside a form control, a navigation command moving up. */
   | { readonly type: "userScrollUp" }
@@ -52,10 +57,19 @@ export type PinEvent =
  * The view moved up from `previous` (where the last scroll or follow left it) to somewhere above the very end: the
  * user scrolled, since layout only moves a pinned view down or clamps it to the end. Whatever reports it first — the
  * scroll event, or a follow that runs before it (WebKitGTK dispatches scroll events at the next frame) — unpins.
+ *
+ * A move up no further than the end moved up (the content shrank, or the view grew) is the browser clamping the view,
+ * even when the rounded positions leave it {@link END_PX} or more above the end: a view of a fractional height (the
+ * composer's text lines and paddings make one) shows WebKitGTK's end as 1 px above it.
  */
-export function movedUpByUser(previous: number | undefined, position: ScrollPosition): boolean {
+export function movedUpByUser(previous: ScrollPosition | undefined, position: ScrollPosition): boolean {
+  if (previous === undefined) {
+    return false;
+  }
   const { scrollTop, scrollHeight, clientHeight } = position;
-  return previous !== undefined && scrollTop < previous - 1 && scrollHeight - scrollTop - clientHeight >= END_PX;
+  const up = previous.scrollTop - scrollTop;
+  const endUp = previous.scrollHeight - previous.clientHeight - (scrollHeight - clientHeight);
+  return up > 1 && up > endUp + 1 && scrollHeight - scrollTop - clientHeight >= END_PX;
 }
 
 /** The state after `event`; the same object when nothing changed. */
@@ -64,11 +78,11 @@ export function pinReducer(state: PinState, event: PinEvent): PinState {
   switch (event.type) {
     case "scroll": {
       const below = event.scrollHeight - event.scrollTop - event.clientHeight;
-      const previous = event.previousScrollTop;
+      const previous = event.previous?.scrollTop;
       const movedDown = previous === undefined || event.scrollTop > previous + 1;
       const movedUp = previous !== undefined && event.scrollTop < previous - 1;
       const pinned =
-        !movedUpByUser(previous, event) &&
+        !movedUpByUser(event.previous, event) &&
         (state.pinned || (movedDown && below <= PIN_THRESHOLD_PX) || (movedUp && below < END_PX));
       next = { ...state, scrollTop: pinned ? state.scrollTop : event.scrollTop, pinned };
       break;

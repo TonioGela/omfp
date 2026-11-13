@@ -14,8 +14,25 @@ import {
   refocusAfterScroll,
 } from "../../src/vm/virtual.ts";
 
-const scroll = (scrollTop: number, scrollHeight: number, clientHeight: number, previousScrollTop?: number) =>
-  ({ type: "scroll", scrollTop, scrollHeight, clientHeight, previousScrollTop }) as const;
+/** A scroll event to `scrollTop` from `previousScrollTop` (none: the first), the content `previousScrollHeight` tall
+ * before (by default as now). */
+const scroll = (
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+  previousScrollTop?: number,
+  previousScrollHeight = scrollHeight,
+) =>
+  ({
+    type: "scroll",
+    scrollTop,
+    scrollHeight,
+    clientHeight,
+    previous:
+      previousScrollTop === undefined
+        ? undefined
+        : { scrollTop: previousScrollTop, scrollHeight: previousScrollHeight, clientHeight },
+  }) as const;
 
 describe("pinning", () => {
   // spec: UI-042
@@ -35,7 +52,7 @@ describe("pinning", () => {
     let state = pinReducer(INITIAL_PIN, scroll(1000, 4000, 600, 1000));
     expect(state.pinned).toBe(true);
     // Content shrank: the browser clamped the position to the new end.
-    state = pinReducer(state, scroll(800, 1400, 600, 1000));
+    state = pinReducer(state, scroll(800, 1400, 600, 1000, 1600));
     expect(state.pinned).toBe(true);
   });
 
@@ -66,24 +83,42 @@ describe("pinning", () => {
     const wheeled = pinReducer(INITIAL_PIN, { type: "userScrollUp" });
     expect(pinReducer(wheeled, scroll(12507, 13107, 600, 12507)).pinned).toBe(false);
     // Clamped to the end of content that shrank: pinned again.
-    expect(pinReducer(wheeled, scroll(12407, 13007, 600, 12507)).pinned).toBe(true);
+    expect(pinReducer(wheeled, scroll(12407, 13007, 600, 12507, 13107)).pinned).toBe(true);
     // The first frame of the wheel's smooth scroll, 2 px up from WebKitGTK's end (-1 below): stays unpinned.
     expect(pinReducer(wheeled, scroll(12454, 13055, 600, 12456)).pinned).toBe(false);
   });
 
   // spec: UI-042
   test("a move up is the user's unless the view sits at the very end", () => {
-    const position = (scrollTop: number, scrollHeight: number) => ({ scrollTop, scrollHeight, clientHeight: 600 });
-    expect(movedUpByUser(5000, position(4995, 5700))).toBe(true);
+    const position = (scrollTop: number, scrollHeight: number, clientHeight = 600) => ({
+      scrollTop,
+      scrollHeight,
+      clientHeight,
+    });
+    expect(movedUpByUser(position(5000, 5700), position(4995, 5700))).toBe(true);
     // WebKitGTK's rounded positions: -1 below at the end, 1 after a smooth scroll's first 2 px frame up.
-    expect(movedUpByUser(12456, position(12454, 13055))).toBe(true);
+    expect(movedUpByUser(position(12456, 13055), position(12454, 13055))).toBe(true);
     // Clamped to the end of content that shrank (WebKitGTK may report -1), or a sub-pixel move.
-    expect(movedUpByUser(5000, position(4900, 5500))).toBe(false);
-    expect(movedUpByUser(5000, position(4900, 5499))).toBe(false);
-    expect(movedUpByUser(5000, position(4999.5, 5700))).toBe(false);
+    expect(movedUpByUser(position(5000, 5600), position(4900, 5500))).toBe(false);
+    expect(movedUpByUser(position(5000, 5600), position(4900, 5499))).toBe(false);
+    expect(movedUpByUser(position(5000, 5700), position(4999.5, 5700))).toBe(false);
     // Down (content grew below a followed view, or the user scrolled down), or nothing to compare with.
-    expect(movedUpByUser(5000, position(5100, 6000))).toBe(false);
+    expect(movedUpByUser(position(5000, 5600), position(5100, 6000))).toBe(false);
     expect(movedUpByUser(undefined, position(1000, 6000))).toBe(false);
+  });
+
+  // spec: UI-042
+  test("a view clamped to the end stays pinned though its fractional height leaves it 1 px above the end", () => {
+    // WebKitGTK, a transcript 752.26 px tall (clientHeight 752) following a streaming reply whose Markdown shrank by
+    // 78 px: clamped to the end, its rounded positions show it 1 px above it.
+    const followed = { scrollTop: 12304, scrollHeight: 13056, clientHeight: 752 };
+    const clamped = { scrollTop: 12225, scrollHeight: 12978, clientHeight: 752 };
+    expect(movedUpByUser(followed, clamped)).toBe(false);
+    expect(pinReducer(INITIAL_PIN, scroll(12225, 12978, 752, 12304, 13056)).pinned).toBe(true);
+    // The view grew (the composer shrank) and clamped it: the same.
+    expect(movedUpByUser(followed, { scrollTop: 12271, scrollHeight: 13056, clientHeight: 785 })).toBe(false);
+    // The user scrolled up further than the end moved while the content shrank: unpinned.
+    expect(movedUpByUser(followed, { scrollTop: 12200, scrollHeight: 12978, clientHeight: 752 })).toBe(true);
   });
 
   // spec: UI-042
