@@ -185,11 +185,13 @@ describe("bash card", () => {
 
 describe("read card", () => {
   // spec: UI-050, UI-051
-  test("streaming: the path relative to its repository, with the repository chip", () => {
+  test("streaming: the path relative to its repository, the repository as a prefix", () => {
     const element = show(streaming("read_tool_calls", "call_read_1"));
     expect(element.dataset.status).toBe("running");
-    expect(byTestId(element, "tool-repo").textContent).toBe("src");
-    expect(byTestId(element, "tool-path").textContent).toBe("srclib.rs");
+    expect(byTestId(element, "tool-repo").textContent).toBe("src/");
+    // A muted prefix inside the card, not a chip: no box in a box.
+    expect(byTestId(element, "tool-repo").classList.contains("omfp-chip")).toBe(false);
+    expect(byTestId(element, "tool-path").textContent).toBe("src/lib.rs");
   });
 
   // spec: UI-050, UI-051, UI-090
@@ -236,7 +238,7 @@ describe("edit card", () => {
   // spec: UI-050, UI-051
   test("streaming: the file and the edit as written", async () => {
     const element = await open(streaming("edit_tool_calls", "call_edit_1"));
-    expect(byTestId(element, "tool-path").textContent).toBe("srclib.rs");
+    expect(byTestId(element, "tool-path").textContent).toBe("src/lib.rs");
     expect(byTestId(element, "tool-input").textContent).toContain("left.saturating_add(right)");
   });
 
@@ -303,7 +305,7 @@ describe("search cards", () => {
     cleanup();
     const grep = await open(card("search_tool_calls", "call_grep_1"));
     expect(byTestId(grep, "tool-total").textContent).toBe("2 matches in 1 file");
-    expect(texts(grep, "tool-file")).toEqual(["srclib.rs2"]);
+    expect(texts(grep, "tool-file")).toEqual(["src/lib.rs2"]);
     cleanup();
     const glob = await open(card("search_tool_calls", "call_glob_1"));
     expect([byTestId(glob, "tool-subject").textContent, byTestId(glob, "tool-total").textContent]).toEqual([

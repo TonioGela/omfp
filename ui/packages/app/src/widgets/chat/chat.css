@@ -214,9 +214,14 @@
 
   .omfp-tool-card__path {
     display: inline-flex;
-    gap: var(--omfp-s1);
     align-items: center;
     min-inline-size: 0;
+  }
+
+  /* The repository holding the path, as a muted prefix (`repo/path`): no chip inside the card's own box. */
+  .omfp-tool-card__repo {
+    flex: none;
+    color: var(--omfp-on-surface-variant);
   }
 
   .omfp-tool-card__subject {

@@ -3,7 +3,7 @@
  * show omp's error first (UI-052); code is highlighted when its language is known (UI-090).
  */
 
-import { Badge, BoxRule, Button, Chip, Code, Diff, PathLink } from "omfp/kit";
+import { Badge, BoxRule, Button, Code, Diff, PathLink } from "omfp/kit";
 import {
   ansiRuns,
   type OpenFileOptions,
@@ -22,9 +22,10 @@ import { type ReactNode, useMemo, useState } from "react";
 const text = strings.chat.tool;
 
 /**
- * A file path: relative to the workspace repository holding it, with that repository's chip. With `open`, clicking the
- * path opens the file (UI-116); in a card's header the path sits inside the collapse toggle, so it opens on a pointer
- * click without toggling, and the keyboard reaches it with `g f` on the focused card (its `data-omfp-path`).
+ * A file path: relative to the workspace repository holding it, the repository's name as a muted prefix (`repo/path`;
+ * no chip, the card is a box already). With `open`, clicking the path opens the file (UI-116); in a card's header the
+ * path sits inside the collapse toggle, so it opens on a pointer click without toggling, and the keyboard reaches it with
+ * `g f` on the focused card (its `data-omfp-path`).
  */
 function FilePath({ path, open }: { path: string; open?: OpenFileOptions | undefined }): ReactNode {
   const workspaceId = useCurrentWorkspaceId();
@@ -33,7 +34,11 @@ function FilePath({ path, open }: { path: string; open?: OpenFileOptions | undef
   const shown = repoPath(path, workspace);
   return (
     <span className="omfp-tool-card__path" data-testid="tool-path" data-repo={shown.repo}>
-      {shown.repo !== undefined && <Chip data-testid="tool-repo">{shown.repo}</Chip>}
+      {shown.repo !== undefined && (
+        <span className="omfp-tool-card__repo" data-testid="tool-repo">
+          {shown.repo}/
+        </span>
+      )}
       {open === undefined ? (
         <span className="omfp-tool-card__subject">{shown.path}</span>
       ) : (
