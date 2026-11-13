@@ -1363,7 +1363,7 @@ async fn changes_widget_shows_the_diff(journey: &Journey) -> anyhow::Result<()> 
     Ok(())
 }
 
-// spec: E2E-21, UI-270, UI-271, UI-274, PRT-100
+// spec: E2E-21, UI-270, UI-271, UI-274, UI-373, PRT-100
 #[tokio::test(flavor = "multi_thread")]
 async fn a_background_job_runs_on_its_card_the_badge_and_the_background_tab() -> anyhow::Result<()>
 {
@@ -1410,13 +1410,48 @@ async fn a_background_job_runs_on_its_card_the_badge_and_the_background_tab() ->
         .await?;
     journey.screenshot("m12-background").await?;
 
+    // A view without Background but with the `main` slot: the badge opens Background as a tab there (UI-373).
+    let manifest = json!({
+        "default": "lean",
+        "views": {
+            "lean": { "layout": ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]] }
+        }
+    });
+    std::fs::write(
+        folder.join(".omfp/views.json"),
+        serde_json::to_string_pretty(&manifest)?,
+    )?;
+    journey
+        .element("[data-testid=view][data-view=lean]")
+        .await?;
+    journey.click("[data-testid=background-badge]").await?;
+    let tab = "[data-slot=main] [data-testid=widget-tab][data-tab=\"widget:omfp:background\"]";
+    journey
+        .element(&format!("{tab}[aria-selected=true]"))
+        .await?;
+    assert_eq!(journey.text(tab).await?, "Background");
+    journey
+        .element(
+            "[data-slot=main] [data-testid=background-row][data-kind=job][data-status=running]",
+        )
+        .await?;
+    assert_eq!(journey.count("[data-testid=floating-widget]").await?, 0);
+    journey.screenshot("background-main-tab").await?;
+
     // Released, the job completes: the card and the row settle, the badge goes.
     std::fs::write(folder.join("release.flag"), "")?;
-    one_tool_card(&journey, "succeeded").await?;
     journey
-        .element("[data-testid=background-row][data-kind=job][data-status=completed]")
+        .element(
+            "[data-slot=main] [data-testid=background-row][data-kind=job][data-status=completed]",
+        )
         .await?;
     journey.gone("[data-testid=background-badge]").await?;
+    // The tab closes by its own ×.
+    journey
+        .click(&format!("{tab} [data-testid=widget-tab-close]"))
+        .await?;
+    journey.gone(tab).await?;
+    one_tool_card(&journey, "succeeded").await?;
     journey.reply("The job is done.").await?;
     journey.status(&thread, "idle").await?;
     journey.finish("E2E-21").await

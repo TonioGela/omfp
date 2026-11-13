@@ -11,6 +11,7 @@ import type { FileCandidate, FileContent } from "@omfp/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { strings } from "../strings/index.ts";
 import {
+  closeOpenedTab,
   closeTab,
   decodeFloatingPanel,
   decodeOpenFiles,
@@ -29,7 +30,10 @@ import { type OmfpHost, useHost } from "./host.tsx";
 import { SELECTED_THREAD } from "./keys.ts";
 import { type WindowKey, windowKey } from "./window-store.ts";
 
-/** The open file tabs of every workspace in this window, kept in `localStorage` (UI-115). */
+/**
+ * The open file tabs of every workspace in this window, with the widget tabs reveals opened in the `main` slot, kept
+ * in `localStorage` (UI-115, UI-373).
+ */
 export const OPEN_FILES = windowKey<OpenFiles>("openFiles", {}, decodeOpenFiles);
 
 /** Where the floating file panel sits and whether it is minimised, kept in `localStorage` (UI-115). */
@@ -197,11 +201,15 @@ export function useMissingFile(
   return outcome?.path === path ? outcome.found : "finding";
 }
 
-/** A workspace's file tabs in this window, with what changes them. */
+/** A workspace's opened tabs in this window, with what changes them. */
 export interface FileTabsState extends FileTabs {
-  /** Selects a tab by id (a file's `fileTabId`, a slot child's layout path); `undefined`: the slot's first tab. */
+  /** Selects a tab by id (a file's `fileTabId`, a widget's `widgetTabId`, a slot child's layout path); `undefined`:
+   * the slot's first tab. */
   select(id: string | undefined): void;
+  /** Closes the file `path`. */
   close(path: string): void;
+  /** Closes an opened tab by id (a file's `fileTabId` or a widget's `widgetTabId`). */
+  closeTab(id: string): void;
 }
 
 export function useFileTabs(workspaceId: string | undefined): FileTabsState {
@@ -224,6 +232,7 @@ export function useFileTabs(workspaceId: string | undefined): FileTabsState {
       ...tabs,
       select: (id) => update((current) => (current.active === id ? current : { ...current, active: id })),
       close: (path) => update((current) => closeTab(current, path)),
+      closeTab: (id) => update((current) => closeOpenedTab(current, id)),
     }),
     [tabs, update],
   );

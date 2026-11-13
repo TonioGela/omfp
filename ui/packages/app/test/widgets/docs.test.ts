@@ -96,6 +96,21 @@ describe("views and init files for agents", () => {
     expect(missing).toEqual([]);
   });
 
+  // spec: UI-373
+  test("both docs say a reveal opens a tab of the main slot, which instance it keeps, and when it floats", () => {
+    for (const fact of [
+      "| `REVEAL_WIDGET` |",
+      "closable tab of the `main` slot after the open files",
+      "its instance is the reference",
+      "only a view without a `main` slot floats it in a panel",
+    ]) {
+      expect(DOCS.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+    for (const fact of ["## File and widget tabs", "when something reveals it", "floats it in a panel"]) {
+      expect(SHELL.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+  });
+
   // spec: AGT-073
   test("the widget docs teach init files: the API, the binding order, thread events, errors and describe", () => {
     for (const fact of [

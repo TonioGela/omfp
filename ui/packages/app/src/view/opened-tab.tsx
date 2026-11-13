@@ -1,0 +1,77 @@
+/**
+ * An opened tab's label and the ways to close it (UI-365, UI-366, UI-373), shared by the `main` slot's file and widget
+ * tabs and the floating file panel: each tab carries its own `×`, a middle click on a tab closes it (its press never
+ * starts the browser's autoscroll), Delete closes the focused tab. None selects the tab first.
+ */
+
+import { Icon } from "@omfp/kit";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import { strings } from "../strings/index.ts";
+
+const text = strings.shell.files;
+
+/** The id of the opened tab an event happened in (opened tabs carry `data-tab`). */
+function tabOf(event: MouseEvent | KeyboardEvent): string | undefined {
+  return (event.target as Element).closest<HTMLElement>("[data-tab]")?.dataset.tab;
+}
+
+/** Handlers for the element around a tab list: middle click and Delete close the opened tab they target. */
+export function openedTabBarHandlers(close: (id: string) => void) {
+  const middle = (event: MouseEvent) => {
+    const id = event.button === 1 ? tabOf(event) : undefined;
+    if (id !== undefined) {
+      event.preventDefault();
+      if (event.type === "auxclick") {
+        close(id);
+      }
+    }
+  };
+  return {
+    onMouseDown: middle,
+    onAuxClick: middle,
+    onKeyDown: (event: KeyboardEvent) => {
+      const id = event.key === "Delete" ? tabOf(event) : undefined;
+      if (id !== undefined) {
+        event.preventDefault();
+        close(id);
+      }
+    },
+  };
+}
+
+export interface OpenedTabLabelProps {
+  /** The tab's id (a file's `fileTabId`, a widget's `widgetTabId`), what `onClose` gets. */
+  readonly id: string;
+  /** What the tab shows: the file's name, the widget's title. */
+  readonly title: string;
+  /** The label's tooltip: the file's path, the widget's reference. */
+  readonly tooltip: string;
+  /** `file-tab-close` or `widget-tab-close`, the close mark's test id. */
+  readonly kind: "file" | "widget";
+  readonly onClose: (id: string) => void;
+}
+
+/** The title of an opened tab and its own `×`; the `×` is a pointer target (Delete is the keyboard way). */
+export function OpenedTabLabel({ id, title, tooltip, kind, onClose }: OpenedTabLabelProps): ReactNode {
+  return (
+    <>
+      <span title={tooltip}>{title}</span>
+      <span
+        className="omfp-file-tab__close"
+        aria-hidden="true"
+        title={text.close(title)}
+        data-testid={`${kind}-tab-close`}
+        // The tab selects itself on press: the `×` closes without selecting.
+        onPointerDown={(event) => event.stopPropagation()}
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose(id);
+        }}
+      >
+        <Icon name="x" />
+      </span>
+    </>
+  );
+}

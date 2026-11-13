@@ -36,7 +36,7 @@
  * | `useFile(path, { follow? })` | a workspace file (`workspaces.read_file`), followed, with `reload` and `save(content, expectedHash?)` (AGT-027) |
  * | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file tab (UI-115) |
  * | `useMissingFile(path, missing, options)` | finds the file a path that does not exist names (`workspaces.find_file`): one opens in its place, several open the frame's picker (UI-117) |
- * | `useFileTabs(workspaceId)` | this window's file tabs of a workspace, `select` and `close` |
+ * | `useFileTabs(workspaceId)` | this window's opened tabs of a workspace's `main` slot (files, then revealed widgets, UI-373), `select`, `close(path)` and `closeTab(id)` |
  * | `useLive()` | `[live, snapshot]`: this window's live voice session (start, end, mute, spectrum source, UI-180..UI-189) |
  * | `useNotify()` | `notify({ title, body, threadId? })`: a notice in this window's mode line, a system notification while the window has no focus (UI-194) |
  *
@@ -103,6 +103,7 @@ export {
   steerModifier,
 } from "../vm/composer.ts";
 export {
+  closeOpenedTab,
   closeTab,
   type FileTab,
   type FileTabs,
@@ -115,10 +116,13 @@ export {
   NO_FILE_TABS,
   type OpenFileOptions,
   type OpenFiles,
+  openedTabIds,
   openTab,
+  openWidgetTab,
   originalFromPatch,
   resizePanel,
   retargetTab,
+  widgetTabId,
   workspaceFilePath,
 } from "../vm/files.ts";
 export {

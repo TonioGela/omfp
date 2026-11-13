@@ -833,6 +833,8 @@ requirements = [
   # Long messages by keyboard
   "UI-370",
   "UI-371",
+  # Revealed widgets as tabs of the main slot
+  "UI-373",
   # Journeys
   "E2E-22",
   "E2E-23",

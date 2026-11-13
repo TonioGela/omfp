@@ -11,6 +11,9 @@ import { type CSSProperties, type ReactNode, useEffect } from "react";
 import {
   floatingWidgetKey,
   movePanel,
+  NO_FILE_TABS,
+  OPEN_FILES,
+  openWidgetTab,
   REVEAL_WIDGET,
   reportError,
   resizePanel,
@@ -18,8 +21,8 @@ import {
   useWindowState,
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
-import { containsWidget } from "../view/layout.ts";
-import { PanelLayout } from "../view/render.tsx";
+import { containsWidget, hasMainSlot } from "../view/layout.ts";
+import { PanelLayout, widgetTitle } from "../view/render.tsx";
 import type { WidgetRegistry } from "../view/resolve.ts";
 import type { ResolvedPanel, ResolvedView } from "../view/views.ts";
 import { useFloatingBox } from "./floating-box.ts";
@@ -54,28 +57,41 @@ export interface RevealedWidgetProps extends FloatingWidgetsProps {
 }
 
 /**
- * The widget of the window's latest reveal request (UI-274) when neither the view nor a panel of the manifest holds
- * it: a floating panel of this window only (`views.json` is not written); closing it drops the request.
+ * The widget of the window's latest reveal request (UI-274, UI-373) when neither the view nor a panel of the manifest
+ * holds it: a closable tab of the view's `main` slot (with the open files, window-local per workspace, UI-373), else,
+ * in a view without a `main` slot, a floating panel of this window only (`views.json` is not written); closing it
+ * drops the request.
  */
 export function RevealedWidget({ view, panels, workspaceId, views, registry }: RevealedWidgetProps): ReactNode {
   const [request, setRequest] = useWindowState(REVEAL_WIDGET);
+  const [, setOpened] = useWindowState(OPEN_FILES);
   const names = request === undefined ? [] : [request.reference];
   const held =
     (view !== undefined && containsWidget(view.tree, names)) ||
     panels.some((panel) => containsWidget(panel.tree, names));
-  // Once the view's tabs showed it (their effects run first), the request is done: a later view without the widget
-  // must not float it.
+  const tab = !held && workspaceId !== undefined && view !== undefined && hasMainSlot(view.tree);
+  // Once the view's tabs showed it (their effects run first) or a tab of `main` opened it, the request is done: a later
+  // view without the widget must not float it.
   useEffect(() => {
-    if (held) {
+    if (request === undefined) {
+      return;
+    }
+    if (tab && workspaceId !== undefined) {
+      setOpened((all) => ({
+        ...all,
+        [workspaceId]: openWidgetTab(all[workspaceId] ?? NO_FILE_TABS, request.reference),
+      }));
+      setRequest(undefined);
+    } else if (held) {
       setRequest(undefined);
     }
-  }, [held, setRequest]);
-  if (request === undefined || workspaceId === undefined || held) {
+  }, [request, held, tab, workspaceId, setOpened, setRequest]);
+  if (request === undefined || workspaceId === undefined || held || tab) {
     return null;
   }
   const panel: ResolvedPanel = {
     id: `reveal/${request.reference}`,
-    title: strings.shell.frame.widgetTitles[request.reference] ?? request.reference,
+    title: widgetTitle(request.reference),
     node: request.reference,
     tree: { kind: "widget", name: request.reference, props: {} },
   };

@@ -9,10 +9,10 @@
 import { IconButton, Tab, TabList, TabPanel, Tabs } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
 import type { KeyboardEvent, ReactNode } from "react";
-import { FLOATING_FILES, fileTabId, movePanel, resizePanel, useFileTabs } from "../sdk/index.ts";
+import { FLOATING_FILES, fileName, fileTabId, movePanel, resizePanel, useFileTabs } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
-import { FileTabLabel, fileTabBarHandlers } from "../view/file-tab.tsx";
 import { FILE_WIDGET, fileProps } from "../view/layout.ts";
+import { OpenedTabLabel, openedTabBarHandlers } from "../view/opened-tab.tsx";
 import type { WidgetRegistry } from "../view/resolve.ts";
 import { WidgetSlot } from "../view/slot.tsx";
 import { useFloatingBox } from "./floating-box.ts";
@@ -40,7 +40,7 @@ export function FloatingFile({ workspaceId, views, registry }: FloatingFileProps
     }
   };
   const bar = (tabs: ReactNode) => (
-    <div className="omfp-floating-file__bar" {...fileTabBarHandlers(files.close)}>
+    <div className="omfp-floating-file__bar" {...openedTabBarHandlers(files.closeTab)}>
       <button
         type="button"
         className="omfp-floating-file__grip"
@@ -87,8 +87,15 @@ export function FloatingFile({ workspaceId, views, registry }: FloatingFileProps
                     id={fileTabId(tab.path)}
                     data-testid="floating-file-tab"
                     data-file={tab.path}
+                    data-tab={fileTabId(tab.path)}
                   >
-                    <FileTabLabel path={tab.path} onClose={files.close} />
+                    <OpenedTabLabel
+                      id={fileTabId(tab.path)}
+                      title={fileName(tab.path)}
+                      tooltip={tab.path}
+                      kind="file"
+                      onClose={files.closeTab}
+                    />
                   </Tab>
                 ))}
               </TabList>,

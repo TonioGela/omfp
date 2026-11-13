@@ -1,6 +1,7 @@
 /**
- * Files (UI-110..116) as data: the file tabs a window keeps open per workspace, and the text a file had before a
- * patch (what `omfp:changes` diffs the current file against, UI-080). Pure functions, unit tested.
+ * Files (UI-110..116) as data: the file tabs a window keeps open per workspace, with the widget tabs reveals open next
+ * to them (UI-373), and the text a file had before a patch (what `omfp:changes` diffs the current file against,
+ * UI-080). Pure functions, unit tested.
  */
 
 import { parsePatch } from "@omfp/kit";
@@ -14,15 +15,19 @@ export interface FileTab {
   readonly seq: number;
 }
 
-/** A workspace's open files in this window and the selected tab (`undefined`: the slot's own first tab). */
+/**
+ * A workspace's opened tabs of the `main` slot in this window: its open files, then the widgets a reveal opened there
+ * (UI-373, by reference), and the selected tab (`undefined`: the slot's own first tab).
+ */
 export interface FileTabs {
   readonly tabs: readonly FileTab[];
+  readonly widgets: readonly string[];
   readonly active: string | undefined;
 }
 
-export const NO_FILE_TABS: FileTabs = { tabs: [], active: undefined };
+export const NO_FILE_TABS: FileTabs = { tabs: [], widgets: [], active: undefined };
 
-/** Every workspace's {@link FileTabs}, by workspace id (kept in `localStorage`, UI-115). */
+/** Every workspace's {@link FileTabs}, by workspace id (kept in `localStorage`, UI-115, UI-373). */
 export type OpenFiles = Readonly<Record<string, FileTabs>>;
 
 /** Options of `openFile`. */
@@ -36,29 +41,54 @@ export function fileTabId(path: string): string {
   return `file:${path}`;
 }
 
+/** The tab id of a widget a reveal opened in the `main` slot (UI-373). */
+export function widgetTabId(reference: string): string {
+  return `widget:${reference}`;
+}
+
+/** The ids of the opened tabs in their order: the files, then the widgets. */
+export function openedTabIds(tabs: FileTabs): string[] {
+  return [...tabs.tabs.map((tab) => fileTabId(tab.path)), ...tabs.widgets.map(widgetTabId)];
+}
+
 /** `tabs` with `path` open and selected: a new tab at the end, or the open one with the new `line` and `diff`. */
 export function openTab(tabs: FileTabs, path: string, options: OpenFileOptions = {}): FileTabs {
   const open = tabs.tabs.find((tab) => tab.path === path);
   const tab: FileTab = { path, line: options.line, diff: options.diff, seq: (open?.seq ?? 0) + 1 };
   return {
+    ...tabs,
     tabs: open === undefined ? [...tabs.tabs, tab] : tabs.tabs.map((other) => (other === open ? tab : other)),
     active: fileTabId(path),
   };
 }
 
-/** `tabs` without `path`; when it was selected, its neighbour (the previous file, else the next, else the slot's own
- * first tab) is. */
-export function closeTab(tabs: FileTabs, path: string): FileTabs {
-  const index = tabs.tabs.findIndex((tab) => tab.path === path);
+/** `tabs` with the widget `reference` open and selected (UI-373): a new tab after the others, or the open one. */
+export function openWidgetTab(tabs: FileTabs, reference: string): FileTabs {
+  const widgets = tabs.widgets.includes(reference) ? tabs.widgets : [...tabs.widgets, reference];
+  return { ...tabs, widgets, active: widgetTabId(reference) };
+}
+
+/**
+ * `tabs` without the opened tab `id` (a file's or a widget's); when it was selected, its neighbour in
+ * {@link openedTabIds} order (the previous tab, else the next, else the slot's own first tab) is.
+ */
+export function closeOpenedTab(tabs: FileTabs, id: string): FileTabs {
+  const ids = openedTabIds(tabs);
+  const index = ids.indexOf(id);
   if (index < 0) {
     return tabs;
   }
-  const rest = tabs.tabs.filter((_, at) => at !== index);
-  if (tabs.active !== fileTabId(path)) {
-    return { tabs: rest, active: tabs.active };
-  }
-  const neighbour = rest[index - 1] ?? rest[index];
-  return { tabs: rest, active: neighbour === undefined ? undefined : fileTabId(neighbour.path) };
+  const rest = ids.filter((_, at) => at !== index);
+  return {
+    tabs: tabs.tabs.filter((tab) => fileTabId(tab.path) !== id),
+    widgets: tabs.widgets.filter((reference) => widgetTabId(reference) !== id),
+    active: tabs.active === id ? (rest[index - 1] ?? rest[index]) : tabs.active,
+  };
+}
+
+/** `tabs` without the file `path` (see {@link closeOpenedTab}). */
+export function closeTab(tabs: FileTabs, path: string): FileTabs {
+  return closeOpenedTab(tabs, fileTabId(path));
 }
 
 /**
@@ -74,6 +104,7 @@ export function retargetTab(tabs: FileTabs, from: string, to: string, options: O
   const open = tabs.tabs.find((tab) => tab.path === to);
   const moved: FileTab = { path: to, line: old.line, diff: old.diff, seq: Math.max(old.seq, open?.seq ?? 0) + 1 };
   return {
+    ...tabs,
     tabs: tabs.tabs.flatMap((tab) =>
       tab === old ? (open === undefined ? [moved] : []) : tab === open ? [moved] : [tab],
     ),
@@ -154,7 +185,7 @@ export function decodeOpenFiles(stored: unknown): OpenFiles | undefined {
     if (typeof value !== "object" || value === null) {
       continue;
     }
-    const { tabs, active } = value as { tabs?: unknown; active?: unknown };
+    const { tabs, widgets, active } = value as { tabs?: unknown; widgets?: unknown; active?: unknown };
     if (!Array.isArray(tabs)) {
       continue;
     }
@@ -167,7 +198,15 @@ export function decodeOpenFiles(stored: unknown): OpenFiles | undefined {
         ? [{ path, line: typeof line === "number" ? line : undefined, diff: diff === true ? true : undefined, seq: 0 }]
         : [];
     });
-    out[workspaceId] = { tabs: decoded, active: typeof active === "string" ? active : undefined };
+    // Tabs stored before widget tabs existed have no `widgets`.
+    const references = Array.isArray(widgets)
+      ? widgets.filter((reference: unknown): reference is string => typeof reference === "string")
+      : [];
+    out[workspaceId] = {
+      tabs: decoded,
+      widgets: [...new Set(references)],
+      active: typeof active === "string" ? active : undefined,
+    };
   }
   return out;
 }

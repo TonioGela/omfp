@@ -33,10 +33,14 @@ The bar at the bottom of the view area, like vim's:
 
 In command mode the `:` line (or the file picker) replaces the title, the view tabs and the notice.
 
-## File tabs
+## File and widget tabs
 
-Files open as tabs of the view's `main` tabs, after its own tabs (the chat in the default view). Each file tab has its
-own `×`; a middle click on a tab or Delete on the focused tab closes it too, without selecting it first.
+Files open as tabs of the view's `main` tabs, after its own tabs (the chat in the default view). A widget the view does
+not show opens there too when something reveals it (the header's `N in background` badge, its workspace chip, a
+subagent's row in Background opening Subagents): a tab titled with the widget's name after the files, selected, and
+selected again on the next reveal; a view showing the widget selects its own tab instead, and a view without `main`
+floats it in a panel. Each of these tabs has its own `×`; a middle click on a tab or Delete on the focused tab closes
+it too, without selecting it first. They stay open across reloads, per workspace, in this window only.
 
 ## The `:` line
 

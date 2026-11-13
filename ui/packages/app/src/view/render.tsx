@@ -9,10 +9,17 @@
 import { Tab, TabList, TabPanel, Tabs } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
 import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
-import { fileTabId, REVEAL_WIDGET, useFileTabs, useWindowState } from "../sdk/index.ts";
+import {
+  fileName,
+  fileTabId,
+  openedTabIds,
+  REVEAL_WIDGET,
+  useFileTabs,
+  useWindowState,
+  widgetTabId,
+} from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { resizeSizes } from "./edit.ts";
-import { FileTabLabel, fileTabBarHandlers } from "./file-tab.tsx";
 import {
   type Area,
   chatCell,
@@ -23,6 +30,7 @@ import {
   type LayoutTree,
   MAIN_SLOT,
 } from "./layout.ts";
+import { OpenedTabLabel, openedTabBarHandlers } from "./opened-tab.tsx";
 import type { WidgetRegistry } from "./resolve.ts";
 import { effectiveSizes, PANE_SIZES, sizesKey, withSizes } from "./sizes.ts";
 import { WidgetSlot } from "./slot.tsx";
@@ -170,8 +178,8 @@ function TabsNode({
 
 /**
  * The `tabs` container with `"id": "main"` (UI-115): its own children, then this window's open files of the workspace
- * as tabs (`omfp:file`), the selected one window-local too. One tab alone needs no tab bar. A middle click closes the
- * file tab under the pointer (UI-365), as browsers and editors do.
+ * as tabs (`omfp:file`), then the widgets reveals opened here (UI-373), the selected one window-local too. One tab
+ * alone needs no tab bar. A middle click closes the opened tab under the pointer (UI-365), as browsers and editors do.
  */
 function MainTabs({
   tree,
@@ -185,7 +193,7 @@ function MainTabs({
   const files = useFileTabs(scope.workspaceId);
   const own = tree.children.map((child, index) => ({ child, id: `${path}.${index}` }));
   useRevealTab(own, files.select);
-  const ids = [...own.map(({ id }) => id), ...files.tabs.map((tab) => fileTabId(tab.path))];
+  const ids = [...own.map(({ id }) => id), ...openedTabIds(files)];
   const selected = files.active !== undefined && ids.includes(files.active) ? files.active : ids[0];
   const [only] = own;
   if (only !== undefined && ids.length === 1) {
@@ -197,6 +205,27 @@ function MainTabs({
       </div>
     );
   }
+  // A widget tab has no props: its instance (useStored, AGT-018) is its reference, as a view node without `instance`.
+  const opened = [
+    ...files.tabs.map((tab) => ({
+      id: fileTabId(tab.path),
+      kind: "file" as const,
+      title: fileName(tab.path),
+      tooltip: tab.path,
+      reference: FILE_WIDGET,
+      props: fileProps(tab),
+      file: tab.path,
+    })),
+    ...files.widgets.map((reference) => ({
+      id: widgetTabId(reference),
+      kind: "widget" as const,
+      title: widgetTitle(reference),
+      tooltip: reference,
+      reference,
+      props: {},
+      file: undefined,
+    })),
+  ];
   return (
     <Tabs
       className="omfp-view__tabs"
@@ -206,7 +235,7 @@ function MainTabs({
       {...(selected === undefined ? {} : { selectedKey: selected })}
       onSelectionChange={(key) => files.select(String(key))}
     >
-      <div className="omfp-view__tabbar" {...fileTabBarHandlers(files.close)}>
+      <div className="omfp-view__tabbar" {...openedTabBarHandlers(files.closeTab)}>
         <TabList aria-label={text.views}>
           {[
             ...own.map(({ child, id }) => (
@@ -214,9 +243,15 @@ function MainTabs({
                 {nodeTitle(child)}
               </Tab>
             )),
-            ...files.tabs.map((tab) => (
-              <Tab key={fileTabId(tab.path)} id={fileTabId(tab.path)} data-testid="file-tab" data-file={tab.path}>
-                <FileTabLabel path={tab.path} onClose={files.close} />
+            ...opened.map((tab) => (
+              <Tab key={tab.id} id={tab.id} data-testid={`${tab.kind}-tab`} data-tab={tab.id} data-file={tab.file}>
+                <OpenedTabLabel
+                  id={tab.id}
+                  title={tab.title}
+                  tooltip={tab.tooltip}
+                  kind={tab.kind}
+                  onClose={files.closeTab}
+                />
               </Tab>
             )),
           ]}
@@ -227,13 +262,13 @@ function MainTabs({
           <Node tree={child} path={id} scope={scope} />
         </TabPanel>
       ))}
-      {files.tabs.map((tab) => (
-        <TabPanel key={fileTabId(tab.path)} id={fileTabId(tab.path)} className="omfp-view__panel">
+      {opened.map((tab) => (
+        <TabPanel key={tab.id} id={tab.id} className="omfp-view__panel">
           <div className="omfp-view__item">
             <WidgetSlot
-              reference={FILE_WIDGET}
-              props={fileProps(tab)}
-              path={fileTabId(tab.path)}
+              reference={tab.reference}
+              props={tab.props}
+              path={tab.id}
               workspaceId={scope.workspaceId}
               views={scope.views}
               registry={scope.registry}
@@ -411,13 +446,15 @@ function CellTabs({
   );
 }
 
-/** A tab's label: the widget's `title` prop, else a built-in's own name, else its reference; a container's kind. */
+/** A tab's label: the widget's `title` prop, else {@link widgetTitle}; a container's kind. */
 function nodeTitle(tree: LayoutTree): string {
   if (tree.kind !== "widget") {
     return tree.kind;
   }
-  if (typeof tree.props.title === "string") {
-    return tree.props.title;
-  }
-  return Object.hasOwn(text.widgetTitles, tree.name) ? (text.widgetTitles[tree.name] ?? tree.name) : tree.name;
+  return typeof tree.props.title === "string" ? tree.props.title : widgetTitle(tree.name);
+}
+
+/** A widget's title without a `title` prop: a built-in's own name, else its reference. */
+export function widgetTitle(reference: string): string {
+  return Object.hasOwn(text.widgetTitles, reference) ? (text.widgetTitles[reference] ?? reference) : reference;
 }

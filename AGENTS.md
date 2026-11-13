@@ -145,7 +145,8 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       window-state.ts: the window state agents read; window-requests.tsx: the daemon's requests,
                       commands run and out-of-sight widget checks), view (layout tree, `:widget add`'s
                       manifest edit (edit.ts), reference resolution, widget slot,
-                      the `main` slot's file tabs; file-view.tsx: TSX views; sizes.ts and splitter.tsx:
+                      the `main` slot's file tabs and the widget tabs reveals open there (opened-tab.tsx: their label
+                      and close gestures); file-view.tsx: TSX views; sizes.ts and splitter.tsx:
                       the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
                       logo sheet), keymap (which-key.ts: the which-key panel's model and the leader groups), theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import

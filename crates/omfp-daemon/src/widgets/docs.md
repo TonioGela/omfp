@@ -79,6 +79,13 @@ without it), but an `instance` per node costs nothing.
   a widget (built-in, `./widgets/<name>`, `user:<name>`) to the current view as the last tab of its `tabs` with
   `"id": "side"`, else at the end of its root container. It refuses views that exist only in code (an init file's
   `views.add`, a TSX view) and names the file to edit. Agents change views with `omfp_ui_mount` and `views.set`.
+- A **reveal** (`REVEAL_WIDGET`: the header's background badge and workspace chip, a subagent opened from
+  `omfp:background`, or any widget's `useWindowState(REVEAL_WIDGET)` setter) shows a widget: the view's tab holding
+  it is selected; a view without it opens it as a closable tab of the `main` slot after the open files (titled like a
+  tab, `omfp:subagents` → "Subagents"; revealing it again selects that tab), kept in this window per workspace across
+  reloads and never written to `views.json`; only a view without a `main` slot floats it in a panel. The tab's node has
+  no props, so its instance is the reference: its `useStored` state is that of every node of the widget without
+  `instance`.
 
 ## Mounts, panels and the library
 
@@ -398,6 +405,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useMissingFile(path, missing, { line?, diff? })` | For a widget showing a file: while `missing`, looks for the file `path` names (`workspaces.find_file`); one match opens in its place, several open the window's picker. Gives `"finding"`, `"opened"`, `"choosing"` or `"none"`. |
 | `Row`, `Col`, `Tabs`, `Stack`, `Widget` | The layout components of TSX views (see TSX views); they render only in a view file of `.omfp/views/`. |
 | `SELECTED_THREAD` | Window key of the selected thread id (`useWindowState(SELECTED_THREAD)`). |
+| `REVEAL_WIDGET` | Window key of the latest reveal request, `{ reference, nonce }` (`nonce`: a new number per request): shows that widget in its tab of the view, else in a tab of the `main` slot, else in a floating panel (see Views in the window). |
 
 ### Jobs
 

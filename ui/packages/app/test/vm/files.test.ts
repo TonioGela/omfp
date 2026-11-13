@@ -1,7 +1,8 @@
-/** L0: file tabs (UI-115) and the text a file had before a patch (UI-080). */
+/** L0: file and widget tabs (UI-115, UI-373) and the text a file had before a patch (UI-080). */
 
 import { describe, expect, test } from "bun:test";
 import {
+  closeOpenedTab,
   closeTab,
   decodeFloatingPanel,
   decodeOpenFiles,
@@ -12,10 +13,13 @@ import {
   fileTabId,
   movePanel,
   NO_FILE_TABS,
+  openedTabIds,
   openTab,
+  openWidgetTab,
   originalFromPatch,
   resizePanel,
   retargetTab,
+  widgetTabId,
   workspaceFilePath,
 } from "../../src/vm/files.ts";
 
@@ -40,19 +44,48 @@ describe("file tabs", () => {
     tabs = closeTab(tabs, "c");
     expect([tabs.tabs.map((tab) => tab.path), tabs.active]).toEqual([["a"], fileTabId("a")]);
     tabs = closeTab(tabs, "a");
-    expect(tabs).toEqual({ tabs: [], active: undefined });
+    expect(tabs).toEqual({ tabs: [], widgets: [], active: undefined });
     expect(closeTab(tabs, "gone")).toBe(tabs);
   });
 
-  // spec: UI-115
+  // spec: UI-373
+  test("widget tabs open once after the files, selected; closing one selects its neighbour among all opened tabs", () => {
+    let tabs = openWidgetTab(openTab(NO_FILE_TABS, "a.rs"), "omfp:subagents");
+    tabs = openTab(tabs, "b.rs");
+    tabs = openWidgetTab(tabs, "omfp:todos");
+    expect(openedTabIds(tabs)).toEqual([
+      fileTabId("a.rs"),
+      fileTabId("b.rs"),
+      widgetTabId("omfp:subagents"),
+      widgetTabId("omfp:todos"),
+    ]);
+    expect(tabs.active).toBe(widgetTabId("omfp:todos"));
+    tabs = openWidgetTab(tabs, "omfp:subagents");
+    expect([tabs.widgets, tabs.active]).toEqual([["omfp:subagents", "omfp:todos"], widgetTabId("omfp:subagents")]);
+    tabs = closeOpenedTab(tabs, widgetTabId("omfp:subagents"));
+    expect([tabs.widgets, tabs.active]).toEqual([["omfp:todos"], fileTabId("b.rs")]);
+    tabs = closeTab(tabs, "b.rs");
+    expect(tabs.active).toBe(fileTabId("a.rs"));
+    tabs = closeOpenedTab({ ...tabs, active: fileTabId("a.rs") }, fileTabId("a.rs"));
+    expect(tabs).toEqual({ tabs: [], widgets: ["omfp:todos"], active: widgetTabId("omfp:todos") });
+    // Files keep the widget tabs.
+    expect(retargetTab(openTab(tabs, "x"), "x", "y").widgets).toEqual(["omfp:todos"]);
+    expect(closeOpenedTab(tabs, widgetTabId("gone"))).toBe(tabs);
+  });
+
+  // spec: UI-115, UI-373
   test("the persisted tabs decode leniently", () => {
     expect(
       decodeOpenFiles({
         w1: { tabs: [{ path: "a.rs", line: 2, diff: true }, { nope: 1 }, "x"], active: "file:a.rs" },
         w2: { tabs: "bad" },
         w3: null,
+        w4: { tabs: [], widgets: ["omfp:subagents", 3, "omfp:subagents"], active: "widget:omfp:subagents" },
       }),
-    ).toEqual({ w1: { tabs: [{ path: "a.rs", line: 2, diff: true, seq: 0 }], active: "file:a.rs" } });
+    ).toEqual({
+      w1: { tabs: [{ path: "a.rs", line: 2, diff: true, seq: 0 }], widgets: [], active: "file:a.rs" },
+      w4: { tabs: [], widgets: ["omfp:subagents"], active: "widget:omfp:subagents" },
+    });
     expect(decodeOpenFiles([])).toBeUndefined();
     expect(decodeOpenFiles("x")).toBeUndefined();
   });
