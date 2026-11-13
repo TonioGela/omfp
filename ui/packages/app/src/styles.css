@@ -51,22 +51,6 @@
     --omfp-gutter: var(--omfp-s3);
   }
 
-  /* Hover-only affordances are always there on touch screens (UI-205). */
-  @media (hover: none) {
-    .omfp-reveal,
-    .omfp-tree__actions {
-      opacity: 1;
-    }
-
-    .omfp-thread .omfp-row__delete {
-      display: inline-flex;
-    }
-
-    .omfp-thread:has(.omfp-row__delete) .omfp-row__meta {
-      display: none;
-    }
-  }
-
   /* Banners (UI-003, AGT-011): a tinted row above the shell in the tone's color. */
   .omfp-banner {
     padding: var(--omfp-s1) var(--omfp-s3);
@@ -1963,5 +1947,23 @@
 
   .omfp-changes__merge .omfp-code-diff__view {
     contain: none;
+  }
+
+  /* Hover-only affordances are always there on screens without hover (UI-205, UI-415). Last in the layer, so these
+     win over the resting rules above (`.omfp-reveal`, `.omfp-tree__actions`: opacity 0) at the same specificity:
+     nothing a tap can hit is invisible. */
+  @media (hover: none) {
+    .omfp-reveal,
+    .omfp-tree__actions {
+      opacity: 1;
+    }
+
+    .omfp-thread .omfp-row__delete {
+      display: inline-flex;
+    }
+
+    .omfp-thread:has(.omfp-row__delete) .omfp-row__meta {
+      display: none;
+    }
   }
 }
