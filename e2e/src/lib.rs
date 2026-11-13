@@ -542,6 +542,18 @@ impl Journey {
         Ok(())
     }
 
+    /// Moves the mouse over the first displayed element matching `css`, as a user does before clicking what a hover
+    /// shows or moves (a row's delete ×, UI-205; a section's actions, UI-415).
+    pub async fn hover(&self, css: &str) -> anyhow::Result<()> {
+        let element = self.element(css).await?;
+        self.driver
+            .action_chain()
+            .move_to_element_center(&element)
+            .perform()
+            .await?;
+        Ok(())
+    }
+
     /// Types `text` into the first displayed element matching `css`.
     pub async fn type_into(&self, css: &str, text: &str) -> anyhow::Result<()> {
         self.element(css).await?.send_keys(text).await?;
@@ -1006,6 +1018,9 @@ fn chrome(profile: &Path) -> anyhow::Result<ChromeCapabilities> {
         "--disable-sync",
         "--disable-default-apps",
         "--proxy-server=http://127.0.0.1:9",
+        // A mouse, not a touch screen: headless Chromium reports `hover: none`, which would give every journey the
+        // touch rules (UI-205); the touch journeys emulate touch over CDP on top (TST-116).
+        "--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
         // A fake microphone, granted without a prompt (live voice, E2E-14).
         "--use-fake-device-for-media-stream",
         "--use-fake-ui-for-media-stream",

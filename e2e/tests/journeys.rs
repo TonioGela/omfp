@@ -1148,18 +1148,6 @@ async fn until_rows(journey: &Journey, thread_id: &str, count: usize) -> anyhow:
         .await
 }
 
-/// Moves the mouse over the first element matching `css` (the left column shows delete buttons on hover).
-async fn hover(journey: &Journey, css: &str) -> anyhow::Result<()> {
-    let element = journey.element(css).await?;
-    journey
-        .driver
-        .action_chain()
-        .move_to_element_center(&element)
-        .perform()
-        .await?;
-    Ok(())
-}
-
 // spec: UI-020, UI-026, UI-092, UI-482, DMN-028
 #[tokio::test(flavor = "multi_thread")]
 async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted_with_workspaces()
@@ -1187,7 +1175,7 @@ async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted_with
 
     // The row's delete button (shown on hover) asks first, in a dialog that takes the focus; the workspace stays.
     let doomed_row = row(&doomed);
-    hover(&journey, &doomed_row).await?;
+    journey.hover(&doomed_row).await?;
     journey
         .click(&format!(
             "[data-testid=row-delete-thread][data-thread-id=\"{doomed}\"]"
@@ -1209,11 +1197,9 @@ async fn an_archived_thread_is_found_under_archived_unarchived_then_deleted_with
 
     // Deleting a workspace that still has a thread lists it and deletes it too once asked to (DMN-028).
     let section = "[data-testid=workspace-section]:has([data-testid=thread-row])";
-    hover(
-        &journey,
-        &format!("{section} [data-testid=workspace-section-name]"),
-    )
-    .await?;
+    journey
+        .hover(&format!("{section} [data-testid=workspace-section-name]"))
+        .await?;
     journey
         .click(&format!("{section} [data-testid=delete-workspace]"))
         .await?;

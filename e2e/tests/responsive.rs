@@ -51,6 +51,14 @@ async fn shots(journey: &Journey, width: u32) -> anyhow::Result<()> {
 /// Wide: the left column, its splitter and the view's splitters; no strip; the full header on two rows.
 async fn wide(journey: &Journey) -> anyhow::Result<()> {
     layout(journey, "wide").await?;
+    // The desktop journeys have a mouse (TST-116): hover rules apply, the touch rules do not.
+    let mouse = journey
+        .eval(
+            "return matchMedia('(hover: hover) and (pointer: fine)').matches;",
+            Vec::new(),
+        )
+        .await?;
+    anyhow::ensure!(mouse == json!(true), "the desktop browser has no mouse");
     anyhow::ensure!(journey.count("[data-testid=left-column]").await? == 1);
     anyhow::ensure!(journey.count("[data-testid=left-splitter]").await? == 1);
     anyhow::ensure!(journey.count("[data-testid=left-strip]").await? == 0);
@@ -351,7 +359,7 @@ async fn a_touch_phone_gets_touch_sizes_in_both_orientations() -> anyhow::Result
     journey.finish("touch").await
 }
 
-// spec: UI-200, UI-201, UI-202, UI-203, UI-204, UI-205, UI-206, UI-207, UI-209, UI-337
+// spec: UI-200, UI-201, UI-202, UI-203, UI-204, UI-205, UI-206, UI-207, UI-209, UI-337, TST-116
 #[tokio::test(flavor = "multi_thread")]
 async fn the_frame_adapts_to_its_width() -> anyhow::Result<()> {
     let journey = Journey::start(vec![Step::reply(Reply::text(

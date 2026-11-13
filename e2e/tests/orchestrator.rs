@@ -393,7 +393,7 @@ async fn dashboard_round(
     Ok(())
 }
 
-// spec: E2E-20, TST-080, AGT-041, AGT-043, AGT-061, AGT-070, AGT-071, AGT-072, UI-240, UI-241, UI-242
+// spec: E2E-20, TST-080, TST-116, AGT-041, AGT-043, AGT-061, AGT-070, AGT-071, AGT-072, UI-240, UI-241, UI-242
 #[tokio::test(flavor = "multi_thread")]
 async fn an_orchestrator_spawns_two_threads_and_its_dashboard_follows_and_prompts_it()
 -> anyhow::Result<()> {
@@ -408,6 +408,12 @@ async fn an_orchestrator_spawns_two_threads_and_its_dashboard_follows_and_prompt
     // "Spawned by" on the orchestrator's row keeps its spawned tree in the left column.
     let filter = format!("[data-testid=spawned-filter][data-thread-id=\"{orchestrator}\"]");
     assert_eq!(journey.text(&filter).await?, "2");
+    // Like a user's mouse, hover the row first: it then shows its delete × (UI-205), which moves the filter.
+    journey
+        .hover(&format!(
+            "[data-testid=thread-row][data-thread-id=\"{orchestrator}\"]"
+        ))
+        .await?;
     journey.click(&filter).await?;
     journey.element("[data-testid=spawned-by]").await?;
     journey
