@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { BACKGROUND_MEMORY } from "../../src/sdk/background.ts";
 import { OPEN_SUBAGENT, REVEAL_WIDGET, SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { BackgroundWidget } from "../../src/widgets/background/index.ts";
 import { renderWithHost, testHost } from "../support/host.tsx";
@@ -199,5 +200,43 @@ describe("omfp:background", () => {
   test("nothing in the background", () => {
     setup(fixtureEvents("text_reply"));
     expect(screen.getByTestId("background-none").textContent).toContain("Nothing runs in the background");
+  });
+
+  // spec: UI-641, UI-642, UI-643
+  test("finished rows: five in sight, the others under Finished (N), a failed one until opened, Clear finished", async () => {
+    // Job `bg_<n>` of its own call, ending as `state`.
+    const job = (events: readonly ThreadEvent[], n: number, state = "completed"): ThreadEvent[] =>
+      JSON.parse(
+        JSON.stringify(events)
+          .replaceAll("call_bash_bg", `call_bash_bg${n}`)
+          .replaceAll('"bg_1"', `"bg_${n}"`)
+          .replaceAll('"state":"completed"', `"state":"${state}"`),
+      );
+    const finished = [2, 3, 4, 5, 6, 7, 8].flatMap((n) => job(bash, n));
+    const test = setup([...job(bash, 1, "failed"), ...finished, ...job(running, 9)]);
+    const section = (testId: string) =>
+      screen.queryAllByTestId(testId).flatMap((list) =>
+        within(list)
+          .getAllByTestId("background-row")
+          .map((row) => row.dataset.id),
+      );
+    expect(section("background-running")).toEqual(["bg_9"]);
+    // The failed job stays in sight beside the five most recently finished.
+    expect(section("background-recent")).toEqual(["bg_8", "bg_7", "bg_6", "bg_5", "bg_4", "bg_1"]);
+    const toggle = screen.getByTestId("background-older-toggle");
+    expect([toggle.textContent, toggle.getAttribute("aria-expanded")]).toEqual(["Finished (2)", "false"]);
+    await test.user.click(toggle);
+    expect(section("background-older")).toEqual(["bg_3", "bg_2"]);
+
+    // Opened, the failed job joins the others.
+    await test.user.click(screen.getByRole("button", { name: "Show the card of background job bg_1" }));
+    expect(section("background-recent")).toEqual(["bg_8", "bg_7", "bg_6", "bg_5", "bg_4"]);
+    expect(section("background-older")).toEqual(["bg_3", "bg_2", "bg_1"]);
+
+    // Clear finished leaves what runs, and the window remembers it.
+    await test.user.click(screen.getByTestId("background-clear"));
+    expect(screen.getAllByTestId("background-row").map((row) => row.dataset.id)).toEqual(["bg_9"]);
+    expect(screen.queryAllByTestId("background-clear").length).toBe(0);
+    expect(test.host.window.get(BACKGROUND_MEMORY)[THREAD]?.cleared.length).toBe(8);
   });
 });

@@ -1132,4 +1132,9 @@ requirements = [
   "DMN-290",
   "UI-640",
   "E2E-62",
+  # Finished background work collapses; Clear finished
+  "UI-641",
+  "UI-642",
+  "UI-643",
+  "E2E-63",
 ]

@@ -15,7 +15,7 @@ export { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 export { keyLabel } from "../keymap/keymap.ts";
 export { strings } from "../strings/index.ts";
 export { type AnsiRun, ansiRuns } from "../vm/ansi.ts";
-export { type BackgroundRow, type JobTimes, lastOutputLine } from "../vm/background.ts";
+export { type BackgroundRow, type BackgroundSections, type JobTimes, lastOutputLine } from "../vm/background.ts";
 export {
   type ChangedFile,
   type ChangesRepo,

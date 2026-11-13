@@ -137,6 +137,94 @@ export function runningInBackground(tools: readonly ToolRun[], subagents: readon
   );
 }
 
+/** How many finished jobs and subagents `omfp:background` keeps in sight; older ones are collapsed (UI-641). */
+export const FINISHED_SHOWN = 5;
+
+/** A row's key in the window's memory of a thread's background work: `job:bg_1`, `subagent:Counter`. */
+export function rowKey(row: BackgroundRow): string {
+  return `${row.kind}:${row.id}`;
+}
+
+/** When this window first saw each row finished (row key → time): neither omp's job frames nor subagents carry it. */
+export type FinishTimes = ReadonlyMap<string, number>;
+
+/** `times` with the rows of `rows` that finished by `now`; unchanged when none is new. */
+export function observeFinished(times: FinishTimes, rows: readonly BackgroundRow[], now: number): FinishTimes {
+  let next: Map<string, number> | undefined;
+  for (const row of rows) {
+    const key = rowKey(row);
+    if (row.state !== "running" && !times.has(key)) {
+      next ??= new Map(times);
+      next.set(key, now);
+    }
+  }
+  return next ?? times;
+}
+
+/** What the window remembers of a thread's background work (UI-642, UI-643): the finished rows the user cleared and the
+ * failed ones they opened, by {@link rowKey}. */
+export interface BackgroundMemory {
+  readonly cleared: readonly string[];
+  readonly opened: readonly string[];
+}
+
+export const NO_MEMORY: BackgroundMemory = { cleared: [], opened: [] };
+
+/** `omfp:background`'s rows in its sections (UI-641..UI-643). */
+export interface BackgroundSections {
+  /** What runs, as {@link backgroundRows} orders it. */
+  readonly running: readonly BackgroundRow[];
+  /** Finished rows in sight, most recently finished first: the failed ones not opened yet, and the
+   * {@link FINISHED_SHOWN} most recent others. */
+  readonly recent: readonly BackgroundRow[];
+  /** The other finished rows, most recently finished first: the collapsed `Finished (N)` group. */
+  readonly older: readonly BackgroundRow[];
+}
+
+/**
+ * Splits `rows` into {@link BackgroundSections}: cleared finished rows are left out, finished ones are ordered by when
+ * the window saw them finish (`finished`, newest first; equal times keep the order of `rows`).
+ */
+export function backgroundSections(
+  rows: readonly BackgroundRow[],
+  finished: FinishTimes,
+  memory: BackgroundMemory,
+): BackgroundSections {
+  const cleared = new Set(memory.cleared);
+  const opened = new Set(memory.opened);
+  const running = rows.filter((row) => row.state === "running");
+  const done = rows
+    .filter((row) => row.state !== "running" && !cleared.has(rowKey(row)))
+    .map((row, order) => ({ row, order, at: finished.get(rowKey(row)) ?? 0 }))
+    .sort((a, b) => b.at - a.at || a.order - b.order)
+    .map(({ row }) => row);
+  const pinned = (row: BackgroundRow) => row.state === "failed" && !opened.has(rowKey(row));
+  const others = done.filter((row) => !pinned(row));
+  const shown = new Set(others.slice(0, FINISHED_SHOWN));
+  return {
+    running,
+    recent: done.filter((row) => pinned(row) || shown.has(row)),
+    older: others.slice(FINISHED_SHOWN),
+  };
+}
+
+/** `memory` with every finished row of `sections` cleared (UI-642); the opened ones it no longer needs are dropped. */
+export function clearFinished(memory: BackgroundMemory, sections: BackgroundSections): BackgroundMemory {
+  const keys = [...sections.recent, ...sections.older].map(rowKey);
+  return {
+    cleared: [...new Set([...memory.cleared, ...keys])],
+    opened: memory.opened.filter((key) => !keys.includes(key)),
+  };
+}
+
+/** `memory` with `row` opened: a failed row then leaves the pinned ones (UI-643). */
+export function openRow(memory: BackgroundMemory, row: BackgroundRow): BackgroundMemory {
+  const key = rowKey(row);
+  return row.state !== "failed" || memory.opened.includes(key)
+    ? memory
+    : { ...memory, opened: [...memory.opened, key] };
+}
+
 /** The steer that asks the agent to stop a job: the RPC has no command for it, the agent kills it (`proc://`). */
 export function stopJobMessage(jobId: string): string {
   return `Stop background job ${jobId}.`;

@@ -1007,6 +1007,17 @@
     margin: 0 0 var(--omfp-s2);
   }
 
+  /* The finished rows' heading with Clear finished, the older ones collapsed under it (UI-641, UI-642). */
+  .omfp-background__finished-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--omfp-s2);
+    margin-block-start: var(--omfp-s2);
+    color: var(--omfp-on-surface-variant);
+    font-size: var(--omfp-fs-xs);
+  }
+
   /* The last output line of a running background job in its card's head (UI-270). */
   .omfp-tool-card__last-line {
     max-inline-size: 24ch;

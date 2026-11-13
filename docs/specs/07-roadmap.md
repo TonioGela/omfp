@@ -757,6 +757,10 @@ A login the window did not start (an agent's `auth.login` through `omfp_call`, a
 as its own does: the `index` topic carries the running login with its page and progress (DMN-290), and the window
 shows its progress toast with Cancel and its page's toast with Open and Copy until it ends (UI-640, E2E-62).
 
+`omfp:background` no longer grows with every finished job and subagent: what runs comes first, the five most recently
+finished stay in sight (a failed one until it is opened), the older ones collapse under `Finished (N)`, and Clear
+finished hides them from the window, remembered across reloads (UI-641..UI-643, E2E-63).
+
 ## Terminal (removed)
 
 Removed (D-06, PRT-135): the user does not rely on the TUI-only commands, so the terminal was never built; its

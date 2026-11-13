@@ -1,12 +1,14 @@
 /**
- * `omfp:background` (UI-271..UI-273, UI-490..UI-492): the selected thread's background work — its omp background jobs
- * (`bash` calls that became jobs) and its subagents — with label, state, duration and last line. A job's row scrolls
+ * `omfp:background` (UI-271..UI-273, UI-490..UI-492, UI-641..UI-643): the selected thread's background work — its omp
+ * background jobs (`bash` calls that became jobs) and its subagents — with label, state, duration and last line. What
+ * runs comes first; of the finished rows the most recent ones stay in sight (a failed one until it is opened), the
+ * others collapse under `Finished (N)`, and Clear finished hides them all from this window. A job's row scrolls
  * the chat to its card; a subagent's row opens its detail under it (`subagent.tsx`: transcript and steer), as does an
  * `OPEN_SUBAGENT` request. Running subagents are cancelled with `thread.subagent_cancel`; running jobs, which the RPC
  * cannot kill, are stopped by a steer asking the agent to (it kills them via `proc://`).
  */
 
-import { Button, EmptyState, StateMark } from "omfp/kit";
+import { Button, Disclosure, EmptyState, Icon, StateMark } from "omfp/kit";
 import {
   type BackgroundRow,
   formatDuration,
@@ -57,7 +59,7 @@ function cardOf(toolCallId: string): HTMLElement | undefined {
 }
 
 function Background({ threadId }: { threadId: string }): ReactNode {
-  const { rows, stop, cancel } = useBackground(threadId);
+  const { sections, stop, cancel, clearFinished, opened } = useBackground(threadId);
   const [, reveal] = useWindowState(REVEAL_WIDGET);
   // The subagent whose detail is open: one at a time, toggled by its row or opened by a request (UI-492).
   const [open, setOpen] = useState<string | undefined>(undefined);
@@ -78,28 +80,59 @@ function Background({ threadId }: { threadId: string }): ReactNode {
       scroll();
     }
   };
+  const list = (rows: readonly BackgroundRow[], testId: string) => (
+    <ul className="omfp-subagents__list" data-testid={testId}>
+      {rows.map((row) => (
+        <Row
+          key={`${row.kind}:${row.id}`}
+          threadId={threadId}
+          row={row}
+          open={row.kind === "subagent" && open === row.id}
+          onPress={() => {
+            opened(row);
+            if (row.kind === "job") {
+              showJob(row);
+            } else {
+              setOpen((current) => (current === row.id ? undefined : row.id));
+            }
+          }}
+          stop={stop}
+          cancel={cancel}
+        />
+      ))}
+    </ul>
+  );
+  const finished = sections.recent.length + sections.older.length;
   return (
     <section className="omfp-subagents" data-testid="background" aria-label={text.label}>
-      {rows.length === 0 ? (
+      {sections.running.length === 0 && finished === 0 ? (
         <EmptyState icon="inbox" title={text.none} data-testid="background-none">
           {text.noneHint}
         </EmptyState>
       ) : (
-        <ul className="omfp-subagents__list">
-          {rows.map((row) => (
-            <Row
-              key={`${row.kind}:${row.id}`}
-              threadId={threadId}
-              row={row}
-              open={row.kind === "subagent" && open === row.id}
-              onPress={() =>
-                row.kind === "job" ? showJob(row) : setOpen((current) => (current === row.id ? undefined : row.id))
-              }
-              stop={stop}
-              cancel={cancel}
-            />
-          ))}
-        </ul>
+        <>
+          {sections.running.length > 0 && list(sections.running, "background-running")}
+          {finished > 0 && (
+            <div className="omfp-background__finished-head">
+              <span>{text.finished}</span>
+              <Button
+                size="sm"
+                variant="quiet"
+                icon={<Icon name="x" />}
+                onPress={clearFinished}
+                data-testid="background-clear"
+              >
+                {text.clearFinished}
+              </Button>
+            </div>
+          )}
+          {sections.recent.length > 0 && list(sections.recent, "background-recent")}
+          {sections.older.length > 0 && (
+            <Disclosure title={text.older(sections.older.length)} level={3} toggleTestId="background-older-toggle">
+              {list(sections.older, "background-older")}
+            </Disclosure>
+          )}
+        </>
       )}
     </section>
   );

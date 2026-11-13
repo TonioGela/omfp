@@ -200,7 +200,7 @@ export const shell = {
     toolLine: (tool: string, intent: string | undefined) =>
       intent === undefined ? `→ ${tool}` : `→ ${tool}: ${intent}`,
   },
-  /** `omfp:background` (UI-271..UI-273, UI-490..UI-492). */
+  /** `omfp:background` (UI-271..UI-273, UI-490..UI-492, UI-641..UI-643). */
   background: {
     label: "Background",
     noThread: "No thread selected",
@@ -213,6 +213,11 @@ export const shell = {
     stop: "Stop",
     cancel: "Cancel",
     transcript: (name: string) => `Transcript of ${name}`,
+    /** The finished rows' heading and their Clear finished (UI-641, UI-642). */
+    finished: "Finished",
+    clearFinished: "Clear finished",
+    /** The collapsed group of the older finished rows (UI-641). */
+    older: (count: number) => `Finished (${count})`,
     loading: "Reading the transcript…",
     empty: "Nothing said yet",
     more: "Read new messages",

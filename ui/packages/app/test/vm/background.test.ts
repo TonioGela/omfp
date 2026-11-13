@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolRun } from "@omfp/core";
 import {
+  type BackgroundRow,
   backgroundRows,
+  backgroundSections,
+  clearFinished,
+  FINISHED_SHOWN,
   type JobTimes,
   lastOutputLine,
+  NO_MEMORY,
+  observeFinished,
   observeJobs,
+  openRow,
   runningInBackground,
   stopJobMessage,
 } from "../../src/vm/background.ts";
@@ -26,6 +33,24 @@ function subagent(id: string, status: string, durationMs?: number): SubagentRow 
     durationMs,
     live: status === "running",
   };
+}
+
+function row(id: string, state: BackgroundRow["state"], kind: BackgroundRow["kind"] = "job"): BackgroundRow {
+  return {
+    kind,
+    id,
+    toolCallId: undefined,
+    label: id,
+    state,
+    durationMs: undefined,
+    lastLine: undefined,
+    stopRequested: false,
+    subagent: undefined,
+  };
+}
+
+function ids(rows: readonly BackgroundRow[]): string[] {
+  return rows.map((shown) => shown.id);
 }
 
 describe("background work", () => {
@@ -94,5 +119,55 @@ describe("background work", () => {
   // spec: UI-272
   test("the steer that stops a job", () => {
     expect(stopJobMessage("bg_3")).toBe("Stop background job bg_3.");
+  });
+
+  // spec: UI-641
+  test("sections: what runs, the most recently finished in sight, the older ones collapsed", () => {
+    // Rows as backgroundRows gives them: jobs newest first.
+    const rows = [row("bg_9", "running"), ...[8, 7, 6, 5, 4, 3, 2].map((n) => row(`bg_${n}`, "completed"))];
+    rows.push(row("bg_1", "cancelled"));
+    // Already finished when the window looked: their order; bg_9 finishes later and goes first.
+    const seen = observeFinished(new Map(), rows, 100);
+    expect(observeFinished(seen, rows, 200)).toBe(seen);
+    const sections = backgroundSections(rows, seen, NO_MEMORY);
+    expect([ids(sections.running), ids(sections.recent), ids(sections.older)]).toEqual([
+      ["bg_9"],
+      ["bg_8", "bg_7", "bg_6", "bg_5", "bg_4"],
+      ["bg_3", "bg_2", "bg_1"],
+    ]);
+    expect(sections.recent.length).toBe(FINISHED_SHOWN);
+    const later = [row("bg_9", "completed"), ...rows.slice(1)];
+    const after = backgroundSections(later, observeFinished(seen, later, 300), NO_MEMORY);
+    expect([ids(after.running), ids(after.recent).slice(0, 2), ids(after.older)]).toEqual([
+      [],
+      ["bg_9", "bg_8"],
+      ["bg_4", "bg_3", "bg_2", "bg_1"],
+    ]);
+  });
+
+  // spec: UI-642, UI-643
+  test("Clear finished hides every finished row; a failed one stays in sight until opened or cleared", () => {
+    const failed = row("Broken", "failed", "subagent");
+    const rows = [row("bg_8", "running"), ...[7, 6, 5, 4, 3, 2, 1].map((n) => row(`bg_${n}`, "completed")), failed];
+    const times = observeFinished(new Map(), rows, 0);
+    const sections = backgroundSections(rows, times, NO_MEMORY);
+    // The failed subagent finished first, yet stays in sight beside the five most recent.
+    expect(ids(sections.recent)).toEqual(["bg_7", "bg_6", "bg_5", "bg_4", "bg_3", "Broken"]);
+    expect(ids(sections.older)).toEqual(["bg_2", "bg_1"]);
+
+    const opened = openRow(NO_MEMORY, failed);
+    expect(opened).toEqual({ cleared: [], opened: ["subagent:Broken"] });
+    expect(openRow(opened, failed)).toBe(opened);
+    expect(openRow(NO_MEMORY, row("bg_7", "completed"))).toBe(NO_MEMORY);
+    expect(ids(backgroundSections(rows, times, opened).older)).toEqual(["bg_2", "bg_1", "Broken"]);
+
+    const cleared = clearFinished(opened, sections);
+    expect(cleared.opened).toEqual([]);
+    const after = backgroundSections(rows, times, cleared);
+    expect([ids(after.running), ids(after.recent), ids(after.older)]).toEqual([["bg_8"], [], []]);
+    // What finishes afterwards shows again.
+    const more = [row("bg_8", "failed"), ...rows.slice(1)];
+    const next = backgroundSections(more, observeFinished(times, more, 10), cleared);
+    expect([ids(next.running), ids(next.recent)]).toEqual([[], ["bg_8"]]);
   });
 });
