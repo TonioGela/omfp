@@ -49,7 +49,8 @@ describe("bash card", () => {
 
   // spec: UI-050, UI-052
   test("aborted: omp's error result has no exit code, so the card shows none", () => {
-    const aborted = toolView("bash", { command: "sleep 3" }, { text: "Command aborted", details: {} }, false);
+    const output = { text: "Command aborted", images: [], details: {} };
+    const aborted = toolView("bash", { command: "sleep 3" }, output, false);
     expect(aborted).toMatchObject({ output: "Command aborted", exitCode: undefined });
   });
 });

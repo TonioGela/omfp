@@ -35,6 +35,13 @@ export const chat = {
       failed: "failed",
     },
     image: "[image]",
+    /** The alt text of a result's image (UI-472): `Image 1 of 2 from read /w/plot.png`. */
+    resultImage: (tool: string, subject: string, index: number, count: number) =>
+      `${count === 1 ? "Image" : `Image ${index} of ${count}`} from ${subject === "" ? tool : `${tool} ${subject}`}`,
+    /** The thumbnails' list (UI-473). */
+    resultImages: (tool: string) => `Images from ${tool}`,
+    /** A thumbnail's button opens the full view (UI-474). */
+    openImage: (alt: string) => `Open ${alt.charAt(0).toLowerCase()}${alt.slice(1)}`,
     /** `read` lines returned: `1–9 of 9`. */
     lines: (first: number, last: number, total: number) => `${first}–${last} of ${total}`,
     fetchFailed: "The URL could not be fetched.",

@@ -115,9 +115,16 @@ export interface TodoPhase {
   readonly tasks: readonly TodoTask[];
 }
 
-/** A tool result reduced to what the cards read: its text and its `details`. */
+/** An image of a tool result (`{ type: "image", data, mimeType }`): base64 `data` of type `mime`. */
+export interface ResultImage {
+  readonly mime: string;
+  readonly data: string;
+}
+
+/** A tool result reduced to what the cards read: its text, its images and its `details`. */
 export interface ToolOutput {
   readonly text: string | undefined;
+  readonly images: readonly ResultImage[];
   readonly details: Readonly<Record<string, unknown>>;
 }
 
@@ -137,14 +144,24 @@ function records(value: unknown): readonly Readonly<Record<string, unknown>>[] {
   return list(value).filter(isRecord);
 }
 
-/** The text parts and the `details` of a tool result (`{ content: [{ type: "text", text }], details }`). */
+/**
+ * The text parts, the image parts and the `details` of a tool result (`{ content: [{ type: "text", text }, { type:
+ * "image", data, mimeType }], details }`, UI-472).
+ */
 export function toolOutput(value: unknown): ToolOutput | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
-  const texts = records(value.content).flatMap((part) => (part.type === "text" ? [str(part.text) ?? ""] : []));
+  const parts = records(value.content);
+  const texts = parts.flatMap((part) => (part.type === "text" ? [str(part.text) ?? ""] : []));
   return {
     text: texts.length === 0 ? undefined : texts.join("\n"),
+    images: parts.flatMap((part) => {
+      const data = str(part.data);
+      return part.type === "image" && data !== undefined && data !== ""
+        ? [{ mime: str(part.mimeType) ?? "image/png", data }]
+        : [];
+    }),
     details: isRecord(value.details) ? value.details : {},
   };
 }

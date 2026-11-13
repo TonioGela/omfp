@@ -8,7 +8,7 @@ import { replay } from "@omfp/core";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type OmfpHost, OPEN_FILES, SELECTED_THREAD } from "../../../src/sdk/index.ts";
-import type { ToolCard } from "../../../src/vm/tool.ts";
+import { type ToolCard, toolCard } from "../../../src/vm/tool.ts";
 import { MessageRow, ToolCardView } from "../../../src/widgets/chat/message.tsx";
 import { card, cards, streaming } from "../../support/cards.ts";
 import { repo, thread, workspace } from "../../support/fixtures.ts";
@@ -404,6 +404,67 @@ describe("task card", () => {
     const element = show(card("task_tool_call", "call_task_2"));
     expect(byTestId(element, "tool-error").textContent).toContain('Unknown agent "no-such-agent"');
     expect(byTestId(element, "subagent").dataset.status).toBe("failed");
+  });
+});
+
+describe("result images", () => {
+  /** A `read` of `/w/plot.png` whose result holds `count` PNG images. */
+  function imageCard(count: number): ToolCard {
+    return toolCard(
+      "c1",
+      { type: "toolCall", id: "c1", name: "read", arguments: { path: "/w/plot.png" } },
+      undefined,
+      {
+        role: "toolResult",
+        toolCallId: "c1",
+        toolName: "read",
+        content: [
+          { type: "text", text: "Read image file [image/png]" },
+          ...Array.from({ length: count }, () => ({
+            type: "image" as const,
+            data: "iVBORw0KGgo=",
+            mimeType: "image/png",
+          })),
+        ],
+      },
+      undefined,
+    );
+  }
+
+  // spec: UI-473
+  test("the thumbnails show while the card is collapsed, in a row, each with its alt text", () => {
+    const element = show(imageCard(2));
+    expect(byTestId(element, "toggle").getAttribute("aria-expanded")).toBe("false");
+    const thumbnails = within(element).getAllByTestId("tool-image");
+    expect(thumbnails.map((thumbnail) => thumbnail.getAttribute("aria-label"))).toEqual([
+      "Open image 1 of 2 from read /w/plot.png",
+      "Open image 2 of 2 from read /w/plot.png",
+    ]);
+    expect(thumbnails.map((thumbnail) => thumbnail.querySelector("img")?.getAttribute("src"))).toEqual([
+      "data:image/png;base64,iVBORw0KGgo=",
+      "data:image/png;base64,iVBORw0KGgo=",
+    ]);
+    expect(byTestId(element, "tool-images").getAttribute("aria-label")).toBe("Images from read");
+  });
+
+  // spec: UI-474
+  test("a click or Enter on a thumbnail opens the image at full size; Escape closes it", async () => {
+    const element = show(imageCard(1));
+    expect(screen.queryAllByTestId("tool-image-dialog").length).toBe(0);
+    await userEvent.click(byTestId(element, "tool-image"));
+    const dialog = screen.getByTestId("tool-image-dialog");
+    expect(within(dialog).getByRole("heading").textContent).toBe("Image from read /w/plot.png");
+    const full = within(dialog).getByTestId("tool-image-full");
+    expect([full.getAttribute("src"), full.getAttribute("alt")]).toEqual([
+      "data:image/png;base64,iVBORw0KGgo=",
+      "Image from read /w/plot.png",
+    ]);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryAllByTestId("tool-image-dialog").length).toBe(0);
+    // The focus is back on the thumbnail: Enter opens it again.
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("tool-image");
+    await userEvent.keyboard("{Enter}");
+    expect(screen.queryAllByTestId("tool-image-dialog").length).toBe(1);
   });
 });
 

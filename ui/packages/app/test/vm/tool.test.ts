@@ -107,6 +107,35 @@ describe("tool cards", () => {
     expect(formatDuration(40)).toBe("40 ms");
   });
 
+  // spec: UI-472
+  test("an omp run's result images are kept for the card; its text says [image] instead of the base64 JSON", () => {
+    const run: ToolRun = {
+      tool_call_id: "c1",
+      tool_name: "eval",
+      args: { language: "py", code: "plt.plot([1, 2])\nplt.show()" },
+      intent: "Plotting the curve",
+      status: "succeeded",
+      partial_result: null,
+      preview: null,
+      result: { content: [{ type: "image", data: "R0lGOD", mimeType: "image/gif" }], details: {} },
+      background: null,
+    };
+    const card = toolCard("c1", undefined, run, undefined, undefined);
+    expect(card.images).toEqual([
+      { mime: "image/gif", data: "R0lGOD", alt: "Image from eval plt.plot([1, 2]) plt.show()" },
+    ]);
+    expect(card.result).toBe("[image]");
+    // Without a subject argument the alt text names the call by its summary (here its intent).
+    const mcp = toolCard(
+      "c1",
+      undefined,
+      { ...run, tool_name: "mcp_chart", args: { series: 3 } },
+      undefined,
+      undefined,
+    );
+    expect(mcp.images.map((image) => image.alt)).toEqual(["Image from mcp_chart Plotting the curve"]);
+  });
+
   test("oneLine flattens whitespace and cuts with an ellipsis", () => {
     expect(oneLine("a\n  b\tc", 10)).toBe("a b c");
     expect(oneLine("abcdefghij", 5)).toBe("abcd…");

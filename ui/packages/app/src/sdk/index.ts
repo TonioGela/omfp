@@ -185,7 +185,7 @@ export {
   workspaceChip,
 } from "../vm/threads.ts";
 export { type GoalView, type TodoPhaseView, type TodoRow, type TodosView, todosView } from "../vm/todos.ts";
-export { expandedByDefault, formatDuration, resultText, type ToolCard } from "../vm/tool.ts";
+export { type CardImage, expandedByDefault, formatDuration, resultText, type ToolCard } from "../vm/tool.ts";
 export {
   type RepoPath,
   repoPath,

@@ -154,6 +154,55 @@
     border-radius: var(--omfp-r-card);
   }
 
+  /* A tool result's images (UI-473): thumbnails under the card, open or not, in a row that wraps. Each is 10rem tall
+     whether its image has loaded or not, so a row's measured height does not wait for decoding (UI-042); its width
+     follows the image's aspect ratio, up to the card's width. */
+  .omfp-tool-images {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--omfp-s2);
+    margin: var(--omfp-s1) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .omfp-tool-images__item {
+    display: flex;
+    max-inline-size: 100%;
+  }
+
+  .omfp-button.omfp-tool-images__thumb {
+    block-size: 10rem;
+    min-inline-size: 6rem;
+    max-inline-size: 100%;
+    padding: var(--omfp-s1);
+    border-color: var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+    background: var(--omfp-ctl-bg);
+    cursor: zoom-in;
+  }
+
+  .omfp-tool-images__img {
+    display: block;
+    max-inline-size: 100%;
+    max-block-size: 100%;
+    object-fit: contain;
+  }
+
+  /* The full view (UI-474): the dialog as wide as the image needs, within the window; the image fits the window. */
+  .omfp-modal:has(> .omfp-image-dialog) {
+    inline-size: auto;
+    max-inline-size: 94vw;
+  }
+
+  .omfp-image-dialog__image {
+    display: block;
+    max-inline-size: 100%;
+    max-block-size: calc(100vh - 12rem);
+    margin-inline: auto;
+    object-fit: contain;
+  }
+
   /* A streaming text block is a column of Markdown chunks (UI-191) spaced like the blocks of one document. */
   .omfp-markdown-stream > .omfp-markdown + .omfp-markdown {
     margin-block-start: var(--omfp-md-block);

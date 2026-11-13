@@ -928,8 +928,12 @@ requirements = [
   # QA fixes: the terminal is removed
   "PRT-135",
   # QA fixes: one name line per turn
+  # QA fixes: one name line per turn, a tool result's images as thumbnails with a full view
   "UI-470",
   "UI-471",
+  "UI-472",
+  "UI-473",
+  "UI-474",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -942,6 +946,7 @@ requirements = [
   "E2E-35",
   "E2E-39",
   "E2E-38",
+  "E2E-40",
   # Touch phones: sizes at the root, sideways phones, no invisible or tiny targets, no key hints
   "UI-413",
   "UI-414",

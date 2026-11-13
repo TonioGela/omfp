@@ -1,16 +1,20 @@
 /**
  * Tool cards (UI-050): name, one-line argument summary, status, duration, and expandable pretty JSON arguments and
- * text result; tools with a recorded shape add their specialized view (`tool-view.ts`). Failed tools are distinct and
- * expanded by default (UI-052).
+ * text result, and the result's images (UI-472); tools with a recorded shape add their specialized view
+ * (`tool-view.ts`). Failed tools are distinct and expanded by default (UI-052).
  */
 
 import type { JobState, JsonValue, ToolCall, ToolResultMessage, ToolRun, UserContent } from "@omfp/core";
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
-import { quietFailure, shownArguments, type ToolView, toolOutput, toolView } from "./tool-view.ts";
+import { quietFailure, type ResultImage, shownArguments, type ToolView, toolOutput, toolView } from "./tool-view.ts";
 
 /** Longest argument summary. */
 const SUMMARY_CHARS = 96;
+/** Longest subject in an image's alt text. */
+const SUBJECT_CHARS = 80;
+/** The arguments naming what a call works on, by preference: the subject of its images' alt text. */
+const SUBJECT_KEYS = ["path", "url", "file", "command", "code", "query", "pattern"] as const;
 
 /** `text` with whitespace runs collapsed to one space, cut to `max` characters with an ellipsis. */
 export function oneLine(text: string, max: number): string {
@@ -42,8 +46,15 @@ export interface ToolCard {
   readonly args: string;
   /** Text parts of the result (or of the latest partial result), else its pretty JSON. */
   readonly result: string | undefined;
+  /** The result's images, with their alt text (UI-472). */
+  readonly images: readonly CardImage[];
   /** The specialized view of the tool (`generic` for the fallback card). */
   readonly view: ToolView;
+}
+
+/** An image of a call's result with its alt text, which names the tool and what it worked on (UI-472). */
+export interface CardImage extends ResultImage {
+  readonly alt: string;
 }
 
 /** Cards start collapsed, failed ones expanded (UI-052). */
@@ -75,10 +86,11 @@ export function toolCard(
   // A background job's state is the card's (UI-270): the call itself ended when the job started.
   const status =
     job === null ? statusOf(partial !== undefined && args === undefined, run, result) : JOB_STATUS[job.state];
+  const summary = summaryOf(name, intent, args, partial);
   return {
     toolCallId,
     name,
-    summary: summaryOf(name, intent, args, partial),
+    summary,
     status: status === "succeeded" && job === null && quietFailure(name, output) !== undefined ? "failed" : status,
     durationMs:
       job === null && calledAt !== undefined && finishedAt !== undefined && calledAt > 0 && finishedAt >= calledAt
@@ -86,8 +98,26 @@ export function toolCard(
         : undefined,
     args: args !== undefined ? prettyJson(args) : (partial ?? "{}"),
     result: job === null ? resultOf(run, result) : (job.output ?? undefined),
+    images: cardImages(output?.images ?? [], name, subjectOf(args) ?? summary),
     view: toolView(name, args, output, status === "succeeded", job, status === "succeeded" || status === "failed"),
   };
+}
+
+/** The first argument of {@link SUBJECT_KEYS} that is a string, on one line. */
+function subjectOf(args: JsonValue | undefined): string | undefined {
+  if (!isObject(args)) {
+    return undefined;
+  }
+  const subject = SUBJECT_KEYS.map((key) => args[key]).find((value) => typeof value === "string" && value !== "");
+  return typeof subject === "string" ? oneLine(subject, SUBJECT_CHARS) : undefined;
+}
+
+/** `images` with their alt text: which image of how many, from tool `name` working on `subject`. */
+function cardImages(images: readonly ResultImage[], name: string, subject: string): CardImage[] {
+  return images.map((image, index) => ({
+    ...image,
+    alt: strings.chat.tool.resultImage(name, subject, index + 1, images.length),
+  }));
 }
 
 /** The card status of a background job's state; a cancelled job is drawn failed. */
@@ -153,12 +183,21 @@ function summarize(args: Readonly<Record<string, unknown>>, omitted: readonly st
   return oneLine(parts.join(", "), SUMMARY_CHARS);
 }
 
-/** The text parts of a tool result value (`{content: [{type: "text", text}], …}`), else its pretty JSON. */
+/**
+ * The text parts of a tool result value (`{content: [{type: "text", text}], …}`), its images as `[image]` (their
+ * base64 is never text, UI-472), else its pretty JSON.
+ */
 export function resultText(value: JsonValue): string {
   if (isObject(value) && Array.isArray(value.content)) {
-    const texts = value.content.flatMap((part) =>
-      isObject(part) && part.type === "text" && typeof part.text === "string" ? [part.text] : [],
-    );
+    const texts = value.content.flatMap((part) => {
+      if (!isObject(part)) {
+        return [];
+      }
+      if (part.type === "image") {
+        return [strings.chat.tool.image];
+      }
+      return part.type === "text" && typeof part.text === "string" ? [part.text] : [];
+    });
     if (texts.length > 0) {
       return texts.join("\n");
     }

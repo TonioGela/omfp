@@ -3,9 +3,10 @@
  * show omp's error first (UI-052); code is highlighted when its language is known (UI-090).
  */
 
-import { Badge, BoxRule, Button, Code, Diff, PathLink, TodoList } from "omfp/kit";
+import { Badge, BoxRule, Button, Code, Dialog, Diff, PathLink, TodoList } from "omfp/kit";
 import {
   ansiRuns,
+  type CardImage,
   type OpenFileOptions,
   repoPath,
   type SubagentRun,
@@ -386,5 +387,59 @@ function Subagent({ agent }: { agent: SubagentRun }): ReactNode {
         </p>
       )}
     </li>
+  );
+}
+
+/** The `src` of an image of a result: its base64 data as a data URL. */
+function imageSource(image: CardImage): string {
+  return `data:${image.mime};base64,${image.data}`;
+}
+
+/**
+ * The images of a call's result (UI-473, UI-474): thumbnails in a row that wraps, shown whether the card is open or
+ * not; a click (or Enter, Space) opens one at full size in a dialog that Escape closes.
+ */
+export function ToolImages({ card }: { card: ToolCard }): ReactNode {
+  const [opened, setOpened] = useState<CardImage | undefined>(undefined);
+  return (
+    <>
+      <ul className="omfp-tool-images" aria-label={text.resultImages(card.name)} data-testid="tool-images">
+        {card.images.map((image, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a result's images never change once it arrived
+          <li key={index} className="omfp-tool-images__item">
+            <Button
+              variant="quiet"
+              className="omfp-tool-images__thumb"
+              aria-label={text.openImage(image.alt)}
+              onPress={() => setOpened(image)}
+              data-testid="tool-image"
+            >
+              <img className="omfp-tool-images__img" src={imageSource(image)} alt={image.alt} decoding="async" />
+            </Button>
+          </li>
+        ))}
+      </ul>
+      <Dialog
+        isOpen={opened !== undefined}
+        onOpenChange={(open) => {
+          if (!open) {
+            setOpened(undefined);
+          }
+        }}
+        isDismissable
+        title={opened?.alt ?? ""}
+        className="omfp-image-dialog"
+        data-testid="tool-image-dialog"
+      >
+        {opened !== undefined && (
+          <img
+            className="omfp-image-dialog__image"
+            src={imageSource(opened)}
+            alt={opened.alt}
+            data-testid="tool-image-full"
+          />
+        )}
+      </Dialog>
+    </>
   );
 }

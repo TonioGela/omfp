@@ -27,7 +27,7 @@ import {
 } from "omfp/sdk";
 import { memo, type ReactNode, useCallback } from "react";
 import { useExpanded } from "./state.ts";
-import { fileTarget, ToolBody, ToolSubject } from "./tool-cards.tsx";
+import { fileTarget, ToolBody, ToolImages, ToolSubject } from "./tool-cards.tsx";
 
 const text = strings.chat;
 
@@ -212,7 +212,8 @@ function markStatus(status: Card["status"]): ToolStatus {
 }
 
 /** A tool card (UI-050, UI-163): collapsible, failed cards distinct and expanded by default (UI-052); tools with a
- * recorded shape show their specialized body, others the fallback's arguments and result. */
+ * recorded shape show their specialized body, others the fallback's arguments and result. The result's images show
+ * under it, open or not (UI-473). */
 export function ToolCardView({ cardKey, card }: { cardKey: string; card: Card }) {
   const [expanded, setExpanded] = useExpanded(cardKey, expandedByDefault(card));
   // `g f` on the focused card opens its file (UI-116).
@@ -249,6 +250,7 @@ export function ToolCardView({ cardKey, card }: { cardKey: string; card: Card })
       >
         <ToolBody card={card} />
       </ToolCard>
+      {card.images.length > 0 && <ToolImages card={card} />}
     </div>
   );
 }

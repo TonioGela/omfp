@@ -114,6 +114,39 @@ describe("transcript items", () => {
       { type: "image", mime: "image/jpeg", data: "AAAA" },
     ]);
   });
+
+  // spec: UI-472
+  test("a tool result's images reach its card with alt text naming the tool and its subject; no base64 in its text", () => {
+    const png = { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" } as const;
+    const state: ThreadState = {
+      ...emptyThreadState(),
+      transcript: [
+        {
+          message_id: null,
+          message: {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "c1", name: "read", arguments: { path: "/w/plot.png" } }],
+          },
+        },
+        {
+          message_id: null,
+          message: {
+            role: "toolResult",
+            toolCallId: "c1",
+            toolName: "read",
+            content: [{ type: "text", text: "Read image file [image/png]" }, png, { ...png, mimeType: "image/jpeg" }],
+          },
+        },
+      ],
+    };
+    const [block] = messageView(state, 0).blocks;
+    const card = block?.type === "tool" ? block.card : undefined;
+    expect(card?.images.map((image) => [image.mime, image.data, image.alt])).toEqual([
+      ["image/png", "iVBORw0KGgo=", "Image 1 of 2 from read /w/plot.png"],
+      ["image/jpeg", "iVBORw0KGgo=", "Image 2 of 2 from read /w/plot.png"],
+    ]);
+    expect(card?.result).toBe("Read image file [image/png]\n[image]\n[image]");
+  });
 });
 
 /** A user's message, an assistant turn of two tool calls (thinking first) and a reply, a steer and its answer. */
