@@ -210,8 +210,12 @@ function DismissButton({ disabled, onRespond }: Pick<BodyProps<unknown>, "disabl
   );
 }
 
-/** The options form one toolbar (arrow keys move between them, Tab leaves it for Dismiss, UI-092). */
+/**
+ * The options form one toolbar (arrow keys move between them, Tab leaves it for Dismiss, UI-092). Only an approval's
+ * first option (Approve) is primary: an `ask`'s options are equal choices omp never ranked (UI-450).
+ */
 function SelectBody({ request, disabled, onRespond }: BodyProps<SelectUiRequest>) {
+  const approval = request.title.startsWith(APPROVAL_TITLE);
   return (
     <div className="omfp-request__actions omfp-interaction__options">
       <Toolbar className="omfp-request__actions" aria-label={request.title} data-testid="interaction-options">
@@ -221,7 +225,7 @@ function SelectBody({ request, disabled, onRespond }: BodyProps<SelectUiRequest>
             // biome-ignore lint/suspicious/noArrayIndexKey: see above
             key={index}
             data-testid="interaction-option"
-            variant={index === 0 ? "primary" : "secondary"}
+            variant={approval && index === 0 ? "primary" : "secondary"}
             isDisabled={disabled}
             onPress={() => onRespond({ value: option })}
           >
@@ -236,6 +240,9 @@ function SelectBody({ request, disabled, onRespond }: BodyProps<SelectUiRequest>
     </div>
   );
 }
+
+/** How omp titles a tool approval's select (`Allow tool: bash`, its `approvalHeader`). */
+const APPROVAL_TITLE = "Allow tool: ";
 
 function ConfirmBody({ request, disabled, onRespond }: BodyProps<ConfirmUiRequest>) {
   return (

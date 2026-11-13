@@ -911,6 +911,8 @@ requirements = [
   "UI-446",
   "UI-447",
   "TST-109",
+  # QA fixes: an ask's options look alike
+  "UI-450",
   # Journeys
   "E2E-22",
   "E2E-23",

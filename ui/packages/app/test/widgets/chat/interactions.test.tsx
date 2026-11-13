@@ -81,6 +81,17 @@ describe("interactions", () => {
     expect(host.announcer.getSnapshot().message).toBe("Request: Allow tool: bash\nCommand: echo approved-run");
   });
 
+  // spec: UI-450
+  test("an ask's select highlights no option; an approval keeps Approve primary", () => {
+    const options = () => screen.getAllByTestId("interaction-option").map((option) => option.dataset.variant);
+    const ask = request({ method: "select", id: "s", title: "Which database?", options: ["Postgres", "SQLite"] });
+    renderThread(<InteractionsWidget />, [...base(), ask]);
+    expect(options()).toEqual(["secondary", "secondary"]);
+    cleanup();
+    renderThread(<InteractionsWidget />, approval().pending);
+    expect(options()).toEqual(["primary", "secondary", "secondary"]);
+  });
+
   // spec: UI-072
   test("a request answered by another client closes with who resolved it", async () => {
     const { pending, resolved } = approval();
