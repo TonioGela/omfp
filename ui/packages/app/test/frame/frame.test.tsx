@@ -7,6 +7,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { Frame, type FrameProps } from "../../src/frame/frame.tsx";
 import type { NotificationPort } from "../../src/frame/notifications.ts";
+import { COARSE_POINTER, SHORT_TOUCH_SCREEN } from "../../src/frame/responsive.ts";
 import {
   chooseView,
   DRAFT_THREAD,
@@ -150,6 +151,32 @@ function shownWidgets(): (string | undefined)[] {
     .getAllByTestId("widget")
     .filter((widget) => widget.closest("[hidden]") === null)
     .map((widget) => widget.dataset.widget);
+}
+
+/** `matchMedia` answering the queries listed in `matching` (a screen's pointer and size); others never match. */
+class SystemScreen {
+  matching = new Set<string>();
+  readonly listeners = new Set<() => void>();
+
+  readonly matchMedia = (query: string): MediaQueryList => {
+    const system = this;
+    const list: Pick<MediaQueryList, "media" | "matches" | "addEventListener" | "removeEventListener"> = {
+      media: query,
+      get matches() {
+        return system.matching.has(query);
+      },
+      addEventListener: (_type: string, listener: unknown) => system.listeners.add(listener as () => void),
+      removeEventListener: (_type: string, listener: unknown) => system.listeners.delete(listener as () => void),
+    };
+    return list as MediaQueryList;
+  };
+
+  set(...matching: string[]): void {
+    this.matching = new Set(matching);
+    for (const listener of this.listeners) {
+      listener();
+    }
+  }
 }
 
 /** Selects `t1` (workspace `w1`) and answers its views topic with `state`. */
@@ -1332,6 +1359,38 @@ describe("responsive frame", () => {
         Reflect.deleteProperty(window, "visualViewport");
       } else {
         Object.defineProperty(window, "visualViewport", original);
+      }
+    }
+  });
+
+  // spec: UI-414
+  test("a short touch screen (a phone held sideways) is a phone at any width; any touch screen follows the visual viewport", () => {
+    const viewport = Object.assign(new EventTarget(), { height: 412 });
+    const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport");
+    const originalMedia = window.matchMedia;
+    const system = new SystemScreen();
+    Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+    window.matchMedia = system.matchMedia;
+    try {
+      setup();
+      const app = screen.getByTestId("app");
+      const height = () => document.documentElement.style.getPropertyValue("--vvh");
+      resize(app, 915);
+      expect([app.dataset.layout, height()]).toEqual(["narrow", ""]);
+      act(() => system.set(COARSE_POINTER, SHORT_TOUCH_SCREEN));
+      expect([app.dataset.layout, height()]).toEqual(["mobile", "412px"]);
+      expect(screen.getAllByTestId("area-button").length).toBe(3);
+      // A tablet: tall enough for the strip, still followed above its keyboard.
+      act(() => system.set(COARSE_POINTER));
+      expect([app.dataset.layout, height()]).toEqual(["narrow", "412px"]);
+      act(() => system.set());
+      expect([app.dataset.layout, height()]).toEqual(["narrow", ""]);
+    } finally {
+      window.matchMedia = originalMedia;
+      if (originalViewport === undefined) {
+        Reflect.deleteProperty(window, "visualViewport");
+      } else {
+        Object.defineProperty(window, "visualViewport", originalViewport);
       }
     }
   });

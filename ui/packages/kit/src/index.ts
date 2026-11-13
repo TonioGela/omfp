@@ -124,6 +124,7 @@ export {
   Tooltip,
   type TooltipProps,
   TooltipTrigger,
+  useMediaQuery,
   useWidthClass,
 } from "./layout.tsx";
 export {

@@ -8,7 +8,6 @@
  * the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything else is a widget of the view.
  */
 
-import { useWidthClass } from "@omfp/kit";
 import { type FileErrorReport, type ViewsState, viewsTopic } from "@omfp/protocol";
 import { Activity, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { createKeyHandler } from "../keymap/handler.ts";
@@ -65,13 +64,14 @@ import { ModeLine, type ModeLineViews, useMode } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
 import { OpenedUrls } from "./opened-urls.tsx";
-import { breakpointOf, LEFT_OPEN, MOBILE_AREA } from "./responsive.ts";
+import { LEFT_OPEN, MOBILE_AREA } from "./responsive.ts";
 import {
   Areas,
   LEFT_COLUMN_ID,
   LeftSplitter,
   LeftStrip,
   ToggleThreadsCommand,
+  useFrameBreakpoint,
   useLeftDrawer,
   useVisualViewport,
 } from "./responsive.tsx";
@@ -184,8 +184,8 @@ export function Frame({
   useUserTheme();
   const appRef = useRef<HTMLDivElement>(null);
   const asideRef = useRef<HTMLElement>(null);
-  // The frame's own width picks the layout (UI-200).
-  const breakpoint = useWidthClass(appRef, breakpointOf);
+  // The frame's own width picks the layout (UI-200); a short touch screen is a phone (UI-414).
+  const breakpoint = useFrameBreakpoint(appRef);
   useLeftDrawer(breakpoint, asideRef);
   useVisualViewport(breakpoint);
   const [leftOpen] = useWindowState(LEFT_OPEN);

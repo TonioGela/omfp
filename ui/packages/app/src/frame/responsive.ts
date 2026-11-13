@@ -1,7 +1,8 @@
 /**
  * The frame's breakpoints (UI-200): measured on the frame itself, not the viewport, so half a desktop screen narrows
  * the window like a phone does. `wide`: the left column beside the view; `narrow` (under 1100 px): a thin strip whose
- * column opens over the content (UI-201); `mobile` (under 700 px): one area at a time from a bottom bar (UI-204).
+ * column opens over the content (UI-201); `mobile` (under 700 px): one area at a time from a bottom bar (UI-204). A
+ * short touch screen (a phone held sideways) is `mobile` whatever its width (UI-414).
  */
 
 import type { ThreadSummary } from "@omfp/protocol";
@@ -23,6 +24,11 @@ export function breakpointOf(width: number): Breakpoint {
   }
   return width < MOBILE_BELOW ? "mobile" : "narrow";
 }
+
+/** A touch screen (coarse primary pointer): touch sizes, the visual viewport followed (UI-413, UI-414). */
+export const COARSE_POINTER = "(pointer: coarse)";
+/** A touch screen too short for the strip and the side column: a phone held sideways (UI-414). */
+export const SHORT_TOUCH_SCREEN = "(pointer: coarse) and (max-height: 500px)";
 
 /** Whether the left column is open over the content (narrow) or as the threads area (mobile). */
 export const LEFT_OPEN = windowKey<boolean>("leftOpen", false);

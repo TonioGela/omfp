@@ -897,6 +897,7 @@ requirements = [
   "E2E-35",
   # Touch phones: sizes at the root, sideways phones, no invisible or tiny targets, no key hints
   "UI-413",
+  "UI-414",
   "UI-415",
 ]
 

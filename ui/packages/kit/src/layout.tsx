@@ -6,6 +6,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import {
   Button as AriaButton,
@@ -119,6 +120,21 @@ export function useWidthClass<T>(ref: RefObject<Element | null>, classify: (widt
     return () => observer.disconnect();
   }, [ref]);
   return value;
+}
+
+/** Whether the media `query` matches, live (e.g. `(pointer: coarse)`); false where `matchMedia` is missing. */
+export function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (changed) => {
+      if (typeof window.matchMedia !== "function") {
+        return () => undefined;
+      }
+      const list = window.matchMedia(query);
+      list.addEventListener("change", changed);
+      return () => list.removeEventListener("change", changed);
+    },
+    () => typeof window.matchMedia === "function" && window.matchMedia(query).matches,
+  );
 }
 
 export interface PopoverDialogProps extends Omit<AriaDialogProps, "children"> {

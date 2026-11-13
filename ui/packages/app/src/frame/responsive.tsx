@@ -4,7 +4,7 @@
  * the visual viewport's height that keeps the composer above a phone's keyboard.
  */
 
-import { AreaBar, type AreaItem, type StripItem, ThreadStrip } from "@omfp/kit";
+import { AreaBar, type AreaItem, type StripItem, ThreadStrip, useMediaQuery, useWidthClass } from "@omfp/kit";
 import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { DRAFT_THREAD, SELECTED_THREAD, useCommand, useThreads, useWindowState } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
@@ -12,7 +12,15 @@ import type { Area } from "../view/layout.ts";
 import { LEFT_DEFAULT_REM, LEFT_WIDTH, resizeLeft } from "../view/sizes.ts";
 import { Resizer } from "../view/splitter.tsx";
 import { threadMarkState } from "../widgets/threads/marks.ts";
-import { type Breakpoint, LEFT_OPEN, MOBILE_AREA, stripThreads } from "./responsive.ts";
+import {
+  type Breakpoint,
+  breakpointOf,
+  COARSE_POINTER,
+  LEFT_OPEN,
+  MOBILE_AREA,
+  SHORT_TOUCH_SCREEN,
+  stripThreads,
+} from "./responsive.ts";
 
 const text = strings.shell.responsive;
 
@@ -196,15 +204,23 @@ export function LeftSplitter({ aside }: { aside: RefObject<HTMLElement | null> }
   );
 }
 
+/** The frame's breakpoint: its own width's (UI-200), `mobile` on a short touch screen (UI-414), both followed live. */
+export function useFrameBreakpoint(app: RefObject<Element | null>): Breakpoint {
+  const byWidth = useWidthClass(app, breakpointOf);
+  const shortTouch = useMediaQuery(SHORT_TOUCH_SCREEN);
+  return shortTouch ? "mobile" : byWidth;
+}
+
 /**
- * On a phone, the app is as tall as the visual viewport (`--vvh` on `<html>`, a runtime value, not a theme token), so
- * the composer stays above the on-screen keyboard (UI-205); elsewhere it fills the window.
+ * On a phone or any touch screen, the app is as tall as the visual viewport (`--vvh` on `<html>`, a runtime value, not
+ * a theme token), so the composer stays above the on-screen keyboard (UI-205, UI-414); elsewhere it fills the window.
  */
 export function useVisualViewport(breakpoint: Breakpoint): void {
+  const follow = useMediaQuery(COARSE_POINTER) || breakpoint === "mobile";
   useEffect(() => {
     const viewport = window.visualViewport;
     const root = document.documentElement;
-    if (breakpoint !== "mobile" || viewport === null || viewport === undefined) {
+    if (!follow || viewport === null || viewport === undefined) {
       return;
     }
     const update = () => root.style.setProperty("--vvh", `${viewport.height}px`);
@@ -214,5 +230,5 @@ export function useVisualViewport(breakpoint: Breakpoint): void {
       viewport.removeEventListener("resize", update);
       root.style.removeProperty("--vvh");
     };
-  }, [breakpoint]);
+  }, [follow]);
 }
