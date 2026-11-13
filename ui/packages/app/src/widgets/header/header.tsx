@@ -6,7 +6,7 @@
  * title row gives the title the room (UI-482): the state, one state-dependent action and a `⋯` popover holding rename,
  * archive and delete. Narrower than {@link COMPACT_BELOW_REM} it is one row (UI-202): title, state and model, the rest
  * in the `⋯` popover. When omp has no model it can use — its start failed saying so, or it lists no model — it offers
- * Log in (UI-388).
+ * Log in (UI-388). A forked thread says where it comes from beside its workspace chip (UI-664).
  */
 
 import type { ThreadSummary } from "@omfp/protocol";
@@ -34,6 +34,7 @@ import {
   decodeModels,
   decodeSession,
   decodeThinkingLevels,
+  forkLineage,
   type HeaderView,
   headerView,
   NO_DETAILS,
@@ -55,6 +56,7 @@ import {
   useThread,
   useThreadActions,
   useThreadSummary,
+  useThreads,
   useWindowState,
   useWorkspaces,
   type WidgetProps,
@@ -128,7 +130,7 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
       bar={
         compact ? undefined : (
           <>
-            <Chips view={view} />
+            <Chips view={view} summary={summary} />
             <div className="omfp-thread-header__session">
               <ModelSelect threadId={summary.id} view={view} onChanged={refreshSession} />
               <ThinkingSelect threadId={summary.id} view={view} onChanged={refreshSession} />
@@ -145,7 +147,7 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
           <BackgroundBadge threadId={summary.id} />
           <PendingRestart threadId={summary.id} view={view} />
           <ModelSelect threadId={summary.id} view={view} onChanged={refreshSession} />
-          <More threadId={summary.id} view={view} onChanged={refreshSession} compact />
+          <More threadId={summary.id} summary={summary} view={view} onChanged={refreshSession} compact />
         </>
       ) : (
         <>
@@ -155,7 +157,7 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
             <BackgroundBadge threadId={summary.id} />
             <ProcessAction threadId={summary.id} view={view} />
             <PendingRestart threadId={summary.id} view={view} />
-            <More threadId={summary.id} view={view} onChanged={refreshSession} compact={false} />
+            <More threadId={summary.id} summary={summary} view={view} onChanged={refreshSession} compact={false} />
           </div>
         </>
       )}
@@ -167,7 +169,13 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
  * The header's `⋯` (UI-482): a popover with why the process failed, rename, archive and delete; the compact header's
  * (UI-202) adds stop or restart, the thinking level, the chips, context usage and cost. An action closes it.
  */
-function More({ threadId, view, onChanged, compact }: SessionProps & { compact: boolean }): ReactNode {
+function More({
+  threadId,
+  summary,
+  view,
+  onChanged,
+  compact,
+}: SessionProps & { summary: ThreadSummary; compact: boolean }): ReactNode {
   const [, setRenaming] = useWindowState(RENAMING_THREAD);
   return (
     <DialogTrigger>
@@ -198,7 +206,7 @@ function More({ threadId, view, onChanged, compact }: SessionProps & { compact: 
             {compact && (
               <>
                 <ThinkingSelect threadId={threadId} view={view} onChanged={onChanged} />
-                <Chips view={view} onDone={close} />
+                <Chips view={view} summary={summary} onDone={close} />
                 <div className="omfp-thread-header__actions">
                   <Usage threadId={threadId} view={view} />
                 </div>
@@ -353,11 +361,61 @@ function InlineEditor({
   );
 }
 
-function Chips({ view, onDone }: { view: HeaderView; onDone?: () => void }): ReactNode {
+function Chips({
+  view,
+  summary,
+  onDone,
+}: {
+  view: HeaderView;
+  summary: ThreadSummary;
+  onDone?: () => void;
+}): ReactNode {
   return (
     <div className="omfp-thread-header__chips">
       <WorkspaceChipButton chip={view.workspace} onDone={onDone} />
+      <Lineage summary={summary} onDone={onDone} />
     </div>
+  );
+}
+
+/** Where a fork comes from (UI-664): `Forked from <source> at “<message>”`; pressing it shows the source while it
+ * exists. */
+function Lineage({ summary, onDone }: { summary: ThreadSummary; onDone?: (() => void) | undefined }): ReactNode {
+  const threads = useThreads();
+  const actions = useThreadActions();
+  const lineage = forkLineage(summary, threads);
+  if (lineage === undefined) {
+    return null;
+  }
+  const label = (
+    <span className="omfp-thread-header__lineage-label" title={lineage.label}>
+      {lineage.label}
+    </span>
+  );
+  if (!lineage.sourceExists) {
+    return (
+      <span className="omfp-thread-header__lineage" data-testid="fork-lineage">
+        <Icon name="git-fork" />
+        {label}
+      </span>
+    );
+  }
+  return (
+    <Button
+      size="sm"
+      variant="quiet"
+      icon={<Icon name="git-fork" />}
+      className="omfp-thread-header__lineage"
+      data-testid="fork-lineage"
+      data-source={lineage.sourceId}
+      aria-label={strings.shell.fork.goToSource(lineage.sourceTitle)}
+      onPress={() => {
+        onDone?.();
+        actions.select(lineage.sourceId);
+      }}
+    >
+      {label}
+    </Button>
   );
 }
 

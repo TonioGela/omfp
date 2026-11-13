@@ -69,6 +69,7 @@ bind. The built-in ones (`omfp://keymap` has them all):
 | `:archive`, `:unarchive`, `:delete`, `:rename [<title>]` | The selected thread. |
 | `:stop`, `:stop!`, `:restart`, `:next` | Stop process: end the thread's omp, with its jobs and live voice (`!`: also of every thread it spawned; Abort, `Ctrl-c`, stops only the running turn); restart it; the next thread needing the user. |
 | `:spawned` | Show only the threads the selected one spawned (again: all). |
+| `:fork` | A new thread in the same workspace with the conversation up to the focused message (transcript; `j`/`k` focus messages) or tree entry (`omfp:tree`), the message included (`threads.fork`); the thread forked from is untouched. A user message's *Fork from here* does the same; the fork's header and row say where it comes from. |
 | `:open <path>[:<line>]` | Open a file of the workspace in a tab next to the chat. |
 | `:rescan` | Rescan the current workspace's repositories. |
 | `:login [<provider>]`, `:logout <provider>` | Log omp in to a provider (without one, pick it); remove omp's stored credentials of one. See "Logging in". |

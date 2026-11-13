@@ -1,10 +1,11 @@
 /**
  * `omfp:tree` (UI-083): the selected thread's session tree (`thread.tree`) in a box titled on its border (UI-187): one
  * row per user or assistant message and summary, the branch the transcript shows marked, the leaf saying so. A row's
- * actions go there (`thread.navigate`, optionally summarizing the branch left), fork a new session from it
- * (`thread.fork`) or label it (`thread.label`). A navigation to a user message gives its text back: it goes into the
- * composer (the thread's draft). The tree is read again after each settled turn and each change of session; a stopped
- * thread's tree is read on request, since reading it starts omp (DMN-070).
+ * actions go there (`thread.navigate`, optionally summarizing the branch left), fork a new thread from it
+ * (`threads.fork`, UI-662; `:fork` on the focused row, UI-663) or label it (`thread.label`). A navigation to a user
+ * message gives its text back: it goes into the composer (the thread's draft). The tree is read again after each
+ * settled turn and each change of session; a stopped thread's tree is read on request, since reading it starts omp
+ * (DMN-070).
  */
 
 import { BorderBox, Button, EmptyState, Icon, IconButton, TextField } from "omfp/kit";
@@ -17,9 +18,11 @@ import {
   treeView,
   useAnnounce,
   useCall,
+  useCommand,
   useReportError,
   useReportSuccess,
   useThread,
+  useThreadActions,
   useWindowState,
   type WidgetProps,
   withEditorText,
@@ -95,19 +98,25 @@ function SessionTree({ threadId }: { threadId: string }): ReactNode {
     [call, threadId, announce, reportSuccess, setDraft, refresh, reportError],
   );
 
-  const fork = useCallback(
-    (row: TreeRow) => {
-      call("thread.fork", { threadId, entryId: row.id }).then((answer) => {
-        if (navigateOutcome(answer).kind === "unchanged") {
-          announce(text.announce.cancelled);
-        } else {
-          reportSuccess(text.announce.forked);
-        }
-        refresh();
-      }, reportError);
+  const actions = useThreadActions();
+  const fork = useCallback((row: TreeRow) => void actions.fork(threadId, row.id), [actions, threadId]);
+  // `:fork` on the row holding the focus (UI-663).
+  useCommand({
+    id: "thread.fork",
+    title: strings.shell.commands.fork,
+    description: strings.shell.commands.forkDescription,
+    aliases: ["fork"],
+    scope: "tree",
+    run: () => {
+      const focused = document.activeElement?.closest<HTMLElement>("[data-entry]");
+      const row = view.rows.find((candidate) => candidate.id === focused?.dataset.entry);
+      if (row?.forkable === true) {
+        fork(row);
+      } else {
+        reportError(strings.shell.fork.noEntry);
+      }
     },
-    [call, threadId, announce, reportSuccess, refresh, reportError],
-  );
+  });
 
   const label = useCallback(
     (row: TreeRow, value: string) => {
@@ -141,6 +150,7 @@ function SessionTree({ threadId }: { threadId: string }): ReactNode {
       level={2}
       className="omfp-tree"
       data-testid="tree"
+      data-omfp-scope="tree"
       end={
         <IconButton
           label={text.refresh}

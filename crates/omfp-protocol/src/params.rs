@@ -505,12 +505,13 @@ pub struct NavigateParams {
     pub instructions: Option<String>,
 }
 
-/// `thread.fork` params.
+/// `thread.fork` and `threads.fork` params.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ForkParams {
     pub thread_id: String,
-    /// Fork history through this entry; the whole session when absent.
+    /// Fork history through this message entry (omp keeps the tool results answering it); the whole session when
+    /// absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entry_id: Option<String>,
 }

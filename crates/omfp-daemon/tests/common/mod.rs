@@ -55,6 +55,7 @@ impl Harness {
             cwd: self.workspace(),
             add_dirs: add_dirs.iter().map(|dir| dir.to_path_buf()).collect(),
             session_dir: self.thread.path().join("sessions"),
+            fork: None,
             model: Some(format!("{FAKE_PROVIDER}/{FAKE_MODEL}")),
             approval_mode: None,
             append_system_prompt: None,

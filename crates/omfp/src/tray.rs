@@ -387,6 +387,7 @@ mod tests {
             updated_at: 1,
             archived_at: None,
             position: 0,
+            forked_from: None,
         }
     }
 

@@ -19,6 +19,7 @@ flowchart LR
   M10 & M13 --> M14[M14 Init files, TSX views and keys]
   M11 --> M15[M15 Downloads without Nix]
   M5c & M14 --> M16[M16 Media and file viewers]
+  M8 & M14 --> M17[M17 Workspace polish]
 ```
 
 ## Spikes
@@ -715,7 +716,9 @@ the bundle's first load does not grow; it is in the SDK because a widget folder 
 
 ## M17 — Workspace polish
 
-Scope: the order of the left column, chosen by the user and kept by the daemon so every window shows it (DMN-280..DMN-285,
+In progress: smaller things that make working across threads smoother.
+
+Scope: **the order of the left column**, chosen by the user and kept by the daemon so every window shows it (DMN-280..DMN-285,
 PRT-170..PRT-172, UI-620..UI-627): drag a workspace section by its head or a thread row to another place, a thread onto
 another workspace to move it there; a long press first on touch screens; `Alt-ArrowUp`/`Alt-ArrowDown` (and with Shift,
 into the previous or next workspace) on the focused row or section; every move announced.
@@ -732,6 +735,23 @@ drivable by WebDriver's pointer actions. New workspaces and threads go last.
 Acceptance: E2E-60 — in headless Chromium, WebDriver pointer actions drag a thread within its workspace, a thread onto
 another workspace and a section; `Alt-ArrowDown` moves the focused thread and is announced; a reload shows the same
 order.
+
+Scope: **forking a thread into a new one** ([02 — Forking a thread](02-daemon.md#forking-a-thread-m17), DMN-300..DMN-306,
+PRT-180..PRT-182, [04 — Forking a thread](04-ui.md#forking-a-thread-m17), UI-660..UI-666): *Fork from here* on a user
+message of the transcript, on a message entry of `omfp:tree` and `:fork` on the focused message or entry make a new
+thread in the same workspace with the conversation up to that message; the original is untouched. The new thread's
+header and its row in the left column say where it comes from.
+
+Acceptance: `contract_thread_fork` against the pinned omp (a fork at a user message resumes up to it in a new thread
+with one session file of its own, goes on and keeps its session across a restart; the source's session, transcript
+and files are unchanged) and E2E-66 on headless Chromium with omp for real.
+
+Design: omp's RPC `fork` moves the running session onto a new file of its own session directory, so it cannot fork a
+thread without changing it; copying or cutting the session JSONL in the daemon would re-implement omp's format (title
+slot, blob references, migrations, labels, the tool results answering the entry, artifacts). The new thread's omp
+therefore starts once with `--fork <source session file>` into its own `--session-dir`, then, for a fork at an entry,
+runs `fork { entryId }` there, and the daemon deletes the full copy. The transcript knows no entry ids: the window finds
+a message's entry in `thread.tree` by role and timestamp on the current branch, as omp's own transcript actions do.
 
 ## Terminal (removed)
 

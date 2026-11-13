@@ -88,6 +88,9 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | PRT-024 | `unsubscribe { topic }` MUST stop delivery for that topic. Closing the socket unsubscribes everything. |
 | PRT-025 | The daemon MUST know which threads are being watched (at least one subscriber) for the idle reaper (DMN-034). |
 | PRT-143 | `UiSettings.theme` MUST be a `BuiltinTheme`, named in kebab case: `synth`, `catppuccin`, `gruvbox`, `tokyo-night`, `nord`, `solarized`, `rose-pine` or `accent` (UI-510); absent means `synth`. Any other name does not decode, so `settings.set` refuses it as `bad_request` and the config file reports it (DMN-238). |
+| PRT-180 | `threads.fork { threadId, entryId? }` (permission `Manage`) MUST answer the new thread's `ThreadSummary` once its omp runs on the copy (DMN-300..DMN-302): the conversation through message entry `entryId` (an id of `thread.tree`), the whole session without it. `thread.fork` keeps forking a new session inside the same thread (DMN-072). |
+| PRT-181 | `ThreadSummary.forkedFrom` MUST be absent for a thread that is no fork, else `ForkOrigin { threadId, title, entryId?, message? }`: the source thread (which may have been deleted since), its title when it was forked, the entry and the first line of its message (DMN-304). |
+| PRT-182 | `threads.fork` MUST answer `bad_request` for a source without a session yet, `not_found` for an unknown thread or an entry that is no message of the source's session, and `thread_failed` (with `details.stderrTail`) when the new omp cannot start; none of them leaves a thread behind (DMN-303). |
 
 ## Event kinds on `thread/<id>`
 
@@ -129,6 +132,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `threads.reorder` | `threadId`, `workspaceId?`, `beforeId?` | `{}`; the thread goes just before `beforeId`, or last, in `workspaceId` (another one moves it there and restarts its omp, DMN-283) or its own (PRT-171, DMN-282) |
 | `threads.archive` / `.unarchive` / `.delete` | `threadId` | `{}`; archive stops the thread's omp process and sets `archivedAt`, unarchive clears it, delete removes the thread's records and directory (workspaces are never removed implicitly) |
 | `threads.search` | `query` | `{ results: [{ threadId, snippet }] }`: threads whose conversation text contains `query`, most recently updated first (DMN-076) |
+| `threads.fork` | `threadId`, `entryId?` (a message entry of `thread.tree`) | the new thread, in the source's workspace, its omp resumed on a copy of the conversation through the entry (PRT-180, DMN-300) |
 | `threads.list` | `workspaceId?`, `includeArchived?` | `{ threads }`: thread summaries, as on `index` (PRT-090) |
 | `thread.prompt` | `threadId`, `text`, `images?`, `behavior?: "steer" \| "followUp"` | `{ promptId }`; completion arrives as `prompt_result` |
 | `thread.steer` / `thread.follow_up` | `threadId`, `text`, `images?` | `{}` |

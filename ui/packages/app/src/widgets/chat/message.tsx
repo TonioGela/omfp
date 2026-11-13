@@ -32,17 +32,20 @@ import { fileTarget, ToolBody, ToolImages, ToolSubject } from "./tool-cards.tsx"
 const text = strings.chat;
 
 /** One message: name line, blocks, error (UI-171). One that `continues` its turn has no name line (UI-470). `cardKey`
- * prefixes the keys of its collapsible blocks. While it streams, a block caret follows the last character (UI-147). */
+ * prefixes the keys of its collapsible blocks. While it streams, a block caret follows the last character (UI-147).
+ * `actions` act on the message (fork from here, UI-660). */
 export function MessageRow({
   cardKey,
   view,
   streaming,
   continues,
+  actions,
 }: {
   cardKey: string;
   view: MessageView;
   streaming: boolean;
   continues: boolean;
+  actions?: ReactNode;
 }) {
   const name = (
     <>
@@ -86,7 +89,14 @@ export function MessageRow({
     );
   }
   return (
-    <Message {...common} author={view.role} name={name} continues={continues} error={error}>
+    <Message
+      {...common}
+      author={view.role}
+      name={name}
+      continues={continues}
+      error={error}
+      {...(actions === undefined ? {} : { actions })}
+    >
       {blocks}
       {caret}
     </Message>

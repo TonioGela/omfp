@@ -7,6 +7,8 @@ import { CallError } from "@omfp/client";
 import { useMemo } from "react";
 import { strings } from "../strings/index.ts";
 import { expandPastes } from "../vm/paste.ts";
+import { displayTitle } from "../vm/threads.ts";
+import { messageEntryId } from "../vm/tree.ts";
 import { currentWorkspaceId as workspaceOf } from "../vm/workspaces.ts";
 import { useThreadSummary, useWindowState } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
@@ -43,6 +45,17 @@ export interface ThreadActions {
   rename(threadId: string, title: string): Promise<void>;
   stop(threadId: string): Promise<void>;
   restart(threadId: string): Promise<void>;
+  /**
+   * Forks `threadId` into a new thread of its workspace holding the conversation through entry `entryId` (the whole
+   * session without one, `threads.fork`), then shows it with a success toast (UI-666). Resolves to the new thread's
+   * id, `undefined` when it failed (reported).
+   */
+  fork(threadId: string, entryId?: string): Promise<string | undefined>;
+  /**
+   * {@link ThreadActions.fork} at a transcript message: its entry on the session's current branch, found in
+   * `thread.tree` by role and timestamp (UI-661); a message the branch lacks is reported.
+   */
+  forkAtMessage(threadId: string, message: { role: string; timestamp?: number | null }): Promise<string | undefined>;
 }
 
 /** The message of a failed call or any thrown value; a daemon error carrying omp's stderr tail (a failed start,
@@ -237,7 +250,37 @@ export function threadActions(host: OmfpHost): ThreadActions {
     rename: (threadId, title) => attempt(() => client.call("threads.update", { threadId, title })),
     stop: (threadId) => attempt(() => client.call("thread.stop", { threadId })),
     restart: (threadId) => attempt(() => client.call("thread.restart", { threadId })),
+    fork: (threadId, entryId) => forkThread(host, threadId, entryId),
+    forkAtMessage: async (threadId, { role, timestamp }) => {
+      if (typeof timestamp !== "number") {
+        reportError(host, strings.shell.fork.noTimestamp);
+        return undefined;
+      }
+      try {
+        const entryId = messageEntryId(await client.call("thread.tree", { threadId }), role, timestamp);
+        if (entryId === undefined) {
+          reportError(host, strings.shell.fork.notOnBranch);
+          return undefined;
+        }
+        return await forkThread(host, threadId, entryId);
+      } catch (error) {
+        reportError(host, error);
+        return undefined;
+      }
+    },
   };
+}
+
+async function forkThread(host: OmfpHost, threadId: string, entryId: string | undefined): Promise<string | undefined> {
+  try {
+    const thread = await host.client.call("threads.fork", { threadId, ...(entryId === undefined ? {} : { entryId }) });
+    host.window.set(SELECTED_THREAD, thread.id);
+    reportSuccess(host, strings.shell.fork.forked(displayTitle(thread)));
+    return thread.id;
+  } catch (error) {
+    reportError(host, error);
+    return undefined;
+  }
 }
 
 /** {@link ThreadActions} of this window. */

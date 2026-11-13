@@ -21,6 +21,9 @@ fn user_version(path: &Path) -> i64 {
         .unwrap()
 }
 
+/// The `user_version` of a database with every migration applied.
+const LATEST: i64 = 12;
+
 fn tables(path: &Path) -> Vec<String> {
     let conn = raw(path);
     let mut stmt = conn
@@ -81,15 +84,16 @@ fn thread(workspace_id: &str) -> Thread {
     }
 }
 
-/// Turns a database back into a version-10 one: no order of the left column.
-const BACK_TO_10: &str =
-    "ALTER TABLE workspaces DROP COLUMN position; ALTER TABLE threads DROP COLUMN position;";
+/// Turns a database back into a version-10 one: no order of the left column, no fork lineage.
+const BACK_TO_10: &str = "DROP TABLE thread_forks;
+    ALTER TABLE workspaces DROP COLUMN position; ALTER TABLE threads DROP COLUMN position;";
 
-/// Turns a database back into a version-5 one: no widget state, no activity log, no prompt history, no order, thread
-/// tags and `workspaces.owned` again.
+/// Turns a database back into a version-5 one: no widget state, no activity log, no prompt history, no order, no fork
+/// lineage, thread tags and `workspaces.owned` again.
 const BACK_TO_5: &str =
     "ALTER TABLE workspaces DROP COLUMN position; ALTER TABLE threads DROP COLUMN position;
     DROP TABLE widget_state; DROP TABLE activity; DROP TABLE prompt_history;
+    DROP TABLE thread_forks;
     CREATE TABLE thread_tags (
     thread_id TEXT NOT NULL REFERENCES threads (id) ON DELETE CASCADE, tag TEXT NOT NULL,
     PRIMARY KEY (thread_id, tag));
@@ -102,7 +106,7 @@ fn opening_an_empty_file_applies_every_migration() {
     let db = dir.path().join("omfp.db");
     drop(open(&dir));
 
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), LATEST);
     // Only metadata lives in the database: no transcript tables, no repositories of workspaces (DMN-022).
     assert_eq!(
         tables(&db),
@@ -111,6 +115,7 @@ fn opening_an_empty_file_applies_every_migration() {
             "prompt_history",
             "seen_repositories",
             "settings",
+            "thread_forks",
             "thread_roots",
             "threads",
             "widget_state",
@@ -132,7 +137,7 @@ fn reopening_is_idempotent_and_keeps_data() {
         store.insert_thread(&t).unwrap();
     }
     let store = open(&dir);
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), LATEST);
     assert_eq!(store.workspaces().unwrap(), vec![ws]);
     assert_eq!(store.threads().unwrap(), vec![t]);
 }
@@ -159,7 +164,7 @@ fn migration_4_counts_existing_titles_as_set() {
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), LATEST);
     assert_eq!(
         store.threads().unwrap(),
         vec![Thread {
@@ -191,7 +196,7 @@ fn migration_5_keeps_known_repositories_as_seen_ones_and_drops_the_registry() {
     drop(conn);
 
     let store = open(&dir);
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), LATEST);
     assert!(!tables(&db).contains(&"repositories".to_owned()));
     assert_eq!(
         store.seen_repositories().unwrap(),
@@ -221,7 +226,7 @@ fn a_database_from_a_newer_daemon_is_refused() {
             error,
             StoreError::UnknownSchemaVersion {
                 found: 99,
-                supported: 11
+                supported: LATEST
             }
         ),
         "{error:?}"
@@ -297,7 +302,7 @@ fn migration_7_adds_an_empty_widget_state_table_and_keeps_the_data() {
 
     let store = open(&dir);
 
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), LATEST);
     assert_eq!(count(&db, "widget_state"), 0);
     assert_eq!(store.workspaces().unwrap(), vec![ws.clone()]);
     assert_eq!(store.widget_state(&ws.id).unwrap(), BTreeMap::new());
@@ -593,7 +598,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
 
     let store = Store::open(&old.db, &old.root).unwrap();
 
-    assert_eq!(user_version(&old.db), 11);
+    assert_eq!(user_version(&old.db), LATEST);
     assert_eq!(
         tables(&old.db),
         [
@@ -601,6 +606,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
             "prompt_history",
             "seen_repositories",
             "settings",
+            "thread_forks",
             "thread_roots",
             "threads",
             "widget_state",
@@ -620,7 +626,7 @@ fn migration_3_moves_every_thread_into_its_own_workspace_folder() {
     // Reopening is a no-op: same records, no new folders.
     drop(store);
     let store = Store::open(&old.db, &old.root).unwrap();
-    assert_eq!(user_version(&old.db), 11);
+    assert_eq!(user_version(&old.db), LATEST);
     assert_eq!(
         assert_migrated_records(&store, &old),
         (one.clone(), two.clone())
@@ -641,7 +647,7 @@ fn columns(db: &Path, table: &str) -> Vec<String> {
 }
 
 fn assert_dropped_tags_and_owned(db: &Path) {
-    assert_eq!(user_version(db), 11);
+    assert_eq!(user_version(db), LATEST);
     assert!(!tables(db).contains(&"thread_tags".to_owned()));
     assert_eq!(
         columns(db, "workspaces"),
@@ -779,7 +785,7 @@ fn migration_8_adds_an_empty_activity_log_and_keeps_the_data() {
 
     let store = open(&dir);
 
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), LATEST);
     assert_eq!(count(&db, "activity"), 0);
     assert_eq!(
         columns(&db, "activity"),
@@ -815,7 +821,7 @@ fn migration_9_lets_an_activity_entry_have_no_thread_and_keeps_the_log() {
 
     let store = open(&dir);
 
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), LATEST);
     let mcp = store
         .record_activity(
             &NewActivity {
@@ -878,7 +884,7 @@ fn migration_11_keeps_the_order_the_column_showed() {
 
     let store = open(&dir);
 
-    assert_eq!(user_version(&db), 11);
+    assert_eq!(user_version(&db), LATEST);
     let positions = store.positions().unwrap();
     let at = |id: &str| positions[id];
     assert_eq!((at(&alpha.id), at(&beta.id), at(&zeta.id)), (0, 1, 2));

@@ -4,10 +4,12 @@
  * while pinned. The transcript handles PageUp/PageDown/Home/End itself (WebKitGTK does not scroll a focused
  * container, S-11) and the transcript-scope `nav.*` commands (UI-095): `j`/`k` page through an item taller than the
  * viewport before moving on (UI-370), `Ctrl-d`/`Ctrl-u` and PageDown/PageUp scroll and keep the focus while the
- * focused item shows (UI-371). Every scroll is instant, so no motion setting changes them.
+ * focused item shows (UI-371). Every scroll is instant, so no motion setting changes them. A user message offers
+ * "Fork from here" (UI-660), and `:fork` forks from the current message (UI-663).
  */
 
 import type { ThreadState } from "@omfp/core";
+import { Button, Icon } from "omfp/kit";
 import {
   arrivalScroll,
   halfPageScrollTop,
@@ -15,6 +17,7 @@ import {
   isScrollUpKey,
   transcriptItems as items,
   keyScrollTop,
+  type MessageView,
   type MoveCommand,
   mountScrollTop,
   movedUpByUser,
@@ -30,8 +33,11 @@ import {
   type ScrollPosition,
   scrollPosition,
   strings,
+  type TranscriptItem,
   useAnnounce,
   useCommand,
+  useReportError,
+  useThreadActions,
   useVirtualizer,
   useWindowState,
 } from "omfp/sdk";
@@ -151,6 +157,40 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
   useEffect(() => () => setMeasurements(virtualizer.measurementsCache), [setMeasurements, virtualizer]);
   const [current, setCurrent] = useState<number | undefined>(undefined);
   useSettledAnnouncements(state.settled);
+  const threadActions = useThreadActions();
+  const reportError = useReportError();
+  const latestState = useRef(state);
+  latestState.current = state;
+  // One stable function for every row, so a render does not render the rows again (UI-191).
+  const forkAt = useCallback(
+    (index: number) => {
+      const message = latestState.current.transcript[index]?.message;
+      if (message !== undefined) {
+        void threadActions.forkAtMessage(threadId, message);
+      }
+    },
+    [threadActions, threadId],
+  );
+  const latestCurrent = useRef(current);
+  latestCurrent.current = current;
+  useCommand({
+    id: "thread.fork",
+    title: strings.shell.commands.fork,
+    description: strings.shell.commands.forkDescription,
+    aliases: ["fork"],
+    scope: "transcript",
+    run: () => {
+      const focused = document.activeElement?.closest<HTMLElement>("[data-index]")?.dataset.index;
+      const position = focused === undefined ? latestCurrent.current : Number(focused);
+      const row = position === undefined ? undefined : rows[position];
+      const message = row?.kind.type === "message" ? state.transcript[row.kind.index]?.message : undefined;
+      if (row?.kind.type === "message" && (message?.role === "user" || message?.role === "assistant")) {
+        forkAt(row.kind.index);
+      } else {
+        reportError(strings.shell.fork.noMessage);
+      }
+    },
+  });
 
   /** Scrolls to the restore target or, while pinned, to the bottom. A pinned view the user moved up since the last
    * scroll or follow unpins instead, even before its scroll event arrives (WebKitGTK sends it at the next frame,
@@ -391,7 +431,12 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
                   transform: `translateY(${virtual.start}px)`,
                 }}
               >
-                <Row cardKey={`${threadId}/${row.key}`} content={content} />
+                <Row
+                  cardKey={`${threadId}/${row.key}`}
+                  content={content}
+                  forkIndex={forkIndex(state, row)}
+                  onFork={forkAt}
+                />
               </div>
             );
           })}
@@ -416,13 +461,57 @@ const NavRegistration = memo(function NavRegistration({
   return null;
 });
 
+/** The transcript index of a user message's row, which offers "Fork from here" (UI-660); `undefined` for others. */
+function forkIndex(state: ThreadState, row: TranscriptItem): number | undefined {
+  return row.kind.type === "message" && state.transcript[row.kind.index]?.message.role === "user"
+    ? row.kind.index
+    : undefined;
+}
+
+/** The first line of a message's text, what its fork button names. */
+function firstLine(view: MessageView): string {
+  const block = view.blocks.find((candidate) => candidate.type === "text");
+  const line = block?.type === "text" ? (block.text.trim().split("\n", 1)[0] ?? "") : "";
+  return line.length > 80 ? `${line.slice(0, 79)}…` : line;
+}
+
 /** One row; renders again only when its content changes (a streaming delta changes the streaming row's only). */
-const Row = memo(function Row({ cardKey, content }: { cardKey: string; content: RowContent }) {
+const Row = memo(function Row({
+  cardKey,
+  content,
+  forkIndex,
+  onFork,
+}: {
+  cardKey: string;
+  content: RowContent;
+  forkIndex: number | undefined;
+  onFork: (index: number) => void;
+}) {
   switch (content.type) {
-    case "message":
+    case "message": {
+      const actions =
+        forkIndex === undefined ? undefined : (
+          <Button
+            size="sm"
+            variant="quiet"
+            icon={<Icon name="git-fork" />}
+            aria-label={strings.shell.fork.actionLabel(firstLine(content.view))}
+            data-testid="message-fork"
+            onPress={() => onFork(forkIndex)}
+          >
+            {strings.shell.fork.action}
+          </Button>
+        );
       return (
-        <MessageRow cardKey={cardKey} view={content.view} streaming={content.streaming} continues={content.continues} />
+        <MessageRow
+          cardKey={cardKey}
+          view={content.view}
+          streaming={content.streaming}
+          continues={content.continues}
+          {...(actions === undefined ? {} : { actions })}
+        />
       );
+    }
     case "system":
       return <SystemRowView cardKey={cardKey} row={content.row} />;
     case "notice":

@@ -155,3 +155,36 @@ export function navigateOutcome(result: unknown): NavigateOutcome {
 export function withEditorText(draft: string, editorText: string): string {
   return draft.trim() === "" ? editorText : `${draft.replace(/\s+$/, "")}\n\n${editorText}`;
 }
+
+/**
+ * The id of the `message` entry on the session's current branch — from `thread.tree`'s leaf up to the root — whose
+ * message has `role` and `timestamp` (UI-661): a transcript message carries no entry id, so it is found the way omp's
+ * own transcript actions find theirs; the last one on the branch wins. `undefined` when the branch has none.
+ */
+export function messageEntryId(result: unknown, role: string, timestamp: number): string | undefined {
+  const entries = new Map<string, Readonly<Record<string, unknown>>>();
+  const index = (nodes: unknown) => {
+    for (const node of Array.isArray(nodes) ? nodes : []) {
+      if (isObject(node) && isObject(node.entry) && typeof node.entry.id === "string") {
+        entries.set(node.entry.id, node.entry);
+        index(node.children);
+      }
+    }
+  };
+  index(isObject(result) ? result.tree : undefined);
+  const seen = new Set<string>();
+  let id: unknown = isObject(result) ? result.leafId : undefined;
+  while (typeof id === "string" && !seen.has(id)) {
+    seen.add(id);
+    const entry = entries.get(id);
+    if (entry === undefined) {
+      return undefined;
+    }
+    const message = isObject(entry.message) ? entry.message : undefined;
+    if (entry.type === "message" && message?.role === role && message.timestamp === timestamp) {
+      return id;
+    }
+    id = entry.parentId;
+  }
+  return undefined;
+}

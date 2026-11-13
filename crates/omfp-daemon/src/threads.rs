@@ -8,7 +8,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::paths::DataDir;
-use crate::store::{Provenance, Store, StoreError, Thread, TitleSource, new_id, now_ms};
+use crate::store::{
+    Provenance, Store, StoreError, Thread, ThreadFork, TitleSource, new_id, now_ms,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ThreadError {
@@ -98,6 +100,17 @@ impl Threads {
             return Err(error.into());
         }
         self.get(&thread.id)
+    }
+
+    /// Creates a thread like [`Self::create`] with its lineage (DMN-300): neither exists without the other.
+    pub fn create_fork(&self, new: NewThread, fork: &ThreadFork) -> Result<Thread> {
+        let thread = self.create(new)?;
+        if let Err(error) = self.store.insert_thread_fork(&thread.id, fork) {
+            // Best effort, as for a failed insert: no thread without the lineage it was made with.
+            let _ = self.delete(&thread.id);
+            return Err(error.into());
+        }
+        Ok(thread)
     }
 
     pub fn get(&self, id: &str) -> Result<Thread> {

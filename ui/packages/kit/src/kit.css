@@ -3529,10 +3529,33 @@
   }
 
   .omfp-msg {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--omfp-s1);
     min-inline-size: 0;
+  }
+
+  /* A message's actions (UI-660): at the end of its name line, shown while it is hovered or holds the focus; always on
+     touch screens, where nothing hovers. */
+  .omfp-msg__actions {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-end: 0;
+    display: inline-flex;
+    gap: var(--omfp-s1);
+    opacity: 0;
+  }
+
+  .omfp-msg:hover > .omfp-msg__actions,
+  .omfp-msg:focus-within > .omfp-msg__actions {
+    opacity: 1;
+  }
+
+  @media (hover: none) {
+    .omfp-msg__actions {
+      opacity: 1;
+    }
   }
 
   .omfp-msg__name {

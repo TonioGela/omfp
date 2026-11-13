@@ -501,6 +501,15 @@
       ]
     },
     {
+      "id": "thread.fork",
+      "title": "Fork a new thread from the selected message (transcript) or entry (session tree)",
+      "aliases": [
+        "fork"
+      ],
+      "description": "Makes a new thread in the same workspace holding the conversation up to the message, the message included; the thread you fork from is left as it is.",
+      "scope": "transcript"
+    },
+    {
       "id": "thread.new",
       "title": "New thread in the current workspace",
       "aliases": [

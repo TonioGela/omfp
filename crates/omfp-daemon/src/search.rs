@@ -1,5 +1,6 @@
 //! Full-text search over the conversations of threads (DMN-076): the user and assistant text in each thread's omp
-//! session files (`<session_dir>/*.jsonl`), read directly, without starting omp.
+//! session files (`<session_dir>/*.jsonl`), read directly, without starting omp. The same reading finds the message a
+//! fork ends at (DMN-304).
 
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
@@ -14,6 +15,8 @@ pub const MIN_QUERY_CHARS: usize = 2;
 /// Characters of context kept before and after the match in a snippet.
 const CONTEXT_BEFORE: usize = 30;
 const CONTEXT_AFTER: usize = 60;
+/// Characters of a message's first line kept as a fork's lineage (DMN-304).
+pub const FORK_MESSAGE_CHARS: usize = 120;
 
 /// A thread whose conversation contains the query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +108,35 @@ fn message_texts(entry: &Value) -> Vec<&str> {
     }
 }
 
+/// The `message` entry `entry_id` of session file `file` (DMN-304): `None` when the file has no such message entry,
+/// else the first non-empty line of its user or assistant text, at most [`FORK_MESSAGE_CHARS`] characters (`…` where
+/// cut), `""` for a message without text (a tool result, an assistant message of tool calls only).
+pub fn message_entry(file: &Path, entry_id: &str) -> std::io::Result<Option<String>> {
+    let reader = std::io::BufReader::new(std::fs::File::open(file)?);
+    for line in reader.lines() {
+        let Ok(entry) = serde_json::from_str::<Value>(&line?) else {
+            continue;
+        };
+        if entry["type"] != "message" || entry["id"] != entry_id {
+            continue;
+        }
+        let first = message_texts(&entry)
+            .into_iter()
+            .flat_map(str::lines)
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or_default();
+        let text = if first.chars().count() > FORK_MESSAGE_CHARS {
+            let kept: String = first.chars().take(FORK_MESSAGE_CHARS - 1).collect();
+            format!("{}…", kept.trim_end())
+        } else {
+            first.to_owned()
+        };
+        return Ok(Some(text));
+    }
+    Ok(None)
+}
+
 /// The context of the first case-insensitive occurrence of `needle` in `text`, if any.
 fn snippet(text: &str, needle: &[char]) -> Option<String> {
     let chars: Vec<char> = text.chars().collect();
@@ -178,5 +210,34 @@ mod tests {
             message_texts(&serde_json::json!({ "type": "custom", "data": "x" })),
             Vec::<&str>::new()
         );
+    }
+
+    // spec: DMN-304
+    #[test]
+    fn a_message_entry_gives_its_first_text_line_and_other_entries_count_as_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("s.jsonl");
+        let long = "x".repeat(200);
+        let lines = [
+            serde_json::json!({ "type": "session", "id": "S" }).to_string(),
+            "not json".to_owned(),
+            serde_json::json!({ "type": "model_change", "id": "m1" }).to_string(),
+            serde_json::json!({ "type": "message", "id": "u1", "message": { "role": "user", "content": "\n  Fix the cart\nthen test" } }).to_string(),
+            serde_json::json!({ "type": "message", "id": "a1", "message": { "role": "assistant", "content": [{ "type": "toolCall", "name": "bash" }] } }).to_string(),
+            serde_json::json!({ "type": "message", "id": "u2", "message": { "role": "user", "content": long } }).to_string(),
+        ];
+        std::fs::write(&file, lines.join("\n")).unwrap();
+
+        assert_eq!(
+            message_entry(&file, "u1").unwrap().as_deref(),
+            Some("Fix the cart")
+        );
+        assert_eq!(message_entry(&file, "a1").unwrap().as_deref(), Some(""));
+        let cut = message_entry(&file, "u2").unwrap().unwrap();
+        assert_eq!(cut.chars().count(), FORK_MESSAGE_CHARS);
+        assert!(cut.ends_with('…'), "{cut}");
+        assert_eq!(message_entry(&file, "m1").unwrap(), None);
+        assert_eq!(message_entry(&file, "nope").unwrap(), None);
+        assert!(message_entry(&dir.path().join("missing.jsonl"), "u1").is_err());
     }
 }

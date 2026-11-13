@@ -36,8 +36,8 @@ use omfp_protocol::{
 };
 use omfp_protocol::{ContextUsage, SessionTokens, SessionUsage, ThreadSession};
 use omfp_protocol::{
-    CreatedBy, ListThreadsParams, Provenance, RestartReason, ThreadList, ThreadSummary,
-    WorkspaceList,
+    CreatedBy, ForkOrigin, ListThreadsParams, Provenance, RestartReason, ThreadList, ThreadSummary,
+    TitleSource, WorkspaceList,
 };
 use omfp_protocol::{FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
 use omfp_protocol::{
@@ -375,6 +375,13 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
         example::<method::ThreadsArchive>(thread_ref(), &Empty {}),
         example::<method::ThreadsUnarchive>(thread_ref(), &Empty {}),
         example::<method::ThreadsDelete>(thread_ref(), &Empty {}),
+        example::<method::ThreadsFork>(
+            ForkParams {
+                thread_id: THREAD_ID.to_owned(),
+                entry_id: Some("e1".to_owned()),
+            },
+            &forked_thread(),
+        ),
         example::<method::ThreadsSearch>(
             SearchThreadsParams {
                 query: "flaky".to_owned(),
@@ -1833,6 +1840,85 @@ fn a_held_back_restart_carries_its_reasons_and_none_is_absent() {
         serde_json::from_value::<ThreadSummary>(summary).unwrap(),
         held
     );
+}
+
+/// A thread forked from [`thread`] at its first message (PRT-181).
+fn forked_thread() -> ThreadSummary {
+    ThreadSummary {
+        id: "01JD8X3Q4T9V2W6Y5Z7A1B3C4F".to_owned(),
+        title: "Checkout v2 (fork)".to_owned(),
+        title_source: TitleSource::Placeholder,
+        forked_from: Some(ForkOrigin {
+            thread_id: THREAD_ID.to_owned(),
+            title: "Checkout v2".to_owned(),
+            entry_id: Some("e1".to_owned()),
+            message: Some("Implement checkout v2 as described in docs/checkout.md".to_owned()),
+        }),
+        ..thread()
+    }
+}
+
+// spec: PRT-181
+#[test]
+fn a_fork_names_its_source_and_message_and_other_threads_have_no_origin() {
+    let summary = serde_json::to_value(thread()).unwrap();
+    assert_eq!(summary.get("forkedFrom"), None);
+    let forked = forked_thread();
+    let summary = serde_json::to_value(&forked).unwrap();
+    assert_eq!(
+        summary["forkedFrom"],
+        json!({
+            "threadId": THREAD_ID,
+            "title": "Checkout v2",
+            "entryId": "e1",
+            "message": "Implement checkout v2 as described in docs/checkout.md"
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<ThreadSummary>(summary).unwrap(),
+        forked
+    );
+    let whole = ThreadSummary {
+        forked_from: Some(ForkOrigin {
+            thread_id: THREAD_ID.to_owned(),
+            title: "Checkout v2".to_owned(),
+            entry_id: None,
+            message: None,
+        }),
+        ..thread()
+    };
+    assert_eq!(
+        serde_json::to_value(&whole).unwrap()["forkedFrom"],
+        json!({ "threadId": THREAD_ID, "title": "Checkout v2" })
+    );
+}
+
+// spec: PRT-180
+#[test]
+fn threads_fork_takes_a_thread_and_an_optional_entry_and_answers_the_new_thread() {
+    let decode = |params: Value| {
+        decode_request(
+            &json!({ "type": "request", "id": "c1", "method": "threads.fork", "params": params })
+                .to_string(),
+        )
+        .unwrap()
+        .call
+    };
+    assert_eq!(
+        decode(json!({ "threadId": THREAD_ID })),
+        Call::ThreadsFork(ForkParams {
+            thread_id: THREAD_ID.to_owned(),
+            entry_id: None,
+        })
+    );
+    assert_eq!(
+        decode(json!({ "threadId": THREAD_ID, "entryId": "e1" })),
+        Call::ThreadsFork(ForkParams {
+            thread_id: THREAD_ID.to_owned(),
+            entry_id: Some("e1".to_owned()),
+        })
+    );
+    assert!(METHODS.contains(&"threads.fork"));
 }
 
 // spec: DMN-075

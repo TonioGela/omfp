@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { draftKey, SELECTED_THREAD, SUCCESSES } from "../../src/sdk/index.ts";
+import { draftKey, ERRORS, SELECTED_THREAD, SUCCESSES } from "../../src/sdk/index.ts";
 import { TreeWidget } from "../../src/widgets/tree/index.ts";
 import { renderWithHost, testHost } from "../support/host.tsx";
 import { fixtureEvents, summary } from "./chat/fixtures.ts";
@@ -37,7 +37,7 @@ function setup(events: readonly ThreadEvent[] = fixtureEvents("text_reply"), sel
   const base = testHost();
   base.client.answers.set("thread.tree", () => TREE);
   base.client.answers.set("thread.navigate", () => ({ cancelled: false, editorText: "second question" }));
-  base.client.answers.set("thread.fork", () => ({ cancelled: false }));
+  base.client.answers.set("threads.fork", () => ({ ...summary("01F"), title: "01T (fork)" }));
   base.client.answers.set("thread.label", () => ({}));
   if (select) {
     base.host.window.set(SELECTED_THREAD, THREAD);
@@ -106,17 +106,24 @@ describe("omfp:tree", () => {
     });
   });
 
-  // spec: UI-083, UI-520
-  test("fork from an entry, with a success toast, and label one (an empty label removes it)", async () => {
+  // spec: UI-083, UI-520, UI-662, UI-666
+  test("fork a new thread from an entry, shown with a success toast", async () => {
     const test = setup();
     await test.user.click(within(await screen.findByTestId("tree")).getAllByTestId("tree-fork")[1] as HTMLElement);
-    expect(test.client.callsTo("thread.fork").map((call) => call.params)).toEqual([
+    expect(test.client.callsTo("threads.fork").map((call) => call.params)).toEqual([
       { threadId: THREAD, entryId: "a1" },
     ]);
-    await waitFor(() =>
-      expect(test.host.window.get(SUCCESSES).map((success) => success.text)).toEqual(["Forked into a new session"]),
-    );
+    expect(test.client.callsTo("thread.fork")).toEqual([]);
+    await waitFor(() => expect(test.host.window.get(SELECTED_THREAD)).toBe("01F"));
+    expect(test.host.window.get(SUCCESSES).map((success) => success.text)).toEqual([
+      "Forked into \u201c01T (fork)\u201d",
+    ]);
+  });
 
+  // spec: UI-083
+  test("label an entry; an empty label removes it", async () => {
+    const test = setup();
+    await screen.findByTestId("tree");
     await test.user.click(within(row("u1")).getByTestId("tree-label-edit"));
     await test.user.type(within(row("u1")).getByTestId("tree-label-input"), "start");
     await test.user.click(within(row("u1")).getByTestId("tree-label-save"));
@@ -140,5 +147,21 @@ describe("omfp:tree", () => {
     cleanup();
     setup(fixtureEvents("text_reply"), false);
     expect(screen.getByTestId("tree-no-thread").textContent).toContain("No thread selected");
+  });
+
+  // spec: UI-663
+  test(":fork forks from the focused row of the tree, and without one says what to select", async () => {
+    const test = setup();
+    await screen.findByTestId("tree");
+    within(row("u2")).getByTestId("tree-label-edit").focus();
+    test.host.commands.run("thread.fork", [], ["tree"]);
+    await waitFor(() =>
+      expect(test.client.callsTo("threads.fork").map((call) => call.params)).toEqual([
+        { threadId: THREAD, entryId: "u2" },
+      ]),
+    );
+    (document.activeElement as HTMLElement | null)?.blur();
+    test.host.commands.run("thread.fork", [], ["tree"]);
+    expect(test.host.window.get(ERRORS)).toEqual(["Select a message of the tree to fork from"]);
   });
 });

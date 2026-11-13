@@ -505,6 +505,22 @@
     white-space: nowrap;
   }
 
+  /* A fork's lineage (UI-664): beside the workspace chip, giving way (ellipsis) like it. */
+  .omfp-thread-header__lineage {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--omfp-s1);
+    min-inline-size: 0;
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-thread-header__lineage-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* The full header (UI-202) keeps two rows: its workspace chip gives way (ellipsis) to the session controls instead
    * of the bar wrapping onto a third row. */
   .omfp-thread-header:not([data-compact]) .omfp-chat-header__bar {
@@ -898,6 +914,14 @@
     flex: none;
     font-family: var(--omfp-font-code);
     font-size: var(--omfp-fs-2xs);
+  }
+
+  /* A forked thread's mark before its title (UI-665). */
+  .omfp-threads__forked {
+    display: inline-flex;
+    margin-inline-end: var(--omfp-s1);
+    color: var(--omfp-on-surface-variant);
+    vertical-align: middle;
   }
 
   .omfp-threads__spawned-filter[aria-pressed="true"] {

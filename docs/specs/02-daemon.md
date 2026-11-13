@@ -378,3 +378,24 @@ session per process, so one per thread, whichever way it started.
 | DMN-238 | **The built-in theme setting**: the config file's `[ui] theme` MUST name a built-in theme (UI-510, PRT-143: `synth`, `catppuccin`, `gruvbox`, `tokyo-night`, `nord`, `solarized`, `rose-pine`, `accent`; absent is `synth`); any other value is an error naming it (DMN-009). `settings.set` writes it back like the other `[ui]` values, keeping the comments around it. |
 | DMN-239 | A change of the built-in theme, by `settings.set` (`:theme`, `:set theme=`) or by an edit of the config file, MUST reach every window as `settings_changed` (DMN-009), so every window draws the same theme while each keeps its own colour scheme (UI-091). |
 | DMN-240 | **Built-in and user theme are independent**: `theme.set` and the theme file (DMN-075) MUST NOT change `[ui] theme`, and `settings.set` MUST NOT change the user theme; the windows apply the user theme over the built-in one (UI-510), so clearing the user theme shows the built-in theme again. |
+
+### Forking a thread (M17)
+
+`threads.fork` makes a new thread from another one's conversation, the source left as it is (omp's RPC `fork` moves
+the *running* session onto a new file of its own session directory, so running it in the source would change the
+source thread, M8's in-thread fork, DMN-072). The new thread's omp copies the session itself: its first start runs
+`omp --session-dir <new dir> --fork <source session file>` (omp's `SessionManager.forkFrom`: a new session id, the
+source as parent, the artifacts copied, an interrupted tail repaired), and a fork at an entry then sends that new omp
+`fork { entryId }`, which writes the branch up to the entry as a new session file of the new thread's own directory.
+omp keeps owning its session format (title slot, blob references, migrations, labels, the tool results answering the
+entry); the daemon only reads the source file.
+
+| ID | Requirement |
+| --- | --- |
+| DMN-300 | `threads.fork { threadId, entryId? }` MUST create a new thread in the source thread's workspace with the source's model, thinking level and approval mode, a placeholder title `<source title> (fork)` (`Fork` for an empty one, DMN-073) and its lineage (store migration 12, table `thread_forks`: source thread id, the source's title then, the entry, the first line of the entry's message), and answer its summary (PRT-180, PRT-181). The source's record, process and session files MUST stay as they were. |
+| DMN-301 | A forked thread's first start MUST pass `--fork <source session file>` instead of `--continue` (the copy is then its directory's newest session, which `open_session` keeps); every later start resumes with `--continue`. The source session file is the source's `omp_session_id` file in its session directory (DMN-213). |
+| DMN-302 | With `entryId`, the daemon MUST then send the new omp `fork { entryId }`, store the new session id (DMN-072) and delete the full copy's session file, so the thread's conversation search (DMN-076) and `--continue` only see the branch; omp extends the branch through the tool results answering the entry. |
+| DMN-303 | Nothing MUST be created when the source has no session file yet (`bad_request`) or `entryId` is no `message` entry of its session file (`not_found`); when the new omp cannot start or refuses the fork, the new thread and its directory MUST be deleted again and the error returned (`thread_failed` with `stderrTail`, or omp's error; DMN-211, DMN-212). |
+| DMN-304 | The lineage's message MUST be the first non-empty line of the entry's user or assistant text read from the source session file (as the search reads it), cut to 120 characters with `…`; absent for a message without text and for a fork of the whole session. |
+| DMN-305 | Deleting the source MUST keep its forks' lineage (with the title it had); deleting a fork removes its lineage. |
+| DMN-306 | The source thread's omp MUST get no command for a fork: forking works whether it runs, is busy or is stopped. |

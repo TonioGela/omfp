@@ -564,6 +564,98 @@ async fn a_fork_stores_the_new_session_id_and_reloads_its_transcript() {
     assert_eq!(state.transcript.len(), 1);
 }
 
+// spec: DMN-301
+#[tokio::test]
+async fn a_forked_thread_starts_once_on_a_copy_of_the_source_session_then_continues_its_own() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let source = h.dir.path().join("source.jsonl");
+
+    h.supervisor
+        .start_fork(&id, source.clone(), None)
+        .await
+        .unwrap();
+    assert_eq!(h.launcher.launches()[0].spec.fork, Some(source));
+    // The whole session: no command moves the copy.
+    assert_eq!(call_names(&h), Vec::<&str>::new());
+    assert!(h.threads.get(&id).unwrap().omp_session_id.is_some());
+
+    h.supervisor.stop(&id).await.unwrap();
+    h.supervisor.start(&id).await.unwrap();
+    assert_eq!(h.launcher.launches()[1].spec.fork, None);
+}
+
+// spec: DMN-302
+#[tokio::test]
+async fn a_fork_at_an_entry_moves_the_copy_onto_its_branch_and_deletes_the_full_copy() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let run = FakeRun::fresh();
+    let copied = run.startup().session.session_id.clone();
+    h.launcher.push_run(run);
+    h.launcher.reply(
+        "get_state",
+        FakeReply::Ok(json!({ "sessionId": "S-branch", "sessionFile": "/s/branch.jsonl" })),
+    );
+    let dir = h.threads.get(&id).unwrap().session_dir;
+    let copy = dir.join(format!("2026-11-14T10-00-00-000Z_{copied}.jsonl"));
+    let branch = dir.join("2026-11-14T10-00-01-000Z_S-branch.jsonl");
+    std::fs::write(&copy, "{}\n").unwrap();
+    std::fs::write(&branch, "{}\n").unwrap();
+
+    h.supervisor
+        .start_fork(&id, h.dir.path().join("source.jsonl"), Some("u1".into()))
+        .await
+        .unwrap();
+
+    assert_eq!(call_names(&h), ["fork", "get_state", "get_messages"]);
+    let forked_at = h
+        .launcher
+        .process(0)
+        .calls()
+        .into_iter()
+        .find_map(|call| match call {
+            FakeCall::Call(OmpCall::Fork(fork)) => fork.entry_id,
+            _ => None,
+        });
+    assert_eq!(forked_at.as_deref(), Some("u1"));
+    assert_eq!(
+        h.threads.get(&id).unwrap().omp_session_id.as_deref(),
+        Some("S-branch")
+    );
+    assert!(!copy.exists() && branch.exists());
+}
+
+// spec: DMN-303
+#[tokio::test]
+async fn a_fork_omp_refuses_fails_the_start_of_the_fork() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.launcher.reply(
+        "fork",
+        FakeReply::Fail {
+            message: "Invalid entry ID for forking: x".into(),
+            code: None,
+        },
+    );
+    let error = h
+        .supervisor
+        .start_fork(&id, h.dir.path().join("source.jsonl"), Some("x".into()))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("Invalid entry ID"), "{error}");
+
+    let id = h.thread();
+    h.launcher
+        .reply("fork", FakeReply::Ok(json!({ "cancelled": true })));
+    let error = h
+        .supervisor
+        .start_fork(&id, h.dir.path().join("source.jsonl"), Some("u1".into()))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("cancelled"), "{error}");
+}
+
 // spec: DMN-111
 #[tokio::test]
 async fn a_navigation_that_moved_reloads_the_transcript_and_a_cancelled_one_does_not() {

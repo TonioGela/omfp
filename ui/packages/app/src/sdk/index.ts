@@ -160,6 +160,8 @@ export {
 } from "../vm/subagents.ts";
 export type { SystemRow } from "../vm/system.ts";
 export {
+  type ForkLineage,
+  forkLineage,
   type RepoKind,
   statusLabel,
   type ThreadStatus,
@@ -187,6 +189,7 @@ export {
   rowContent as transcriptRowContent,
 } from "../vm/transcript.ts";
 export {
+  messageEntryId,
   type NavigateOutcome,
   navigateOutcome,
   type TreeRow,

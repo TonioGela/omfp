@@ -46,7 +46,8 @@ Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue an
 workspace's repositories, or of the repository named `repo` only), `omfp:background` (the selected thread's background
 jobs and subagents: state, duration, last output line; stop a job, cancel a subagent; a subagent's row opens its kind,
 use, transcript and, while it runs, a steer field under it), `omfp:todos`
-(its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:activity`
+(its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork a new thread from it with `threads.fork`,
+label it), `omfp:activity`
 (`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:mcp` (the MCP servers of
 the selected thread, checked by its omp, or those configured for the workspace: state, tools, error, config file;
 reconnect = restart the thread, `thread.mcp_servers`, `thread.mcp_reconnect`; Reauthorize on an `http`/`sse` server

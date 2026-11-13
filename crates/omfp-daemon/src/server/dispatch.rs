@@ -19,6 +19,7 @@ use super::services::{Services, blocking};
 use crate::store::Provenance;
 use crate::{fs_complete, search};
 
+mod fork;
 mod order;
 mod session;
 mod threads;
@@ -130,6 +131,7 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
         call @ (Call::WorkspacesReorder(_) | Call::ThreadsReorder(_)) => {
             order::reorder(services, call).await
         }
+        Call::ThreadsFork(params) => fork::fork_thread(services, principal, params).await,
         Call::ThreadsList(params) => {
             services.refresh_index().await?;
             let threads = services.index.with_state(|index| {

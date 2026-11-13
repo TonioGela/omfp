@@ -139,8 +139,9 @@ async fn create_thread(
     ok(&services.thread_summary(&thread.id).await?)
 }
 
-/// Best effort: removes a thread `threads.create` made and whose omp could not start (DMN-211).
-async fn discard_thread(services: &Services, id: &str) {
+/// Best effort: removes a thread `threads.create` or `threads.fork` made and whose omp could not start (DMN-211,
+/// DMN-303).
+pub(super) async fn discard_thread(services: &Services, id: &str) {
     if let Err(error) = services.supervisor.forget(id).await {
         tracing::warn!(thread = %id, %error, "cannot stop the thread that failed to start");
     }

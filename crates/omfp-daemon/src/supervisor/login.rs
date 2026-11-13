@@ -51,6 +51,7 @@ impl Supervisor {
             cwd: dir.join("work"),
             add_dirs: Vec::new(),
             session_dir: dir.join("sessions"),
+            fork: None,
             model: model.map(str::to_owned),
             approval_mode: None,
             append_system_prompt: None,

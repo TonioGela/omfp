@@ -145,6 +145,25 @@ pub struct ThreadSummary {
     /// Its place among the threads of its workspace (archived ones included) in the left column, from 0; the same in
     /// every window (PRT-172, DMN-284).
     pub position: u32,
+    /// The thread this one was forked from (`threads.fork`, DMN-300); absent for a thread that is no fork.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from: Option<ForkOrigin>,
+}
+
+/// Where a forked thread comes from (PRT-181): the source thread and the message it was forked at.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ForkOrigin {
+    /// The source thread; it may have been deleted since.
+    pub thread_id: String,
+    /// The source's title when it was forked.
+    pub title: String,
+    /// The omp session entry the fork ends at; absent when the whole session was copied.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_id: Option<String>,
+    /// The first line of that entry's message text (at most 120 characters).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
 }
 
 /// Why the daemon restarts a thread's omp by itself (PRT-134, DMN-228): omp loads MCP servers and lists a provider's

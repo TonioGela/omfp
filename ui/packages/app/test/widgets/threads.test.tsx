@@ -584,3 +584,24 @@ describe("omfp:threads", () => {
     expect(rows()).toEqual(["t1", "t3", "t4"]);
   });
 });
+
+describe("a fork's row", () => {
+  // spec: UI-665
+  test("marks the fork before its title, naming its source", () => {
+    setup({
+      ...INDEX,
+      threads: [
+        ...(INDEX.threads ?? []),
+        thread("t4", "checkout-v2 (fork)", "w1", {
+          titleSource: "placeholder",
+          forkedFrom: { threadId: "t1", title: "checkout-v2", entryId: "e1", message: "Fix it" },
+        }),
+      ],
+    });
+    const marks = screen.getAllByTestId("thread-forked");
+    expect(marks.length).toBe(1);
+    const row = marks[0]?.closest<HTMLElement>("[data-testid=thread-row]");
+    expect(row?.dataset.threadId).toBe("t4");
+    expect(marks[0]?.textContent).toBe("Forked from checkout-v2 at \u201cFix it\u201d");
+  });
+});

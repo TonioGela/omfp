@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use omfp_daemon::store::{
-    ActivityQuery, NewActivity, Provenance, SeenRepository, Store, StoreError, Thread, TitleSource,
-    Workspace, new_id, now_ms,
+    ActivityQuery, NewActivity, Provenance, SeenRepository, Store, StoreError, Thread, ThreadFork,
+    TitleSource, Workspace, new_id, now_ms,
 };
 use serde_json::json;
 use tempfile::TempDir;
@@ -613,4 +613,33 @@ fn a_reorder_before_something_gone_changes_nothing() {
     ] {
         assert!(matches!(error, StoreError::NotFound { .. }), "{error:?}");
     }
+}
+
+// spec: DMN-300, DMN-305
+#[test]
+fn a_forks_lineage_outlives_its_source_and_goes_with_the_fork() {
+    let (_dir, store, ws) = with_workspace();
+    let source = thread(Provenance::User, &ws.id);
+    let fork = thread(Provenance::User, &ws.id);
+    store.insert_thread(&source).unwrap();
+    store.insert_thread(&fork).unwrap();
+    let lineage = ThreadFork {
+        source_thread_id: source.id.clone(),
+        source_title: "Fix login".into(),
+        entry_id: Some("u1".into()),
+        message: Some("Fix the login form".into()),
+    };
+    assert_eq!(store.thread_forks().unwrap(), HashMap::new());
+
+    store.insert_thread_fork(&fork.id, &lineage).unwrap();
+    assert_conflict(store.insert_thread_fork(&fork.id, &lineage));
+    assert!(store.insert_thread_fork("01NOTHREAD", &lineage).is_err());
+
+    store.delete_thread(&source.id).unwrap();
+    assert_eq!(
+        store.thread_forks().unwrap(),
+        HashMap::from([(fork.id.clone(), lineage)])
+    );
+    store.delete_thread(&fork.id).unwrap();
+    assert_eq!(store.thread_forks().unwrap(), HashMap::new());
 }

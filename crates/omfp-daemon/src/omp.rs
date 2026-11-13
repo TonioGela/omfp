@@ -29,6 +29,9 @@ pub struct LaunchSpec {
     pub add_dirs: Vec<PathBuf>,
     /// Directory holding the thread's omp sessions (ARC-020).
     pub session_dir: PathBuf,
+    /// A forked thread's first start (DMN-301): the source thread's session file, which omp copies into
+    /// `session_dir` as a new session (`--fork`) instead of resuming the directory's newest one (`--continue`).
+    pub fork: Option<PathBuf>,
     /// `provider/model` selector.
     pub model: Option<String>,
     /// omp `--approval-mode` value.
@@ -48,14 +51,21 @@ impl LaunchSpec {
     #[must_use]
     pub fn args(&self) -> Vec<OsString> {
         // `--session-dir … --continue` binds the session at launch, so `--add-dir` roots apply to it; a later
-        // `open_session` on the same directory is a no-op that reports whether the session was resumed.
+        // `open_session` on the same directory is a no-op that reports whether the session was resumed. A fork binds
+        // the copy `--fork` writes there, the directory's newest session, the same way (DMN-301).
         let mut args: Vec<OsString> = vec![
             "--mode".into(),
             "rpc-ui".into(),
             "--session-dir".into(),
             self.session_dir.clone().into_os_string(),
-            "--continue".into(),
         ];
+        match &self.fork {
+            Some(source) => {
+                args.push("--fork".into());
+                args.push(source.clone().into_os_string());
+            }
+            None => args.push("--continue".into()),
+        }
         for dir in &self.add_dirs {
             args.push("--add-dir".into());
             args.push(dir.clone().into_os_string());
@@ -371,6 +381,7 @@ mod tests {
                 "/ws/checkout/backend".into(),
             ],
             session_dir: "/data/threads/t1/sessions".into(),
+            fork: None,
             model: Some("anthropic/claude".into()),
             approval_mode: Some("always-ask".into()),
             append_system_prompt: Some("line one\nline two".into()),
@@ -436,6 +447,33 @@ mod tests {
                 "--continue"
             ]
         );
+    }
+
+    // spec: DMN-301
+    #[test]
+    fn a_forked_thread_starts_with_fork_of_the_source_session_instead_of_continue() {
+        let mut spec = spec();
+        spec.add_dirs.truncate(1);
+        spec.fork = Some("/data/threads/t0/sessions/2026-11-01T10-00-00-000Z_s0.jsonl".into());
+        let args: Vec<String> = spec
+            .args()
+            .into_iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            args[..8],
+            [
+                "--mode",
+                "rpc-ui",
+                "--session-dir",
+                "/data/threads/t1/sessions",
+                "--fork",
+                "/data/threads/t0/sessions/2026-11-01T10-00-00-000Z_s0.jsonl",
+                "--add-dir",
+                "/ws/checkout/frontend",
+            ]
+        );
+        assert!(!args.iter().any(|arg| arg == "--continue"), "{args:?}");
     }
 
     // spec: DMN-030, DMN-036

@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use omfp_protocol::{
-    CreatedBy, DiffPage, ErrorBody, ErrorCode, FileChange, FileDiff, FileStatus, GitStatus,
-    Provenance, RepoKind, ThreadSummary, TitleSource, Workspace, WorkspaceRepo,
+    CreatedBy, DiffPage, ErrorBody, ErrorCode, FileChange, FileDiff, FileStatus, ForkOrigin,
+    GitStatus, Provenance, RepoKind, ThreadSummary, TitleSource, Workspace, WorkspaceRepo,
 };
 use serde_json::json;
 
@@ -190,6 +190,7 @@ pub(crate) fn thread_summary(
     thread: &store::Thread,
     status: ThreadStatus,
     clients: &HashMap<String, String>,
+    forks: &HashMap<String, store::ThreadFork>,
     updated_at: i64,
     position: u32,
 ) -> ThreadSummary {
@@ -211,6 +212,12 @@ pub(crate) fn thread_summary(
         updated_at,
         archived_at: thread.archived_at,
         position,
+        forked_from: forks.get(&thread.id).map(|fork| ForkOrigin {
+            thread_id: fork.source_thread_id.clone(),
+            title: fork.source_title.clone(),
+            entry_id: fork.entry_id.clone(),
+            message: fork.message.clone(),
+        }),
     }
 }
 

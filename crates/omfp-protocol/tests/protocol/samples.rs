@@ -115,6 +115,7 @@ pub fn thread() -> ThreadSummary {
         updated_at: CREATED_AT + 60_000,
         archived_at: None,
         position: 0,
+        forked_from: None,
     }
 }
 

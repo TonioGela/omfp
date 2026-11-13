@@ -380,9 +380,24 @@ export type FontSettings = {
   ui?: string | null;
 };
 
-/** `thread.fork` params. */
+/** Where a forked thread comes from (PRT-181): the source thread and the message it was forked at. */
+export type ForkOrigin = {
+  /** The omp session entry the fork ends at; absent when the whole session was copied. */
+  entryId?: string | null;
+  /** The first line of that entry's message text (at most 120 characters). */
+  message?: string | null;
+  /** The source thread; it may have been deleted since. */
+  threadId: string;
+  /** The source's title when it was forked. */
+  title: string;
+};
+
+/** `thread.fork` and `threads.fork` params. */
 export type ForkParams = {
-  /** Fork history through this entry; the whole session when absent. */
+  /**
+   * Fork history through this message entry (omp keeps the tool results answering it); the whole session when
+   * absent.
+   */
   entryId?: string | null;
   threadId: string;
 };
@@ -1338,6 +1353,8 @@ export type ThreadSession = {
 export type ThreadSummary = {
   archivedAt?: number | null;
   createdAt: number;
+  /** The thread this one was forked from (`threads.fork`, DMN-300); absent for a thread that is no fork. */
+  forkedFrom?: ForkOrigin | null;
   id: string;
   /** Interactive requests are waiting for an answer. */
   needsAttention: boolean;
@@ -1946,6 +1963,7 @@ export interface Methods {
   "threads.archive": { params: ThreadRef; result: Empty };
   "threads.unarchive": { params: ThreadRef; result: Empty };
   "threads.delete": { params: ThreadRef; result: Empty };
+  "threads.fork": { params: ForkParams; result: ThreadSummary };
   "threads.search": { params: SearchThreadsParams; result: ThreadSearchResults };
   "thread.prompt": { params: PromptParams; result: PromptResult };
   "thread.steer": { params: MessageParams; result: Empty };
@@ -2044,6 +2062,7 @@ export const METHODS: readonly MethodName[] = [
   "threads.archive",
   "threads.unarchive",
   "threads.delete",
+  "threads.fork",
   "threads.search",
   "thread.prompt",
   "thread.steer",

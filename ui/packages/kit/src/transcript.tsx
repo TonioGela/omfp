@@ -56,6 +56,8 @@ export interface MessageProps extends HTMLAttributes<HTMLElement> {
   continues?: boolean;
   /** Why the message failed, shown under its body in error. */
   error?: ReactNode;
+  /** Buttons acting on the message (e.g. fork from here), at the end of its name line; shown on hover and focus. */
+  actions?: ReactNode;
   children?: ReactNode;
 }
 
@@ -63,7 +65,16 @@ export interface MessageProps extends HTMLAttributes<HTMLElement> {
  * A transcript message (UI-171): name line, then the body (prose, a 2 px tertiary bar for the user); one that
  * `continues` its turn has the body only.
  */
-export function Message({ author, name, continues = false, error, className, children, ...props }: MessageProps) {
+export function Message({
+  author,
+  name,
+  continues = false,
+  error,
+  actions,
+  className,
+  children,
+  ...props
+}: MessageProps) {
   const Element = continues ? "div" : "article";
   return (
     <Element {...props} className={cx("omfp-msg", className)} data-author={author}>
@@ -73,6 +84,7 @@ export function Message({ author, name, continues = false, error, className, chi
           {name}
         </div>
       )}
+      {actions !== undefined && <div className="omfp-msg__actions">{actions}</div>}
       <div className="omfp-msg__body">{children}</div>
       {error !== undefined && (
         <p className="omfp-msg__error" role="alert">

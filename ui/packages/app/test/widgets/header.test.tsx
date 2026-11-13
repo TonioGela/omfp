@@ -368,3 +368,31 @@ describe("omfp:header", () => {
     expect(screen.queryAllByTestId("models-login").length).toBe(0);
   });
 });
+
+describe("a fork's header", () => {
+  // spec: UI-664
+  test("says where the thread comes from; the source's title shows it, a deleted source's title stays", async () => {
+    const source = thread("t0", "checkout", "w1");
+    const fork = {
+      ...thread("t1", "checkout (fork)", "w1"),
+      forkedFrom: { threadId: "t0", title: "old title", entryId: "e1", message: "Fix the cart" },
+    };
+    const test = setup(fork);
+    test.client.index({ workspaces: [workspace("w1", [repo("w1", "fe", "main")])], threads: [source, fork] });
+    test.flush();
+    const lineage = await screen.findByTestId("fork-lineage");
+    expect(lineage.textContent).toBe("Forked from checkout at \u201cFix the cart\u201d");
+    expect(lineage.getAttribute("aria-label")).toBe("Go to checkout, the thread this one was forked from");
+    await test.user.click(lineage);
+    expect(test.host.window.get(SELECTED_THREAD)).toBe("t0");
+
+    cleanup();
+    setup(fork);
+    const gone = await screen.findByTestId("fork-lineage");
+    expect(gone.tagName).toBe("SPAN");
+    expect(gone.textContent).toBe("Forked from old title at \u201cFix the cart\u201d");
+    cleanup();
+    setup();
+    expect(screen.queryAllByTestId("fork-lineage").length).toBe(0);
+  });
+});

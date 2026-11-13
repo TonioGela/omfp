@@ -1,13 +1,14 @@
 /**
  * One thread of a workspace section (UI-020): the kit's thread row (UI-169, UI-442) for a thread summary, with its
- * unarchive action and the spawned-by filter (UI-240); a row that drags carries its place in a drag (UI-621, UI-627).
+ * unarchive action, the spawned-by filter (UI-240) and a fork's mark naming its source (UI-665); a row that drags
+ * carries its place in a drag (UI-621, UI-627).
  */
 import { Button, Icon, ThreadRow } from "@omfp/kit";
 import type { ThreadSummary } from "@omfp/protocol";
 import type { PointerEventHandler, ReactNode } from "react";
-import { useThreadActions, useWindowState } from "../../sdk/index.ts";
+import { useThreadActions, useThreads, useWindowState } from "../../sdk/index.ts";
 import { strings } from "../../strings/index.ts";
-import { displayTitle, statusLabel, threadMark, threadStatus } from "../../vm/threads.ts";
+import { displayTitle, forkLineage, statusLabel, threadMark, threadStatus } from "../../vm/threads.ts";
 import { relativeAge } from "./age.ts";
 import { SPAWNED_BY } from "./keys.ts";
 import { useFresh } from "./marks.ts";
@@ -48,6 +49,7 @@ export function SummaryRow({
   const title = displayTitle(thread);
   const fresh = useFresh(status);
   const filtering = spawnedBy === thread.id;
+  const lineage = forkLineage(thread, useThreads());
   return (
     <ThreadRow
       {...(reorder !== undefined && {
@@ -59,7 +61,19 @@ export function SummaryRow({
       state={threadMark(status, unread)}
       stateLabel={statusLabel(status)}
       markProps={{ "data-status": status }}
-      title={title}
+      title={
+        lineage === undefined ? (
+          title
+        ) : (
+          <>
+            <span className="omfp-threads__forked" title={lineage.label} data-testid="thread-forked">
+              <Icon name="git-fork" />
+              <span className="omfp-visually-hidden">{lineage.label}</span>
+            </span>
+            {title}
+          </>
+        )
+      }
       placeholder={thread.titleSource === "placeholder"}
       meta={relativeAge(thread.updatedAt, Date.now())}
       selected={selected}

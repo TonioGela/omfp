@@ -8,6 +8,7 @@ import {
   ConversationSearch,
   decodeIds,
   displayTitle,
+  forkLineage,
   isUnread,
   isWorkspacePath,
   moveSelection,
@@ -340,5 +341,25 @@ describe("spawned tree (UI-240)", () => {
     expect(visibleOrder(sections, ["w1"], [], filter)).toEqual(["a"]);
     const typed: ThreadFilter = { ...filter, query: "be" };
     expect(sidebarSections(threads, workspaces, typed).map((section) => section.archivedIds)).toEqual([["b"]]);
+  });
+});
+
+describe("a fork's lineage", () => {
+  const fork = { forkedFrom: { threadId: "01S", title: "Old title", entryId: "e1", message: "Fix the cart" } };
+
+  // spec: UI-664, UI-665
+  test("names the source by its title now, else the one it had, and the message", () => {
+    expect(forkLineage(fork, new Map([["01S", { title: "New title" }]]))).toEqual({
+      sourceId: "01S",
+      sourceTitle: "New title",
+      sourceExists: true,
+      message: "Fix the cart",
+      label: "Forked from New title at \u201cFix the cart\u201d",
+    });
+    const deleted = forkLineage({ forkedFrom: { threadId: "01S", title: "Old title" } }, new Map());
+    expect(deleted?.sourceExists).toBe(false);
+    expect(deleted?.label).toBe("Forked from Old title");
+    expect(forkLineage({}, new Map())).toBeUndefined();
+    expect(forkLineage({ forkedFrom: null }, new Map())).toBeUndefined();
   });
 });

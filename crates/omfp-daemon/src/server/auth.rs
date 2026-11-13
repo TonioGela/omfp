@@ -108,6 +108,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "threads.archive"
         | "threads.unarchive"
         | "threads.delete"
+        | "threads.fork"
         | "theme.set"
         | "settings.set"
         | "views.set"

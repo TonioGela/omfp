@@ -315,8 +315,8 @@ export const shell = {
     navigateLabel: (entry: string) => `Go to ${entry}`,
     summarize: "Summarize and go",
     summarizeLabel: (entry: string) => `Summarize the branch left and go to ${entry}`,
-    fork: "Fork",
-    forkLabel: (entry: string) => `Fork a new session from ${entry}`,
+    fork: "Fork from here",
+    forkLabel: (entry: string) => `Fork a new thread from ${entry}`,
     labelAction: "Label",
     labelLabel: (entry: string) => `Label ${entry}`,
     labelField: "Label (empty removes it)",
@@ -324,9 +324,21 @@ export const shell = {
     announce: {
       navigated: "Moved in the session tree",
       editorText: "Moved in the session tree; the message is back in the composer",
-      forked: "Forked into a new session",
       cancelled: "Nothing moved",
     },
+  },
+  /** Forking a thread into a new one (UI-660..UI-666). */
+  fork: {
+    action: "Fork from here",
+    actionLabel: (message: string) => `Fork a new thread from \u201c${message}\u201d`,
+    forked: (title: string) => `Forked into \u201c${title}\u201d`,
+    lineage: (title: string, message: string | undefined) =>
+      message === undefined ? `Forked from ${title}` : `Forked from ${title} at \u201c${message}\u201d`,
+    goToSource: (title: string) => `Go to ${title}, the thread this one was forked from`,
+    noMessage: "Select a message to fork from: j and k move between messages",
+    noEntry: "Select a message of the tree to fork from",
+    notOnBranch: "That message is not on the session's current branch: open omfp:tree to fork from it",
+    noTimestamp: "That message has no time stamp to find it in the session by",
   },
   /** `omfp:activity` (UI-241). */
   activity: {
@@ -634,6 +646,10 @@ export const shell = {
     stopSpawned: "Stop process of the thread and of every thread it spawned",
     spawnedBy: "Show only the threads the selected one spawned (again: every thread)",
     restart: "Restart the thread's process",
+    fork: "Fork a new thread from the selected message (transcript) or entry (session tree)",
+    /** `:describe-command fork` (UI-663). */
+    forkDescription:
+      "Makes a new thread in the same workspace holding the conversation up to the message, the message included; the thread you fork from is left as it is.",
     nextAttention: "Next thread needing attention",
     theme: "Colour scheme (system, light, dark) and built-in theme (synth, catppuccin, gruvbox, …)",
     density: "Density (compact, normal)",

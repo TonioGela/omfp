@@ -38,6 +38,7 @@ use crate::threads::{ThreadError, Threads};
 use crate::workspaces::{WorkspaceError, Workspaces};
 
 mod dialogs;
+mod fork;
 mod live;
 mod login;
 mod mcp;
@@ -338,6 +339,8 @@ struct Actor {
     /// Held (shared) while a message is on its way to omp (DMN-226), so a restart never cuts it, nor the answer of
     /// the prompt that asked for it (`/mcp add`, DMN-203, DMN-227).
     prompting: tokio::sync::RwLock<()>,
+    /// The source session file a forked thread's first start copies (`--fork`, DMN-301), taken by that start.
+    fork_source: Mutex<Option<PathBuf>>,
 }
 
 impl Actor {
@@ -367,6 +370,7 @@ impl Actor {
             mcp_configs: Mutex::new(None),
             restart: Mutex::new(restart::DueRestart::default()),
             prompting: tokio::sync::RwLock::new(()),
+            fork_source: Mutex::new(None),
         }
     }
 
@@ -1171,6 +1175,10 @@ impl Supervisor {
             cwd: ws.path.clone(),
             add_dirs: add_dirs.clone(),
             session_dir: thread.session_dir.clone(),
+            // Only a thread without a session of its own yet starts from a copy (DMN-301).
+            fork: lock(&actor.fork_source)
+                .take()
+                .filter(|_| thread.omp_session_id.is_none()),
             model: thread.model.clone(),
             approval_mode: thread.approval_mode.clone(),
             append_system_prompt: Some(conventions::append_system_prompt(

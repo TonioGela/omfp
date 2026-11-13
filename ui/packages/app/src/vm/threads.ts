@@ -458,3 +458,37 @@ export function isArchived(thread: ThreadSummary): boolean {
 function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+/** Where a forked thread comes from, as its header and row show it (UI-664, UI-665). */
+export interface ForkLineage {
+  readonly sourceId: string;
+  /** The source's title now, else the one it had when it was forked (a deleted source). */
+  readonly sourceTitle: string;
+  /** The source still exists: its title selects it. */
+  readonly sourceExists: boolean;
+  /** The first line of the message the fork ends at; `undefined` for a copy of the whole session. */
+  readonly message: string | undefined;
+  /** `Forked from <title> at “<message>”`. */
+  readonly label: string;
+}
+
+/** The lineage of `thread`, `undefined` when it is no fork (PRT-181). */
+export function forkLineage(
+  thread: Pick<ThreadSummary, "forkedFrom">,
+  threads: ReadonlyMap<string, Pick<ThreadSummary, "title">>,
+): ForkLineage | undefined {
+  const origin = thread.forkedFrom;
+  if (origin === undefined || origin === null) {
+    return undefined;
+  }
+  const source = threads.get(origin.threadId);
+  const sourceTitle = source === undefined ? displayTitle(origin) : displayTitle(source);
+  const message = origin.message ?? undefined;
+  return {
+    sourceId: origin.threadId,
+    sourceTitle,
+    sourceExists: source !== undefined,
+    message,
+    label: strings.shell.fork.lineage(sourceTitle, message),
+  };
+}

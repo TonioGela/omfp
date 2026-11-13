@@ -1,7 +1,7 @@
 /** L0: the session tree's rows (UI-083), from the `get_tree` shape recorded from the pinned omp. */
 
 import { describe, expect, test } from "bun:test";
-import { treeView } from "../../src/vm/tree.ts";
+import { messageEntryId, treeView } from "../../src/vm/tree.ts";
 
 /** A `get_tree` node; `type` and `extra` give the entry, `children` its nodes. */
 function node(
@@ -101,5 +101,34 @@ describe("treeView", () => {
     expect(treeView({ tree: [], leafId: null })).toEqual({ rows: [], leafId: undefined });
     expect(treeView(undefined).rows).toEqual([]);
     expect(treeView({ tree: [{ entry: {} }, 3] }).rows).toEqual([]);
+  });
+});
+
+describe("the entry of a transcript message", () => {
+  const entry = (id: string, parentId: string | null, role: string, timestamp: number, children: unknown[] = []) =>
+    node(id, parentId, { type: "message", message: { role, content: id, timestamp } }, children);
+  // u1 → a1 → (u2 → a2, the leaf) and a1 → u2b, a branch with the same time stamp as u2.
+  const tree = {
+    leafId: "a2",
+    tree: [
+      entry("u1", null, "user", 1, [
+        entry("a1", "u1", "assistant", 2, [
+          node("l1", "a1", { type: "label" }, [entry("u2", "l1", "user", 3, [entry("a2", "u2", "assistant", 4)])]),
+          entry("u2b", "a1", "user", 3),
+        ]),
+      ]),
+    ],
+  };
+
+  // spec: UI-661
+  test("is the message entry with that role and time stamp on the current branch, off-branch ones not", () => {
+    expect(messageEntryId(tree, "user", 3)).toBe("u2");
+    expect(messageEntryId(tree, "user", 1)).toBe("u1");
+    expect(messageEntryId(tree, "assistant", 2)).toBe("a1");
+    expect(messageEntryId(tree, "assistant", 3)).toBeUndefined();
+    expect(messageEntryId({ ...tree, leafId: "u2b" }, "user", 3)).toBe("u2b");
+    expect(messageEntryId({ ...tree, leafId: "gone" }, "user", 1)).toBeUndefined();
+    expect(messageEntryId({ tree: [], leafId: null }, "user", 1)).toBeUndefined();
+    expect(messageEntryId(undefined, "user", 1)).toBeUndefined();
   });
 });

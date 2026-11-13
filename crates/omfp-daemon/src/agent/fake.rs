@@ -725,6 +725,7 @@ mod tests {
             cwd: "/home".into(),
             add_dirs: Vec::new(),
             session_dir: "/sessions".into(),
+            fork: None,
             model: None,
             approval_mode: None,
             append_system_prompt: None,

@@ -139,6 +139,19 @@ pub struct Thread {
     pub archived_at: Option<i64>,
 }
 
+/// Where a forked thread comes from (DMN-300): the source thread and the omp session entry the fork ends at.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ThreadFork {
+    /// The source thread; it may have been deleted since.
+    pub source_thread_id: String,
+    /// The source's title when it was forked.
+    pub source_title: String,
+    /// `None`: the whole session was copied.
+    pub entry_id: Option<String>,
+    /// The first line of the entry's message text.
+    pub message: Option<String>,
+}
+
 /// One agent-originated action to log (AGT-072, DMN-160).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewActivity {
@@ -640,6 +653,46 @@ impl Store {
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
             .collect::<rusqlite::Result<_>>()?;
         Ok(clients)
+    }
+
+    /// Records that thread `id` was forked (DMN-300); the row goes with the thread.
+    pub fn insert_thread_fork(&self, id: &str, fork: &ThreadFork) -> Result<()> {
+        self.conn()
+            .execute(
+                "INSERT INTO thread_forks (thread_id, source_thread_id, source_title, entry_id, message)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    id,
+                    fork.source_thread_id,
+                    fork.source_title,
+                    fork.entry_id,
+                    fork.message
+                ],
+            )
+            .map_err(|error| unique_conflict(error, &format!("thread {id} is a fork already")))?;
+        Ok(())
+    }
+
+    /// The lineage of every forked thread, by thread id (DMN-300).
+    pub fn thread_forks(&self) -> Result<HashMap<String, ThreadFork>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT thread_id, source_thread_id, source_title, entry_id, message FROM thread_forks",
+        )?;
+        let forks = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    ThreadFork {
+                        source_thread_id: row.get(1)?,
+                        source_title: row.get(2)?,
+                        entry_id: row.get(3)?,
+                        message: row.get(4)?,
+                    },
+                ))
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        Ok(forks)
     }
 
     // Widget state

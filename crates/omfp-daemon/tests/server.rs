@@ -3005,3 +3005,171 @@ async fn a_thread_moved_to_another_workspace_keeps_its_updated_at() {
     // The user moved it: not news, so no window marks it unread (UI-020).
     assert_eq!(updated_at(&mut client).await, (docs, before));
 }
+
+/// A started thread titled "Fix the cart" whose omp session file holds a user message `u1` and its answer `a1`: its
+/// id and that file.
+async fn thread_with_session(
+    daemon: &TestDaemon,
+    client: &mut Client,
+) -> (String, std::path::PathBuf) {
+    let created = client
+        .ok(
+            "threads.create",
+            json!({ "title": "Fix the cart", "model": "fake/scripted", "approvalMode": "write" }),
+        )
+        .await;
+    let thread = created["id"].as_str().unwrap().to_owned();
+    client
+        .ok(
+            "thread.prompt",
+            json!({ "threadId": thread, "text": "hello" }),
+        )
+        .await;
+    let session = client
+        .ok("thread.session", json!({ "threadId": thread }))
+        .await;
+    let file = std::path::absolute(
+        daemon
+            .dir
+            .path()
+            .join("threads")
+            .join(&thread)
+            .join("sessions")
+            .join(format!(
+                "2026-11-14T10-00-00-000Z_{}.jsonl",
+                session["sessionId"].as_str().unwrap()
+            )),
+    )
+    .unwrap();
+    let entries = [
+        json!({ "type": "session", "id": session["sessionId"] }),
+        json!({ "type": "message", "id": "u1", "parentId": null,
+                "message": { "role": "user", "content": "Fix the cart\nand test it", "timestamp": 1 } }),
+        json!({ "type": "message", "id": "a1", "parentId": "u1",
+                "message": { "role": "assistant", "content": [{ "type": "text", "text": "Done" }], "timestamp": 2 } }),
+    ];
+    let text: Vec<String> = entries.iter().map(Value::to_string).collect();
+    std::fs::write(&file, text.join("\n")).unwrap();
+    (thread, file)
+}
+
+// spec: DMN-300, DMN-306, PRT-180
+#[tokio::test(flavor = "multi_thread")]
+async fn threads_fork_makes_a_new_thread_on_a_copy_of_the_session_and_leaves_the_source_alone() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let (source, file) = thread_with_session(&daemon, &mut client).await;
+    let source_calls = daemon.launcher.process(0).calls().len();
+
+    let fork = client
+        .ok(
+            "threads.fork",
+            json!({ "threadId": source, "entryId": "u1" }),
+        )
+        .await;
+
+    let id = fork["id"].as_str().unwrap().to_owned();
+    assert_ne!(id, source);
+    assert_eq!(
+        (&fork["title"], &fork["titleSource"]),
+        (&json!("Fix the cart (fork)"), &json!("placeholder"))
+    );
+    assert_eq!(
+        fork["forkedFrom"],
+        json!({ "threadId": source, "title": "Fix the cart", "entryId": "u1", "message": "Fix the cart" })
+    );
+    let listed = client.ok("threads.list", json!({})).await;
+    let threads = listed["threads"].as_array().unwrap();
+    let source_summary = threads.iter().find(|t| t["id"] == source).unwrap();
+    assert_eq!(fork["workspaceId"], source_summary["workspaceId"]);
+    assert_eq!(source_summary.get("forkedFrom"), None);
+    // The fork runs its own omp with the source's settings, started on the copy and cut at the entry.
+    let launch = daemon.launcher.launches().pop().unwrap();
+    assert_eq!(launch.spec.fork.as_deref(), Some(file.as_path()));
+    assert_eq!(
+        (
+            launch.spec.model.as_deref(),
+            launch.spec.approval_mode.as_deref()
+        ),
+        (Some("fake/scripted"), Some("write"))
+    );
+    assert!(
+        launch.process.calls().iter().any(|call| matches!(
+            call,
+            omfp_daemon::agent::FakeCall::Call(omfp_daemon::agent::OmpCall::Fork(fork))
+                if fork.entry_id.as_deref() == Some("u1")
+        )),
+        "{:?}",
+        launch.process.calls()
+    );
+    // The source's omp got nothing, its session file is unchanged.
+    assert_eq!(daemon.launcher.process(0).calls().len(), source_calls);
+    assert!(std::fs::read_to_string(&file).unwrap().contains("\"a1\""));
+
+    // The whole session, without an entry: no message in the lineage.
+    let whole = client
+        .ok("threads.fork", json!({ "threadId": source }))
+        .await;
+    assert_eq!(
+        whole["forkedFrom"],
+        json!({ "threadId": source, "title": "Fix the cart" })
+    );
+}
+
+// spec: DMN-303, DMN-305, PRT-182
+#[tokio::test(flavor = "multi_thread")]
+async fn a_fork_that_cannot_be_made_leaves_nothing_and_a_deleted_source_keeps_its_forks_lineage() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let (source, _) = thread_with_session(&daemon, &mut client).await;
+    let fresh = create_thread(&mut client).await;
+    let before = listed(&mut client, "threads.list", "threads").await;
+
+    let error = client
+        .call("threads.fork", json!({ "threadId": fresh }))
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "bad_request", "{error}");
+    let error = client
+        .call(
+            "threads.fork",
+            json!({ "threadId": source, "entryId": "nope" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "not_found", "{error}");
+    daemon.launcher.fail_next_launch("fatal: out of memory\n");
+    let error = client
+        .call(
+            "threads.fork",
+            json!({ "threadId": source, "entryId": "a1" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "thread_failed", "{error}");
+    assert_eq!(listed(&mut client, "threads.list", "threads").await, before);
+    let thread_dirs = std::fs::read_dir(daemon.dir.path().join("threads"))
+        .unwrap()
+        .count();
+    assert_eq!(thread_dirs, before.len());
+
+    let fork = client
+        .ok(
+            "threads.fork",
+            json!({ "threadId": source, "entryId": "a1" }),
+        )
+        .await;
+    assert_eq!(fork["forkedFrom"]["message"], "Done");
+    client
+        .ok("threads.delete", json!({ "threadId": source }))
+        .await;
+    let listed = client.ok("threads.list", json!({})).await;
+    let kept = listed["threads"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|thread| thread["id"] == fork["id"])
+        .unwrap()
+        .clone();
+    assert_eq!(kept["forkedFrom"], fork["forkedFrom"]);
+}

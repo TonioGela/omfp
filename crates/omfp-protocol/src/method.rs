@@ -171,6 +171,9 @@ methods! {
     ThreadsUnarchive = "threads.unarchive" (params::ThreadRef) -> params::Empty;
     /// Deletes a thread; its workspace is kept.
     ThreadsDelete = "threads.delete" (params::ThreadRef) -> params::Empty;
+    /// Forks a thread into a new thread of the same workspace, with its conversation up to an entry (DMN-300); the
+    /// source is untouched.
+    ThreadsFork = "threads.fork" (params::ForkParams) -> ThreadSummary;
     /// Threads whose conversation text contains a query (DMN-076).
     ThreadsSearch = "threads.search" (params::SearchThreadsParams) -> params::ThreadSearchResults;
     /// Sends a prompt (omp `prompt`).
@@ -201,7 +204,7 @@ methods! {
     ThreadTree = "thread.tree" (params::ThreadRef) -> wire::SessionTree as Value;
     /// Moves the session leaf (omp `navigate_tree`).
     ThreadNavigate = "thread.navigate" (params::NavigateParams) -> wire::NavigateTreeResult as Value;
-    /// Forks into a new session file (omp `fork`).
+    /// Forks into a new session file of the same thread (omp `fork`); `threads.fork` makes a new thread instead.
     ThreadFork = "thread.fork" (params::ForkParams) -> wire::CancellationResult as Value;
     /// Labels a session entry (omp `set_label`).
     ThreadLabel = "thread.label" (params::LabelParams) -> params::Empty;
