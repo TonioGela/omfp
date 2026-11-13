@@ -22,6 +22,7 @@ const LEGACY: &str = "2025-11-25";
 
 struct Daemon {
     handle: DaemonHandle,
+    launcher: FakeLauncher,
     _dir: TempDir,
 }
 
@@ -40,8 +41,9 @@ async fn daemon() -> Daemon {
         "https://omfp.example.ts.net",
     ])
     .unwrap();
+    let launcher = FakeLauncher::new();
     let ports = Ports {
-        launcher: Arc::new(FakeLauncher::new()),
+        launcher: Arc::new(launcher.clone()),
         git: Arc::new(FakeGit::new()),
         omp_program: "omp".into(),
         omp_version: omfp_core::OMP_VERSION.into(),
@@ -51,7 +53,11 @@ async fn daemon() -> Daemon {
     let handle = start_with(Config::from_cli(cli, None, None).unwrap(), ports)
         .await
         .unwrap();
-    Daemon { handle, _dir: dir }
+    Daemon {
+        handle,
+        launcher,
+        _dir: dir,
+    }
 }
 
 impl Daemon {
@@ -634,4 +640,63 @@ async fn requests_without_the_token_or_from_a_foreign_origin_are_refused() {
     let not_json = answer(daemon.post(&json!(null)).body("{")).await;
     assert_eq!(not_json.status, StatusCode::BAD_REQUEST);
     assert_eq!(not_json.message["error"]["code"], -32700);
+}
+
+// spec: DMN-221
+#[tokio::test(flavor = "multi_thread")]
+async fn an_agents_login_shows_its_flow_in_the_most_recently_focused_window() {
+    use omfp_core::wire::{ExtensionUiRequest, OpenUrlUiRequest, RpcNotification};
+    let daemon = daemon().await;
+    daemon.launcher.reply(
+        "get_login_providers",
+        omfp_daemon::agent::FakeReply::Ok(json!({ "providers": [
+            { "id": "anthropic", "name": "Anthropic (Claude Pro/Max)", "available": true, "authenticated": false }
+        ]})),
+    );
+    let (session, _) = Session::open(&daemon, "test-agent").await;
+    let login = json!({ "method": "auth.login", "params": { "providerId": "anthropic" } });
+
+    let (text, is_error) = session.tool("omfp_call", login.clone()).await;
+    assert!(is_error, "{text}");
+    assert!(text.contains("no omfp window is open"), "{text}");
+
+    let mut unfocused = daemon.owner().await;
+    unfocused
+        .ok(
+            "widgets.report",
+            json!({ "workspaceId": null, "views": null, "widgets": [], "window": { "focused": false } }),
+        )
+        .await;
+    let mut window = daemon.owner().await;
+    window
+        .ok(
+            "widgets.report",
+            json!({ "workspaceId": null, "views": null, "widgets": [], "window": { "focused": true } }),
+        )
+        .await;
+    let launcher = daemon.launcher.clone();
+    let gate = launcher.gate("login");
+    let call = tokio::spawn(async move {
+        let (session, _) = Session::open(&daemon, "test-agent").await;
+        session.tool("omfp_call", login).await
+    });
+    gate.arrived(1).await;
+    // Without a window the first call started no omp; this login's `open_url` goes to the focused window.
+    let omp = launcher.process(0);
+    omp.emit(vec![RpcNotification::ExtensionUiRequest(
+        ExtensionUiRequest::OpenUrl(OpenUrlUiRequest {
+            id: "u1".into(),
+            url: "https://claude.ai/oauth/authorize".into(),
+            launch_url: None,
+            instructions: None,
+        }),
+    )]);
+    let frame = window.frame().await;
+    assert_eq!(frame["type"], "window_request", "{frame}");
+    assert_eq!(frame["request"]["kind"], "login_url");
+    assert_eq!(frame["request"]["url"], "https://claude.ai/oauth/authorize");
+    gate.open();
+    let (text, is_error) = call.await.unwrap();
+    assert!(!is_error, "{text}");
+    assert!(text.contains("Anthropic (Claude Pro/Max)"), "{text}");
 }

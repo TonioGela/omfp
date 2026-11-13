@@ -59,6 +59,7 @@ import { FloatingWidgets, RevealedWidget } from "./floating-widgets.tsx";
 import { Help } from "./help.tsx";
 import { InitErrors, InitLoader, useInit } from "./init.tsx";
 import { useAddWidget, widgetReferences } from "./layout.tsx";
+import { Login } from "./login.tsx";
 import { ModeLine, type ModeLineViews, useMode } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
@@ -252,6 +253,7 @@ export function Frame({
       <ToggleThreadsCommand breakpoint={breakpoint} />
       {view !== undefined && <SafetyNet view={view} workspaceId={workspaceId} views={state} registry={registry} />}
       <Toasts />
+      <Login />
       <StatusLiveRegion />
       <DeleteThreadDialog />
       <DeleteWorkspaceDialog />

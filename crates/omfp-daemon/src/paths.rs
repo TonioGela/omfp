@@ -74,6 +74,12 @@ impl DataDir {
             .join("agents")
             .join("widget-builder.md")
     }
+
+    /// The working directory, session directory and stderr log of the short-lived omp of `auth.*` (DMN-219).
+    #[must_use]
+    pub fn login(&self) -> PathBuf {
+        self.root.join("login")
+    }
 }
 
 /// Group and other permission bits.

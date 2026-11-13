@@ -25,6 +25,10 @@ conversations with the agent at once, each with its own oh-my-pi running in the 
   throw away.
 - **Emacs philosophy at heart.** You change the tool from inside it, while it runs. No rebuilds.
 
+**First run:** a fresh oh-my-pi is logged in nowhere, so a new thread cannot start yet. Press **Log in** on the error
+(or type `:login`), pick your plan and finish in the browser; oh-my-pi keeps the login for every thread. To use API
+keys instead, see [Logging in](crates/omfp-daemon/src/widgets/shell.md#logging-in).
+
 Early and changing fast.
 
 <picture>

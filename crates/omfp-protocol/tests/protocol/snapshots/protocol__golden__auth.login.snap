@@ -1,0 +1,23 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "auth.login",
+    "params": {
+      "providerId": "anthropic"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "name": "Anthropic (Claude Pro/Max)",
+      "providerId": "anthropic"
+    },
+    "type": "response"
+  }
+}

@@ -13,7 +13,7 @@ use crate::dto::{
     DiffPage, FileCandidates, FileContent, FileWritten, GitStatus, JobInfo, Settings, Theme,
     ThreadSummary, Workspace,
 };
-use crate::{activity, lists, mcp, params, session, windows};
+use crate::{activity, auth, lists, mcp, params, session, windows};
 use omfp_core::wire;
 
 /// A protocol method: its wire name and the types of its params and result.
@@ -304,6 +304,16 @@ methods! {
     ThreadMcpServers = "thread.mcp_servers" (params::ThreadRef) -> mcp::McpServers;
     /// Reconnects a thread's MCP servers by restarting its idle omp process, then checks them again (PRT-112).
     ThreadMcpReconnect = "thread.mcp_reconnect" (mcp::McpReconnectParams) -> mcp::McpServers;
+    /// The providers omp can log in to with OAuth and whether it holds a credential for each, from a short-lived omp
+    /// (PRT-129).
+    AuthProviders = "auth.providers" (params::Empty) -> auth::AuthProviders;
+    /// Logs omp in to a provider; the flow (the URL to open, progress, a code to paste) goes to the calling window
+    /// as `login_*` window requests (PRT-130, PRT-131).
+    AuthLogin = "auth.login" (auth::ProviderRef) -> auth::LoggedIn;
+    /// Cancels the running login, if any; its `auth.login` fails (PRT-132).
+    AuthLoginCancel = "auth.login_cancel" (params::Empty) -> auth::LoginCancelled;
+    /// Removes every credential omp stored for a provider (PRT-133).
+    AuthLogout = "auth.logout" (auth::ProviderRef) -> auth::LoggedOut;
 }
 
 #[cfg(test)]

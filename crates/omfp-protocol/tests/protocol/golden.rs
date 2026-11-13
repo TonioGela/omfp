@@ -33,6 +33,9 @@ use omfp_protocol::{
     WindowBinding, WindowCommand, WindowList, WindowRef, WindowReport, WindowState, WindowSummary,
     WindowView,
 };
+use omfp_protocol::{
+    AuthProvider, AuthProviders, LoggedIn, LoggedOut, LoginCancelled, ProviderRef,
+};
 use omfp_protocol::{ContextUsage, SessionTokens, SessionUsage, ThreadSession};
 use omfp_protocol::{CreatedBy, ListThreadsParams, Provenance, ThreadList, WorkspaceList};
 use omfp_protocol::{FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
@@ -1268,6 +1271,54 @@ fn mcp_examples() -> Vec<(&'static str, Value)> {
     ]
 }
 
+fn auth_examples() -> Vec<(&'static str, Value)> {
+    let anthropic = || ProviderRef {
+        provider_id: "anthropic".to_owned(),
+    };
+    vec![
+        example::<method::AuthProviders>(
+            Empty {},
+            &AuthProviders {
+                providers: vec![
+                    AuthProvider {
+                        id: "openai-codex".to_owned(),
+                        name: "ChatGPT Plus/Pro (Codex Subscription)".to_owned(),
+                        available: true,
+                        authenticated: true,
+                    },
+                    AuthProvider {
+                        id: "anthropic".to_owned(),
+                        name: "Anthropic (Claude Pro/Max)".to_owned(),
+                        available: true,
+                        authenticated: false,
+                    },
+                ],
+            },
+        ),
+        example::<method::AuthLogin>(
+            anthropic(),
+            &LoggedIn {
+                provider_id: "anthropic".to_owned(),
+                name: "Anthropic (Claude Pro/Max)".to_owned(),
+            },
+        ),
+        example::<method::AuthLoginCancel>(
+            Empty {},
+            &LoginCancelled {
+                provider_id: Some("anthropic".to_owned()),
+            },
+        ),
+        example::<method::AuthLogout>(
+            anthropic(),
+            &LoggedOut {
+                provider_id: "anthropic".to_owned(),
+                removed: 1,
+                remaining_source: Some("ANTHROPIC_API_KEY".to_owned()),
+            },
+        ),
+    ]
+}
+
 // spec: PRT-085
 #[test]
 fn stop_cascades_only_when_asked() {
@@ -1535,6 +1586,7 @@ fn every_method_has_a_golden_request_and_response() {
         activity_examples(),
         list_examples(),
         mcp_examples(),
+        auth_examples(),
     ]
     .concat();
 

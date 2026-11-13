@@ -189,6 +189,13 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
         call @ (Call::JobsStart(_) | Call::JobsKill(_)) => jobs(services, principal, call).await,
         Call::ActivityList(params) => ok(&activity::list(services, params).await?),
         Call::PromptsHistory(params) => ok(&prompts::history(services, params).await?),
+        Call::AuthProviders(_) => ok(&services.auth_providers().await?),
+        // A window's own `auth.login` is the connection's (DMN-221); an agent's goes to the focused window.
+        Call::AuthLogin(params) => ok(&services.auth_login(None, params.provider_id).await?),
+        Call::AuthLoginCancel(_) => ok(&omfp_protocol::LoginCancelled {
+            provider_id: services.supervisor.cancel_login(None),
+        }),
+        Call::AuthLogout(params) => ok(&services.auth_logout(params.provider_id).await?),
         call => threads::thread(services, principal, call).await,
     }
 }

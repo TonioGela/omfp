@@ -3,7 +3,8 @@
  * model and thinking selectors, context usage, session cost, the process state with stop/restart, "Reload to load MCP
  * tools" while the daemon holds that restart (UI-349), and archive/unarchive/delete (UI-026; delete asks first, in the
  * frame's confirmation dialog). For the draft thread (UI-023): its placeholder title and its workspace's chip. Narrower
- * than {@link COMPACT_BELOW_REM} it is one row (UI-202): title, state and model, the rest in a `⋯` popover.
+ * than {@link COMPACT_BELOW_REM} it is one row (UI-202): title, state and model, the rest in a `⋯` popover. When omp
+ * has no model it can use — its start failed saying so, or it lists no model — it offers Log in (UI-388).
  */
 
 import type { ThreadSummary } from "@omfp/protocol";
@@ -22,6 +23,7 @@ import {
   useWidthClass,
 } from "omfp/kit";
 import {
+  AUTH_REVISION,
   costLabel,
   DRAFT_THREAD,
   type DraftThread,
@@ -33,6 +35,7 @@ import {
   NO_DETAILS,
   RENAMING_THREAD,
   REVEAL_WIDGET,
+  requestLogin,
   type SdkClient,
   SELECTED_THREAD,
   splitModel,
@@ -41,6 +44,7 @@ import {
   type ThreadDetails,
   type ThreadStatus,
   useCall,
+  useHost,
   useReportError,
   useRunningInBackground,
   useThread,
@@ -193,15 +197,19 @@ function More({ threadId, view, onChanged }: SessionProps): ReactNode {
   );
 }
 
-/** `thread.state`, `thread.models` and `thread.thinking_levels` while the process runs; the function refreshes the
- * session after a model or thinking change. */
+/** `thread.state`, `thread.models` and `thread.thinking_levels` while the process runs, read again after a login or
+ * logout of this window (`AUTH_REVISION`, UI-385); the function refreshes the session after a model or thinking
+ * change. */
 function useThreadDetails(threadId: string, running: boolean): [ThreadDetails, () => void] {
   const call = useCall();
   const [details, setDetails] = useState<ThreadDetails>(NO_DETAILS);
+  const [authRevision] = useWindowState(AUTH_REVISION);
   useEffect(() => {
     if (!running) {
       return;
     }
+    // Read again on every login or logout.
+    void authRevision;
     let live = true;
     void fetchDetails(call, threadId).then((fetched) => {
       if (live) {
@@ -211,7 +219,7 @@ function useThreadDetails(threadId: string, running: boolean): [ThreadDetails, (
     return () => {
       live = false;
     };
-  }, [call, threadId, running]);
+  }, [call, threadId, running, authRevision]);
   const refresh = () => {
     void call("thread.state", { threadId }).then(
       (session) => setDetails((previous) => ({ ...previous, session: decodeSession(session) })),
@@ -230,6 +238,7 @@ async function fetchDetails(call: SdkClient["call"], threadId: string): Promise<
   return {
     session: session.status === "fulfilled" ? decodeSession(session.value) : undefined,
     models: models.status === "fulfilled" ? decodeModels(models.value) : [],
+    modelsLoaded: models.status === "fulfilled",
     thinkingLevels: levels.status === "fulfilled" ? decodeThinkingLevels(levels.value) : [],
   };
 }
@@ -400,8 +409,10 @@ function useSessionChange(onChanged: () => void): (request: Promise<unknown>) =>
   };
 }
 
+/** The model list; when omp offers no model, Log in instead (UI-388). */
 function ModelSelect({ threadId, view, onChanged }: SessionProps): ReactNode {
   const call = useCall();
+  const host = useHost();
   const change = useSessionChange(onChanged);
   const onModel = (key: Key | null) => {
     const model = splitModel(String(key ?? ""));
@@ -409,6 +420,22 @@ function ModelSelect({ threadId, view, onChanged }: SessionProps): ReactNode {
       change(call("thread.set_model", { threadId, ...model }));
     }
   };
+  if (view.noModels) {
+    return (
+      <span className="omfp-thread-header__no-models" data-testid="no-models">
+        {text.noModels}
+        <Button
+          size="sm"
+          variant="primary"
+          aria-description={text.logInHint}
+          onPress={() => requestLogin(host)}
+          data-testid="models-login"
+        >
+          {text.logIn}
+        </Button>
+      </span>
+    );
+  }
   return (
     <Select
       label={text.model}
@@ -477,15 +504,31 @@ function SessionCost({ threadId }: { threadId: string }): ReactNode {
   );
 }
 
-/** The failure reason and stop/restart; `onDone` runs after pressing it (closes the compact header's popover). */
+/** The failure reason, Log in when omp needs one (UI-388), and stop/restart; `onDone` runs after pressing one (closes
+ * the compact header's popover). */
 function ProcessAction({ threadId, view, onDone }: { threadId: string; view: HeaderView; onDone?: () => void }) {
   const actions = useThreadActions();
+  const host = useHost();
   return (
     <>
       {view.failure !== undefined && (
         <span className="omfp-thread-header__failure" data-testid="thread-failure">
           {view.failure}
         </span>
+      )}
+      {view.login && (
+        <Button
+          size="sm"
+          variant="primary"
+          aria-description={text.logInHint}
+          data-testid="header-login"
+          onPress={() => {
+            onDone?.();
+            requestLogin(host);
+          }}
+        >
+          {text.logIn}
+        </Button>
       )}
       {view.action !== undefined && (
         <Button

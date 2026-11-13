@@ -1,0 +1,24 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "auth.logout",
+    "params": {
+      "providerId": "anthropic"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "providerId": "anthropic",
+      "remainingSource": "ANTHROPIC_API_KEY",
+      "removed": 1
+    },
+    "type": "response"
+  }
+}

@@ -51,7 +51,9 @@
  * and per workspace, UI-367), `DELETE_THREAD`,
  * `DELETE_WORKSPACE`,
  * `RENAMING_THREAD`, `FOCUS_COMPOSER`, `ERRORS`, `OPEN_FILES`, `FLOATING_FILES` and `floatingWidgetKey(workspaceId, panelId)`
- * (persisted), `FILE_PICKER`, `EDITOR_MODE`, `NOTICES`.
+ * (persisted), `FILE_PICKER`, `EDITOR_MODE`, `NOTICES`, `SUCCESSES` (success toasts, `reportSuccess`), `LOGIN` (a
+ * login request the frame takes, `requestLogin(host, providerId?)`, UI-382) and `AUTH_REVISION` (counts this window's
+ * logins and logouts, UI-385).
  * A widget is a {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own
  * scoped commands.
  */
@@ -170,6 +172,14 @@ export {
   micButton,
   ownStatus,
 } from "../vm/live.ts";
+export {
+  loginCompletions,
+  logoutCompletions,
+  logoutSummary,
+  needsLogin,
+  providerName,
+  withAuthenticated,
+} from "../vm/login.ts";
 export { markdownChunks } from "../vm/markdown.ts";
 export {
   MCP_IDLE,
@@ -284,6 +294,8 @@ export {
   errorMessage,
   removeWorkspace,
   reportError,
+  reportSuccess,
+  requestLogin,
   type ThreadActions,
   threadActions,
   type UrlActions,
@@ -376,6 +388,7 @@ export {
 } from "./init.ts";
 export { InitViews, Layout, type ViewEntry, type ViewOrigin, type ViewSpec } from "./init-views.ts";
 export {
+  AUTH_REVISION,
   COLOR_SCHEME,
   type ColorScheme,
   DELETE_THREAD,
@@ -388,6 +401,8 @@ export {
   EMPTY_DRAFT,
   ERRORS,
   FOCUS_COMPOSER,
+  LOGIN,
+  type LoginRequest,
   OPEN_SUBAGENT,
   type OpenSubagentRequest,
   type Paste,
@@ -395,6 +410,8 @@ export {
   REVEAL_WIDGET,
   type RevealRequest,
   SELECTED_THREAD,
+  SUCCESSES,
+  type Success,
   VIEW_CHOICES,
 } from "./keys.ts";
 export {

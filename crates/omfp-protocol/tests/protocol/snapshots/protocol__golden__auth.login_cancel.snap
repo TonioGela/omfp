@@ -1,0 +1,20 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "auth.login_cancel",
+    "params": {},
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "providerId": "anthropic"
+    },
+    "type": "response"
+  }
+}

@@ -238,6 +238,20 @@
   ],
   "commands": [
     {
+      "id": "auth.login",
+      "title": "Log in to a provider (:login [<provider>]; without one, pick it)",
+      "aliases": [
+        "login"
+      ]
+    },
+    {
+      "id": "auth.logout",
+      "title": "Log out of a provider (:logout <provider>)",
+      "aliases": [
+        "logout"
+      ]
+    },
+    {
       "id": "cmdline.open",
       "title": "Open the command line",
       "aliases": []

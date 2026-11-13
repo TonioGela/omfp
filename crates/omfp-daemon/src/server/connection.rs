@@ -112,8 +112,10 @@ pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>, permit: OwnedSe
         // DMN-205).
         connection.subscriptions.clear();
         app.services.forget_widget_reports(connection.number);
-        // The window's audio peer is gone with it: stop the live sessions it started (DMN-103).
+        // The window's audio peer is gone with it: stop the live sessions it started (DMN-103); nobody is left to see
+        // the login it shows (DMN-222).
         let supervisor = app.services.supervisor.clone();
+        supervisor.cancel_login(Some(number));
         tokio::spawn(async move { supervisor.release_live(number).await });
     }
     drop(out);
@@ -352,6 +354,7 @@ impl Connection {
                     send(&out, Outbound::response(id, result)).await;
                 });
             }
+            Call::AuthLogin(params) => self.log_in(id, params.provider_id),
             call => {
                 // Requests run concurrently; responses may arrive out of order (PRT-010).
                 let services = self.app.services.clone();
@@ -363,6 +366,20 @@ impl Connection {
                 });
             }
         }
+    }
+
+    /// `auth.login` of this window's user: the flow goes to this window (DMN-221).
+    fn log_in(&self, id: String, provider_id: String) {
+        let services = self.app.services.clone();
+        let number = self.number;
+        let out = self.out.clone();
+        tokio::spawn(async move {
+            let result = services
+                .auth_login(Some(number), provider_id)
+                .await
+                .and_then(|logged_in| to_value(&logged_in));
+            send(&out, Outbound::response(id, result)).await;
+        });
     }
 
     #[allow(clippy::too_many_lines)] // One arm per topic.

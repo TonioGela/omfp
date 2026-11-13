@@ -232,6 +232,68 @@
     font-size: var(--omfp-fs-xs);
   }
 
+  /* An error toast keeps the lines of omp's stderr tail (UI-381). */
+  .omfp-error-toast .omfp-toast__text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  /* Logging in (UI-380..UI-388): the progress and URL toasts' second line, the provider picker, the header's offer. */
+  .omfp-login__progress,
+  .omfp-login__instructions {
+    display: block;
+    margin-block-start: var(--omfp-s1);
+    color: var(--omfp-on-surface-variant);
+    font-size: var(--omfp-fs-xs);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .omfp-login__loading {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s2);
+    margin: 0;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-login__spinner {
+    animation: omfp-spin 1s linear infinite;
+  }
+
+  .omfp-login__provider {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--omfp-s2);
+  }
+
+  .omfp-login__id {
+    color: var(--omfp-on-surface-variant);
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-login__mark {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--omfp-s1);
+    color: var(--omfp-ok);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-login__note {
+    color: var(--omfp-on-surface-variant);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-thread-header__no-models {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--omfp-s2);
+    color: var(--omfp-on-surface-variant);
+  }
+
   /* The `:` line and the file picker (UI-168): the kit prompt in the mode line's segments, the completion menu a
    * popover above the mode line, positioned against it. */
   .omfp-cmdline {

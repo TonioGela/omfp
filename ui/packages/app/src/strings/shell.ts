@@ -97,6 +97,10 @@ export const shell = {
     /** The compact header's `⋯` button and the popover it opens (UI-202). */
     more: "More thread actions",
     moreTitle: "Thread",
+    /** Log in beside a failed start that says omp needs a login, and in an empty model list (UI-387, UI-388). */
+    logIn: "Log in",
+    logInHint: "omp has no model it can use: log in to a provider",
+    noModels: "No models",
   },
   deleteThread: {
     title: (title: string) => `Delete \u201c${title}\u201d?`,
@@ -480,6 +484,35 @@ export const shell = {
     invalidValue: (key: string, value: string) => `Invalid value for ${key}: ${value === "" ? "(empty)" : value}`,
     error: (message: string) => `The config file is invalid, the previous settings stay: ${message}`,
   },
+  /** Logging in to a provider (UI-380..UI-389). */
+  login: {
+    logIn: "Log in",
+    /** The provider picker (UI-382). */
+    pickerTitle: "Log in to a provider",
+    pickerLabel: "Providers",
+    loadingProviders: "Asking omp which providers it can log in to…",
+    noProviders: "omp offers no provider to log in to",
+    providersFailed: (message: string) => `Could not list the providers: ${message}`,
+    authenticated: "logged in",
+    unavailable: "not available here",
+    cancel: "Cancel",
+    /** The progress toast while `auth.login` runs (UI-383). */
+    progress: (name: string) => `Logging in to ${name}… finish in your browser`,
+    cancelLogin: "Cancel",
+    cancelLoginLabel: (name: string) => `Cancel the login to ${name}`,
+    /** The opened-URL toast of a login (UI-380). */
+    url: (name: string, host: string) => `Log in to ${name} at ${host}`,
+    /** The paste dialog of a `login_input` (UI-384). */
+    inputTitle: (name: string) => `Log in to ${name}`,
+    submit: "Continue",
+    /** Outcomes (UI-385, UI-386). */
+    loggedIn: (name: string) => `Logged in to ${name}`,
+    removed: (name: string, count: number) =>
+      `Logged out of ${name}: removed ${count} stored ${count === 1 ? "credential" : "credentials"}.`,
+    removedNone: (name: string) => `omp held no stored credential of ${name}.`,
+    stillAuthenticated: (name: string, source: string) => `${name} still authenticates with ${source}.`,
+    logoutUsage: "Usage: :logout <provider>",
+  },
   /** Notices in the mode line and system notifications (UI-096, UI-192). */
   notices: {
     attention: "needs you",
@@ -523,6 +556,8 @@ export const shell = {
     halfUp: "Half a page of threads up",
     help: "Show every key and command (this help)",
     toggleThreads: "Show or hide the threads column (narrow window)",
+    login: "Log in to a provider (:login [<provider>]; without one, pick it)",
+    logout: "Log out of a provider (:logout <provider>)",
   },
   /** The help panel (UI-198): the effective keymap by mode and the `:` commands. */
   help: {

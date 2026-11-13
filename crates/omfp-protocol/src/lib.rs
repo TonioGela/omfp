@@ -6,6 +6,7 @@
 //! method has a marker type in [`method`] implementing [`Method`], which names its params and result types.
 
 mod activity;
+mod auth;
 mod dto;
 mod envelope;
 mod lists;
@@ -21,6 +22,7 @@ pub use activity::{
     ActivityEntry, ActivityPage, ListActivityParams, PromptHistory, PromptHistoryEntry,
     PromptHistoryParams, StopThreadParams, ThreadsStopped,
 };
+pub use auth::{AuthProvider, AuthProviders, LoggedIn, LoggedOut, LoginCancelled, ProviderRef};
 pub use dto::{
     CreatedBy, Density, DiffPage, FileCandidate, FileCandidates, FileChange, FileContent, FileDiff,
     FileKind, FileMatch, FileStatus, FileWritten, FontSettings, GitStatus, IndexSnapshot, JobInfo,

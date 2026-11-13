@@ -3,9 +3,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CallMethod } from "@omfp/client";
 import type { ThreadSummary } from "@omfp/protocol";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent, { type UserEvent } from "@testing-library/user-event";
-import { DELETE_THREAD, draftKey, ERRORS, REVEAL_WIDGET, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import {
+  AUTH_REVISION,
+  DELETE_THREAD,
+  draftKey,
+  ERRORS,
+  LOGIN,
+  REVEAL_WIDGET,
+  SELECTED_THREAD,
+} from "../../src/sdk/index.ts";
 import { HeaderWidget } from "../../src/widgets/header/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { type FakeClient, renderWithHost, testHost } from "../support/host.tsx";
@@ -241,5 +249,55 @@ describe("omfp:header", () => {
     expect(reconnect?.params).toEqual({ threadId: "t1" });
     reconnect?.reject(new Error("busy: the turn has not settled"));
     await waitFor(() => expect(host.window.get(ERRORS)).toEqual(["busy: the turn has not settled"]));
+  });
+
+  // spec: UI-388
+  test("a start that failed for want of a login offers Log in beside Restart; another failure does not", async () => {
+    const noDefault =
+      "No default model selected. Use /login, set an API key environment variable, or select a local model with /model or --model.";
+    const { host, user } = setup(
+      thread("t1", "x", "w1", {
+        process: { state: "failed", message: "omp failed to start: server closed", stderr_tail: noDefault },
+      }),
+    );
+    expect(screen.getByTestId("process-action").dataset.action).toBe("restart");
+    const login = screen.getByTestId("header-login");
+    expect(login.textContent).toBe("Log in");
+    await user.click(login);
+    expect(host.window.get(LOGIN)).toEqual({ providerId: undefined });
+    cleanup();
+    setup(thread("t1", "x", "w1", { process: { state: "failed", message: "omp exited" } }));
+    expect(screen.queryAllByTestId("header-login").length).toBe(0);
+  });
+
+  // spec: UI-385, UI-388
+  test("with no model the model list offers Log in, and a login of the window reads the models again", async () => {
+    setup();
+    // The default answer lists models: the selector shows.
+    await waitFor(() => expect(screen.queryAllByTestId("model-select").length).toBe(1));
+    expect(screen.queryAllByTestId("models-login").length).toBe(0);
+    cleanup();
+
+    const base = testHost();
+    answer(base.client);
+    base.client.answers.set("thread.models", () => ({ models: [] }));
+    base.client.answers.set("thread.state", () => ({ sessionId: "s" }));
+    base.host.window.set(SELECTED_THREAD, "t1");
+    const { client, host, flush } = renderWithHost(<HeaderWidget />, base);
+    client.connected();
+    client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "checkout", "w1")] });
+    flush();
+    const login = await screen.findByTestId("models-login");
+    expect(screen.getByTestId("no-models").textContent).toBe("No modelsLog in");
+    await userEvent.setup().click(login);
+    expect(host.window.get(LOGIN)).toEqual({ providerId: undefined });
+
+    // A login worked: the models are read again and the list shows.
+    expect(client.callsTo("thread.models").length).toBe(1);
+    client.answers.set("thread.models", () => ({ models: [opus] }));
+    act(() => host.window.set(AUTH_REVISION, (revision) => revision + 1));
+    await waitFor(() => expect(client.callsTo("thread.models").length).toBe(2));
+    await screen.findByTestId("model-select");
+    expect(screen.queryAllByTestId("models-login").length).toBe(0);
   });
 });

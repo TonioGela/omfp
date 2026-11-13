@@ -79,6 +79,27 @@ export const FOCUS_COMPOSER = windowKey<string | undefined>("focusComposer", und
 /** Errors of failed actions, oldest first, shown by the frame until dismissed. */
 export const ERRORS = windowKey<readonly string[]>("errors", []);
 
+/** A message of an action that worked (UI-385), e.g. "Logged in to Anthropic"; `key` is unique per window. */
+export interface Success {
+  readonly key: number;
+  readonly text: string;
+}
+
+/** Messages of actions that worked, oldest first, shown by the frame as success toasts that go by themselves. */
+export const SUCCESSES = windowKey<readonly Success[]>("successes", []);
+
+/** A request to log in to a provider (UI-382): the frame starts `auth.login` for `providerId` at once, or opens its
+ * provider picker when it is `undefined`, then clears the request. Set it with `requestLogin(host, providerId?)`. */
+export interface LoginRequest {
+  readonly providerId: string | undefined;
+}
+
+export const LOGIN = windowKey<LoginRequest | undefined>("login", undefined);
+
+/** Counts the logins and logouts this window made (UI-385): what reads the models omp offers (the header's model
+ * list) reads them again when it changes. */
+export const AUTH_REVISION = windowKey<number>("authRevision", 0);
+
 /** A request to show a built-in widget (UI-274): the frame selects the tab holding `reference` in the current view,
  * else floats it in a panel of this window; `nonce` tells one request from the next. */
 export interface RevealRequest {

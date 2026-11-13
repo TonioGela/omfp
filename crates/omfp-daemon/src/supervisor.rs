@@ -35,8 +35,11 @@ use crate::workspaces::{WorkspaceError, Workspaces};
 
 mod dialogs;
 mod live;
+mod login;
 mod mcp;
 mod naming;
+
+pub use login::{AuthOmp, LOGIN_MODEL};
 
 /// The event log of one thread: omp frames and daemon events folded by the shared reducer (ARC-006).
 pub type ThreadLog = EventLog<ThreadEvent, ThreadState>;
@@ -407,6 +410,9 @@ struct Inner {
     /// `widget_host`.
     agent_host: Mutex<Option<Arc<dyn host_tools::AgentHost>>>,
     shutting_down: AtomicBool,
+    /// The running `auth.login` and the numbers telling logins apart (DMN-222).
+    login: Mutex<Option<login::Running>>,
+    logins: AtomicU64,
 }
 
 /// The agent supervisor. Cheap to clone.
@@ -502,6 +508,8 @@ impl Supervisor {
                 widget_host: Mutex::new(None),
                 agent_host: Mutex::new(None),
                 shutting_down: AtomicBool::new(false),
+                login: Mutex::new(None),
+                logins: AtomicU64::new(0),
             }),
         }
     }
@@ -926,6 +934,7 @@ impl Supervisor {
         self.inner.shutting_down.store(true, Ordering::SeqCst);
         lock(&self.inner.widget_host).take();
         lock(&self.inner.agent_host).take();
+        self.cancel_login(None);
         let actors: Vec<Arc<Actor>> = lock(&self.inner.actors).values().cloned().collect();
         let stops = actors.iter().map(|actor| async move {
             let _lifecycle = actor.lifecycle.lock().await;

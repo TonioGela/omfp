@@ -7,6 +7,7 @@ import type { ThreadState } from "@omfp/core";
 import type { ThreadSummary, Workspace } from "@omfp/protocol";
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
+import { needsLogin } from "./login.ts";
 import {
   displayTitle,
   isArchived,
@@ -36,11 +37,13 @@ export interface ThreadDetails {
   readonly session: SessionDetails | undefined;
   /** `thread.models`. */
   readonly models: readonly ModelInfo[];
+  /** `thread.models` answered: an empty {@link ThreadDetails.models} is then omp's (UI-388). */
+  readonly modelsLoaded: boolean;
   /** `thread.thinking_levels`. */
   readonly thinkingLevels: readonly string[];
 }
 
-export const NO_DETAILS: ThreadDetails = { session: undefined, models: [], thinkingLevels: [] };
+export const NO_DETAILS: ThreadDetails = { session: undefined, models: [], modelsLoaded: false, thinkingLevels: [] };
 
 /** One model choice: `value` is `provider/id`. */
 export interface ModelOption {
@@ -75,6 +78,10 @@ export interface HeaderView {
   readonly archived: boolean;
   /** The daemon holds a restart that loads new MCP tools while background work runs: offer it (UI-349). */
   readonly mcpReload: boolean;
+  /** The process failed because omp has no model it can use without a login or a key: offer Log in (UI-388). */
+  readonly login: boolean;
+  /** omp offers no model at all: the model list offers Log in (UI-388). */
+  readonly noModels: boolean;
 }
 
 /** The header of a thread; the session cost comes from {@link costLabel}, so the header does not depend on the
@@ -118,6 +125,8 @@ export function headerView(
     action: processAction(process.state),
     archived: isArchived(summary),
     mcpReload: summary.mcpReloadPending === true,
+    login: process.state === "failed" && (needsLogin(process.message) || needsLogin(process.stderr_tail)),
+    noModels: details.modelsLoaded && models.length === 0,
   };
 }
 

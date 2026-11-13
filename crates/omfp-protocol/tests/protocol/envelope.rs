@@ -6,7 +6,7 @@ use omfp_core::{ProcessState, ThreadEvent};
 use omfp_protocol::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, JobStream, KeymapMode, MAX_FRAME_BYTES,
     PROTOCOL_VERSION, ReportWidgetsParams, Response, ServerFrame, Topic, TopicEvent,
-    TransientEvent, ViewsEvent, ViewsState, WidgetInfo, WidgetSource, WindowRequest,
+    TransientEvent, ViewsEvent, ViewsState, WidgetInfo, WidgetSource, WindowAnswer, WindowRequest,
     WorkspaceBinding, WorkspaceEvent,
 };
 use serde_json::{Value, json};
@@ -476,6 +476,92 @@ fn a_window_request_frame_carries_the_request_id_and_its_kind() {
         })
     );
     insta::assert_json_snapshot!("window_request_check_widget", golden);
+}
+
+// spec: PRT-131
+#[test]
+fn a_login_flow_reaches_the_window_as_url_progress_and_input_requests() {
+    let url = ServerFrame::WindowRequest {
+        id: "w3".to_owned(),
+        request: WindowRequest::LoginUrl {
+            provider_id: "anthropic".to_owned(),
+            name: "Anthropic (Claude Pro/Max)".to_owned(),
+            url: "https://claude.ai/oauth/authorize?code=true".to_owned(),
+            launch_url: Some("http://localhost:54545/launch".to_owned()),
+            instructions: None,
+        },
+    };
+    let golden = round_trip(&url);
+    assert_eq!(
+        golden,
+        json!({
+            "type": "window_request",
+            "id": "w3",
+            "request": {
+                "kind": "login_url",
+                "providerId": "anthropic",
+                "name": "Anthropic (Claude Pro/Max)",
+                "url": "https://claude.ai/oauth/authorize?code=true",
+                "launchUrl": "http://localhost:54545/launch",
+                "instructions": null
+            }
+        })
+    );
+    insta::assert_json_snapshot!("window_request_login_url", golden);
+    let progress = ServerFrame::WindowRequest {
+        id: "w4".to_owned(),
+        request: WindowRequest::LoginProgress {
+            provider_id: "anthropic".to_owned(),
+            name: "Anthropic (Claude Pro/Max)".to_owned(),
+            message: "Waiting for the browser…".to_owned(),
+        },
+    };
+    assert_eq!(
+        round_trip(&progress)["request"],
+        json!({
+            "kind": "login_progress",
+            "providerId": "anthropic",
+            "name": "Anthropic (Claude Pro/Max)",
+            "message": "Waiting for the browser…"
+        })
+    );
+    let input = ServerFrame::WindowRequest {
+        id: "w5".to_owned(),
+        request: WindowRequest::LoginInput {
+            provider_id: "kimi-code".to_owned(),
+            name: "Kimi Code".to_owned(),
+            message: "Paste the authorization code".to_owned(),
+            placeholder: None,
+        },
+    };
+    assert_eq!(
+        round_trip(&input)["request"],
+        json!({
+            "kind": "login_input",
+            "providerId": "kimi-code",
+            "name": "Kimi Code",
+            "message": "Paste the authorization code",
+            "placeholder": null
+        })
+    );
+    for (answer, wire) in [
+        (
+            WindowAnswer::LoginInput {
+                value: Some("code#state".to_owned()),
+            },
+            json!({ "kind": "login_input", "value": "code#state" }),
+        ),
+        (
+            WindowAnswer::LoginInput { value: None },
+            json!({ "kind": "login_input", "value": null }),
+        ),
+    ] {
+        assert_eq!(serde_json::to_value(&answer).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_value::<WindowAnswer>(wire).unwrap(),
+            answer
+        );
+    }
 }
 
 // spec: PRT-122

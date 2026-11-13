@@ -574,6 +574,7 @@ impl AgentProcess for FakeAgent {
             }
             OmpCall::LiveMute(mute) => process.live_mute(mute),
             OmpCall::LiveStop => Ok(process.live_stop()),
+            OmpCall::Login(login) => Ok(json!({ "providerId": login.provider_id })),
             _ => Ok(default_data(command, &process.shared.session_id)),
         }
     }
@@ -586,6 +587,10 @@ impl AgentProcess for FakeAgent {
         }
         process.play_next();
         Ok(())
+    }
+
+    fn kill(&self) {
+        self.0.exit();
     }
 }
 
@@ -623,6 +628,9 @@ fn default_data(command: &str, session_id: &str) -> Value {
             "output": "", "cancelled": false, "truncated": false, "totalLines": 0, "totalBytes": 0,
             "outputLines": 0, "outputBytes": 0, "exitCode": 0
         }),
+        "get_login_providers" => json!({ "providers": [] }),
+        "get_logout_accounts" => json!({ "accounts": [] }),
+        "logout" => json!({}),
         _ => Value::Null,
     }
 }

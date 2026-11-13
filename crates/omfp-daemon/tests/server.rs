@@ -2067,3 +2067,430 @@ async fn live_errors_have_their_codes_and_readable_messages() {
         json!({ "muted": true })
     );
 }
+
+/// What `get_login_providers` answers in the login tests.
+fn login_providers() -> FakeReply {
+    FakeReply::Ok(json!({ "providers": [
+        { "id": "anthropic", "name": "Anthropic (Claude Pro/Max)", "available": true, "authenticated": false },
+        { "id": "kimi-code", "name": "Kimi Code", "available": true, "authenticated": true },
+        { "id": "cursor", "name": "Cursor", "available": false, "authenticated": false }
+    ]}))
+}
+
+/// Sends a request without waiting for its response; returns its id.
+async fn send_request(client: &mut Client, id: &str, method: &str, params: Value) {
+    client
+        .send_text(
+            json!({ "type": "request", "id": id, "method": method, "params": params }).to_string(),
+        )
+        .await;
+}
+
+/// The next frame of `client` that is a window request, with its id.
+async fn next_window_request(client: &mut Client) -> (String, Value) {
+    loop {
+        let frame = client.frame().await;
+        if frame["type"] == "window_request" {
+            return (
+                frame["id"].as_str().unwrap().to_owned(),
+                frame["request"].clone(),
+            );
+        }
+    }
+}
+
+/// The response to request `id`, from the frames `client` received.
+async fn response_to(client: &mut Client, id: &str) -> Value {
+    loop {
+        let frame = client.frame().await;
+        if frame["type"] == "response" && frame["id"] == id {
+            return frame;
+        }
+    }
+}
+
+/// Waits until the fake launched `count` processes.
+async fn launched(daemon: &TestDaemon, count: usize) {
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while daemon.launcher.launches().len() < count {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("no launch {count}: {}", daemon.launcher.launches().len()));
+}
+
+// spec: PRT-129, DMN-219
+#[tokio::test(flavor = "multi_thread")]
+async fn providers_come_from_a_short_lived_omp_started_with_a_catalog_model() {
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    let mut client = daemon.client("test").await;
+
+    let providers = client.ok("auth.providers", json!({})).await;
+
+    assert_eq!(providers["providers"].as_array().unwrap().len(), 3);
+    assert_eq!(
+        providers["providers"][0],
+        json!({ "id": "anthropic", "name": "Anthropic (Claude Pro/Max)", "available": true, "authenticated": false })
+    );
+    let launch = &daemon.launcher.launches()[0];
+    assert_eq!(
+        launch.spec.model.as_deref(),
+        Some(omfp_daemon::supervisor::LOGIN_MODEL)
+    );
+    let login = daemon.dir.path().join("login");
+    assert_eq!(launch.spec.cwd, login.join("work"));
+    assert_eq!(launch.spec.session_dir, login.join("sessions"));
+    assert_eq!(launch.spec.add_dirs, Vec::<std::path::PathBuf>::new());
+    assert_eq!(launch.spec.append_system_prompt, None);
+    assert_eq!(launch.tools, Vec::<String>::new());
+    assert!(launch.process.is_closed(), "the login omp is stopped");
+}
+
+// spec: DMN-219
+#[tokio::test(flavor = "multi_thread")]
+async fn a_login_omp_that_will_not_start_with_the_catalog_model_starts_without_it() {
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    daemon
+        .launcher
+        .fail_next_launch("Model \"anthropic/claude-sonnet-4-5\" not found");
+    let mut client = daemon.client("test").await;
+
+    client.ok("auth.providers", json!({})).await;
+
+    let launches = daemon.launcher.launches();
+    assert_eq!(launches.len(), 1, "the failed start is not a launch");
+    assert_eq!(launches[0].spec.model, None);
+
+    daemon
+        .launcher
+        .fail_next_launch("Model \"anthropic/claude-sonnet-4-5\" not found");
+    daemon
+        .launcher
+        .fail_next_launch("No default model selected. Use /login, …");
+    let error = client.call("auth.providers", json!({})).await.unwrap_err();
+    assert_eq!(error["code"], "thread_failed", "{error}");
+    assert_eq!(
+        error["details"]["stderrTail"],
+        "No default model selected. Use /login, …"
+    );
+}
+
+// spec: PRT-130, PRT-131, DMN-220, DMN-221, DMN-224
+#[tokio::test(flavor = "multi_thread")]
+async fn a_login_shows_its_flow_in_the_calling_window_then_reloads_the_running_threads() {
+    use omfp_core::wire::{
+        ExtensionUiRequest, ExtensionUiResponse, InputUiRequest, NotifyUiRequest, OpenUrlUiRequest,
+    };
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    let gate = daemon.launcher.gate("login");
+    let mut window = daemon.client("test").await;
+    let thread = create_thread(&mut window).await;
+    window
+        .ok("thread.state", json!({ "threadId": thread }))
+        .await;
+
+    send_request(
+        &mut window,
+        "l1",
+        "auth.login",
+        json!({ "providerId": "kimi-code" }),
+    )
+    .await;
+    gate.arrived(1).await;
+    let omp = daemon.launcher.process(1);
+    let ui = |request| RpcNotification::ExtensionUiRequest(request);
+    omp.emit(vec![
+        ui(ExtensionUiRequest::OpenUrl(OpenUrlUiRequest {
+            id: "u1".into(),
+            url: "https://auth.kimi.com/device?code=ABCD".into(),
+            launch_url: Some("http://127.0.0.1:1455/launch".into()),
+            instructions: Some("Enter ABCD".into()),
+        })),
+        ui(ExtensionUiRequest::Notify(NotifyUiRequest {
+            id: "u2".into(),
+            message: "Waiting for the browser…".into(),
+            notify_type: None,
+        })),
+        ui(ExtensionUiRequest::Input(InputUiRequest {
+            id: "u3".into(),
+            title: "Paste the authorization code".into(),
+            placeholder: Some("code#state".into()),
+            timeout: Some(600_000),
+            secret: None,
+        })),
+    ]);
+
+    let (_, url) = next_window_request(&mut window).await;
+    assert_eq!(
+        url,
+        json!({
+            "kind": "login_url", "providerId": "kimi-code", "name": "Kimi Code",
+            "url": "https://auth.kimi.com/device?code=ABCD", "launchUrl": "http://127.0.0.1:1455/launch",
+            "instructions": "Enter ABCD"
+        })
+    );
+    let (_, progress) = next_window_request(&mut window).await;
+    assert_eq!(progress["kind"], "login_progress");
+    assert_eq!(progress["message"], "Waiting for the browser…");
+    let (input_id, input) = next_window_request(&mut window).await;
+    assert_eq!(
+        input,
+        json!({
+            "kind": "login_input", "providerId": "kimi-code", "name": "Kimi Code",
+            "message": "Paste the authorization code", "placeholder": "code#state"
+        })
+    );
+    window
+        .ok(
+            "windows.answer",
+            json!({ "requestId": input_id, "answer": { "kind": "login_input", "value": "abc#xyz" } }),
+        )
+        .await;
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !omp.calls().iter().any(|call| {
+            matches!(
+                call,
+                omfp_daemon::agent::FakeCall::Respond(ExtensionUiResponse::ValueUiResponse(value))
+                    if value.id == "u3" && value.value == "abc#xyz"
+            )
+        }) {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("the code reaches omp");
+    gate.open();
+
+    let response = response_to(&mut window, "l1").await;
+    assert_eq!(
+        response["result"],
+        json!({ "providerId": "kimi-code", "name": "Kimi Code" }),
+        "{response}"
+    );
+    assert!(omp.is_closed(), "the login omp is stopped");
+    // The idle thread restarts to load the models the credential unlocked.
+    launched(&daemon, 3).await;
+    assert_eq!(
+        daemon.launcher.launches()[2].spec.session_dir,
+        daemon.launcher.launches()[0].spec.session_dir
+    );
+    assert!(daemon.launcher.process(0).is_closed());
+}
+
+// spec: PRT-130, DMN-220
+#[tokio::test(flavor = "multi_thread")]
+async fn an_unknown_or_unavailable_provider_is_refused() {
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    let mut client = daemon.client("test").await;
+
+    let unknown = client
+        .call("auth.login", json!({ "providerId": "nope" }))
+        .await
+        .unwrap_err();
+    assert_eq!(unknown["code"], "bad_request");
+    let message = unknown["message"].as_str().unwrap();
+    assert!(
+        message.contains("anthropic, kimi-code, cursor"),
+        "{message}"
+    );
+    let unavailable = client
+        .call("auth.login", json!({ "providerId": "cursor" }))
+        .await
+        .unwrap_err();
+    assert_eq!(unavailable["code"], "bad_request", "{unavailable}");
+    for launch in daemon.launcher.launches() {
+        assert!(launch.process.is_closed());
+    }
+}
+
+// spec: PRT-130, DMN-220
+#[tokio::test(flavor = "multi_thread")]
+async fn a_failed_login_reports_omps_words() {
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    daemon.launcher.reply(
+        "login",
+        FakeReply::Fail {
+            message:
+                "Provider 'anthropic' requires secret input, which is not supported in RPC mode."
+                    .into(),
+            code: None,
+        },
+    );
+    let mut client = daemon.client("test").await;
+
+    let error = client
+        .call("auth.login", json!({ "providerId": "anthropic" }))
+        .await
+        .unwrap_err();
+
+    assert_eq!(error["code"], "omp_error", "{error}");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .contains("requires secret input"),
+        "{error}"
+    );
+}
+
+// spec: PRT-132, DMN-222
+#[tokio::test(flavor = "multi_thread")]
+async fn a_login_is_cancelled_by_auth_login_cancel_by_the_next_login_and_by_closing_its_window() {
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    let gate = daemon.launcher.gate("login");
+    let mut window = daemon.client("test").await;
+
+    assert_eq!(
+        window.ok("auth.login_cancel", json!({})).await,
+        json!({ "providerId": null })
+    );
+    send_request(
+        &mut window,
+        "l1",
+        "auth.login",
+        json!({ "providerId": "anthropic" }),
+    )
+    .await;
+    gate.arrived(1).await;
+    let mut other = daemon.client("other").await;
+    assert_eq!(
+        other.ok("auth.login_cancel", json!({})).await,
+        json!({ "providerId": "anthropic" })
+    );
+    assert!(daemon.launcher.process(0).is_closed(), "its omp is stopped");
+
+    // A second login cancels the first: omp's callback listeners take fixed ports.
+    send_request(
+        &mut window,
+        "l2",
+        "auth.login",
+        json!({ "providerId": "anthropic" }),
+    )
+    .await;
+    gate.arrived(2).await;
+    send_request(
+        &mut window,
+        "l3",
+        "auth.login",
+        json!({ "providerId": "kimi-code" }),
+    )
+    .await;
+    gate.arrived(3).await;
+    assert!(daemon.launcher.process(1).is_closed());
+    assert!(!daemon.launcher.process(2).is_closed());
+
+    // Closing the window cancels the login it shows; another window's login stays.
+    drop(window);
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while !daemon.launcher.process(2).is_closed() {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("closing the window stops its login");
+    gate.open();
+
+    let mut window = daemon.client("again").await;
+    send_request(
+        &mut window,
+        "l4",
+        "auth.login",
+        json!({ "providerId": "anthropic" }),
+    )
+    .await;
+    let response = response_to(&mut window, "l4").await;
+    assert_eq!(response["ok"], true, "{response}");
+    let cancelled = other.call("auth.login_cancel", json!({})).await.unwrap();
+    assert_eq!(cancelled, json!({ "providerId": null }));
+}
+
+// spec: PRT-132, DMN-222
+#[tokio::test(flavor = "multi_thread")]
+async fn a_cancelled_login_fails_as_cancelled() {
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    let gate = daemon.launcher.gate("login");
+    let mut window = daemon.client("test").await;
+    send_request(
+        &mut window,
+        "l1",
+        "auth.login",
+        json!({ "providerId": "anthropic" }),
+    )
+    .await;
+    gate.arrived(1).await;
+
+    let mut other = daemon.client("other").await;
+    other.ok("auth.login_cancel", json!({})).await;
+    gate.open();
+
+    let response = response_to(&mut window, "l1").await;
+    assert_eq!(response["error"]["code"], "conflict", "{response}");
+    assert_eq!(
+        response["error"]["message"],
+        "the login to Anthropic (Claude Pro/Max) was cancelled"
+    );
+}
+
+// spec: PRT-133, DMN-223
+#[tokio::test(flavor = "multi_thread")]
+async fn logout_removes_every_stored_credential_of_the_provider() {
+    let daemon = daemon(&[]).await;
+    daemon.launcher.reply(
+        "get_logout_accounts",
+        FakeReply::Ok(json!({ "accounts": [
+            { "credentialId": 3, "provider": "anthropic", "label": "a@example.com", "detail": "oauth #3",
+              "type": "oauth", "active": true },
+            { "credentialId": 7, "provider": "anthropic", "label": "API key #7", "detail": "stored API key #7",
+              "type": "api_key", "active": false }
+        ]})),
+    );
+    daemon.launcher.reply(
+        "logout",
+        FakeReply::Ok(json!({ "remainingSource": "ANTHROPIC_API_KEY" })),
+    );
+    let mut client = daemon.client("test").await;
+
+    let result = client
+        .ok("auth.logout", json!({ "providerId": "anthropic" }))
+        .await;
+
+    assert_eq!(
+        result,
+        json!({ "providerId": "anthropic", "removed": 2, "remainingSource": "ANTHROPIC_API_KEY" })
+    );
+    let process = daemon.launcher.process(0);
+    let removed: Vec<i64> = process
+        .calls()
+        .into_iter()
+        .filter_map(|call| match call {
+            omfp_daemon::agent::FakeCall::Call(omfp_daemon::agent::OmpCall::Logout(logout)) => {
+                Some(logout.credential_id)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(removed, [3, 7]);
+    assert!(process.is_closed());
+}

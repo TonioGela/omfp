@@ -118,6 +118,163 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "auth.login": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`auth.login` and `auth.logout` params: the provider's omp id (PRT-130, PRT-133).",
+      "properties": {
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerId"
+      ],
+      "title": "ProviderRef",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`auth.login` result (PRT-130): omp stored the provider's credential.",
+      "properties": {
+        "name": {
+          "description": "The provider's name, as `auth.providers` gives it.",
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerId",
+        "name"
+      ],
+      "title": "LoggedIn",
+      "type": "object"
+    }
+  },
+  "auth.login_cancel": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`auth.login_cancel` result (PRT-132).",
+      "properties": {
+        "providerId": {
+          "description": "The provider whose login was cancelled; `null` when none ran.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "LoginCancelled",
+      "type": "object"
+    }
+  },
+  "auth.logout": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`auth.login` and `auth.logout` params: the provider's omp id (PRT-130, PRT-133).",
+      "properties": {
+        "providerId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "providerId"
+      ],
+      "title": "ProviderRef",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`auth.logout` result (PRT-133).",
+      "properties": {
+        "providerId": {
+          "type": "string"
+        },
+        "remainingSource": {
+          "description": "What still authenticates the provider once they are gone, as omp names it (e.g. an environment variable);\n`null` when nothing does.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "removed": {
+          "description": "How many stored credentials (logins and stored keys) of the provider omp removed.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "providerId",
+        "removed"
+      ],
+      "title": "LoggedOut",
+      "type": "object"
+    }
+  },
+  "auth.providers": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "AuthProvider": {
+          "description": "One provider of `auth.providers` (PRT-129), as omp's `get_login_providers` lists it.",
+          "properties": {
+            "authenticated": {
+              "description": "omp holds a credential for it (a login, or a key from the environment or omp's config).",
+              "type": "boolean"
+            },
+            "available": {
+              "description": "omp can run its login here.",
+              "type": "boolean"
+            },
+            "id": {
+              "description": "omp's id, e.g. `anthropic`, `openai-codex`: what `auth.login` takes.",
+              "type": "string"
+            },
+            "name": {
+              "description": "What the user reads, e.g. `Anthropic (Claude Pro/Max)`.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "available",
+            "authenticated"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`auth.providers` result (PRT-129): the providers omp can log in to with OAuth, in omp's order.",
+      "properties": {
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/AuthProvider"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "providers"
+      ],
+      "title": "AuthProviders",
+      "type": "object"
+    }
+  },
   "fs.complete": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -5331,6 +5488,25 @@ expression: method_schemas()
                 "kind",
                 "report",
                 "settled"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "The text a `login_input` asked for; `null` cancels the login.",
+              "properties": {
+                "kind": {
+                  "const": "login_input",
+                  "type": "string"
+                },
+                "value": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "kind"
               ],
               "type": "object"
             }

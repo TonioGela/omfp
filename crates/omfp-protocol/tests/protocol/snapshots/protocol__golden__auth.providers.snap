@@ -1,0 +1,33 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "auth.providers",
+    "params": {},
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "providers": [
+        {
+          "authenticated": true,
+          "available": true,
+          "id": "openai-codex",
+          "name": "ChatGPT Plus/Pro (Codex Subscription)"
+        },
+        {
+          "authenticated": false,
+          "available": true,
+          "id": "anthropic",
+          "name": "Anthropic (Claude Pro/Max)"
+        }
+      ]
+    },
+    "type": "response"
+  }
+}

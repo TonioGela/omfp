@@ -1,0 +1,16 @@
+---
+source: crates/omfp-protocol/tests/protocol/envelope.rs
+expression: golden
+---
+{
+  "id": "w3",
+  "request": {
+    "instructions": null,
+    "kind": "login_url",
+    "launchUrl": "http://localhost:54545/launch",
+    "name": "Anthropic (Claude Pro/Max)",
+    "providerId": "anthropic",
+    "url": "https://claude.ai/oauth/authorize?code=true"
+  },
+  "type": "window_request"
+}

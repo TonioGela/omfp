@@ -14,13 +14,14 @@ use omp_rpc::{
     CompactCommand, Event, ExtensionUiResponse, FollowUpCommand, ForkCommand,
     GetAvailableCommandsCommand, GetAvailableCommandsResult, GetAvailableModelsCommand,
     GetAvailableModelsResult, GetAvailableThinkingLevelsCommand, GetAvailableThinkingLevelsResult,
-    GetMessagesCommand, GetMessagesResult, GetSessionStatsCommand, GetStateCommand,
-    GetSubagentMessagesCommand, GetSubagentsCommand, GetSubagentsResult, GetTreeCommand,
-    GoalCommand, HostTool, HostUri, LiveConnectCommand, LiveMuteCommand, LiveMuteResult,
-    LiveStartCommand, LiveStartResult, LiveStopCommand, NavigateTreeCommand,
-    PromoteQueuedMessageCommand, PromptCommand, RemoveQueuedMessageCommand, RpcInbound,
-    SetLabelCommand, SetModelCommand, SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand,
-    SteerSubagentCommand,
+    GetLoginProvidersCommand, GetLoginProvidersResult, GetLogoutAccountsCommand,
+    GetLogoutAccountsResult, GetMessagesCommand, GetMessagesResult, GetSessionStatsCommand,
+    GetStateCommand, GetSubagentMessagesCommand, GetSubagentsCommand, GetSubagentsResult,
+    GetTreeCommand, GoalCommand, HostTool, HostUri, LiveConnectCommand, LiveMuteCommand,
+    LiveMuteResult, LiveStartCommand, LiveStartResult, LiveStopCommand, LoginCommand, LoginResult,
+    LogoutCommand, NavigateTreeCommand, PromoteQueuedMessageCommand, PromptCommand,
+    RemoveQueuedMessageCommand, RpcInbound, SetLabelCommand, SetModelCommand,
+    SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -75,6 +76,15 @@ pub enum OmpCall {
     LiveStop,
     /// Sets the live voice mute (DMN-102).
     LiveMute(LiveMuteCommand),
+    /// The OAuth providers and whether omp holds a credential for each (`get_login_providers`, DMN-219).
+    LoginProviders,
+    /// Runs omp's OAuth login of a provider (`login`, DMN-220); the flow arrives as `open_url`, `notify` and `input`
+    /// UI requests.
+    Login(LoginCommand),
+    /// The stored credentials of a provider (`get_logout_accounts`, DMN-223).
+    LogoutAccounts(GetLogoutAccountsCommand),
+    /// Removes one stored credential (`logout`, DMN-223).
+    Logout(LogoutCommand),
 }
 
 impl OmpCall {
@@ -112,6 +122,10 @@ impl OmpCall {
             Self::LiveStart(_) => "live_start",
             Self::LiveStop => "live_stop",
             Self::LiveMute(_) => "live_mute",
+            Self::LoginProviders => "get_login_providers",
+            Self::Login(_) => "login",
+            Self::LogoutAccounts(_) => "get_logout_accounts",
+            Self::Logout(_) => "logout",
         }
     }
 }
@@ -133,6 +147,9 @@ pub trait AgentProcess: Send + Sync {
     fn call(&self, call: OmpCall) -> Result<Value, omp_rpc::Error>;
     /// Answers an interactive request (DMN-051).
     fn respond(&self, response: ExtensionUiResponse) -> Result<(), omp_rpc::Error>;
+    /// Ends the process now, failing the commands in flight (a running `login`, DMN-222); dropping the last handle
+    /// would wait for them.
+    fn kill(&self);
 }
 
 /// A freshly started process: its handle, setup results and event stream.
@@ -356,11 +373,35 @@ impl AgentProcess for OmpAgent {
             OmpCall::LiveStart(command) => self.run_as(command, |voice| LiveStartResult { voice }),
             OmpCall::LiveStop => self.run(&LiveStopCommand {}),
             OmpCall::LiveMute(command) => self.run_as(command, |muted| LiveMuteResult { muted }),
+            OmpCall::LoginProviders => self.run_as(&GetLoginProvidersCommand {}, |providers| {
+                GetLoginProvidersResult { providers }
+            }),
+            OmpCall::Login(command) => {
+                self.run_as(command, |provider_id| LoginResult { provider_id })
+            }
+            OmpCall::LogoutAccounts(command) => {
+                self.run_as(command, |accounts| GetLogoutAccountsResult { accounts })
+            }
+            OmpCall::Logout(command) => self.run(command),
         }
     }
 
     fn respond(&self, response: ExtensionUiResponse) -> Result<(), omp_rpc::Error> {
         self.client.send(&RpcInbound::ExtensionUiResponse(response))
+    }
+
+    fn kill(&self) {
+        // omp-rpc spawns omp as the leader of its own process group; its pid is the group id. The reader then sees
+        // the end of omp's output and fails the pending calls; dropping the client reaps what is left.
+        let Some(pid) = self.client.pid().and_then(|pid| i32::try_from(pid).ok()) else {
+            return;
+        };
+        if let Some(group) = rustix::process::Pid::from_raw(pid)
+            && let Err(error) =
+                rustix::process::kill_process_group(group, rustix::process::Signal::TERM)
+        {
+            tracing::warn!(pid, %error, "cannot stop omp");
+        }
     }
 }
 

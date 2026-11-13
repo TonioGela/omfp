@@ -62,7 +62,7 @@ function isSeq(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
-function isOptionalString(value: unknown): boolean {
+function isOptionalString(value: unknown): value is string | null | undefined {
   return value === undefined || value === null || typeof value === "string";
 }
 
@@ -258,7 +258,8 @@ function decodeTransientEvent(topic: ParsedTopic, event: unknown): Decoded<Trans
   return { ok: true, value: { kind: "live_levels", input, output } };
 }
 
-/** Decodes the `request` of a window request frame (PRT-124): `run_command` or `check_widget`. */
+/** Decodes the `request` of a window request frame (PRT-124, PRT-131): `run_command`, `check_widget` or a login's
+ * `login_url`, `login_progress` and `login_input`. */
 function decodeWindowRequest(request: unknown): Decoded<WindowRequest> {
   if (!isObject(request)) {
     return invalid("a window request needs a `request` object");
@@ -280,6 +281,47 @@ function decodeWindowRequest(request: unknown): Decoded<WindowRequest> {
         return invalid("`check_widget` needs a string `reference`, a `version` and a `timeoutMs`");
       }
       return { ok: true, value: { kind: "check_widget", reference, version: version ?? null, timeoutMs } };
+    }
+    case "login_url": {
+      const { providerId, name, url, launchUrl, instructions } = request;
+      if (
+        typeof providerId !== "string" ||
+        typeof name !== "string" ||
+        typeof url !== "string" ||
+        !isOptionalString(launchUrl) ||
+        !isOptionalString(instructions)
+      ) {
+        return invalid("`login_url` needs a string `providerId`, `name` and `url`");
+      }
+      return {
+        ok: true,
+        value: {
+          kind: "login_url",
+          providerId,
+          name,
+          url,
+          launchUrl: launchUrl ?? null,
+          instructions: instructions ?? null,
+        },
+      };
+    }
+    case "login_progress": {
+      const { providerId, name, message } = request;
+      return typeof providerId === "string" && typeof name === "string" && typeof message === "string"
+        ? { ok: true, value: { kind: "login_progress", providerId, name, message } }
+        : invalid("`login_progress` needs a string `providerId`, `name` and `message`");
+    }
+    case "login_input": {
+      const { providerId, name, message, placeholder } = request;
+      if (
+        typeof providerId !== "string" ||
+        typeof name !== "string" ||
+        typeof message !== "string" ||
+        !isOptionalString(placeholder)
+      ) {
+        return invalid("`login_input` needs a string `providerId`, `name` and `message`");
+      }
+      return { ok: true, value: { kind: "login_input", providerId, name, message, placeholder: placeholder ?? null } };
     }
     default:
       return invalid("unknown window request `kind`");

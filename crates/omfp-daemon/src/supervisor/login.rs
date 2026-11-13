@@ -1,0 +1,168 @@
+//! The omp of `auth.*` (DMN-219..DMN-224). omp 18.18.6 runs its OAuth logins over RPC (`get_login_providers`,
+//! `login`, `get_logout_accounts`, `logout`), but `omp --mode rpc-ui` exits at startup when no model is usable — no
+//! credential and no `--model` — which is exactly the state before the first login. The daemon therefore starts a
+//! short-lived omp of its own with an explicit model of omp's bundled catalog ([`LOGIN_MODEL`]): omp starts with it
+//! without a credential. omp keeps credentials in the store of its agent directory, which every omp of the daemon
+//! shares (same environment), so one login serves every thread; omp loads a thread's models only at startup, so the
+//! running threads restart once they are free (DMN-224).
+
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::Receiver;
+
+use omp_rpc::Event;
+use tracing::{info, warn};
+
+use super::{Result, STDERR_TAIL_LINES, Supervisor, SupervisorError, blocking, lock, stderr_tail};
+use crate::agent::AgentProcess;
+use crate::omp::LaunchSpec;
+
+/// The `--model` of the login omp: any model of omp's bundled catalog lets it start without a credential; it never
+/// prompts, so the model is never called.
+pub const LOGIN_MODEL: &str = "anthropic/claude-sonnet-4-5";
+
+/// A started login omp: its handle and its frames (the login's `open_url`, `notify` and `input` requests).
+pub struct AuthOmp {
+    pub process: Arc<dyn AgentProcess>,
+    pub events: Receiver<Event>,
+}
+
+impl std::fmt::Debug for AuthOmp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AuthOmp").finish_non_exhaustive()
+    }
+}
+
+/// The running `auth.login` (DMN-222).
+pub(super) struct Running {
+    id: u64,
+    provider_id: String,
+    /// The connection whose window shows the flow.
+    window: u64,
+    process: Arc<dyn AgentProcess>,
+}
+
+impl Supervisor {
+    fn auth_spec(&self, model: Option<&str>) -> LaunchSpec {
+        let dir = self.inner.data.login();
+        LaunchSpec {
+            program: self.inner.config.omp_program.clone(),
+            cwd: dir.join("work"),
+            add_dirs: Vec::new(),
+            session_dir: dir.join("sessions"),
+            model: model.map(str::to_owned),
+            approval_mode: None,
+            append_system_prompt: None,
+            extension: None,
+            stderr_log: dir.join("omp.log"),
+            env: self.inner.config.omp_env.clone(),
+        }
+    }
+
+    /// Starts the login omp (DMN-219): with [`LOGIN_MODEL`], else once more without it (a setup that disables that
+    /// provider has a model of its own). A failure carries the last lines of its stderr, as a thread's start does.
+    pub async fn auth_omp(&self) -> Result<AuthOmp> {
+        if self.inner.shutting_down.load(Ordering::SeqCst) {
+            return Err(SupervisorError::ShuttingDown);
+        }
+        let mut failure = None;
+        for model in [Some(LOGIN_MODEL), None] {
+            let spec = self.auth_spec(model);
+            let launcher = Arc::clone(&self.inner.launcher);
+            let log = spec.stderr_log.clone();
+            let started = blocking(move || {
+                if let Some(parent) = spec.stderr_log.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                launcher.launch(&spec, Vec::new(), Vec::new())
+            });
+            match started.await? {
+                Ok(launched) => {
+                    return Ok(AuthOmp {
+                        process: launched.process,
+                        events: launched.events,
+                    });
+                }
+                Err(error) => {
+                    warn!(?model, %error, "the login omp did not start");
+                    let tail = blocking(move || stderr_tail(&log, STDERR_TAIL_LINES))
+                        .await
+                        .unwrap_or_default();
+                    failure = Some(SupervisorError::Start {
+                        message: error.to_string(),
+                        stderr_tail: tail,
+                    });
+                }
+            }
+        }
+        Err(failure.unwrap_or_else(|| SupervisorError::Internal("no login omp start".into())))
+    }
+
+    /// Makes `process` the running login of `provider_id`, shown by the window of connection `window`; the login that
+    /// ran before is cancelled (one at a time: omp's OAuth callback listeners take fixed ports, DMN-222). Returns the
+    /// login's number for [`Supervisor::end_login`].
+    pub fn begin_login(
+        &self,
+        provider_id: &str,
+        window: u64,
+        process: &Arc<dyn AgentProcess>,
+    ) -> u64 {
+        let id = self.inner.logins.fetch_add(1, Ordering::SeqCst) + 1;
+        let previous = lock(&self.inner.login).replace(Running {
+            id,
+            provider_id: provider_id.to_owned(),
+            window,
+            process: Arc::clone(process),
+        });
+        if let Some(previous) = previous {
+            info!(provider = %previous.provider_id, "a new login cancels the running one");
+            previous.process.kill();
+        }
+        id
+    }
+
+    /// Forgets login `id` once it ended; `false` when it was cancelled meanwhile (DMN-222).
+    #[must_use]
+    pub fn end_login(&self, id: u64) -> bool {
+        let mut login = lock(&self.inner.login);
+        if login.as_ref().is_some_and(|running| running.id == id) {
+            login.take();
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Cancels the running login — with `window`, only the one that window shows (its connection closed) — by
+    /// stopping its omp; returns its provider (DMN-222).
+    pub fn cancel_login(&self, window: Option<u64>) -> Option<String> {
+        let running = {
+            let mut login = lock(&self.inner.login);
+            if window.is_some_and(|window| {
+                login
+                    .as_ref()
+                    .is_none_or(|running| running.window != window)
+            }) {
+                return None;
+            }
+            login.take()
+        }?;
+        info!(provider = %running.provider_id, "login cancelled");
+        running.process.kill();
+        Some(running.provider_id)
+    }
+
+    /// A login stored a credential (DMN-224): every running thread restarts like an MCP reload (DMN-203, DMN-204) —
+    /// at once when idle, after its turn when working, held back by background work — so its omp loads the models
+    /// the credential unlocked.
+    pub fn reload_after_login(&self) {
+        let actors: Vec<_> = lock(&self.inner.actors).values().cloned().collect();
+        for actor in actors {
+            if actor.process().is_none() {
+                continue;
+            }
+            lock(&actor.mcp_reload).want();
+            self.reload_mcp_when_free(&actor);
+        }
+    }
+}

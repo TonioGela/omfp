@@ -1,0 +1,291 @@
+/** L4: logging in to a provider from the window (UI-380..UI-387), over a fake client. */
+
+import { afterEach, describe, expect, test } from "bun:test";
+import { CallError } from "@omfp/client";
+import type { AuthProvider, WindowRequest } from "@omfp/protocol";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { completions } from "../../src/frame/cmdline.ts";
+import { Frame } from "../../src/frame/frame.tsx";
+import { AUTH_REVISION, ERRORS, reportError, type WidgetComponent } from "../../src/sdk/index.ts";
+import type { WidgetRegistry } from "../../src/view/resolve.ts";
+import { thread, workspace } from "../support/fixtures.ts";
+import { ManualTimers, renderWithHost, type TestHost, testHost } from "../support/host.tsx";
+
+afterEach(() => {
+  cleanup();
+  document.head.innerHTML = "";
+});
+
+const stub =
+  (name: string): WidgetComponent =>
+  () => <p>{name}</p>;
+
+const registry: WidgetRegistry = new Map<string, WidgetComponent>(
+  ["header", "chat", "workspace", "changes", "background"].map((name) => [`omfp:${name}`, stub(name)]),
+);
+
+const PROVIDERS: AuthProvider[] = [
+  { id: "anthropic", name: "Anthropic (Claude Pro/Max)", available: true, authenticated: true },
+  { id: "openai-codex", name: "ChatGPT Plus/Pro (Codex)", available: true, authenticated: false },
+  { id: "github-copilot", name: "GitHub Copilot", available: false, authenticated: false },
+];
+
+const NO_DEFAULT =
+  "No default model selected. Use /login, set an API key environment variable, or select a local model with /model or --model.";
+
+const ANTHROPIC = { providerId: "anthropic", name: "Anthropic (Claude Pro/Max)" };
+
+function setup() {
+  const base = testHost(undefined, {
+    importer: () => new Promise<unknown>(() => {}),
+    reportTimers: new ManualTimers(),
+    noticeTimers: new ManualTimers(),
+  });
+  base.client.answers.set("widgets.report", () => ({}));
+  base.client.answers.set("windows.answer", () => ({}));
+  base.client.answers.set("auth.login_cancel", () => ({ providerId: "anthropic" }));
+  const test = renderWithHost(<Frame registry={registry} now={() => 0} />, base);
+  test.client.connected();
+  test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "checkout", "w1")] });
+  test.flush();
+  return { ...test, user: userEvent.setup() };
+}
+
+function run(test: TestHost, line: string): void {
+  const [name = "", ...args] = line.split(" ");
+  act(() => {
+    test.host.commands.run(name, args);
+  });
+}
+
+function request(test: TestHost, id: string, asked: WindowRequest): void {
+  act(() => test.client.windowRequest({ type: "window_request", id, request: asked }));
+}
+
+/** The answers the window sent with `windows.answer`. */
+function answers(test: TestHost): unknown[] {
+  return test.client.callsTo("windows.answer").map((call) => call.params);
+}
+
+/** Settles a pending call made by the code under test. */
+async function settle(action: () => void): Promise<void> {
+  await act(async () => {
+    action();
+    await Promise.resolve();
+  });
+}
+
+describe("logging in", () => {
+  // spec: UI-382, UI-383
+  test(":login opens the provider picker, which lists omp's providers and starts the login of the picked one", async () => {
+    const test = setup();
+    run(test, "login");
+    const picker = await screen.findByTestId("login-picker");
+    expect(within(picker).queryAllByTestId("login-providers-loading").length).toBe(1);
+    const [providers] = test.client.callsTo("auth.providers");
+    await settle(() => providers?.resolve({ providers: PROVIDERS }));
+    const rows = within(picker).getAllByTestId("login-provider");
+    expect(rows.map((row) => [row.dataset.provider, row.textContent])).toEqual([
+      ["anthropic", "Anthropic (Claude Pro/Max)anthropiclogged in"],
+      ["openai-codex", "ChatGPT Plus/Pro (Codex)openai-codex"],
+      ["github-copilot", "GitHub Copilotgithub-copilotnot available here"],
+    ]);
+    expect(rows.map((row) => row.getAttribute("aria-disabled") === "true")).toEqual([false, false, true]);
+
+    await test.user.click(rows[1] as HTMLElement);
+    expect(test.client.callsTo("auth.login").map((call) => call.params)).toEqual([{ providerId: "openai-codex" }]);
+    expect(screen.queryAllByTestId("login-picker").length).toBe(0);
+    const progress = screen.getByTestId("login-progress");
+    expect(progress.textContent).toContain("Logging in to ChatGPT Plus/Pro (Codex)… finish in your browser");
+
+    request(test, "p1", { kind: "login_progress", providerId: "openai-codex", name: "Codex", message: "Waiting…" });
+    expect(screen.getByTestId("login-progress-message").textContent).toBe("Waiting…");
+
+    // Cancel: `auth.login_cancel`, and the rejection that follows is no error.
+    await test.user.click(within(progress).getByTestId("login-cancel"));
+    expect(test.client.callsTo("auth.login_cancel").length).toBe(1);
+    const [login] = test.client.callsTo("auth.login");
+    await settle(() =>
+      login?.reject(new CallError({ kind: "daemon", error: { code: "omp_error", message: "Login cancelled" } })),
+    );
+    expect(screen.queryAllByTestId("login-progress").length).toBe(0);
+    expect(test.host.window.get(ERRORS)).toEqual([]);
+  });
+
+  // spec: UI-382, UI-386
+  test(":login <provider> starts at once; :login and :logout complete the provider ids", async () => {
+    const test = setup();
+    run(test, "login anthropic");
+    expect(test.client.callsTo("auth.login").map((call) => call.params)).toEqual([{ providerId: "anthropic" }]);
+    expect(screen.queryAllByTestId("login-picker").length).toBe(0);
+
+    // The first completion asks for the providers; once they are known the `:` line completes them.
+    expect(completions("login ", test.host.commands.list())).toEqual([]);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const [providers] = test.client.callsTo("auth.providers");
+    await settle(() => providers?.resolve({ providers: PROVIDERS }));
+    expect(completions("login ", test.host.commands.list()).map((option) => option.value)).toEqual([
+      "login anthropic",
+      "login openai-codex",
+    ]);
+    expect(completions("logout ", test.host.commands.list()).map((option) => option.value)).toEqual([
+      "logout anthropic",
+    ]);
+    expect(test.client.callsTo("auth.providers").length).toBe(1);
+  });
+
+  // spec: UI-380
+  test("a login_url request opens the page and shows its toast with Open, Copy and the instructions until the login ends", async () => {
+    const test = setup();
+    const opened: unknown[][] = [];
+    const copied: string[] = [];
+    const open = window.open;
+    window.open = (...args: unknown[]) => {
+      opened.push(args);
+      return null;
+    };
+    const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: (text: string) => Promise.resolve(void copied.push(text)) },
+    });
+    try {
+      run(test, "login anthropic");
+      const url = "https://claude.ai/oauth/authorize?code=true&state=s";
+      request(test, "u1", {
+        kind: "login_url",
+        ...ANTHROPIC,
+        url,
+        launchUrl: "http://127.0.0.1:7420/login/1",
+        instructions: "Paste the code the page shows",
+      });
+      expect(opened).toEqual([[url, "_blank", "noopener"]]);
+      const toast = screen.getByTestId("opened-url-toast");
+      expect([toast.dataset.url, toast.dataset.login]).toEqual([url, "true"]);
+      expect(toast.textContent).toContain("Log in to Anthropic (Claude Pro/Max) at claude.ai");
+      expect(within(toast).getByTestId("login-instructions").textContent).toBe("Paste the code the page shows");
+      await test.user.click(within(toast).getByTestId("opened-url-open"));
+      await test.user.click(within(toast).getByTestId("opened-url-copy"));
+      expect([opened.length, copied]).toEqual([2, [url]]);
+      // A login_url is a notice: never answered.
+      expect(answers(test)).toEqual([]);
+
+      const [login] = test.client.callsTo("auth.login");
+      await settle(() => login?.resolve(ANTHROPIC));
+      expect(screen.queryAllByTestId("opened-url-toast").length).toBe(0);
+    } finally {
+      window.open = open;
+      if (clipboard === undefined) {
+        Reflect.deleteProperty(navigator, "clipboard");
+      } else {
+        Object.defineProperty(navigator, "clipboard", clipboard);
+      }
+    }
+  });
+
+  // spec: UI-384
+  test("a login_input request asks for the code: Enter answers it, Escape or Cancel answers null", async () => {
+    const test = setup();
+    run(test, "login anthropic");
+    const asked = { kind: "login_input", ...ANTHROPIC, message: "Paste the authorization code" } as const;
+    request(test, "i1", { ...asked, placeholder: "code#state" });
+    const dialog = await screen.findByTestId("login-input-dialog");
+    expect(within(dialog).getByRole("heading").textContent).toBe("Log in to Anthropic (Claude Pro/Max)");
+    const field = within(dialog).getByTestId("login-input");
+    expect([field.getAttribute("placeholder"), document.activeElement === field]).toEqual(["code#state", true]);
+    await test.user.type(field, "abc#xyz{Enter}");
+    expect(answers(test)).toEqual([{ requestId: "i1", answer: { kind: "login_input", value: "abc#xyz" } }]);
+    expect(screen.queryAllByTestId("login-input-dialog").length).toBe(0);
+
+    request(test, "i2", asked);
+    await screen.findByTestId("login-input-dialog");
+    await test.user.keyboard("{Escape}");
+    request(test, "i3", asked);
+    await test.user.click(await screen.findByTestId("login-input-cancel"));
+    expect(answers(test).slice(1)).toEqual([
+      { requestId: "i2", answer: { kind: "login_input", value: null } },
+      { requestId: "i3", answer: { kind: "login_input", value: null } },
+    ]);
+    // Cancelling the input cancels the login: its rejection is no error.
+    const [login] = test.client.callsTo("auth.login");
+    await settle(() => login?.reject(new Error("Login cancelled")));
+    expect(test.host.window.get(ERRORS)).toEqual([]);
+  });
+
+  // spec: UI-385
+  test("a login that worked says so and bumps the auth revision; one that failed is an error toast", async () => {
+    const test = setup();
+    run(test, "login anthropic");
+    const [first] = test.client.callsTo("auth.login");
+    await settle(() => first?.resolve(ANTHROPIC));
+    const success = screen.getByTestId("success");
+    expect([success.textContent, success.dataset.tone]).toEqual(["Logged in to Anthropic (Claude Pro/Max)", "success"]);
+    expect(test.host.window.get(AUTH_REVISION)).toBe(1);
+    expect(screen.queryAllByTestId("login-progress").length).toBe(0);
+
+    run(test, "login openai-codex");
+    const [, second] = test.client.callsTo("auth.login");
+    await settle(() =>
+      second?.reject(
+        new CallError({ kind: "daemon", error: { code: "omp_error", message: "Token exchange failed: 400" } }),
+      ),
+    );
+    expect(test.host.window.get(ERRORS)).toEqual(["Token exchange failed: 400 (omp_error)"]);
+    expect(test.host.window.get(AUTH_REVISION)).toBe(1);
+  });
+
+  // spec: UI-386
+  test(":logout removes the provider's credentials and says what still authenticates it", async () => {
+    const test = setup();
+    test.client.answers.set("auth.logout", () => ({
+      providerId: "anthropic",
+      removed: 1,
+      remainingSource: "ANTHROPIC_API_KEY",
+    }));
+    run(test, "logout anthropic");
+    await waitFor(() => expect(screen.queryAllByTestId("success").length).toBe(1));
+    expect(test.client.callsTo("auth.logout").map((call) => call.params)).toEqual([{ providerId: "anthropic" }]);
+    expect(screen.getByTestId("success").textContent).toBe(
+      "Logged out of anthropic: removed 1 stored credential. anthropic still authenticates with ANTHROPIC_API_KEY.",
+    );
+    run(test, "logout");
+    expect(test.host.window.get(ERRORS)).toEqual(["Usage: :logout <provider>"]);
+  });
+
+  // spec: UI-381, UI-387
+  test("an error toast with omp's no-model stderr shows it and offers Log in, which opens the picker", async () => {
+    const test = setup();
+    act(() =>
+      reportError(
+        test.host,
+        new CallError({
+          kind: "daemon",
+          error: {
+            code: "thread_failed",
+            message: "omp failed to start: server closed",
+            details: { stderrTail: NO_DEFAULT },
+          },
+        }),
+      ),
+    );
+    act(() => reportError(test.host, new Error("git failed")));
+    const [needing, other] = screen.getAllByTestId("error");
+    expect(needing?.textContent).toContain(`omp failed to start: server closed (thread_failed)\n${NO_DEFAULT}`);
+    expect(other !== undefined && within(other).queryAllByTestId("error-login").length).toBe(0);
+    await test.user.click(within(needing as HTMLElement).getByTestId("error-login"));
+    await screen.findByTestId("login-picker");
+    expect(test.host.window.get(ERRORS)).toEqual(["git failed"]);
+    expect(test.client.callsTo("auth.providers").length).toBe(1);
+  });
+
+  // spec: UI-380
+  test("the agents' window requests leave the login's requests unanswered", () => {
+    const test = setup();
+    request(test, "x1", { kind: "login_progress", ...ANTHROPIC, message: "Waiting" });
+    request(test, "x2", { kind: "login_input", ...ANTHROPIC, message: "Paste the code", placeholder: null });
+    expect(answers(test)).toEqual([]);
+  });
+});

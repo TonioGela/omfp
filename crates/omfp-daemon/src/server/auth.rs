@@ -93,7 +93,8 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "windows.list"
         | "windows.state"
         | "workspaces.mcp_servers"
-        | "thread.mcp_servers" => Read,
+        | "thread.mcp_servers"
+        | "auth.providers" => Read,
         "workspaces.create"
         | "workspaces.update"
         | "workspaces.remove"
@@ -143,7 +144,10 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "jobs.start"
         | "jobs.kill"
         | "windows.run"
-        | "windows.check_widget" => Drive,
+        | "windows.check_widget"
+        | "auth.login"
+        | "auth.login_cancel"
+        | "auth.logout" => Drive,
         "terminal.open" | "terminal.resize" | "terminal.close" | "terminal.list" => Terminal,
         _ => return None,
     })
@@ -450,5 +454,14 @@ mod tests {
         assert_eq!(permission("windows.run"), Some(Permission::Drive));
         assert_eq!(permission("windows.check_widget"), Some(Permission::Drive));
         assert_eq!(permission("windows.answer"), Some(Permission::Connect));
+    }
+
+    // spec: PRT-129, PRT-130, PRT-132, PRT-133
+    #[test]
+    fn listing_providers_reads_and_logging_in_or_out_drives() {
+        assert_eq!(permission("auth.providers"), Some(Permission::Read));
+        for method in ["auth.login", "auth.login_cancel", "auth.logout"] {
+            assert_eq!(permission(method), Some(Permission::Drive), "{method}");
+        }
     }
 }

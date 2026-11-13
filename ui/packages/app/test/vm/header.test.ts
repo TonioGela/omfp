@@ -39,6 +39,7 @@ function details(): ThreadDetails {
       contextUsage: { tokens: 84000, contextWindow: 200_000, percent: 42.0 },
     }),
     models: decodeModels({ models: [{ ...opus, id: "haiku", name: "Haiku" }, { broken: true }] }),
+    modelsLoaded: true,
     thinkingLevels: decodeThinkingLevels({ levels: ["off", "low", 3] }),
   };
 }
@@ -102,6 +103,33 @@ describe("header", () => {
   test("a thread whose daemon holds a restart for new MCP tools offers the reload", () => {
     expect(headerView(thread("t", "x", "w", { mcpReloadPending: true }), NO_DETAILS, []).mcpReload).toBe(true);
     expect(headerView(thread("t", "x", "w"), NO_DETAILS, []).mcpReload).toBe(false);
+  });
+
+  // spec: UI-388
+  test("a start that failed for want of a login, or no model at all, offers Log in", () => {
+    const failed = (message: string, stderr_tail?: string) =>
+      headerView(
+        thread("t", "x", "w", {
+          process: { state: "failed", message, ...(stderr_tail === undefined ? {} : { stderr_tail }) },
+        }),
+        NO_DETAILS,
+        [],
+      ).login;
+    const noDefault =
+      "No default model selected. Use /login, set an API key environment variable, or select a local model with /model or --model.";
+    expect([
+      failed("omp failed to start: server closed", noDefault),
+      failed(noDefault),
+      failed("omp failed to start: server closed", "error: unknown option --foo"),
+      failed("boom"),
+    ]).toEqual([true, true, false, false]);
+    expect(headerView(thread("t", "x", "w"), NO_DETAILS, []).login).toBe(false);
+
+    const noModels = { ...NO_DETAILS, modelsLoaded: true };
+    expect(headerView(thread("t", "x", "w"), noModels, []).noModels).toBe(true);
+    // Not before `thread.models` answered, nor while omp lists models.
+    expect(headerView(thread("t", "x", "w"), NO_DETAILS, []).noModels).toBe(false);
+    expect(headerView(thread("t", "x", "w"), details(), []).noModels).toBe(false);
   });
 
   // spec: UI-030

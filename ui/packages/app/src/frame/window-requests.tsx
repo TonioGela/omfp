@@ -3,7 +3,8 @@
  * the global scope, as `:<command> <args>` would — never JavaScript (UI-352); `check_widget` renders a workspace or
  * user widget out of sight, in a hidden container outside every view with the same slot, error boundary and SDK host
  * as a view, until it rendered or failed (at most the request's time), then unmounts it (UI-353). Each answer goes
- * back with `windows.answer`.
+ * back with `windows.answer`. A login's requests (`login_url`, `login_progress`, `login_input`) are the login's
+ * (`login.tsx`, UI-380, UI-384): never answered here.
  */
 
 import type { ViewsState, WidgetReport, WindowAnswer } from "@omfp/protocol";
@@ -103,6 +104,8 @@ export function WindowRequests({
       host.client.onWindowRequest(({ id, request }) => {
         if (request.kind === "run_command") {
           void runRequested(host, request.command, request.args).then((ran) => answer(host, id, ran));
+        } else if (request.kind !== "check_widget") {
+          return;
         } else if (workspace.current === undefined) {
           answer(host, id, { kind: "not_run", reason: "failed", message: text.noWorkspace });
         } else {

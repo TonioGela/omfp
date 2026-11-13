@@ -318,16 +318,34 @@ impl Windows {
         request: WindowRequest,
         timeout: Duration,
     ) -> Result<WindowAnswer, ErrorBody> {
-        let link = lock(&self.links)
-            .get(&window.id)
+        self.request_to(window.id, &window.client, request, timeout)
+            .await
+    }
+
+    /// The outbound queue of `connection`'s window.
+    fn link_of(&self, connection: u64) -> Result<mpsc::Sender<Outbound>, ErrorBody> {
+        lock(&self.links)
+            .get(&connection)
             .cloned()
-            .ok_or_else(|| not_found(format!("omfp window {} is closed", window.id)))?;
+            .ok_or_else(|| not_found(format!("omfp window {connection} is closed")))
+    }
+
+    /// Sends `request` to the window of `connection` (`client` names it in errors) and waits at most `timeout` for its
+    /// answer; the window need not have reported (DMN-206, DMN-221).
+    pub(super) async fn request_to(
+        &self,
+        connection: u64,
+        client: &str,
+        request: WindowRequest,
+        timeout: Duration,
+    ) -> Result<WindowAnswer, ErrorBody> {
+        let link = self.link_of(connection)?;
         let id = format!("w{}", self.requests.fetch_add(1, Ordering::Relaxed));
         let (reply, answer) = oneshot::channel();
         lock(&self.pending).insert(
             id.clone(),
             Pending {
-                window: window.id,
+                window: connection,
                 reply,
             },
         );
@@ -339,23 +357,38 @@ impl Windows {
             .ok_or_else(|| bad_request("cannot encode the window request"))?;
         link.try_send(frame).map_err(|_| {
             conflict(format!(
-                "omfp window {} is busy or closing; try again",
-                window.id
+                "omfp window {connection} is busy or closing; try again"
             ))
         })?;
         match tokio::time::timeout(timeout, answer).await {
             Ok(Ok(answer)) => Ok(answer),
             Ok(Err(_)) => Err(not_found(format!(
-                "omfp window {} closed before it answered",
-                window.id
+                "omfp window {connection} closed before it answered"
             ))),
             Err(_) => Err(conflict(format!(
-                "omfp window {} ({}) did not answer within {} s",
-                window.id,
-                window.client,
+                "omfp window {connection} ({client}) did not answer within {} s",
                 timeout.as_secs()
             ))),
         }
+    }
+
+    /// Sends `request`, a notice the window does not answer (`login_url`, `login_progress`), to the window of
+    /// `connection` (DMN-221).
+    pub(super) fn notify(&self, connection: u64, request: WindowRequest) -> Result<(), ErrorBody> {
+        let link = self.link_of(connection)?;
+        let id = format!("w{}", self.requests.fetch_add(1, Ordering::Relaxed));
+        let frame = Outbound::frame(&ServerFrame::WindowRequest { id, request })
+            .ok_or_else(|| bad_request("cannot encode the window request"))?;
+        link.try_send(frame).map_err(|_| {
+            conflict(format!(
+                "omfp window {connection} is busy or closing; try again"
+            ))
+        })
+    }
+
+    /// The connection of the most recently focused window (DMN-221); `None` when no window reported.
+    pub(super) fn focused(&self) -> Option<u64> {
+        self.by_focus().first().map(|window| window.id)
     }
 
     /// `windows.answer` from `connection`: hands the answer to the request's caller.
@@ -499,9 +532,9 @@ impl Services {
             } => Err(bad_request(format!(
                 "`{command}` failed in {place}: {message}"
             ))),
-            WindowAnswer::Checked { .. } => Err(conflict(format!(
-                "{place} answered a command with a widget check"
-            ))),
+            WindowAnswer::Checked { .. } | WindowAnswer::LoginInput { .. } => Err(conflict(
+                format!("{place} answered a command with something else"),
+            )),
         }
     }
 
@@ -572,8 +605,8 @@ impl Services {
                 "omfp window {} could not render {reference}: {message}",
                 window.id
             ))),
-            WindowAnswer::Ran { .. } => Err(conflict(format!(
-                "omfp window {} answered a widget check with a command",
+            WindowAnswer::Ran { .. } | WindowAnswer::LoginInput { .. } => Err(conflict(format!(
+                "omfp window {} answered a widget check with something else",
                 window.id
             ))),
         }

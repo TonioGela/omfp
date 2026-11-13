@@ -95,6 +95,9 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs),
                       the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
                       token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue as resources);
+                      the logins to omp's providers (supervisor/login.rs: the short-lived login omp, one login at a
+                      time, the reload of running threads after a login; server/services/logins.rs: `auth.*` and the
+                      `login_*` window requests of a login's flow);
                       the MCP servers omp loads for a workspace (omp_mcp.rs: the config files omp reads, the `/mcp test`
                       reply; supervisor/mcp.rs: checks by the thread's omp, reconnect by restart, M13);
                       `thread.session`, a thread's session facts without omp's whole state (server/dispatch/session.rs);
@@ -216,6 +219,15 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, `omfp_core::OMP_VERSION` and the rel
   `/mcp reauth <name>` runs in the background (the prompt returns at once), opens the browser on omp's host itself and
   reports in later `command_output` frames (the OAuth URL, then `✓ Reauthorized "<name>" …`); the daemon reloads a
   thread whose MCP configs changed or whose server was reauthorized once it is free (DMN-200..204).
+- `omp --mode rpc-ui` exits at startup (status 1, `No default model selected. Use /login, …` on stderr) when no model is
+  usable: on a fresh install every thread start fails with that `stderrTail` (DMN-212). With an explicit `--model` of
+  omp's bundled catalog (`anthropic/claude-sonnet-4-5`) it starts without any credential; the daemon's short-lived
+  login omp does so (DMN-219). OAuth works over RPC: `get_login_providers`, `login { providerId }` (its flow arrives as
+  `open_url`, `notify` and, for paste-code providers, `input` UI requests; secret prompts are refused; callback
+  listeners take fixed loopback ports, so one login at a time), `get_logout_accounts` and `logout { providerId,
+  credentialId }`. A running omp lists a new login's models only after a restart (DMN-224). A `prompt` failing omp's
+  preflight (`No API key found for <provider>. … Use /login, …`) is answered twice with the same id (success, then the
+  error) and ends with a `prompt_result` of status `error`.
 - Our harness docs (`omp://…`) may describe a different omp version than the pinned one: verify against the source at
   `~/.cargo/git/checkouts/oh-my-pi-*/<rev>/` (docs in `docs/`, Rust client in `sdk/rust/omp-rpc/`).
 

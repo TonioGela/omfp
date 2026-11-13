@@ -3,20 +3,24 @@
  * what the window must forget. Failures land in the {@link ERRORS} slot the frame shows.
  */
 
+import { CallError } from "@omfp/client";
 import { useMemo } from "react";
 import { strings } from "../strings/index.ts";
 import { expandPastes } from "../vm/paste.ts";
 import { currentWorkspaceId as workspaceOf } from "../vm/workspaces.ts";
 import { useAnnounce, useThreadSummary, useWindowState } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
+import { isObject } from "./json.ts";
 import {
   DELETE_THREAD,
   DRAFT_MESSAGE,
   DRAFT_THREAD,
   draftKey,
   ERRORS,
+  LOGIN,
   RENAMING_THREAD,
   SELECTED_THREAD,
+  SUCCESSES,
 } from "./keys.ts";
 
 export interface ThreadActions {
@@ -41,14 +45,39 @@ export interface ThreadActions {
   restart(threadId: string): Promise<void>;
 }
 
-/** The message of a failed call or any thrown value. */
+/** The message of a failed call or any thrown value; a daemon error carrying omp's stderr tail (a failed start,
+ * `thread_failed`, DMN-212) ends with it on the lines after, so omp's own words show (UI-381). */
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+  const tail = error instanceof CallError ? stderrTail(error) : undefined;
+  return tail === undefined ? error.message : `${error.message}\n${tail}`;
+}
+
+/** The `stderrTail` of a daemon error's details, trimmed; `undefined` when it has none. */
+function stderrTail({ failure }: CallError): string | undefined {
+  if (failure.kind !== "daemon") {
+    return undefined;
+  }
+  const details = failure.error.details;
+  const tail = isObject(details) ? details.stderrTail : undefined;
+  return typeof tail === "string" && tail.trim() !== "" ? tail.trim() : undefined;
 }
 
 /** Adds `error` to the window's error list. */
 export function reportError(host: OmfpHost, error: unknown): void {
   host.window.set(ERRORS, (errors) => [...errors, errorMessage(error)]);
+}
+
+/** Adds `text` to the window's success messages (UI-385), shown as a success toast that goes by itself. */
+export function reportSuccess(host: OmfpHost, text: string): void {
+  host.window.set(SUCCESSES, (shown) => [...shown, { key: (shown.at(-1)?.key ?? 0) + 1, text }]);
+}
+
+/** Asks the frame to log in (UI-382): to `providerId` at once, else through its provider picker. */
+export function requestLogin(host: OmfpHost, providerId?: string): void {
+  host.window.set(LOGIN, { providerId });
 }
 
 export function useReportError(): (error: unknown) => void {

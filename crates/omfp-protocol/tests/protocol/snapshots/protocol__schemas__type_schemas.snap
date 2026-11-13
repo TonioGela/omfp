@@ -2034,6 +2034,99 @@ expression: type_schemas()
           "timeoutMs"
         ],
         "type": "object"
+      },
+      {
+        "description": "omp's login of `providerId` asks to open `url` (PRT-131); `launchUrl`, a short loopback redirect to it on the\ndaemon's host, is the safer copy. A notice: the window does not answer it.",
+        "properties": {
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "const": "login_url",
+            "type": "string"
+          },
+          "launchUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "providerId",
+          "name",
+          "url"
+        ],
+        "type": "object"
+      },
+      {
+        "description": "Progress of the login of `providerId` (PRT-131). A notice: the window does not answer it.",
+        "properties": {
+          "kind": {
+            "const": "login_progress",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "providerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "providerId",
+          "name",
+          "message"
+        ],
+        "type": "object"
+      },
+      {
+        "description": "The login of `providerId` asks for text, e.g. the code or redirect URL the provider's page shows (PRT-131);\nanswered with `login_input`.",
+        "properties": {
+          "kind": {
+            "const": "login_input",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "providerId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "providerId",
+          "name",
+          "message"
+        ],
+        "type": "object"
       }
     ],
     "title": "WindowRequest"

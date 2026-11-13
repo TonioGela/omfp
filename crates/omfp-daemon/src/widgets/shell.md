@@ -56,6 +56,7 @@ focus was before the line opened. The built-in ones (`omfp://keymap` has them al
 | `:spawned` | Show only the threads the selected one spawned (again: all). |
 | `:open <path>[:<line>]` | Open a file of the workspace in a tab next to the chat. |
 | `:rescan` | Rescan the current workspace's repositories. |
+| `:login [<provider>]`, `:logout <provider>` | Log omp in to a provider (without one, pick it); remove omp's stored credentials of one. See "Logging in". |
 | `:view <id>`, `:view reset` | Switch view; write the default `views.json` again (replacing the file). |
 | `:widget add <reference>` | Add a widget to the current view (last side tab, else the end) and write `views.json`; refused on views that exist only in an init file or a TSX file. |
 | `:widget copy <reference> [<name>]` | Copy a built-in or user widget into `.omfp/widgets/<name>/`. |
@@ -102,6 +103,32 @@ composer's first line recalls the prompts you sent (this thread's first, then it
 first within each); `Down` on the last line goes back and, past the newest, restores what you had typed. Keys are
 rebindable: the daemon's `[keymap]` config, the workspace's `.omfp/keymap.json`, then the init files' `bind` (each
 layer wins over the ones before it).
+
+## Logging in
+
+omp needs a model it can use: a provider it is logged in to, or an API key. A fresh install has neither, and every
+thread then fails to start with omp's `No default model selected. Use /login, …`. omp keeps its credentials on the
+daemon's host, shared by every thread and window.
+
+- `:login` opens the provider picker: the providers omp can log in to (asking omp takes a few seconds), each with its
+  id and `logged in` on those omp already holds a credential for; those it cannot log in to here are greyed out.
+  `:login <provider>` (e.g. `:login anthropic`; Tab completes the ids) skips the picker.
+- The login opens the provider's page in a new tab of this browser, and a toast offers it again (Open, Copy) with
+  omp's instructions, in case the browser blocked the tab. While it runs, a toast `Logging in to <name>… finish in
+  your browser` shows omp's progress and Cancel (it gives up after 10 minutes; closing the window cancels it too).
+- Providers whose page shows a code to paste (or whose redirect lands on an address this browser cannot reach, such
+  as `localhost` of a daemon on another machine) ask for it: a dialog takes the code or the redirect URL; Enter sends
+  it, Escape cancels the login.
+- `Logged in to <name>` confirms it. The window reads the models again, and the daemon restarts each running thread's
+  omp once that thread is free, so it sees the new models; a thread whose start failed needs Restart.
+- **Log in** buttons show where omp says it needs a login: on an error toast quoting omp's refusal, beside Restart in
+  the header of a thread whose start failed that way, and instead of the model list when omp offers no model.
+- `:logout <provider>` removes omp's stored credentials of the provider and says how many it removed and what still
+  authenticates it (e.g. an environment variable).
+
+Instead of logging in, give omp an API key: an environment variable such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` or
+`GEMINI_API_KEY` in the daemon's environment (omp inherits it, so restart the daemon after setting one), providers and
+keys in `~/.omp/agent/models.yml`, or keys stored in `~/.omp/agent/agent.db`.
 
 ## Agents and the window
 

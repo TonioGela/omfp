@@ -1,7 +1,7 @@
 //! The windows as agents see and drive them (PRT-122..PRT-124): the state a window reports with its widget report
 //! (`widgets.report`'s `window`), `windows.list` and `windows.state`, and the requests the daemon sends a window
 //! (`window_request` frames, answered with `windows.answer`): `windows.run` runs a command, `windows.check_widget`
-//! renders a widget out of sight.
+//! renders a widget out of sight, and `auth.login` shows its flow (PRT-131).
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -224,6 +224,32 @@ pub enum WindowRequest {
         version: Option<String>,
         timeout_ms: u64,
     },
+    /// omp's login of `providerId` asks to open `url` (PRT-131); `launchUrl`, a short loopback redirect to it on the
+    /// daemon's host, is the safer copy. A notice: the window does not answer it.
+    #[serde(rename_all = "camelCase")]
+    LoginUrl {
+        provider_id: String,
+        name: String,
+        url: String,
+        launch_url: Option<String>,
+        instructions: Option<String>,
+    },
+    /// Progress of the login of `providerId` (PRT-131). A notice: the window does not answer it.
+    #[serde(rename_all = "camelCase")]
+    LoginProgress {
+        provider_id: String,
+        name: String,
+        message: String,
+    },
+    /// The login of `providerId` asks for text, e.g. the code or redirect URL the provider's page shows (PRT-131);
+    /// answered with `login_input`.
+    #[serde(rename_all = "camelCase")]
+    LoginInput {
+        provider_id: String,
+        name: String,
+        message: String,
+        placeholder: Option<String>,
+    },
 }
 
 /// Why a window did not run a command (PRT-124).
@@ -248,6 +274,8 @@ pub enum WindowAnswer {
     NotRun { reason: RunFailure, message: String },
     /// The out-of-sight render of a `check_widget`.
     Checked { report: WidgetReport, settled: bool },
+    /// The text a `login_input` asked for; `null` cancels the login.
+    LoginInput { value: Option<String> },
 }
 
 /// `windows.answer` params (PRT-124): a window's answer to the daemon's request `requestId`.

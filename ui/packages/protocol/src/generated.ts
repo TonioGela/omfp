@@ -66,6 +66,23 @@ export type ApprovalMode =
   /** Runs every tool without asking (the default). */
   | "yolo";
 
+/** One provider of `auth.providers` (PRT-129), as omp's `get_login_providers` lists it. */
+export type AuthProvider = {
+  /** omp holds a credential for it (a login, or a key from the environment or omp's config). */
+  authenticated: boolean;
+  /** omp can run its login here. */
+  available: boolean;
+  /** omp's id, e.g. `anthropic`, `openai-codex`: what `auth.login` takes. */
+  id: string;
+  /** What the user reads, e.g. `Anthropic (Claude Pro/Max)`. */
+  name: string;
+};
+
+/** `auth.providers` result (PRT-129): the providers omp can log in to with OAuth, in omp's order. */
+export type AuthProviders = {
+  providers: AuthProvider[];
+};
+
 /** `thread.bash` params. */
 export type BashParams = {
   command: string;
@@ -610,6 +627,31 @@ export type LiveStarted = {
   voice: string;
 };
 
+/** `auth.login` result (PRT-130): omp stored the provider's credential. */
+export type LoggedIn = {
+  /** The provider's name, as `auth.providers` gives it. */
+  name: string;
+  providerId: string;
+};
+
+/** `auth.logout` result (PRT-133). */
+export type LoggedOut = {
+  providerId: string;
+  /**
+   * What still authenticates the provider once they are gone, as omp names it (e.g. an environment variable);
+   * `null` when nothing does.
+   */
+  remainingSource?: string | null;
+  /** How many stored credentials (logins and stored keys) of the provider omp removed. */
+  removed: number;
+};
+
+/** `auth.login_cancel` result (PRT-132). */
+export type LoginCancelled = {
+  /** The provider whose login was cancelled; `null` when none ran. */
+  providerId?: string | null;
+};
+
 /** `thread.mcp_reconnect` params (PRT-112). */
 export type McpReconnectParams = {
   /** The server checked again after the restart; without it every checkable server is. */
@@ -853,6 +895,11 @@ export type Provenance = {
   /** `client` of the creating connection's `system.hello` (PRT-033). */
   client?: string | null;
   createdBy: CreatedBy;
+};
+
+/** `auth.login` and `auth.logout` params: the provider's omp id (PRT-130, PRT-133). */
+export type ProviderRef = {
+  providerId: string;
 };
 
 /** `thread.queue.remove` / `thread.queue.promote` params. */
@@ -1583,6 +1630,11 @@ export type WindowAnswer =
     kind: "checked";
     report: WidgetReport;
     settled: boolean;
+  }
+  /** The text a `login_input` asked for; `null` cancels the login. */
+  | {
+    kind: "login_input";
+    value?: string | null;
   };
 
 /** A key binding of a command (PRT-122). */
@@ -1656,6 +1708,36 @@ export type WindowRequest =
     timeoutMs: number;
     /** The folder version to wait for; `null` takes whatever the window has. */
     version?: string | null;
+  }
+  /**
+   * omp's login of `providerId` asks to open `url` (PRT-131); `launchUrl`, a short loopback redirect to it on the
+   * daemon's host, is the safer copy. A notice: the window does not answer it.
+   */
+  | {
+    instructions?: string | null;
+    kind: "login_url";
+    launchUrl?: string | null;
+    name: string;
+    providerId: string;
+    url: string;
+  }
+  /** Progress of the login of `providerId` (PRT-131). A notice: the window does not answer it. */
+  | {
+    kind: "login_progress";
+    message: string;
+    name: string;
+    providerId: string;
+  }
+  /**
+   * The login of `providerId` asks for text, e.g. the code or redirect URL the provider's page shows (PRT-131);
+   * answered with `login_input`.
+   */
+  | {
+    kind: "login_input";
+    message: string;
+    name: string;
+    placeholder?: string | null;
+    providerId: string;
   };
 
 /** `windows.state` result (PRT-123): all a window reports. */
@@ -1901,6 +1983,10 @@ export interface Methods {
   "workspaces.mcp_servers": { params: WorkspaceRef; result: McpServers };
   "thread.mcp_servers": { params: ThreadRef; result: McpServers };
   "thread.mcp_reconnect": { params: McpReconnectParams; result: McpServers };
+  "auth.providers": { params: Empty; result: AuthProviders };
+  "auth.login": { params: ProviderRef; result: LoggedIn };
+  "auth.login_cancel": { params: Empty; result: LoginCancelled };
+  "auth.logout": { params: ProviderRef; result: LoggedOut };
 }
 
 export type MethodName = keyof Methods;
@@ -1996,4 +2082,8 @@ export const METHODS: readonly MethodName[] = [
   "workspaces.mcp_servers",
   "thread.mcp_servers",
   "thread.mcp_reconnect",
+  "auth.providers",
+  "auth.login",
+  "auth.login_cancel",
+  "auth.logout",
 ];

@@ -4,6 +4,7 @@
 //! workspaces are polled (`polls`).
 
 mod file_checks;
+mod logins;
 mod mounts;
 mod polls;
 mod views;

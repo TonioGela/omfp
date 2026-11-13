@@ -252,6 +252,60 @@ describe("session", () => {
     expect(methods(server.frames())).toEqual([]);
   });
 
+  // spec: PRT-131, UI-380
+  test("a login's window requests reach the listener, their optional fields null when missing", () => {
+    const [rig, server] = following();
+    const seen: unknown[] = [];
+    const stop = rig.client.onWindowRequest((frame) => seen.push(frame));
+    const login = { providerId: "anthropic", name: "Anthropic (Claude Pro/Max)" };
+    const url = "https://claude.ai/oauth/authorize?code=true";
+    server.send({ type: "window_request", id: "l1", request: { kind: "login_url", ...login, url } });
+    server.send({
+      type: "window_request",
+      id: "l2",
+      request: { kind: "login_url", ...login, url, launchUrl: "http://127.0.0.1:7420/l/1", instructions: "Paste it" },
+    });
+    server.send({
+      type: "window_request",
+      id: "l3",
+      request: { kind: "login_progress", ...login, message: "Waiting" },
+    });
+    server.send({ type: "window_request", id: "l4", request: { kind: "login_input", ...login, message: "Code" } });
+    server.send({
+      type: "window_request",
+      id: "l5",
+      request: { kind: "login_input", ...login, message: "Code", placeholder: "code#state" },
+    });
+    // Invalid: no url, a number message.
+    server.send({ type: "window_request", id: "l6", request: { kind: "login_url", ...login } });
+    server.send({ type: "window_request", id: "l7", request: { kind: "login_progress", ...login, message: 3 } });
+    stop();
+    expect(seen).toEqual([
+      {
+        type: "window_request",
+        id: "l1",
+        request: { kind: "login_url", ...login, url, launchUrl: null, instructions: null },
+      },
+      {
+        type: "window_request",
+        id: "l2",
+        request: { kind: "login_url", ...login, url, launchUrl: "http://127.0.0.1:7420/l/1", instructions: "Paste it" },
+      },
+      { type: "window_request", id: "l3", request: { kind: "login_progress", ...login, message: "Waiting" } },
+      {
+        type: "window_request",
+        id: "l4",
+        request: { kind: "login_input", ...login, message: "Code", placeholder: null },
+      },
+      {
+        type: "window_request",
+        id: "l5",
+        request: { kind: "login_input", ...login, message: "Code", placeholder: "code#state" },
+      },
+    ]);
+    expect(methods(server.frames())).toEqual([]);
+  });
+
   // spec: PRT-022
   test("a gap in the stream resubscribes without position", () => {
     const [rig, server] = following();
