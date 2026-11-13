@@ -60,7 +60,7 @@ focus was before the line opened. The built-in ones (`omfp://keymap` has them al
 | --- | --- |
 | `:new`, `:workspace` | A draft thread in the current workspace; a new workspace. |
 | `:archive`, `:unarchive`, `:delete`, `:rename [<title>]` | The selected thread. |
-| `:stop`, `:stop!`, `:restart`, `:next` | Stop its process (with every thread it spawned); restart it; the next thread needing the user. |
+| `:stop`, `:stop!`, `:restart`, `:next` | Stop process: end the thread's omp, with its jobs and live voice (`!`: also of every thread it spawned; Abort, `Ctrl-c`, stops only the running turn); restart it; the next thread needing the user. |
 | `:spawned` | Show only the threads the selected one spawned (again: all). |
 | `:open <path>[:<line>]` | Open a file of the workspace in a tab next to the chat. |
 | `:rescan` | Rescan the current workspace's repositories. |
@@ -98,7 +98,7 @@ help, `Space p` workspace, `Space f` files, `Space v` views); Escape cancels the
 | `Space a`, `] a`, `Alt-a` | Next thread needing the user. |
 | `Space n`, `Alt-n` | New thread; `Space w` or `Space p n` new workspace, `Space p r` rescan it. |
 | `Space r`, `Space x`, `Space u`, `Space d` | Rename, archive, unarchive, delete the selected thread. |
-| `Space s`, `Space S`, `Space R` | Stop the thread (with the threads it spawned); restart it. |
+| `Space s`, `Space S`, `Space R` | Stop process of the thread (and of the threads it spawned); restart it. |
 | `Space t` | Show or hide the threads column (narrow window). |
 | `d d`, `z a` | Delete the focused row; fold the focused workspace. |
 | `Ctrl-c` | Interrupt the selected thread's turn (its queued messages come back into the composer); with text selected it copies. |

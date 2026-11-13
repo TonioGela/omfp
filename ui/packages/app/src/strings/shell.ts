@@ -90,7 +90,8 @@ export const shell = {
     contextUsage: "Context window usage",
     context: (percent: number, window: string) => `${percent}% of ${window}`,
     sessionCost: "Session cost",
-    stop: "Stop",
+    /** Ends the thread's omp process (UI-524); the composer's Abort stops only the turn. */
+    stop: "Stop process",
     restart: "Restart",
     archive: "Archive",
     unarchive: "Unarchive",
@@ -565,8 +566,11 @@ export const shell = {
     unarchive: "Unarchive the thread",
     delete: "Delete the thread…",
     rename: "Rename the thread (:rename <title>, or in place without one)",
-    stop: "Stop the thread's process",
-    stopSpawned: "Stop the thread and every thread it spawned",
+    stop: "Stop process",
+    /** `:describe-command stop` (UI-524): what Stop process ends, unlike Abort. */
+    stopDescription:
+      "Ends the thread's omp process, with its background jobs and live voice; Restart starts it again. To stop only the running turn, use Abort (ctrl+c).",
+    stopSpawned: "Stop process of the thread and of every thread it spawned",
     spawnedBy: "Show only the threads the selected one spawned (again: every thread)",
     restart: "Restart the thread's process",
     nextAttention: "Next thread needing attention",

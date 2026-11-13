@@ -966,6 +966,8 @@ requirements = [
   "UI-521",
   "UI-522",
   "UI-523",
+  # QA fixes: Stop process is not Abort (user decision D9a)
+  "UI-524",
   # Journeys
   "E2E-22",
   "E2E-23",

@@ -1,4 +1,5 @@
-/** L4: `thread.stopSpawned` (`:stop!`, `Space S`), the cascade stop of the selected thread (UI-242). */
+/** L4: `thread.stopSpawned` (`:stop!`, `Space S`), the cascade stop of the selected thread (UI-242), and the names of the
+ * process stops (UI-524). */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, cleanup, waitFor } from "@testing-library/react";
@@ -55,5 +56,18 @@ describe("thread.stopSpawned", () => {
     ).toBe(true);
     act(() => host.window.set(SELECTED_THREAD, "t2"));
     expect(host.commands.resolve("stop!")?.id).toBe("thread.stopSpawned");
+  });
+});
+
+describe("Stop process", () => {
+  // spec: UI-524
+  test("`:stop` and `:stop!` are named Stop process, and say they are not Abort", () => {
+    const { host } = setup("t1");
+    const named = (id: string) => host.commands.list().find((command) => command.id === id);
+    expect([named("thread.stop")?.title, named("thread.stopSpawned")?.title]).toEqual([
+      "Stop process",
+      "Stop process of the thread and of every thread it spawned",
+    ]);
+    expect(named("thread.stop")?.description).toContain("To stop only the running turn, use Abort");
   });
 });

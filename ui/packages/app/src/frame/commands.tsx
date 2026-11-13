@@ -159,6 +159,7 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
   useCommand({
     id: "thread.stop",
     title: titles.stop,
+    description: titles.stopDescription,
     aliases: ["stop"],
     enabled: () => ["running", "starting"].includes(summary()?.process.state ?? ""),
     run: onSelected(actions.stop),

@@ -182,10 +182,10 @@ describe("omfp:header", () => {
     await waitFor(() => expect(client.callsTo("thread.state")).toHaveLength(3));
   });
 
-  // spec: UI-030, UI-482
+  // spec: UI-030, UI-482, UI-524
   test("stop for a running process, restart with the failure for a failed one", async () => {
     const { client, user } = setup();
-    expect(screen.getByTestId("process-action").textContent).toBe("Stop");
+    expect(screen.getByTestId("process-action").textContent).toBe("Stop process");
     await user.click(screen.getByTestId("process-action"));
     expect(client.callsTo("thread.stop")).toHaveLength(1);
     cleanup();

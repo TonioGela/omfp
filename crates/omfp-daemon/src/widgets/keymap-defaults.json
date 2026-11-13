@@ -517,14 +517,15 @@
     },
     {
       "id": "thread.stop",
-      "title": "Stop the thread's process",
+      "title": "Stop process",
       "aliases": [
         "stop"
-      ]
+      ],
+      "description": "Ends the thread's omp process, with its background jobs and live voice; Restart starts it again. To stop only the running turn, use Abort (ctrl+c)."
     },
     {
       "id": "thread.stopSpawned",
-      "title": "Stop the thread and every thread it spawned",
+      "title": "Stop process of the thread and of every thread it spawned",
       "aliases": [
         "stop!"
       ]
