@@ -1,7 +1,7 @@
 /** L1: the daemon's keymap entries over the defaults and the `:set` line (UI-097). */
 
 import { describe, expect, test } from "bun:test";
-import { parseSet } from "../../src/frame/set.ts";
+import { parseSet, parseTheme, SET_KEYS, themeArgs } from "../../src/frame/set.ts";
 import { type Binding, DEFAULT_BINDINGS, keysFor, mergeBindings } from "../../src/keymap/keymap.ts";
 
 describe("keymap overrides", () => {
@@ -54,6 +54,60 @@ describe(":set", () => {
       ok: true,
       patch: { ui: { fonts: { code: "JetBrains Mono" } } },
     });
+  });
+
+  // spec: UI-513, UI-510
+  test("`theme=` takes a built-in theme's name, completes every one and refuses others", () => {
+    expect(parseSet("theme=rose-pine")).toEqual({ ok: true, patch: { ui: { theme: "rose-pine" } } });
+    expect(parseSet("theme = synth")).toEqual({ ok: true, patch: { ui: { theme: "synth" } } });
+    expect(parseSet("theme=dracula")).toEqual({ ok: false, error: "Invalid value for theme: dracula" });
+    expect(SET_KEYS.filter((key) => key.startsWith("theme="))).toEqual([
+      "theme=synth",
+      "theme=catppuccin",
+      "theme=gruvbox",
+      "theme=tokyo-night",
+      "theme=nord",
+      "theme=solarized",
+      "theme=rose-pine",
+      "theme=accent",
+    ]);
+  });
+
+  // spec: UI-513
+  test("`:theme` takes a scheme, a theme or both, in any order, and completes the kind not given yet", () => {
+    expect(parseTheme(["dark"])).toEqual({ ok: true, scheme: "dark" });
+    expect(parseTheme(["nord"])).toEqual({ ok: true, theme: "nord" });
+    expect(parseTheme(["tokyo-night", "light"])).toEqual({ ok: true, scheme: "light", theme: "tokyo-night" });
+    expect(parseTheme(["system", "accent"])).toEqual({ ok: true, scheme: "system", theme: "accent" });
+    expect(parseTheme(["dracula"])).toEqual({ ok: false, error: "Unknown colour scheme or theme: dracula" });
+    expect(parseTheme([])).toEqual({ ok: false, error: expect.stringContaining("Usage: :theme") });
+    expect(parseTheme(["dark", "light"])).toEqual({ ok: false, error: expect.stringContaining("Usage: :theme") });
+    expect(parseTheme(["nord", "gruvbox"])).toEqual({ ok: false, error: expect.stringContaining("Usage: :theme") });
+    expect(themeArgs([])).toEqual([
+      "system",
+      "light",
+      "dark",
+      "synth",
+      "catppuccin",
+      "gruvbox",
+      "tokyo-night",
+      "nord",
+      "solarized",
+      "rose-pine",
+      "accent",
+    ]);
+    expect(themeArgs(["catppuccin"])).toEqual(["system", "light", "dark"]);
+    expect(themeArgs(["dark"])).toEqual([
+      "synth",
+      "catppuccin",
+      "gruvbox",
+      "tokyo-night",
+      "nord",
+      "solarized",
+      "rose-pine",
+      "accent",
+    ]);
+    expect(themeArgs(["dark", "nord"])).toEqual([]);
   });
 
   // spec: UI-097

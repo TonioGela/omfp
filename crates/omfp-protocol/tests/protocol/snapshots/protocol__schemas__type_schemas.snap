@@ -85,6 +85,51 @@ expression: type_schemas()
   },
   "IndexEvent": {
     "$defs": {
+      "BuiltinTheme": {
+        "description": "A built-in colour theme of the UI (UI-510, PRT-143): an official palette mapped onto the Material 3 roles in light\nand dark, or (`accent`) one derived from the system accent colour where the web view exposes it (UI-512).",
+        "oneOf": [
+          {
+            "const": "synth",
+            "description": "omfp's own palette, cyan to indigo (UI-139; default).",
+            "type": "string"
+          },
+          {
+            "const": "catppuccin",
+            "description": "Catppuccin: Latte in light, Mocha in dark.",
+            "type": "string"
+          },
+          {
+            "const": "gruvbox",
+            "description": "Gruvbox light and dark.",
+            "type": "string"
+          },
+          {
+            "const": "tokyo-night",
+            "description": "Tokyo Night: Day in light, Night in dark.",
+            "type": "string"
+          },
+          {
+            "const": "nord",
+            "description": "Nord: Snow Storm surfaces in light, Polar Night in dark.",
+            "type": "string"
+          },
+          {
+            "const": "solarized",
+            "description": "Solarized light and dark.",
+            "type": "string"
+          },
+          {
+            "const": "rose-pine",
+            "description": "Rosé Pine: Dawn in light, the main variant in dark.",
+            "type": "string"
+          },
+          {
+            "const": "accent",
+            "description": "Follows the system accent colour (macOS); elsewhere Synth.",
+            "type": "string"
+          }
+        ]
+      },
       "CreatedBy": {
         "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
         "oneOf": [
@@ -453,6 +498,17 @@ expression: type_schemas()
                 "type": "null"
               }
             ]
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/BuiltinTheme"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The built-in colour theme (UI-510); absent is Synth, omfp's own. A user theme (`/theme.css`) still wins."
           }
         },
         "type": "object"
@@ -750,6 +806,51 @@ expression: type_schemas()
   },
   "IndexSnapshot": {
     "$defs": {
+      "BuiltinTheme": {
+        "description": "A built-in colour theme of the UI (UI-510, PRT-143): an official palette mapped onto the Material 3 roles in light\nand dark, or (`accent`) one derived from the system accent colour where the web view exposes it (UI-512).",
+        "oneOf": [
+          {
+            "const": "synth",
+            "description": "omfp's own palette, cyan to indigo (UI-139; default).",
+            "type": "string"
+          },
+          {
+            "const": "catppuccin",
+            "description": "Catppuccin: Latte in light, Mocha in dark.",
+            "type": "string"
+          },
+          {
+            "const": "gruvbox",
+            "description": "Gruvbox light and dark.",
+            "type": "string"
+          },
+          {
+            "const": "tokyo-night",
+            "description": "Tokyo Night: Day in light, Night in dark.",
+            "type": "string"
+          },
+          {
+            "const": "nord",
+            "description": "Nord: Snow Storm surfaces in light, Polar Night in dark.",
+            "type": "string"
+          },
+          {
+            "const": "solarized",
+            "description": "Solarized light and dark.",
+            "type": "string"
+          },
+          {
+            "const": "rose-pine",
+            "description": "Rosé Pine: Dawn in light, the main variant in dark.",
+            "type": "string"
+          },
+          {
+            "const": "accent",
+            "description": "Follows the system accent colour (macOS); elsewhere Synth.",
+            "type": "string"
+          }
+        ]
+      },
       "CreatedBy": {
         "description": "The principal behind a created entity: the user, the agent of a thread, or an MCP client outside omfp (PRT-093),\nnamed by the provenance's `client`.",
         "oneOf": [
@@ -1118,6 +1219,17 @@ expression: type_schemas()
                 "type": "null"
               }
             ]
+          },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/BuiltinTheme"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The built-in colour theme (UI-510); absent is Synth, omfp's own. A user theme (`/theme.css`) still wins."
           }
         },
         "type": "object"

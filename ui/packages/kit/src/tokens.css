@@ -8,7 +8,7 @@
  * hover, selection, focus, ok and warn: UI-135), so a theme only sets roles. Density: `:root[data-density="normal"]`
  * scales spacing, rows and controls (UI-127, UI-128); compact is the default. Sizes are in rem, so `[ui] font_size`
  * (the root size) scales them all (UI-126).
- * This is the only file of the kit allowed to contain color literals.
+ * This file and the built-in themes (themes.css, UI-510) are the only ones of the kit allowed to contain color literals.
  */
 @layer omfp-tokens {
   /* The bundled faces (UI-141, UI-142), loaded only when text uses them. The files live in the kit's `fonts/`; the

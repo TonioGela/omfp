@@ -26,12 +26,12 @@ pub use auth::{
     AuthProvider, AuthProviders, AuthStatus, LoggedIn, LoggedOut, LoginCancelled, ProviderRef,
 };
 pub use dto::{
-    CreatedBy, Density, DiffPage, FileCandidate, FileCandidates, FileChange, FileContent, FileDiff,
-    FileKind, FileMatch, FileStatus, FileWritten, FontSettings, GitStatus, IndexSnapshot, JobInfo,
-    JobLine, JobState, JobStatus, JobStream, KeymapEntry, KeymapMode, Motion, NotificationMode,
-    PathEntry, Provenance, RepoKind, RepoStatus, RestartReason, SeenRepository, Settings, Theme,
-    ThreadSummary, TitleSource, UiSettings, ViewsState, WidgetInfo, WidgetSource, Workspace,
-    WorkspaceBinding, WorkspaceRepo,
+    BuiltinTheme, CreatedBy, Density, DiffPage, FileCandidate, FileCandidates, FileChange,
+    FileContent, FileDiff, FileKind, FileMatch, FileStatus, FileWritten, FontSettings, GitStatus,
+    IndexSnapshot, JobInfo, JobLine, JobState, JobStatus, JobStream, KeymapEntry, KeymapMode,
+    Motion, NotificationMode, PathEntry, Provenance, RepoKind, RepoStatus, RestartReason,
+    SeenRepository, Settings, Theme, ThreadSummary, TitleSource, UiSettings, ViewsState,
+    WidgetInfo, WidgetSource, Workspace, WorkspaceBinding, WorkspaceRepo,
 };
 pub use envelope::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, ProtocolError, Request, Response,

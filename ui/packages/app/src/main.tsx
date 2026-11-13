@@ -1,10 +1,12 @@
 /**
  * The web app's entry: the access token (UI-002), one client over the page's own origin, the host with per-frame
- * snapshots (UI-012), and the frame; or, at `/kit`, the component gallery (UI-173). Styles: the kit's tokens and components, then the app's and the widgets' own
- * (all token-driven, UI-091); the daemon's user theme comes last (`/theme.css`, see `theme/theme.ts`).
+ * snapshots (UI-012), and the frame; or, at `/kit`, the component gallery (UI-173). Styles: the kit's tokens, its built-in themes
+ * (UI-510) and components, then the app's and the widgets' own (all token-driven, UI-091); the daemon's user theme comes
+ * last (`/theme.css`, see `theme/theme.ts`).
  */
 
 import "@omfp/kit/tokens.css";
+import "@omfp/kit/themes.css";
 import "@omfp/kit/kit.css";
 import "./styles.css";
 import "./widgets/chat/chat.css";

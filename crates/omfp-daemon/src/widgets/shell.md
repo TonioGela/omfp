@@ -64,7 +64,7 @@ focus was before the line opened. The built-in ones (`omfp://keymap` has them al
 | `:widget add <reference>` | Add a widget to the current view (last side tab, else the end) and write `views.json`; refused on views that exist only in an init file or a TSX file. |
 | `:widget copy <reference> [<name>]` | Copy a built-in or user widget into `.omfp/widgets/<name>/`. |
 | `:widget save[!] <widget> [<name>]` | Save a workspace widget to the user library (`!` replaces). |
-| `:theme light\|dark\|system`, `:density compact\|normal`, `:set <key>=<value>` | Appearance and the daemon's settings. |
+| `:theme [light\|dark\|system] [<theme>]`, `:density compact\|normal`, `:set <key>=<value>` | Appearance and the daemon's settings: the scheme is the window's, the built-in theme (`synth`, `catppuccin`, `gruvbox`, `tokyo-night`, `nord`, `solarized`, `rose-pine`, `accent`: the macOS window's system accent, Synth elsewhere) every window's (`[ui] theme`); a user theme (`theme.css`) still wins. |
 | `:help` | Every effective key and command, filterable (`?` too). |
 | `:describe-key`, `:describe-command <name>` | What a key runs and where it was bound; a command's names, keys and who registered it. |
 | `:notice` | Open the newest notice. |

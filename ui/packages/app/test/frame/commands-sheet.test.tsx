@@ -183,6 +183,14 @@ describe("commands sheet", () => {
       "theme system",
       "theme light",
       "theme dark",
+      "theme synth",
+      "theme catppuccin",
+      "theme gruvbox",
+      "theme tokyo-night",
+      "theme nord",
+      "theme solarized",
+      "theme rose-pine",
+      "theme accent",
     ]);
   });
 });

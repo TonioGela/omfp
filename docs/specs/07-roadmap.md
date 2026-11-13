@@ -610,7 +610,11 @@ paused and their commands and widget reports gone, and the SDK's data hooks show
 switching back to a widget whose call takes 500 ms shows its content in 4–5 ms instead of 503–546 ms (UI-390..UI-392,
 TST-108). The tabs of a view and the floating file panel keep their content mounted the same way, and the editor
 comes back from a hide as it was, so an unsaved file edit survives showing another tab or minimising the panel
-(UI-400..UI-403, E2E-35).
+(UI-400..UI-403, E2E-35). Built-in themes: Catppuccin, Gruvbox, Tokyo Night, Nord, Solarized and Rosé Pine map
+their official palettes onto the roles in light and dark, and `accent` follows the macOS desktop window's system
+accent (UI-510..UI-512); `[ui] theme` keeps the choice daemon-wide (DMN-238..DMN-240, PRT-143), `:theme <theme>
+[<scheme>]` sets it (UI-513), the gallery shows and contrast-checks every theme (UI-514), and a user theme still wins
+(E2E-44).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and

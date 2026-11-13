@@ -1,9 +1,10 @@
-//! The `/kit` gallery (UI-173, UI-174) at motion `none`, 17 px, compact, in light and dark for the built-in Synth
-//! palette, the matugen fixture theme and the Dux Solarized preset (whose tertiary and secondary sit on the surface at
-//! 1.14:1 until the contrast guard, UI-196, moves them): every text role, status color and gradient stop the page
-//! measures reaches WCAG AA, the guard overrides nothing in Synth and the matugen fixture, and there the item focus
-//! (UI-132) stays visible: its bar at 3:1, its tint apart from the other states. Full-page shots land in
-//! `/tmp/omfp-kit-<theme>-<scheme>.png` (or `OMFP_SCREENSHOT_DIR`) for a look by eye; nothing compares them.
+//! The `/kit` gallery (UI-173, UI-174, UI-514) at motion `none`, 17 px, compact, in light and dark for every built-in
+//! theme (UI-510: Synth, the six palettes, and `accent` from macOS's blue, yellow and graphite accents, UI-512), the
+//! matugen fixture theme and the Dux Solarized preset (whose tertiary and secondary sit on the surface at 1.14:1 until
+//! the contrast guard, UI-196, moves them): every text role, status color and gradient stop the page measures reaches
+//! WCAG AA, the guard overrides nothing but in the Dux preset, and elsewhere the item focus (UI-132) stays visible: its
+//! bar at 3:1, its tint apart from the other states. Full-page shots land in `/tmp/omfp-kit-<theme>-<scheme>.png` (or
+//! `OMFP_SCREENSHOT_DIR`) for a look by eye; nothing compares them.
 
 use std::path::PathBuf;
 
@@ -14,9 +15,24 @@ use serde_json::json;
 /// The page width of every shot (CSS px, device scale 1).
 const WIDTH: u32 = 1400;
 
-const THEMES: [&str; 3] = ["synth", "matugen-forest", "dux-solarized"];
-/// The themes the contrast guard must leave as they are.
-const GOOD_THEMES: [&str; 2] = ["synth", "matugen-forest"];
+/// The gallery's themes: the shot's name and the query that picks it (`accent` from four of macOS's accents).
+const THEMES: [(&str, &str); 13] = [
+    ("synth", "theme=synth"),
+    ("catppuccin", "theme=catppuccin"),
+    ("gruvbox", "theme=gruvbox"),
+    ("tokyo-night", "theme=tokyo-night"),
+    ("nord", "theme=nord"),
+    ("solarized", "theme=solarized"),
+    ("rose-pine", "theme=rose-pine"),
+    ("accent", "theme=accent"),
+    ("accent-yellow", "theme=accent&accent=%23ffc600"),
+    ("accent-graphite", "theme=accent&accent=%238c8c8c"),
+    ("accent-green", "theme=accent&accent=%2362ba46"),
+    ("matugen-forest", "theme=matugen-forest"),
+    ("dux-solarized", "theme=dux-solarized"),
+];
+/// The one theme the contrast guard must correct; it leaves every other as it is.
+const GUARDED_THEME: &str = "dux-solarized";
 const SCHEMES: [&str; 2] = ["light", "dark"];
 
 fn shot_path(theme: &str, scheme: &str) -> PathBuf {
@@ -25,13 +41,14 @@ fn shot_path(theme: &str, scheme: &str) -> PathBuf {
         .join(format!("omfp-kit-{theme}-{scheme}.png"))
 }
 
-/// Opens the gallery with `theme` and `scheme` and waits until it says it is ready (fonts loaded, contrast measured).
+/// Opens the gallery with `theme` (its query) and `scheme` and waits until it says it is ready (fonts loaded, contrast
+/// measured).
 async fn open(journey: &Journey, theme: &str, scheme: &str) -> anyhow::Result<()> {
     let base = format!("http://{}", journey.daemon().addr());
     journey
         .driver
         .goto(format!(
-            "{base}/kit?scheme={scheme}&theme={theme}&motion=none&density=compact&fs=17"
+            "{base}/kit?scheme={scheme}&{theme}&motion=none&density=compact&fs=17"
         ))
         .await?;
     journey
@@ -97,14 +114,25 @@ async fn focus_measures(journey: &Journey) -> anyhow::Result<Vec<(bool, String)>
     Ok(serde_json::from_value(value)?)
 }
 
-// spec: UI-173, UI-174, UI-124, UI-132, UI-135, UI-140, UI-145, UI-196, UI-337, UI-338
+// spec: UI-173, UI-174, UI-124, UI-132, UI-135, UI-140, UI-145, UI-196, UI-337, UI-338, UI-510, UI-511, UI-512, UI-514
 #[tokio::test(flavor = "multi_thread")]
 async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
     let mut problems = Vec::new();
-    for theme in THEMES {
+    for (theme, query) in THEMES {
         for scheme in SCHEMES {
-            open(&journey, theme, scheme).await?;
+            open(&journey, query, scheme).await?;
+            let shown = journey.attr("html", "data-theme").await?;
+            let expected = if theme.starts_with("accent") {
+                "accent"
+            } else if theme == GUARDED_THEME || theme == "matugen-forest" {
+                "synth"
+            } else {
+                theme
+            };
+            if shown.as_deref() != Some(expected) {
+                problems.push(format!("{theme} {scheme}: data-theme {shown:?}"));
+            }
             assert_eq!(
                 journey.attr("html", "data-motion").await?.as_deref(),
                 Some("none"),
@@ -114,14 +142,14 @@ async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> 
                 problems.push(format!("{theme} {scheme}: under AA: {failure}"));
             }
             let guarded = journey.attr("html", "data-contrast-guard").await?;
-            if GOOD_THEMES.contains(&theme) == guarded.is_some() {
+            if (theme == GUARDED_THEME) != guarded.is_some() {
                 problems.push(format!(
                     "{theme} {scheme}: contrast guard overrides {guarded:?}"
                 ));
             }
             for (passes, measure) in focus_measures(&journey).await? {
                 eprintln!("focus {theme} {scheme}: {measure}");
-                if !passes && GOOD_THEMES.contains(&theme) {
+                if !passes && theme != GUARDED_THEME {
                     problems.push(format!("{theme} {scheme}: focus not visible: {measure}"));
                 }
             }

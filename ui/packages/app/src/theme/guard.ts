@@ -1,6 +1,6 @@
 /**
  * The contrast guard (UI-196): whenever the effective theme changes — initial load, the user theme's `<link>` loading
- * or its `<style>` being replaced (UI-091), `data-color-scheme` changing, the system's `prefers-color-scheme`
+ * or its `<style>` being replaced (UI-091), `data-color-scheme` or the built-in theme's `data-theme` (UI-510) changing, the system's `prefers-color-scheme`
  * changing — it removes its overrides, measures the guarded roles as rendered (contrast.ts) and sets an inline
  * `--omfp-<role>` on `<html>` for each one under its threshold, like `[ui.fonts]` does (theme.ts). Derived tokens
  * (gradients, hover, selection, diff colors) follow because they are mixed from the roles.
@@ -71,13 +71,16 @@ export function cssColorReader(document: Document): ColorReader {
 }
 
 /**
- * Calls `changed` whenever the effective theme may have changed: `<html>`'s `data-color-scheme`, the system's
- * `prefers-color-scheme`, any change under `<head>` (the user theme's `<style>` text or its replacement) and any
- * stylesheet finishing loading. Returns the unsubscribe.
+ * Calls `changed` whenever the effective theme may have changed: `<html>`'s `data-color-scheme` and `data-theme`, the
+ * system's `prefers-color-scheme`, any change under `<head>` (the user theme's `<style>` text or its replacement) and
+ * any stylesheet finishing loading. Returns the unsubscribe.
  */
 function watchTheme(document: Document, changed: () => void): () => void {
   const observer = new MutationObserver(changed);
-  observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-color-scheme"] });
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-color-scheme", "data-theme"],
+  });
   observer.observe(document.head, { childList: true, subtree: true, characterData: true });
   const loaded = (event: Event) => {
     if (event.target instanceof HTMLLinkElement) {

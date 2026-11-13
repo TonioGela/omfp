@@ -27,7 +27,7 @@ import {
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { displayTitle, isArchived, nextNeedingAttention, spawnerOf } from "../vm/threads.ts";
-import { DENSITIES, parseSet, SCHEMES, SET_KEYS } from "./set.ts";
+import { DENSITIES, parseSet, parseTheme, SET_KEYS, themeArgs } from "./set.ts";
 
 /** The path the focused element or its nearest ancestor carries for `g f` (`data-omfp-path`, UI-116). */
 function focusedPath(element: Element | null): { path: string; options: OpenFileOptions } | undefined {
@@ -208,11 +208,19 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
     id: "theme.set",
     title: titles.theme,
     aliases: ["theme"],
-    args: () => SCHEMES,
-    run: ([scheme]) => {
-      const chosen = SCHEMES.find((candidate) => candidate === scheme);
-      if (chosen !== undefined) {
-        host.window.set(COLOR_SCHEME, chosen);
+    // UI-513: the window's colour scheme and the daemon's built-in theme, either or both.
+    args: themeArgs,
+    run: (args) => {
+      const parsed = parseTheme(args);
+      if (!parsed.ok) {
+        reportError(host, new Error(parsed.error));
+        return;
+      }
+      if (parsed.scheme !== undefined) {
+        host.window.set(COLOR_SCHEME, parsed.scheme);
+      }
+      if (parsed.theme !== undefined) {
+        void setSettings({ ui: { theme: parsed.theme } });
       }
     },
   });

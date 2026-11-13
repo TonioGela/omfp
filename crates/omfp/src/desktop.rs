@@ -457,6 +457,12 @@ fn open_window(
     let builder = builder
         .data_store_identifier(macos::data_store_identifier(webview_data)?)
         .initialization_script(macos::notification_script(&origin, &nonce));
+    // UI-512: the system accent the `accent` theme derives from, which the page cannot read itself.
+    #[cfg(target_os = "macos")]
+    let builder = match macos::system_accent() {
+        Some(accent) => builder.initialization_script(macos::accent_script(&origin, &accent)),
+        None => builder,
+    };
     let window = builder.build()?;
     #[cfg(target_os = "linux")]
     let _color_scheme = portal::follow_color_scheme(&window);

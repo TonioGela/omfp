@@ -451,7 +451,7 @@
     },
     {
       "id": "theme.set",
-      "title": "Colour scheme (system, light, dark)",
+      "title": "Colour scheme (system, light, dark) and built-in theme (synth, catppuccin, gruvbox, …)",
       "aliases": [
         "theme"
       ]

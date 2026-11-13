@@ -343,6 +343,14 @@ describe("frame", () => {
       "theme system",
       "theme light",
       "theme dark",
+      "theme synth",
+      "theme catppuccin",
+      "theme gruvbox",
+      "theme tokyo-night",
+      "theme nord",
+      "theme solarized",
+      "theme rose-pine",
+      "theme accent",
     ]);
     await user.type(input, "d{Enter}");
     expect(screen.queryByTestId("command-line")).toBeNull();
@@ -354,6 +362,31 @@ describe("frame", () => {
     client.indexEvents({ kind: "settings_changed", settings: { ui: { density: "normal" }, keymap: [], error: null } });
     flush();
     expect(document.documentElement.dataset.density).toBe("normal");
+  });
+
+  // spec: UI-513, UI-510, UI-511
+  test("`:theme <theme> <scheme>` sets the daemon's theme and the window's scheme; `<html>` follows the setting", async () => {
+    const { client, flush, host, user } = setup();
+    expect(document.documentElement.dataset.theme).toBe("synth");
+    press(":");
+    const input = screen.getByTestId("command-line-input");
+    await user.type(input, "theme gruvbox ");
+    expect(screen.getAllByTestId("command-option").map((option) => option.dataset.value)).toEqual([
+      "theme gruvbox system",
+      "theme gruvbox light",
+      "theme gruvbox dark",
+    ]);
+    await user.type(input, "dark{Enter}");
+    expect(client.callsTo("settings.set").map((call) => call.params)).toEqual([{ ui: { theme: "gruvbox" } }]);
+    expect(document.documentElement.dataset.colorScheme).toBe("dark");
+    expect(document.documentElement.dataset.theme).toBe("synth");
+    client.indexEvents({ kind: "settings_changed", settings: { ui: { theme: "gruvbox" }, keymap: [], error: null } });
+    flush();
+    expect(document.documentElement.dataset.theme).toBe("gruvbox");
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "theme dracula{Enter}");
+    expect(host.window.get(ERRORS)).toEqual(["Unknown colour scheme or theme: dracula"]);
+    expect(client.callsTo("settings.set").length).toBe(1);
   });
 
   // spec: UI-336
@@ -369,7 +402,7 @@ describe("frame", () => {
       await user.type(screen.getByTestId("command-line-input"), "theme ");
       expect(scrolled).toEqual([]);
       await user.keyboard("{ArrowDown}{ArrowDown}{ArrowUp}{ArrowUp}");
-      expect(scrolled).toEqual(["theme system", "theme light", "theme system", "theme dark"]);
+      expect(scrolled).toEqual(["theme system", "theme light", "theme system", "theme accent"]);
     } finally {
       scroll.mockRestore();
     }

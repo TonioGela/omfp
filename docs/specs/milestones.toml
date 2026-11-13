@@ -986,6 +986,17 @@ requirements = [
   "UI-418",
   "UI-419",
   "E2E-36",
+  # Built-in themes: the six palettes and the system accent, `[ui] theme`, `:theme`, the gallery's picker
+  "UI-510",
+  "UI-511",
+  "UI-512",
+  "UI-513",
+  "UI-514",
+  "DMN-238",
+  "DMN-239",
+  "DMN-240",
+  "PRT-143",
+  "E2E-44",
 ]
 
 [M15]

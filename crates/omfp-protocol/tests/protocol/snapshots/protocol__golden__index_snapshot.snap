@@ -118,7 +118,8 @@ expression: snapshot
       "fonts": {
         "prose": "Literata, serif",
         "code": "\"JetBrains Mono\", monospace"
-      }
+      },
+      "theme": "rose-pine"
     },
     "keymap": [
       {

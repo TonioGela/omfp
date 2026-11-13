@@ -1,18 +1,20 @@
 /**
  * Theme, density, motion and fonts on the document (UI-091, UI-094, UI-097, UI-145). The built-in light and dark
  * tokens follow `prefers-color-scheme` unless `<html data-color-scheme="light|dark">` (window-local) overrides it;
- * `data-density` (the daemon's `[ui] density`) picks compact or normal spacing; `data-motion` is the effective motion
- * level, the daemon's `[ui] motion` capped at `none` while the system asks for reduced motion, so stylesheets and
+ * `data-theme` is the daemon's `[ui] theme` (UI-510), a built-in theme of `@omfp/kit/themes.css` over Synth's tokens
+ * (`accent` only where the host gives the system accent, UI-512, else Synth); `data-density` (the daemon's
+ * `[ui] density`) picks compact or normal spacing; `data-motion` is the effective motion level, the daemon's `[ui] motion` capped at `none` while the system asks for reduced motion, so stylesheets and
  * script effects read one attribute; `[ui] font_size` is `<html>`'s inline `font-size` (so every rem-based token
  * scales); `[ui.fonts]` set `--omfp-font-prose|ui|code` inline on `<html>`, which beats any stylesheet, user theme
  * included. The user theme is the daemon's (global, `theme.get`/`theme.set`): the page loads it first through
  * `<link rel="stylesheet" href="/theme.css" data-omfp-theme>` (so it applies before the socket connects), then the
  * `index` topic's `theme` replaces that link with `<style data-omfp-theme>` in the same place and keeps it current
- * (`theme_changed`). The tokens live in `@layer omfp-tokens`, so the unlayered user theme always wins over them. The
- * contrast guard (guard.ts, UI-196) then keeps the theme's text roles readable: it runs with the appearance.
+ * (`theme_changed`). The tokens and the built-in themes live in `@layer omfp-tokens`, so the unlayered user theme always
+ * wins over them. The contrast guard (guard.ts, UI-196) then keeps the theme's text roles readable: it runs with the
+ * appearance.
  */
 
-import { type Density, type FontSettings, INDEX_TOPIC, type Motion } from "@omfp/protocol";
+import { type BuiltinTheme, type Density, type FontSettings, INDEX_TOPIC, type Motion } from "@omfp/protocol";
 import { useEffect, useSyncExternalStore } from "react";
 import {
   COLOR_SCHEME,
@@ -20,6 +22,7 @@ import {
   DEFAULT_DENSITY,
   DEFAULT_FONT_SIZE,
   DEFAULT_MOTION,
+  DEFAULT_THEME,
   useSettings,
   useSnapshot,
   useWindowState,
@@ -27,12 +30,21 @@ import {
 import { installContrastGuard } from "./guard.ts";
 
 export const THEME_ATTRIBUTE = "data-omfp-theme";
+/**
+ * The custom property the host sets inline on `<html>` to the system accent colour (`#rrggbb`) before the page loads
+ * (UI-512): the macOS desktop window, from AppKit's `controlAccentColor`. Browsers do not expose it (WebKit answers a
+ * fixed blue for `-apple-system-control-accent` to web pages, against fingerprinting), so elsewhere it is absent.
+ */
+export const SYSTEM_ACCENT = "--omfp-system-accent";
+/** What `accent` derives its roles with (themes.css): relative colour syntax. */
+const RELATIVE_COLOR = "oklch(from #000000 l c h)";
 
 const FONT_ROLES = ["prose", "ui", "code"] as const;
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 export interface Appearance {
   readonly scheme: ColorScheme;
+  readonly theme: BuiltinTheme;
   readonly density: Density;
   readonly fontSize: number;
   /** The effective level (UI-145): the setting, or `none` while the system asks for reduced motion. */
@@ -40,8 +52,24 @@ export interface Appearance {
   readonly fonts: FontSettings | null | undefined;
 }
 
-export function applyAppearance(root: HTMLElement, { scheme, density, fontSize, motion, fonts }: Appearance): void {
+/**
+ * The theme `root` shows for the setting `theme` (UI-512): `accent` only with a system accent from the host and a
+ * browser that derives colours from it, else Synth; any other theme as it is.
+ */
+export function effectiveTheme(root: HTMLElement, theme: BuiltinTheme): BuiltinTheme {
+  if (theme !== "accent") {
+    return theme;
+  }
+  const accent = root.style.getPropertyValue(SYSTEM_ACCENT).trim();
+  return accent !== "" && CSS.supports("color", RELATIVE_COLOR) ? theme : DEFAULT_THEME;
+}
+
+export function applyAppearance(
+  root: HTMLElement,
+  { scheme, theme, density, fontSize, motion, fonts }: Appearance,
+): void {
   root.dataset.colorScheme = scheme;
+  root.dataset.theme = effectiveTheme(root, theme);
   root.dataset.density = density;
   root.dataset.motion = motion;
   root.style.fontSize = `${fontSize}px`;
@@ -87,20 +115,22 @@ function useSystemReducedMotion(): boolean {
 }
 
 /**
- * Keeps `<html>`'s colour scheme (window state), density, motion, font size and fonts (daemon settings) current, and
+ * Keeps `<html>`'s colour scheme (window state), built-in theme, density, motion, font size and fonts (daemon settings)
+ * current, and
  * the contrast guard (UI-196) on it.
  */
 export function useAppearance(root: HTMLElement = document.documentElement): void {
   const [scheme] = useWindowState(COLOR_SCHEME);
   const { ui } = useSettings();
   const systemReduced = useSystemReducedMotion();
+  const theme = ui.theme ?? DEFAULT_THEME;
   const density = ui.density ?? DEFAULT_DENSITY;
   const fontSize = ui.fontSize ?? DEFAULT_FONT_SIZE;
   const motion = systemReduced ? "none" : (ui.motion ?? DEFAULT_MOTION);
   const { fonts } = ui;
   useEffect(
-    () => applyAppearance(root, { scheme, density, fontSize, motion, fonts }),
-    [root, scheme, density, fontSize, motion, fonts],
+    () => applyAppearance(root, { scheme, theme, density, fontSize, motion, fonts }),
+    [root, scheme, theme, density, fontSize, motion, fonts],
   );
   useEffect(() => installContrastGuard(root.ownerDocument, root), [root]);
 }

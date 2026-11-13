@@ -484,8 +484,11 @@ export const shell = {
     saved: (reference: string) => `Saved to the user library as ${reference}`,
   },
   settings: {
-    setUsage: "Usage: :set <key>=<value> (density, notifications, fonts.prose|ui|code, keymap[.<mode>].<keys>)",
+    setUsage: "Usage: :set <key>=<value> (density, notifications, theme, fonts.prose|ui|code, keymap[.<mode>].<keys>)",
     unknownKey: (key: string) => `Unknown setting: ${key}`,
+    themeUsage:
+      "Usage: :theme [system|light|dark] [<theme>] (synth, catppuccin, gruvbox, tokyo-night, nord, solarized, rose-pine, accent)",
+    unknownTheme: (word: string) => `Unknown colour scheme or theme: ${word}`,
     invalidValue: (key: string, value: string) => `Invalid value for ${key}: ${value === "" ? "(empty)" : value}`,
     error: (message: string) => `The config file is invalid, the previous settings stay: ${message}`,
   },
@@ -550,7 +553,7 @@ export const shell = {
     spawnedBy: "Show only the threads the selected one spawned (again: every thread)",
     restart: "Restart the thread's process",
     nextAttention: "Next thread needing attention",
-    theme: "Colour scheme (system, light, dark)",
+    theme: "Colour scheme (system, light, dark) and built-in theme (synth, catppuccin, gruvbox, …)",
     density: "Density (compact, normal)",
     set: "Change a setting (:set key=value)",
     cmdline: "Open the command line",

@@ -133,6 +133,7 @@ ui/packages/protocol  @omfp/protocol: generated protocol types + method table (g
 ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked against fixtures/states/
 ui/packages/client    @omfp/client: WebSocket transport, session (hello, subscriptions, reconnect), model
 ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token CSS (tokens.css: every `--omfp-*` token;
+                      themes.css: the built-in themes besides Synth, on `<html data-theme>`;
                       kit.css: the Crush components and the motion catalogue; the bundled fonts and their licences
                       in fonts/, served at /fonts/ by the bundle); icons.tsx holds the Lucide icons as data
                       (lucide-LICENSE.txt), motion.ts the effective motion level; marks.tsx (state marks, badges,

@@ -29,7 +29,9 @@ const HEX_COLOR = /#[0-9a-f]{3,8}\b/gi;
 const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/gi;
 const VAR_REF = /var\(\s*(--[\w-]+)/g;
 
-const styleFiles = cssFiles(KIT_SRC).filter((path) => basename(path) !== "tokens.css");
+/** The theme files hold the palettes (UI-139, UI-511): the only ones allowed colour literals. */
+const THEME_FILES = ["tokens.css", "themes.css"];
+const styleFiles = cssFiles(KIT_SRC).filter((path) => !THEME_FILES.includes(basename(path)));
 const APP_SRC = join(KIT_SRC, "..", "..", "app", "src");
 const tokensCss = readFileSync(join(KIT_SRC, "tokens.css"), "utf8");
 const kitRules = parseCss(readFileSync(join(KIT_SRC, "kit.css"), "utf8"));

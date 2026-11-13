@@ -18,9 +18,36 @@
 
   .omfp-gallery__top {
     display: flex;
+    flex-wrap: wrap;
     align-items: baseline;
     gap: var(--omfp-s4);
     margin-block-end: var(--omfp-s5);
+  }
+
+  /* The theme and scheme picker (UI-514): links that keep the other parameters. */
+  .omfp-gallery__picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--omfp-s1);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-gallery__pick {
+    padding: var(--omfp-pill-pad);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: 999px;
+    color: var(--omfp-primary);
+    text-decoration: none;
+  }
+
+  .omfp-gallery__pick:hover {
+    background: var(--omfp-hover);
+  }
+
+  .omfp-gallery__pick[aria-current="page"] {
+    border-color: var(--omfp-primary);
+    background: var(--omfp-sel-bg);
+    color: var(--omfp-sel-fg);
   }
 
   .omfp-gallery__page-title {

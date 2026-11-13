@@ -108,6 +108,28 @@ export type BtwParams = {
   threadId: string;
 };
 
+/**
+ * A built-in colour theme of the UI (UI-510, PRT-143): an official palette mapped onto the Material 3 roles in light
+ * and dark, or (`accent`) one derived from the system accent colour where the web view exposes it (UI-512).
+ */
+export type BuiltinTheme =
+  /** omfp's own palette, cyan to indigo (UI-139; default). */
+  | "synth"
+  /** Catppuccin: Latte in light, Mocha in dark. */
+  | "catppuccin"
+  /** Gruvbox light and dark. */
+  | "gruvbox"
+  /** Tokyo Night: Day in light, Night in dark. */
+  | "tokyo-night"
+  /** Nord: Snow Storm surfaces in light, Polar Night in dark. */
+  | "nord"
+  /** Solarized light and dark. */
+  | "solarized"
+  /** Rosé Pine: Dawn in light, the main variant in dark. */
+  | "rose-pine"
+  /** Follows the system accent colour (macOS); elsewhere Synth. */
+  | "accent";
+
 /** `windows.check_widget` params (PRT-124). */
 export type CheckWidgetParams = {
   /** The widget reference: `./widgets/<name>` or `user:<name>`. */
@@ -1377,6 +1399,8 @@ export type UiSettings = {
   fonts?: FontSettings | null;
   motion?: Motion | null;
   notifications?: NotificationMode | null;
+  /** The built-in colour theme (UI-510); absent is Synth, omfp's own. A user theme (`/theme.css`) still wins. */
+  theme?: BuiltinTheme | null;
 };
 
 /** `views.unmount` params (PRT-082, AGT-063). */

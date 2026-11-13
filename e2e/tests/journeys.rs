@@ -825,6 +825,110 @@ async fn a_theme_set_from_the_command_line_reaches_the_open_page_live() -> anyho
     journey.finish("live theme").await
 }
 
+/// Waits until `<html>` carries `data-theme="<theme>"` (UI-510).
+async fn until_theme(journey: &Journey, theme: &str) -> anyhow::Result<()> {
+    journey
+        .until(&format!("the {theme} theme"), async |page| {
+            let value = page.attr("html", "data-theme").await?;
+            Ok((value.as_deref() == Some(theme)).then_some(()))
+        })
+        .await
+}
+
+/// The built-in themes with their official background in light and dark (`--omfp-surface`, UI-511).
+const THEME_SURFACES: [(&str, &str, &str); 7] = [
+    ("synth", "#faf8ff", "#12131a"),
+    ("catppuccin", "#eff1f5", "#1e1e2e"),
+    ("gruvbox", "#fbf1c7", "#282828"),
+    ("tokyo-night", "#e1e2e7", "#1a1b26"),
+    ("nord", "#eceff4", "#2e3440"),
+    ("solarized", "#fdf6e3", "#002b36"),
+    ("rose-pine", "#faf4ed", "#191724"),
+];
+
+// spec: E2E-44, UI-510, UI-511, UI-512, UI-513, DMN-239
+#[tokio::test(flavor = "multi_thread")]
+async fn a_built_in_theme_is_chosen_with_theme_kept_by_the_daemon_and_under_the_user_theme()
+-> anyhow::Result<()> {
+    let journey = Journey::start(Vec::new()).await?;
+    journey.connected().await?;
+    until_theme(&journey, "synth").await?;
+
+    // `:theme <theme> <scheme>`: the theme goes to the config file, the scheme stays the window's.
+    journey.command("theme catppuccin dark").await?;
+    until_theme(&journey, "catppuccin").await?;
+    journey.until_scheme("dark").await?;
+    assert_eq!(journey.token("--omfp-surface").await?, "#1e1e2e");
+    let config = std::fs::read_to_string(journey.config_file())?;
+    assert!(config.contains("theme = \"catppuccin\""), "{config}");
+
+    // Every palette in both schemes, as every window draws it, untouched by the contrast guard (UI-196).
+    let mut connection = journey.connect().await?;
+    for (theme, light, dark) in THEME_SURFACES {
+        connection
+            .call::<omfp_protocol::method::SettingsSet>(omfp_protocol::SetSettingsParams {
+                ui: Some(omfp_protocol::UiSettings {
+                    theme: Some(serde_json::from_value(json!(theme))?),
+                    ..omfp_protocol::UiSettings::default()
+                }),
+                keymap: None,
+            })
+            .await?;
+        until_theme(&journey, theme).await?;
+        for (scheme, surface) in [("light", light), ("dark", dark)] {
+            journey.scheme(scheme).await?;
+            assert_eq!(
+                journey.token("--omfp-surface").await?,
+                surface,
+                "{theme} {scheme}"
+            );
+            assert_eq!(
+                journey.attr("html", "data-contrast-guard").await?,
+                None,
+                "{theme} {scheme}: the guard overrides nothing"
+            );
+            journey
+                .screenshot(&format!("theme-{theme}-{scheme}"))
+                .await?;
+        }
+    }
+
+    // The system accent comes from the macOS window only: a browser falls back to Synth.
+    journey.command("theme accent").await?;
+    journey
+        .until("the accent setting", async |page| {
+            let config = std::fs::read_to_string(page.config_file())?;
+            Ok(config.contains("theme = \"accent\"").then_some(()))
+        })
+        .await?;
+    until_theme(&journey, "synth").await?;
+
+    // A user theme still wins over a built-in one; clearing it shows the built-in theme again.
+    journey.command("theme gruvbox light").await?;
+    until_theme(&journey, "gruvbox").await?;
+    let gruvbox = journey.token("--omfp-primary").await?;
+    connection
+        .call::<omfp_protocol::method::ThemeSet>(omfp_protocol::Theme {
+            css: Some(":root { --omfp-primary: #0b6e4f; }".to_owned()),
+        })
+        .await?;
+    journey
+        .until("the user theme's primary", async |page| {
+            Ok((page.token("--omfp-primary").await? == "#0b6e4f").then_some(()))
+        })
+        .await?;
+    connection
+        .call::<omfp_protocol::method::ThemeSet>(omfp_protocol::Theme { css: None })
+        .await?;
+    journey
+        .until("the built-in theme's primary", async |page| {
+            Ok((page.token("--omfp-primary").await? == gruvbox).then_some(()))
+        })
+        .await?;
+    connection.close().await?;
+    journey.finish("built-in themes").await
+}
+
 /// Waits until `<html>` carries `data-density="<density>"`.
 async fn until_density(journey: &Journey, density: &str) -> anyhow::Result<()> {
     journey

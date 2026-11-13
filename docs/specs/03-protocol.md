@@ -59,7 +59,7 @@ The `index` state is `{ workspaces, threads, theme, settings, init, models }`; i
 `workspace_upserted` / `workspace_removed`, `thread_upserted` / `thread_removed`,
 `theme_changed { theme }` (`theme` is `{ css: string | null }`, DMN-075), `settings_changed { settings }` (DMN-009,
 UI-097), `init_changed { init }` (PRT-095) and `models_changed { models }` (the usable models, PRT-141). `settings` is
-`{ ui: { density?, notifications?, fonts?: { prose?, ui?, code? } }, keymap: { mode: "normal" |
+`{ ui: { density?, fontSize?, motion?, notifications?, fonts?: { prose?, ui?, code? }, theme? }, keymap: { mode: "normal" |
 "insert" | "cmdline", keys, command }[], error: string | null }`: the `[ui]` and `[keymap]` tables of the daemon's
 config file (absent values are defaults; `command: ""` removes a default binding), and the last reload error (the
 previous settings stay). A thread summary carries `title` (`""` until the first message) and `titleSource`:
@@ -86,6 +86,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | PRT-023 | Each client has a bounded outbound queue. On overflow the daemon MUST drop that client's topic, send `resync_required` for it, and keep the connection open; the client resubscribes and gets a snapshot. |
 | PRT-024 | `unsubscribe { topic }` MUST stop delivery for that topic. Closing the socket unsubscribes everything. |
 | PRT-025 | The daemon MUST know which threads are being watched (at least one subscriber) for the idle reaper (DMN-034). |
+| PRT-143 | `UiSettings.theme` MUST be a `BuiltinTheme`, named in kebab case: `synth`, `catppuccin`, `gruvbox`, `tokyo-night`, `nord`, `solarized`, `rose-pine` or `accent` (UI-510); absent means `synth`. Any other name does not decode, so `settings.set` refuses it as `bad_request` and the config file reports it (DMN-238). |
 
 ## Event kinds on `thread/<id>`
 

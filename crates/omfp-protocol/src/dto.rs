@@ -205,6 +205,9 @@ pub struct UiSettings {
     pub notifications: Option<NotificationMode>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fonts: Option<FontSettings>,
+    /// The built-in colour theme (UI-510); absent is Synth, omfp's own. A user theme (`/theme.css`) still wins.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub theme: Option<BuiltinTheme>,
 }
 
 /// Row height and spacing of the UI.
@@ -213,6 +216,29 @@ pub struct UiSettings {
 pub enum Density {
     Compact,
     Normal,
+}
+
+/// A built-in colour theme of the UI (UI-510, PRT-143): an official palette mapped onto the Material 3 roles in light
+/// and dark, or (`accent`) one derived from the system accent colour where the web view exposes it (UI-512).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum BuiltinTheme {
+    /// omfp's own palette, cyan to indigo (UI-139; default).
+    Synth,
+    /// Catppuccin: Latte in light, Mocha in dark.
+    Catppuccin,
+    /// Gruvbox light and dark.
+    Gruvbox,
+    /// Tokyo Night: Day in light, Night in dark.
+    TokyoNight,
+    /// Nord: Snow Storm surfaces in light, Polar Night in dark.
+    Nord,
+    /// Solarized light and dark.
+    Solarized,
+    /// Rosé Pine: Dawn in light, the main variant in dark.
+    RosePine,
+    /// Follows the system accent colour (macOS); elsewhere Synth.
+    Accent,
 }
 
 /// How much the UI animates (UI-145); `prefers-reduced-motion: reduce` caps it at `none`.

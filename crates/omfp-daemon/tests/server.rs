@@ -1774,6 +1774,50 @@ async fn without_a_config_file_settings_live_in_memory() {
     assert_eq!(client.ok("settings.get", json!({})).await, set);
 }
 
+// spec: DMN-239, DMN-240, UI-510
+#[tokio::test(flavor = "multi_thread")]
+async fn the_built_in_theme_is_a_ui_setting_written_back_and_independent_of_the_user_theme() {
+    let config = tempfile::tempdir().unwrap();
+    let file = config.path().join("config.toml");
+    std::fs::write(&file, "[ui]\ntheme = \"nord\" # cold\n").unwrap();
+    let daemon = daemon(&["--config", file.to_str().unwrap()]).await;
+    let mut web = daemon.client("omfp/web").await;
+    let mut desktop = daemon.client("omfp/desktop").await;
+    let index = desktop.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(index["state"]["settings"]["ui"], json!({ "theme": "nord" }));
+    let css = ":root { --omfp-primary: #6750a4; }";
+    web.ok("theme.set", json!({ "css": css })).await;
+    assert_eq!(next_theme(&mut desktop).await, json!({ "css": css }));
+
+    let set = web
+        .ok("settings.set", json!({ "ui": { "theme": "rose-pine" } }))
+        .await;
+
+    assert_eq!(set["ui"], json!({ "theme": "rose-pine" }));
+    assert_eq!(next_settings(&mut desktop).await["ui"], set["ui"]);
+    assert_eq!(
+        std::fs::read_to_string(&file).unwrap(),
+        "[ui]\ntheme = \"rose-pine\" # cold\n"
+    );
+    // The user theme stays: it is applied over whichever built-in theme the windows draw.
+    assert_eq!(web.ok("theme.get", json!({})).await, json!({ "css": css }));
+    web.ok("theme.set", json!({ "css": null })).await;
+    assert_eq!(
+        web.ok("settings.get", json!({})).await["ui"],
+        json!({ "theme": "rose-pine" })
+    );
+    let error = web
+        .call("settings.set", json!({ "ui": { "theme": "dracula" } }))
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "bad_request");
+    replace_file(&file, "[ui]\ntheme = \"tokyo-night\"\n");
+    assert_eq!(
+        next_settings(&mut desktop).await["ui"],
+        json!({ "theme": "tokyo-night" })
+    );
+}
+
 /// Authenticates as `name` and returns the connection with its number (PRT-051).
 async fn numbered(daemon: &TestDaemon, name: &str) -> (Client, u64) {
     let mut client = Client::connect(daemon.handle.addr()).await;

@@ -1,10 +1,11 @@
 /**
  * `:set <key>=<value>` (UI-097): one setting of the daemon's `[ui]` or `[keymap]`, sent with `settings.set`. Keys:
- * `density`, `font_size` (px, 10..=28), `motion`, `notifications`, `fonts.prose|ui|code`, `keymap.<keys>` (normal
- * mode) and `keymap.<mode>.<keys>`; a keymap value is a command id, `""` removes the binding.
+ * `density`, `font_size` (px, 10..=28), `motion`, `notifications`, `theme` (a built-in theme, UI-510),
+ * `fonts.prose|ui|code`, `keymap.<keys>` (normal mode) and `keymap.<mode>.<keys>`; a keymap value is a command id, `""`
+ * removes the binding.
  */
 
-import type { Density, Motion, NotificationMode, SetSettingsParams } from "@omfp/protocol";
+import type { BuiltinTheme, Density, Motion, NotificationMode, SetSettingsParams } from "@omfp/protocol";
 import { type Mode, normalizeKeys } from "../keymap/keymap.ts";
 import { type ColorScheme, FONT_SIZE_MAX, FONT_SIZE_MIN } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
@@ -16,6 +17,17 @@ export const SCHEMES: readonly ColorScheme[] = ["system", "light", "dark"];
 export const DENSITIES: readonly Density[] = ["compact", "normal"];
 export const MOTIONS: readonly Motion[] = ["full", "reduced", "none"];
 const NOTIFICATIONS: readonly NotificationMode[] = ["background", "always", "never"];
+/** The built-in themes (UI-510): Synth (the default), the six palettes and the system accent's. */
+export const THEMES: readonly BuiltinTheme[] = [
+  "synth",
+  "catppuccin",
+  "gruvbox",
+  "tokyo-night",
+  "nord",
+  "solarized",
+  "rose-pine",
+  "accent",
+];
 const FONT_ROLES: readonly FontRole[] = ["prose", "ui", "code"];
 const MODES: readonly Mode[] = ["normal", "insert", "cmdline"];
 
@@ -25,9 +37,37 @@ export const SET_KEYS: readonly string[] = [
   "font_size=",
   ...MOTIONS.map((motion) => `motion=${motion}`),
   ...NOTIFICATIONS.map((mode) => `notifications=${mode}`),
+  ...THEMES.map((theme) => `theme=${theme}`),
   ...FONT_ROLES.map((role) => `fonts.${role}=`),
   "keymap.",
 ];
+
+/** `:theme`'s arguments (UI-513): a colour scheme (this window's) and a built-in theme (the daemon's), either or both. */
+export type ParsedTheme =
+  | { readonly ok: true; readonly scheme?: ColorScheme; readonly theme?: BuiltinTheme }
+  | { readonly ok: false; readonly error: string };
+
+/** The completions of `:theme`'s next argument after `before`: the schemes, then the themes, less a kind already given. */
+export function themeArgs(before: readonly string[]): string[] {
+  const has = (names: readonly string[]) => before.some((word) => names.includes(word));
+  return [...(has(SCHEMES) ? [] : SCHEMES), ...(has(THEMES) ? [] : THEMES)];
+}
+
+/** `:theme`'s arguments as a scheme and a theme, or what is wrong with them (none, an unknown word, two of a kind). */
+export function parseTheme(args: readonly string[]): ParsedTheme {
+  const schemes = SCHEMES.filter((candidate) => args.includes(candidate));
+  const themes = THEMES.filter((candidate) => args.includes(candidate));
+  const unknown = args.find((word) => !schemes.some((s) => s === word) && !themes.some((t) => t === word));
+  if (unknown !== undefined) {
+    return { ok: false, error: text.unknownTheme(unknown) };
+  }
+  const [scheme] = schemes;
+  const [theme] = themes;
+  if (args.length === 0 || args.length > 2 || schemes.length > 1 || themes.length > 1) {
+    return { ok: false, error: text.themeUsage };
+  }
+  return { ok: true, ...(scheme === undefined ? {} : { scheme }), ...(theme === undefined ? {} : { theme }) };
+}
 
 export type ParsedSet =
   | { readonly ok: true; readonly patch: SetSettingsParams }
@@ -60,6 +100,10 @@ export function parseSet(line: string): ParsedSet {
   if (key === "notifications") {
     const notifications = NOTIFICATIONS.find((candidate) => candidate === value);
     return notifications === undefined ? invalid(key, value) : { ok: true, patch: { ui: { notifications } } };
+  }
+  if (key === "theme") {
+    const theme = THEMES.find((candidate) => candidate === value);
+    return theme === undefined ? invalid(key, value) : { ok: true, patch: { ui: { theme } } };
   }
   if (key.startsWith("fonts.")) {
     const role = FONT_ROLES.find((candidate) => `fonts.${candidate}` === key);

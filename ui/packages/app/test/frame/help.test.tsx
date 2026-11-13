@@ -110,7 +110,11 @@ describe("help panel", () => {
     expect(rows("transcript", "nav.halfDown")).toEqual([["ctrl+d", "", "Scroll half a page down"]]);
     expect(rows("insert", "focus.leave")).toEqual([["esc", "", "Leave the composer"]]);
     expect(rows("commands", "theme.set")).toEqual([
-      [":theme", "system | light | dark", "Colour scheme (system, light, dark)"],
+      [
+        ":theme",
+        "system | light | dark | synth | catppuccin | gruvbox | tokyo-night | nord | solarized | rose-pine | accent",
+        "Colour scheme (system, light, dark) and built-in theme (synth, catppuccin, gruvbox, …)",
+      ],
     ]);
     await user.keyboard("{Escape}");
     expect(screen.queryByTestId("help")).toBeNull();

@@ -1,7 +1,7 @@
 /** L1: the `/kit` gallery's parameters (UI-173). */
 
 import { describe, expect, test } from "bun:test";
-import { galleryParams, isGalleryPath } from "../../src/gallery/params.ts";
+import { GALLERY_THEMES, galleryParams, gallerySearch, isGalleryPath } from "../../src/gallery/params.ts";
 
 describe("gallery parameters", () => {
   // spec: UI-173
@@ -17,6 +17,7 @@ describe("gallery parameters", () => {
     expect(galleryParams("")).toEqual({
       scheme: "system",
       theme: "synth",
+      accent: "#007aff",
       density: "compact",
       motion: "full",
       fontSize: 17,
@@ -24,6 +25,7 @@ describe("gallery parameters", () => {
     expect(galleryParams("?scheme=dark&theme=matugen-forest&density=normal&motion=none&fs=15")).toEqual({
       scheme: "dark",
       theme: "matugen-forest",
+      accent: "#007aff",
       density: "normal",
       motion: "none",
       fontSize: 15,
@@ -32,12 +34,44 @@ describe("gallery parameters", () => {
 
   // spec: UI-173
   test("unknown values fall back to the defaults", () => {
-    expect(galleryParams("?scheme=sepia&theme=nope&density=huge&motion=fast&fs=abc")).toEqual(galleryParams(""));
+    expect(galleryParams("?scheme=sepia&theme=nope&accent=blue&density=huge&motion=fast&fs=abc")).toEqual(
+      galleryParams(""),
+    );
     expect(galleryParams("?fs=4").fontSize).toBe(17);
   });
 
   // spec: UI-173, UI-196
   test("the Dux preset fixture is a gallery theme", () => {
     expect(galleryParams("?theme=dux-solarized").theme).toBe("dux-solarized");
+  });
+
+  // spec: UI-514, UI-510
+  test("every built-in theme is a gallery theme, then the fixtures; `accent` takes the query's accent", () => {
+    expect(GALLERY_THEMES).toEqual([
+      "synth",
+      "catppuccin",
+      "gruvbox",
+      "tokyo-night",
+      "nord",
+      "solarized",
+      "rose-pine",
+      "accent",
+      "matugen-forest",
+      "dux-solarized",
+    ]);
+    expect(GALLERY_THEMES.filter((theme) => galleryParams(`?theme=${theme}`).theme !== theme)).toEqual([]);
+    expect(galleryParams("?theme=accent&accent=%23FFC600")).toMatchObject({ theme: "accent", accent: "#ffc600" });
+  });
+
+  // spec: UI-514
+  test("the picker's links change one parameter and keep the others", () => {
+    const params = galleryParams("?scheme=dark&theme=nord&density=normal&motion=none&fs=15");
+    expect(gallerySearch(params, { theme: "gruvbox" })).toBe(
+      "?scheme=dark&theme=gruvbox&density=normal&motion=none&fs=15",
+    );
+    expect(galleryParams(gallerySearch(params, { scheme: "light" }))).toEqual({ ...params, scheme: "light" });
+    expect(gallerySearch(params, { theme: "accent", accent: "#ff5257" })).toBe(
+      "?scheme=dark&theme=accent&density=normal&motion=none&fs=15&accent=%23ff5257",
+    );
   });
 });

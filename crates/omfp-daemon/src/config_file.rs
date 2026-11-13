@@ -15,6 +15,7 @@
 //! font_size = 17                # root font size in px, 10..=28
 //! motion = "full"               # full | reduced | none
 //! notifications = "background"  # background | always | never
+//! theme = "catppuccin"          # synth | catppuccin | gruvbox | tokyo-night | nord | solarized | rose-pine | accent
 //!
 //! [ui.fonts]
 //! prose = "Literata, serif"
@@ -31,8 +32,8 @@ use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 use omfp_protocol::{
-    Density, FontSettings, KeymapEntry, KeymapMode, Motion, NotificationMode, SetSettingsParams,
-    Settings, UiSettings,
+    BuiltinTheme, Density, FontSettings, KeymapEntry, KeymapMode, Motion, NotificationMode,
+    SetSettingsParams, Settings, UiSettings,
 };
 use serde::Deserialize;
 use toml_edit::{DocumentMut, Item, Table};
@@ -104,6 +105,7 @@ struct RawUi {
     motion: Option<Motion>,
     notifications: Option<NotificationMode>,
     fonts: Option<RawFonts>,
+    theme: Option<BuiltinTheme>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -149,6 +151,7 @@ impl ConfigFile {
                 motion: raw.ui.motion,
                 notifications: raw.ui.notifications,
                 fonts,
+                theme: raw.ui.theme,
             },
             keymap: keymap(&raw.keymap)?,
         })
@@ -246,6 +249,9 @@ pub fn write_back(text: &str, update: &SetSettingsParams) -> Result<String, Stri
         if let Some(notifications) = ui.notifications {
             set(table, "notifications", notifications_name(notifications));
         }
+        if let Some(theme) = ui.theme {
+            set(table, "theme", theme_name(theme));
+        }
         if let Some(fonts) = &ui.fonts {
             let table = child(table, "fonts")?;
             for (key, value) in [
@@ -325,6 +331,19 @@ fn notifications_name(mode: NotificationMode) -> &'static str {
     }
 }
 
+fn theme_name(theme: BuiltinTheme) -> &'static str {
+    match theme {
+        BuiltinTheme::Synth => "synth",
+        BuiltinTheme::Catppuccin => "catppuccin",
+        BuiltinTheme::Gruvbox => "gruvbox",
+        BuiltinTheme::TokyoNight => "tokyo-night",
+        BuiltinTheme::Nord => "nord",
+        BuiltinTheme::Solarized => "solarized",
+        BuiltinTheme::RosePine => "rose-pine",
+        BuiltinTheme::Accent => "accent",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -338,6 +357,7 @@ max_processes = 4 # enough
 density = "compact" # for now
 font_size = 15
 motion = "reduced"
+theme = "gruvbox"
 [ui.fonts]
 prose = "Literata, serif"
 
@@ -357,7 +377,7 @@ prose = "Literata, serif"
         }
     }
 
-    // spec: DMN-009, UI-097, UI-145
+    // spec: DMN-009, UI-097, UI-145, DMN-238
     #[test]
     fn the_file_holds_daemon_options_ui_settings_and_keymap_entries() {
         let file = ConfigFile::parse(FILE).unwrap();
@@ -375,6 +395,7 @@ prose = "Literata, serif"
                     ui: None,
                     code: None,
                 }),
+                theme: Some(BuiltinTheme::Gruvbox),
             }
         );
         assert_eq!(
@@ -388,7 +409,7 @@ prose = "Literata, serif"
         assert_eq!(ConfigFile::parse("").unwrap(), ConfigFile::default());
     }
 
-    // spec: DMN-009
+    // spec: DMN-009, DMN-238
     #[test]
     fn unknown_keys_and_wrong_values_are_errors_naming_them() {
         for (text, named) in [
@@ -397,6 +418,8 @@ prose = "Literata, serif"
             ("[ui]\ndensty = \"normal\"", "densty"),
             ("[ui]\ndensity = \"huge\"", "huge"),
             ("[ui]\nmotion = \"slow\"", "slow"),
+            ("[ui]\ntheme = \"dracula\"", "dracula"),
+            ("[ui]\ntheme = \"tokyo_night\"", "tokyo_night"),
             ("[ui]\nfont_size = 9", "ui.font_size"),
             ("[ui]\nfont_size = 29", "ui.font_size"),
             ("[ui]\nfont_size = \"big\"", "font_size"),
@@ -434,7 +457,7 @@ prose = "Literata, serif"
         assert_eq!(expand_home("~/data".into(), None), PathBuf::from("~/data"));
     }
 
-    // spec: DMN-009, UI-097, UI-145
+    // spec: DMN-009, UI-097, UI-145, DMN-238
     #[test]
     fn write_back_changes_only_the_given_values_and_keeps_comments() {
         let update = SetSettingsParams {
@@ -448,6 +471,7 @@ prose = "Literata, serif"
                     ui: None,
                     code: Some("\"Iosevka\", monospace".into()),
                 }),
+                theme: Some(BuiltinTheme::TokyoNight),
             }),
             keymap: Some(vec![
                 entry(KeymapMode::Normal, "Space t", "density.set"),
@@ -468,6 +492,7 @@ max_processes = 4 # enough
 density = "normal" # for now
 font_size = 18
 motion = "none"
+theme = "tokyo-night"
 notifications = "never"
 [ui.fonts]
 prose = "Literata, serif"

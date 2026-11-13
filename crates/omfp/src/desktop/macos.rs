@@ -1,6 +1,7 @@
 //! The window's macOS parts (M11, S-15): its web storage per data directory (UI-250), the page's notifications
-//! through the system's notification center (UI-252), only from the daemon's own page (DMN-182), and the app menu's
-//! New Window and zoom items (UI-281, UI-282). The pure parts also build in Linux tests.
+//! through the system's notification center (UI-252), only from the daemon's own page (DMN-182), the app menu's
+//! New Window and zoom items (UI-281, UI-282), and the system accent for the `accent` theme (UI-512). The pure parts
+//! also build in Linux tests.
 
 use std::fmt::Write as _;
 use std::hash::{BuildHasher as _, Hasher as _, RandomState};
@@ -96,6 +97,53 @@ const NOTIFICATION_BODY: &str = r#"  if (window.top !== window || location.origi
   }
   Object.defineProperty(window, "Notification", { value: Notification, configurable: true, writable: true });
 })();"#;
+
+/// The system accent colour (UI-512) as `#rrggbb`: AppKit's `controlAccentColor` — the user's choice in System
+/// Settings, blue with the multicolour setting — in sRGB; `None` when it has no sRGB form. Web pages cannot read it:
+/// WebKit answers a fixed blue for `-apple-system-control-accent` unless the app opts into a private web view setting.
+#[cfg(target_os = "macos")]
+#[must_use]
+pub fn system_accent() -> Option<String> {
+    use objc2_app_kit::{NSColor, NSColorSpace};
+    let color =
+        NSColor::controlAccentColor().colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())?;
+    Some(hex_color([
+        color.redComponent(),
+        color.greenComponent(),
+        color.blueComponent(),
+    ]))
+}
+
+/// `#rrggbb` of sRGB components from 0 to 1 (clamped).
+#[cfg(any(target_os = "macos", test))]
+fn hex_color(components: [f64; 3]) -> String {
+    components
+        .iter()
+        .fold(String::from("#"), |mut hex, component| {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "clamped to 0..=255 and rounded first"
+            )]
+            let byte = (component.clamp(0.0, 1.0) * 255.0).round() as u8;
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
+}
+
+/// The system accent on the page before its scripts run (UI-512): `<html>`'s inline `--omfp-system-accent`, which the
+/// `accent` theme derives every role from, in the top-level page of the daemon's `origin` only (DMN-182). Read when the
+/// window opens: a change in System Settings reaches a new window or a reload.
+#[must_use]
+pub fn accent_script(origin: &str, accent: &str) -> String {
+    let quoted = |text: &str| serde_json::Value::from(text).to_string();
+    format!(
+        "(() => {{\n  if (window.top !== window || location.origin !== {}) return;\n  \
+         document.documentElement?.style.setProperty(\"--omfp-system-accent\", {});\n}})();",
+        quoted(origin),
+        quoted(accent)
+    )
+}
 
 /// A notification of the page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -456,6 +504,31 @@ mod tests {
         );
         assert!(script.contains("n: NONCE"));
         assert!(script.ends_with("})();"));
+    }
+
+    // spec: UI-512, DMN-182
+    #[test]
+    fn the_accent_script_puts_the_system_accent_on_the_daemons_top_level_page_only() {
+        assert_eq!(hex_color([0.0, 122.0 / 255.0, 1.0]), "#007aff");
+        assert_eq!(hex_color([-0.2, 0.5, 1.4]), "#0080ff");
+        let script = accent_script("http://127.0.0.1:7420", "#007aff");
+        assert_eq!(
+            script,
+            "(() => {\n  if (window.top !== window || location.origin !== \"http://127.0.0.1:7420\") return;\n  \
+             document.documentElement?.style.setProperty(\"--omfp-system-accent\", \"#007aff\");\n})();"
+        );
+    }
+
+    // spec: UI-512
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_system_accent_is_an_srgb_colour() {
+        let accent = system_accent().expect("controlAccentColor in sRGB");
+        assert_eq!(accent.len(), 7, "{accent}");
+        assert!(
+            accent.starts_with('#') && accent[1..].chars().all(|c| c.is_ascii_hexdigit()),
+            "{accent}"
+        );
     }
 
     // spec: UI-222

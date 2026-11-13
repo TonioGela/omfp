@@ -153,6 +153,24 @@ describe("contrast guard", () => {
     expect(tertiary()).toBe("");
   });
 
+  // spec: UI-196, UI-510
+  test("it re-measures when the built-in theme changes (`data-theme`)", async () => {
+    const reader: ColorReader = (token) =>
+      themeColors(root.dataset.theme === "preset" ? "dux-solarized" : "synth", "light").get(token);
+    root.dataset.colorScheme = "light";
+    root.dataset.theme = "synth";
+    const dispose = installContrastGuard(document, root, reader);
+    expect(root.hasAttribute(GUARD_ATTRIBUTE)).toBe(false);
+    root.dataset.theme = "preset";
+    await settle();
+    expect(root.getAttribute(GUARD_ATTRIBUTE)).toContain("tertiary");
+    root.dataset.theme = "synth";
+    await settle();
+    expect(root.hasAttribute(GUARD_ATTRIBUTE)).toBe(false);
+    dispose();
+    delete root.dataset.theme;
+  });
+
   // spec: UI-196
   test("by default it reads the colors the page computes (custom properties through the theme's cascade)", () => {
     applyUserTheme(document, themeCss("dux-solarized"));

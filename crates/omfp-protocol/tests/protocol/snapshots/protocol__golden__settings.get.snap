@@ -34,7 +34,8 @@ expression: golden
           "prose": "Literata, serif"
         },
         "motion": "reduced",
-        "notifications": "always"
+        "notifications": "always",
+        "theme": "rose-pine"
       }
     },
     "type": "response"
