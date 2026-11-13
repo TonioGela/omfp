@@ -592,7 +592,11 @@ views that already hold it (DMN-207..DMN-209, UI-353), documented step by step (
 a prompt history with `Up`/`Down` like omp's TUI, kept by the daemon since omp records no RPC prompt: the thread's
 prompts first, then the workspace's, then the rest (DMN-216..DMN-218, PRT-127, PRT-128, UI-361..UI-364, E2E-30).
 `j`/`k` page through a transcript message taller than the window before moving on, and `Ctrl-d`/`Ctrl-u` and
-`PageDown`/`PageUp` scroll the transcript keeping the focus while its message shows (UI-370, UI-371, E2E-31).
+`PageDown`/`PageUp` scroll the transcript keeping the focus while its message shows (UI-370, UI-371, E2E-31). Widgets
+build their controls from the kit, whose popovers follow the theme, not from native `<select>` or popup `<input>`s,
+whose opened lists the platform draws: the widget docs and notes say so with the `Select` pattern (AGT-088),
+`omfp_widget_check` warns about each native control left (AGT-089), and the root's `color-scheme` and `accent-color`
+keep those at least in the light or dark scheme (UI-374).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and

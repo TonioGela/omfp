@@ -78,7 +78,10 @@
   }
 
   :root {
+    /* Native form controls and scrollbars follow the effective scheme (UI-374): `color-scheme` here and in both dark
+       rules, `accent-color` (checkbox, radio, range) the theme's primary. */
     color-scheme: light;
+    accent-color: var(--omfp-primary);
     /* Synth, light (UI-139) */
     --omfp-primary: #006876;
     --omfp-on-primary: #ffffff;

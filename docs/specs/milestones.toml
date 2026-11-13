@@ -835,6 +835,10 @@ requirements = [
   "UI-371",
   # Revealed widgets as tabs of the main slot
   "UI-373",
+  # Kit form controls instead of native ones
+  "AGT-088",
+  "AGT-089",
+  "UI-374",
   # Journeys
   "E2E-22",
   "E2E-23",

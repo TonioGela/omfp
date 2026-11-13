@@ -349,7 +349,8 @@ Only these specifiers resolve; everything else must be a relative file of the wi
 
 - `react`, `react/jsx-runtime`, `react-dom` — the window's own React 19 (hooks work across widgets and the shell).
 - `omfp/sdk` — hooks over the daemon (below).
-- `omfp/kit` — the shell's components (below), styled by the theme.
+- `omfp/kit` — the shell's components (below), styled by the theme. Build every control from them, never from native
+  `<select>`, `<input type="checkbox|radio|range|date|color">` or `<datalist>` (see Form controls).
 
 JSX needs no import. TypeScript types are stripped, not checked. CSS files cannot be imported: use the kit, inline
 `style`, or the theme's custom properties (`var(--omfp-primary)`, `var(--omfp-surface-container)`,
@@ -438,6 +439,11 @@ The SDK also exports the view models and strings the built-in widgets use; read 
 
 ## omfp/kit
 
+Use these components for every control a widget shows: they follow the theme (light, dark, a user theme) in the
+window's own popovers. Native `<select>`, `<input type="checkbox">`, `radio`, `range`, `date`, `color` and `<datalist>`
+do not: their opened lists and pickers are drawn by the platform (a GTK menu in the Linux desktop window, white with a
+blue highlight), whatever the page's styles say. `omfp_widget_check` warns about each one it finds.
+
 | Export | What it is |
 | --- | --- |
 | `Card` | A bordered surface: `title`, `actions`, `tone` (`default`, `error`, `warning`, `success`). |
@@ -459,8 +465,49 @@ The SDK also exports the view models and strings the built-in widgets use; read 
 | `Tabs` | Tabs with `TabList`, `Tab` and `TabPanel`. |
 | `ListBox` | A selectable list with `ListBoxItem`. |
 | `Menu` | A menu with `MenuItem` and `MenuTrigger`. |
-| `Select` | A drop-down: `label`, `items`, `selectedKey`, `onSelectionChange`. |
-| `TextField` | A text input: `label`, `value`, `onChange`. |
-| `Checkbox` | A checkbox: `isSelected`, `onChange`. |
+| `Select` | A drop-down: `label` (required; `hideLabel` keeps it for screen readers only), `items` (`{ id, label }[]`, ids non-empty), `selectedKey`, `onSelectionChange(key)`. Use it for every `<select>`. |
+| `TextField` | A text input: `label`, `hideLabel`, `value`, `onChange`, `placeholder`. |
+| `TextArea` | A multi-line text input: `label`, `hideLabel`, `value`, `onChange`. |
+| `SearchField` | A search input (Escape clears it): `label`, `hideLabel`, `value`, `onChange`. |
+| `Checkbox` | A checkbox with its label as children: `isSelected`, `onChange(selected)`. |
+| `RadioGroup` | One choice among a few `Radio` children (`value` each): `label`, `hideLabel`, `value`, `onChange(value)`. |
 | `Disclosure` | An expandable section. |
 | `Toolbar` | A row of controls. |
+
+### Form controls
+
+| Native element | Kit replacement |
+| --- | --- |
+| `<select>` | `Select` |
+| `<input type="checkbox">` | `Checkbox` |
+| `<input type="radio">` | `RadioGroup` with `Radio` |
+| `<input type="range">` | `Select` of the steps (or `Button`s stepping a value); `Progress` to only show one |
+| `<input type="date">` | `TextField` taking `YYYY-MM-DD` |
+| `<input type="color">` | `Select` of theme colors (`var(--omfp-primary)`, …) |
+| `<datalist>` | `SearchField` filtering a `ListBox`, or `Select` |
+
+A `Select` key must be non-empty, so an "All" entry takes a sentinel id such as `"*"`; `hideLabel` keeps the label
+for screen readers when the context names the field:
+
+```tsx
+import { Select } from "omfp/kit";
+import { useStored } from "omfp/sdk";
+
+export default function StatusFilter({ statuses }: { statuses: string[] }) {
+  const [status, setStatus] = useStored<string>("status", "*");
+  const items = [{ id: "*", label: "All" }, ...statuses.map((name) => ({ id: name, label: name }))];
+  return (
+    <Select
+      label="Status"
+      hideLabel
+      items={items}
+      selectedKey={status}
+      onSelectionChange={(key) => setStatus(key === null ? "*" : String(key))}
+    />
+  );
+}
+```
+
+`status === "*"` then means no filter. Inline `style` cannot make a native control's popup follow the theme; a native
+control left in a widget at least follows the light or dark scheme (`color-scheme` and `accent-color` on the root),
+as far as the engine lets it.

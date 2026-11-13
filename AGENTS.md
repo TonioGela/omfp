@@ -88,7 +88,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       server/services/file_checks.rs: `views.errors`, `omfp_views_errors` and the checks of init and
                       TSX view files); widgets/keymap.rs: the workspace `.omfp/keymap.json`;
                       widgets/init.rs: the init files; widgets/mounts.rs: mounts and floating panels as `views.json`
-                      edits; widgets/library.rs: the component library), WebSocket server (polling of watched workspaces:
+                      edits; widgets/library.rs: the component library; widgets/native.rs: the native form controls
+                      `omfp_widget_check` warns about), WebSocket server (polling of watched workspaces:
                       server/services/polls.rs; the windows' reports, `windows.*` and the requests to windows:
                       server/services/windows.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
                       and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs),

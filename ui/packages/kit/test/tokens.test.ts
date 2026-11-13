@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type CssRule, findRule, KIT_SRC, parseCss } from "./support/css.ts";
+import { type CssRule, cssFiles, findRule, KIT_SRC, parseCss } from "./support/css.ts";
 import {
   COLOR_TOKENS,
   DENSITY_SIZES,
@@ -160,6 +160,27 @@ describe("tokens.css", () => {
     ).toEqual({});
     expect([...darkBySystem.declarations]).toEqual([...darkForced.declarations]);
     expect(darkForced.declarations.get("color-scheme")).toBe("dark");
+  });
+
+  // spec: UI-374
+  test("native controls follow the effective scheme: color-scheme per scheme, accent-color the primary role", () => {
+    expect(light.declarations.get("color-scheme")).toBe("light");
+    expect(light.declarations.get("accent-color")).toBe("var(--omfp-primary)");
+    expect(darkBySystem.declarations.get("color-scheme")).toBe("dark");
+    expect(darkForced.declarations.get("color-scheme")).toBe("dark");
+    // The forced light scheme keeps `:root`'s light even when the system is dark.
+    expect(darkBySystem.selector).toBe(':root:not([data-color-scheme="light"])');
+    // Nothing below the root resets them, in the kit or the app.
+    const others = [...cssFiles(KIT_SRC), ...cssFiles(join(KIT_SRC, "..", "..", "app", "src"))].filter(
+      (file) => file !== TOKENS_CSS,
+    );
+    expect(others.length).toBeGreaterThan(2);
+    const resetting = others.flatMap((file) =>
+      parseCss(readFileSync(file, "utf8"))
+        .filter((rule) => rule.declarations.has("color-scheme") || rule.declarations.has("accent-color"))
+        .map((rule) => `${file}: ${rule.selector}`),
+    );
+    expect(resetting).toEqual([]);
   });
 
   // spec: UI-091, UI-139

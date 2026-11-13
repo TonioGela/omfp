@@ -15,12 +15,13 @@ const WIDGETS = join(import.meta.dir, "../../../../../crates/omfp-daemon/src/wid
 const DOCS = readFileSync(join(WIDGETS, "docs.md"), "utf8");
 const SHELL = readFileSync(join(WIDGETS, "shell.md"), "utf8");
 
-/** The identifiers of the first column of the table under `## <heading>` (`useJob(command)` → `useJob`). */
+/** The identifiers of the first column of the table under `## <heading>`, before any subsection (`useJob(command)` →
+ * `useJob`). */
 function documented(heading: string): string[] {
   const start = DOCS.indexOf(`\n## ${heading}\n`);
   expect(start).toBeGreaterThanOrEqual(0);
-  const end = DOCS.indexOf("\n## ", start + 1);
-  const section = DOCS.slice(start, end < 0 ? undefined : end);
+  const end = DOCS.slice(start + 1).search(/\n#{2,3} /);
+  const section = DOCS.slice(start, end < 0 ? undefined : start + 1 + end);
   return section
     .split("\n")
     .filter((line) => line.startsWith("| `"))
@@ -159,6 +160,40 @@ describe("jobs for agents", () => {
       "A job replaced under a `key` is forgotten at once",
     ]) {
       expect(DOCS.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+  });
+});
+
+describe("form controls for agents", () => {
+  // spec: AGT-088
+  test("the widget docs send every control to the kit, with the Select pattern and its All entry", () => {
+    const start = DOCS.indexOf("\n### Form controls\n");
+    expect(start).toBeGreaterThanOrEqual(0);
+    const section = DOCS.slice(start);
+    for (const fact of [
+      'never from native\n  `<select>`, `<input type="checkbox|radio|range|date|color">` or `<datalist>`',
+      "drawn by the platform",
+      "`omfp_widget_check` warns about each one it finds",
+    ]) {
+      expect(DOCS.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+    for (const fact of [
+      "| `<select>` | `Select` |",
+      '| `<input type="checkbox">` | `Checkbox` |',
+      '| `<input type="radio">` | `RadioGroup` with `Radio` |',
+      '| `<input type="range">` |',
+      '| `<input type="date">` |',
+      '| `<input type="color">` |',
+      "| `<datalist>` |",
+      'a sentinel id such as `"*"`',
+      '{ id: "*", label: "All" }',
+      "hideLabel",
+      "selectedKey={status}",
+    ]) {
+      expect(section.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+    for (const name of ["Select", "Checkbox", "RadioGroup", "Radio", "TextField", "SearchField", "ListBox"]) {
+      expect(name in kit ? name : `not exported: ${name}`).toBe(name);
     }
   });
 });

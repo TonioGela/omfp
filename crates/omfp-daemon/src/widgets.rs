@@ -13,6 +13,7 @@ pub mod layout;
 pub mod library;
 pub mod manifest;
 pub mod mounts;
+pub mod native;
 pub mod shell;
 
 use std::collections::HashMap;

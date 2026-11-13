@@ -18,6 +18,7 @@ use crate::host_tools::WidgetHost;
 use crate::server::convert::internal;
 use crate::widgets::compile::{CompileError, IMPORT_MAP};
 use crate::widgets::layout::{self, Addition};
+use crate::widgets::native::{self, NativeControl};
 use crate::widgets::{Widgets, folders, keymap, manifest, manifest_path, shell, views_folder};
 
 /// How long `omfp_widget_check` waits for the windows to report the current version (DMN-063).
@@ -34,6 +35,8 @@ struct Target {
     version: String,
     entry: Option<&'static str>,
     compile: Vec<CompileError>,
+    /// The native form controls of its sources (AGT-089).
+    native: Vec<NativeControl>,
     manifest_error: Option<String>,
     /// Why `.omfp/keymap.json` is refused (DMN-122); `None` when valid or absent.
     keymap_error: Option<String>,
@@ -170,6 +173,7 @@ fn describe(
             let _ = writeln!(text, "- {}: {}", location("", error), error.message);
         }
     }
+    describe_native(&mut text, &target.native);
     if let Some(error) = &target.manifest_error {
         let _ = writeln!(
             text,
@@ -285,6 +289,27 @@ fn describe_offscreen(
     }
 }
 
+/// The warning about native form controls (AGT-089): one line per control with the kit component to use instead.
+fn describe_native(text: &mut String, controls: &[NativeControl]) {
+    if controls.is_empty() {
+        return;
+    }
+    let _ = writeln!(
+        text,
+        "Warning: {} native form control(s): their opened lists and pickers are drawn by the platform, not the \
+         theme (a white GTK menu in the Linux desktop window). Use the omfp/kit components (omfp://docs/widgets, Form \
+         controls):",
+        controls.len()
+    );
+    for control in controls {
+        let _ = writeln!(
+            text,
+            "- {}:{}: {} → {}",
+            control.file, control.line, control.element, control.replacement
+        );
+    }
+}
+
 /// Where a compile error is: `<prefix><file>:<line>:<column>`, as far as it is known.
 pub(super) fn location(prefix: &str, error: &CompileError) -> String {
     match (error.line, error.column) {
@@ -374,6 +399,7 @@ impl Services {
                 version: folders::version(&folder),
                 entry: folders::entry(&folder),
                 compile: widgets.check(&folder),
+                native: native::scan_folder(&folder),
                 manifest_error,
                 keymap_error: crate::widgets::keymap::read(&crate::widgets::keymap::path(
                     &workspace,
@@ -923,6 +949,38 @@ mod tests {
         let text = h.check(Duration::ZERO).await;
         assert!(text.contains(warning), "{text}");
         assert!(text.contains("Keep that slot"), "{text}");
+    }
+
+    // spec: AGT-089
+    #[tokio::test]
+    async fn the_check_warns_about_native_form_controls_with_their_line_and_kit_replacement() {
+        let h = harness().await;
+        let text = h.check(Duration::ZERO).await;
+        assert!(!text.contains("native form control"), "{text}");
+
+        write(
+            &h.folder,
+            ".omfp/widgets/tests/index.tsx",
+            "import { Filter } from \"./filter.tsx\";\n\
+             export default function T() {\n\
+             \x20 return <div><Filter /><input type=\"checkbox\" /></div>;\n\
+             }\n",
+        );
+        write(
+            &h.folder,
+            ".omfp/widgets/tests/filter.tsx",
+            "export function Filter() {\n  return <select><option>All</option></select>;\n}\n",
+        );
+        let text = h.check(Duration::ZERO).await;
+        for needle in [
+            "Daemon compile: every file compiles",
+            "Warning: 2 native form control(s): their opened lists and pickers are drawn by the platform, not the \
+             theme",
+            "- filter.tsx:2: <select> → Select from omfp/kit\n",
+            "- index.tsx:3: <input type=\"checkbox\"> → Checkbox from omfp/kit\n",
+        ] {
+            assert!(text.contains(needle), "{needle:?} missing: {text}");
+        }
     }
 
     // spec: DMN-063, PRT-043, AGT-026, DMN-209

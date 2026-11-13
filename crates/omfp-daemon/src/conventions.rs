@@ -51,7 +51,9 @@ fn widget_facts(root: &str, user_library: &Path) -> String {
          - User library: {library}/<name>/, used as `user:<name>` in every workspace.\n\
          - Built-in widgets' sources: omfp://widgets/builtin and omfp://widgets/builtin/<name> (never search the disk).\n\
          - Imports: only react, react/jsx-runtime, react-dom, omfp/sdk, omfp/kit and files of the widget's folder. A \
-         saved widget reloads at once; errors show in its place.\n\
+         saved widget reloads at once; errors show in its place. Controls come from omfp/kit (Select, Checkbox, \
+         RadioGroup, TextField, SearchField), never native <select>, <input type=checkbox|radio|range|date|color> or \
+         <datalist>: their popups use the platform's look, not the theme.\n\
          - useJob(command) runs `sh -c <command>` in the workspace folder (not a repository) with the daemon's \
          environment: no login shell, no dev shell (write `nix develop -c …` yourself), no timeout. For a command built \
          from input, pass `useJob(command, {{ key }})` so every run replaces the last. Details: omfp://docs/widgets (Jobs)."
@@ -461,6 +463,24 @@ mod tests {
                 "the daemon's environment: no login shell, no dev shell (write `nix develop -c …` yourself), no timeout",
                 "`useJob(command, { key })` so every run replaces the last",
                 "omfp://docs/widgets (Jobs)",
+            ] {
+                assert!(text.contains(rule), "{rule:?} missing: {text}");
+            }
+        }
+    }
+
+    // spec: AGT-088
+    #[test]
+    fn the_widgets_note_and_the_builder_send_controls_to_the_kit() {
+        let library = Path::new("/data/omfp/widgets");
+        for text in [
+            widgets_note(Path::new("/ws"), library),
+            widget_builder_definition(library),
+        ] {
+            for rule in [
+                "Controls come from omfp/kit (Select, Checkbox, RadioGroup, TextField, SearchField)",
+                "never native <select>, <input type=checkbox|radio|range|date|color> or <datalist>",
+                "their popups use the platform's look, not the theme",
             ] {
                 assert!(text.contains(rule), "{rule:?} missing: {text}");
             }
