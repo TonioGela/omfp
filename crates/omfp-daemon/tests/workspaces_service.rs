@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -920,8 +920,13 @@ fn git_operations_are_serialized_per_repository() {
     let (entered_tx, entered) = mpsc::channel::<PathBuf>();
     let (release, release_rx) = mpsc::channel::<()>();
     let release_rx = Mutex::new(release_rx);
+    // What happened, in order: each repository's entry into `worktree_add`, and the test's releases of `app`.
+    let order = Arc::new(Mutex::new(Vec::<String>::new()));
     let app = env.repo.clone();
+    let log = Arc::clone(&order);
     env.git.on_worktree_add(move |repo| {
+        let name = if repo == app { "app" } else { "api" };
+        log.lock().unwrap().push(name.to_owned());
         entered_tx.send(repo.to_owned()).unwrap();
         if repo == app {
             release_rx.lock().unwrap().recv().unwrap();
@@ -929,6 +934,10 @@ fn git_operations_are_serialized_per_repository() {
     });
     let wait = Duration::from_secs(10);
     let add = |id: &str, repo: &Path| env.workspaces.add_repo(id, None, worktree_of(repo));
+    let release_app = || {
+        order.lock().unwrap().push("release".to_owned());
+        release.send(()).unwrap();
+    };
 
     std::thread::scope(|scope| {
         let first = scope.spawn(|| add(&a, &env.repo));
@@ -936,20 +945,21 @@ fn git_operations_are_serialized_per_repository() {
         let second = scope.spawn(|| add(&b, &env.repo));
         let parallel = scope.spawn(|| add(&c, &other));
 
-        // Another repository proceeds while `app` is busy; the second `app` operation waits for the first.
+        // Another repository proceeds while `app` is busy; the second `app` operation waits for the first, so it
+        // enters only after the first is released (no wall-clock wait: the order is recorded).
         assert_eq!(entered.recv_timeout(wait), Ok(other.clone()));
-        assert_eq!(
-            entered.recv_timeout(Duration::from_millis(200)),
-            Err(RecvTimeoutError::Timeout)
-        );
-        release.send(()).unwrap();
+        release_app();
         assert_eq!(entered.recv_timeout(wait), Ok(env.repo.clone()));
-        release.send(()).unwrap();
+        release_app();
 
         for handle in [first, second, parallel] {
             handle.join().unwrap().unwrap();
         }
     });
+    assert_eq!(
+        *order.lock().unwrap(),
+        ["app", "api", "release", "app", "release"]
+    );
     let mut branches: Vec<String> = env
         .git
         .worktrees(&env.repo)
