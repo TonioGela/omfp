@@ -260,6 +260,8 @@ export {
 export {
   ChatHeader,
   type ChatHeaderProps,
+  ChatTitle,
+  type ChatTitleProps,
   Composer,
   ComposerBar,
   type ComposerBarProps,

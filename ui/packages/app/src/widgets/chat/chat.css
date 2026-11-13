@@ -24,37 +24,11 @@
     color: var(--omfp-on-surface-variant);
   }
 
-  /* Thread header (UI-030, UI-171): `◆` title in flowing gradient text over the gradient hairline. */
+  /* Thread header (UI-030): the kit's chat header (UI-171, UI-443) laid out in the view's gutter. */
   .omfp-thread-header {
     flex: none;
     padding-inline: var(--omfp-gutter);
     background: var(--omfp-app-bg);
-  }
-
-  .omfp-thread-header__top {
-    display: flex;
-    align-items: center;
-    gap: var(--omfp-s2);
-    min-inline-size: 0;
-  }
-
-  .omfp-thread-header__title {
-    flex: 0 1 auto;
-    min-inline-size: 0;
-  }
-
-  .omfp-thread-header__title::before {
-    content: "◆ ";
-  }
-
-  .omfp-thread-header__title[data-placeholder="true"] {
-    font-style: italic;
-    color: var(--omfp-on-surface-variant);
-  }
-
-  .omfp-thread-header__title[data-placeholder="true"]::before {
-    font-style: normal;
-    color: var(--omfp-primary);
   }
 
   .omfp-thread-header__empty {

@@ -2,6 +2,7 @@
 import {
   Button,
   ChatHeader,
+  ChatTitle,
   Chip,
   Composer,
   ComposerBar,
@@ -13,12 +14,14 @@ import {
   LivePanel,
   Markdown,
   Message,
+  Meter,
   QueueChip,
   QueueList,
   Select,
   SILENT_SOURCE,
   Spectrum,
   type SpectrumSource,
+  StateBadge,
   StreamCaret,
   Thinking,
   VoiceMeter,
@@ -30,16 +33,36 @@ export function Transcript() {
   const [open, setOpen] = useState(true);
   return (
     <Section title="Transcript" note="UI-171 · UI-147 · UI-338" wide>
-      <ChatHeader title="Redesign kit tokens">
-        <Select
-          label="Model"
-          hideLabel
-          icon={<Icon name="brain" />}
-          items={MODELS}
-          selectedKey="opus-4.5"
-          onSelectionChange={() => undefined}
-        />
-        <Chip icon={<Icon name="link-2" />}>pmo</Chip>
+      {/* The thread header as the app fills it (UI-443): title, rename, state, stop; the workspace, model, usage. */}
+      <ChatHeader
+        bar={
+          <>
+            <Button size="sm" variant="quiet" icon={<Icon name="folder" />}>
+              omfp · 2 repos
+            </Button>
+            <Select
+              label="Model"
+              hideLabel
+              icon={<Icon name="brain" />}
+              items={MODELS}
+              selectedKey="opus-4.5"
+              onSelectionChange={() => undefined}
+            />
+            <Meter value={48_200} max={200_000} label="Context" />
+          </>
+        }
+      >
+        <ChatTitle>Redesign kit tokens</ChatTitle>
+        <Button size="sm" variant="quiet" icon={<Icon name="pencil" />}>
+          Rename
+        </Button>
+        <StateBadge state="running">running</StateBadge>
+        <Button size="sm" variant="quiet" icon={<Icon name="square" />}>
+          Stop
+        </Button>
+      </ChatHeader>
+      <ChatHeader bar={<Chip icon={<Icon name="link-2" />}>pmo</Chip>}>
+        <ChatTitle placeholder>Untitled</ChatTitle>
       </ChatHeader>
       <div className="omfp-gallery__transcript">
         <Message author="user" name="you">

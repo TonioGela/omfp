@@ -65,7 +65,7 @@ async fn wide(journey: &Journey) -> anyhow::Result<()> {
     // Its top row stays one line with a title too long for it: the title gives way, the controls do not wrap.
     let top = height(
         journey,
-        "[data-testid=thread-header] .omfp-thread-header__top",
+        "[data-testid=thread-header] .omfp-chat-header__top",
     )
     .await?;
     anyhow::ensure!(top < 40.0, "the header's top row wraps: {top} px tall");

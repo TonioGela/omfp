@@ -10,6 +10,8 @@
 import type { ThreadSummary } from "@omfp/protocol";
 import {
   Button,
+  ChatHeader,
+  ChatTitle,
   DialogTrigger,
   Icon,
   IconButton,
@@ -75,11 +77,11 @@ export function HeaderWidget(_props: WidgetProps): ReactNode {
   }
   if (summary === undefined) {
     return (
-      <header className="omfp-chat-header omfp-thread-header" data-testid="thread-header" data-empty="true">
+      <ChatHeader className="omfp-thread-header" data-testid="thread-header" data-empty="true">
         <p className="omfp-thread-header__empty" data-testid="header-empty">
           {text.noThread}
         </p>
-      </header>
+      </ChatHeader>
     );
   }
   return <ThreadHeader key={summary.id} summary={summary} />;
@@ -89,20 +91,16 @@ function DraftHeader({ draft }: { draft: DraftThread }): ReactNode {
   const workspaces = useWorkspaces();
   const chip = useMemo(() => workspaceChip(draft.workspaceId, [...workspaces.values()]), [draft, workspaces]);
   return (
-    <header className="omfp-chat-header omfp-thread-header" data-testid="thread-header" data-draft="true">
-      <div className="omfp-thread-header__top">
-        <h1
-          className="omfp-chat-header__title omfp-thread-header__title"
-          data-testid="thread-title"
-          data-placeholder="true"
-        >
-          {strings.shell.untitled}
-        </h1>
-      </div>
-      <div className="omfp-chat-header__bar">
-        <WorkspaceChipButton chip={chip} />
-      </div>
-    </header>
+    <ChatHeader
+      className="omfp-thread-header"
+      data-testid="thread-header"
+      data-draft="true"
+      bar={<WorkspaceChipButton chip={chip} />}
+    >
+      <ChatTitle data-testid="thread-title" placeholder>
+        {strings.shell.untitled}
+      </ChatTitle>
+    </ChatHeader>
   );
 }
 
@@ -118,46 +116,48 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
   const narrow = useWidthClass(header, (width, rem) => width > 0 && width < COMPACT_BELOW_REM * rem);
   const compact = useMediaQuery(SHORT_TOUCH_SCREEN) || narrow;
   return (
-    <header
+    <ChatHeader
       ref={header}
-      className="omfp-chat-header omfp-thread-header"
+      className="omfp-thread-header"
       data-testid="thread-header"
       data-thread-id={summary.id}
       data-omfp-scope="header"
       data-compact={compact || undefined}
-    >
-      {compact ? (
-        <div className="omfp-thread-header__top">
-          <Title threadId={summary.id} view={view} compact />
-          <HeaderState status={view.status} />
-          <BackgroundBadge threadId={summary.id} />
-          <PendingRestart threadId={summary.id} view={view} />
-          <ModelSelect threadId={summary.id} view={view} onChanged={refreshSession} />
-          <More threadId={summary.id} view={view} onChanged={refreshSession} />
-        </div>
-      ) : (
-        <>
-          <div className="omfp-thread-header__top">
-            <Title threadId={summary.id} view={view} />
-            <div className="omfp-thread-header__process">
-              <HeaderState status={view.status} />
-              <BackgroundBadge threadId={summary.id} />
-              <ProcessAction threadId={summary.id} view={view} />
-              <PendingRestart threadId={summary.id} view={view} />
-            </div>
-            <Lifecycle threadId={summary.id} archived={view.archived} />
-          </div>
-          <div className="omfp-chat-header__bar">
+      bar={
+        compact ? undefined : (
+          <>
             <Chips view={view} />
             <div className="omfp-thread-header__session">
               <ModelSelect threadId={summary.id} view={view} onChanged={refreshSession} />
               <ThinkingSelect threadId={summary.id} view={view} onChanged={refreshSession} />
               <Usage threadId={summary.id} view={view} />
             </div>
+          </>
+        )
+      }
+    >
+      {compact ? (
+        <>
+          <Title threadId={summary.id} view={view} compact />
+          <HeaderState status={view.status} />
+          <BackgroundBadge threadId={summary.id} />
+          <PendingRestart threadId={summary.id} view={view} />
+          <ModelSelect threadId={summary.id} view={view} onChanged={refreshSession} />
+          <More threadId={summary.id} view={view} onChanged={refreshSession} />
+        </>
+      ) : (
+        <>
+          <Title threadId={summary.id} view={view} />
+          <div className="omfp-thread-header__process">
+            <HeaderState status={view.status} />
+            <BackgroundBadge threadId={summary.id} />
+            <ProcessAction threadId={summary.id} view={view} />
+            <PendingRestart threadId={summary.id} view={view} />
           </div>
+          <Lifecycle threadId={summary.id} archived={view.archived} />
         </>
       )}
-    </header>
+    </ChatHeader>
   );
 }
 
@@ -267,17 +267,16 @@ function Title({ threadId, view, compact = false }: { threadId: string; view: He
   if (renaming !== threadId) {
     return (
       <>
-        <h1
+        <ChatTitle
           ref={title}
           // A focus target only, after renaming (UI-286).
           tabIndex={-1}
-          className={`omfp-chat-header__title omfp-thread-header__title${view.placeholder ? "" : " omfp-grad-text"}`}
+          placeholder={view.placeholder}
           data-testid="thread-title"
-          data-placeholder={view.placeholder ? "true" : undefined}
           title={view.title}
         >
           {view.title}
-        </h1>
+        </ChatTitle>
         {!compact && (
           <Button
             size="sm"

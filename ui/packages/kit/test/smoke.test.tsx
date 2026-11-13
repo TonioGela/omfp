@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   ChatHeader,
+  ChatTitle,
   Checkbox,
   Chip,
   Code,
@@ -263,7 +264,16 @@ const CASES: readonly Case[] = [
   { name: "ThreadRow", element: <ThreadRow {...FORWARDED} state="idle" title="Fix it" />, base: "omfp-thread" },
   { name: "ActionRow", element: <ActionRow {...FORWARDED}>thread</ActionRow>, base: "omfp-action-row", role: "button" },
   { name: "HintRow", element: <HintRow {...FORWARDED} />, base: "omfp-hint-row" },
-  { name: "ChatHeader", element: <ChatHeader {...FORWARDED} title="Fix it" />, base: "omfp-chat-header" },
+  {
+    name: "ChatHeader",
+    element: (
+      <ChatHeader {...FORWARDED}>
+        <ChatTitle>Fix it</ChatTitle>
+      </ChatHeader>
+    ),
+    base: "omfp-chat-header",
+  },
+  { name: "ChatTitle", element: <ChatTitle {...FORWARDED}>Fix it</ChatTitle>, base: "omfp-chat-header__title" },
   { name: "Message", element: <Message {...FORWARDED} author="user" name="you" />, base: "omfp-msg" },
   { name: "StreamCaret", element: <StreamCaret {...FORWARDED} />, base: "omfp-caret" },
   {

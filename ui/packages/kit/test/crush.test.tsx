@@ -7,6 +7,8 @@ import {
   BoxRule,
   Button,
   Card,
+  ChatHeader,
+  ChatTitle,
   Checkbox,
   Code,
   CommandItem,
@@ -792,6 +794,36 @@ describe("cards and code", () => {
   test("the stream caret is decorative", () => {
     render(<StreamCaret data-testid="caret" />);
     expect(screen.getByTestId("caret").getAttribute("aria-hidden")).toBe("true");
+  });
+});
+
+describe("ChatHeader", () => {
+  // spec: UI-443, UI-171
+  test("a title row, then the bar; the title is the page's heading, in gradient text unless a placeholder", () => {
+    const { rerender } = render(
+      <ChatHeader data-testid="header" bar={<span>model</span>}>
+        <ChatTitle data-testid="title">Fix it</ChatTitle>
+        <span>running</span>
+      </ChatHeader>,
+    );
+    const header = screen.getByTestId("header");
+    expect([...header.children].map((child) => [child.className, child.textContent])).toEqual([
+      ["omfp-chat-header__top", "Fix itrunning"],
+      ["omfp-chat-header__bar", "model"],
+    ]);
+    const title = screen.getByRole("heading", { level: 1, name: "Fix it" });
+    expect([title.getAttribute("data-testid"), title.classList.contains("omfp-grad-text")]).toEqual(["title", true]);
+    rerender(
+      <ChatHeader data-testid="header">
+        <ChatTitle placeholder>Untitled</ChatTitle>
+      </ChatHeader>,
+    );
+    const placeholder = screen.getByRole("heading", { level: 1, name: "Untitled" });
+    expect([placeholder.dataset.placeholder, placeholder.classList.contains("omfp-grad-text")]).toEqual([
+      "true",
+      false,
+    ]);
+    expect(screen.getByTestId("header").querySelector(".omfp-chat-header__bar")).toBeNull();
   });
 });
 

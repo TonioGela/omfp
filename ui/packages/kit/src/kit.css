@@ -3273,8 +3273,18 @@
     background: linear-gradient(90deg, var(--omfp-primary), var(--omfp-tertiary) 45%, transparent);
   }
 
+  /* The title row (UI-443): the title gives way (ellipsis) to the controls beside it. */
+  .omfp-chat-header__top {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+  }
+
   .omfp-chat-header__title {
+    flex: 0 1 auto;
     align-self: flex-start;
+    min-inline-size: 0;
     max-inline-size: 100%;
     margin: 0;
     overflow: hidden;
@@ -3282,6 +3292,21 @@
     white-space: nowrap;
     font-size: var(--omfp-fs-lg);
     font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-chat-header__title::before {
+    content: "◆ ";
+  }
+
+  /* No title yet: italic and muted, the `◆` upright in primary. */
+  .omfp-chat-header__title[data-placeholder="true"] {
+    font-style: italic;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-chat-header__title[data-placeholder="true"]::before {
+    font-style: normal;
+    color: var(--omfp-primary);
   }
 
   .omfp-chat-header__bar {

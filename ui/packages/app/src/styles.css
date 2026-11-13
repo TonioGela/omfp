@@ -388,12 +388,12 @@
     padding-block: var(--omfp-s2);
   }
 
-  .omfp-thread-header[data-compact] .omfp-thread-header__top {
+  .omfp-thread-header[data-compact] .omfp-chat-header__top {
     flex-wrap: nowrap;
   }
 
   /* The title keeps at least 40 % of the row (UI-419): the model's name gives way first. */
-  .omfp-thread-header[data-compact] .omfp-thread-header__title {
+  .omfp-thread-header[data-compact] .omfp-chat-header__title {
     flex: 1 1 auto;
     min-inline-size: min(10rem, 40%);
   }
@@ -477,8 +477,8 @@
 
   /* Its top row stays one line too: the title gives way (ellipsis) to the rename, state and lifecycle controls. */
   .omfp-thread-header:not([data-compact])
-    .omfp-thread-header__top
-    > :not(.omfp-thread-header__title, .omfp-thread-header__editor) {
+    .omfp-chat-header__top
+    > :not(.omfp-chat-header__title, .omfp-thread-header__editor) {
     flex: none;
     flex-wrap: nowrap;
   }

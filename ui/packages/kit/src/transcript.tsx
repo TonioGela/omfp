@@ -2,26 +2,46 @@
  * The chat's pieces (UI-171, UI-172): the chat header, messages with their name line, thinking blocks, the stream
  * caret (UI-147), the composer box and queued-message chips. Presentational: the app supplies text and behaviour.
  */
-import { type HTMLAttributes, type ReactNode, useId } from "react";
+import { type HTMLAttributes, type ReactNode, type Ref, useId } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { Button, IconButton } from "./button.tsx";
 import { cx } from "./class.ts";
 import { Icon } from "./icons.tsx";
 
-export interface ChatHeaderProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
-  /** The thread title, after `◆`, in flowing gradient text. */
-  title: ReactNode;
-  /** Controls under the title (selects, chips). */
+export interface ChatHeaderProps extends HTMLAttributes<HTMLElement> {
+  /** The bar under the title row: chips, selects. */
+  bar?: ReactNode;
+  /** The title row: a {@link ChatTitle}, then controls beside it. */
   children?: ReactNode;
+  /** The `<header>` (React 19 passes it as a prop). */
+  ref?: Ref<HTMLElement>;
 }
 
-/** The chat's head over a primary → tertiary → transparent hairline (UI-171). */
-export function ChatHeader({ title, className, children, ...props }: ChatHeaderProps) {
+/** The chat's head over a primary → tertiary → transparent hairline (UI-171, UI-443): a title row, then a bar. */
+export function ChatHeader({ bar, className, children, ...props }: ChatHeaderProps) {
   return (
     <header {...props} className={cx("omfp-chat-header", className)}>
-      <h2 className="omfp-chat-header__title omfp-grad-text">◆ {title}</h2>
-      {children !== undefined && <div className="omfp-chat-header__bar">{children}</div>}
+      <div className="omfp-chat-header__top">{children}</div>
+      {bar !== undefined && <div className="omfp-chat-header__bar">{bar}</div>}
     </header>
+  );
+}
+
+export interface ChatTitleProps extends HTMLAttributes<HTMLHeadingElement> {
+  /** No title yet (a draft, a thread not yet named): italic and muted, no gradient. */
+  placeholder?: boolean;
+  /** The heading (React 19 passes it as a prop), e.g. to focus it after a rename. */
+  ref?: Ref<HTMLHeadingElement>;
+}
+
+/** The thread title, the page's heading: `◆` before it, flowing gradient text (UI-171, UI-443). */
+export function ChatTitle({ placeholder = false, className, ...props }: ChatTitleProps) {
+  return (
+    <h1
+      {...props}
+      className={cx("omfp-chat-header__title", !placeholder && "omfp-grad-text", className)}
+      data-placeholder={placeholder ? "true" : undefined}
+    />
   );
 }
 
