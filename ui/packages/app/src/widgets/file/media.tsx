@@ -30,11 +30,17 @@ const MEDIA: Readonly<Record<string, MediaKind>> = {
   aac: "audio",
 };
 
-/** Whether `path` names a video or an audio file, by its extension. */
-export function mediaKind(path: string): MediaKind | undefined {
+/** The extension of the file `path` names, in lower case; `undefined` without one (`notes/.wav`, `a.b/clip`). */
+export function extension(path: string): string | undefined {
   const name = path.slice(path.lastIndexOf("/") + 1);
   const dot = name.lastIndexOf(".");
-  return dot > 0 ? MEDIA[name.slice(dot + 1).toLowerCase()] : undefined;
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : undefined;
+}
+
+/** Whether `path` names a video or an audio file, by its extension. */
+export function mediaKind(path: string): MediaKind | undefined {
+  const found = extension(path);
+  return found === undefined ? undefined : MEDIA[found];
 }
 
 /**

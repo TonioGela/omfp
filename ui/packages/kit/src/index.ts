@@ -184,6 +184,7 @@ export {
   type PathReference,
   pathReference,
 } from "./paths.tsx";
+export { PdfView, type PdfViewLabels, type PdfViewProps } from "./pdf.tsx";
 export {
   Sheet,
   type SheetProps,

@@ -149,7 +149,9 @@ ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token 
                       shell.tsx (mode line, command line and menu, brand, workspace sections, left
                       column rows), cards.tsx (tool, approval and ask cards), transcript.tsx (chat header, messages,
                       composer), feedback.tsx (toasts, empty states), live.tsx (live voice: spectrum, voice meter,
-                      live panel), sheet.tsx (the phone's full-screen sheet), editor/ (CodeMirror and its theme)
+                      live panel), sheet.tsx (the phone's full-screen sheet), editor/ (CodeMirror and its theme),
+                      pdf.tsx and pdf/viewer.tsx (`PdfView`: pdf.js, loaded on first use; its worker and data files
+                      are copied to the bundle's /pdfjs/ by build.ts), zoom.ts (the viewers' zoom steps)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs, live.ts:
                       the window's live voice session `LiveClient` and its browser `LiveMedia`, init.ts: the init files'
@@ -173,7 +175,8 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
                       logo sheet), keymap (which-key.ts: the which-key panel's model and the leader groups), theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
-                      map, widget-exports.json, builtin-widgets/ from the BUILTINS table of builtins.ts, the favicon from docs/brand)
+                      map, widget-exports.json, builtin-widgets/ from the BUILTINS table of builtins.ts, the favicon from docs/brand,
+                      pdfjs/ from pdfjs-dist)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)

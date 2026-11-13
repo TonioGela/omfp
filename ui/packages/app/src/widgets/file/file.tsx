@@ -3,7 +3,7 @@
  * edited with vim bindings and saved with `:w` / Ctrl-S against the hash the text was based on; a refused save shows
  * the file on disk against the user's text and writes nothing until the user decides. `diff` shows the whole file
  * against `HEAD`, unified or side by side. The text follows the file on disk while it has no unsaved change. Video and
- * audio files play in the browser's player (media.tsx, UI-541).
+ * audio files play in the browser's player (media.tsx, UI-541); PDF documents show in the kit's viewer (pdf.tsx, UI-547).
  */
 
 import type { FileContent } from "@omfp/protocol";
@@ -30,7 +30,8 @@ import {
   type WidgetProps,
 } from "omfp/sdk";
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
-import { MediaFile, mediaKind } from "./media.tsx";
+import { extension, MediaFile, mediaKind } from "./media.tsx";
+import { PdfFile } from "./pdf.tsx";
 
 const text = strings.shell.file;
 
@@ -99,6 +100,8 @@ function FileView({ path, line, jump, diff }: FileViewProps): ReactNode {
         <p className="omfp-file__notice" data-tone="error" data-testid="file-error">
           {text.failed(file.error ?? "")}
         </p>
+      ) : extension(file.file.path) === "pdf" ? (
+        <PdfFile file={file.file} />
       ) : file.file.kind === "text" && typeof file.file.content === "string" ? (
         <TextFile
           file={file.file}

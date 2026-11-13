@@ -87,11 +87,16 @@
           # ENV-001: the JavaScript dependencies of ui/ as a Bun install cache, built from ui/bun.nix
           # (`just gen-bun-nix`); `just ui-install` installs from it offline. Workspace packages (`@omfp/*`) are
           # linked from ui/packages by `bun install`, not read from the cache: leaving them out keeps the cache,
-          # and with it the shell, from changing with every source edit.
+          # and with it the shell, from changing with every source edit. `@napi-rs/canvas` (an optional dependency
+          # of `pdfjs-dist`, its canvas under Node, with one native package per platform) is left out too: the
+          # browser has its own canvas, and the install skips an optional package missing from the cache.
           uiBunNix = import ./ui/bun.nix;
           uiBunDeps = bun2nix.fetchBunDeps {
             bunNix = lib.setFunctionArgs (
-              args: lib.filterAttrs (name: _: !lib.hasPrefix "@omfp/" name) (uiBunNix args)
+              args:
+              lib.filterAttrs (name: _: !(lib.hasPrefix "@omfp/" name || lib.hasPrefix "@napi-rs/canvas" name)) (
+                uiBunNix args
+              )
             ) (lib.functionArgs uiBunNix);
           };
 

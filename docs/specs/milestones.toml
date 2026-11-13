@@ -1048,4 +1048,11 @@ requirements = [
   "UI-541",
   "UI-542",
   "E2E-51",
+  # PDF documents in `omfp:file`
+  "UI-543",
+  "UI-544",
+  "UI-545",
+  "UI-546",
+  "UI-547",
+  "E2E-52",
 ]

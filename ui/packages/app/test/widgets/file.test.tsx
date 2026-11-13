@@ -7,6 +7,7 @@ import { workspaceTopic } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Activity, type ReactNode, useState } from "react";
+import { fakePdfjs } from "../../../kit/test/support/pdfjs.ts";
 import {
   FILE_PICKER,
   type FilePoll,
@@ -346,6 +347,31 @@ describe("omfp:file", () => {
     expect(mediaKind("notes/.wav")).toBeUndefined();
     expect(mediaKind("a.b/clip")).toBeUndefined();
     expect(mediaKind("Movie.MKV")).toBe("video");
+  });
+
+  // spec: UI-547
+  test("a .pdf file opens in the PDF viewer from its raw bytes, even when the daemon reads it as text, and again when it changes", async () => {
+    fakePdfjs.reset();
+    fakePdfjs.documents.set("/files/test/w1/docs/Guide%20v2.PDF?v=p1", { pages: 2, width: 612, height: 792 });
+    fakePdfjs.documents.set("/files/test/w1/docs/Guide%20v2.PDF?v=p2", { pages: 3, width: 612, height: 792 });
+    // An all-ASCII PDF is text to the daemon.
+    const guide = text("%PDF-1.4\n%%EOF\n", { path: "docs/Guide v2.PDF", hash: "p1", head: null });
+    const { setDisk, poll } = setup({ path: "docs/Guide v2.PDF" }, guide);
+    const view = await screen.findByTestId("pdf-view");
+    expect(view.getAttribute("data-url")).toBe("/files/test/w1/docs/Guide%20v2.PDF?v=p1");
+    expect(view.getAttribute("aria-label")).toBe("PDF docs/Guide v2.PDF");
+    expect(screen.queryAllByTestId("file-editor").length).toBe(0);
+    expect((await screen.findByTestId("pdf-page-number")).textContent).toBe("1 / 2");
+
+    setDisk({ ...guide, kind: "binary", content: null, hash: "p2" });
+    poll.run();
+    await waitFor(() => expect(screen.getByTestId("pdf-page-number").textContent).toBe("1 / 3"));
+    expect(fakePdfjs.destroyed).toEqual(["/files/test/w1/docs/Guide%20v2.PDF?v=p1"]);
+    cleanup();
+    // The extension decides: a PDF named otherwise is what the daemon says it is.
+    setup({ path: "notes.pdf.txt" }, text("%PDF-1.4\n", { path: "notes.pdf.txt" }));
+    await screen.findByTestId("file-editor");
+    expect(screen.queryAllByTestId("pdf-view").length).toBe(0);
   });
 });
 

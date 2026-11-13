@@ -11,11 +11,13 @@
  * - `widget-exports.json`: every export name of each import-map module, which the daemon checks widget imports against
  *   (DMN-085);
  * - `builtin-widgets/<name>/`: the source of each built-in widget as a copyable widget folder (AGT-021, DMN-087);
- * - `fonts/`: the bundled faces of the kit's tokens with their licences (UI-141).
+ * - `fonts/`: the bundled faces of the kit's tokens with their licences (UI-141);
+ * - `pdfjs/`: pdf.js's worker (its legacy build, like the kit's `PdfView`) and the data files it fetches only when a
+ *   document needs them — CMaps, the standard fonts, its wasm decoders, ICC profiles — with their licences (UI-543).
  */
 import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { BUILTINS } from "./builtins.ts";
 import { FAVICONS, indexHtml } from "./index-html.ts";
 
@@ -134,6 +136,20 @@ const fonts = join(root, "../kit/fonts");
 await mkdir(join(outdir, "fonts"));
 for (const file of await readdir(fonts)) {
   await copyFile(join(fonts, file), join(outdir, "fonts", file));
+}
+
+// pdf.js is a dependency of the kit, where it resolves. Files, not a recursive copy: those of the Nix store are
+// read-only, and so would be the copied folders, which the next build could then not delete.
+const pdfjs = dirname(createRequire(join(root, "../kit/package.json")).resolve("pdfjs-dist/package.json"));
+const pdfjsOut = join(outdir, "pdfjs");
+await mkdir(pdfjsOut);
+await copyFile(join(pdfjs, "legacy/build/pdf.worker.min.mjs"), join(pdfjsOut, "pdf.worker.min.mjs"));
+await copyFile(join(pdfjs, "LICENSE"), join(pdfjsOut, "LICENSE"));
+for (const folder of ["cmaps", "standard_fonts", "wasm", "iccs"]) {
+  await mkdir(join(pdfjsOut, folder));
+  for (const file of await readdir(join(pdfjs, folder))) {
+    await copyFile(join(pdfjs, folder, file), join(pdfjsOut, folder, file));
+  }
 }
 
 for (const { name, folder, part } of BUILTINS) {

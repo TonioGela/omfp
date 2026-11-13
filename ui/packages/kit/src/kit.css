@@ -138,8 +138,9 @@
     inline-size: var(--omfp-ctl-h-sm);
   }
 
-  /* A toggled icon button (the mic while a live session runs, UI-180). */
-  .omfp-icon-button[aria-pressed="true"] {
+  /* A toggled icon button (the mic while a live session runs, UI-180), or a viewer's Fit toggle (UI-544). */
+  .omfp-icon-button[aria-pressed="true"],
+  .omfp-pdf__bar .omfp-button[aria-pressed="true"] {
     color: var(--omfp-primary);
     border-color: color-mix(in oklab, var(--omfp-primary) 45%, transparent);
     background: color-mix(in oklab, var(--omfp-primary) 12%, transparent);
@@ -3768,6 +3769,134 @@
   .omfp-code-diff__view .cm-mergeView {
     block-size: 100%;
     overflow: auto;
+  }
+
+  /* PDF documents (UI-543..UI-546): a toolbar over the pages, which scroll in their own region on the code background.
+     A page keeps its box at the zoom's size whether or not it is drawn; pdf.js paints the paper itself. */
+  .omfp-pdf {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--omfp-s2);
+    min-block-size: 0;
+  }
+
+  .omfp-pdf__notice {
+    margin: 0;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-pdf__notice[data-tone="error"] {
+    color: var(--omfp-error);
+  }
+
+  .omfp-pdf__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s1);
+  }
+
+  .omfp-pdf__zoom,
+  .omfp-pdf__page-number {
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-pdf__zoom {
+    min-inline-size: 5ch;
+    text-align: center;
+  }
+
+  .omfp-pdf__page-number {
+    margin-inline-start: auto;
+  }
+
+  /* Pages narrower than the region are centred; a wider one starts at its left edge and scrolls sideways. */
+  .omfp-pdf__pages {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--omfp-s3);
+    min-block-size: 0;
+    padding: var(--omfp-s3);
+    overflow: auto;
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+    background: var(--omfp-code-bg);
+  }
+
+  .omfp-pdf__page {
+    position: relative;
+    flex: none;
+    margin-inline: auto;
+    outline: var(--omfp-bw) solid var(--omfp-rule);
+    background: var(--omfp-surface-container);
+  }
+
+  .omfp-pdf__canvas {
+    display: block;
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  /* pdf.js's text layer (its pdf_viewer.css): transparent words laid over the canvas at the page's scale, selectable. */
+  .omfp-pdf .textLayer {
+    --min-font-size: 1;
+    --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+    --min-font-size-inv: calc(1 / var(--min-font-size));
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: clip;
+    line-height: 1;
+    text-align: initial;
+    letter-spacing: normal;
+    word-spacing: normal;
+    text-size-adjust: none;
+    forced-color-adjust: none;
+    transform-origin: 0 0;
+  }
+
+  .omfp-pdf .textLayer :is(span, br) {
+    position: absolute;
+    color: transparent;
+    white-space: pre;
+    cursor: text;
+    transform-origin: 0% 0%;
+    user-select: text;
+  }
+
+  .omfp-pdf .textLayer > :not(.markedContent),
+  .omfp-pdf .textLayer .markedContent span:not(.markedContent) {
+    --font-height: 0;
+    --scale-x: 1;
+    --rotate: 0deg;
+    z-index: 1;
+    font-size: calc(var(--text-scale-factor) * var(--font-height));
+    transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+  }
+
+  .omfp-pdf .textLayer .markedContent {
+    display: contents;
+  }
+
+  .omfp-pdf .textLayer span[role="img"] {
+    cursor: default;
+    user-select: none;
+  }
+
+  .omfp-pdf .textLayer ::selection {
+    color: transparent;
+    background: color-mix(in oklab, var(--omfp-primary) 35%, transparent);
+  }
+
+  .omfp-pdf .textLayer br::selection {
+    background: transparent;
   }
 
   /* A file path that opens the file (UI-116): inline, like the text around it, underlined on hover and focus. */

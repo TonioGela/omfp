@@ -360,6 +360,19 @@ export const shell = {
     imageTooLarge: (size: string) => `Image too large to show (${size}).`,
     cannotPlay: (kind: "video" | "audio", size: string) => `This window cannot play this ${kind} file (${size}).`,
     playerLabel: (kind: "video" | "audio", path: string) => `${kind === "video" ? "Video" : "Audio"} ${path}`,
+    pdfLabel: (path: string) => `PDF ${path}`,
+    /** The PDF viewer (UI-543..UI-547). */
+    pdf: {
+      loading: "Loading the PDF…",
+      failed: (error: string) => `Cannot show this PDF: ${error}`,
+      zoomIn: "Zoom in",
+      zoomOut: "Zoom out",
+      fitWidth: "Fit width",
+      page: (page: number, pages: number) => `${page} / ${pages}`,
+      pageLabel: (page: number) => `Page ${page}`,
+      toolbar: "Zoom and pages",
+      pages: "Pages",
+    },
     noRepository: "Not in a repository: there is no HEAD to compare with.",
     newFile: "Not in HEAD yet: every line is new.",
     conflict:

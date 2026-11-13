@@ -54,7 +54,7 @@ sends the prompt `/mcp reauth <name>` (`thread.prompt`; its output and the URL o
 while the thread's summary has an MCP reason in `restartPending`, "Reload to load MCP tools" = `thread.mcp_reconnect { threadId }`),
 `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against `HEAD`; video and audio files play
-in the browser's player).
+in the browser's player; `.pdf` files show in `PdfView`).
 Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Keep the main slot, `["tabs", {"id": "main"}, …"omfp:chat"]`, in every view: the files the
 user opens become its tabs (without it they float in a panel). `:widget add` and `omfp_ui_mount` put side tabs in the
@@ -503,6 +503,7 @@ blue highlight), whatever the page's styles say. `omfp_widget_check` warns about
 | `languageOfPath` | `languageOfPath("src/lib.rs")` → `"rust"`: the language to pass to `Code` or `Diff`. |
 | `CodeEditor` | CodeMirror with vim bindings: `value`, `path` (picks the language), `readOnly`, `line`, `onSave(text)` (`:w`, Ctrl-S), `onDirtyChange`, `onRequestEdit` (`i` while read-only). Loaded on first use. It fills the height its container gives it (a flex child or a fixed height), never takes one from its text, and scrolls inside. |
 | `CodeDiff` | Two texts compared with CodeMirror: `original`, `value`, `path`, `layout` (`"unified"` or `"split"`). Sized like `CodeEditor`. |
+| `PdfView` | A PDF document with pdf.js: `url` (same-origin, e.g. `` `${useFileUrl(path)}?v=${hash}` ``), `labels` (`{ loading, failed(error), zoomIn, zoomOut, fitWidth, page(page, pages), pageLabel(page), toolbar, pages }`). Its pages scroll inside it, drawn when near the view, with selectable text; a toolbar zooms out, in and to the width, and names the page at the top (`3 / 12`). Loaded on first use; sized like `CodeEditor`. |
 | `PathLink` | An inline button opening a file path: `reference` (`{ path, line }`), `onOpen` (e.g. from `useOpenFile()`). |
 | `Tabs` | Tabs with `TabList`, `Tab` and `TabPanel`. |
 | `ListBox` | A selectable list with `ListBoxItem`. |
