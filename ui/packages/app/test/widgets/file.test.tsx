@@ -13,10 +13,10 @@ import {
   fileTabId,
   NO_FILE_TABS,
   OPEN_FILES,
-  openTab,
   SELECTED_THREAD,
   SUCCESSES,
 } from "../../src/sdk/index.ts";
+import { openTab } from "../../src/vm/files.ts";
 import { FileWidget } from "../../src/widgets/file/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { FakeClient, renderWithHost, testHost } from "../support/host.tsx";

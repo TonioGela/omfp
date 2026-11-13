@@ -8,13 +8,13 @@ import { Frame } from "../../src/frame/frame.tsx";
 import { messageEntries } from "../../src/frame/messages.tsx";
 import {
   MESSAGES,
-  MESSAGES_KEPT,
   NOTICES,
   reportError,
   reportSuccess,
   SELECTED_THREAD,
   type WidgetComponent,
 } from "../../src/sdk/index.ts";
+import { MESSAGES_KEPT } from "../../src/sdk/notify.ts";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
 import { thread, workspace } from "../support/fixtures.ts";
 import { ManualTimers, renderWithHost, testHost } from "../support/host.tsx";

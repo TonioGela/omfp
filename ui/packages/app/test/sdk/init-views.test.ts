@@ -1,7 +1,8 @@
 /** L1: the views init files build (UI-267): `InitViews`, `Layout`, `use`, `transform`, re-runs. */
 
 import { describe, expect, test } from "bun:test";
-import { type InitApi, type InitContext, type InitSnapshot, InitViews, Layout } from "../../src/sdk/index.ts";
+import type { InitApi, InitContext, InitSnapshot } from "../../src/sdk/index.ts";
+import { InitViews, Layout } from "../../src/sdk/init-views.ts";
 import type { LayoutNode } from "../../src/view/layout.ts";
 import { isFileView } from "../../src/view/views.ts";
 import { testHost } from "../support/host.tsx";

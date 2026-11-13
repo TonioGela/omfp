@@ -7,7 +7,6 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import {
   OmfpProvider,
-  ResultCache,
   SELECTED_THREAD,
   useCall,
   useFile,
@@ -15,6 +14,7 @@ import {
   type WidgetInfoScope,
   WidgetScope,
 } from "../../src/sdk/index.ts";
+import { ResultCache } from "../../src/sdk/results.ts";
 import { thread, workspace } from "../support/fixtures.ts";
 import { type CallRecord, released, type TestHost, testHost } from "../support/host.tsx";
 

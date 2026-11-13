@@ -2,7 +2,8 @@
 
 import { describe, expect, test } from "bun:test";
 import type { ThreadSummary, Workspace, WorkspaceRepo } from "@omfp/protocol";
-import { type KeyValueStorage, WindowStore, windowKey } from "../../src/sdk/index.ts";
+import { type KeyValueStorage, windowKey } from "../../src/sdk/index.ts";
+import { WindowStore } from "../../src/sdk/window-store.ts";
 import {
   ConversationSearch,
   decodeIds,

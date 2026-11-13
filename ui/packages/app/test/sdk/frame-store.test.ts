@@ -1,7 +1,7 @@
 /** L4: the per-frame snapshot store (UI-012). */
 
 import { describe, expect, test } from "bun:test";
-import { FrameStore } from "../../src/sdk/index.ts";
+import { FrameStore } from "../../src/sdk/frame-store.ts";
 import { FakeClient, ManualFrames } from "../support/host.tsx";
 
 /** Lets pending promise continuations run (no timers involved). */

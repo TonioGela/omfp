@@ -15,15 +15,7 @@ export { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 export { keyLabel } from "../keymap/keymap.ts";
 export { strings } from "../strings/index.ts";
 export { type AnsiRun, ansiRuns } from "../vm/ansi.ts";
-export {
-  type BackgroundRow,
-  backgroundRows,
-  type JobTimes,
-  lastOutputLine,
-  observeJobs,
-  runningInBackground,
-  stopJobMessage,
-} from "../vm/background.ts";
+export { type BackgroundRow, type JobTimes, lastOutputLine } from "../vm/background.ts";
 export {
   type ChangedFile,
   type ChangesRepo,
@@ -57,12 +49,9 @@ export {
   slashSuggestions,
 } from "../vm/composer.ts";
 export {
-  closeOpenedTab,
   closeTab,
   type FileTab,
   type FileTabs,
-  FLOATING_MIN,
-  FLOATING_PANEL_DEFAULT,
   type FloatingPanel,
   fileName,
   fileTabId,
@@ -71,11 +60,9 @@ export {
   type OpenFileOptions,
   type OpenFiles,
   openedTabIds,
-  openTab,
   openWidgetTab,
   originalFromPatch,
   resizePanel,
-  retargetTab,
   widgetTabId,
   workspaceFilePath,
 } from "../vm/files.ts";
@@ -114,15 +101,12 @@ export {
   toggleOption,
 } from "../vm/interaction.ts";
 export {
-  IDLE as LIVE_IDLE,
   type LivePanelView,
   type LiveSupport,
   type LocalLive,
-  liveLines,
   livePanelView,
   type MicButton,
   micButton,
-  ownStatus,
 } from "../vm/live.ts";
 export {
   loginCompletions,
@@ -144,8 +128,8 @@ export {
   pendingRestart,
   reauthPrompt,
 } from "../vm/mcp.ts";
-export { type NoticeRow, noticeRow } from "../vm/notice.ts";
-export { OpenedUrlWatch, openedUrls, threadOpenedUrls, urlHost } from "../vm/opened-url.ts";
+export type { NoticeRow } from "../vm/notice.ts";
+export { OpenedUrlWatch, openedUrls, urlHost } from "../vm/opened-url.ts";
 export {
   applyEdit,
   type Edited,
@@ -171,11 +155,10 @@ export {
   EMPTY_TRANSCRIPT,
   type SubagentRow,
   type SubagentTranscript,
-  subagentRows,
   type TranscriptLine as SubagentLine,
   transcriptLines as subagentLines,
 } from "../vm/subagents.ts";
-export { type SystemRow, systemMessage, systemNotice } from "../vm/system.ts";
+export type { SystemRow } from "../vm/system.ts";
 export {
   type RepoKind,
   statusLabel,
@@ -184,7 +167,7 @@ export {
   workspaceChip,
 } from "../vm/threads.ts";
 export { type GoalView, type TodoPhaseView, type TodoRow, type TodosView, todosView } from "../vm/todos.ts";
-export { type CardImage, expandedByDefault, formatDuration, resultText, type ToolCard } from "../vm/tool.ts";
+export { type CardImage, expandedByDefault, formatDuration, type ToolCard } from "../vm/tool.ts";
 export {
   type RepoPath,
   repoPath,
@@ -198,11 +181,9 @@ export {
   type Item as TranscriptItem,
   items as transcriptItems,
   type MessageView,
-  messageView,
   type Role as MessageRole,
   type RowContent as TranscriptRowContent,
   rowContent as transcriptRowContent,
-  streamingView,
 } from "../vm/transcript.ts";
 export {
   type NavigateOutcome,
@@ -268,16 +249,13 @@ export {
   EDITOR_MODE,
   errorCode,
   FILE_PICKER,
-  FILE_POLL_MS,
   type FileLoadStatus,
   type FilePicker,
   type FilePoll,
   type FileState,
   type FileTabsState,
   FLOATING_FILES,
-  findMissingFile,
   floatingWidgetKey,
-  intervalPoll,
   type MissingOutcome,
   OPEN_FILES,
   openFile,
@@ -287,13 +265,7 @@ export {
   useMissingFile,
   useOpenFile,
 } from "./files.ts";
-export {
-  animationFrame,
-  type FrameScheduler,
-  FrameStore,
-  type ModelSource,
-  type Snapshot,
-} from "./frame-store.ts";
+export type { FrameScheduler, ModelSource, Snapshot } from "./frame-store.ts";
 export {
   type CallState,
   registerCommand,
@@ -316,31 +288,27 @@ export {
 } from "./hooks.ts";
 export {
   type Announcement,
-  Announcer,
   createHost,
   type HostOptions,
   type OmfpHost,
   OmfpProvider,
-  RECENT_THREADS,
   type SdkClient,
-  TopicRefs,
   useHost,
 } from "./host.tsx";
-export {
-  type InitApi,
-  type InitBinding,
-  type InitCommand,
-  type InitContext,
-  type InitError,
-  type InitFile,
-  InitFiles,
-  type InitRepo,
-  type InitSnapshot,
-  type InitWorkspace,
-  type ThreadEventKind,
-  type ViewsApi,
+export type {
+  InitApi,
+  InitBinding,
+  InitCommand,
+  InitContext,
+  InitError,
+  InitFile,
+  InitRepo,
+  InitSnapshot,
+  InitWorkspace,
+  ThreadEventKind,
+  ViewsApi,
 } from "./init.ts";
-export { InitViews, Layout, type ViewEntry, type ViewOrigin, type ViewSpec } from "./init-views.ts";
+export { Layout, type ViewEntry, type ViewOrigin, type ViewSpec } from "./init-views.ts";
 export {
   AUTH_REVISION,
   COLOR_SCHEME,
@@ -367,7 +335,6 @@ export {
   SELECTED_THREAD,
   SUCCESSES,
   type Success,
-  VIEW_CHOICES,
 } from "./keys.ts";
 export {
   Col,
@@ -379,28 +346,12 @@ export {
   Widget,
   type WidgetElementProps,
 } from "./layout.tsx";
-export {
-  browserLiveMedia,
-  LiveClient,
-  type LiveClientOptions,
-  type LiveLink,
-  type LiveMedia,
-  LiveOpenError,
-  type LiveSnapshot,
-} from "./live.ts";
-export {
-  browserImporter,
-  type Importer,
-  type LoadedWidget,
-  type WidgetLoadError,
-  WidgetModules,
-} from "./modules.ts";
+export { LiveClient, type LiveClientOptions, type LiveLink, type LiveMedia, type LiveSnapshot } from "./live.ts";
+export type { Importer, LoadedWidget, WidgetLoadError } from "./modules.ts";
 export {
   MESSAGES,
-  MESSAGES_KEPT,
   type Message,
   type MessageTone,
-  NOTICE_MS,
   NOTICES,
   type Notice,
   type NoticeRequest,
@@ -412,18 +363,14 @@ export {
 } from "./notify.ts";
 export { type PathSources, usePathSources } from "./paths.ts";
 export {
-  JOB_TAIL,
-  REPORT_DELAY_MS,
   type ReportSink,
   type ReportTimers,
   type SlotIdentity,
   type SlotLoad,
   SlotReport,
   SlotReportScope,
-  useSlotReport,
   WidgetReporter,
 } from "./reports.ts";
-export { jsonSize, RESULT_ENTRIES, RESULT_UNITS, ResultCache, resultKey } from "./results.ts";
 export {
   DEFAULT_DENSITY,
   DEFAULT_FONT_SIZE,
@@ -453,4 +400,4 @@ export {
   type WidgetProps,
   WidgetScope,
 } from "./widget.ts";
-export { type KeyValueStorage, type Update, type WindowKey, WindowStore, windowKey } from "./window-store.ts";
+export { type KeyValueStorage, type Update, type WindowKey, windowKey } from "./window-store.ts";

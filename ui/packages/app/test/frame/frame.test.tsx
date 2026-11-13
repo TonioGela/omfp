@@ -22,9 +22,9 @@ import {
   SUCCESSES,
   useCommand,
   useNotify,
-  VIEW_CHOICES,
   type WidgetComponent,
 } from "../../src/sdk/index.ts";
+import { VIEW_CHOICES } from "../../src/sdk/keys.ts";
 import { markTabEdges } from "../../src/view/render.tsx";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
 import { DEFAULT_MANIFEST } from "../../src/view/views.ts";

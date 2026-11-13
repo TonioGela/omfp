@@ -6,9 +6,9 @@ import type { ThreadSummary } from "@omfp/protocol";
 import { threadTopic, viewsTopic } from "@omfp/protocol";
 import { act, cleanup, screen } from "@testing-library/react";
 import { Activity, useState } from "react";
+import { RECENT_THREADS } from "../../src/sdk/host.tsx";
 import {
   CommandRegistry,
-  RECENT_THREADS,
   SCOPE_ATTRIBUTE,
   scopesAt,
   useCommand,

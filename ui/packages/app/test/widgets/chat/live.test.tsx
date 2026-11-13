@@ -6,13 +6,8 @@ import type { ThreadEvent } from "@omfp/core";
 import { threadTopic } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import type { Levels, SpectrumSource } from "omfp/kit";
-import {
-  type LiveLink,
-  type LiveMedia,
-  LiveOpenError,
-  type LiveSupport,
-  SELECTED_THREAD,
-} from "../../../src/sdk/index.ts";
+import { type LiveLink, type LiveMedia, type LiveSupport, SELECTED_THREAD } from "../../../src/sdk/index.ts";
+import { LiveOpenError } from "../../../src/sdk/live.ts";
 import { ComposerWidget } from "../../../src/widgets/chat/index.ts";
 import { FakeClient, renderWithHost, type TestHost, testHost } from "../../support/host.tsx";
 import { fixtureEvents, summary } from "./fixtures.ts";
