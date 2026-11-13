@@ -2,8 +2,9 @@
  * The one global key handler (UI-095): turns key presses into command runs through {@link KeymapMatcher}, in the mode
  * the focused element puts the window in. It listens on the document in the bubbling phase, so widgets that handle a
  * key themselves (the transcript's PageUp/PageDown/Home/End, React Aria's menus and lists) stop it first; inside a
- * modal dialog no binding applies. While a sequence waits for its next key it tells the which-key panel (UI-320):
- * after {@link WHICH_KEY_DELAY_MS}, at once for the leader, and Escape cancels the sequence.
+ * modal dialog no binding applies; in normal mode `Ctrl-c` with text selected is left to the page, which copies it
+ * (UI-368). While a sequence waits for its next key it tells the which-key panel (UI-320): after
+ * {@link WHICH_KEY_DELAY_MS}, at once for the leader, and Escape cancels the sequence.
  */
 
 import { type CommandRegistry, scopesAt } from "../sdk/index.ts";
@@ -50,6 +51,12 @@ function keepsSpace(element: Element | null): boolean {
     return true;
   }
   return SPACE_ROLES.has(element.getAttribute("role") ?? "");
+}
+
+/** Text is selected in the page (not in a text field, whose selection the document's does not show). */
+function hasSelection(): boolean {
+  const selection = document.getSelection();
+  return selection !== null && !selection.isCollapsed && selection.toString() !== "";
 }
 
 /** Where the handler shows a waiting sequence (UI-320, UI-321). */
@@ -136,6 +143,9 @@ export function createKeyHandler(options: KeymapOptions): KeyHandler {
       return;
     }
     const mode = modeAt(element);
+    if (mode === "normal" && token === "Ctrl-c" && matcher.pending === undefined && hasSelection()) {
+      return;
+    }
     const match = matcher.feed(token, mode);
     if (match.kind === "pending") {
       event.preventDefault();

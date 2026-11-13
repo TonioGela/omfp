@@ -22,7 +22,10 @@ export function isBusy(state: ThreadState): boolean {
   return !state.settled;
 }
 
-/** Esc aborts while the agent works or messages wait in the queue (UI-063); otherwise it leaves the composer. */
+/**
+ * There is something to interrupt: the agent works or messages wait in the queue. `Ctrl-C` then aborts (UI-063,
+ * UI-368); Esc never does, it only leaves the composer (UI-095).
+ */
 export function canAbort(state: ThreadState): boolean {
   return isBusy(state) || state.queue.steering.length > 0 || state.queue.follow_up.length > 0;
 }
@@ -87,9 +90,7 @@ export type KeyAction =
   /** An auto-repeated Enter: swallowed, so holding the key sends one message, not one per repeat. */
   | { readonly type: "ignore" }
   | { readonly type: "send"; readonly mode: SendMode }
-  /** Esc while busy or queued: `thread.abort` (UI-063). */
-  | { readonly type: "abort" }
-  /** Esc otherwise: leave the composer (`focus.leave`, UI-095). */
+  /** Esc: leave the composer (`focus.leave`, UI-095), busy or not; it never aborts (UI-063). */
   | { readonly type: "leave" }
   /** Tab with suggestions: complete the first one. */
   | { readonly type: "complete" };
@@ -97,8 +98,6 @@ export type KeyAction =
 /** What the composer knows when a key is pressed. */
 export interface KeyContext {
   readonly busy: boolean;
-  /** Per {@link canAbort}. */
-  readonly abortable: boolean;
   readonly hasSuggestions: boolean;
   /** The key is auto-repeating (`KeyboardEvent.repeat`). */
   readonly repeat?: boolean;
@@ -115,7 +114,7 @@ export function keyAction(key: string, modifiers: Modifiers, context: KeyContext
         ? { type: "ignore" }
         : { type: "send", mode: sendMode(context.busy, steerModifier(modifiers)) };
     case "Escape":
-      return context.abortable ? { type: "abort" } : { type: "leave" };
+      return { type: "leave" };
     case "Tab":
       return context.hasSuggestions && !modifiers.shift ? { type: "complete" } : { type: "none" };
     default:

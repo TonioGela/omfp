@@ -146,7 +146,7 @@ describe("help panel", () => {
     press("?");
     const filter = screen.getByTestId("help-filter");
     await user.type(filter, "ctrl+c");
-    expect(rows("normal")).toEqual([["ctrl+c", "", "Clear the draft, or abort when it is empty (Ctrl-C)"]]);
+    expect(rows("normal")).toEqual([["ctrl+c", "", "Interrupt the agent"]]);
     expect(rows("insert")).toEqual([["ctrl+c", "", "Clear the draft, or abort when it is empty (Ctrl-C)"]]);
     expect(screen.getByTestId("help").querySelector('[data-section="commands"]')).toBeNull();
     await user.clear(filter);

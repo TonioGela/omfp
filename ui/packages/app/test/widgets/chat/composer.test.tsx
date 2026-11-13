@@ -163,19 +163,61 @@ describe("composer", () => {
     expect(box()?.getAttribute("data-mode")).toBe("normal");
   });
 
-  // spec: UI-063, UI-092
-  test("Esc while busy aborts and puts the restored texts back into the draft", async () => {
-    const { client, host } = renderThread(<ComposerWidget />, queuedEvents());
+  // spec: UI-063, UI-092, UI-095, UI-148
+  test("Esc while busy only leaves the composer, the agent keeps running; the Abort button restores the queue", async () => {
+    const { client, host } = renderThread(<ChatWidget />, queuedEvents());
+    expect(input().getAttribute("placeholder")).toBe("Queue a follow-up (shift+enter steers, ctrl+c interrupts)");
+    expect(screen.getByTestId("composer").textContent).toContain("ctrl+c interrupt");
     await userEvent.click(input());
     await userEvent.keyboard("typing");
     await userEvent.keyboard("{Escape}");
+    expect(document.activeElement === screen.getByTestId("transcript")).toBe(true);
+    expect(client.callsTo("thread.abort")).toHaveLength(0);
+    expect(screen.getByTestId("composer").dataset.busy).toBe("true");
+    await userEvent.click(screen.getByTestId("abort"));
     const [abort] = client.callsTo("thread.abort");
     expect(abort?.params).toEqual({ threadId: THREAD });
     await act(async () => abort?.resolve({ steering: [], followUp: [{ text: "later please" }] }));
     expect(input().value).toBe("later please\n\ntyping");
     expect(host.announcer.getSnapshot().message).toBe("Turn aborted");
-    await userEvent.click(screen.getByTestId("abort"));
-    expect(client.callsTo("thread.abort").length).toBe(2);
+  });
+
+  // spec: UI-368, UI-063
+  test("Ctrl-C in normal mode aborts the busy thread and restores its queue; with text selected it copies", async () => {
+    const clock = new ManualClock(0);
+    const { client, host } = renderThread(<ChatWidget />, queuedEvents(), clock);
+    installKeymap(host, clock);
+    await userEvent.click(input());
+    await userEvent.keyboard("typing{Escape}");
+    const transcript = screen.getByTestId("transcript");
+    expect(document.activeElement === transcript).toBe(true);
+    // Text selected in the page (a queued message's chip; the virtualized transcript draws no rows here).
+    const selection = document.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(screen.getByTestId("queue-chip"));
+    // A range left by an earlier test would keep this one from being added.
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    expect(selection?.toString()).toContain("later please");
+    press("c", { ctrlKey: true });
+    expect(client.callsTo("thread.abort")).toHaveLength(0);
+    selection?.removeAllRanges();
+    press("c", { ctrlKey: true });
+    const [abort] = client.callsTo("thread.abort");
+    expect(abort?.params).toEqual({ threadId: THREAD });
+    await act(async () => abort?.resolve({ steering: [], followUp: [{ text: "later please" }] }));
+    expect(input().value).toBe("later please\n\ntyping");
+    expect(host.announcer.getSnapshot().message).toBe("Turn aborted");
+  });
+
+  // spec: UI-368
+  test("Ctrl-C in normal mode does nothing on an idle thread", () => {
+    const clock = new ManualClock(0);
+    const { client, host } = renderThread(<ChatWidget />, fixtureEvents("text_reply"), clock);
+    installKeymap(host, clock);
+    act(() => screen.getByTestId("transcript").focus());
+    press("c", { ctrlKey: true });
+    expect(client.callsTo("thread.abort")).toHaveLength(0);
   });
 
   // spec: UI-095

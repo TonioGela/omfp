@@ -86,9 +86,11 @@ help, `Space p` workspace, `Space f` files, `Space v` views); Escape cancels the
 | `Space s`, `Space S`, `Space R` | Stop the thread (with the threads it spawned); restart it. |
 | `Space t` | Show or hide the threads column (narrow window). |
 | `d d`, `z a` | Delete the focused row; fold the focused workspace. |
-| `Ctrl-c`, `u` | Clear the draft, then abort the turn; restore the last cleared draft. |
+| `Ctrl-c` | Interrupt the selected thread's turn (its queued messages come back into the composer); with text selected it copies. |
+| `u` | Restore the last draft `Ctrl-c` cleared in the composer. |
 
-In insert mode `Esc` leaves the text field, `Ctrl-c` clears then aborts, `Alt-a` / `Alt-n` work too; in the composer
+In insert mode `Esc` leaves the text field (in the composer too, while the agent works: it never aborts), `Ctrl-c` in
+the composer clears the draft, then aborts, `Alt-a` / `Alt-n` work too; in the composer
 Enter sends, Shift-Enter steers the running turn, Alt-Enter adds a line. A paste of more than 10 lines or 1000
 characters becomes a chip (`Pasted text #1 · 120 lines`) and a `[Paste #1, +120 lines]` token, expanded when the
 message is sent; `Ctrl-Shift-v` (`Cmd-Shift-v` on macOS) pastes it as plain text instead. `Up` with the caret on the

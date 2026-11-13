@@ -380,7 +380,7 @@ async fn send_mode(journey: &Journey, mode: &str) -> anyhow::Result<()> {
         .await
 }
 
-// spec: E2E-05, UI-061, UI-062, UI-063, UI-095
+// spec: E2E-05, UI-061, UI-062, UI-063, UI-095, UI-368
 #[tokio::test(flavor = "multi_thread")]
 async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
 -> anyhow::Result<()> {
@@ -445,8 +445,25 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
     queued(&journey, "steering", "steer me").await?;
     assert_eq!(draft(&journey).await?, "");
 
-    // Esc aborts; the queued steer comes back into the composer (UI-063).
+    // Esc only leaves the composer: the turn keeps running with its queued steer (UI-063, UI-095).
     input.send_keys(Key::Escape).await?;
+    journey
+        .until("the focus out of the composer", async |page| {
+            Ok((page.focused().await?.as_deref() != Some("composer-input")).then_some(()))
+        })
+        .await?;
+    journey.status(&thread, "running").await?;
+    queued(&journey, "steering", "steer me").await?;
+
+    // Ctrl-C in normal mode aborts; the queued steer comes back into the composer (UI-368).
+    journey
+        .driver
+        .action_chain()
+        .key_down(Key::Control)
+        .send_keys("c")
+        .key_up(Key::Control)
+        .perform()
+        .await?;
     journey
         .until("the restored draft", async |page| {
             Ok(draft(page).await?.contains("steer me").then_some(()))
@@ -742,7 +759,7 @@ async fn the_vim_keymap_moves_focuses_and_runs_the_command_line() -> anyhow::Res
     select_with(&journey, back, &second).await?;
     journey.opened(&second).await?;
 
-    // i enters the composer; Esc leaves it (the thread is idle, so nothing is aborted).
+    // i enters the composer; Esc leaves it.
     normal_mode(&journey).await?;
     journey.keys("i").await?;
     journey.until_focused("composer-input").await?;

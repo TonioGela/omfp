@@ -126,7 +126,7 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 | E2E-02 | Prompt triggers a tool needing approval → approve in UI → tool card completes. |
 | E2E-03 | `ask` with two questions (single + multi) → answer → agent continues with the answers (checked on `fake-llm` recorded request). |
 | E2E-04 | Reload the page mid-stream → transcript continues without gaps or duplicates. |
-| E2E-05 | Queue a follow-up while busy → remove it → abort with queued steer → text restored in composer. Then `Ctrl-C`: type a draft → `Ctrl-C` clears it; queue a follow-up while busy → `Ctrl-C` twice → the turn is aborted, the queue and the composer are empty. |
+| E2E-05 | Queue a follow-up while busy → remove it → queue a steer → Esc leaves the composer and the turn keeps running → `Ctrl-C` in normal mode aborts → text restored in composer. Then `Ctrl-C`: type a draft → `Ctrl-C` clears it; queue a follow-up while busy → `Ctrl-C` twice → the turn is aborted, the queue and the composer are empty. |
 | E2E-06 | Agent edits a file → the Workspace panel shows the repository dirty and the Changes panel shows the diff. |
 | E2E-07 | Open thread in `omp` terminal → `/exit` → back in app with history reloaded. |
 | E2E-08 | In a workspace, link two repositories from two different places with the path field's completion → `/` search by either repository's name finds the thread. |

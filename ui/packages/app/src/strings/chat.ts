@@ -110,11 +110,11 @@ export const chat = {
   composer: {
     label: "Message",
     placeholderIdle: "Message (/ for commands)",
-    placeholderBusy: "Queue a follow-up (shift+enter steers, esc aborts)",
+    placeholderBusy: "Queue a follow-up (shift+enter steers, ctrl+c interrupts)",
     send: { prompt: "Send", "follow-up": "Queue follow-up", steer: "Steer now" },
     abort: "Abort",
     /** Composer bar hints after their key chips (UI-148, UI-172). */
-    hint: { newline: "newline", leave: "normal", abort: "abort" },
+    hint: { newline: "newline", leave: "normal", interrupt: "interrupt" },
     attachments: "Attached images",
     attachment: (index: number) => `Attached image ${index}`,
     removeAttachment: (index: number) => `Remove image ${index}`,
@@ -131,7 +131,7 @@ export const chat = {
     commands: "Commands",
     focus: "Focus the composer",
     leave: "Leave the composer",
-    abortCommand: "Abort the running turn",
+    abortCommand: "Interrupt the agent",
     interruptCommand: "Clear the draft, or abort when it is empty (Ctrl-C)",
     restoreCommand: "Restore the last cleared draft",
     /** After the `ctrl+c` key chip. */

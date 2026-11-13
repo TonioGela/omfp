@@ -208,7 +208,7 @@
     {
       "mode": "normal",
       "keys": "Ctrl-c",
-      "command": "composer.interrupt"
+      "command": "thread.abort"
     },
     {
       "mode": "normal",
@@ -444,7 +444,7 @@
     },
     {
       "id": "thread.abort",
-      "title": "Abort the running turn",
+      "title": "Interrupt the agent",
       "aliases": []
     },
     {

@@ -29,8 +29,8 @@ const COMMANDS: AvailableSlashCommand[] = [
 ];
 
 const PLAIN: Modifiers = { shift: false, alt: false, ctrl: false, meta: false };
-const IDLE = { busy: false, abortable: false, hasSuggestions: false };
-const BUSY = { busy: true, abortable: true, hasSuggestions: false };
+const IDLE = { busy: false, hasSuggestions: false };
+const BUSY = { busy: true, hasSuggestions: false };
 
 const names = (draft: string) => slashSuggestions(draft, COMMANDS).map((suggestion) => suggestion.name);
 
@@ -68,8 +68,8 @@ describe("composer", () => {
   });
 
   // spec: UI-063, UI-095
-  test("escape aborts while busy or queued, else leaves the composer", () => {
-    expect(keyAction("Escape", PLAIN, BUSY)).toEqual({ type: "abort" });
+  test("escape leaves the composer, busy or not; abortable means busy or queued", () => {
+    expect(keyAction("Escape", PLAIN, BUSY)).toEqual({ type: "leave" });
     expect(keyAction("Escape", PLAIN, IDLE)).toEqual({ type: "leave" });
     const queued = fixtureUntil("follow_up_then_abort", isFrame("message_start"));
     expect(canAbort(fixture("text_reply"))).toBe(false);

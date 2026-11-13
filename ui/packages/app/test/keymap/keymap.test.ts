@@ -98,7 +98,7 @@ describe("keymap", () => {
     expect(keyLabel("Alt-a")).toBe("alt+a");
   });
 
-  // spec: UI-095, UI-020, UI-022, UI-023, UI-063, UI-302
+  // spec: UI-095, UI-020, UI-022, UI-023, UI-063, UI-302, UI-368
   test("the defaults are vim-style, with the command line and the Space leader", () => {
     const table = (command: string, mode: "normal" | "insert" = "normal") => keysFor(DEFAULT_BINDINGS, command, mode);
     expect(table("nav.next")).toEqual(["j"]);
@@ -116,7 +116,8 @@ describe("keymap", () => {
     expect(table("nav.toggleSection")).toEqual(["z a"]);
     expect(table("focus.leave", "insert")).toEqual(["Esc"]);
     expect(table("composer.interrupt", "insert")).toEqual(["Ctrl-c"]);
-    expect(table("composer.interrupt")).toEqual(["Ctrl-c"]);
+    expect(table("composer.interrupt")).toEqual([]);
+    expect(table("thread.abort")).toEqual(["Ctrl-c"]);
     expect(table("composer.restore")).toEqual(["u"]);
     // The views of the window (UI-302).
     expect([table("view.pick"), table("view.next"), table("view.prev")]).toEqual([
@@ -187,11 +188,12 @@ describe("global key handler", () => {
   function setup(bindings: readonly Binding[] = DEFAULT_BINDINGS) {
     const commands = new CommandRegistry();
     const ran: string[] = [];
-    const register = (id: string, scope?: string) =>
+    const register = (id: string, scope?: string, enabled?: () => boolean) =>
       commands.register({
         id,
         title: id,
         ...(scope === undefined ? {} : { scope }),
+        ...(enabled === undefined ? {} : { enabled }),
         run: (args) => {
           ran.push(`${scope ?? "global"}:${id}${args.length > 0 ? ` ${args.join(" ")}` : ""}`);
         },
@@ -260,11 +262,12 @@ describe("global key handler", () => {
     expect(ran).toEqual(["global:thread.nextAttention", "global:thread.new"]);
   });
 
-  // spec: UI-063, UI-095
-  test("Ctrl-c runs the composer's command only inside the composer; elsewhere it copies as usual", () => {
+  // spec: UI-063, UI-095, UI-368
+  test("Ctrl-c runs the composer's command while typing in the composer, else in normal mode thread.abort", () => {
     document.body.innerHTML = `<form ${SCOPE_ATTRIBUTE}="composer"><textarea id="draft"></textarea><button id="send">s</button></form><input id="filter"><p id="out" tabindex="-1"></p>`;
     const { register, ran, press } = setup();
     register("composer.interrupt", "composer");
+    register("thread.abort");
     const element = (id: string) => {
       const found = document.getElementById(id);
       if (found === null) {
@@ -275,8 +278,36 @@ describe("global key handler", () => {
     expect(press(element("draft"), "c", { ctrlKey: true })).toBe(true);
     expect(press(element("send"), "c", { ctrlKey: true })).toBe(true);
     expect(press(element("filter"), "c", { ctrlKey: true })).toBe(false);
-    expect(press(element("out"), "c", { ctrlKey: true })).toBe(false);
-    expect(ran).toEqual(["composer:composer.interrupt", "composer:composer.interrupt"]);
+    expect(press(element("out"), "c", { ctrlKey: true })).toBe(true);
+    expect(ran).toEqual(["composer:composer.interrupt", "global:thread.abort", "global:thread.abort"]);
+  });
+
+  // spec: UI-368
+  test("Ctrl-c in normal mode copies a text selection and does nothing while nothing can be aborted", () => {
+    document.body.innerHTML = `<p id="out" tabindex="-1">some reply text</p>`;
+    const { register, ran, press } = setup();
+    let busy = true;
+    register("thread.abort", undefined, () => busy);
+    const out = document.getElementById("out");
+    const selection = document.getSelection();
+    if (out === null || selection === null) {
+      throw new Error("fixture");
+    }
+    const range = document.createRange();
+    range.selectNodeContents(out);
+    // A range left by an earlier test would keep this one from being added.
+    selection.removeAllRanges();
+    selection.addRange(range);
+    // A selection: the browser copies it, nothing runs.
+    expect(press(out, "c", { ctrlKey: true })).toBe(false);
+    expect(ran).toEqual([]);
+    selection.removeAllRanges();
+    expect(press(out, "c", { ctrlKey: true })).toBe(true);
+    expect(ran).toEqual(["global:thread.abort"]);
+    // Idle: the command is disabled and the key is left to the page.
+    busy = false;
+    expect(press(out, "c", { ctrlKey: true })).toBe(false);
+    expect(ran).toEqual(["global:thread.abort"]);
   });
 
   // spec: UI-095, UI-092

@@ -1,10 +1,10 @@
 /**
  * `omfp:composer`: queue chips (UI-062) and the composer (UI-060..064) of the selected thread. Multi-line input with
  * image paste/drop, large pastes as chips (UI-357..UI-360), `/` command completion (React Aria `Autocomplete` +
- * `TextArea` + `Menu` in a non-modal `Popover`, S-11), the send mode on the send button, Esc aborting a busy thread or
- * leaving the composer, `Ctrl-C` clearing the draft (restored by `u`) then aborting without restoring the queue
- * (UI-063), and drafts per thread. With no thread selected, the composer of the draft thread (UI-023): its first
- * message creates the thread.
+ * `TextArea` + `Menu` in a non-modal `Popover`, S-11), the send mode on the send button, Esc leaving the composer
+ * (never aborting), `Ctrl-C` clearing the draft (restored by `u`) then aborting without restoring the queue (UI-063),
+ * `thread.abort` restoring it (the Abort button, `Ctrl-C` in normal mode, UI-368), and drafts per thread. With no
+ * thread selected, the composer of the draft thread (UI-023): its first message creates the thread.
  */
 
 import type { AvailableSlashCommand, ImageContent } from "@omfp/core";
@@ -155,7 +155,6 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
     pastes.onKeyDown(event, modifiersOf(event));
     const action = keyAction(event.key, modifiersOf(event), {
       busy: false,
-      abortable: false,
       hasSuggestions: false,
       repeat: event.repeat,
     });
@@ -440,7 +439,7 @@ export const Composer = memo(function Composer({
     id: "focus.leave",
     title: text.leave,
     scope: "composer",
-    run: () => (abortable ? abort() : leave()),
+    run: leave,
   });
   useCommand({ id: "composer.interrupt", title: text.interruptCommand, scope: "composer", run: interrupt });
   useCommand({
@@ -493,7 +492,7 @@ export const Composer = memo(function Composer({
       return;
     }
     event.stopPropagation();
-    const action = keyAction(event.key, modifiers, { busy, abortable, hasSuggestions: false, repeat: event.repeat });
+    const action = keyAction(event.key, modifiers, { busy, hasSuggestions: false, repeat: event.repeat });
     if (action.type === "none") {
       return;
     }
@@ -502,8 +501,6 @@ export const Composer = memo(function Composer({
       send(action.mode);
     } else if (action.type === "newline") {
       insertLineBreak(inputRef.current, pastes.onChange);
-    } else if (action.type === "abort") {
-      abort();
     } else if (action.type === "leave") {
       leave();
     }
@@ -639,13 +636,18 @@ const ComposerActions = memo(function ComposerActions({
         <Kbd>{keyLabel("Alt-Enter")}</Kbd> {text.hint.newline}
       </ComposerHint>
       <ComposerHint>
-        <Kbd>{keyLabel("Esc")}</Kbd> {abortable ? text.hint.abort : text.hint.leave}
+        <Kbd>{keyLabel("Esc")}</Kbd> {text.hint.leave}
       </ComposerHint>
-      {interruptHint && abortable && (
-        <ComposerHint className="omfp-composer__interrupt" role="status" data-testid="interrupt-hint">
-          <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.interruptHint}
-        </ComposerHint>
-      )}
+      {abortable &&
+        (interruptHint ? (
+          <ComposerHint className="omfp-composer__interrupt" role="status" data-testid="interrupt-hint">
+            <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.interruptHint}
+          </ComposerHint>
+        ) : (
+          <ComposerHint>
+            <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.hint.interrupt}
+          </ComposerHint>
+        ))}
       <span className="omfp-composer__spacer" />
       <ThreadMicButton threadId={threadId} />
       {abortable && (
