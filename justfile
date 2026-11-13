@@ -130,12 +130,14 @@ spec-trace:
 deny:
     cargo deny check
 
-# spec: TST-070, TST-071, TST-072, TST-073, TST-075, TST-076, TST-092, ENV-042, ENV-060 — the GitHub workflow
-# (.github/workflows/ci.yml) passes actionlint and runs what `just ci` runs, in the dev shell, with its caches, the
-# shared web bundle, the runner's disk pooled for Nix and a macOS job; the release workflow (release.yml) builds the
-# packages in the dev shell and writes only from its tag-only job (.github/check-workflow.ts)
+# spec: TST-070, TST-071, TST-072, TST-073, TST-075, TST-076, TST-092, TST-112, ENV-042, ENV-060 — the GitHub
+# workflow (.github/workflows/ci.yml) passes actionlint and runs what `just ci` runs, in the dev shell, with its
+# caches, the shared web bundle, the runner's disk pooled for Nix and a macOS job; the release workflow (release.yml)
+# builds the packages in the dev shell and writes only from its tag-only job (.github/check-workflow.ts, its tests
+# beside it)
 check-workflow:
     bun .github/check-workflow.ts {{ quote(just_executable()) }}
+    JUST={{ quote(just_executable()) }} bun test ./.github
 
 # spec: ENV-030, ENV-031, ENV-032, ENV-033, ENV-041 — the Nix packages: `omfp` (web bundle included, the pinned omp on
 # the wrapper's PATH; on macOS also `Applications/omfp.app`) and `omfp-headless` (without the desktop window)

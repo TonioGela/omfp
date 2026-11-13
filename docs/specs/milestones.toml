@@ -1012,6 +1012,8 @@ requirements = [
   "DMN-240",
   "PRT-143",
   "E2E-44",
+  # QA fixes: tests and tooling
+  "TST-112",
 ]
 
 [M15]

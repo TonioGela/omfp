@@ -1,16 +1,17 @@
 /**
- * `just check-workflow` (TST-070..TST-073): actionlint, then the GitHub workflow against the justfile. Run from the
- * repository root inside the dev shell: `bun .github/check-workflow.ts <just executable>`.
+ * `just check-workflow`: actionlint, then the GitHub workflows against the justfile (`check`, tested by
+ * `check-workflow.test.ts`). Run from the repository root inside the dev shell: `bun .github/check-workflow.ts <just
+ * executable>`.
  *
  * - TST-070: CI runs on pushes to master and on pull requests; each job sets up the dev shell and runs only `nix develop
- *   -c just <recipe>`; together the jobs run every recipe `just ci` runs, and nothing `just ci` does not (but the web
- *   bundle).
+ *   -c just <recipe>`; every recipe `just ci` runs has a job that runs it on pull requests too (no `if:`), and no job
+ *   runs a recipe `just ci` does not (but the web bundle).
  * - TST-071: actionlint passes; every action of every workflow (ENV-051 too) is pinned by a major tag or a commit SHA.
  *   The other rules are about `ci.yml` only.
  * - TST-072: the Nix store comes from the `omfp` Cachix cache, which only pushes to master fill; the cargo cache is
  *   saved on master only; every job hands the dev-shell action the Cachix token.
- * - TST-073: the web bundle is built once: the e2e and desktop jobs need the `build-web` job and serve its artifact
- *   through `OMFP_WEB_BUNDLE`.
+ * - TST-073: the web bundle is built once: every job running the e2e or desktop tests needs the `build-web` job and
+ *   serves its artifact through `OMFP_WEB_BUNDLE`.
  * - TST-075: before installing Nix, the dev-shell action pools the runner's disk into a Btrfs /nix with
  *   `wimpysworld/nothing-but-nix` (Linux runners), Nix builds in /nix/build, and the cachix daemon pushes every path as
  *   it is built.
@@ -22,13 +23,13 @@
  */
 import { $ } from "bun";
 
-interface Step {
+export interface Step {
   uses?: string;
   run?: string;
   if?: string;
   with?: Record<string, string>;
 }
-interface Job {
+export interface Job {
   "runs-on"?: string;
   if?: string;
   needs?: string | string[];
@@ -36,196 +37,255 @@ interface Job {
   permissions?: Record<string, string>;
   steps?: Step[];
 }
-interface Workflow {
+export interface Workflow {
   on?: { push?: { branches?: string[]; tags?: string[] }; pull_request?: unknown; workflow_dispatch?: unknown };
   permissions?: Record<string, string>;
   jobs: Record<string, Job>;
 }
-interface Action {
+export interface Action {
   runs: { steps: Step[] };
 }
-interface Recipes {
+/** `just --dump --dump-format json`, the parts read here. */
+export interface Recipes {
   recipes: Record<string, { dependencies: { recipe: string }[] }>;
 }
+/** What the check reads: `ci.yml`, the dev-shell action, the justfile's recipes, `release.yml` and every workflow. */
+export interface Inputs {
+  workflow: Workflow;
+  setup: Action;
+  recipes: Recipes["recipes"];
+  release: Workflow;
+  workflows: Workflow[];
+}
 
-const WORKFLOW = ".github/workflows/ci.yml";
-const SETUP = ".github/actions/dev-shell/action.yml";
+export const WORKFLOW = ".github/workflows/ci.yml";
+export const SETUP = ".github/actions/dev-shell/action.yml";
+export const RELEASE = ".github/workflows/release.yml";
 const SETUP_USES = "./.github/actions/dev-shell";
 const RUN = /^nix develop -c just ([\w-]+)$/;
 /** The GitHub expression `${{ inner }}`. */
 const expression = (inner: string) => `\${{ ${inner} }}`;
 const ON_MASTER = "github.ref == 'refs/heads/master'";
 
-const just = process.argv[2] ?? "just";
-await $`actionlint`;
+/** The recipe a step runs (`nix develop -c just <recipe>`), if it is one. */
+const recipeOf = (step: Step) => RUN.exec(step.run?.trim() ?? "")?.[1];
 
-const workflow = Bun.YAML.parse(await Bun.file(WORKFLOW).text()) as Workflow;
-const setup = Bun.YAML.parse(await Bun.file(SETUP).text()) as Action;
-const { recipes } = (await $`${just} --dump --dump-format json`.json()) as Recipes;
-const problems: string[] = [];
-
-// TST-070
-if (!workflow.on?.push?.branches?.includes("master") || !workflow.on || !("pull_request" in workflow.on)) {
-  problems.push(`${WORKFLOW} must run on pushes to master and on pull requests`);
-}
-const ranBy = new Map<string, string>();
-for (const [id, job] of Object.entries(workflow.jobs)) {
-  const steps = job.steps ?? [];
-  if (!steps.some((step) => step.uses === SETUP_USES)) {
-    problems.push(`job ${id} does not use ${SETUP_USES}`);
+/** The jobs running each recipe, in workflow order. */
+function jobsByRecipe(workflow: Workflow): Map<string, string[]> {
+  const ranBy = new Map<string, string[]>();
+  for (const [id, job] of Object.entries(workflow.jobs)) {
+    for (const step of job.steps ?? []) {
+      const recipe = recipeOf(step);
+      if (recipe !== undefined) ranBy.set(recipe, [...(ranBy.get(recipe) ?? []), id]);
+    }
   }
-  for (const step of steps) {
-    if (step.run === undefined) continue;
-    const recipe = RUN.exec(step.run.trim())?.[1];
-    if (recipe === undefined) {
-      problems.push(`job ${id} runs \`${step.run.trim()}\`, not \`nix develop -c just <recipe>\``);
-    } else if (!(recipe in recipes)) {
-      problems.push(`job ${id} runs \`just ${recipe}\`, which the justfile does not define`);
-    } else {
-      ranBy.set(recipe, id);
+  return ranBy;
+}
+
+/** TST-070 */
+function checkRecipes({ workflow, recipes }: Inputs, ranBy: Map<string, string[]>, problems: string[]) {
+  if (!workflow.on?.push?.branches?.includes("master") || !workflow.on || !("pull_request" in workflow.on)) {
+    problems.push(`${WORKFLOW} must run on pushes to master and on pull requests`);
+  }
+  for (const [id, job] of Object.entries(workflow.jobs)) {
+    const steps = job.steps ?? [];
+    if (!steps.some((step) => step.uses === SETUP_USES)) {
+      problems.push(`job ${id} does not use ${SETUP_USES}`);
+    }
+    for (const step of steps) {
+      if (step.run === undefined) continue;
+      const recipe = recipeOf(step);
+      if (recipe === undefined) {
+        problems.push(`job ${id} runs \`${step.run.trim()}\`, not \`nix develop -c just <recipe>\``);
+      } else if (!(recipe in recipes)) {
+        problems.push(`job ${id} runs \`just ${recipe}\`, which the justfile does not define`);
+      }
+    }
+  }
+  const ci = recipes.ci?.dependencies.map((dependency) => dependency.recipe) ?? [];
+  for (const recipe of ci) {
+    const always = (ranBy.get(recipe) ?? []).filter((id) => workflow.jobs[id]?.if === undefined);
+    if (always.length === 0) {
+      problems.push(`\`just ci\` runs ${recipe}, no job of ${WORKFLOW} does on every run (pull requests too)`);
+    }
+  }
+  for (const [recipe, ids] of ranBy) {
+    if (recipe === "build-web" || ci.includes(recipe) || !(recipe in recipes)) continue;
+    for (const id of ids) problems.push(`job ${id} runs \`just ${recipe}\`, which \`just ci\` does not`);
+  }
+}
+
+/** TST-071 */
+function checkPins({ setup, workflows }: Inputs, problems: string[]) {
+  const PINNED = /^[^@]+@(v\d+|[0-9a-f]{40})$/;
+  const steps = [
+    ...workflows.flatMap((other) => Object.values(other.jobs).flatMap((job) => job.steps ?? [])),
+    ...setup.runs.steps,
+  ];
+  for (const { uses } of steps) {
+    if (uses !== undefined && !uses.startsWith("./") && !PINNED.test(uses)) {
+      problems.push(`${uses} is pinned neither by a major tag nor by a commit SHA`);
     }
   }
 }
-const ci = recipes.ci?.dependencies.map((dependency) => dependency.recipe) ?? [];
-for (const recipe of ci) {
-  if (!ranBy.has(recipe)) problems.push(`\`just ci\` runs ${recipe}, no job of ${WORKFLOW} does`);
-}
-for (const [recipe, id] of ranBy) {
-  if (recipe !== "build-web" && !ci.includes(recipe)) {
-    problems.push(`job ${id} runs \`just ${recipe}\`, which \`just ci\` does not`);
+
+const setupStep = (setup: Action, action: string) =>
+  setup.runs.steps.find((step) => step.uses?.startsWith(`${action}@`));
+
+/** TST-072 */
+function checkCaches({ workflow, setup }: Inputs, problems: string[]) {
+  const cachix = setupStep(setup, "cachix/cachix-action");
+  if (cachix?.with?.name !== "omfp") problems.push(`${SETUP} must use the omfp Cachix cache`);
+  if (cachix?.with?.skipPush !== expression(`!(github.event_name == 'push' && ${ON_MASTER})`)) {
+    problems.push(`${SETUP} must push to Cachix on pushes to master only`);
+  }
+  if (setupStep(setup, "Swatinem/rust-cache")?.with?.["save-if"] !== expression(ON_MASTER)) {
+    problems.push(`${SETUP} must save the cargo cache on master only`);
+  }
+  for (const [id, job] of Object.entries(workflow.jobs)) {
+    const token = job.steps?.find((step) => step.uses === SETUP_USES)?.with?.["cachix-auth-token"];
+    if (token !== expression("secrets.CACHIX_AUTH_TOKEN")) {
+      problems.push(`job ${id} must hand ${SETUP_USES} the CACHIX_AUTH_TOKEN secret`);
+    }
   }
 }
 
-// TST-071
-const PINNED = /^[^@]+@(v\d+|[0-9a-f]{40})$/;
-const workflows = await Promise.all(
-  [...new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync()].map(
-    async (path) => Bun.YAML.parse(await Bun.file(path).text()) as Workflow,
-  ),
-);
-const steps = [
-  ...workflows.flatMap((other) => Object.values(other.jobs).flatMap((job) => job.steps ?? [])),
-  ...setup.runs.steps,
-];
-for (const { uses } of steps) {
-  if (uses !== undefined && !uses.startsWith("./") && !PINNED.test(uses)) {
-    problems.push(`${uses} is pinned neither by a major tag nor by a commit SHA`);
+/** TST-073: every job running the e2e or desktop tests serves the bundle of the one `build-web` job. */
+function checkBundle({ workflow }: Inputs, ranBy: Map<string, string[]>, problems: string[]) {
+  const webJobs = ranBy.get("build-web") ?? [];
+  const webJob = webJobs.length === 1 ? webJobs[0] : undefined;
+  const upload = webJob
+    ? workflow.jobs[webJob]?.steps?.find((step) => step.uses?.startsWith("actions/upload-artifact@"))
+    : undefined;
+  if (webJob === undefined || upload?.with?.path !== "ui/packages/app/dist") {
+    problems.push("one job must run `just build-web` and upload ui/packages/app/dist");
+  }
+  const ids = new Set(["test-e2e", "test-desktop"].flatMap((recipe) => ranBy.get(recipe) ?? []));
+  for (const id of ids) {
+    const job = workflow.jobs[id];
+    const needs = [job?.needs ?? []].flat();
+    const download = job?.steps?.find((step) => step.uses?.startsWith("actions/download-artifact@"));
+    if (
+      webJob === undefined ||
+      !needs.includes(webJob) ||
+      job?.env?.OMFP_WEB_BUNDLE === undefined ||
+      download?.with?.name !== upload?.with?.name ||
+      download?.with?.path !== expression("env.OMFP_WEB_BUNDLE")
+    ) {
+      problems.push(`job ${id} must serve the bundle of job ${webJob ?? "?"} through OMFP_WEB_BUNDLE`);
+    }
   }
 }
 
-// TST-072
-const setupStep = (action: string) => setup.runs.steps.find((step) => step.uses?.startsWith(`${action}@`));
-const cachix = setupStep("cachix/cachix-action");
-if (cachix?.with?.name !== "omfp") problems.push(`${SETUP} must use the omfp Cachix cache`);
-if (cachix?.with?.skipPush !== expression(`!(github.event_name == 'push' && ${ON_MASTER})`)) {
-  problems.push(`${SETUP} must push to Cachix on pushes to master only`);
-}
-if (setupStep("Swatinem/rust-cache")?.with?.["save-if"] !== expression(ON_MASTER)) {
-  problems.push(`${SETUP} must save the cargo cache on master only`);
-}
-for (const [id, job] of Object.entries(workflow.jobs)) {
-  const token = job.steps?.find((step) => step.uses === SETUP_USES)?.with?.["cachix-auth-token"];
-  if (token !== expression("secrets.CACHIX_AUTH_TOKEN")) {
-    problems.push(`job ${id} must hand ${SETUP_USES} the CACHIX_AUTH_TOKEN secret`);
+/** TST-075 */
+function checkDisk({ setup }: Inputs, problems: string[]) {
+  const setupIndex = (action: string) => setup.runs.steps.findIndex((step) => step.uses?.startsWith(`${action}@`));
+  const pool = setupIndex("wimpysworld/nothing-but-nix");
+  const install = setupIndex("cachix/install-nix-action");
+  if (pool === -1 || install === -1 || pool > install) {
+    problems.push(`${SETUP} must run wimpysworld/nothing-but-nix before cachix/install-nix-action`);
+  }
+  if (!/^build-dir = \/nix\/build$/m.test(setup.runs.steps[install]?.with?.extra_nix_config ?? "")) {
+    problems.push(`${SETUP} must make Nix build in /nix/build (extra_nix_config: build-dir = /nix/build)`);
+  }
+  if (setupStep(setup, "cachix/cachix-action")?.with?.useDaemon === "false") {
+    problems.push(`${SETUP} must keep the cachix daemon, which pushes what a failing job built`);
   }
 }
 
-// TST-073
-const webJob = ranBy.get("build-web");
-const upload = webJob
-  ? workflow.jobs[webJob]?.steps?.find((step) => step.uses?.startsWith("actions/upload-artifact@"))
-  : undefined;
-if (webJob === undefined || upload?.with?.path !== "ui/packages/app/dist") {
-  problems.push("one job must run `just build-web` and upload ui/packages/app/dist");
-}
-for (const recipe of ["test-e2e", "test-desktop"]) {
-  const id = ranBy.get(recipe);
-  const job = id === undefined ? undefined : workflow.jobs[id];
-  if (id === undefined || job === undefined) continue;
-  const needs = [job.needs ?? []].flat();
-  const download = job.steps?.find((step) => step.uses?.startsWith("actions/download-artifact@"));
-  if (
-    webJob === undefined ||
-    !needs.includes(webJob) ||
-    job.env?.OMFP_WEB_BUNDLE === undefined ||
-    download?.with?.name !== upload?.with?.name ||
-    download?.with?.path !== expression("env.OMFP_WEB_BUNDLE")
-  ) {
-    problems.push(`job ${id} must serve the bundle of job ${webJob ?? "?"} through OMFP_WEB_BUNDLE`);
+/** TST-076 */
+function checkShellJob({ workflow, setup }: Inputs, problems: string[]) {
+  const SHELL_JOB = "dev-shell";
+  const isLinux = (job: Job) => job["runs-on"]?.startsWith("ubuntu-") ?? false;
+  const shellJob = workflow.jobs[SHELL_JOB];
+  if (shellJob === undefined || !isLinux(shellJob) || (shellJob.steps ?? []).some((step) => step.run !== undefined)) {
+    problems.push(`job ${SHELL_JOB} must only set up the dev shell on a Linux runner`);
+  }
+  for (const [id, job] of Object.entries(workflow.jobs)) {
+    if (id !== SHELL_JOB && isLinux(job) && ![job.needs ?? []].flat().includes(SHELL_JOB)) {
+      problems.push(`job ${id} must need ${SHELL_JOB}, which builds the Linux dev shell once`);
+    }
+  }
+  const cargoHome = setup.runs.steps.find((step) => /CARGO_HOME=/.test(step.run ?? ""));
+  if (!/^\s*echo "CARGO_HOME=\/var\/tmp\/nothing-but-nix\/[^"]+" >> "\$GITHUB_ENV"$/m.test(cargoHome?.run ?? "")) {
+    problems.push(`${SETUP} must put CARGO_HOME on the Nix volume (/var/tmp/nothing-but-nix)`);
   }
 }
 
-// TST-075
-const setupIndex = (action: string) => setup.runs.steps.findIndex((step) => step.uses?.startsWith(`${action}@`));
-const pool = setupIndex("wimpysworld/nothing-but-nix");
-const install = setupIndex("cachix/install-nix-action");
-if (pool === -1 || install === -1 || pool > install) {
-  problems.push(`${SETUP} must run wimpysworld/nothing-but-nix before cachix/install-nix-action`);
-}
-if (!/^build-dir = \/nix\/build$/m.test(setup.runs.steps[install]?.with?.extra_nix_config ?? "")) {
-  problems.push(`${SETUP} must make Nix build in /nix/build (extra_nix_config: build-dir = /nix/build)`);
-}
-if (cachix?.with?.useDaemon === "false") {
-  problems.push(`${SETUP} must keep the cachix daemon, which pushes what a failing job built`);
-}
-
-// TST-076
-const SHELL_JOB = "dev-shell";
-const isLinux = (job: Job) => job["runs-on"]?.startsWith("ubuntu-") ?? false;
-const shellJob = workflow.jobs[SHELL_JOB];
-if (shellJob === undefined || !isLinux(shellJob) || (shellJob.steps ?? []).some((step) => step.run !== undefined)) {
-  problems.push(`job ${SHELL_JOB} must only set up the dev shell on a Linux runner`);
-}
-for (const [id, job] of Object.entries(workflow.jobs)) {
-  if (id !== SHELL_JOB && isLinux(job) && ![job.needs ?? []].flat().includes(SHELL_JOB)) {
-    problems.push(`job ${id} must need ${SHELL_JOB}, which builds the Linux dev shell once`);
-  }
-}
-const cargoHome = setup.runs.steps.find((step) => /CARGO_HOME=/.test(step.run ?? ""));
-if (!/^\s*echo "CARGO_HOME=\/var\/tmp\/nothing-but-nix\/[^"]+" >> "\$GITHUB_ENV"$/m.test(cargoHome?.run ?? "")) {
-  problems.push(`${SETUP} must put CARGO_HOME on the Nix volume (/var/tmp/nothing-but-nix)`);
-}
-
-// TST-092
-const MACOS_RECIPES = ["test-desktop", "package"];
-const macos = Object.entries(workflow.jobs).filter(([, job]) => /^macos-\d+$/.test(job["runs-on"] ?? ""));
-if (
-  !macos.some(([, job]) => {
-    const recipes = (job.steps ?? []).map((step) => RUN.exec(step.run?.trim() ?? "")?.[1]);
-    return job.if === "github.event_name == 'push'" && MACOS_RECIPES.every((recipe) => recipes.includes(recipe));
-  })
-) {
-  problems.push(`one job on a macOS runner must run ${MACOS_RECIPES.join(" and ")} on pushes to master only`);
-}
-
-// ENV-060
-const RELEASE = ".github/workflows/release.yml";
-const RELEASE_RECIPES: Record<string, RegExp> = {
-  "package-linux": /^ubuntu-/,
-  "package-flatpak": /^ubuntu-/,
-  "package-macos": /^macos-\d+$/,
-};
-const release = Bun.YAML.parse(await Bun.file(RELEASE).text()) as Workflow;
-if (!release.on?.push?.tags?.includes("v*") || !release.on || !("workflow_dispatch" in release.on)) {
-  problems.push(`${RELEASE} must run on pushed v* tags and by hand (workflow_dispatch)`);
-}
-if (release.permissions?.contents !== "read") problems.push(`${RELEASE} must only read the contents by default`);
-for (const [recipe, runner] of Object.entries(RELEASE_RECIPES)) {
-  const builds = Object.values(release.jobs).some(
-    (job) =>
-      runner.test(job["runs-on"] ?? "") &&
-      (job.steps ?? []).some((step) => step.uses === SETUP_USES) &&
-      (job.steps ?? []).some((step) => RUN.exec(step.run?.trim() ?? "")?.[1] === recipe),
-  );
-  if (!builds) problems.push(`${RELEASE}: a job on a ${runner} runner must run \`just ${recipe}\` in the dev shell`);
-}
-for (const [id, job] of Object.entries(release.jobs)) {
-  if (job.permissions?.contents === "write" && job.if !== "github.ref_type == 'tag'") {
-    problems.push(`${RELEASE}: job ${id} writes the contents, so it must run on tags only`);
+/** TST-092 */
+function checkMacos({ workflow }: Inputs, problems: string[]) {
+  const MACOS_RECIPES = ["test-desktop", "package"];
+  const macos = Object.values(workflow.jobs).filter((job) => /^macos-\d+$/.test(job["runs-on"] ?? ""));
+  const pushOnly = macos.some((job) => {
+    const ran = (job.steps ?? []).map(recipeOf);
+    return job.if === "github.event_name == 'push'" && MACOS_RECIPES.every((recipe) => ran.includes(recipe));
+  });
+  if (!pushOnly) {
+    problems.push(`one job on a macOS runner must run ${MACOS_RECIPES.join(" and ")} on pushes to master only`);
   }
 }
 
-if (problems.length > 0) {
-  console.error([...new Set(problems)].join("\n"));
-  process.exit(1);
+/** ENV-060 */
+function checkRelease({ release }: Inputs, problems: string[]) {
+  const RELEASE_RECIPES: Record<string, RegExp> = {
+    "package-linux": /^ubuntu-/,
+    "package-flatpak": /^ubuntu-/,
+    "package-macos": /^macos-\d+$/,
+  };
+  if (!release.on?.push?.tags?.includes("v*") || !release.on || !("workflow_dispatch" in release.on)) {
+    problems.push(`${RELEASE} must run on pushed v* tags and by hand (workflow_dispatch)`);
+  }
+  if (release.permissions?.contents !== "read") problems.push(`${RELEASE} must only read the contents by default`);
+  for (const [recipe, runner] of Object.entries(RELEASE_RECIPES)) {
+    const builds = Object.values(release.jobs).some(
+      (job) =>
+        runner.test(job["runs-on"] ?? "") &&
+        (job.steps ?? []).some((step) => step.uses === SETUP_USES) &&
+        (job.steps ?? []).some((step) => recipeOf(step) === recipe),
+    );
+    if (!builds) problems.push(`${RELEASE}: a job on a ${runner} runner must run \`just ${recipe}\` in the dev shell`);
+  }
+  for (const [id, job] of Object.entries(release.jobs)) {
+    if (job.permissions?.contents === "write" && job.if !== "github.ref_type == 'tag'") {
+      problems.push(`${RELEASE}: job ${id} writes the contents, so it must run on tags only`);
+    }
+  }
+}
+
+/** Every problem of the workflows against the justfile, once each. */
+export function check(inputs: Inputs): string[] {
+  const problems: string[] = [];
+  const ranBy = jobsByRecipe(inputs.workflow);
+  checkRecipes(inputs, ranBy, problems);
+  checkPins(inputs, problems);
+  checkCaches(inputs, problems);
+  checkBundle(inputs, ranBy, problems);
+  checkDisk(inputs, problems);
+  checkShellJob(inputs, problems);
+  checkMacos(inputs, problems);
+  checkRelease(inputs, problems);
+  return [...new Set(problems)];
+}
+
+const yaml = async <T>(path: string) => Bun.YAML.parse(await Bun.file(path).text()) as T;
+
+/** The repository's workflows and the recipes of `just` (run from the repository root). */
+export async function read(just: string): Promise<Inputs> {
+  const paths = [...new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync()];
+  return {
+    workflow: await yaml<Workflow>(WORKFLOW),
+    setup: await yaml<Action>(SETUP),
+    recipes: ((await $`${just} --dump --dump-format json`.json()) as Recipes).recipes,
+    release: await yaml<Workflow>(RELEASE),
+    workflows: await Promise.all(paths.map((path) => yaml<Workflow>(path))),
+  };
+}
+
+if (import.meta.main) {
+  await $`actionlint`;
+  const problems = check(await read(process.argv[2] ?? "just"));
+  if (problems.length > 0) {
+    console.error(problems.join("\n"));
+    process.exit(1);
+  }
 }
