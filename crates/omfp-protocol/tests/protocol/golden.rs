@@ -1639,7 +1639,7 @@ fn index_snapshot_lists_workspaces_threads_the_theme_and_settings() {
     insta::assert_json_snapshot!("index_snapshot", snapshot);
 }
 
-// spec: DMN-022, DMN-027
+// spec: DMN-027
 #[test]
 fn a_discovered_repository_carries_its_kind_inline() {
     let repos = serde_json::to_value(&workspace().repos).unwrap();
@@ -1657,7 +1657,7 @@ fn a_discovered_repository_carries_its_kind_inline() {
     assert_eq!(link["sharedWith"], json!([workspace().id]));
 }
 
-// spec: DMN-009, UI-097, UI-145, PRT-143
+// spec: UI-097, PRT-143
 #[test]
 fn settings_omit_defaults_and_null_the_error() {
     assert_eq!(

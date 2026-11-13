@@ -5,7 +5,6 @@ use serde_json::json;
 
 use crate::samples::{THREAD_ID, WORKSPACE_ID};
 
-// spec: PRT-040, PRT-041, TST-050
 #[test]
 fn topics_round_trip_through_their_names() {
     let cases = [

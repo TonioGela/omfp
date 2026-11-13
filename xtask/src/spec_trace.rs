@@ -641,4 +641,32 @@ Text mentioning ARC-001 is not a definition.
             ]
         );
     }
+
+    // spec: TST-115
+    #[test]
+    fn the_only_ignored_tests_are_the_benchmarks() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut ignored = Vec::new();
+        for path in citing_files(&root) {
+            if path.extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+            let source = std::fs::read_to_string(&path).expect("source");
+            let lines: Vec<&str> = source.lines().collect();
+            for (index, line) in lines.iter().enumerate() {
+                if !line.trim_start().starts_with("#[ignore") {
+                    continue;
+                }
+                let function = lines[index + 1..]
+                    .iter()
+                    .find_map(|line| line.split("fn ").nth(1))
+                    .and_then(|rest| rest.split('(').next())
+                    .unwrap_or_default();
+                if !function.starts_with("benchmark_") {
+                    ignored.push(format!("{}: {function}", path.display()));
+                }
+            }
+        }
+        assert_eq!(ignored, Vec::<String>::new());
+    }
 }

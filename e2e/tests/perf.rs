@@ -882,7 +882,7 @@ async fn benchmark_transcript() -> anyhow::Result<()> {
     .await
 }
 
-// spec: TST-100, TST-115
+// spec: TST-100
 #[tokio::test(flavor = "multi_thread")]
 async fn the_transcript_benchmark_runs_on_a_short_thread() -> anyhow::Result<()> {
     transcript_benchmark(200, 100, 1).await

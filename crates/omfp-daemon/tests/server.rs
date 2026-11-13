@@ -245,7 +245,7 @@ async fn upgrades_from_listed_origins_pass_and_others_are_rejected() {
     }
 }
 
-// spec: PRT-005, PRT-004, PRT-032, PRT-042, PRT-051
+// spec: PRT-005, PRT-004, PRT-032, PRT-042
 #[tokio::test(flavor = "multi_thread")]
 async fn hello_reports_versions_and_warnings_and_refuses_unknown_protocols() {
     let daemon = daemon(&[]).await;

@@ -118,7 +118,7 @@ fn tool_result(request: &Value, call_id: &str) -> String {
         )
 }
 
-// spec: DMN-062, AGT-025, PRT-030
+// spec: DMN-062, AGT-025
 #[tokio::test(flavor = "multi_thread")]
 async fn the_agent_reads_the_widget_docs_and_the_views_schema_from_omfp_urls() {
     let harness = Harness::new(vec![

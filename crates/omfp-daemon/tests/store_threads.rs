@@ -90,7 +90,7 @@ fn a_new_thread_lives_in_its_workspace_with_its_own_session_directory() {
     assert_eq!(env.threads.list().unwrap(), vec![thread]);
 }
 
-// spec: ARC-008, ARC-009
+// spec: ARC-009
 #[test]
 fn a_thread_records_settings_and_provenance() {
     let env = env();

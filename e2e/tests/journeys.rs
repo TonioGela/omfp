@@ -29,7 +29,7 @@ async fn header_chips(journey: &Journey) -> anyhow::Result<Vec<(String, String)>
         .collect())
 }
 
-// spec: E2E-01, UI-001, UI-002, UI-012, UI-023, UI-340, TST-031
+// spec: E2E-01, UI-002, UI-023, UI-340, TST-031
 #[tokio::test(flavor = "multi_thread")]
 async fn a_draft_thread_in_a_workspace_linking_a_repository_is_created_by_its_first_message()
 -> anyhow::Result<()> {
@@ -141,7 +141,7 @@ async fn one_tool_card(journey: &Journey, status: &str) -> anyhow::Result<()> {
         .await
 }
 
-// spec: E2E-02, UI-070, UI-071, UI-050, UI-092, TST-031
+// spec: E2E-02, UI-070, UI-092
 #[tokio::test(flavor = "multi_thread")]
 async fn a_tool_needing_approval_completes_after_approving_it_in_the_ui() -> anyhow::Result<()> {
     let journey = Journey::start(vec![
@@ -206,7 +206,7 @@ const ASK_FORM: &str = r#"<form>
   </fieldset>
 </form>"#;
 
-// spec: E2E-03, UI-071
+// spec: E2E-03
 #[tokio::test(flavor = "multi_thread")]
 async fn an_ask_with_two_questions_is_answered_and_the_agent_gets_the_answers() -> anyhow::Result<()>
 {
@@ -282,7 +282,7 @@ async fn transcript_counts(journey: &Journey) -> anyhow::Result<(usize, usize, u
     ))
 }
 
-// spec: E2E-04, UI-002, UI-003, UI-010
+// spec: E2E-04, UI-002
 #[tokio::test(flavor = "multi_thread")]
 async fn reloading_mid_turn_continues_the_transcript_without_gaps_or_duplicates()
 -> anyhow::Result<()> {
@@ -1343,7 +1343,7 @@ async fn code_follows_the_theme(journey: &Journey) -> anyhow::Result<()> {
     Ok(())
 }
 
-// spec: E2E-06, UI-080, UI-050, UI-090, DMN-026, UI-025, DMN-023
+// spec: E2E-06, UI-080, UI-090, DMN-026, UI-025, DMN-023
 #[tokio::test(flavor = "multi_thread")]
 async fn a_file_the_agent_edits_shows_its_diff_in_the_changes_widget() -> anyhow::Result<()> {
     let repo = repository("fig-6");

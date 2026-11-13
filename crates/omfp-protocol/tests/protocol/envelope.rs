@@ -81,7 +81,7 @@ fn version_mismatch_lists_the_supported_versions() {
     insta::assert_json_snapshot!("error_response_version_mismatch", golden);
 }
 
-// spec: TST-050
+// spec: PRT-010
 #[test]
 fn a_response_is_either_a_result_or_an_error() {
     let ok: ServerFrame =
@@ -143,7 +143,7 @@ fn index_event_frame() {
     );
 }
 
-// spec: DMN-009, UI-097
+// spec: UI-097
 #[test]
 fn the_index_topic_carries_settings_changes() {
     let changed = ServerFrame::Event(EventFrame {

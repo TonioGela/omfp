@@ -66,7 +66,7 @@ function grantedPort(shown: Array<{ notice: Notice; click: () => void }>): Notif
 }
 
 describe("notifications the agent sends", () => {
-  // spec: UI-215, DMN-125
+  // spec: UI-215, PRT-065
   test("with focus, the window a `notify` request names shows it once in the mode line; `g n` opens its thread", () => {
     const shown: Array<{ notice: Notice; click: () => void }> = [];
     const test = setup({ notifications: grantedPort(shown), hasFocus: () => true });

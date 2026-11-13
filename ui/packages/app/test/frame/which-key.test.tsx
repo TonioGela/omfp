@@ -110,7 +110,7 @@ function entries(): string[][] {
 }
 
 describe("which-key panel", () => {
-  // spec: UI-320, UI-321, UI-323, UI-431
+  // spec: UI-320, UI-321, UI-323
   test("a prefix shows the keys completing it after the delay, in a labelled region, announced", async () => {
     const test = await setup();
     document.body.focus();
@@ -150,7 +150,7 @@ describe("which-key panel", () => {
     expect(log).toEqual(["hello"]);
   });
 
-  // spec: UI-320, UI-262, UI-431
+  // spec: UI-320, UI-262
   test("it lists the live bindings: init files', `[keymap]` entries with a widget's command, removed defaults gone", async () => {
     const test = await setup();
     test.keymap([

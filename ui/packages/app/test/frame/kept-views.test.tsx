@@ -222,7 +222,7 @@ describe("kept views", () => {
     expect(screen.getByTestId("poller").textContent).toBe("notes");
   });
 
-  // spec: UI-390, UI-387
+  // spec: UI-390, UI-392
   test(`at most ${KEPT_VIEWS} views stay kept besides the shown one: the least recently shown is dropped`, async () => {
     const test = setup();
     const { host } = test;

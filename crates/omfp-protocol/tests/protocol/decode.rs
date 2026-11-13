@@ -127,7 +127,7 @@ fn invalid_params_are_a_bad_request_for_that_id() {
     }
 }
 
-// spec: PRT-011, TST-050
+// spec: PRT-011
 #[test]
 fn malformed_frames_are_bad_requests() {
     let cases = [

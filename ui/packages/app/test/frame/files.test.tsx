@@ -473,7 +473,7 @@ describe("files the agent opens", () => {
 });
 
 describe("mode line", () => {
-  // spec: UI-112, UI-167
+  // spec: UI-112
   test("while the file editor has the focus the mode line shows vim's mode", () => {
     const test = setup();
     // The mode pill is rendered again on each mode change (its entrance motion).
