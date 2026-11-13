@@ -236,6 +236,24 @@ describe("composer", () => {
     expect(document.activeElement === input()).toBe(true);
   });
 
+  // spec: UI-095, UI-400
+  test("Esc goes to the transcript of the composer's own chat, not the first one in the page", async () => {
+    // Another transcript earlier in the page: a kept tab's or a second chat's.
+    const other = document.createElement("div");
+    other.setAttribute("data-omfp-scope", "transcript");
+    other.setAttribute("data-testid", "other-transcript");
+    other.tabIndex = 0;
+    document.body.prepend(other);
+    try {
+      renderThread(<ChatWidget />, fixtureEvents("text_reply"));
+      await userEvent.click(input());
+      await userEvent.keyboard("{Escape}");
+      expect(document.activeElement?.getAttribute("data-testid")).toBe("transcript");
+    } finally {
+      other.remove();
+    }
+  });
+
   // spec: UI-064
   test("drafts are kept per thread across thread switches", async () => {
     const { client, flush, host } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"));

@@ -286,6 +286,19 @@ function insertLineBreak(input: HTMLTextAreaElement, apply: (text: string) => vo
   apply(text);
 }
 
+/**
+ * The transcript of the composer's own chat: the first rendered one found walking up from the composer, so a kept
+ * tab's hidden transcript or another chat earlier in the page never takes the focus (UI-400).
+ */
+function nearestTranscript(from: HTMLElement | null): HTMLElement | undefined {
+  const selector = `[${SCOPE_ATTRIBUTE}="transcript"]`;
+  for (let node = from?.parentElement; node; node = node.parentElement) {
+    const found = [...node.querySelectorAll<HTMLElement>(selector)].find((element) => element.checkVisibility());
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}
+
 function modifiersOf(event: KeyboardEvent): Modifiers {
   return { shift: event.shiftKey, alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey };
 }
@@ -425,8 +438,9 @@ export const Composer = memo(function Composer({
   latestSend.current = send;
   const sendLatest = useCallback((chosen: SendMode) => latestSend.current(chosen), []);
   const leave = () => {
-    inputRef.current?.blur();
-    document.querySelector<HTMLElement>(`[${SCOPE_ATTRIBUTE}="transcript"]`)?.focus();
+    const input = inputRef.current;
+    input?.blur();
+    nearestTranscript(input)?.focus();
   };
   const pick = (suggestion: Suggestion) => {
     setDraft((previous) => ({ ...previous, text: complete(suggestion) }));
