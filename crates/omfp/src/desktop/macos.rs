@@ -254,7 +254,7 @@ pub fn with_app_menu(
                     "omfp desktop",
                 ),
                 Err(error) => {
-                    eprintln!("omfp desktop: no new window, cannot find this executable: {error}")
+                    eprintln!("omfp desktop: no new window, cannot find this executable: {error}");
                 }
             },
             Some(MenuAction::Zoom(step)) => {
