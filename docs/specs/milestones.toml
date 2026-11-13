@@ -927,6 +927,9 @@ requirements = [
   "TST-110",
   # QA fixes: the terminal is removed
   "PRT-135",
+  # QA fixes: one name line per turn
+  "UI-470",
+  "UI-471",
   # Journeys
   "E2E-22",
   "E2E-23",

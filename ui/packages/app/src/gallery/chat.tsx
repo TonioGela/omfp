@@ -81,7 +81,8 @@ export function Transcript() {
             <Markdown text={"Done: the tokens now live in **one namespace**, `--omfp-*`."} />
           </Message>
         </div>
-        <Message author="assistant" name="omp">
+        {/* The turn goes on (UI-470): no second name line. */}
+        <Message author="assistant" name="omp" continues>
           <p className="omfp-prose">
             Restyling the buttons now, starting with the primary gradient
             <StreamCaret />

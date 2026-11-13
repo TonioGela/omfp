@@ -49,19 +49,30 @@ export interface MessageProps extends HTMLAttributes<HTMLElement> {
   author: "user" | "assistant";
   /** The name on the name line (after `◆` for the assistant, `▸` for the user). */
   name: ReactNode;
+  /**
+   * A later message of the same turn (UI-470, UI-471): no name line, a plain block under the turn's first message,
+   * which is the turn's one `article`.
+   */
+  continues?: boolean;
   /** Why the message failed, shown under its body in error. */
   error?: ReactNode;
   children?: ReactNode;
 }
 
-/** A transcript message (UI-171): name line, then the body (prose, a 2 px tertiary bar for the user). */
-export function Message({ author, name, error, className, children, ...props }: MessageProps) {
+/**
+ * A transcript message (UI-171): name line, then the body (prose, a 2 px tertiary bar for the user); one that
+ * `continues` its turn has the body only.
+ */
+export function Message({ author, name, continues = false, error, className, children, ...props }: MessageProps) {
+  const Element = continues ? "div" : "article";
   return (
-    <article {...props} className={cx("omfp-msg", className)} data-author={author}>
-      <div className={cx("omfp-msg__name", author === "assistant" && "omfp-grad-text")}>
-        {author === "assistant" ? "◆ " : "▸ "}
-        {name}
-      </div>
+    <Element {...props} className={cx("omfp-msg", className)} data-author={author}>
+      {!continues && (
+        <div className={cx("omfp-msg__name", author === "assistant" && "omfp-grad-text")}>
+          {author === "assistant" ? "◆ " : "▸ "}
+          {name}
+        </div>
+      )}
       <div className="omfp-msg__body">{children}</div>
       {error !== undefined && (
         <p className="omfp-msg__error" role="alert">
@@ -69,7 +80,7 @@ export function Message({ author, name, error, className, children, ...props }: 
           {error}
         </p>
       )}
-    </article>
+    </Element>
   );
 }
 

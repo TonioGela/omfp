@@ -25,6 +25,7 @@ import {
   Markdown,
   Menu,
   MenuItem,
+  Message,
   Meter,
   ModeLine,
   ModeNotice,
@@ -798,6 +799,28 @@ describe("shell", () => {
     expect(screen.queryByText("Considering the options.")).toBeNull();
     await user.click(screen.getByTestId("thinking-head"));
     expect(screen.getByText("Considering the options.")).toBeDefined();
+  });
+
+  // spec: UI-171, UI-471
+  test("a message that continues its turn has no name line and is no article: the turn's first message is", () => {
+    render(
+      <>
+        <Message author="assistant" name="Assistant" data-testid="first">
+          one
+        </Message>
+        <Message author="assistant" name="Assistant" continues data-testid="next" error="stopped">
+          two
+        </Message>
+      </>,
+    );
+    const [first, next] = [screen.getByTestId("first"), screen.getByTestId("next")];
+    expect([first.tagName, first.querySelector(".omfp-msg__name")?.textContent]).toEqual(["ARTICLE", "◆ Assistant"]);
+    expect([next.tagName, next.querySelectorAll(".omfp-msg__name").length, next.textContent]).toEqual([
+      "DIV",
+      0,
+      "twostopped",
+    ]);
+    expect(screen.getAllByRole("article").length).toBe(1);
   });
 });
 

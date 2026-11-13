@@ -443,6 +443,7 @@ describe("opening files from cards", () => {
         <MessageRow
           cardKey="m1"
           streaming={false}
+          continues={false}
           view={{
             role: "assistant",
             label: "Assistant",
@@ -454,6 +455,7 @@ describe("opening files from cards", () => {
         <MessageRow
           cardKey="m2"
           streaming={false}
+          continues={false}
           view={{
             role: "user",
             label: "You",

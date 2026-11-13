@@ -27,11 +27,15 @@ import { type NoticeRow, noticeRow } from "./notice.ts";
 import { type SystemRow, systemMessage, systemNotice } from "./system.ts";
 import { oneLine, prettyJson, type ToolCard, toolCard } from "./tool.ts";
 
-/** What an item renders: `state.transcript[index]`, `state.notices[index]` or `state.streaming`. */
+/**
+ * What an item renders: `state.transcript[index]`, `state.notices[index]` or `state.streaming`. A turn runs from a
+ * user's message to the next (a steer or follow-up starts one too): an assistant message after the turn's first
+ * `continues` it, shown under the first one's name line without its own (UI-470).
+ */
 export type ItemKind =
-  | { readonly type: "message"; readonly index: number }
+  | { readonly type: "message"; readonly index: number; readonly continues: boolean }
   | { readonly type: "notice"; readonly index: number }
-  | { readonly type: "streaming" };
+  | { readonly type: "streaming"; readonly continues: boolean };
 
 /** One row of the transcript with a key that stays stable while the transcript grows. */
 export interface Item {
@@ -102,8 +106,9 @@ const ITEM_LISTS = new WeakMap<readonly TranscriptEntry[], ItemList>();
 
 /**
  * The transcript's rows in order: each notice goes after the messages that preceded it, tool results shown inside
- * their call's card are left out, and the streaming reply comes last. The same array while the transcript, the
- * notices and whether a reply streams stay the same.
+ * their call's card are left out, and the streaming reply comes last; each message and the streaming reply say
+ * whether they continue their turn (UI-470). The same array while the transcript, the notices and whether a reply
+ * streams stay the same.
  */
 export function items(state: ThreadState): readonly Item[] {
   const streaming = state.streaming !== null;
@@ -119,16 +124,20 @@ export function items(state: ThreadState): readonly Item[] {
       result.push({ key: `n${notice}`, kind: { type: "notice", index: notice } });
     }
   };
+  // Whether the current turn has shown an assistant message (and so its name line) yet.
+  let answered = false;
   for (const [index, { message }] of state.transcript.entries()) {
     noticesUpTo(index);
     if (message.role === "toolResult" && message.toolCallId !== undefined && called.has(message.toolCallId)) {
       continue;
     }
-    result.push({ key: `m${index}`, kind: { type: "message", index } });
+    const assistant = message.role === "assistant";
+    result.push({ key: `m${index}`, kind: { type: "message", index, continues: assistant && answered } });
+    answered = assistant || (answered && message.role !== "user");
   }
   noticesUpTo(Number.POSITIVE_INFINITY);
   if (streaming) {
-    result.push({ key: "streaming", kind: { type: "streaming" } });
+    result.push({ key: "streaming", kind: { type: "streaming", continues: answered } });
   }
   ITEM_LISTS.set(state.transcript, { notices: state.notices, streaming, items: result });
   return result;
@@ -287,7 +296,8 @@ function assistantView(state: ThreadState, message: AssistantMessage): MessageVi
 
 /** What a transcript row shows. */
 export type RowContent =
-  | { readonly type: "message"; readonly view: MessageView; readonly streaming: boolean }
+  /** A message; one that `continues` its turn shows no name line (UI-470). */
+  | { readonly type: "message"; readonly view: MessageView; readonly streaming: boolean; readonly continues: boolean }
   /** omp's own bookkeeping, as a muted row (UI-043). */
   | { readonly type: "system"; readonly row: SystemRow }
   | { readonly type: "notice"; readonly row: NoticeRow };
@@ -307,7 +317,7 @@ function rowFor(source: object, content: RowContent): RowContent {
 function sameContent(a: RowContent, b: RowContent): boolean {
   switch (a.type) {
     case "message":
-      return b.type === "message" && a.view === b.view && a.streaming === b.streaming;
+      return b.type === "message" && a.view === b.view && a.streaming === b.streaming && a.continues === b.continues;
     case "system":
     case "notice":
       return a.type === b.type;
@@ -331,7 +341,12 @@ export function rowContent(state: ThreadState, item: Item): RowContent | undefin
       }
       const system = systemMessage(message);
       return system === undefined
-        ? rowFor(message, { type: "message", view: messageView(state, item.kind.index), streaming: false })
+        ? rowFor(message, {
+            type: "message",
+            view: messageView(state, item.kind.index),
+            streaming: false,
+            continues: item.kind.continues,
+          })
         : rowFor(message, { type: "system", row: system });
     }
     case "notice": {
@@ -353,7 +368,7 @@ export function rowContent(state: ThreadState, item: Item): RowContent | undefin
       const view = streamingView(state);
       return view === undefined || state.streaming === null
         ? undefined
-        : rowFor(state.streaming.message, { type: "message", view, streaming: true });
+        : rowFor(state.streaming.message, { type: "message", view, streaming: true, continues: item.kind.continues });
     }
   }
 }

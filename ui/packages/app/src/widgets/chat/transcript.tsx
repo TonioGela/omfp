@@ -418,7 +418,9 @@ const NavRegistration = memo(function NavRegistration({
 const Row = memo(function Row({ cardKey, content }: { cardKey: string; content: RowContent }) {
   switch (content.type) {
     case "message":
-      return <MessageRow cardKey={cardKey} view={content.view} streaming={content.streaming} />;
+      return (
+        <MessageRow cardKey={cardKey} view={content.view} streaming={content.streaming} continues={content.continues} />
+      );
     case "system":
       return <SystemRowView cardKey={cardKey} row={content.row} />;
     case "notice":

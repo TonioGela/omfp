@@ -116,6 +116,78 @@ describe("transcript items", () => {
   });
 });
 
+/** A user's message, an assistant turn of two tool calls (thinking first) and a reply, a steer and its answer. */
+function turns(): ThreadState {
+  const call = (id: string, thinking?: string): AgentMessage => ({
+    role: "assistant",
+    content: [
+      ...(thinking === undefined ? [] : [{ type: "thinking" as const, thinking }]),
+      { type: "toolCall", id, name: "eval", arguments: { code: "1" } },
+    ],
+  });
+  const result = (id: string): AgentMessage => ({
+    role: "toolResult",
+    toolCallId: id,
+    toolName: "eval",
+    content: [{ type: "text", text: "1" }],
+  });
+  const messages: AgentMessage[] = [
+    { role: "user", content: "plot it" },
+    call("c1"),
+    result("c1"),
+    call("c2", "again"),
+    result("c2"),
+    { role: "assistant", content: [{ type: "text", text: "done" }] },
+    { role: "user", steering: true, content: "bigger" },
+    { role: "assistant", content: [{ type: "text", text: "ok" }] },
+  ];
+  return { ...emptyThreadState(), transcript: messages.map((message) => ({ message_id: null, message })) };
+}
+
+/** Each message row's role, `+` after it when it continues its turn (no name line). */
+function turnMarks(state: ThreadState): string[] {
+  return items(state).flatMap((item) => {
+    const content = rowContent(state, item);
+    return content?.type === "message" ? [`${content.view.role}${content.continues ? "+" : ""}`] : [];
+  });
+}
+
+describe("turns", () => {
+  // spec: UI-470
+  test("the assistant's messages after the first of a turn continue it; a user message starts the next", () => {
+    expect(turnMarks(turns())).toEqual(["user", "assistant", "assistant+", "assistant+", "user", "assistant"]);
+  });
+
+  // spec: UI-470
+  test("a notice or a record inside a turn does not start a new one", () => {
+    const state = turns();
+    const transcript = [...state.transcript];
+    transcript.splice(3, 0, { message_id: null, message: { role: "bashExecution", command: "ls", output: "a" } });
+    const frame: NoticeFrame = { type: "unknown", data: { type: "mystery" } };
+    expect(turnMarks({ ...state, transcript, notices: [{ position: 3, frame }] })).toEqual([
+      "user",
+      "assistant",
+      "record",
+      "assistant+",
+      "assistant+",
+      "user",
+      "assistant",
+    ]);
+  });
+
+  // spec: UI-470, UI-191
+  test("the streaming reply continues the turn the transcript ends in, and starts one after a user message", () => {
+    const streaming: ThreadState["streaming"] = {
+      message_id: "live",
+      message: { role: "assistant", content: [{ type: "text", text: "…" }] },
+    };
+    const state = turns();
+    expect(turnMarks({ ...state, streaming }).at(-1)).toBe("assistant+");
+    const asked = { ...state, transcript: state.transcript.slice(0, 7), streaming };
+    expect(turnMarks(asked).slice(-2)).toEqual(["user", "assistant"]);
+  });
+});
+
 /** omp's `message_update` frame for the reply being streamed. */
 function update(assistantMessageEvent: JsonObject): ThreadEvent {
   return {

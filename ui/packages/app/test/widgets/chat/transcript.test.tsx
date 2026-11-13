@@ -161,6 +161,50 @@ describe("transcript", () => {
     expect(within(card).getByTestId("tool-error").textContent).toBe("ENOENT");
   });
 
+  // spec: UI-470, UI-471
+  test("a turn of several tool calls shows one Assistant name line; a steer starts the next turn", () => {
+    const call = (id: string) => ({
+      role: "assistant" as const,
+      content: [
+        { type: "thinking" as const, thinking: "next step" },
+        { type: "toolCall" as const, id, name: "eval", arguments: { code: id } },
+      ],
+    });
+    const result = (id: string) => ({
+      role: "toolResult" as const,
+      toolCallId: id,
+      toolName: "eval",
+      content: [{ type: "text" as const, text: "ok" }],
+    });
+    renderThread(<TranscriptWidget />, [
+      {
+        kind: "history",
+        session: { session_id: "s", resumed: true },
+        messages: [
+          { role: "user", content: "plot it" },
+          ...["c1", "c2", "c3", "c4"].flatMap((id) => [call(id), result(id)]),
+          { role: "assistant", content: [{ type: "text", text: "Plotted." }] },
+          { role: "user", steering: true, content: "bigger" },
+          { role: "assistant", content: [{ type: "text", text: "Bigger." }] },
+        ],
+      },
+    ]);
+    const assistant = screen.getAllByTestId("message").filter((message) => message.dataset.role === "assistant");
+    expect(assistant.map((message) => message.dataset.continues)).toEqual([
+      "false",
+      "true",
+      "true",
+      "true",
+      "true",
+      "false",
+    ]);
+    // One name line, in one article, per turn: the turn's later messages follow under it.
+    expect(assistant.map((message) => message.querySelectorAll(".omfp-msg__name").length)).toEqual([1, 0, 0, 0, 0, 1]);
+    expect(assistant.map((message) => message.tagName)).toEqual(["ARTICLE", "DIV", "DIV", "DIV", "DIV", "ARTICLE"]);
+    expect(screen.getAllByTestId("thinking").length).toBe(4);
+    expect(screen.getAllByTestId("tool-card").length).toBe(4);
+  });
+
   // spec: UI-043
   test("notices are inline rows; unknown kinds expand to their JSON", async () => {
     const events: ThreadEvent[] = [

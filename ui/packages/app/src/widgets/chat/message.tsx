@@ -31,9 +31,19 @@ import { fileTarget, ToolBody, ToolSubject } from "./tool-cards.tsx";
 
 const text = strings.chat;
 
-/** One message: name line, blocks, error (UI-171). `cardKey` prefixes the keys of its collapsible blocks. While it
- * streams, a block caret follows the last character (UI-147). */
-export function MessageRow({ cardKey, view, streaming }: { cardKey: string; view: MessageView; streaming: boolean }) {
+/** One message: name line, blocks, error (UI-171). One that `continues` its turn has no name line (UI-470). `cardKey`
+ * prefixes the keys of its collapsible blocks. While it streams, a block caret follows the last character (UI-147). */
+export function MessageRow({
+  cardKey,
+  view,
+  streaming,
+  continues,
+}: {
+  cardKey: string;
+  view: MessageView;
+  streaming: boolean;
+  continues: boolean;
+}) {
   const name = (
     <>
       {view.label}
@@ -63,6 +73,7 @@ export function MessageRow({ cardKey, view, streaming }: { cardKey: string; view
     "data-testid": "message",
     "data-role": view.role,
     "data-streaming": streaming,
+    "data-continues": continues,
     "aria-busy": streaming,
   };
   if (view.role === "record") {
@@ -75,7 +86,7 @@ export function MessageRow({ cardKey, view, streaming }: { cardKey: string; view
     );
   }
   return (
-    <Message {...common} author={view.role} name={name} error={error}>
+    <Message {...common} author={view.role} name={name} continues={continues} error={error}>
       {blocks}
       {caret}
     </Message>
