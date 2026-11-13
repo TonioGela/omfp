@@ -224,6 +224,8 @@ export {
   ModeViews,
   type ModeViewsProps,
   type NoticeTone,
+  RowList,
+  type RowListProps,
   type StripItem,
   ThreadRow,
   type ThreadRowProps,

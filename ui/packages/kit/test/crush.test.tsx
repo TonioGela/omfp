@@ -35,6 +35,7 @@ import {
   QueueChip,
   QueueList,
   ResolvedLine,
+  RowList,
   Select,
   StateBadge,
   StateMark,
@@ -575,7 +576,20 @@ describe("approval and ask cards", () => {
 function ToggledSection() {
   const [expanded, setExpanded] = useState(true);
   return (
-    <WorkspaceSection name="omfp" path="~/ws/omfp" count={3} current expanded={expanded} onExpandedChange={setExpanded}>
+    <WorkspaceSection
+      name="omfp"
+      path="~/ws/omfp"
+      count={3}
+      current
+      currentLabel="current"
+      expanded={expanded}
+      onExpandedChange={setExpanded}
+      toggleLabel={expanded ? "Collapse omfp" : "Expand omfp"}
+      toggleProps={{ "data-testid": "toggle" }}
+      nameProps={{ "data-testid": "name" }}
+      actions={<button type="button">Remove</button>}
+      data-testid="section"
+    >
       <span data-testid="rows">rows</span>
     </WorkspaceSection>
   );
@@ -685,33 +699,96 @@ describe("shell", () => {
     expect(item.querySelector("b")?.textContent).toBe("re");
   });
 
-  // spec: UI-169
-  test("a thread row carries its state and selection and offers delete", async () => {
+  // spec: UI-169, UI-442
+  test("a thread row is a list item: a select button with its mark, title, unread word, time and snippet, then its actions and delete", async () => {
     const user = userEvent.setup();
+    const onSelect = mock(() => undefined);
     const onDelete = mock(() => undefined);
     render(
-      <ThreadRow state="awaiting" title="Fix it" meta="2m" selected fresh onDelete={onDelete} data-testid="row" />,
+      <RowList>
+        <ThreadRow
+          state="awaiting"
+          stateLabel="awaiting input"
+          title="Fix it"
+          meta="2m"
+          selected
+          fresh
+          unread
+          unreadLabel="unread"
+          archived
+          snippet="…the failing test…"
+          onSelect={onSelect}
+          selectProps={{ "data-testid": "select" }}
+          actions={<button type="button">Unarchive</button>}
+          onDelete={onDelete}
+          deleteProps={{ "data-testid": "delete" }}
+          data-testid="row"
+        />
+      </RowList>,
     );
-    const row = screen.getByTestId("row");
-    expect(row.getAttribute("data-state")).toBe("awaiting");
-    expect(row.getAttribute("data-selected")).toBe("true");
-    expect(row.getAttribute("data-fresh")).toBe("true");
+    const row = screen.getByRole("listitem");
+    expect(row.getAttribute("data-testid")).toBe("row");
+    expect([row.dataset.state, row.dataset.selected, row.dataset.fresh, row.dataset.unread]).toEqual([
+      "awaiting",
+      "true",
+      "true",
+      "true",
+    ]);
+    expect([row.dataset.archived, row.dataset.snippet]).toEqual(["true", "true"]);
+    const select = screen.getByTestId("select");
+    expect(select.getAttribute("aria-current")).toBe("true");
+    expect(select.textContent).toBe("Fix itunread2m…the failing test…");
+    expect(within(select).getByTestId("thread-status").getAttribute("aria-label")).toBe("awaiting input");
+    expect(within(select).getByTestId("unread").classList.contains("omfp-visually-hidden")).toBe(true);
+    expect(within(select).getByTestId("thread-snippet").textContent).toBe("…the failing test…");
+    expect([...row.children].map((child) => child.textContent)).toEqual([select.textContent, "Unarchive", ""]);
+    await user.click(select);
     await user.click(screen.getByRole("button", { name: "Delete thread" }));
-    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect([onSelect.mock.calls.length, onDelete.mock.calls.length]).toEqual([1, 1]);
+    expect(screen.getByTestId("delete").classList.contains("omfp-row__delete")).toBe(true);
   });
 
-  // spec: UI-170, UI-339
-  test("a workspace head toggles its rows with ▾ and ▸; its path is the name's tooltip and its description", async () => {
+  // spec: UI-169, UI-442
+  test("a placeholder title is italic; without onDelete there is no delete", () => {
+    render(
+      <RowList>
+        <ThreadRow state="idle" title="Untitled" placeholder meta="draft" />
+      </RowList>,
+    );
+    expect(screen.getByText("Untitled").dataset.placeholder).toBe("true");
+    expect(screen.queryByRole("button", { name: "Delete thread" })).toBeNull();
+  });
+
+  // spec: UI-170, UI-339, UI-442
+  test("a workspace head: the ▾/▸ toggle, the name as a heading with its path as tooltip and description, the count, the actions", async () => {
     const user = userEvent.setup();
     render(<ToggledSection />);
-    const head = screen.getByTestId("workspace-head");
-    expect(head.textContent).toBe("▾omfp3");
-    expect(head.querySelector(".omfp-wsection__name")?.getAttribute("title")).toBe("~/ws/omfp");
-    expect(document.getElementById(head.getAttribute("aria-describedby") ?? "")?.textContent).toBe("~/ws/omfp");
-    await user.click(head);
-    expect(head.getAttribute("aria-expanded")).toBe("false");
-    expect(head.textContent?.startsWith("▸")).toBe(true);
+    const section = screen.getByTestId("section");
+    expect([section.dataset.expanded, section.dataset.current]).toEqual(["true", "true"]);
+    const toggle = screen.getByRole("button", { name: "Collapse omfp" });
+    expect([toggle.getAttribute("data-testid"), toggle.textContent]).toEqual(["toggle", "▾"]);
+    const name = screen.getByRole("heading", { level: 2 });
+    expect([name.getAttribute("data-testid"), name.textContent, name.classList.contains("omfp-grad-text")]).toEqual([
+      "name",
+      "omfp (current)",
+      true,
+    ]);
+    expect([name.getAttribute("title"), name.getAttribute("aria-description")]).toEqual(["~/ws/omfp", "~/ws/omfp"]);
+    expect(section.getAttribute("aria-labelledby")).toBe(name.id);
+    const head = section.querySelector(".omfp-wsection__head");
+    expect(head?.textContent).toBe("▾omfp (current)3Remove");
+    expect(head?.querySelector(".omfp-wsection__actions")?.textContent).toBe("Remove");
+    await user.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("button", { name: "Expand omfp" }).textContent).toBe("▸");
     expect(screen.queryByTestId("rows")).toBeNull();
+  });
+
+  // spec: UI-442
+  test("a workspace's rename field replaces its name", () => {
+    render(<WorkspaceSection name="omfp" expanded editor={<input aria-label="New name" />} />);
+    expect(screen.queryByRole("heading")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "New name" })).toBeDefined();
   });
 
   // spec: UI-171

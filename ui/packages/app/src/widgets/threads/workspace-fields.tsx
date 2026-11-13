@@ -93,7 +93,7 @@ export function RenameWorkspace({ workspace, close }: { workspace: Workspace; cl
     }
   };
   return (
-    <form className="omfp-ws__rename" onSubmit={save}>
+    <form className="omfp-threads__rename" onSubmit={save}>
       <TextField
         label={text.renameLabel}
         hideLabel

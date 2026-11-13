@@ -5,6 +5,7 @@ import {
   AreaBar,
   type AreaItem,
   Brand,
+  Button,
   CommandItem,
   CommandLine,
   CommandMenu,
@@ -13,12 +14,14 @@ import {
   HelpSection,
   HintRow,
   Icon,
+  IconButton,
   Kbd,
   Meter,
   ModeLine,
   ModeNotice,
   ModeSegment,
   ModeViews,
+  RowList,
   Sheet,
   SheetRow,
   SheetSection,
@@ -247,30 +250,132 @@ export function HelpPanels() {
   );
 }
 
+/** A workspace head's buttons as the app gives them: its menu and delete. */
+function HeadActions({ name }: { name: string }) {
+  return (
+    <>
+      <IconButton label={`Workspace ${name}: menu`} icon={<Icon name="settings-2" />} />
+      <IconButton label={`Delete workspace ${name}`} icon={<Icon name="trash-2" />} />
+    </>
+  );
+}
+
+/** The props every app thread row has: select, delete and the state's word. */
+const ROW = { onSelect: () => undefined, onDelete: () => undefined, unreadLabel: "unread" } as const;
+
 export function LeftColumn() {
   return (
-    <Section title="Left column" note="UI-169 · UI-170 · UI-339">
+    <Section title="Left column" note="UI-169 · UI-170 · UI-339 · UI-442">
       <div className="omfp-gallery__side">
         <Brand host="devbox" />
-        <WorkspaceSection name="omfp" path="~/.local/share/omfp/ws/omfp" count={9} expanded current>
-          <ThreadRow state="idle" title="Idle thread" meta="3d" />
-          <ThreadRow state="running" title="Running thread" meta="now" />
-          <ThreadRow state="awaiting" title="Awaiting the user" meta="2m" />
-          <ThreadRow state="failed" title="Failed thread" meta="1h" />
-          <ThreadRow state="unread" title="Unread reply" meta="5m" />
-          <ThreadRow state="idle" title="Selected thread" meta="1d" selected />
-          <ThreadRow state="idle" title="Hovered thread" meta="2d" className="is-hover" onDelete={() => undefined} />
-          <ThreadRow state="idle" title="Focused thread" meta="2d" className="is-focus" onDelete={() => undefined} />
-          <ThreadRow state="idle" title="Selected and focused" meta="2d" selected className="is-focus" />
-          <ThreadRow state="awaiting" title="Fresh: just started awaiting" meta="now" fresh />
-          <ActionRow icon="plus">thread</ActionRow>
+        <WorkspaceSection
+          name="omfp"
+          path="~/.local/share/omfp/ws/omfp"
+          count={9}
+          expanded
+          current
+          currentLabel="current"
+          toggleLabel="Collapse omfp"
+          actions={<HeadActions name="omfp" />}
+        >
+          <RowList>
+            <ThreadRow {...ROW} state="idle" stateLabel="idle" title="Idle thread" meta="3d" />
+            <ThreadRow {...ROW} state="running" stateLabel="running" title="Running thread" meta="now" />
+            <ThreadRow {...ROW} state="awaiting" stateLabel="awaiting input" title="Awaiting the user" meta="2m" />
+            <ThreadRow {...ROW} state="failed" stateLabel="failed" title="Failed thread" meta="1h" />
+            <ThreadRow {...ROW} state="unread" stateLabel="idle" title="Unread reply" meta="5m" unread />
+            <ThreadRow {...ROW} state="idle" stateLabel="idle" title="New thread" meta="4m" placeholder />
+            <ThreadRow {...ROW} state="idle" stateLabel="idle" title="Selected thread" meta="1d" selected />
+            <ThreadRow {...ROW} state="idle" stateLabel="idle" title="Hovered thread" meta="2d" className="is-hover" />
+            <ThreadRow {...ROW} state="idle" stateLabel="idle" title="Focused thread" meta="2d" className="is-focus" />
+            <ThreadRow
+              {...ROW}
+              state="idle"
+              stateLabel="idle"
+              title="Selected and focused"
+              meta="2d"
+              selected
+              className="is-focus"
+            />
+            <ThreadRow
+              {...ROW}
+              state="awaiting"
+              stateLabel="awaiting input"
+              title="Fresh: just awaiting"
+              meta="now"
+              fresh
+            />
+            <ThreadRow
+              {...ROW}
+              state="running"
+              stateLabel="running"
+              title="Orchestrator"
+              meta="1m"
+              actions={
+                <Button
+                  size="sm"
+                  variant="quiet"
+                  className="omfp-threads__spawned-filter"
+                  icon={<Icon name="git-fork" />}
+                >
+                  2
+                </Button>
+              }
+            />
+            <ThreadRow
+              {...ROW}
+              state="idle"
+              stateLabel="idle"
+              title="Matched by the filter"
+              meta="3d"
+              snippet="…the checkout test fails on…"
+            />
+            <ThreadRow state="idle" title="Untitled" placeholder meta="draft" onSelect={() => undefined} />
+          </RowList>
           <ActionRow kind="archived" icon="archive">
             Archived (4)
           </ActionRow>
+          <RowList>
+            <ThreadRow
+              {...ROW}
+              state="idle"
+              stateLabel="idle"
+              title="Archived thread"
+              meta="9d"
+              archived
+              actions={
+                <Button size="sm" variant="quiet">
+                  Unarchive
+                </Button>
+              }
+            />
+          </RowList>
+          <ActionRow icon="plus">thread</ActionRow>
         </WorkspaceSection>
-        <WorkspaceSection name="dotfiles" path="~/dotfiles" count={2} expanded={false} headClassName="is-hover" />
-        <WorkspaceSection name="notes" path="~/notes" count={0} expanded headClassName="is-focus">
-          <HintRow>No threads · spc n starts one</HintRow>
+        <WorkspaceSection
+          name="dotfiles"
+          path="~/dotfiles"
+          count={2}
+          expanded={false}
+          toggleLabel="Expand dotfiles"
+          actions={<HeadActions name="dotfiles" />}
+          headClassName="is-hover"
+        />
+        <WorkspaceSection
+          name="notes"
+          path="~/notes"
+          count={0}
+          expanded
+          toggleLabel="Collapse notes"
+          actions={<HeadActions name="notes" />}
+          headClassName="is-focus"
+        >
+          <RowList>
+            <li>
+              <HintRow>No threads · spc n starts one</HintRow>
+            </li>
+          </RowList>
+          <ActionRow icon="plus">thread</ActionRow>
         </WorkspaceSection>
       </div>
     </Section>

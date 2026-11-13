@@ -2774,39 +2774,40 @@
     margin-block-start: var(--omfp-s3);
   }
 
+  /* A section's head (UI-442): the toggle, the name, the count, then its actions shown on hover and focus. */
   .omfp-wsection__head {
     display: flex;
     align-items: center;
     gap: var(--omfp-s1);
-    box-sizing: border-box;
-    inline-size: 100%;
     block-size: var(--omfp-row-h);
-    padding: 0 var(--omfp-s2) 0 var(--omfp-s1);
-    border: 0;
+    padding: 0 0 0 var(--omfp-s1);
     border-radius: var(--omfp-r-row);
-    font: inherit;
     font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
-    text-align: start;
-    background: transparent;
-    cursor: pointer;
-    outline: none;
   }
 
-  .omfp-wsection__head:is([data-hovered], .is-hover) {
+  .omfp-wsection__head:is(:hover, .is-hover) {
     background: var(--omfp-hover);
   }
 
-  .omfp-wsection__glyph {
+  .omfp-wsection__toggle {
     flex: none;
-    inline-size: 1ch;
+    padding: 0;
+    border: 0;
+    border-radius: var(--omfp-r-chip);
+    background: transparent;
     color: var(--omfp-primary);
+    font: inherit;
+    cursor: pointer;
+    outline: none;
   }
 
   .omfp-wsection__name {
     flex: 0 1 auto;
     min-inline-size: 0;
+    margin: 0;
     overflow: hidden;
+    font-size: inherit;
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: var(--omfp-fw-strong);
@@ -2819,8 +2820,27 @@
 
   .omfp-wsection__count {
     flex: none;
-    margin-inline-start: auto;
+    margin-inline: auto var(--omfp-s1);
     font-size: var(--omfp-fs-2xs);
+  }
+
+  /* The head's buttons keep their square (UI-416): a long name gives way. */
+  .omfp-wsection__actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--omfp-s1);
+    opacity: 0;
+  }
+
+  .omfp-wsection__head:is(:hover, :focus-within, .is-hover, .is-focus) .omfp-wsection__actions {
+    opacity: 1;
+  }
+
+  .omfp-row-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
   }
 
   .omfp-row {
@@ -2904,6 +2924,81 @@
 
   .omfp-thread:is(:hover, :focus-within, .is-hover, .is-focus):has(.omfp-row__delete) .omfp-row__meta {
     display: none;
+  }
+
+  /* A thread row (UI-442): the select button fills it; unread titles are bold, placeholder titles italic; archived
+     rows are small, muted and indented; a filter match adds its snippet on a second line. */
+  .omfp-thread-row {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    align-self: stretch;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .omfp-thread[data-unread] .omfp-row__title {
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-row__title[data-placeholder="true"] {
+    font-style: italic;
+  }
+
+  .omfp-thread[data-archived] {
+    padding-inline-start: calc(var(--omfp-s2) * 2 + var(--omfp-ic-sm));
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-thread[data-snippet] {
+    block-size: auto;
+    min-block-size: var(--omfp-row-h);
+    padding-block: var(--omfp-s1);
+  }
+
+  .omfp-thread[data-snippet] .omfp-thread-row {
+    flex-wrap: wrap;
+  }
+
+  .omfp-thread-row__snippet {
+    inline-size: 100%;
+    overflow: hidden;
+    color: var(--omfp-on-surface-variant);
+    font-size: var(--omfp-fs-2xs);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Screens without hover (UI-205, UI-415): the section's actions and a row's delete are always there. */
+  @media (hover: none) {
+    .omfp-wsection__head .omfp-wsection__actions {
+      opacity: 1;
+    }
+
+    .omfp-thread .omfp-row__delete {
+      display: inline-flex;
+    }
+
+    .omfp-thread:has(.omfp-row__delete) .omfp-row__meta {
+      display: none;
+    }
+  }
+
+  /* Touch screens (UI-416): the section's toggle is a full touch target. */
+  @media (pointer: coarse) {
+    .omfp-wsection__toggle {
+      align-self: stretch;
+      min-inline-size: var(--omfp-touch);
+    }
   }
 
   .omfp-action-row {

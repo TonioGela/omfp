@@ -12,7 +12,6 @@
 import {
   ActionRow,
   Brand,
-  cx,
   HintRow,
   Icon,
   IconButton,
@@ -20,12 +19,14 @@ import {
   MenuItem,
   MenuTrigger,
   Popover,
+  RowList,
   SearchField,
-  StateMark,
+  ThreadRow,
   useMediaQuery,
+  WorkspaceSection,
 } from "@omfp/kit";
 import { INDEX_TOPIC, type ThreadSummary, type Workspace } from "@omfp/protocol";
-import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import {
   DELETE_WORKSPACE,
   DRAFT_THREAD,
@@ -63,7 +64,7 @@ import {
   visibleOrder,
 } from "../../vm/threads.ts";
 import { ARCHIVED_OPEN, COLLAPSED_WORKSPACES, SEEN, SPAWNED_BY, THREAD_QUERY } from "./keys.ts";
-import { ThreadRow } from "./thread-row.tsx";
+import { SummaryRow } from "./summary-row.tsx";
 import { NewWorkspace, RenameWorkspace } from "./workspace-fields.tsx";
 
 const text = strings.shell.threads;
@@ -154,7 +155,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
         <SpawnedByBar thread={byId.get(spawnedRoot)} clear={() => setSpawnedBy(undefined)} />
       )}
       {sections.map((section) => (
-        <WorkspaceSection
+        <WorkspaceGroup
           key={section.workspace.id}
           section={section}
           filter={filter}
@@ -376,7 +377,8 @@ function SpawnedByBar({ thread, clear }: { thread: ThreadSummary | undefined; cl
   );
 }
 
-function WorkspaceSection({
+/** A workspace of the column: the kit's section (UI-170, UI-442) with its menu, delete, rename and rows. */
+function WorkspaceGroup({
   section,
   filter,
   byId,
@@ -393,11 +395,8 @@ function WorkspaceSection({
   counts: ReadonlyMap<string, number>;
 }): ReactNode {
   const host = useHost();
-  const actions = useThreadActions();
   const { workspace } = section;
   const [collapsedIds, setCollapsed] = useWindowState(COLLAPSED_WORKSPACES);
-  const [archivedOpen, setArchivedOpen] = useWindowState(ARCHIVED_OPEN);
-  const [draft] = useWindowState(DRAFT_THREAD);
   const [renaming, setRenaming] = useState(false);
   const head = useRef<HTMLButtonElement>(null);
   const closeRename = () => {
@@ -405,172 +404,146 @@ function WorkspaceSection({
     // The focus stays on the renamed workspace: its head (UI-286).
     head.current?.focus();
   };
-  const headingId = useId();
   const collapsed = isCollapsed(workspace.id, collapsedIds, filter);
   const current = useCurrentWorkspaceId() === workspace.id;
+  return (
+    <WorkspaceSection
+      data-testid="workspace-section"
+      data-workspace-id={workspace.id}
+      name={workspace.name}
+      path={workspace.path}
+      count={section.threadIds.length}
+      expanded={!collapsed}
+      onExpandedChange={() => setCollapsed((previous) => toggled(previous, workspace.id))}
+      toggleLabel={collapsed ? text.expand(workspace.name) : text.collapse(workspace.name)}
+      toggleProps={{ ref: head, "data-testid": "workspace-collapse" }}
+      nameProps={{ "data-testid": "workspace-section-name" }}
+      current={current}
+      currentLabel={text.current}
+      {...(renaming ? { editor: <RenameWorkspace workspace={workspace} close={closeRename} /> } : {})}
+      actions={
+        <>
+          <MenuTrigger>
+            <IconButton
+              label={text.menu(workspace.name)}
+              icon={<Icon name="settings-2" />}
+              data-testid="workspace-menu"
+            />
+            <Popover placement="bottom end">
+              <Menu
+                aria-label={text.menu(workspace.name)}
+                onAction={(key) => {
+                  if (key === "rename") {
+                    setRenaming(true);
+                  } else if (key === "remove") {
+                    host.window.set(DELETE_WORKSPACE, workspace.id);
+                  }
+                }}
+              >
+                <MenuItem id="rename" data-testid="workspace-rename">
+                  {text.rename}
+                </MenuItem>
+                <MenuItem id="remove" data-testid="workspace-remove">
+                  {text.remove}
+                </MenuItem>
+              </Menu>
+            </Popover>
+          </MenuTrigger>
+          <IconButton
+            label={text.deleteWorkspace(workspace.name)}
+            icon={<Icon name="trash-2" />}
+            data-testid="delete-workspace"
+            onPress={() => host.window.set(DELETE_WORKSPACE, workspace.id)}
+          />
+        </>
+      }
+    >
+      <WorkspaceRows section={section} filter={filter} byId={byId} seen={seen} selected={selected} counts={counts} />
+    </WorkspaceSection>
+  );
+}
+
+/** A section's threads, its draft thread, its archived threads behind their toggle, then "+ thread" (UI-020, UI-023). */
+function WorkspaceRows({
+  section,
+  filter,
+  byId,
+  seen,
+  selected,
+  counts,
+}: {
+  section: Section;
+  filter: ThreadFilter;
+  byId: ReadonlyMap<string, ThreadSummary>;
+  seen: Seen;
+  selected: string | undefined;
+  counts: ReadonlyMap<string, number>;
+}): ReactNode {
+  const actions = useThreadActions();
+  const { workspace } = section;
+  const [archivedOpen, setArchivedOpen] = useWindowState(ARCHIVED_OPEN);
+  const [draft] = useWindowState(DRAFT_THREAD);
   const showArchived = archivedOpen.includes(workspace.id);
   const draftHere = draft?.workspaceId === workspace.id && !isFiltering(filter);
   const snippets = isFiltering(filter) ? filter.conversation : NO_SNIPPETS;
+  const row = (id: string, archived: boolean) => {
+    const thread = byId.get(id);
+    return thread === undefined ? null : (
+      <SummaryRow
+        key={id}
+        thread={thread}
+        selected={selected === id}
+        unread={!archived && isUnread(thread, seen, selected)}
+        snippet={snippets.get(id)}
+        spawned={counts.get(id)}
+        archived={archived}
+      />
+    );
+  };
   return (
-    <section
-      className="omfp-wsection omfp-ws"
-      data-testid="workspace-section"
-      data-workspace-id={workspace.id}
-      data-expanded={!collapsed}
-      data-current={current ? "true" : undefined}
-      aria-labelledby={headingId}
-    >
-      <div className="omfp-ws__head omfp-focus-item">
-        <button
-          ref={head}
-          type="button"
-          className="omfp-ws__chevron omfp-focus-item__target"
-          data-testid="workspace-collapse"
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? text.expand(workspace.name) : text.collapse(workspace.name)}
-          onClick={() => setCollapsed((previous) => toggled(previous, workspace.id))}
-        >
-          <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
-        </button>
-        {renaming ? (
-          <RenameWorkspace workspace={workspace} close={closeRename} />
-        ) : (
-          <>
-            {/* The path only on hover and for assistive technology (UI-339); `omfp:workspace` shows it. */}
-            <h2
-              id={headingId}
-              className={cx("omfp-wsection__name omfp-ws__name", current && "omfp-grad-text")}
-              data-testid="workspace-section-name"
-              title={workspace.path}
-              aria-description={workspace.path}
-            >
-              {workspace.name}
-              {current && <span className="omfp-visually-hidden"> ({text.current})</span>}
-            </h2>
-          </>
-        )}
-        <span className="omfp-wsection__count omfp-ws__count">{section.threadIds.length}</span>
-        <MenuTrigger>
-          <IconButton
-            className="omfp-reveal"
-            label={text.menu(workspace.name)}
-            icon={<Icon name="settings-2" />}
-            data-testid="workspace-menu"
+    <>
+      <RowList>
+        {section.threadIds.map((id) => row(id, false))}
+        {draftHere && (
+          <ThreadRow
+            state="idle"
+            title={strings.shell.untitled}
+            placeholder
+            meta={text.draft}
+            selected={selected === undefined}
+            onSelect={() => actions.openDraft(workspace.id)}
+            selectProps={{ "data-testid": "draft-thread", "data-workspace-id": workspace.id }}
           />
-          <Popover placement="bottom end">
-            <Menu
-              aria-label={text.menu(workspace.name)}
-              onAction={(key) => {
-                if (key === "rename") {
-                  setRenaming(true);
-                } else if (key === "remove") {
-                  host.window.set(DELETE_WORKSPACE, workspace.id);
-                }
-              }}
-            >
-              <MenuItem id="rename" data-testid="workspace-rename">
-                {text.rename}
-              </MenuItem>
-              <MenuItem id="remove" data-testid="workspace-remove">
-                {text.remove}
-              </MenuItem>
-            </Menu>
-          </Popover>
-        </MenuTrigger>
-        <IconButton
-          className="omfp-reveal"
-          label={text.deleteWorkspace(workspace.name)}
-          icon={<Icon name="trash-2" />}
-          data-testid="delete-workspace"
-          onPress={() => host.window.set(DELETE_WORKSPACE, workspace.id)}
-        />
-      </div>
-      {!collapsed && (
+        )}
+        {section.threadIds.length === 0 && !draftHere && (
+          <li>
+            <HintRow>{text.empty}</HintRow>
+          </li>
+        )}
+      </RowList>
+      {section.archivedIds.length > 0 && (
         <>
-          <ul className="omfp-threads__list">
-            {section.threadIds.map((id) => {
-              const thread = byId.get(id);
-              return thread === undefined ? null : (
-                <ThreadRow
-                  key={id}
-                  thread={thread}
-                  selected={selected === id}
-                  unread={isUnread(thread, seen, selected)}
-                  snippet={snippets.get(id)}
-                  spawned={counts.get(id)}
-                />
-              );
-            })}
-            {draftHere && (
-              <li
-                className="omfp-row omfp-thread omfp-thread-item omfp-focus-item"
-                data-state="idle"
-                data-selected={selected === undefined || undefined}
-              >
-                <button
-                  type="button"
-                  className="omfp-thread-row omfp-focus-item__target"
-                  data-testid="draft-thread"
-                  data-workspace-id={workspace.id}
-                  aria-current={selected === undefined ? "true" : undefined}
-                  onClick={() => actions.openDraft(workspace.id)}
-                >
-                  <StateMark state="idle" />
-                  <span className="omfp-row__title omfp-thread-row__title" data-placeholder="true">
-                    {strings.shell.untitled}
-                  </span>
-                  <span className="omfp-row__meta">{text.draft}</span>
-                </button>
-              </li>
-            )}
-            {section.threadIds.length === 0 && !draftHere && (
-              <li>
-                <HintRow>{text.empty}</HintRow>
-              </li>
-            )}
-          </ul>
-          {section.archivedIds.length > 0 && (
-            <div className="omfp-ws__archived">
-              <ActionRow
-                kind="archived"
-                icon="archive"
-                className="omfp-ws__archived-toggle"
-                data-testid="archived-toggle"
-                aria-expanded={showArchived}
-                onPress={() => setArchivedOpen((previous) => toggled(previous, workspace.id))}
-              >
-                {text.archived(section.archivedIds.length)}
-              </ActionRow>
-              {showArchived && (
-                <ul className="omfp-threads__list" data-testid="archived-list">
-                  {section.archivedIds.map((id) => {
-                    const thread = byId.get(id);
-                    return thread === undefined ? null : (
-                      <ThreadRow
-                        key={id}
-                        thread={thread}
-                        selected={selected === id}
-                        unread={false}
-                        snippet={snippets.get(id)}
-                        spawned={counts.get(id)}
-                        archived
-                      />
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          )}
           <ActionRow
-            className="omfp-ws__add"
-            data-testid="add-thread"
-            data-workspace-id={workspace.id}
-            onPress={() => actions.openDraft(workspace.id)}
+            kind="archived"
+            icon="archive"
+            data-testid="archived-toggle"
+            aria-expanded={showArchived}
+            onPress={() => setArchivedOpen((previous) => toggled(previous, workspace.id))}
           >
-            {text.addThread}
+            {text.archived(section.archivedIds.length)}
           </ActionRow>
+          {showArchived && (
+            <RowList data-testid="archived-list">{section.archivedIds.map((id) => row(id, true))}</RowList>
+          )}
         </>
       )}
-    </section>
+      <ActionRow
+        data-testid="add-thread"
+        data-workspace-id={workspace.id}
+        onPress={() => actions.openDraft(workspace.id)}
+      >
+        {text.addThread}
+      </ActionRow>
+    </>
   );
 }

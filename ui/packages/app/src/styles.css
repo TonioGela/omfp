@@ -744,8 +744,8 @@
     color: var(--omfp-on-surface-variant);
   }
 
-  /* The threads widget, the frame's left column (UI-020..023, UI-026, UI-100, UI-169, UI-170): the kit's brand, rows
-   * and section classes; a row is an `li` (kit `omfp-row omfp-thread`) holding the select button and its actions. */
+  /* The threads widget, the frame's left column (UI-020..023, UI-026, UI-100, UI-169, UI-170): the kit's brand,
+   * workspace sections and thread rows (UI-442). */
   .omfp-threads {
     display: flex;
     flex-direction: column;
@@ -767,136 +767,23 @@
     flex: none;
   }
 
-  .omfp-threads__list {
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
   .omfp-threads > .omfp-wsection:first-of-type {
     margin-block-start: var(--omfp-s2);
   }
 
-  /* A section's head: disclosure glyph, name, path, count, then the menu and delete shown on hover and focus. */
-  .omfp-ws__head {
-    display: flex;
-    align-items: center;
-    gap: var(--omfp-s1);
-    block-size: var(--omfp-row-h);
-    padding: 0 0 0 var(--omfp-s1);
-    border-radius: var(--omfp-r-row);
-    font-size: var(--omfp-fs-xs);
-    color: var(--omfp-on-surface-variant);
-  }
-
-  .omfp-ws__head:hover {
-    background: var(--omfp-hover);
-  }
-
-  .omfp-ws__chevron {
-    flex: none;
-    padding: 0;
-    border: 0;
-    border-radius: var(--omfp-r-chip);
-    background: transparent;
-    color: var(--omfp-primary);
-    font: inherit;
-    cursor: pointer;
-    outline: none;
-  }
-
-  .omfp-ws__name {
-    flex: 0 1 auto;
-    min-inline-size: 0;
-    margin: 0;
-    overflow: hidden;
-    font-size: inherit;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .omfp-ws__rename {
+  /* The rename field in place of a section's name. */
+  .omfp-threads__rename {
     flex: 1 1 auto;
-  }
-
-  .omfp-ws__count {
-    margin-inline-end: var(--omfp-s1);
-  }
-
-  /* The head's buttons keep their square (UI-416): a long name gives way. */
-  .omfp-ws__head .omfp-icon-button {
-    flex: none;
-  }
-
-  .omfp-reveal {
-    opacity: 0;
-  }
-
-  .omfp-ws__head:is(:hover, :focus-within) .omfp-reveal {
-    opacity: 1;
-  }
-
-  /* A thread row (kit `omfp-row`): the select button fills it; unread titles are bold; archived rows are small,
-   * muted and indented; a filter match adds its snippet on a second line. */
-  .omfp-thread-row {
-    display: flex;
-    flex: 1 1 auto;
-    align-items: center;
-    align-self: stretch;
-    gap: var(--omfp-s2);
-    min-inline-size: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    text-align: start;
-    cursor: pointer;
-    outline: none;
-  }
-
-  .omfp-thread[data-unread] .omfp-row__title {
-    font-weight: var(--omfp-fw-strong);
-  }
-
-  .omfp-thread-row[data-title-source="placeholder"] .omfp-row__title,
-  .omfp-row__title[data-placeholder="true"] {
-    font-style: italic;
-  }
-
-  .omfp-thread[data-archived] {
-    padding-inline-start: calc(var(--omfp-s2) * 2 + var(--omfp-ic-sm));
-    font-size: var(--omfp-fs-xs);
-    color: var(--omfp-on-surface-variant);
-  }
-
-  .omfp-thread[data-snippet] {
-    block-size: auto;
-    min-block-size: var(--omfp-row-h);
-    padding-block: var(--omfp-s1);
-  }
-
-  .omfp-thread[data-snippet] .omfp-thread-row {
-    flex-wrap: wrap;
-  }
-
-  .omfp-thread-row__snippet {
-    inline-size: 100%;
-    overflow: hidden;
-    color: var(--omfp-on-surface-variant);
-    font-size: var(--omfp-fs-2xs);
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   /* The "spawned by" filter (UI-240): the count of a row's spawned threads, and the bar naming the filter in force. */
-  .omfp-thread-row__spawned {
+  .omfp-threads__spawned-filter {
     flex: none;
     font-family: var(--omfp-font-code);
     font-size: var(--omfp-fs-2xs);
   }
 
-  .omfp-thread-row__spawned[aria-pressed="true"] {
+  .omfp-threads__spawned-filter[aria-pressed="true"] {
     color: var(--omfp-primary);
   }
 
@@ -1916,31 +1803,17 @@
     contain: none;
   }
 
-  /* Hover-only affordances are always there on screens without hover (UI-205, UI-415). Last in the layer, so these
-     win over the resting rules above (`.omfp-reveal`, `.omfp-tree__actions`: opacity 0) at the same specificity:
-     nothing a tap can hit is invisible. */
+  /* Hover-only affordances are always there on screens without hover (UI-205, UI-415). Last in the layer, so this
+     wins over the resting rule above (`.omfp-tree__actions`: opacity 0) at the same specificity: nothing a tap can
+     hit is invisible. The kit does the same for its workspace sections and thread rows. */
   @media (hover: none) {
-    .omfp-reveal,
     .omfp-tree__actions {
       opacity: 1;
     }
-
-    .omfp-thread .omfp-row__delete {
-      display: inline-flex;
-    }
-
-    .omfp-thread:has(.omfp-row__delete) .omfp-row__meta {
-      display: none;
-    }
   }
 
-  /* Touch screens (UI-416): the workspace's collapse chevron and a file tab's close mark are full touch targets. */
+  /* Touch screens (UI-416): a file tab's close mark is a full touch target (the kit's section toggle is too). */
   @media (pointer: coarse) {
-    .omfp-ws__chevron {
-      align-self: stretch;
-      min-inline-size: var(--omfp-touch);
-    }
-
     .omfp-file-tab__close {
       justify-content: center;
       min-inline-size: var(--omfp-touch);

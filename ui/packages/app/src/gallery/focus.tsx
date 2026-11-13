@@ -3,7 +3,7 @@
  * the item indicator is there. The page paints the tokens' colors the way it draws them (each layer over the surface,
  * in sRGB) and measures the 2 px bar's contrast against what it touches and how far the tint is from the other states.
  */
-import { Button, Checkbox, Icon, TextField, ThreadRow } from "@omfp/kit";
+import { Button, Checkbox, Icon, RowList, TextField, ThreadRow } from "@omfp/kit";
 import { contrastRatio, deltaE, NON_TEXT, type Rgb } from "../theme/contrast.ts";
 import { Label, Section } from "./parts.tsx";
 
@@ -171,11 +171,20 @@ export function FocusStates() {
             data-testid="focus-surface"
           >
             <Label>{surface}</Label>
-            <ThreadRow state="idle" title="Unfocused" meta="3d" />
-            <ThreadRow state="idle" title="Hovered" meta="3d" className="is-hover" />
-            <ThreadRow state="idle" title="Focused" meta="3d" className="is-focus" />
-            <ThreadRow state="idle" title="Selected" meta="3d" selected />
-            <ThreadRow state="idle" title="Selected, focused" meta="3d" selected className="is-focus" />
+            <RowList>
+              <ThreadRow state="idle" title="Unfocused" meta="3d" onSelect={() => undefined} />
+              <ThreadRow state="idle" title="Hovered" meta="3d" className="is-hover" onSelect={() => undefined} />
+              <ThreadRow state="idle" title="Focused" meta="3d" className="is-focus" onSelect={() => undefined} />
+              <ThreadRow state="idle" title="Selected" meta="3d" selected onSelect={() => undefined} />
+              <ThreadRow
+                state="idle"
+                title="Selected, focused"
+                meta="3d"
+                selected
+                className="is-focus"
+                onSelect={() => undefined}
+              />
+            </RowList>
             <div className="omfp-gallery__line">
               <Button className="is-focus" icon={<Icon name="check" />}>
                 Button

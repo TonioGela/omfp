@@ -1,6 +1,6 @@
 /** The gallery's design sheet (UI-173): the density strip, the logo, the glyphs and the token sheet with measured
  * contrast and the contrast guard's overrides. */
-import { Button, Icon, Select, TextField, ThreadRow } from "@omfp/kit";
+import { Button, Icon, RowList, Select, TextField, ThreadRow } from "@omfp/kit";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AA, type Adjustment, type ContrastPair, contrastRatio } from "../theme/contrast.ts";
 import { cssColorReader } from "../theme/guard.ts";
@@ -18,9 +18,9 @@ export function DensityStrip() {
           <Button size="sm">Small</Button>
           <TextField label="Filter" hideLabel placeholder="Filter" icon={<Icon name="search" />} />
           <Select label="Level" hideLabel items={LEVELS} selectedKey="high" onSelectionChange={() => undefined} />
-          <span className="omfp-gallery__row">
-            <ThreadRow state="running" title="A thread row" meta="now" />
-          </span>
+          <RowList className="omfp-gallery__row">
+            <ThreadRow state="running" title="A thread row" meta="now" onSelect={() => undefined} />
+          </RowList>
         </div>
       ))}
     </Section>

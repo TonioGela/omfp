@@ -4,7 +4,7 @@
  * They are presentational: the app wires keys, focus and data; forced state classes (`is-hover`, `is-focus`) render
  * hover and focus statically (UI-173).
  */
-import { type HTMLAttributes, type ReactNode, useId } from "react";
+import { type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type Ref, useId } from "react";
 import {
   Button as AriaButton,
   type ButtonProps as AriaButtonProps,
@@ -255,115 +255,212 @@ export function Brand({ host, className, ...props }: BrandProps) {
 
 export interface WorkspaceSectionProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   name: ReactNode;
-  /** The workspace folder: not shown, the name's tooltip and the head's accessible description (UI-339). */
+  /** The workspace folder: not shown, the name's tooltip and accessible description (UI-339). */
   path?: string;
   count?: ReactNode;
   expanded: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  /** The toggle's accessible name (`Collapse omfp`, `Expand omfp`). */
+  toggleLabel?: string;
+  /** Props of the toggle: a test id, its ref (the focus returns there after a rename). */
+  toggleProps?: DataAttributes & { ref?: Ref<HTMLButtonElement> };
+  /** Props of the name's heading: a test id. */
+  nameProps?: DataAttributes;
   /** The workspace of the open thread: its name flows in gradient text. */
   current?: boolean;
+  /** Said after the current workspace's name to screen readers (`current`). */
+  currentLabel?: string;
+  /** Replaces the name: a rename field. */
+  editor?: ReactNode;
+  /** Buttons after the count (a menu, delete), shown on hover and focus. */
+  actions?: ReactNode;
   /** Class names of the head (forced states in the gallery). */
   headClassName?: string;
-  /** `data-testid` of the head (`workspace-head` by default). */
-  headTestId?: string;
-  /** Its thread rows, action rows, or an empty hint row. */
+  /** Its rows ({@link RowList}), action rows. */
   children?: ReactNode;
 }
 
-/** A workspace in the left column (UI-170): a `▾`/`▸` head with name (its path on hover) and count, then its rows. */
+/**
+ * A workspace in the left column (UI-170, UI-442), labelled by its name: a head with the `▾`/`▸` toggle, the name as
+ * a heading (its path on hover), the count and the actions, then its rows while expanded.
+ */
 export function WorkspaceSection({
   name,
   path,
   count,
   expanded,
   onExpandedChange,
+  toggleLabel,
+  toggleProps,
+  nameProps,
   current = false,
+  currentLabel,
+  editor,
+  actions,
   headClassName,
-  headTestId = "workspace-head",
   className,
   children,
   ...props
 }: WorkspaceSectionProps) {
-  const pathId = useId();
+  const headingId = useId();
   return (
     <section
+      aria-labelledby={headingId}
       {...props}
       className={cx("omfp-wsection", className)}
       data-expanded={expanded}
       data-current={current || undefined}
     >
-      <AriaButton
-        className={cx("omfp-wsection__head", headClassName)}
-        aria-expanded={expanded}
-        {...(path === undefined ? {} : { "aria-describedby": pathId })}
-        onPress={() => onExpandedChange?.(!expanded)}
-        data-testid={headTestId}
-      >
-        <span className="omfp-wsection__glyph" aria-hidden="true">
-          {expanded ? "▾" : "▸"}
-        </span>
-        <span className={cx("omfp-wsection__name", current && "omfp-grad-text")} title={path}>
-          {name}
-        </span>
+      <div className={cx("omfp-wsection__head omfp-focus-item", headClassName)}>
+        <button
+          {...toggleProps}
+          type="button"
+          className="omfp-wsection__toggle omfp-focus-item__target"
+          aria-expanded={expanded}
+          aria-label={toggleLabel}
+          onClick={() => onExpandedChange?.(!expanded)}
+        >
+          <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+        </button>
+        {editor ?? (
+          <h2
+            {...nameProps}
+            id={headingId}
+            className={cx("omfp-wsection__name", current && "omfp-grad-text")}
+            title={path}
+            aria-description={path}
+          >
+            {name}
+            {current && currentLabel !== undefined && <span className="omfp-visually-hidden"> ({currentLabel})</span>}
+          </h2>
+        )}
         {count !== undefined && <span className="omfp-wsection__count">{count}</span>}
-      </AriaButton>
-      {path !== undefined && (
-        <span id={pathId} hidden>
-          {path}
-        </span>
-      )}
+        {actions !== undefined && <span className="omfp-wsection__actions">{actions}</span>}
+      </div>
       {expanded && <div className="omfp-wsection__rows">{children}</div>}
     </section>
   );
 }
 
-export interface ThreadRowProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+export type RowListProps = HTMLAttributes<HTMLUListElement>;
+
+/** The rows of a workspace section (UI-442): thread rows, and list items holding a hint row. */
+export function RowList({ className, ...props }: RowListProps) {
+  return <ul {...props} className={cx("omfp-row-list", className)} />;
+}
+
+export interface ThreadRowProps extends Omit<HTMLAttributes<HTMLLIElement>, "title" | "onSelect"> {
   state: ThreadState;
+  /** The state mark's accessible name (the thread's status in words). */
+  stateLabel?: string;
+  /** Props of the state mark: data attributes. */
+  markProps?: DataAttributes;
   title: ReactNode;
+  /** No title yet (a draft, a thread not yet named): italic. */
+  placeholder?: boolean;
   /** Relative time, replaced by the delete `×` on hover and focus. */
   meta?: ReactNode;
   selected?: boolean;
   /** Just started awaiting or failed: flashes and bounces at motion `full` (UI-146). */
   fresh?: boolean;
+  /** A reply the user has not seen: a bold title, and `unreadLabel` for screen readers. */
+  unread?: boolean;
+  unreadLabel?: string;
+  /** An archived thread: small, muted and indented. */
+  archived?: boolean;
+  /** What a filter matched in its conversation, on a second line. */
+  snippet?: ReactNode;
+  /** Selects the thread: the row's button. */
+  onSelect?: () => void;
+  /** Props of the select button: a test id, data attributes. */
+  selectProps?: Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "className" | "onClick"> & DataAttributes;
+  /** Buttons after the select button (unarchive, a filter). */
+  actions?: ReactNode;
   /** Shows the delete `×`. */
   onDelete?: () => void;
   deleteLabel?: string;
+  /** Props of the delete button: a test id (`row-delete` by default), data attributes. */
+  deleteProps?: DataAttributes;
 }
 
-/** A thread in the left column (UI-169): state mark, title, time or delete; selected shows the gradient bar. */
+/**
+ * A thread in the left column (UI-169, UI-442), a list item of a {@link RowList}: its select button (state mark, title,
+ * time or delete, the filter's snippet), then its actions and the delete `×`; selected shows the gradient bar.
+ */
 export function ThreadRow({
   state,
+  stateLabel,
+  markProps,
   title,
+  placeholder = false,
   meta,
   selected = false,
   fresh = false,
+  unread = false,
+  unreadLabel,
+  archived = false,
+  snippet,
+  onSelect,
+  selectProps,
+  actions,
   onDelete,
   deleteLabel = "Delete thread",
+  deleteProps,
   className,
   ...props
 }: ThreadRowProps) {
   return (
-    <div
+    <li
       {...props}
-      className={cx("omfp-row omfp-thread", className)}
+      className={cx("omfp-row omfp-thread omfp-focus-item", className)}
       data-state={state}
+      data-unread={unread || undefined}
       data-selected={selected || undefined}
       data-fresh={fresh || undefined}
+      data-archived={archived || undefined}
+      data-snippet={snippet !== undefined || undefined}
     >
-      <StateMark state={state} />
-      <span className="omfp-row__title">{title}</span>
-      {meta !== undefined && <span className="omfp-row__meta">{meta}</span>}
+      <button
+        {...selectProps}
+        type="button"
+        className="omfp-thread-row omfp-focus-item__target"
+        aria-current={selected ? "true" : undefined}
+        onClick={onSelect}
+      >
+        <StateMark {...markProps} state={state} data-testid="thread-status" {...stateLabelProp(stateLabel)} />
+        <span className="omfp-row__title" data-placeholder={placeholder ? "true" : undefined}>
+          {title}
+        </span>
+        {unread && unreadLabel !== undefined && (
+          <span className="omfp-visually-hidden" data-testid="unread">
+            {unreadLabel}
+          </span>
+        )}
+        {meta !== undefined && <span className="omfp-row__meta">{meta}</span>}
+        {snippet !== undefined && (
+          <span className="omfp-thread-row__snippet" data-testid="thread-snippet">
+            {snippet}
+          </span>
+        )}
+      </button>
+      {actions}
       {onDelete !== undefined && (
         <IconButton
+          data-testid="row-delete"
+          {...deleteProps}
           className="omfp-row__delete"
           label={deleteLabel}
           icon={<Icon name="x" />}
           onPress={onDelete}
-          data-testid="row-delete"
         />
       )}
-    </div>
+    </li>
   );
+}
+
+/** `label` for a state mark when there is one (`exactOptionalPropertyTypes`). */
+function stateLabelProp(label: string | undefined): { label?: string } {
+  return label === undefined ? {} : { label };
 }
 
 export interface ActionRowProps extends AriaButtonProps {

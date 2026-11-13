@@ -15,6 +15,9 @@ const KIT_ONLY = [
   "omfp-modeline",
   "omfp-mode-pill",
   "omfp-chat-header",
+  "omfp-wsection",
+  "omfp-thread-row",
+  "omfp-row-list",
 ];
 
 /** `file: class` for every app source file writing a kit-only class. */
