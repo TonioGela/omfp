@@ -1,13 +1,15 @@
 /**
  * Floating panels (UI-230, AGT-060): each panel of the current workspace's valid manifest floats over whatever view the
- * window shows, with a bar (grip, title, minimise, close) over its node and a resize corner. Panels start cascaded;
- * each keeps its box and minimised state per workspace and id in this window. Closing one removes it from
+ * window shows, with a bar (grip, title, minimise, close) over its node and a resize corner. Panels open below the
+ * view's top bars, side by side, then cascaded (UI-454); each keeps its box and minimised state per workspace and id
+ * in this window. Closing one removes it from
  * `views.json` with `views.unmount` (UI-231); closing one an init file added hides it in this window (UI-261).
  */
 
 import { IconButton } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
-import { type CSSProperties, type ReactNode, useEffect } from "react";
+import type { ReactNode } from "react";
+import { useEffect } from "react";
 import {
   floatingWidgetKey,
   movePanel,
@@ -111,7 +113,7 @@ interface FloatingWidgetProps {
   readonly panel: ResolvedPanel;
   /** Closes the panel; by default `views.unmount` removes it from `views.json` (UI-231). */
   readonly onClose?: () => void;
-  /** Its place in id order: panels without a box of their own are cascaded by it. */
+  /** Its place in id order: panels without a box of their own open side by side, then cascaded, by it (UI-454). */
   readonly index: number;
   readonly workspaceId: string;
   readonly views: ViewsState | undefined;
@@ -120,7 +122,13 @@ interface FloatingWidgetProps {
 
 function FloatingWidget({ panel, index, workspaceId, views, registry, onClose }: FloatingWidgetProps): ReactNode {
   const host = useHost();
-  const { panel: state, setPanel, root, handle, style } = useFloatingBox(floatingWidgetKey(workspaceId, panel.id));
+  const {
+    panel: state,
+    setPanel,
+    root,
+    handle,
+    style,
+  } = useFloatingBox(floatingWidgetKey(workspaceId, panel.id), index);
   const { title } = panel;
   const close = () => {
     if (onClose !== undefined) {
@@ -143,7 +151,7 @@ function FloatingWidget({ panel, index, workspaceId, views, registry, onClose }:
       data-testid="floating-widget"
       data-panel={panel.id}
       data-minimised={state.minimised ? "" : undefined}
-      style={style ?? ({ "--panel-index": index } as CSSProperties)}
+      style={style}
     >
       <div className="omfp-floating-file__bar">
         <button

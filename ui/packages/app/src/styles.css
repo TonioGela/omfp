@@ -576,10 +576,11 @@
     background: var(--omfp-hover);
   }
 
-  /* Files in a view without a `main` slot float over the view as tabs, moved, resized and minimised (UI-115). */
+  /* Files in a view without a `main` slot float over the view as tabs, moved, resized and minimised (UI-115), opening
+     below the view's top bars (UI-454). */
   .omfp-floating-file {
     position: absolute;
-    inset: var(--omfp-s4) var(--omfp-s4) calc(var(--omfp-s4) + var(--omfp-row-h));
+    inset: calc(var(--panel-top, 0px) + var(--omfp-s4)) var(--omfp-s4) calc(var(--omfp-s4) + var(--omfp-row-h));
     z-index: 2;
     display: flex;
     flex-direction: column;
@@ -664,17 +665,42 @@
     touch-action: none;
   }
 
-  /* Floating widget panels (UI-230): the floating file panel's look, smaller, cascaded by their index until moved. */
+  /* Floating widget panels (UI-230): the floating file panel's look, smaller. Until moved, a panel opens below the
+     view's top bars, in its column from the right (never past the left edge), cascaded by its row (UI-454). */
   .omfp-floating-widget {
-    --panel-index: 0;
+    --panel-top: 0px;
+    --panel-column: 0;
+    --panel-row: 0;
     position: absolute;
-    inset-block-start: calc(var(--omfp-s4) + var(--panel-index) * 2rem);
-    inset-inline-end: calc(var(--omfp-s4) + var(--panel-index) * 2rem);
+    inset-block-start: calc(
+      var(--panel-top) +
+      var(--omfp-s4) +
+      var(--panel-row) *
+      (var(--omfp-bar-h) + var(--omfp-s2))
+    );
+    inset-inline-end: max(
+      0px,
+      min(
+        calc(var(--omfp-s4) + var(--panel-column) * (var(--omfp-float-w) + var(--omfp-s3))),
+        calc(100% - var(--omfp-float-w))
+      )
+    );
     z-index: 2;
     display: flex;
     flex-direction: column;
     inline-size: var(--omfp-float-w);
-    block-size: 16rem;
+    block-size: min(
+      16rem,
+      calc(
+        100% -
+        var(--panel-top) -
+        var(--panel-row) *
+        (var(--omfp-bar-h) + var(--omfp-s2)) -
+        2 *
+        var(--omfp-s4) -
+        var(--omfp-row-h)
+      )
+    );
     min-inline-size: 15rem;
     border: var(--omfp-bw) solid var(--omfp-pop-border);
     border-radius: var(--omfp-r-card);

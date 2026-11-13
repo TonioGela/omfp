@@ -1,14 +1,93 @@
 /**
  * A panel floating over the view (the file panel, UI-115; the floating widgets, UI-230): its box and minimised state
  * in a window key, moved by a grip and resized by a corner (pointer drag, or arrow keys; Shift moves four times as far).
+ * A panel without a box of its own opens below the bars at the top of the view, side by side with the panels before it
+ * while they fit across the view, then cascaded (UI-454).
  */
 
 import type { CSSProperties, KeyboardEvent, PointerEvent, RefObject } from "react";
-import { useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { type FloatingPanel, type Update, useWindowState, type WindowKey } from "../sdk/index.ts";
 
 /** How far an arrow key moves or resizes the panel; with Shift, four times as far. */
 const KEY_STEP = 16;
+
+/** The gap between panels side by side, in px, as the stylesheet's `s3` at normal density (UI-454). */
+const PANEL_GAP = 12;
+
+/** The bars a new panel must not cover: the header widget and the tab bars at the top of the view (UI-454). */
+const TOP_BARS = '[data-widget="omfp:header"], .omfp-view__tabbar';
+
+/**
+ * Where the bars at the top of the shown view end, in px below the top of `container` (the panels' containing block):
+ * the header widget and the tab bars starting at the view's top edge (UI-454); 0 without a view.
+ */
+export function topBarsBottom(container: HTMLElement): number {
+  const view = container.querySelector('[data-testid="view"]');
+  if (view === null) {
+    return 0;
+  }
+  const viewTop = view.getBoundingClientRect().top;
+  let bottom = viewTop;
+  for (const bar of view.querySelectorAll(TOP_BARS)) {
+    const box = bar.getBoundingClientRect();
+    if (box.height > 0 && box.top <= viewTop + 1) {
+      bottom = Math.max(bottom, box.bottom);
+    }
+  }
+  return Math.max(0, bottom - container.getBoundingClientRect().top);
+}
+
+/**
+ * The opening place of the `index`th panel without a box (UI-454): its column from the right while panels of
+ * `panelWidth` fit side by side across `containerWidth`, then its row of the cascade.
+ */
+export function openingSlot(
+  index: number,
+  containerWidth: number,
+  panelWidth: number,
+): { readonly column: number; readonly row: number } {
+  const columns = Math.max(1, Math.floor((containerWidth + PANEL_GAP) / (panelWidth + PANEL_GAP)));
+  return { column: index % columns, row: Math.floor(index / columns) };
+}
+
+interface Opening {
+  readonly top: number;
+  readonly column: number;
+  readonly row: number;
+}
+
+/** Measures where a panel without a box opens, again when the window or the view's top bars change size. */
+function useOpening(root: RefObject<HTMLElement | null>, index: number, placed: boolean): Opening | undefined {
+  const [opening, setOpening] = useState<Opening | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (placed) {
+      return undefined;
+    }
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => measure());
+    function measure(): void {
+      const element = root.current;
+      const container = element?.offsetParent;
+      if (element === null || element === undefined || !(container instanceof HTMLElement)) {
+        return;
+      }
+      const top = topBarsBottom(container);
+      const { column, row } = openingSlot(index, container.clientWidth, element.offsetWidth);
+      setOpening((now) => (now?.top === top && now.column === column && now.row === row ? now : { top, column, row }));
+      observer?.disconnect();
+      for (const bar of container.querySelectorAll(`[data-testid="view"] :is(${TOP_BARS})`)) {
+        observer?.observe(bar);
+      }
+    }
+    measure();
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [root, index, placed]);
+  return opening;
+}
 
 type Box = NonNullable<FloatingPanel["box"]>;
 export type Gesture = (panel: FloatingPanel, from: Box, dx: number, dy: number) => FloatingPanel;
@@ -29,13 +108,18 @@ export interface FloatingBox {
   readonly root: RefObject<HTMLElement | null>;
   /** The handlers applying `gesture` (`movePanel`, `resizePanel`). */
   readonly handle: (gesture: Gesture) => GestureHandlers;
-  /** The stored box as inline style; `undefined` while the stylesheet places the panel. */
-  readonly style: CSSProperties | undefined;
+  /**
+   * The stored box as inline style; without one, the opening place for the stylesheet (`--panel-top`, the bottom of
+   * the view's top bars, `--panel-column` and `--panel-row`, UI-454).
+   */
+  readonly style: CSSProperties;
 }
 
-export function useFloatingBox(key: WindowKey<FloatingPanel>): FloatingBox {
+/** The panel of window key `key`; `index` is its place among the panels opening together (UI-454). */
+export function useFloatingBox(key: WindowKey<FloatingPanel>, index = 0): FloatingBox {
   const [panel, setPanel] = useWindowState(key);
   const root = useRef<HTMLElement>(null);
+  const opening = useOpening(root, index, panel.box !== undefined);
   const drag = useRef<{ readonly gesture: Gesture; readonly from: Box; readonly x: number; readonly y: number }>(
     undefined,
   );
@@ -89,9 +173,13 @@ export function useFloatingBox(key: WindowKey<FloatingPanel>): FloatingBox {
       }
     },
   });
-  const style =
+  const style: CSSProperties =
     panel.box === undefined
-      ? undefined
+      ? ({
+          "--panel-top": `${opening?.top ?? 0}px`,
+          "--panel-column": opening?.column ?? index,
+          "--panel-row": opening?.row ?? 0,
+        } as CSSProperties)
       : {
           left: panel.box.left,
           top: panel.box.top,

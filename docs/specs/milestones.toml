@@ -919,6 +919,8 @@ requirements = [
   "UI-452",
   # QA fixes: workspace repository rows that never overlap
   "UI-453",
+  # QA fixes: floating panels open below the header, side by side
+  "UI-454",
   # Journeys
   "E2E-22",
   "E2E-23",

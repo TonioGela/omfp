@@ -1,12 +1,15 @@
 //! The desktop layout at 1100, 1440 and 1920 px (E2E-38), headless Chromium (omp and git for real: the rows need git statuses): the workspace
 //! widget's repository rows with a long name, a dirty status, an origin and an "also in" warning never draw one cell
-//! over another nor past the row (UI-453); the side tab bar stays one row (UI-452). Screenshots land in `/tmp` as
-//! `omfp-desktop-<width>.png` (or `OMFP_SCREENSHOT_DIR`); nothing compares pixels.
+//! over another nor past the row (UI-453); the side tab bar stays one row (UI-452); floating panels open below the
+//! view's top bars and do not hide each other's title bars (UI-454). Screenshots land in `/tmp` as
+//! `omfp-desktop-<width>.png` and `omfp-desktop-<width>-panels.png` (or `OMFP_SCREENSHOT_DIR`); nothing compares
+//! pixels.
 
 use e2e::{Journey, row};
-use omfp_protocol::method::{ThreadsCreate, WorkspacesAddRepo};
+use omfp_protocol::method::{ThreadsCreate, ViewsMount, WorkspacesAddRepo};
 use omfp_protocol::{
-    AddRepoParams, CreateThreadParams, CreateWorkspaceParams, RepoSource, ThreadWorkspace,
+    AddRepoParams, CreateThreadParams, CreateWorkspaceParams, MountParams, RepoSource,
+    ThreadWorkspace,
 };
 use omfp_testkit::TempRepo;
 
@@ -133,20 +136,85 @@ async fn layout_at(journey: &Journey, width: u32) -> anyhow::Result<()> {
     Ok(())
 }
 
-// spec: E2E-38, UI-452, UI-453
+/// Two floating panels: below the header and the side tab bar, inside the window, each title bar in sight (UI-454).
+const PANELS: &str = "
+const view = document.querySelector('[data-testid=view]').getBoundingClientRect();
+const bars = [...document.querySelectorAll('[data-testid=view] :is([data-widget=\"omfp:header\"], .omfp-view__tabbar)')]
+  .map((e) => e.getBoundingClientRect()).filter((r) => r.height > 0 && r.top <= view.top + 1);
+const below = Math.max(...bars.map((r) => r.bottom));
+const out = [];
+for (const panel of document.querySelectorAll('[data-testid=floating-widget]')) {
+  const r = panel.getBoundingClientRect();
+  if (r.top < below - 0.5) out.push(`${panel.dataset.panel} at ${r.top} above ${below}`);
+  if (r.left < 0 || r.right > innerWidth + 0.5 || r.bottom > innerHeight + 0.5) out.push(`${panel.dataset.panel} out of the window`);
+  const bar = panel.querySelector('.omfp-floating-file__bar').getBoundingClientRect();
+  const hit = document.elementFromPoint(bar.left + bar.width / 2, bar.top + bar.height / 2);
+  if (hit === null || hit.closest('[data-testid=floating-widget]') !== panel) out.push(`${panel.dataset.panel}'s bar covered`);
+}
+return out;";
+
+/// Waits until `script` finds no offender (the panels follow a resize a frame later), else fails naming them.
+async fn settled(journey: &Journey, what: &str, script: &str) -> anyhow::Result<()> {
+    let clear = journey
+        .until(what, async |page| {
+            let value = page.eval(script, Vec::new()).await?;
+            Ok((value.as_array().is_some_and(Vec::is_empty)).then_some(()))
+        })
+        .await;
+    if clear.is_err() {
+        none(journey, what, script).await?;
+    }
+    Ok(())
+}
+
+/// Mounts two panels and checks where they open at `width`.
+async fn panels_at(journey: &Journey, workspace_id: &str, width: u32) -> anyhow::Result<()> {
+    let mut connection = journey.connect().await?;
+    for id in ["todos-panel", "deploy-status"] {
+        connection
+            .call::<ViewsMount>(MountParams {
+                workspace_id: workspace_id.to_owned(),
+                id: id.to_owned(),
+                widget: Some("omfp:todos".to_owned()),
+                code: None,
+                props: None,
+                view: None,
+                place: None,
+                panel: true,
+            })
+            .await?;
+    }
+    connection.close().await?;
+    journey
+        .until("two panels", async |page| {
+            Ok((page.count("[data-testid=floating-widget]").await? == 2).then_some(()))
+        })
+        .await?;
+    settled(journey, &format!("floating panels at {width} px"), PANELS).await?;
+    journey
+        .screenshot(&format!("desktop-{width}-panels"))
+        .await?;
+    Ok(())
+}
+
+// spec: E2E-38, UI-452, UI-453, UI-454
 #[tokio::test(flavor = "multi_thread")]
-async fn repository_rows_and_side_tabs_at_desktop_widths() -> anyhow::Result<()> {
+async fn repository_rows_side_tabs_and_floating_panels_at_desktop_widths() -> anyhow::Result<()> {
     let shared = TempRepo::new()?;
     std::fs::write(shared.path().join("README.md"), "changed\n")?;
     let other = TempRepo::new()?;
     let journey = Journey::start(Vec::new()).await?;
     journey.connected().await?;
     journey.scheme("light").await?;
-    workspaces(&journey, &shared, &other).await?;
+    let workspace_id = workspaces(&journey, &shared, &other).await?;
     for width in [1920, 1440, 1100] {
         layout_at(&journey, width).await?;
     }
+    panels_at(&journey, &workspace_id, 1100).await?;
+    journey.driver.set_window_rect(0, 0, 1920, 900).await?;
+    settled(&journey, "floating panels at 1920 px", PANELS).await?;
+    journey.screenshot("desktop-1920-panels").await?;
     journey
-        .finish("desktop layout: repository rows, side tabs")
+        .finish("desktop layout: repository rows, side tabs, floating panels")
         .await
 }

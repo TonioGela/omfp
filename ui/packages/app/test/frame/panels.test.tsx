@@ -1,11 +1,12 @@
 /** L4: floating widget panels (UI-230, UI-231, AGT-060), props updates in place (UI-232) and `:widget save` (UI-233),
  * in the frame over a fake client. */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { ReportWidgetsParams, ViewsState, WidgetInfo } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
+import { openingSlot, topBarsBottom } from "../../src/frame/floating-box.ts";
 import { Frame } from "../../src/frame/frame.tsx";
 import {
   chooseView,
@@ -123,7 +124,7 @@ const MANIFEST = {
 
 describe("floating panels", () => {
   // spec: UI-230, AGT-060
-  test("each panel floats over every view with its title, its node and a cascaded place", async () => {
+  test("each panel floats over every view with its title, its node and an opening place", async () => {
     const test = setup({ manifest: MANIFEST });
     // Id order: board, clock.
     expect(panels().map((element) => element.dataset.panel)).toEqual(["board", "clock"]);
@@ -132,7 +133,10 @@ describe("floating panels", () => {
       "Clock",
     ]);
     expect(panels().map((element) => element.getAttribute("aria-label"))).toEqual(["board", "Clock"]);
-    expect(panels().map((element) => element.style.getPropertyValue("--panel-index"))).toEqual(["0", "1"]);
+    const place = (element: HTMLElement) =>
+      ["--panel-top", "--panel-column", "--panel-row"].map((name) => element.style.getPropertyValue(name)).join(" ");
+    // happy-dom lays nothing out (no offset parent to measure): the panels open side by side by their index.
+    expect(panels().map(place)).toEqual(["0px 0 0", "0px 1 0"]);
     // A widget node renders in its slot with its props, a container node like a view's.
     const clock = within(panel("clock")).getByTestId("widget");
     expect([clock.dataset.widget, clock.dataset.instance, clock.dataset.path]).toEqual([
@@ -187,8 +191,8 @@ describe("floating panels", () => {
       "240px",
       "120px",
     ]);
-    // The other panel stays where the stylesheet cascades it.
-    expect([panel("board").style.left, panel("board").style.getPropertyValue("--panel-index")]).toEqual(["", "0"]);
+    // The other panel stays where the stylesheet places it.
+    expect([panel("board").style.left, panel("board").style.getPropertyValue("--panel-column")]).toEqual(["", "0"]);
     await test.user.click(within(panel("clock")).getByText("tick 0"));
     await test.user.click(within(panel("clock")).getByTestId("floating-widget-minimise"));
     expect(panel("clock").dataset.minimised).toBe("");
@@ -244,6 +248,41 @@ describe("floating panels", () => {
       "The view is invalid, showing the default view: panels: expected an object of panels",
     );
     expect(panels().length).toBe(0);
+  });
+
+  // spec: UI-454
+  test("a new panel opens below the view's top bars, beside the panels before it while they fit, then cascaded", () => {
+    // 1600 px across, panels of 384 px with 12 px gaps: four side by side, the fifth on the next row.
+    expect([0, 3, 4, 5].map((index) => openingSlot(index, 1600, 384))).toEqual([
+      { column: 0, row: 0 },
+      { column: 3, row: 0 },
+      { column: 0, row: 1 },
+      { column: 1, row: 1 },
+    ]);
+    expect(openingSlot(1, 300, 384)).toEqual({ column: 0, row: 1 });
+
+    const container = document.createElement("div");
+    container.innerHTML = `<div data-testid="view">
+      <div data-widget="omfp:header" data-top="40" data-bottom="120"></div>
+      <div class="omfp-view__tabbar" data-top="40" data-bottom="74"></div>
+      <div class="omfp-view__tabbar" data-top="120" data-bottom="154"></div>
+    </div>`;
+    container.dataset.top = "20";
+    container.dataset.bottom = "900";
+    container.querySelector<HTMLElement>('[data-testid="view"]')?.setAttribute("data-top", "40");
+    const rect = spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      const top = Number(this.getAttribute("data-top") ?? 0);
+      const bottom = Number(this.getAttribute("data-bottom") ?? top);
+      return { top, bottom, height: bottom - top, left: 0, right: 0, width: 0, x: 0, y: top } as DOMRect;
+    });
+    try {
+      // The header ends lowest among the bars at the view's top; the `main` slot's bar under it does not count.
+      expect(topBarsBottom(container)).toBe(100);
+      container.innerHTML = "";
+      expect(topBarsBottom(container)).toBe(0);
+    } finally {
+      rect.mockRestore();
+    }
   });
 });
 
