@@ -713,6 +713,24 @@ dependencies of its own, YAML 1.2, errors with their place, alias bombs capped),
 the bundle's first load does not grow; it is in the SDK because a widget folder imports only `react`, `omfp/sdk` and
 `omfp/kit`, and agents' widgets get it as well.
 
+## M17 — Workspace polish
+
+Scope: the order of the left column, chosen by the user and kept by the daemon so every window shows it (DMN-280..DMN-285,
+PRT-170..PRT-172, UI-620..UI-627): drag a workspace section by its head or a thread row to another place, a thread onto
+another workspace to move it there; a long press first on touch screens; `Alt-ArrowUp`/`Alt-ArrowDown` (and with Shift,
+into the previous or next workspace) on the focused row or section; every move announced.
+
+Design: explicit `position` columns (migration 11) rather than ordered lists, because the `index` topic upserts
+workspaces and summaries one by one: each carries its place, counted from 0 by the daemon, and a reorder republishes
+only what moved, without touching `updatedAt`. Methods name the place relatively (`beforeId`, absent: last), so two
+windows reordering at once compose; a `beforeId` gone meanwhile is a conflict. Moving a thread changes its omp's cwd,
+so it runs under the restart routine's locks: refused while a turn runs, else the omp restarts in the new folder at
+once. The column is not a React Aria collection (its rows are plain buttons with vim-style keys), so the drag is a
+small pointer implementation (pointer events, measured boxes) rather than `useDragAndDrop`, which also keeps it
+drivable by WebDriver's pointer actions. New workspaces and threads go last.
+
+Open: the E2E journey dragging with WebDriver actions in headless Chromium (E2E-60) is not written yet.
+
 ## Terminal (removed)
 
 Removed (D-06, PRT-135): the user does not rely on the TUI-only commands, so the terminal was never built; its

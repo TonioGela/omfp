@@ -2938,6 +2938,28 @@
     list-style: none;
   }
 
+  /* Reordering the left column (UI-627): the dragged row or section is dimmed; a 2 px primary line shows where it
+   * lands (before a row or a section, at the end of a section's rows, after the last section); the section a thread
+   * would go into gets the hover background on its head. Static at every motion level. */
+  .omfp-thread[data-dragging],
+  .omfp-wsection[data-dragging] {
+    opacity: 0.4;
+  }
+
+  .omfp-thread[data-drop="before"],
+  .omfp-wsection[data-drop="before"] {
+    box-shadow: inset 0 2px 0 var(--omfp-primary);
+  }
+
+  .omfp-row-list[data-drop="end"],
+  .omfp-wsection[data-drop="after"] {
+    box-shadow: inset 0 -2px 0 var(--omfp-primary);
+  }
+
+  .omfp-wsection[data-drop-into] > .omfp-wsection__head {
+    background: var(--omfp-hover);
+  }
+
   .omfp-row {
     position: relative;
     display: flex;

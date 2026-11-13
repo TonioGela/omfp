@@ -54,6 +54,7 @@ pub fn workspace() -> Workspace {
         thread_ids: vec![THREAD_ID.to_owned()],
         provenance: user_provenance(),
         created_at: CREATED_AT,
+        position: 0,
     }
 }
 
@@ -95,6 +96,7 @@ pub fn root_workspace() -> Workspace {
             client: Some("omfp-agent".to_owned()),
         },
         created_at: CREATED_AT,
+        position: 1,
     }
 }
 
@@ -112,6 +114,7 @@ pub fn thread() -> ThreadSummary {
         created_at: CREATED_AT,
         updated_at: CREATED_AT + 60_000,
         archived_at: None,
+        position: 0,
     }
 }
 

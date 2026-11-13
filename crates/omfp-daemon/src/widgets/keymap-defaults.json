@@ -47,6 +47,26 @@
     },
     {
       "mode": "normal",
+      "keys": "Alt-ArrowUp",
+      "command": "threads.moveUp"
+    },
+    {
+      "mode": "normal",
+      "keys": "Alt-ArrowDown",
+      "command": "threads.moveDown"
+    },
+    {
+      "mode": "normal",
+      "keys": "Alt-Shift-ArrowUp",
+      "command": "threads.moveToPrevWorkspace"
+    },
+    {
+      "mode": "normal",
+      "keys": "Alt-Shift-ArrowDown",
+      "command": "threads.moveToNextWorkspace"
+    },
+    {
+      "mode": "normal",
       "keys": "g f",
       "command": "file.open"
     },
@@ -529,6 +549,30 @@
       "aliases": [
         "unarchive"
       ]
+    },
+    {
+      "id": "threads.moveDown",
+      "title": "Move the focused thread or workspace down",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "threads.moveToNextWorkspace",
+      "title": "Move the focused thread to the start of the next workspace",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "threads.moveToPrevWorkspace",
+      "title": "Move the focused thread to the end of the previous workspace",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "threads.moveUp",
+      "title": "Move the focused thread or workspace up",
+      "aliases": [],
+      "scope": "threads"
     },
     {
       "id": "threads.spawnedBy",

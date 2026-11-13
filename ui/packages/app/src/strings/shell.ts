@@ -48,6 +48,16 @@ export const shell = {
     /** The notice of a stop with the spawned threads (UI-242). */
     stoppedSpawned: (count: number) => (count === 1 ? "Stopped 1 thread" : `Stopped ${count} threads`),
   },
+  /** Dragging and moving rows and sections of the left column (UI-620..UI-627). */
+  reorder: {
+    movedThread: (title: string, place: number, count: number, workspace: string) =>
+      `Moved ${title} to position ${place} of ${count} in ${workspace}`,
+    movedThreadTo: (title: string, workspace: string, place: number, count: number) =>
+      `Moved ${title} to ${workspace}, position ${place} of ${count}`,
+    movedWorkspace: (name: string, place: number, count: number) =>
+      `Moved workspace ${name} to position ${place} of ${count}`,
+    filtering: "Clear the filter to reorder",
+  },
   newWorkspace: {
     label: "+ workspace",
     placeholder: "+ workspace: name, or /path of a repository to link, Enter",
@@ -632,6 +642,10 @@ export const shell = {
     search: "Filter threads",
     deleteFocused: "Delete the focused thread or workspace…",
     toggleSection: "Collapse or expand the focused workspace",
+    moveUp: "Move the focused thread or workspace up",
+    moveDown: "Move the focused thread or workspace down",
+    moveToPrevWorkspace: "Move the focused thread to the end of the previous workspace",
+    moveToNextWorkspace: "Move the focused thread to the start of the next workspace",
     view: "Switch view (:view <id>)",
     resetViews: "Replace the workspace's views.json with the default view, after a confirmation",
     nextView: "Next view",

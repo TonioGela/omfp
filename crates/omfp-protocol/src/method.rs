@@ -156,10 +156,15 @@ methods! {
     WorkspacesFindFile = "workspaces.find_file" (params::FindFileParams) -> FileCandidates;
     /// Writes a file of a workspace unless it changed since it was read (DMN-090).
     WorkspacesWriteFile = "workspaces.write_file" (params::WriteFileParams) -> FileWritten;
+    /// Puts a workspace just before another in the left column, or last (PRT-170, DMN-281).
+    WorkspacesReorder = "workspaces.reorder" (params::ReorderWorkspaceParams) -> params::Empty;
     /// Creates a thread in an existing or a new workspace.
     ThreadsCreate = "threads.create" (params::CreateThreadParams) -> ThreadSummary;
     /// Renames a thread or changes its approval mode.
     ThreadsUpdate = "threads.update" (params::UpdateThreadParams) -> ThreadSummary;
+    /// Puts a thread just before another of a workspace in the left column, or last; another workspace moves it
+    /// there (PRT-171, DMN-282, DMN-283).
+    ThreadsReorder = "threads.reorder" (params::ReorderThreadParams) -> params::Empty;
     /// Archives a thread.
     ThreadsArchive = "threads.archive" (params::ThreadRef) -> params::Empty;
     /// Brings an archived thread back.

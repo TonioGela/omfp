@@ -1,10 +1,10 @@
 /**
  * One thread of a workspace section (UI-020): the kit's thread row (UI-169, UI-442) for a thread summary, with its
- * unarchive action and the spawned-by filter (UI-240).
+ * unarchive action and the spawned-by filter (UI-240); a row that drags carries its place in a drag (UI-621, UI-627).
  */
 import { Button, Icon, ThreadRow } from "@omfp/kit";
 import type { ThreadSummary } from "@omfp/protocol";
-import type { ReactNode } from "react";
+import type { PointerEventHandler, ReactNode } from "react";
 import { useThreadActions, useWindowState } from "../../sdk/index.ts";
 import { strings } from "../../strings/index.ts";
 import { displayTitle, statusLabel, threadMark, threadStatus } from "../../vm/threads.ts";
@@ -14,6 +14,15 @@ import { useFresh } from "./marks.ts";
 
 const text = strings.shell.threads;
 
+/** A row that drags (UI-621): the press that may start the drag, and its part in the drag in progress. */
+export interface RowReorder {
+  readonly onPointerDown: PointerEventHandler;
+  /** It is the dragged row: dimmed. */
+  readonly dragging: boolean;
+  /** The dragged thread lands just before it: the drop line on its top. */
+  readonly dropBefore: boolean;
+}
+
 export function SummaryRow({
   thread,
   selected,
@@ -21,6 +30,7 @@ export function SummaryRow({
   snippet,
   spawned,
   archived = false,
+  reorder,
 }: {
   thread: ThreadSummary;
   selected: boolean;
@@ -29,6 +39,8 @@ export function SummaryRow({
   /** How many threads it spawned, transitively; `undefined` for none (UI-240). */
   spawned: number | undefined;
   archived?: boolean;
+  /** Absent: the row does not drag (an archived one). */
+  reorder?: RowReorder;
 }): ReactNode {
   const actions = useThreadActions();
   const [spawnedBy, setSpawnedBy] = useWindowState(SPAWNED_BY);
@@ -38,6 +50,12 @@ export function SummaryRow({
   const filtering = spawnedBy === thread.id;
   return (
     <ThreadRow
+      {...(reorder !== undefined && {
+        onPointerDown: reorder.onPointerDown,
+        "data-reorder-thread": thread.id,
+        "data-dragging": reorder.dragging ? "true" : undefined,
+        "data-drop": reorder.dropBefore ? "before" : undefined,
+      })}
       state={threadMark(status, unread)}
       stateLabel={statusLabel(status)}
       markProps={{ "data-status": status }}
@@ -57,6 +75,7 @@ export function SummaryRow({
         "data-status": status,
         "data-title-source": thread.titleSource,
         "data-archived": archived ? "true" : undefined,
+        "data-reorder-handle": reorder === undefined ? undefined : "true",
       }}
       actions={
         <>

@@ -386,6 +386,7 @@ mod tests {
             created_at: 1,
             updated_at: 1,
             archived_at: None,
+            position: 0,
         }
     }
 

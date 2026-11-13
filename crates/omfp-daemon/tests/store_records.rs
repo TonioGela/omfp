@@ -502,3 +502,115 @@ fn the_activity_log_keeps_the_newest_entries_and_outlives_its_thread() {
     assert_eq!(kept, vec![recorded[3].clone(), recorded[2].clone()]);
     assert!(!more);
 }
+
+/// `ids` in the order `positions` gives them.
+fn ordered<'a>(store: &Store, ids: &[&'a String]) -> Vec<&'a String> {
+    let positions = store.positions().unwrap();
+    let mut ids = ids.to_vec();
+    ids.sort_by_key(|id| positions[id.as_str()]);
+    ids
+}
+
+// spec: DMN-280, DMN-281, DMN-284
+#[test]
+fn workspaces_are_reordered_before_another_or_last() {
+    let (_dir, store) = open();
+    let [a, b, c] = ["a", "b", "c"].map(|name| workspace(name, &format!("/work/{name}")));
+    for ws in [&a, &b, &c] {
+        store.insert_workspace(ws).unwrap();
+    }
+    let all = [&a.id, &b.id, &c.id];
+    assert_eq!(ordered(&store, &all), [&a.id, &b.id, &c.id]);
+
+    store.reorder_workspace(&c.id, Some(&a.id)).unwrap();
+    assert_eq!(ordered(&store, &all), [&c.id, &a.id, &b.id]);
+    store.reorder_workspace(&c.id, None).unwrap();
+    assert_eq!(ordered(&store, &all), [&a.id, &b.id, &c.id]);
+    // Positions count from 0 without gaps, whatever was removed.
+    store.reorder_workspace(&a.id, None).unwrap();
+    store.delete_workspace(&b.id).unwrap();
+    let positions = store.positions().unwrap();
+    assert_eq!((positions[&c.id], positions[&a.id]), (0, 1));
+}
+
+// spec: DMN-282, DMN-283, DMN-284
+#[test]
+fn threads_are_reordered_within_their_workspace_and_moved_to_another() {
+    let (_dir, store, shop) = with_workspace();
+    let other = workspace("other", "/work/other");
+    store.insert_workspace(&other).unwrap();
+    let [t1, t2, t3] = [(); 3].map(|()| thread(Provenance::User, &shop.id));
+    let archived = thread(Provenance::User, &shop.id);
+    let there = thread(Provenance::User, &other.id);
+    for t in [&t1, &t2, &t3, &archived, &there] {
+        store.insert_thread(t).unwrap();
+    }
+    store
+        .set_thread_archived_at(&archived.id, Some(now_ms()))
+        .unwrap();
+    let ids = [&t1.id, &t2.id, &t3.id, &archived.id];
+
+    assert!(!store.reorder_thread(&t3.id, None, Some(&t1.id)).unwrap());
+    assert_eq!(
+        ordered(&store, &ids),
+        [&t3.id, &t1.id, &t2.id, &archived.id]
+    );
+    // Archived threads have their place too.
+    assert!(
+        !store
+            .reorder_thread(&archived.id, Some(&shop.id), Some(&t1.id))
+            .unwrap()
+    );
+    assert_eq!(
+        ordered(&store, &ids),
+        [&t3.id, &archived.id, &t1.id, &t2.id]
+    );
+
+    // Into another workspace: before one of its threads, or last.
+    assert!(
+        store
+            .reorder_thread(&t1.id, Some(&other.id), Some(&there.id))
+            .unwrap()
+    );
+    assert_eq!(store.thread(&t1.id).unwrap().workspace_id, other.id);
+    assert_eq!(ordered(&store, &[&there.id, &t1.id]), [&t1.id, &there.id]);
+    assert!(store.reorder_thread(&t2.id, Some(&other.id), None).unwrap());
+    let positions = store.positions().unwrap();
+    assert_eq!(
+        [&t1.id, &there.id, &t2.id].map(|id| positions[id]),
+        [0, 1, 2]
+    );
+    // What stays behind keeps its order.
+    assert_eq!(
+        ordered(&store, &[&t3.id, &archived.id]),
+        [&t3.id, &archived.id]
+    );
+}
+
+// spec: DMN-285
+#[test]
+fn a_reorder_before_something_gone_changes_nothing() {
+    let (_dir, store, shop) = with_workspace();
+    let other = workspace("other", "/work/other");
+    store.insert_workspace(&other).unwrap();
+    let [t1, t2] = [(); 2].map(|()| thread(Provenance::User, &shop.id));
+    for t in [&t1, &t2] {
+        store.insert_thread(t).unwrap();
+    }
+    // Another window moved `t1` away meanwhile: placing `t2` before it in `shop` is a conflict.
+    store.reorder_thread(&t1.id, Some(&other.id), None).unwrap();
+    assert_conflict(store.reorder_thread(&t2.id, None, Some(&t1.id)));
+    assert_eq!(store.thread(&t2.id).unwrap().workspace_id, shop.id);
+    assert_conflict(store.reorder_thread(&t2.id, Some(&other.id), Some("gone")));
+    assert_eq!(store.thread(&t2.id).unwrap().workspace_id, shop.id);
+    assert_conflict(store.reorder_workspace(&shop.id, Some("gone")));
+    for error in [
+        store.reorder_workspace("nope", None).unwrap_err(),
+        store.reorder_thread("nope", None, None).unwrap_err(),
+        store
+            .reorder_thread(&t2.id, Some("nope"), None)
+            .unwrap_err(),
+    ] {
+        assert!(matches!(error, StoreError::NotFound { .. }), "{error:?}");
+    }
+}

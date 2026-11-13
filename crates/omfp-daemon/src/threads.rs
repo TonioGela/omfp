@@ -165,6 +165,17 @@ impl Threads {
         Ok(self.store.set_thread_roots(id, roots)?)
     }
 
+    /// Puts the thread into `workspace_id` (`None`: its own) before its thread `before`, or last (DMN-282); `true`
+    /// when it moved to another workspace (DMN-283). The caller restarts its omp then.
+    pub fn reorder(
+        &self,
+        id: &str,
+        workspace_id: Option<&str>,
+        before: Option<&str>,
+    ) -> Result<bool> {
+        Ok(self.store.reorder_thread(id, workspace_id, before)?)
+    }
+
     /// Deletes the thread and its directory (sessions, log). Its workspace is never removed implicitly. The caller
     /// makes sure no omp process runs for it.
     pub fn delete(&self, id: &str) -> Result<()> {

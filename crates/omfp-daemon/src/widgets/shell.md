@@ -12,6 +12,11 @@ completion), then one section per workspace — its name (the current one highli
 its threads with their state marks (running, awaiting input, failed, idle, unread) and "+ thread", which opens a draft
 thread there (the daemon creates the thread when its first message is sent). Archived threads hide behind
 "Archived (N)". A section folds with its chevron or `z a`; `d d` deletes the focused row (after a confirmation).
+Workspaces and threads keep the order the user gives them, the same in every window (new ones go last): drag a
+section by its head or a thread row (a long press first on a touch screen) to another place, a thread onto another
+workspace to move it there (its omp restarts in that folder); `Alt-ArrowUp` / `Alt-ArrowDown` move the focused row or
+section, `Alt-Shift-ArrowUp` / `Alt-Shift-ArrowDown` the focused thread into the previous or next workspace. Agents
+use `workspaces.reorder` and `threads.reorder`.
 Selecting a thread makes its workspace the **current workspace**: the view, the init file `.omfp/init.ts`, the keymap
 `.omfp/keymap.json` and `:widget add` all follow it. A splitter resizes the column (wide windows); under 1100 px it
 folds into a strip of state marks (`Space t` opens it), on a phone it is one of the bottom bar's areas.
@@ -103,6 +108,8 @@ help, `Space p` workspace, `Space f` files, `Space v` views); Escape cancels the
 | `Space s`, `Space S`, `Space R` | Stop process of the thread (and of the threads it spawned); restart it. |
 | `Space t` | Show or hide the threads column (narrow window). |
 | `d d`, `z a` | Delete the focused row; fold the focused workspace. |
+| `Alt-ArrowUp`, `Alt-ArrowDown` | Move the focused thread (in its workspace) or workspace up or down. |
+| `Alt-Shift-ArrowUp`, `Alt-Shift-ArrowDown` | Move the focused thread to the end of the previous workspace, the start of the next one. |
 | `Ctrl-c` | Interrupt the selected thread's turn (its queued messages come back into the composer); with text selected it copies. |
 | `u` | Restore the last draft `Ctrl-c` cleared in the composer. |
 

@@ -1,10 +1,11 @@
 /**
  * The left column the frame renders outside any view (UI-020..023, UI-026, UI-100, UI-169, UI-170, UI-240): the
  * brand, the full-text filter (`/`), the "+ workspace" field, the "spawned by" filter in force, then one section per
- * workspace — `▾`/`▸`, name (the current one in
+ * workspace in the daemon's order (UI-620) — `▾`/`▸`, name (the current one in
  * gradient text), path, count, a menu with rename and remove, a delete button, its threads (state mark, title, time;
  * unread titles bold), its draft thread, a collapsed "Archived (N)" row and "+ thread". Sections collapse (`za`); the
- * collapsed set is window-local and survives reloads. Its
+ * collapsed set is window-local and survives reloads. Threads and sections are dragged (and moved by keys) into
+ * another place, a thread into another workspace (UI-621..UI-627, `reorder.ts`). Its
  * `threads` scope answers `nav.*` (j/k, gg/G, Ctrl-d/u, UI-095), which are also the global fallback, `dd` and `za` on
  * the focused row or section; it registers `nav.search` (`/`) and `workspace.new` (`Space w`).
  */
@@ -26,7 +27,7 @@ import {
   WorkspaceSection,
 } from "@omfp/kit";
 import { INDEX_TOPIC, type ThreadSummary, type Workspace } from "@omfp/protocol";
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DELETE_WORKSPACE,
   DRAFT_THREAD,
@@ -44,6 +45,7 @@ import {
   type WidgetProps,
 } from "../../sdk/index.ts";
 import { strings } from "../../strings/index.ts";
+import type { ReorderSource } from "../../vm/order.ts";
 import {
   ConversationSearch,
   displayTitle,
@@ -64,6 +66,7 @@ import {
   visibleOrder,
 } from "../../vm/threads.ts";
 import { ARCHIVED_OPEN, COLLAPSED_WORKSPACES, SEEN, SPAWNED_BY, THREAD_QUERY } from "./keys.ts";
+import { type DragStart, type DragState, useMoveCommands, useReorder, useReorderDrag } from "./reorder.ts";
 import { SummaryRow } from "./summary-row.tsx";
 import { NewWorkspace, RenameWorkspace } from "./workspace-fields.tsx";
 
@@ -112,6 +115,21 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
   const root = useRef<HTMLElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const newWorkspace = useRef<HTMLInputElement>(null);
+  const filtering = isFiltering(filter);
+  const nameOf = useCallback(
+    (source: ReorderSource) => {
+      if (source.kind === "workspace") {
+        return workspaces.find((workspace) => workspace.id === source.id)?.name ?? "";
+      }
+      const thread = byId.get(source.id);
+      return thread === undefined ? "" : displayTitle(thread);
+    },
+    [workspaces, byId],
+  );
+  // Before the focus after a removal: a thread moved to another workspace keeps the focus (UI-624).
+  const reorder = useReorder(sections, nameOf);
+  const { drag, start } = useReorderDrag(root, !filtering, reorder);
+  useMoveCommands(sections, filtering, reorder);
   useNavCommands(order, root);
   useSectionCommands();
   useFocusAfterRemoval(sections, root, newWorkspace);
@@ -162,6 +180,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
       aria-busy={!loaded}
       data-testid="sidebar"
       data-omfp-scope="threads"
+      data-reordering={drag?.source.kind}
     >
       <Brand host={location.hostname} />
       <ThreadFilterField search={search} />
@@ -169,7 +188,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
       {spawnedRoot !== undefined && (
         <SpawnedByBar thread={byId.get(spawnedRoot)} clear={() => setSpawnedBy(undefined)} />
       )}
-      {sections.map((section) => (
+      {sections.map((section, index) => (
         <WorkspaceGroup
           key={section.workspace.id}
           section={section}
@@ -178,6 +197,9 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
           seen={seen}
           selected={selected}
           counts={counts}
+          drag={drag}
+          start={start}
+          last={index === sections.length - 1}
         />
       ))}
       {sections.length === 0 && <HintRow data-testid="no-threads">{text.noMatch}</HintRow>}
@@ -392,7 +414,16 @@ function SpawnedByBar({ thread, clear }: { thread: ThreadSummary | undefined; cl
   );
 }
 
-/** A workspace of the column: the kit's section (UI-170, UI-442) with its menu, delete, rename and rows. */
+/** The drag props of the column's sections and rows (UI-621, UI-622, UI-627). */
+interface Dragging {
+  /** The drag in progress, if any. */
+  drag: DragState | undefined;
+  /** Starts dragging a thread row or a section head. */
+  start: DragStart;
+}
+
+/** A workspace of the column: the kit's section (UI-170, UI-442) with its menu, delete, rename and rows; its head
+ * drags it (UI-622), and it shows where a dragged section or thread lands (UI-627). */
 function WorkspaceGroup({
   section,
   filter,
@@ -400,6 +431,9 @@ function WorkspaceGroup({
   seen,
   selected,
   counts,
+  drag,
+  start,
+  last,
 }: {
   section: Section;
   filter: ThreadFilter;
@@ -408,7 +442,9 @@ function WorkspaceGroup({
   selected: string | undefined;
   /** How many threads each thread spawned (UI-240). */
   counts: ReadonlyMap<string, number>;
-}): ReactNode {
+  /** The last section: a section dropped after every other one lands under it. */
+  last: boolean;
+} & Dragging): ReactNode {
   const host = useHost();
   const { workspace } = section;
   const [collapsedIds, setCollapsed] = useWindowState(COLLAPSED_WORKSPACES);
@@ -421,17 +457,30 @@ function WorkspaceGroup({
   };
   const collapsed = isCollapsed(workspace.id, collapsedIds, filter);
   const current = useCurrentWorkspaceId() === workspace.id;
+  const target = drag?.target;
+  const placedHere =
+    target?.kind !== "workspace"
+      ? undefined
+      : target.beforeId === workspace.id
+        ? "before"
+        : target.beforeId === undefined && last
+          ? "after"
+          : undefined;
   return (
     <WorkspaceSection
       data-testid="workspace-section"
       data-workspace-id={workspace.id}
+      data-dragging={drag?.source.kind === "workspace" && drag.source.id === workspace.id ? "true" : undefined}
+      data-drop={placedHere}
+      data-drop-into={target?.kind === "thread" && target.workspaceId === workspace.id ? "true" : undefined}
+      headProps={{ onPointerDown: start({ kind: "workspace", id: workspace.id }) }}
       name={workspace.name}
       path={workspace.path}
       count={section.threadIds.length}
       expanded={!collapsed}
       onExpandedChange={() => setCollapsed((previous) => toggled(previous, workspace.id))}
       toggleLabel={collapsed ? text.expand(workspace.name) : text.collapse(workspace.name)}
-      toggleProps={{ ref: head, "data-testid": "workspace-collapse" }}
+      toggleProps={{ ref: head, "data-testid": "workspace-collapse", "data-reorder-handle": true }}
       nameProps={{ "data-testid": "workspace-section-name" }}
       current={current}
       currentLabel={text.current}
@@ -473,12 +522,22 @@ function WorkspaceGroup({
         </>
       }
     >
-      <WorkspaceRows section={section} filter={filter} byId={byId} seen={seen} selected={selected} counts={counts} />
+      <WorkspaceRows
+        section={section}
+        filter={filter}
+        byId={byId}
+        seen={seen}
+        selected={selected}
+        counts={counts}
+        drag={drag}
+        start={start}
+      />
     </WorkspaceSection>
   );
 }
 
-/** A section's threads, its draft thread, its archived threads behind their toggle, then "+ thread" (UI-020, UI-023). */
+/** A section's threads, its draft thread, its archived threads behind their toggle, then "+ thread" (UI-020, UI-023);
+ * its threads drag (UI-621), its archived ones do not. */
 function WorkspaceRows({
   section,
   filter,
@@ -486,6 +545,8 @@ function WorkspaceRows({
   seen,
   selected,
   counts,
+  drag,
+  start,
 }: {
   section: Section;
   filter: ThreadFilter;
@@ -493,7 +554,7 @@ function WorkspaceRows({
   seen: Seen;
   selected: string | undefined;
   counts: ReadonlyMap<string, number>;
-}): ReactNode {
+} & Dragging): ReactNode {
   const actions = useThreadActions();
   const { workspace } = section;
   const [archivedOpen, setArchivedOpen] = useWindowState(ARCHIVED_OPEN);
@@ -501,6 +562,7 @@ function WorkspaceRows({
   const showArchived = archivedOpen.includes(workspace.id);
   const draftHere = draft?.workspaceId === workspace.id && !isFiltering(filter);
   const snippets = isFiltering(filter) ? filter.conversation : NO_SNIPPETS;
+  const target = drag?.target?.kind === "thread" && drag.target.workspaceId === workspace.id ? drag.target : undefined;
   const row = (id: string, archived: boolean) => {
     const thread = byId.get(id);
     return thread === undefined ? null : (
@@ -512,12 +574,19 @@ function WorkspaceRows({
         snippet={snippets.get(id)}
         spawned={counts.get(id)}
         archived={archived}
+        {...(!archived && {
+          reorder: {
+            onPointerDown: start({ kind: "thread", id, workspaceId: workspace.id }),
+            dragging: drag?.source.kind === "thread" && drag.source.id === id,
+            dropBefore: target?.beforeId === id,
+          },
+        })}
       />
     );
   };
   return (
     <>
-      <RowList>
+      <RowList data-drop={target !== undefined && target.beforeId === undefined ? "end" : undefined}>
         {section.threadIds.map((id) => row(id, false))}
         {draftHere && (
           <ThreadRow

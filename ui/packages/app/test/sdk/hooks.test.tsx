@@ -138,6 +138,7 @@ function summary(id: string): ThreadSummary {
     provenance: { createdBy: { kind: "user" }, client: "test" },
     createdAt: 1,
     updatedAt: 1,
+    position: 0,
   };
 }
 

@@ -106,7 +106,8 @@ pub(crate) fn supervisor_error(error: SupervisorError) -> ErrorBody {
         SupervisorError::InvalidResponse(_) | SupervisorError::EmptyOffer => ErrorCode::BadRequest,
         SupervisorError::LiveActive { .. }
         | SupervisorError::NoLiveSession
-        | SupervisorError::Busy => ErrorCode::Conflict,
+        | SupervisorError::Busy
+        | SupervisorError::BusyMove => ErrorCode::Conflict,
         SupervisorError::Live { omp, .. } => {
             // omp's own refusal of a second session (DMN-104): the same conflict the daemon reports itself.
             let code = if omp.contains("A live session is already active") {
@@ -136,13 +137,14 @@ fn provenance(created_by: &store::Provenance, client: Option<&String>) -> Proven
 }
 
 /// The protocol's workspace: the record, its discovered repositories (with the other workspaces holding the same
-/// checkout, from `holders`), and its threads (DMN-027).
+/// checkout, from `holders`), its threads (DMN-027) and its place in the column (DMN-284).
 pub(crate) fn workspace(
     ws: &store::Workspace,
     repos: &[Discovered],
     thread_ids: Vec<String>,
     holders: &HashMap<PathBuf, Vec<String>>,
     clients: &HashMap<String, String>,
+    position: u32,
 ) -> Workspace {
     let text = |path: &std::path::Path| path.to_string_lossy().into_owned();
     Workspace {
@@ -179,14 +181,17 @@ pub(crate) fn workspace(
         thread_ids,
         provenance: provenance(&ws.created_by, clients.get(&ws.id)),
         created_at: ws.created_at,
+        position,
     }
 }
 
+/// The protocol's thread summary, with its place among the threads of its workspace (DMN-284).
 pub(crate) fn thread_summary(
     thread: &store::Thread,
     status: ThreadStatus,
     clients: &HashMap<String, String>,
     updated_at: i64,
+    position: u32,
 ) -> ThreadSummary {
     ThreadSummary {
         id: thread.id.clone(),
@@ -205,6 +210,7 @@ pub(crate) fn thread_summary(
         created_at: thread.created_at,
         updated_at,
         archived_at: thread.archived_at,
+        position,
     }
 }
 

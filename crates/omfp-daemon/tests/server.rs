@@ -2661,3 +2661,311 @@ async fn a_thread_start_contradicting_the_usable_models_checks_them_again() {
     assert_eq!(models_changed(&mut client).await, 2);
     assert_eq!(daemon.launcher.model_checks().len(), 3);
 }
+
+/// The ids `method` lists (`workspaces.list`, `threads.list` with archived threads) by their `position`.
+async fn by_position(client: &mut Client, method: &str, key: &str) -> Vec<(String, u64)> {
+    let listed = client.ok(method, json!({ "includeArchived": true })).await;
+    let mut entries: Vec<(String, u64)> = listed[key]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            (
+                entry["name"]
+                    .as_str()
+                    .or(entry["title"].as_str())
+                    .unwrap()
+                    .to_owned(),
+                entry["position"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    entries.sort_by_key(|(_, position)| *position);
+    entries
+}
+
+/// A thread titled `title` in workspace `workspace`.
+async fn thread_in(client: &mut Client, title: &str, workspace: &Value) -> String {
+    let thread = client
+        .ok(
+            "threads.create",
+            json!({ "title": title, "workspace": { "id": workspace } }),
+        )
+        .await;
+    thread["id"].as_str().unwrap().to_owned()
+}
+
+// spec: DMN-280, DMN-281, DMN-284, PRT-170, PRT-172
+#[tokio::test(flavor = "multi_thread")]
+async fn workspaces_are_reordered_for_every_window() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let mut ids = Vec::new();
+    for name in ["zeta", "alpha", "beta"] {
+        ids.push(
+            client
+                .ok("workspaces.create", json!({ "name": name }))
+                .await["id"]
+                .clone(),
+        );
+    }
+    // New workspaces go last, whatever their name.
+    let order = |names: [&str; 3]| -> Vec<(String, u64)> {
+        names
+            .iter()
+            .zip(0..)
+            .map(|(name, position)| ((*name).to_owned(), position))
+            .collect()
+    };
+    assert_eq!(
+        by_position(&mut client, "workspaces.list", "workspaces").await,
+        order(["zeta", "alpha", "beta"])
+    );
+    let mut other = daemon.client("other window").await;
+    other.ok("subscribe", json!({ "topic": "index" })).await;
+
+    let answer = client
+        .ok(
+            "workspaces.reorder",
+            json!({ "workspaceId": ids[2], "beforeId": ids[0] }),
+        )
+        .await;
+
+    assert_eq!(answer, json!({}));
+    let moved = next_workspace(&mut other, &ids[2]).await;
+    assert_eq!(moved["position"], 0);
+    assert_eq!(
+        by_position(&mut other, "workspaces.list", "workspaces").await,
+        order(["beta", "zeta", "alpha"])
+    );
+    client
+        .ok("workspaces.reorder", json!({ "workspaceId": ids[2] }))
+        .await;
+    assert_eq!(
+        by_position(&mut client, "workspaces.list", "workspaces").await,
+        order(["zeta", "alpha", "beta"])
+    );
+}
+
+// spec: DMN-282, DMN-284, PRT-171, PRT-172
+#[tokio::test(flavor = "multi_thread")]
+async fn threads_are_reordered_without_looking_updated() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let workspace = client
+        .ok("workspaces.create", json!({ "name": "shop" }))
+        .await["id"]
+        .clone();
+    let first = thread_in(&mut client, "first", &workspace).await;
+    let second = thread_in(&mut client, "second", &workspace).await;
+    let index = client.ok("subscribe", json!({ "topic": "index" })).await;
+    let updated_at = |index: &Value| {
+        index["state"]["threads"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|thread| thread["updatedAt"].clone())
+            .collect::<Vec<_>>()
+    };
+    let before = updated_at(&index);
+
+    client
+        .ok(
+            "threads.reorder",
+            json!({ "threadId": second, "beforeId": first }),
+        )
+        .await;
+
+    let moved = next_upsert(&mut client, &second).await;
+    assert_eq!(moved["position"], 0);
+    assert_eq!(
+        by_position(&mut client, "threads.list", "threads").await,
+        [("second".to_owned(), 0), ("first".to_owned(), 1)]
+    );
+    // A new place is not news: nothing turns unread (UI-020).
+    let index = client.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(updated_at(&index), before);
+}
+
+// spec: DMN-283, PRT-171
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_moved_to_another_workspace_restarts_its_omp_there() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let shop = client
+        .ok("workspaces.create", json!({ "name": "shop" }))
+        .await;
+    let docs = client
+        .ok("workspaces.create", json!({ "name": "docs" }))
+        .await;
+    let running = thread_in(&mut client, "running", &shop["id"]).await;
+    let stopped = thread_in(&mut client, "stopped", &shop["id"]).await;
+    let there = thread_in(&mut client, "there", &docs["id"]).await;
+    client
+        .ok("thread.state", json!({ "threadId": running }))
+        .await;
+    assert_eq!(daemon.launcher.launches().len(), 1);
+
+    client
+        .ok(
+            "threads.reorder",
+            json!({ "threadId": running, "workspaceId": docs["id"], "beforeId": there }),
+        )
+        .await;
+
+    let launches = daemon.launcher.launches();
+    assert_eq!(launches.len(), 2, "its omp started again");
+    assert!(daemon.launcher.process(0).is_closed());
+    assert_eq!(
+        launches[1].spec.cwd.to_str(),
+        docs["path"].as_str(),
+        "in the new workspace's folder"
+    );
+    // A stopped thread just moves: it starts there next time.
+    client
+        .ok(
+            "threads.reorder",
+            json!({ "threadId": stopped, "workspaceId": docs["id"] }),
+        )
+        .await;
+    assert_eq!(daemon.launcher.launches().len(), 2);
+    let listed = client
+        .ok("threads.list", json!({ "workspaceId": docs["id"] }))
+        .await;
+    let mut placed: Vec<(String, u64)> = listed["threads"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|thread| {
+            (
+                thread["title"].as_str().unwrap().to_owned(),
+                thread["position"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    placed.sort_by_key(|(_, position)| *position);
+    assert_eq!(
+        placed,
+        [
+            ("running".to_owned(), 0),
+            ("there".to_owned(), 1),
+            ("stopped".to_owned(), 2)
+        ]
+    );
+}
+
+// spec: DMN-283
+#[tokio::test(flavor = "multi_thread")]
+async fn a_working_thread_is_not_moved_to_another_workspace() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let shop = client
+        .ok("workspaces.create", json!({ "name": "shop" }))
+        .await["id"]
+        .clone();
+    let docs = client
+        .ok("workspaces.create", json!({ "name": "docs" }))
+        .await["id"]
+        .clone();
+    let thread = thread_in(&mut client, "busy", &shop).await;
+    let topic = format!("thread/{thread}");
+    client
+        .ok("thread.state", json!({ "threadId": thread }))
+        .await;
+    client.ok("subscribe", json!({ "topic": topic })).await;
+    let event: omp_rpc::AgentStartEvent =
+        serde_json::from_value(json!({ "type": "agent_start" })).unwrap();
+    daemon
+        .launcher
+        .process(0)
+        .emit(vec![RpcNotification::RpcAgentEvent(
+            RpcAgentEvent::AgentStart(event),
+        )]);
+    loop {
+        let event = client.event(&topic).await;
+        if event["event"].to_string().contains("agent_start") {
+            break;
+        }
+    }
+
+    let refused = client
+        .call(
+            "threads.reorder",
+            json!({ "threadId": thread, "workspaceId": docs }),
+        )
+        .await
+        .unwrap_err();
+
+    assert_eq!(refused["code"], "conflict", "{refused}");
+    assert_eq!(daemon.launcher.launches().len(), 1);
+    let listed = client
+        .ok("threads.list", json!({ "workspaceId": shop }))
+        .await;
+    assert_eq!(listed["threads"][0]["id"], thread.as_str());
+    // Within its workspace it still reorders.
+    client
+        .ok("threads.reorder", json!({ "threadId": thread }))
+        .await;
+}
+
+// spec: DMN-285
+#[tokio::test(flavor = "multi_thread")]
+async fn a_reorder_before_what_another_window_moved_away_is_a_conflict() {
+    let daemon = daemon(&[]).await;
+    let mut window = daemon.client("window").await;
+    let mut other = daemon.client("other window").await;
+    let shop = window
+        .ok("workspaces.create", json!({ "name": "shop" }))
+        .await["id"]
+        .clone();
+    let docs = window
+        .ok("workspaces.create", json!({ "name": "docs" }))
+        .await["id"]
+        .clone();
+    let first = thread_in(&mut window, "first", &shop).await;
+    let second = thread_in(&mut window, "second", &shop).await;
+
+    // The other window moved `first` meanwhile; this window still drops `second` before it.
+    other
+        .ok(
+            "threads.reorder",
+            json!({ "threadId": first, "workspaceId": docs }),
+        )
+        .await;
+    let stale = window
+        .call(
+            "threads.reorder",
+            json!({ "threadId": second, "beforeId": first }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(stale["code"], "conflict", "{stale}");
+    let gone = window
+        .call(
+            "workspaces.reorder",
+            json!({ "workspaceId": shop, "beforeId": "01NOWORKSPACE" }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(gone["code"], "conflict", "{gone}");
+    for (method, params) in [
+        (
+            "threads.reorder",
+            json!({ "threadId": second, "beforeId": second }),
+        ),
+        (
+            "workspaces.reorder",
+            json!({ "workspaceId": shop, "beforeId": shop }),
+        ),
+    ] {
+        let itself = window.call(method, params).await.unwrap_err();
+        assert_eq!(itself["code"], "bad_request", "{itself}");
+    }
+    // Nothing changed: `second` is still alone in its workspace.
+    let listed = window
+        .ok("threads.list", json!({ "workspaceId": shop }))
+        .await;
+    assert_eq!(listed["threads"].as_array().unwrap().len(), 1);
+    assert_eq!(listed["threads"][0]["id"], second.as_str());
+    assert_eq!(listed["threads"][0]["position"], 0);
+}

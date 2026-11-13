@@ -47,12 +47,13 @@ use omfp_protocol::{
 use omfp_protocol::{
     McpReconnectParams, McpScope, McpServer, McpServers, McpSource, McpState, McpTransport,
 };
+use omfp_protocol::{ReorderThreadParams, ReorderWorkspaceParams};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
 use crate::samples::{
-    THREAD_ID, WORKSPACE_ID, git_status, repo_statuses, root_workspace, settings, theme, thread,
-    workspace,
+    OTHER_WORKSPACE_ID, THREAD_ID, WORKSPACE_ID, git_status, repo_statuses, root_workspace,
+    settings, theme, thread, workspace,
 };
 
 const REQUEST_ID: &str = "c42";
@@ -329,6 +330,13 @@ fn file_examples() -> Vec<(&'static str, Value)> {
                 size: 14,
             },
         ),
+        example::<method::WorkspacesReorder>(
+            ReorderWorkspaceParams {
+                workspace_id: OTHER_WORKSPACE_ID.to_owned(),
+                before_id: Some(WORKSPACE_ID.to_owned()),
+            },
+            &Empty {},
+        ),
     ]
 }
 
@@ -355,6 +363,14 @@ fn threads_examples() -> Vec<(&'static str, Value)> {
                 approval_mode: Some(ApprovalMode::AlwaysAsk),
             },
             &thread(),
+        ),
+        example::<method::ThreadsReorder>(
+            ReorderThreadParams {
+                thread_id: THREAD_ID.to_owned(),
+                workspace_id: Some(OTHER_WORKSPACE_ID.to_owned()),
+                before_id: None,
+            },
+            &Empty {},
         ),
         example::<method::ThreadsArchive>(thread_ref(), &Empty {}),
         example::<method::ThreadsUnarchive>(thread_ref(), &Empty {}),
@@ -1829,5 +1845,49 @@ fn a_theme_without_css_is_null_on_the_wire() {
     assert_eq!(
         serde_json::from_value::<Theme>(json!({ "css": null })).unwrap(),
         Theme::default()
+    );
+}
+
+// spec: PRT-170, PRT-171
+#[test]
+fn a_reorder_names_what_it_goes_before_or_nothing_for_last() {
+    let params =
+        |call: Call| serde_json::to_value(Request::new("c1", call)).unwrap()["params"].take();
+    assert_eq!(
+        params(Call::WorkspacesReorder(ReorderWorkspaceParams {
+            workspace_id: WORKSPACE_ID.to_owned(),
+            before_id: None,
+        })),
+        json!({ "workspaceId": WORKSPACE_ID })
+    );
+    assert_eq!(
+        params(Call::ThreadsReorder(ReorderThreadParams {
+            thread_id: THREAD_ID.to_owned(),
+            workspace_id: None,
+            before_id: Some("01JD8X3Q4T9V2W6Y5Z7A1B3C9Z".to_owned()),
+        })),
+        json!({ "threadId": THREAD_ID, "beforeId": "01JD8X3Q4T9V2W6Y5Z7A1B3C9Z" })
+    );
+    for method in ["workspaces.reorder", "threads.reorder"] {
+        assert!(METHODS.contains(&method), "{method} is in the method table");
+    }
+}
+
+// spec: PRT-172
+#[test]
+fn workspaces_and_thread_summaries_carry_their_place_in_the_column() {
+    let workspace = serde_json::to_value(root_workspace()).unwrap();
+    assert_eq!(workspace["position"], json!(1));
+    let summary = serde_json::to_value(ThreadSummary {
+        position: 3,
+        ..thread()
+    })
+    .unwrap();
+    assert_eq!(summary["position"], json!(3));
+    assert_eq!(
+        serde_json::from_value::<ThreadSummary>(summary)
+            .unwrap()
+            .position,
+        3
     );
 }

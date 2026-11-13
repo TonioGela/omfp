@@ -191,6 +191,10 @@ pub enum SupervisorError {
         "the thread is working: a restart would abort it; wait until it is idle (or stop it), then reconnect"
     )]
     Busy,
+    #[error(
+        "the thread is working: moving it to another workspace restarts its omp; wait until it is idle (or stop it), then move it"
+    )]
+    BusyMove,
     /// A live voice failure, readable (DMN-104); `omp` is omp's own message.
     #[error("{message}")]
     Live { message: String, omp: String },

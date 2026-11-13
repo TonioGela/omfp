@@ -46,11 +46,12 @@ allowed_origins = ["https://omfp.example.ts.net"]  # exactly scheme://host[:port
 
 ## Persistence (SQLite)
 
-Schema (`PRAGMA user_version = 10`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11;
+Schema (`PRAGMA user_version = 11`; migration 2 adds `created_client`; migration 3 moves to workspace folders, D-11;
 migration 4 adds `title_source`, DMN-073; migration 5 drops the old `repositories` registry and adds `seen_repositories`;
 migration 6 drops `thread_tags` and `workspaces.owned` and moves every workspace into a folder under the workspaces
 root, DMN-020; migration 7 adds `widget_state`, DMN-086; migration 8 adds `activity`, DMN-160; migration 9 makes
-`activity.thread_id` nullable for the MCP principal's calls, AGT-053; migration 10 adds `prompt_history`, DMN-216):
+`activity.thread_id` nullable for the MCP principal's calls, AGT-053; migration 10 adds `prompt_history`, DMN-216;
+migration 11 adds `workspaces.position` and `threads.position`, DMN-280):
 
 | Table | Main columns |
 | --- | --- |
@@ -111,6 +112,12 @@ another machine than the window.
 | ID | Requirement |
 | --- | --- |
 | DMN-029 | A thread's omp MUST run with cwd = its workspace folder and one `--add-dir <repo path>` per discovered repository except the folder itself (S-10: without them omp sees no repo context). Because omp merges roots saved in the session with the flags, the daemon MUST keep `thread_roots` in sync: after start and after every rescan of a live thread it sends `/add-dir` for new repos and `/remove-dir` for roots that disappeared, through `prompt` (local commands, no model turn). omp refuses both while the agent streams, so a busy thread's sync runs once its session settles. |
+| DMN-280 | **The order of the left column** (M17) MUST be kept by the daemon: `workspaces.position` orders the workspaces, `threads.position` the threads of a workspace, archived ones included (smallest first, ties by id; migration 11 starts with the order the column showed: workspaces by name ignoring case, then id, threads oldest first). A new workspace goes after every other, a new thread after every other of its workspace. |
+| DMN-281 | `workspaces.reorder { workspaceId, beforeId? }` MUST put the workspace just before `beforeId`, or last, and number the workspaces again from 0, in one transaction; unknown `workspaceId` is `not_found`, `beforeId` = `workspaceId` `bad_request`. |
+| DMN-282 | `threads.reorder { threadId, workspaceId?, beforeId? }` MUST put the thread just before `beforeId` (a thread of the target workspace), or last, in its own workspace or in `workspaceId`, in one transaction; unknown thread or workspace is `not_found`, `beforeId` = `threadId` `bad_request`. Archived threads have their place too. |
+| DMN-283 | **Moving a thread to another workspace** (`threads.reorder` with another `workspaceId`) MUST go through the restart routine's locks (DMN-227, `Supervisor::relocate`): refused with `conflict` while its omp runs a turn or waits on a dialog (nothing moves); else the record changes and a running omp stops and starts at once in the new folder (its roots follow at start, DMN-029; the session resumes), whatever background work it had; a stopped thread starts there next time. |
+| DMN-284 | The `index` topic MUST carry the order: `position` on every `Workspace` (among the workspaces) and `ThreadSummary` (among its workspace's threads), counted from 0 without gaps; a reorder publishes the summaries whose place changed and never changes their `updatedAt` (a new place is not news, UI-020). |
+| DMN-285 | **Concurrent reorders** from several windows MUST apply one after the other, each to the order the previous left (one transaction each; a reorder within a thread's workspace reads that workspace in the same transaction); a `beforeId` no longer in the target (moved or deleted meanwhile) is `conflict` and nothing changes. |
 
 Each thread keeps a private directory `threads/<id>/` (omp sessions, `omp.log`); it is not the cwd and never a
 workspace.

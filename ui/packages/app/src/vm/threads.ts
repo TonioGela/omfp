@@ -193,9 +193,9 @@ export function newWorkspaceParams(input: string): CreateWorkspaceParams {
 /** One workspace of the column. */
 export interface Section {
   readonly workspace: Workspace;
-  /** Its non-archived threads that pass the filter, in index order. */
+  /** Its non-archived threads that pass the filter, by `position` (UI-620). */
   readonly threadIds: readonly string[];
-  /** Its archived threads that pass the filter, in index order (UI-026). */
+  /** Its archived threads that pass the filter, by `position` (UI-026, UI-620). */
   readonly archivedIds: readonly string[];
 }
 
@@ -248,8 +248,9 @@ export function focusAfterRemoval(before: readonly Section[], after: readonly Se
 }
 
 /**
- * Every workspace by name with its threads (UI-020); while filtering, only threads that match and only workspaces
- * with one (UI-022). Threads of an unknown workspace are not listed.
+ * Every workspace with its threads (UI-020), in the daemon's order (`position`, UI-620; equal ones by name); while
+ * filtering, only threads that match and only workspaces with one (UI-022). Threads of an unknown workspace are not
+ * listed.
  */
 export function sidebarSections(
   threads: readonly ThreadSummary[],
@@ -257,10 +258,13 @@ export function sidebarSections(
   filter: ThreadFilter,
 ): Section[] {
   const filtering = isFiltering(filter);
+  const ordered = [...threads].sort((a, b) => a.position - b.position);
   return [...workspaces]
-    .sort((a, b) => compare(a.name.toLowerCase(), b.name.toLowerCase()) || compare(a.id, b.id))
+    .sort(
+      (a, b) => a.position - b.position || compare(a.name.toLowerCase(), b.name.toLowerCase()) || compare(a.id, b.id),
+    )
     .map((workspace) => {
-      const own = threads.filter(
+      const own = ordered.filter(
         (thread) => thread.workspaceId === workspace.id && matchesFilter(thread, workspace, filter),
       );
       return {

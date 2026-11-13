@@ -51,6 +51,7 @@ export function summary(id: string, title: string): ThreadSummary {
     provenance: { createdBy: { kind: "user" }, client: "test" },
     createdAt: 1,
     updatedAt: 1,
+    position: 0,
   };
 }
 
@@ -63,6 +64,7 @@ export function workspace(id: string): Workspace {
     threadIds: [],
     provenance: { createdBy: { kind: "user" } },
     createdAt: 1,
+    position: 0,
   };
 }
 

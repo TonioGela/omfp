@@ -26,6 +26,7 @@ expression: golden
       "createdAt": 1794268800000,
       "id": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
       "needsAttention": false,
+      "position": 0,
       "process": {
         "state": "stopped"
       },

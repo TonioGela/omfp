@@ -375,6 +375,92 @@ impl Store {
         Ok(rows.collect::<Result<_, _>>()?)
     }
 
+    // Order of the left column
+
+    /// The place of every workspace among the workspaces and of every thread among the threads of its workspace,
+    /// archived ones included, from 0 (DMN-284).
+    pub fn positions(&self) -> Result<HashMap<String, u32>> {
+        let conn = self.conn();
+        let mut stmt = conn.prepare(
+            "SELECT id, row_number() OVER (ORDER BY position, id) - 1 FROM workspaces
+             UNION ALL
+             SELECT id, row_number() OVER (PARTITION BY workspace_id ORDER BY position, id) - 1 FROM threads",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            let position: i64 = row.get(1)?;
+            Ok((row.get(0)?, u32::try_from(position).unwrap_or(u32::MAX)))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Puts workspace `id` just before workspace `before`, or last (DMN-281), in one transaction, so reorders from
+    /// several windows apply one after the other (DMN-285). A `before` that is no longer a workspace is a conflict;
+    /// nothing changes then.
+    pub fn reorder_workspace(&self, id: &str, before: Option<&str>) -> Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let order = ids(&tx, "SELECT id FROM workspaces ORDER BY position, id", [])?;
+        if !order.iter().any(|other| other == id) {
+            return Err(not_found("workspace", id));
+        }
+        let order = placed(order, id, before).ok_or_else(|| {
+            StoreError::Conflict(format!("workspace {} is gone", before.unwrap_or_default()))
+        })?;
+        write_positions(&tx, "workspaces", &order)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Puts thread `id` into workspace `workspace_id` (`None`: the one it is in now) just before its thread `before`,
+    /// or last (DMN-282, DMN-283), in one transaction (DMN-285); returns whether the thread changed workspace. A
+    /// `before` that is not a thread of that workspace (any more) is a conflict; nothing changes then.
+    pub fn reorder_thread(
+        &self,
+        id: &str,
+        workspace_id: Option<&str>,
+        before: Option<&str>,
+    ) -> Result<bool> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let current: String = tx
+            .query_row(
+                "SELECT workspace_id FROM threads WHERE id = ?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| not_found("thread", id))?;
+        let workspace_id = workspace_id.unwrap_or(&current);
+        tx.query_row(
+            "SELECT 1 FROM workspaces WHERE id = ?1",
+            [workspace_id],
+            |_| Ok(()),
+        )
+        .optional()?
+        .ok_or_else(|| not_found("workspace", workspace_id))?;
+        let order = ids(
+            &tx,
+            "SELECT id FROM threads WHERE workspace_id = ?1 ORDER BY position, id",
+            [workspace_id],
+        )?;
+        let order = placed(order, id, before).ok_or_else(|| {
+            StoreError::Conflict(format!(
+                "thread {} is not in workspace {workspace_id}",
+                before.unwrap_or_default()
+            ))
+        })?;
+        let moved = current != workspace_id;
+        if moved {
+            tx.execute(
+                "UPDATE threads SET workspace_id = ?2 WHERE id = ?1",
+                params![id, workspace_id],
+            )?;
+        }
+        write_positions(&tx, "threads", &order)?;
+        tx.commit()?;
+        Ok(moved)
+    }
+
     // Threads
 
     pub fn insert_thread(&self, thread: &Thread) -> Result<()> {
@@ -808,10 +894,11 @@ fn ensure_thread(conn: &Connection, id: &str) -> Result<()> {
         .ok_or_else(|| not_found("thread", id))
 }
 
+/// Inserts a workspace last among the workspaces (DMN-280).
 fn insert_workspace(conn: &Connection, ws: &Workspace, client: Option<&str>) -> Result<()> {
     conn.execute(
-        "INSERT INTO workspaces (id, name, path, created_by, created_client, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO workspaces (id, name, path, created_by, created_client, created_at, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, (SELECT coalesce(max(position) + 1, 0) FROM workspaces))",
         params![
             ws.id,
             ws.name,
@@ -834,11 +921,13 @@ fn insert_workspace(conn: &Connection, ws: &Workspace, client: Option<&str>) -> 
     Ok(())
 }
 
+/// Inserts a thread last among the threads of its workspace (DMN-280).
 fn insert_thread(conn: &Connection, thread: &Thread) -> Result<()> {
     conn.execute(
         "INSERT INTO threads (id, title, workspace_id, session_dir, omp_session_id, approval_mode, model,
-             thinking_level, created_by, created_at, archived_at, title_source)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+             thinking_level, created_by, created_at, archived_at, title_source, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12,
+             (SELECT coalesce(max(position) + 1, 0) FROM threads WHERE workspace_id = ?3))",
         params![
             thread.id,
             thread.title,
@@ -863,6 +952,33 @@ fn write_roots(conn: &Connection, thread_id: &str, roots: &[PathBuf]) -> Result<
         conn.prepare("INSERT OR IGNORE INTO thread_roots (thread_id, path) VALUES (?1, ?2)")?;
     for root in roots {
         stmt.execute(params![thread_id, path_str(root)?])?;
+    }
+    Ok(())
+}
+
+/// The ids the first column of `sql` lists.
+fn ids(conn: &Connection, sql: &str, params: impl rusqlite::Params) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map(params, |row| row.get(0))?;
+    Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// `order` with `id` taken out and put back just before `before`, or last; `None` when `before` is not in it.
+fn placed(mut order: Vec<String>, id: &str, before: Option<&str>) -> Option<Vec<String>> {
+    order.retain(|other| other != id);
+    let at = match before {
+        Some(before) => order.iter().position(|other| other == before)?,
+        None => order.len(),
+    };
+    order.insert(at, id.to_owned());
+    Some(order)
+}
+
+/// Numbers the rows of `table` listed in `order` from 0 (DMN-281).
+fn write_positions(conn: &Connection, table: &str, order: &[String]) -> Result<()> {
+    let mut stmt = conn.prepare(&format!("UPDATE {table} SET position = ?2 WHERE id = ?1"))?;
+    for (position, id) in order.iter().enumerate() {
+        stmt.execute(params![id, i64::try_from(position).unwrap_or(i64::MAX)])?;
     }
     Ok(())
 }

@@ -875,6 +875,19 @@
     margin-block-start: var(--omfp-s2);
   }
 
+  /* While a row or section is dragged (UI-621..UI-623): the grabbing hand everywhere in the column and no text
+   * selection; a long press on a row or a section's name neither selects text nor opens the callout. */
+  .omfp-threads[data-reordering],
+  .omfp-threads[data-reordering] * {
+    cursor: grabbing;
+    user-select: none;
+  }
+
+  .omfp-threads :is([data-reorder-handle], .omfp-wsection__name) {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+
   /* The rename field in place of a section's name. */
   .omfp-threads__rename {
     flex: 1 1 auto;

@@ -13,7 +13,8 @@ use omfp_core::{JobState, ProcessState};
 use omfp_protocol::RestartReason;
 use tracing::{info, warn};
 
-use super::{Actor, Result, Supervisor, SupervisorError, lock};
+use super::{Actor, Result, Supervisor, SupervisorError, blocking, lock};
+use crate::threads::ThreadError;
 
 /// Who asks for a restart, which decides what it waits for (DMN-227).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,6 +132,35 @@ impl Supervisor {
         self.stop_locked(actor).await?;
         self.start_locked(actor).await?;
         Ok(true)
+    }
+
+    /// Moves the thread to another workspace with `apply` (DMN-283), under the locks of the one restart routine:
+    /// refused while a turn runs or a dialog waits ([`SupervisorError::BusyMove`]); when `apply` moved it and its omp
+    /// runs, that omp starts again in the new folder at once (its roots follow at start, DMN-029), whatever background
+    /// work it had (the user moved it); a stopped thread starts there next time. Cancellation-safe
+    /// ([`Self::detached`]).
+    pub async fn relocate(
+        &self,
+        id: &str,
+        apply: impl FnOnce() -> Result<bool, ThreadError> + Send + 'static,
+    ) -> Result<()> {
+        let id = id.to_owned();
+        self.detached(move |supervisor| async move {
+            let actor = supervisor.actor(&id).await?;
+            let _quiet = actor.prompting.write().await;
+            let _lifecycle = actor.lifecycle.lock().await;
+            let running = actor.process().is_some();
+            if running && !actor.status().settled {
+                return Err(SupervisorError::BusyMove);
+            }
+            if blocking(apply).await?? && running {
+                info!(thread = %actor.id, "moved to another workspace: restarting omp");
+                supervisor.stop_locked(&actor).await?;
+                supervisor.start_locked(&actor).await?;
+            }
+            Ok(())
+        })
+        .await
     }
 
     /// Makes a restart for `reason` due and runs it when the thread is free (DMN-228).

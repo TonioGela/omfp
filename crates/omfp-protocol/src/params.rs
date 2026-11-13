@@ -356,6 +356,29 @@ pub struct UpdateThreadParams {
     pub approval_mode: Option<ApprovalMode>,
 }
 
+/// `workspaces.reorder` params (PRT-170): where a workspace goes in the left column.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReorderWorkspaceParams {
+    pub workspace_id: String,
+    /// The workspace it goes just before; absent: last.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_id: Option<String>,
+}
+
+/// `threads.reorder` params (PRT-171): where a thread goes in the left column, in its workspace or another one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReorderThreadParams {
+    pub thread_id: String,
+    /// The workspace it goes to; absent: its own. Another one moves the thread there (DMN-283).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    /// The thread of that workspace it goes just before; absent: last.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before_id: Option<String>,
+}
+
 /// Params naming one thread.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

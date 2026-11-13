@@ -47,6 +47,12 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   // On the focused row or workspace section of the left column (UI-020, UI-022).
   { mode: "normal", keys: "d d", command: "nav.delete" },
   { mode: "normal", keys: "z a", command: "nav.toggleSection" },
+  // Move the focused row or section of the left column; with Shift, a thread into the previous or next workspace
+  // (UI-624).
+  { mode: "normal", keys: "Alt-ArrowUp", command: "threads.moveUp" },
+  { mode: "normal", keys: "Alt-ArrowDown", command: "threads.moveDown" },
+  { mode: "normal", keys: "Alt-Shift-ArrowUp", command: "threads.moveToPrevWorkspace" },
+  { mode: "normal", keys: "Alt-Shift-ArrowDown", command: "threads.moveToNextWorkspace" },
   // The path of the focused element (a path link, a tool card, a changed file) in a file tab (UI-116).
   { mode: "normal", keys: "g f", command: "file.open" },
   // The newest notice of the mode line: its thread (UI-192).

@@ -21,7 +21,7 @@ export function repo(workspace: string, name: string, branch: string | null): Wo
 
 /** A folder `/work/<id>` named `id` holding `repos`. */
 export function workspace(id: string, repos: WorkspaceRepo[] = [], threadIds: string[] = []): Workspace {
-  return { id, name: id, path: `/work/${id}`, repos, threadIds, provenance, createdAt: 1 };
+  return { id, name: id, path: `/work/${id}`, repos, threadIds, provenance, createdAt: 1, position: 0 };
 }
 
 /** An idle running thread in `workspaceId`. */
@@ -43,6 +43,7 @@ export function thread(
     createdAt: 1,
     updatedAt: 1,
     archivedAt: null,
+    position: 0,
     ...extra,
   };
 }

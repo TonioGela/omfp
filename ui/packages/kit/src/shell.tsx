@@ -297,6 +297,8 @@ export interface WorkspaceSectionProps extends Omit<HTMLAttributes<HTMLElement>,
   actions?: ReactNode;
   /** Class names of the head (forced states in the gallery). */
   headClassName?: string;
+  /** Props of the head: data attributes, the pointer handler starting a drag of the section (UI-622). */
+  headProps?: DataAttributes & Pick<HTMLAttributes<HTMLDivElement>, "onPointerDown">;
   /** Its rows ({@link RowList}), action rows. */
   children?: ReactNode;
 }
@@ -319,6 +321,7 @@ export function WorkspaceSection({
   editor,
   actions,
   headClassName,
+  headProps,
   className,
   children,
   ...props
@@ -332,7 +335,7 @@ export function WorkspaceSection({
       data-expanded={expanded}
       data-current={current || undefined}
     >
-      <div className={cx("omfp-wsection__head omfp-focus-item", headClassName)}>
+      <div {...headProps} className={cx("omfp-wsection__head omfp-focus-item", headClassName)}>
         <button
           {...toggleProps}
           type="button"

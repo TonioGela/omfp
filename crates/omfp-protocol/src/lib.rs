@@ -49,14 +49,15 @@ pub use params::{
     GoalParams, HelloParams, HelloResult, InteractionResponse, JobRef, LabelParams,
     LiveConnectParams, LiveConnected, LiveMuteParams, LiveMuted, LiveStarted, MessageParams,
     NavigateParams, PathCompletions, Position, PromptBehavior, PromptParams, PromptResult,
-    QueueMessageParams, ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef,
-    RepoSource, RepoSuggestions, ReportWidgetsParams, RespondParams, SearchThreadsParams,
-    SetModelParams, SetSettingsParams, SetThinkingParams, SetViewsParams, SetWidgetStateParams,
-    StartJobParams, SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams,
-    SubscribeResult, SuggestReposParams, ThreadGit, ThreadRef, ThreadSearchResult,
-    ThreadSearchResults, ThreadWorkspace, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
-    WidgetCopied, WidgetJobReport, WidgetReport, WidgetReportState, WorkspaceDiffParams,
-    WorkspaceRef, WriteFileParams,
+    QueueMessageParams, ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams,
+    ReorderThreadParams, ReorderWorkspaceParams, RepoRef, RepoSource, RepoSuggestions,
+    ReportWidgetsParams, RespondParams, SearchThreadsParams, SetModelParams, SetSettingsParams,
+    SetThinkingParams, SetViewsParams, SetWidgetStateParams, StartJobParams,
+    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
+    SuggestReposParams, ThreadGit, ThreadRef, ThreadSearchResult, ThreadSearchResults,
+    ThreadWorkspace, TopicParams, UpdateThreadParams, UpdateWorkspaceParams, WidgetCopied,
+    WidgetJobReport, WidgetReport, WidgetReportState, WorkspaceDiffParams, WorkspaceRef,
+    WriteFileParams,
 };
 pub use params::{FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
 pub use params::{

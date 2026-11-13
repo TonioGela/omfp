@@ -70,6 +70,8 @@ pub struct Workspace {
     pub thread_ids: Vec<String>,
     pub provenance: Provenance,
     pub created_at: i64,
+    /// Its place among the workspaces in the left column, from 0; the same in every window (PRT-172, DMN-284).
+    pub position: u32,
 }
 
 /// A repository discovered in a workspace folder (DMN-022).
@@ -140,6 +142,9 @@ pub struct ThreadSummary {
     pub updated_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<i64>,
+    /// Its place among the threads of its workspace (archived ones included) in the left column, from 0; the same in
+    /// every window (PRT-172, DMN-284).
+    pub position: u32,
 }
 
 /// Why the daemon restarts a thread's omp by itself (PRT-134, DMN-228): omp loads MCP servers and lists a provider's

@@ -134,6 +134,19 @@ describe("keymap", () => {
     ]);
   });
 
+  // spec: UI-624
+  test("Alt-arrows move the focused row or section of the column; with Shift a thread into another workspace", () => {
+    expect(keyToken(key("ArrowUp", { altKey: true }, "ArrowUp"))).toBe("Alt-ArrowUp");
+    expect(keyToken(key("ArrowDown", { altKey: true, shiftKey: true }, "ArrowDown"))).toBe("Alt-Shift-ArrowDown");
+    const moves = ["threads.moveUp", "threads.moveDown", "threads.moveToPrevWorkspace", "threads.moveToNextWorkspace"];
+    expect(moves.map((command) => keysFor(DEFAULT_BINDINGS, command, "normal"))).toEqual([
+      ["Alt-ArrowUp"],
+      ["Alt-ArrowDown"],
+      ["Alt-Shift-ArrowUp"],
+      ["Alt-Shift-ArrowDown"],
+    ]);
+  });
+
   // spec: UI-095, UI-021
   test("sequences complete, wait, or start over on a key that does not continue them", () => {
     const time = clock();

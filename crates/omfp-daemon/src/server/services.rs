@@ -641,7 +641,8 @@ impl Services {
     }
 }
 
-/// The index as stored and scanned now; thread summaries keep their `updated_at` unless something in them changed.
+/// The index as stored and scanned now; thread summaries keep their `updated_at` unless something in them changed
+/// besides their place in the column (DMN-284).
 fn load_index(
     store: &Store,
     workspaces: &Workspaces,
@@ -651,6 +652,8 @@ fn load_index(
 ) -> Result<IndexSnapshot, ErrorBody> {
     let clients = store.created_clients()?;
     let threads = store.threads()?;
+    let positions = store.positions()?;
+    let position = |id: &str| positions.get(id).copied().unwrap_or_default();
     let mut scanned = Vec::new();
     for ws in workspaces.list().map_err(workspace_error)? {
         let repos = workspaces.discovered(&ws.id).map_err(workspace_error)?;
@@ -674,7 +677,7 @@ fn load_index(
                 .filter(|thread| thread.workspace_id == ws.id)
                 .map(|thread| thread.id.clone())
                 .collect();
-            convert::workspace(ws, repos, thread_ids, &holders, &clients)
+            convert::workspace(ws, repos, thread_ids, &holders, &clients, position(&ws.id))
         })
         .collect();
     let threads = threads
@@ -690,8 +693,15 @@ fn load_index(
                 supervisor.status(&thread.id),
                 &clients,
                 updated_at,
+                position(&thread.id),
             );
-            if before.is_some_and(|before| *before != summary) {
+            if before.is_some_and(|before| {
+                *before
+                    != ThreadSummary {
+                        position: before.position,
+                        ..summary.clone()
+                    }
+            }) {
                 summary.updated_at = now_ms();
             }
             summary

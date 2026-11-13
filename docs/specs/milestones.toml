@@ -1086,3 +1086,26 @@ requirements = [
   "UI-571",
   "E2E-59",
 ]
+
+[M17]
+status = "in-progress"
+requirements = [
+  # Drag to reorder the left column: the daemon's order, moving a thread to another workspace, pointer, touch and keys
+  "DMN-280",
+  "DMN-281",
+  "DMN-282",
+  "DMN-283",
+  "DMN-284",
+  "DMN-285",
+  "PRT-170",
+  "PRT-171",
+  "PRT-172",
+  "UI-620",
+  "UI-621",
+  "UI-622",
+  "UI-623",
+  "UI-624",
+  "UI-625",
+  "UI-626",
+  "UI-627",
+]

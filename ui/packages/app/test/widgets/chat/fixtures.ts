@@ -93,5 +93,6 @@ export function summary(id: string, settled = true): ThreadSummary {
     provenance: { createdBy: { kind: "user" }, client: "test" },
     createdAt: 1,
     updatedAt: 1,
+    position: 0,
   };
 }

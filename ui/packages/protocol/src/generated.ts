@@ -978,6 +978,22 @@ export type RemoveWorkspaceParams = {
   workspaceId: string;
 };
 
+/** `threads.reorder` params (PRT-171): where a thread goes in the left column, in its workspace or another one. */
+export type ReorderThreadParams = {
+  /** The thread of that workspace it goes just before; absent: last. */
+  beforeId?: string | null;
+  threadId: string;
+  /** The workspace it goes to; absent: its own. Another one moves the thread there (DMN-283). */
+  workspaceId?: string | null;
+};
+
+/** `workspaces.reorder` params (PRT-170): where a workspace goes in the left column. */
+export type ReorderWorkspaceParams = {
+  /** The workspace it goes just before; absent: last. */
+  beforeId?: string | null;
+  workspaceId: string;
+};
+
 /** `workspaces.status` params. */
 export type RepoRef = {
   /** The repository's name in the workspace. */
@@ -1325,6 +1341,11 @@ export type ThreadSummary = {
   id: string;
   /** Interactive requests are waiting for an answer. */
   needsAttention: boolean;
+  /**
+   * Its place among the threads of its workspace (archived ones included) in the left column, from 0; the same in
+   * every window (PRT-172, DMN-284).
+   */
+  position: number;
   /** `omfp_core::ProcessState`. */
   process: ProcessState;
   provenance: Provenance;
@@ -1795,6 +1816,8 @@ export type Workspace = {
   name: string;
   /** Absolute path of the folder (under the daemon's workspaces root), unique among workspaces. */
   path: string;
+  /** Its place among the workspaces in the left column, from 0; the same in every window (PRT-172, DMN-284). */
+  position: number;
   provenance: Provenance;
   /**
    * Repositories discovered in the folder (DMN-022): the folder itself first when it is a git root, then the
@@ -1916,8 +1939,10 @@ export interface Methods {
   "workspaces.read_file": { params: ReadFileParams; result: FileContent };
   "workspaces.find_file": { params: FindFileParams; result: FileCandidates };
   "workspaces.write_file": { params: WriteFileParams; result: FileWritten };
+  "workspaces.reorder": { params: ReorderWorkspaceParams; result: Empty };
   "threads.create": { params: CreateThreadParams; result: ThreadSummary };
   "threads.update": { params: UpdateThreadParams; result: ThreadSummary };
+  "threads.reorder": { params: ReorderThreadParams; result: Empty };
   "threads.archive": { params: ThreadRef; result: Empty };
   "threads.unarchive": { params: ThreadRef; result: Empty };
   "threads.delete": { params: ThreadRef; result: Empty };
@@ -2012,8 +2037,10 @@ export const METHODS: readonly MethodName[] = [
   "workspaces.read_file",
   "workspaces.find_file",
   "workspaces.write_file",
+  "workspaces.reorder",
   "threads.create",
   "threads.update",
+  "threads.reorder",
   "threads.archive",
   "threads.unarchive",
   "threads.delete",
