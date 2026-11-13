@@ -473,6 +473,26 @@ impl Journey {
             .await?)
     }
 
+    /// Waits until an element matching `css` is displayed, then until the first one is at rest: every finite animation
+    /// on it, inside it or on an element around it has ended (infinite ones, spinners and glows, never do). A box
+    /// measured before is a moving one: an overlay's entrance (`omfp-pop`) scales it from 98 %, so a 44 px control
+    /// measures 43 px (TST-110).
+    pub async fn settled(&self, css: &str) -> anyhow::Result<()> {
+        self.element(css).await?;
+        self.eval(
+            "const e = document.querySelector(arguments[0]);
+             const moving = document.getAnimations().filter((a) => {
+               const target = a.effect?.target;
+               return target && (target.contains(e) || e.contains(target))
+                 && a.effect.getComputedTiming().endTime !== Infinity;
+             });
+             return Promise.allSettled(moving.map((a) => a.finished)).then(() => true);",
+            vec![json!(css)],
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Waits until nothing matches `css`.
     pub async fn gone(&self, css: &str) -> anyhow::Result<()> {
         self.until(&format!("{css} to go"), async |page| {

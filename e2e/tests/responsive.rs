@@ -222,8 +222,11 @@ async fn touch_screen(journey: &Journey, width: u32, height: u32) -> anyhow::Res
 }
 
 /// The chat on a touch phone: the title keeps room in the compact header (UI-419); the header's `⋯` popover, an
-/// overlay portalled out of the app, has touch-sized controls (UI-413).
+/// overlay portalled out of the app, has touch-sized controls (UI-413). Boxes are measured at rest (TST-110).
 async fn touch_chat(journey: &Journey) -> anyhow::Result<()> {
+    journey
+        .settled("[data-testid=thread-header][data-compact]")
+        .await?;
     let title = journey
         .eval(
             "return document.querySelector('[data-testid=thread-title]').getBoundingClientRect().width;",
@@ -234,7 +237,7 @@ async fn touch_chat(journey: &Journey) -> anyhow::Result<()> {
     anyhow::ensure!(title >= 120.0, "the chat title is {title} px wide");
     journey.screenshot("touch-412-chat").await?;
     journey.click("[data-testid=header-more]").await?;
-    journey.element(".omfp-popdialog").await?;
+    journey.settled(".omfp-popdialog").await?;
     none(
         journey,
         "small controls in the header's popover",
@@ -264,7 +267,7 @@ async fn touch_threads(journey: &Journey) -> anyhow::Result<()> {
         .await?;
     let column = "document.querySelector('[data-testid=left-column]')";
     journey
-        .element("[data-testid=left-column][data-open]")
+        .settled("[data-testid=left-column][data-open]")
         .await?;
     none(
         journey,
@@ -295,7 +298,7 @@ async fn touch_threads(journey: &Journey) -> anyhow::Result<()> {
     journey.click("[data-testid=delete-workspace]").await?;
     let dialog = "document.querySelector('[data-testid=delete-workspace-dialog]')";
     journey
-        .element("[data-testid=delete-workspace-dialog]")
+        .settled("[data-testid=delete-workspace-dialog]")
         .await?;
     none(
         journey,
@@ -316,7 +319,7 @@ async fn touch_threads(journey: &Journey) -> anyhow::Result<()> {
     journey.gone("[data-testid=delete-workspace-dialog]").await
 }
 
-// spec: E2E-36, UI-413, UI-414, UI-415, UI-416, UI-417, UI-418, UI-419
+// spec: E2E-36, UI-413, UI-414, UI-415, UI-416, UI-417, UI-418, UI-419, TST-110
 #[tokio::test(flavor = "multi_thread")]
 async fn a_touch_phone_gets_touch_sizes_in_both_orientations() -> anyhow::Result<()> {
     let journey = Journey::start(vec![Step::reply(Reply::text("hello from a phone"))]).await?;

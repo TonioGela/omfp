@@ -923,6 +923,8 @@ requirements = [
   "UI-454",
   # QA fixes: a running boxed card's glow stays off its border line
   "UI-455",
+  # QA fixes: journeys measure overlays at rest
+  "TST-110",
   # Journeys
   "E2E-22",
   "E2E-23",

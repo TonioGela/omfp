@@ -33,20 +33,16 @@ async fn phone(journey: &Journey) -> anyhow::Result<()> {
         .await
 }
 
-/// Once its entrance has played: the sheet's box and the window's size, then the lowest row and the close button's
-/// size, in px.
+/// The sheet's box and the window's size, then the lowest row and the close button's size, in px.
 async fn measure(journey: &Journey) -> anyhow::Result<(Vec<f64>, f64, Vec<f64>)> {
     let value: Value = journey
         .eval(
-            "const sheet = document.querySelector('.omfp-sheet-overlay');
-             return Promise.all(sheet.getAnimations({ subtree: true }).map((animation) => animation.finished)).then(() => {
-               const box = sheet.getBoundingClientRect();
-               const rows = [...document.querySelectorAll('[data-testid=commands-row]')]
-                 .map((row) => row.getBoundingClientRect().height);
-               const close = document.querySelector('[data-testid=sheet-close]').getBoundingClientRect();
-               return [[box.left, box.top, box.width, box.height, innerWidth, innerHeight], Math.min(...rows),
-                 [close.width, close.height]];
-             });",
+            "const box = document.querySelector('.omfp-sheet-overlay').getBoundingClientRect();
+             const rows = [...document.querySelectorAll('[data-testid=commands-row]')]
+               .map((row) => row.getBoundingClientRect().height);
+             const close = document.querySelector('[data-testid=sheet-close]').getBoundingClientRect();
+             return [[box.left, box.top, box.width, box.height, innerWidth, innerHeight], Math.min(...rows),
+               [close.width, close.height]];",
             Vec::new(),
         )
         .await?;
@@ -57,7 +53,8 @@ async fn measure(journey: &Journey) -> anyhow::Result<(Vec<f64>, f64, Vec<f64>)>
 /// arguments (`:help`) runs as it closes.
 async fn run_from_the_sheet(journey: &Journey) -> anyhow::Result<()> {
     journey.click(COMMANDS).await?;
-    journey.element(SHEET).await?;
+    // Measured once its entrance has played (TST-110).
+    journey.settled(SHEET).await?;
     let (window, lowest, close) = measure(journey).await?;
     let [left, top, width, height, inner_width, inner_height] = window[..] else {
         anyhow::bail!("measured {window:?}");
@@ -95,7 +92,7 @@ async fn run_from_the_sheet(journey: &Journey) -> anyhow::Result<()> {
     journey.gone("[data-testid=help]").await
 }
 
-// spec: E2E-39, UI-460, UI-461, UI-462, UI-463, UI-464, UI-465
+// spec: E2E-39, UI-460, UI-461, UI-462, UI-463, UI-464, UI-465, TST-110
 #[tokio::test(flavor = "multi_thread")]
 async fn a_phone_runs_commands_from_the_commands_sheet() -> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
