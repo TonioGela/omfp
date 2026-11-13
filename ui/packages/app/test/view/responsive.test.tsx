@@ -17,7 +17,7 @@ import {
   sizesKey,
   withSizes,
 } from "../../src/view/sizes.ts";
-import { resolveViews } from "../../src/view/views.ts";
+import { isFileView, resolveViews } from "../../src/view/views.ts";
 import { thread } from "../support/fixtures.ts";
 import { renderWithHost, testHost } from "../support/host.tsx";
 
@@ -124,7 +124,7 @@ const named = (label: string): LayoutNode => ["omfp:named", { label, title: labe
 
 function show(layout: LayoutNode, options: { edits?: LayoutEdit[]; area?: Area; workspaceId?: string } = {}) {
   const resolved = resolveViews({ views: { v: { title: "V", layout } } }).views[0];
-  if (resolved === undefined) {
+  if (resolved === undefined || isFileView(resolved)) {
     throw new Error("no view");
   }
   const base = testHost();
@@ -211,7 +211,7 @@ describe("always-active splitters", () => {
     const [three] = resolveViews({
       views: { v: { title: "V", layout: ["row", { sizes: [1, 2, 1] }, named("a"), named("b"), named("c")] } },
     }).views;
-    if (three === undefined) {
+    if (three === undefined || isFileView(three)) {
       throw new Error("no view");
     }
     view.rerender(<OmfpProvider host={host}>{ui(three)}</OmfpProvider>);

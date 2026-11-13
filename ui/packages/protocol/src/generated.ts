@@ -1210,6 +1210,14 @@ export type ViewsEvent =
     init?: string | null;
     kind: "views_init";
   }
+  /**
+   * (Experimental) A file of the workspace's `.omfp/views/` (TSX views) appeared, changed or went away, or the
+   * folder did (PRT-096): replaces `viewFiles`.
+   */
+  | {
+    kind: "views_files";
+    viewFiles?: string | null;
+  }
   /** A widget stored a value (`null`: removed the key, DMN-086). */
   | {
     instance: string;
@@ -1241,6 +1249,11 @@ export type ViewsState = {
   manifest?: unknown;
   /** What widgets stored with `useStored` (DMN-086): instance → key → value. */
   stored: Record<string, Record<string, unknown>>;
+  /**
+   * (Experimental) The version of `.omfp/views/` (TSX views, PRT-096): a hash of its files' paths, sizes and
+   * modification times (`folders::version`); `null` without the folder.
+   */
+  viewFiles?: string | null;
   /** Widget folders of the workspace, then of the user library, each by name. */
   widgets: WidgetInfo[];
 };

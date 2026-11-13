@@ -17,6 +17,8 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 - A workspace widget named like a built-in (`.omfp/widgets/chat/` for `omfp:chat`) replaces the built-in in that
   workspace. The built-ins' sources can be copied as a starting point (`:widget copy omfp:workspace` in the window).
 - `<workspace>/.omfp/keymap.json` — this workspace's key bindings (schema: `omfp://schemas/keymap.json`, see Keys).
+- `<workspace>/.omfp/views/<name>.tsx` — a TSX view (experimental, see TSX views), named in `views.json` as
+  `{ "title": "Ops", "view": "./views/ops.tsx" }` instead of a `layout`.
 - `<workspace>/.omfp/init.ts` and the user's `init.ts` (`$XDG_CONFIG_HOME/omfp/init.ts`, else `~/.config/omfp/init.ts`,
   next to `theme.css`) — init files run by every window (experimental, see Init files).
 
@@ -38,8 +40,8 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 Layout nodes: a reference (`"omfp:chat"`), `[reference, props]`, or `[container, props, ...children]` where the
 container is `row`, `col`, `tabs` or `stack` and `props.sizes` (optional) gives one positive flex weight per child.
 Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue and composer), `omfp:transcript`,
-`omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes` (changed files and diffs of the workspace's
-repositories), `omfp:background` (the selected thread's background jobs and subagents: state, duration, last output
+`omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes` (`{ repo? }`: changed files and diffs of the
+workspace's repositories, or of the repository named `repo` only), `omfp:background` (the selected thread's background jobs and subagents: state, duration, last output
 line; stop a job, cancel a subagent), `omfp:subagents` (the selected thread's subagents, their transcripts, steer and cancel), `omfp:todos`
 (its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:activity`
 (`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:mcp` (the MCP servers of
@@ -104,8 +106,9 @@ The user's `init.ts` runs first, then the current workspace's `.omfp/init.ts` (s
 workspace swaps the latter). Both compile like widget files (TypeScript, JSX, the same imports; a single file: no
 relative imports). Do the work in the default export, which receives the init API; return a cleanup function if
 something must be undone. Before the file runs again, or when it goes away, the window calls that cleanup and removes
-everything the run registered through the API, so a run never needs to undo its own `command`, `bind`, `view`, `panel`
-or `on`.
+everything the run registered through the API, so a run never needs to undo its own `command`, `bind`, `views.use`,
+`views.transform`, `panel` or `on`. A file that read `views.json` (`views.load`) or the repositories
+(`workspace.repos`) also runs again when they change.
 
 ```ts
 export default function init(omfp) {
@@ -121,7 +124,6 @@ export default function init(omfp) {
     { mode: "insert", keys: "Ctrl-t", command: "tests.run" },
     { keys: "Space x", command: "" },
   ]);
-  omfp.view("logs", { title: "Logs", layout: ["row", {}, "omfp:chat", "./widgets/logs"] });
   omfp.panel("clock", ["user:clock", { title: "Clock" }]);
   omfp.on("attention", (thread) => omfp.notify({ title: thread.title ?? thread.id, body: "needs you", threadId: thread.id }));
   const timer = setInterval(() => {}, 60_000);
@@ -134,7 +136,10 @@ export default function init(omfp) {
 | `file`, `workspaceId` | `"user"` or `"workspace"`; the workspace whose file this is (`undefined` for the user's). |
 | `command(command)` | Registers a `:` command / key binding target: `{ id, title, description?, aliases?, scope?, args?, enabled?, run(args) }` (`useCommand`'s shape; `registerCommand(host, command)` from `omfp/sdk` is the same outside an init file). |
 | `bind(binding \| bindings)` | `{ keys, command, args?, mode? }` (`mode` default `normal`, `command: ""` removes a binding), applied after the defaults, the user's `[keymap]` and `.omfp/keymap.json`: the user's init file, then the workspace's, win last. |
-| `view(id, { title?, layout })` | Adds a view to this window's view switcher (a manifest view with that id is replaced here); `views.json` is not written. |
+| `views.load("views.json")` | The workspace's `views.json` as views (the default view while it is missing or invalid): see Views of init files. |
+| `views.use(views)` | Shows `views`, as they are at the call, in this window instead of `views.json`'s (the workspace's file wins over the user's). |
+| `views.transform(fn)` | `fn(views)` changes the views it gets (or returns other views): applied after `use`, the user's file's first, each in registration order; one that throws changes nothing. |
+| `workspace` | `{ id, repos }`: the current workspace and its repositories (`{ name, path, kind }`, `kind` as `omfp:workspace` shows it: `link`, `worktree`, `clone`, …). |
 | `panel(id, node)` | Floats a layout node over every view (its `title` prop labels it); closing it hides it until the file runs again. |
 | `on(event, listener)` | `"attention"` (a thread starts needing the user), `"failed"`, `"finished"` (a turn ended): `listener(thread)` gets the thread summary. Use it for auto-actions, e.g. select or notify. |
 | `notify({ title, body, threadId? })` | Like `useNotify()`. |
@@ -144,8 +149,89 @@ export default function init(omfp) {
 | `host` | The window's SDK host (`commands`, `window` state, `notices`, `client`), for anything else. |
 
 A layout node is checked like `views.json`'s: an invalid one throws. Any failure — a compile error, a throw or rejected
-promise of the run, of a cleanup, of a command or listener it registered — shows in a banner naming the file; the
-window keeps working without it, and the next save that runs cleanly removes the banner.
+promise of the run, of a cleanup, of a transform, of a command or listener it registered — shows in a banner naming the
+file; the window keeps working without it, and the next save that runs cleanly removes the banner.
+
+### Views of init files
+
+Without an init file, or one that never calls `views.use`, the window shows `views.json`'s views (that is the default
+init). Everything is window-local: only Edit layout and agents (`omfp_ui_mount`, `views.set`) write `views.json`, and
+an init file that read it runs again with the new file.
+
+```ts
+// ~/.config/omfp/init.ts: every workspace gets the MCP tab.
+export default function init(omfp) {
+  omfp.views.transform((views) => {
+    views.update("default", (layout) => layout.addTab("side", "omfp:mcp"));
+  });
+}
+```
+
+```ts
+// <workspace>/.omfp/init.ts
+export default function init(omfp) {
+  const views = omfp.views.load("views.json"); // views.json stays editable by Edit layout and agents
+  const repos = omfp.workspace.repos;
+  views.add("review", { title: "Review", layout: ["row", {}, "omfp:chat", ...repos.map((r) => ["omfp:changes", { repo: r.name }])] });
+  views.add("ops", { title: "Ops", view: "./views/ops.tsx" });
+  omfp.views.use(views);
+}
+```
+
+Views and layouts change in place, and every change returns them, so calls follow one another or chain
+(`views.add(…).withDefault(…)`).
+
+| Views | What it does |
+| --- | --- |
+| `ids`, `default` | The view ids in switcher order; the default view's id. |
+| `get(id)` | `{ id, title, layout, view, origin }`: `layout` the view's `Layout`, whose edits change the view (`undefined` for a TSX view); `origin` `"views.json"` (also once init files changed its layout) or the init file that added the view. |
+| `add(id, { title?, layout \| view })` | Adds the view, or replaces the one with that id in place (it is then the file's); `layout` is a node or a `Layout`, `view` a TSX file `./views/<name>.tsx`. |
+| `update(id, fn)` | `fn(layout)` edits the view's `Layout`, or returns its new layout (a `Layout` or a node). |
+| `remove(id)`, `withDefault(id)` | Removes the view; makes another view the default. |
+
+| Layout | What it does |
+| --- | --- |
+| `node` | The layout node, as in `views.json`. |
+| `addTab(tabsId, widget)` | Adds `widget` as the last tab of the `tabs` with that `id` (throws when there is none). |
+| `removeWidget(reference)` | Removes every widget `reference` (containers left empty go too). |
+
+Edit layout writes `views.json`. On a view of `views.json` that init files only changed (the user's `addTab` above), it
+works as usual: hiding, moving or resizing a node of `views.json` writes the file, then the init files change the new
+file again. In edit mode the nodes an init file added carry an `init.ts` mark naming the file (hover it); they cannot be
+hidden or moved, nor be a Move target: edit that file. On a view an init file added (`views.add`), Edit layout is off
+and says which file to edit.
+
+## TSX views (experimental)
+
+A view can be a TSX file of `<workspace>/.omfp/views/`, compiled like widget files (the same imports; relative imports
+of other files of `.omfp/views/`) and reloaded on every save: `{ "title": "Ops", "view": "./views/ops.tsx" }` in
+`views.json`, or `add("ops", { view: "./views/ops.tsx" })` in an init file. Its default export is a React component
+(hooks work: re-rendering it changes the layout) returning `omfp/sdk`'s layout components:
+
+```tsx
+// <workspace>/.omfp/views/ops.tsx
+import { Row, Col, Tabs, Widget } from "omfp/sdk";
+
+export default function Ops() {
+  return (
+    <Row sizes={[3, 2]}>
+      <Tabs id="main"><Widget use="omfp:chat" /></Tabs>
+      <Col sizes={[1, 1]}>
+        <Widget use="./widgets/deploy" props={{ env: "staging" }} />
+        <Tabs><Widget use="omfp:background" /><Widget use="omfp:mcp" /></Tabs>
+      </Col>
+    </Row>
+  );
+}
+```
+
+`Row`, `Col`, `Stack` (`sizes`: default flex weights) and `Tabs` (`id`; `id="main"` is where files open) nest the
+others; `Widget` is a widget (`use`: its reference, `props`: its props). They are the layout nodes of `views.json`
+(`<Row sizes={[3, 2]}>` is `["row", { "sizes": [3, 2] }, …]`), rendered the same way: the splitters resize the cells
+for this window (kept by workspace, view and path; a double click goes back to `sizes`), files open as tabs of
+`<Tabs id="main">` (without one, in a floating panel). The file holds one layout and only these components, nothing
+else. A compile error, a throw while rendering or an invalid layout shows a banner naming the file and the default
+view in its place until the next save works. Edit layout is off on a TSX view: edit the file.
 
 `:describe-key` then a key sequence shows what it runs in every mode, the command's title and description, and where
 it was bound (default keymap, `[keymap]`, `.omfp/keymap.json`, the user's or the workspace's init file);
@@ -211,6 +297,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useLive()` | `[live, snapshot]`: this window's live voice session (M6). `live.start(threadId)` opens the microphone and a WebRTC call relayed to omp's realtime voice (`thread.live_connect`), or, without WebRTC on the daemon's machine (`#local=1`, the desktop app), omp's own session (`thread.live_start`, the spectrum then draws omp's levels), `live.end()`, `live.endThread(threadId)` (any window's session), `live.toggleMute()`, `live.source()` (the audio for `Spectrum`), `live.support()` (`"webrtc"`, `"host"`, `"insecure"`, `"unsupported"`); `snapshot.local` is the session (`idle`, `starting`, `running`, `failed`). The thread's `state.live` has omp's phase and transcript. |
 | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file of the current workspace in a tab next to the chat (the view's `tabs` with `"id": "main"`; keep that slot in your views), else as a tab of a floating panel; `diff: true` shows it against `HEAD`. A bare or partial name (`theme.ts`, `src/theme.ts`) that does not exist as given opens the file it names, or lets the user pick when several match. |
 | `useMissingFile(path, missing, { line?, diff? })` | For a widget showing a file: while `missing`, looks for the file `path` names (`workspaces.find_file`); one match opens in its place, several open the window's picker. Gives `"finding"`, `"opened"`, `"choosing"` or `"none"`. |
+| `Row`, `Col`, `Tabs`, `Stack`, `Widget` | The layout components of TSX views (see TSX views); they render only in a view file of `.omfp/views/`. |
 | `SELECTED_THREAD` | Window key of the selected thread id (`useWindowState(SELECTED_THREAD)`). |
 
 The SDK also exports the view models and strings the built-in widgets use; read a copied built-in to see them.

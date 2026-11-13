@@ -1,16 +1,19 @@
 /**
  * Layout editing in the frame (UI-103, UI-104): this window's edit mode, the frame bar's "Edit layout" toggle and
  * "Add widget" picker, and the writer that turns a layout edit into the manifest `views.set` writes. The window then
- * renders the manifest the daemon pushes back.
+ * renders the manifest the daemon pushes back. On a `views.json` view init files changed, the edit goes to the nodes
+ * `views.json` holds (UI-269), and the init files change the new file again.
  */
 
 import { Button, Dialog, Toolbar } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback, useId, useState } from "react";
 import { useCall, useReportError, useWindowState, windowKey } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { type LayoutEdit, manifestToWrite } from "../view/edit.ts";
+import { toBase } from "../view/origins.ts";
 import type { WidgetRegistry } from "../view/resolve.ts";
+import type { ResolvedView } from "../view/views.ts";
 
 const text = strings.shell.layout;
 
@@ -19,12 +22,15 @@ export const LAYOUT_EDIT = windowKey<boolean>("layoutEdit", false);
 
 /**
  * Writes `edit` on the view `viewId` of `workspaceId` (`views.set`); failures and refused edits go to the frame's
- * error list. Resolves to whether the manifest was written.
+ * error list. `shown` is that view as the window shows it: with `origins` (UI-269), the edit's paths are mapped onto
+ * `views.json`'s layout, and edits of nodes an init file added are refused. Resolves to whether the manifest was
+ * written.
  */
 export function useLayoutWriter(
   workspaceId: string | undefined,
   views: ViewsState | undefined,
   viewId: string,
+  shown: ResolvedView | undefined,
 ): (edit: LayoutEdit) => Promise<boolean> {
   const call = useCall();
   const report = useReportError();
@@ -39,7 +45,9 @@ export function useLayoutWriter(
         report(text.loading);
         return false;
       }
-      const manifest = manifestToWrite(views, viewId, edit);
+      const based =
+        shown?.origins === undefined ? { ok: true as const, value: edit } : toBase(shown.origins, shown.tree, edit);
+      const manifest = based.ok ? manifestToWrite(views, viewId, based.value) : based;
       if (!manifest.ok) {
         report(manifest.error);
         return false;
@@ -52,24 +60,44 @@ export function useLayoutWriter(
         return false;
       }
     },
-    [call, report, workspaceId, views, viewId],
+    [call, report, workspaceId, views, viewId, shown],
   );
 }
 
-/** "Edit layout": toggles this window's edit mode; only with a current workspace, whose manifest edits write. */
-export function LayoutEditToggle({ editing, enabled }: { editing: boolean; enabled: boolean }): ReactNode {
+/**
+ * "Edit layout": toggles this window's edit mode; only with a current workspace, whose manifest edits write. With a
+ * `locked` reason (UI-269: a TSX view, a view an init file added) it is off and says why.
+ */
+export function LayoutEditToggle({
+  editing,
+  enabled,
+  locked,
+}: {
+  editing: boolean;
+  enabled: boolean;
+  locked?: string | undefined;
+}): ReactNode {
   const [, setEditing] = useWindowState(LAYOUT_EDIT);
+  const note = useId();
   return (
-    <Button
-      size="sm"
-      variant={editing ? "primary" : "quiet"}
-      aria-pressed={editing}
-      isDisabled={!enabled}
-      data-testid="layout-edit"
-      onPress={() => setEditing((previous) => !previous)}
-    >
-      {text.edit}
-    </Button>
+    <>
+      <Button
+        size="sm"
+        variant={editing ? "primary" : "quiet"}
+        aria-pressed={editing}
+        isDisabled={!enabled || locked !== undefined}
+        {...(locked === undefined ? {} : { "aria-describedby": note })}
+        data-testid="layout-edit"
+        onPress={() => setEditing((previous) => !previous)}
+      >
+        {text.edit}
+      </Button>
+      {locked !== undefined && (
+        <p id={note} className="omfp-frame__note" data-testid="layout-edit-note">
+          {locked}
+        </p>
+      )}
+    </>
   );
 }
 

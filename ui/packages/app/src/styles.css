@@ -115,6 +115,14 @@
     min-inline-size: 0;
   }
 
+  /* Why Edit layout is off for this view (UI-269): a TSX view, or one an init file made. */
+  .omfp-frame__note {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
   .omfp-shell {
     flex: 1 1 auto;
     min-block-size: 0;
@@ -676,6 +684,26 @@
 
   .omfp-widget-toolbar__reference::before {
     content: "◆ ";
+  }
+
+  /* A node an init file added (UI-269): its mark in edit mode, and the toolbar's note naming the file to edit. */
+  .omfp-init-mark {
+    flex: none;
+    margin-inline-start: var(--omfp-s1);
+    padding: 0 var(--omfp-s1);
+    border-radius: var(--omfp-s1);
+    background: var(--omfp-tertiary-container);
+    color: var(--omfp-on-tertiary-container);
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-2xs);
+  }
+
+  .omfp-widget-toolbar__note {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* The widget picker (UI-104): groups titled `╭─ <group>`, references as rows. */

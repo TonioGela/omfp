@@ -144,7 +144,7 @@ describe("init files", () => {
     ]);
   });
 
-  // spec: UI-261, UI-266
+  // spec: UI-261, UI-266, UI-267
   test("thread listeners, notices, views and panels; invalid layouts are refused", async () => {
     const seen: string[] = [];
     const { host } = setup({
@@ -156,11 +156,13 @@ describe("init files", () => {
         omfp.on("finished", () => {
           throw new Error("listener bug");
         });
-        omfp.view("logs", { title: "Logs", layout: ["row", {}, "omfp:chat", "./widgets/logs"] });
+        omfp.views.transform((views) =>
+          views.add("logs", { title: "Logs", layout: ["row", {}, "omfp:chat", "./widgets/logs"] }),
+        );
         omfp.panel("clock", ["user:clock", { title: "Clock" }]);
       }),
       "/bad": module((omfp) => {
-        omfp.view("broken", { layout: ["row", {}, ""] });
+        omfp.views.use(omfp.views.load("views.json").add("broken", { layout: ["row", {}, ""] }));
       }),
     });
     await host.init.load("user", "/u");
@@ -177,14 +179,17 @@ describe("init files", () => {
     ]);
 
     const snapshot = host.init.getSnapshot();
-    expect(snapshot.views.map((view) => [view.id, view.title, view.init])).toEqual([["logs", "Logs", "user"]]);
+    expect(snapshot.views?.views.views.map((view) => [view.id, view.title, view.init])).toEqual([
+      ["default", "Default", undefined],
+      ["logs", "Logs", "user"],
+    ]);
     expect(snapshot.panels.map((panel) => [panel.id, panel.title, panel.init])).toEqual([["clock", "Clock", "user"]]);
     host.init.closePanel("clock");
     expect(host.init.getSnapshot().panels).toEqual([]);
 
     await host.init.load("workspace", "/bad", "w1");
     expect(host.init.getSnapshot().errors.find((error) => error.file === "workspace")?.message).toBe(
-      "invalid layout: views.broken.layout[2]: a widget name is empty",
+      "invalid view: views.broken.layout[2]: a widget name is empty",
     );
   });
 });

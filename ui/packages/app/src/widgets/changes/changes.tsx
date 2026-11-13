@@ -30,17 +30,18 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 
 const text = strings.shell.changes;
 
-export function ChangesWidget(_props: WidgetProps): ReactNode {
+/** `{ repo? }`: only that repository of the workspace (by name); every repository without it. */
+export function ChangesWidget({ repo }: WidgetProps): ReactNode {
   const workspaceId = useCurrentWorkspaceId();
   if (workspaceId === undefined) {
     return (
       <EmptyState icon="folder-open" title={text.none} className="omfp-changes__none" data-testid="changes-none" />
     );
   }
-  return <Changes workspaceId={workspaceId} />;
+  return <Changes workspaceId={workspaceId} only={typeof repo === "string" ? repo : undefined} />;
 }
 
-function Changes({ workspaceId }: { workspaceId: string }): ReactNode {
+function Changes({ workspaceId, only }: { workspaceId: string; only: string | undefined }): ReactNode {
   const { workspace, status } = useWorkspace(workspaceId);
   const [selected] = useWindowState(SELECTED_THREAD);
   const runs = changeRunsKey(useThread(selected)?.state.tools);
@@ -64,7 +65,13 @@ function Changes({ workspaceId }: { workspaceId: string }): ReactNode {
     }
   }, [runs, refresh]);
 
-  const repos = useMemo(() => (workspace === undefined ? [] : changesView(workspace, status)), [workspace, status]);
+  const repos = useMemo(
+    () =>
+      workspace === undefined
+        ? []
+        : changesView(workspace, status).filter((repo) => only === undefined || repo.name === only),
+    [workspace, status, only],
+  );
   return (
     <section className="omfp-changes" data-testid="changes" aria-label={text.label}>
       <div className="omfp-changes__bar">

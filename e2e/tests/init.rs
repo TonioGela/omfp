@@ -1,6 +1,8 @@
-//! The init file journey (06-testing.md, E2E-22, experimental, branch idea/init): a workspace's `.omfp/init.ts` adds a
-//! command, a key binding and a view to the window, a syntax error in it shows a banner while the window keeps working,
-//! and `:describe-key` says where the binding comes from. Run with `just test-e2e`.
+//! The init file journeys (06-testing.md, experimental, branch idea/init). E2E-22: a workspace's `.omfp/init.ts` adds
+//! a command, a key binding and a view to the window, a syntax error in it shows a banner while the window keeps
+//! working, and `:describe-key` says where the binding comes from. E2E-23: an init file adds a view computed from the
+//! workspace's repositories and a TSX view, whose splitters resize for the window and whose syntax error shows the
+//! default view until the next save. Run with `just test-e2e`.
 
 use std::path::Path;
 
@@ -9,7 +11,9 @@ use thirtyfour::prelude::*;
 
 /// The init file: `g h` switches to a view it adds.
 const INIT: &str = r#"export default function init(omfp) {
-  omfp.view("init-solo", { title: "Init solo", layout: ["col", {}, "omfp:header", "omfp:chat"] });
+  omfp.views.transform((views) =>
+    views.add("init-solo", { title: "Init solo", layout: ["col", {}, "omfp:header", "omfp:chat"] }),
+  );
   omfp.command({
     id: "demo.solo",
     title: "Show the init view",
@@ -113,4 +117,125 @@ async fn a_workspace_init_file_adds_a_bound_command_and_a_view_and_survives_a_sy
         })
         .await?;
     journey.finish("E2E-22").await
+}
+
+/// The workspace's init file of E2E-23: `views.json`'s views, one computed from the repositories, one TSX file.
+const VIEWS_INIT: &str = r#"export default function init(omfp) {
+  const views = omfp.views.load("views.json");
+  const repos = omfp.workspace.repos;
+  views.add("review", {
+    title: "Review",
+    layout: ["row", {}, "omfp:chat", ...repos.map((r) => ["omfp:changes", { repo: r.name, title: r.name }])],
+  });
+  views.add("ops", { title: "Ops", view: "./views/ops.tsx" });
+  omfp.views.use(views);
+}
+"#;
+
+/// The TSX view of E2E-23.
+const OPS: &str = r#"import { Col, Row, Tabs, Widget } from "omfp/sdk";
+
+export default function Ops() {
+  return (
+    <Row sizes={[3, 2]}>
+      <Tabs id="main"><Widget use="omfp:chat" /></Tabs>
+      <Col sizes={[1, 1]}>
+        <Widget use="omfp:changes" />
+        <Tabs><Widget use="omfp:background" /><Widget use="omfp:mcp" /></Tabs>
+      </Col>
+    </Row>
+  );
+}
+"#;
+
+fn write_ops(folder: &Path, text: &str) -> anyhow::Result<()> {
+    std::fs::create_dir_all(folder.join(".omfp/views"))?;
+    std::fs::write(folder.join(".omfp/views/ops.tsx"), text)?;
+    Ok(())
+}
+
+/// The share of the first cell the root row's splitter of the shown view gives (`aria-valuenow`).
+async fn root_share(journey: &Journey) -> anyhow::Result<String> {
+    let value = journey
+        .eval(
+            "const bar = document.querySelector('[data-testid=view] [data-testid=splitter][data-path=\"0\"]');\
+             return bar === null ? null : bar.getAttribute('aria-valuenow');",
+            Vec::new(),
+        )
+        .await?;
+    Ok(value.as_str().unwrap_or_default().to_owned())
+}
+
+// spec: E2E-23, UI-267, UI-268, UI-269, DMN-186, AGT-074
+#[tokio::test(flavor = "multi_thread")]
+async fn an_init_file_adds_a_computed_view_and_a_tsx_view_that_resizes_and_survives_a_syntax_error()
+-> anyhow::Result<()> {
+    let journey = Journey::start(Vec::new()).await?;
+    journey.connected().await?;
+    let thread = journey.create_thread("init views journey").await?;
+    let folder = journey.workspace_folder(&thread).await?;
+
+    write_ops(&folder, OPS)?;
+    write_init(&folder, VIEWS_INIT)?;
+    // The computed view: the chat beside the changes of each repository.
+    journey
+        .until("the init file's views", async |page| {
+            let listed = page
+                .eval(
+                    "return [...document.querySelectorAll('[data-testid=view-switcher] option')]\
+                     .some((option) => option.textContent.trim() === 'Review');",
+                    Vec::new(),
+                )
+                .await?;
+            Ok((listed == serde_json::Value::Bool(true)).then_some(()))
+        })
+        .await?;
+    journey.command("view review").await?;
+    journey
+        .element("[data-testid=view][data-view=review]")
+        .await?;
+    let note = journey.text("[data-testid=layout-edit-note]").await?;
+    assert!(note.contains("the workspace's .omfp/init.ts"), "{note}");
+
+    // The TSX view: laid out like a manifest view, files open in its `main` tabs, its splitters resize.
+    journey.command("view ops").await?;
+    journey
+        .element("[data-testid=view][data-view=ops] [data-slot=main]")
+        .await?;
+    let note = journey.text("[data-testid=layout-edit-note]").await?;
+    assert!(note.contains(".omfp/views/ops.tsx"), "{note}");
+    assert_eq!(root_share(&journey).await?, "60");
+    journey
+        .eval(
+            "document.querySelector('[data-testid=view] [data-testid=splitter][data-path=\"0\"]').focus();",
+            Vec::new(),
+        )
+        .await?;
+    journey.keys(Key::Right).await?;
+    let resized = root_share(&journey).await?;
+    assert_ne!(resized, "60", "the splitter moved");
+    journey.screenshot("init-tsx-view").await?;
+
+    // A syntax error: a banner names the file, the default view stands in, the window works.
+    write_ops(
+        &folder,
+        "export default function Ops() {\n  return <Row>;\n}\n",
+    )?;
+    journey.element("[data-testid=view-file-error]").await?;
+    let banner = journey.text("[data-testid=view-file-error]").await?;
+    assert!(banner.contains(".omfp/views/ops.tsx"), "{banner}");
+    assert!(banner.contains("ops.tsx:"), "{banner}");
+    journey
+        .element("[data-testid=view][data-view=default]")
+        .await?;
+    journey.screenshot("init-tsx-view-error").await?;
+
+    // Fixed: the view is back with this window's sizes.
+    write_ops(&folder, OPS)?;
+    journey.gone("[data-testid=view-file-error]").await?;
+    journey
+        .element("[data-testid=view][data-view=ops] [data-slot=main]")
+        .await?;
+    assert_eq!(root_share(&journey).await?, resized);
+    journey.finish("E2E-23").await
 }

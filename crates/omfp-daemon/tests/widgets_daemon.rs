@@ -1015,3 +1015,125 @@ async fn the_user_init_file_is_followed_on_the_index_topic_and_served_compiled()
         404
     );
 }
+
+/// The next `views_files` event of `views/<id>`.
+async fn views_files(client: &mut Client, id: &str) -> Value {
+    loop {
+        let event = views_event(client, id).await;
+        if event["kind"] == "views_files" {
+            return event;
+        }
+    }
+}
+
+// spec: DMN-186, PRT-096, AGT-074
+#[tokio::test(flavor = "multi_thread")]
+async fn tsx_view_files_are_versioned_on_the_views_topic_and_served_compiled() {
+    let daemon = Daemon::with_bundle().await;
+    let mut client = daemon.client().await;
+    let (id, folder) = workspace(&mut client).await;
+    let base = daemon.widget_base().await;
+    assert_eq!(views(&mut client, &id).await["viewFiles"], Value::Null);
+    assert_eq!(
+        daemon.get(&format!("{base}/views/{id}/v/ops.tsx")).await.0,
+        404,
+        "no views folder"
+    );
+
+    let manifest = json!({
+        "default": "ops",
+        "views": {
+            "ops": { "title": "Ops", "view": "./views/ops.tsx" },
+            "work": { "layout": "omfp:chat" }
+        }
+    });
+    client
+        .ok(
+            "views.set",
+            json!({ "workspaceId": id, "manifest": manifest }),
+        )
+        .await;
+    let views_dir = folder.join(".omfp/views");
+    write(
+        &views_dir.join("ops.tsx"),
+        "import { Card } from \"omfp/kit\";\nimport { label } from \"./lib/label\";\n\
+         const n: number = 2;\nexport default function Ops() { return <Card>{label(n)}</Card>; }\n",
+    );
+    write(
+        &views_dir.join("lib/label.ts"),
+        "export const label = (n: number): string => `#${n}`;\n",
+    );
+    client
+        .ok("workspaces.rescan", json!({ "workspaceId": id }))
+        .await;
+    let event = views_files(&mut client, &id).await;
+    assert!(is_version(&event["viewFiles"]), "{event}");
+    let first = event["viewFiles"].clone();
+    let mut other = daemon.client().await;
+    let state = views(&mut other, &id).await;
+    assert_eq!(state["viewFiles"], first);
+    assert_eq!(state["manifest"], manifest);
+    assert_eq!(state["error"], Value::Null);
+
+    let version = first.as_str().unwrap();
+    let (status, headers, body) = daemon
+        .get(&format!("{base}/views/{id}/{version}/ops.tsx"))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        header(&headers, "content-type"),
+        Some("text/javascript; charset=utf-8")
+    );
+    assert_eq!(header(&headers, "cache-control"), Some("no-store"));
+    assert!(body.contains("./lib/label"), "{body}");
+    assert!(!body.contains(": number"), "types stripped: {body}");
+    assert!(!body.contains("compileError"), "{body}");
+    // The relative import resolves by URL to its sibling in the folder.
+    let (status, _, body) = daemon
+        .get(&format!("{base}/views/{id}/{version}/lib/label.ts"))
+        .await;
+    assert_eq!(status, 200, "{body}");
+    assert!(body.contains("export const label"), "{body}");
+    assert!(!body.contains(": string"), "{body}");
+
+    // A save is a new version; a file that does not compile is served as the stand-in.
+    write(
+        &views_dir.join("ops.tsx"),
+        "export default function Ops() {\n  return <Card>;\n}\n",
+    );
+    client
+        .ok("workspaces.rescan", json!({ "workspaceId": id }))
+        .await;
+    let event = views_files(&mut client, &id).await;
+    assert!(
+        is_version(&event["viewFiles"]) && event["viewFiles"] != first,
+        "{event}"
+    );
+    let (status, _, body) = daemon.get(&format!("{base}/views/{id}/old/ops.tsx")).await;
+    assert_eq!(status, 200);
+    assert!(body.contains("export const compileError"), "{body}");
+    assert!(body.contains("\"file\":\"ops.tsx\""), "{body}");
+
+    let other_key = format!("/widgets/{}", "0".repeat(32));
+    for path in [
+        format!("{other_key}/views/{id}/v/ops.tsx"),
+        format!("{base}/views/NOPE/v/ops.tsx"),
+        format!("{base}/views/{id}/v/missing.tsx"),
+        format!("{base}/views/{id}/v/../views.json"),
+        format!("{base}/views/{id}/v/lib/../../views.json"),
+        format!("{base}/views/{id}/v/"),
+    ] {
+        let (status, headers, _) = daemon.get(&path).await;
+        assert_eq!(status, 404, "{path}");
+        assert_eq!(header(&headers, "cache-control"), Some("no-store"));
+    }
+
+    std::fs::remove_dir_all(&views_dir).unwrap();
+    client
+        .ok("workspaces.rescan", json!({ "workspaceId": id }))
+        .await;
+    assert_eq!(
+        views_files(&mut client, &id).await,
+        json!({ "kind": "views_files", "viewFiles": null })
+    );
+}

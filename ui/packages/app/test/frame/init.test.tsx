@@ -51,7 +51,7 @@ const userInit = (omfp: InitApi) => {
 const workspaceInit = (omfp: InitApi) => {
   // The workspace's file wins over the user's for the same keys.
   omfp.bind({ keys: "g h", command: "my.hello", args: ["workspace"] });
-  omfp.view("solo", { title: "Solo", layout: "omfp:chat" });
+  omfp.views.transform((views) => views.add("solo", { title: "Solo", layout: "omfp:chat" }));
 };
 
 function setup() {

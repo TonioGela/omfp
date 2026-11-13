@@ -84,7 +84,9 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
          \n\
          The user's omfp window shows this workspace through React widgets that you can write and arrange too.\n\
          - Views: {display}/.omfp/views.json (schema omfp://schemas/views.json), the user's and yours to change. Keep the \
-         `[\"tabs\", {{\"id\":\"main\"}}, …\"omfp:chat\"]` slot in every view you change: the user's files open as its tabs.\n\
+         `[\"tabs\", {{\"id\":\"main\"}}, …\"omfp:chat\"]` slot in every view you change: the user's files open as its tabs. \
+         (Experimental) A view may instead be a TSX file, `{{ \"view\": \"./views/<name>.tsx\" }}` for \
+         {display}/.omfp/views/<name>.tsx (see omfp://docs/widgets); it takes no mounts: edit the file.\n\
          {facts}\n\
          - After writing a widget call omfp_widget_check {{ name }} (compile errors, what open windows render); place it \
          with omfp_view_add {{ widget, where }} rather than rewriting views.json.\n\
@@ -251,7 +253,7 @@ mod tests {
         assert!(!text.ends_with('\n'));
     }
 
-    // spec: AGT-024, AGT-028, AGT-029, AGT-031, AGT-032
+    // spec: AGT-024, AGT-028, AGT-029, AGT-031, AGT-032, AGT-074
     #[test]
     fn the_widgets_note_says_where_widgets_live_what_they_import_and_how_to_check_and_place_them() {
         let library = Path::new("/data/omfp/widgets");
@@ -279,6 +281,7 @@ mod tests {
             "- Notify the user with omfp_notify { title, body } when a long task finished or you need them; once per \
              occasion, never for progress.\n",
             "Keep the `[\"tabs\", {\"id\":\"main\"}, …\"omfp:chat\"]` slot",
+            "`{ \"view\": \"./views/<name>.tsx\" }` for /ws/checkout/.omfp/views/<name>.tsx (see omfp://docs/widgets)",
         ] {
             assert!(text.contains(rule), "{rule:?} missing: {text}");
         }

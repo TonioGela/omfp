@@ -200,6 +200,7 @@ const VIEWS_EVENTS: Record<ViewsEvent["kind"], (event: Record<string, unknown>) 
   views_widgets: (event) => isWidgetList(event.widgets),
   views_keymap: (event) => isWorkspaceKeymap(event.keymap) && isOptionalString(event.error),
   views_init: (event) => isOptionalString(event.init),
+  views_files: (event) => isOptionalString(event.viewFiles),
   widget_stored: (event) => typeof event.instance === "string" && typeof event.key === "string" && "value" in event,
 };
 
@@ -427,7 +428,7 @@ function isStoredMap(value: unknown): value is Record<string, Record<string, unk
 }
 
 /** Decodes the state of a `views/<workspaceId>` snapshot (PRT-040, PRT-060, PRT-095); `manifest`, `error`,
- * `keymapError` and `init` default to `null`, `keymap` to no bindings. */
+ * `keymapError`, `init` and `viewFiles` default to `null`, `keymap` to no bindings. */
 export function decodeViewsState(value: unknown): Decoded<ViewsState> {
   if (
     !isObject(value) ||
@@ -436,7 +437,8 @@ export function decodeViewsState(value: unknown): Decoded<ViewsState> {
     !isStoredMap(value.stored) ||
     !(value.keymap === undefined || isWorkspaceKeymap(value.keymap)) ||
     !isOptionalString(value.keymapError) ||
-    !isOptionalString(value.init)
+    !isOptionalString(value.init) ||
+    !isOptionalString(value.viewFiles)
   ) {
     return invalid("expected `{ manifest, error, widgets: { source, name, version, entry }[], stored, keymap? }`");
   }
@@ -450,6 +452,7 @@ export function decodeViewsState(value: unknown): Decoded<ViewsState> {
       keymap: value.keymap ?? [],
       keymapError: typeof value.keymapError === "string" ? value.keymapError : null,
       init: typeof value.init === "string" ? value.init : null,
+      viewFiles: typeof value.viewFiles === "string" ? value.viewFiles : null,
     },
   };
 }

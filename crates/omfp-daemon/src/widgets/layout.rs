@@ -156,6 +156,12 @@ pub fn add(manifest: Option<&Value>, addition: &Addition<'_>) -> Result<(Value, 
         .and_then(Value::as_object_mut)
         .ok_or("views.json has no views")?;
     let said = if let Some(view) = views.get_mut(&view_id) {
+        // (Experimental) A TSX view has no layout to add to (AGT-074).
+        if let Some(file) = manifest::view_file(view) {
+            return Err(format!(
+                "view {view_id:?} is a TSX view ({file}): edit that file, or mount into another view"
+            ));
+        }
         let layout = view
             .get_mut("layout")
             .ok_or_else(|| format!("view {view_id:?} has no layout"))?;
@@ -323,6 +329,26 @@ mod tests {
         named.argument = "place";
         let error = add(Some(&plain), &named).unwrap_err();
         assert!(error.contains("use place: \"end\""), "{error}");
+    }
+
+    // spec: AGT-074
+    #[test]
+    fn a_tsx_view_has_no_layout_to_add_to() {
+        let manifest = json!({ "default": "ops", "views": {
+            "ops": { "view": "./views/ops.tsx" },
+            "work": { "layout": "omfp:chat" },
+        } });
+        assert_eq!(manifest::check(&manifest), Ok(()));
+        let error = add(Some(&manifest), &addition("./widgets/tests", Place::End)).unwrap_err();
+        assert_eq!(
+            error,
+            "view \"ops\" is a TSX view (./views/ops.tsx): edit that file, or mount into another view"
+        );
+        let mut elsewhere = addition("./widgets/tests", Place::End);
+        elsewhere.view = Some("work");
+        let (added, _) = add(Some(&manifest), &elsewhere).unwrap();
+        assert_eq!(added["views"]["ops"], json!({ "view": "./views/ops.tsx" }));
+        assert!(!has_main_slot(&manifest));
     }
 
     // spec: AGT-028

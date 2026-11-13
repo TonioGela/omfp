@@ -63,6 +63,20 @@ pub fn workspace_widgets(workspace: &Path) -> PathBuf {
     workspace.join(OMFP_DIR).join("widgets")
 }
 
+/// (Experimental) `<workspace>/.omfp/views/`, the files of the TSX views (`"view": "./views/<name>.tsx"`, AGT-074).
+#[must_use]
+pub fn views_folder(workspace: &Path) -> PathBuf {
+    workspace.join(OMFP_DIR).join("views")
+}
+
+/// (Experimental) The version of the workspace's [`views_folder`] (DMN-186, PRT-096): [`folders::version`] of it;
+/// `None` when it is not a folder.
+#[must_use]
+pub fn view_files_version(workspace: &Path) -> Option<String> {
+    let folder = views_folder(workspace);
+    folder.is_dir().then(|| folders::version(&folder))
+}
+
 /// [`DEFAULT_MANIFEST`] as JSON (AGT-010).
 ///
 /// # Panics
@@ -384,10 +398,29 @@ impl Widgets {
                 return Some(Served::Module(compile::stand_in(&error)));
             }
         }
-        let relative = file.strip_prefix(&folder).ok()?.to_owned();
+        self.served(&folder, file)
+    }
+
+    /// (Experimental) The file at `path` of a workspace's views folder `folder` ([`views_folder`], DMN-186), compiled
+    /// when it is TypeScript or JSX, else as it is; a file that does not compile is the stand-in module naming it
+    /// relative to `folder`. `None` (404) when the folder or the file does not exist or `path` leaves the folder.
+    #[must_use]
+    pub fn serve_view(&self, folder: &Path, path: &str) -> Option<Served> {
+        let folder = std::fs::canonicalize(folder).ok()?;
+        if !folder.is_dir() {
+            return None;
+        }
+        let file = resolve(&folder, &relative_path(path)?)?;
+        self.served(&folder, file)
+    }
+
+    /// The resolved `file` of the canonical `folder`: compiled (or its stand-in) when it is TypeScript or JSX, else
+    /// its bytes.
+    fn served(&self, folder: &Path, file: PathBuf) -> Option<Served> {
+        let relative = file.strip_prefix(folder).ok()?.to_owned();
         if compile::is_compiled(&relative) {
             return Some(Served::Module(
-                self.compile(&folder, &relative)
+                self.compile(folder, &relative)
                     .unwrap_or_else(|error| compile::stand_in(&error)),
             ));
         }
@@ -886,6 +919,79 @@ mod tests {
         assert_eq!(files, ["lib.ts", "other.tsx"]);
         assert_eq!(errors[0].line, Some(1));
         assert!(errors[1].message.contains("lodash"), "{:?}", errors[1]);
+    }
+
+    // spec: DMN-186
+    #[test]
+    fn view_files_are_served_compiled_from_the_views_folder_and_never_outside_it() {
+        let ws = tempfile::tempdir().unwrap();
+        let library = tempfile::tempdir().unwrap();
+        let widgets = Widgets::new(library.path().to_owned(), None);
+        let folder = views_folder(ws.path());
+        assert_eq!(folder, ws.path().join(".omfp/views"));
+        assert_eq!(view_files_version(ws.path()), None, "no folder");
+        assert_eq!(widgets.serve_view(&folder, "ops.tsx"), None, "no folder");
+
+        std::fs::create_dir_all(folder.join("lib")).unwrap();
+        std::fs::write(
+            folder.join("ops.tsx"),
+            "import { label } from \"./lib/label\";\nconst n: number = 1;\nexport default function Ops() {\n  return <p>{label(n)}</p>;\n}\n",
+        )
+        .unwrap();
+        std::fs::write(
+            folder.join("lib/label.ts"),
+            "export const label = (n: number): string => `#${n}`;\n",
+        )
+        .unwrap();
+        std::fs::write(folder.join("notes.txt"), "plain").unwrap();
+        std::fs::write(ws.path().join(".omfp/secret.ts"), "export {};\n").unwrap();
+        let version = view_files_version(ws.path()).unwrap();
+        assert_eq!(version, folders::version(&folder));
+
+        let Some(Served::Module(code)) = widgets.serve_view(&folder, "ops.tsx") else {
+            panic!("ops.tsx is a module");
+        };
+        assert!(code.contains("./lib/label"), "{code}");
+        assert!(!code.contains(": number"), "types are stripped: {code}");
+        assert!(!code.contains("compileError"), "{code}");
+        // A relative import resolves to its sibling by URL, extension or not.
+        for path in ["lib/label", "lib/label.ts", "./lib/label.ts"] {
+            let Some(Served::Module(code)) = widgets.serve_view(&folder, path) else {
+                panic!("{path} is a module");
+            };
+            assert!(code.contains("export const label"), "{code}");
+            assert!(!code.contains(": string"), "{code}");
+        }
+        assert_eq!(
+            widgets.serve_view(&folder, "notes.txt"),
+            Some(Served::File {
+                path: std::fs::canonicalize(folder.join("notes.txt")).unwrap(),
+                bytes: b"plain".to_vec(),
+            })
+        );
+        for missing in [
+            "nope.tsx",
+            "../secret.ts",
+            "lib/../../secret.ts",
+            "",
+            "/etc/passwd",
+        ] {
+            assert_eq!(widgets.serve_view(&folder, missing), None, "{missing:?}");
+        }
+
+        std::fs::write(
+            folder.join("ops.tsx"),
+            "export default function Ops() {\n  return <p>;\n}\n",
+        )
+        .unwrap();
+        let Some(Served::Module(stand_in)) = widgets.serve_view(&folder, "ops.tsx") else {
+            panic!("the stand-in is a module");
+        };
+        assert!(
+            stand_in.contains("export const compileError = {\"file\":\"ops.tsx\",\"line\":3,"),
+            "{stand_in}"
+        );
+        assert_ne!(view_files_version(ws.path()), Some(version), "a save");
     }
 
     #[test]

@@ -550,4 +550,37 @@ mod tests {
         let error = mount(Some(&manifest), &panel("board", "user:board")).unwrap_err();
         assert!(matches!(error, MountError::Invalid(_)), "{error}");
     }
+
+    // spec: AGT-074
+    #[test]
+    fn a_tsx_view_takes_no_mount_and_its_neighbours_still_do() {
+        let manifest = json!({ "default": "ops", "views": {
+            "ops": { "title": "Ops", "view": "./views/ops.tsx" },
+            "work": { "layout": ["row", {}, "omfp:chat", ["user:clock", { "instance": "clock" }]] },
+        } });
+        let error = mount(
+            Some(&manifest),
+            &in_view("board", "user:board", None, Place::End),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error,
+            MountError::Invalid(
+                "view \"ops\" is a TSX view (./views/ops.tsx): edit that file, or mount into another view"
+                    .to_owned()
+            )
+        );
+        let placed = mount(
+            Some(&manifest),
+            &in_view("board", "user:board", Some("work"), Place::End),
+        )
+        .unwrap();
+        assert_eq!(placed.manifest["views"]["ops"], manifest["views"]["ops"]);
+
+        let updated = update(Some(&manifest), "clock", &props(json!({ "tz": "UTC" }))).unwrap();
+        assert_eq!(updated.view.as_deref(), Some("work"));
+        let removed = unmount(Some(&manifest), "clock").unwrap();
+        assert_eq!(removed.views, ["work"]);
+        assert_eq!(removed.manifest["views"]["ops"], manifest["views"]["ops"]);
+    }
 }

@@ -260,6 +260,7 @@ by X", a cascade stop for everything a thread spawned, and an activity log of ag
 | ID | Requirement |
 | --- | --- |
 | AGT-073 | (experimental, branch idea/init) **Agents write init files too**: a workspace's `.omfp/init.ts` (and the user's `init.ts`, DMN-185) is an ordinary file an agent writes with its own tools, like a widget (AGT-012); `omfp://docs/widgets` (`widgets/docs.md`) MUST document the init API (UI-261), the binding order (UI-262), the thread events (UI-266), where errors show (UI-263) and `:describe-key` / `:describe-command` (UI-264, UI-265), so an agent can set up keys, commands, views and reactions to thread events for the user without editing `views.json` or `keymap.json`. |
+| AGT-074 | (experimental, branch idea/init) **TSX views in the manifest**: a view of `views.json` MAY be `{ title?, view: "./views/<name>.<tsx \| ts \| jsx \| js>" }` (`<name>` a widget folder name, AGT-012) instead of `{ title?, layout }`; the daemon and the app MUST refuse both keys (`views.<id>: a layout or a view file, not both`) and any other `view` (`views.<id>.view: expected "./views/<name>.tsx"`) with the shared cases (`fixtures/views/cases.json`) and the schema (`omfp://schemas/views.json`). Mounts and layout edits by agents into a TSX view MUST fail with `view "<id>" is a TSX view (<file>): edit that file, or mount into another view`; `omfp://docs/widgets` documents the layout components and the views API of init files (UI-267, UI-268). |
 
 ## Constraints that apply from day one
 

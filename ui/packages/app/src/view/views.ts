@@ -1,11 +1,13 @@
 /**
  * The views a window can show (AGT-010): the built-in default view, or those of a workspace's `.omfp/views.json`
- * manifest, checked in id order with the same rules and messages as the daemon (`fixtures/views/cases.json`).
+ * manifest, checked in id order with the same rules and messages as the daemon (`fixtures/views/cases.json`). A view
+ * is a layout, or a TSX file of `.omfp/views/` whose layout comes from rendering it (AGT-074, UI-268).
  */
 
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { type LayoutNode, type LayoutTree, type Parsed, parseLayout, type View } from "./layout.ts";
+import type { NodeOrigins } from "./origins.ts";
 
 /** Header over the `main` tabs with the conversation (the slot reserved for opened files), the workspace and changes
  * widgets as the `side` tabs on the right; the frame renders the threads column itself (UI-100). */
@@ -37,9 +39,36 @@ export interface ResolvedView {
   readonly title: string;
   readonly layout: LayoutNode;
   readonly tree: LayoutTree;
-  /** The init file that added it to this window (UI-261); `undefined` for the manifest's. */
+  /** The init file whose views or transforms made it (UI-261, UI-267); `undefined` for `views.json`'s. */
+  readonly init?: "user" | "workspace";
+  /** The TSX file (`./views/<name>.tsx`) the layout was rendered from (UI-268); `undefined` for a written layout. */
+  readonly file?: string;
+  /**
+   * A `views.json` view init files changed (UI-269): its layout in `views.json`, which Edit layout writes, and where
+   * each shown node comes from; `undefined` for a view as `views.json` has it and for one an init file made.
+   */
+  readonly origins?: NodeOrigins;
+}
+
+/** A view whose layout is a TSX file of `.omfp/views/` (AGT-074, UI-268): the window renders it to get its tree. */
+export interface FileView {
+  readonly id: string;
+  readonly title: string;
+  /** `./views/<name>.tsx` as written. */
+  readonly file: string;
   readonly init?: "user" | "workspace";
 }
+
+/** A view of the switcher: a layout, or a TSX file still to render. */
+export type ListedView = ResolvedView | FileView;
+
+/** Whether `view` is a TSX file whose layout is not rendered yet. */
+export function isFileView(view: ListedView): view is FileView {
+  return !("tree" in view);
+}
+
+/** `./views/<name>.<tsx | ts | jsx | js>`, `<name>` a widget folder name (AGT-012, AGT-074). */
+const VIEW_FILE = /^\.\/views\/[A-Za-z0-9_-][A-Za-z0-9_.-]*\.(?:tsx|ts|jsx|js)$/;
 
 /** A floating panel (AGT-060): its node as written and as a tree, with its title (the node's `title` prop, else the
  * id). */
@@ -53,7 +82,7 @@ export interface ResolvedPanel {
 }
 
 export interface Views {
-  readonly views: readonly ResolvedView[];
+  readonly views: readonly ListedView[];
   readonly defaultId: string;
   /** The manifest's floating panels in id order (AGT-060); none for the default view. */
   readonly panels: readonly ResolvedPanel[];
@@ -69,7 +98,10 @@ function resolveDefault(): ResolvedView {
   return { id: DEFAULT_VIEW.id, title: DEFAULT_VIEW.title, layout: DEFAULT_VIEW.layout, tree: parsed.value };
 }
 
-const DEFAULT_VIEWS: Views = { views: [resolveDefault()], defaultId: DEFAULT_VIEW.id, panels: [], error: undefined };
+/** The built-in default view: shown while the manifest is missing or invalid, and instead of a failing TSX view. */
+export const BUILTIN_VIEW: ResolvedView = resolveDefault();
+
+const DEFAULT_VIEWS: Views = { views: [BUILTIN_VIEW], defaultId: DEFAULT_VIEW.id, panels: [], error: undefined };
 
 /**
  * The views of `manifest` (`{ default?, views: { <id>: { title, layout } }, panels? }`) in id order, or the default
@@ -84,29 +116,49 @@ export function resolveViews(manifest: unknown): Views {
 }
 
 /**
- * `views` with the views and panels the init files add (UI-261): one with the id of a manifest view or panel replaces
- * it in place, the others follow in the order given. The manifest's default view and error stay.
+ * `views` with the floating panels the init files add (UI-261): one with the id of a manifest panel replaces it in
+ * place, the others follow in the order given.
  */
-export function withInitViews(
-  views: Views,
-  extra: { readonly views: readonly ResolvedView[]; readonly panels: readonly ResolvedPanel[] },
-): Views {
-  if (extra.views.length === 0 && extra.panels.length === 0) {
+export function withInitPanels(views: Views, panels: readonly ResolvedPanel[]): Views {
+  if (panels.length === 0) {
     return views;
   }
-  const merge = <T extends { readonly id: string }>(base: readonly T[], added: readonly T[]): T[] => {
-    const merged = [...base];
-    for (const item of added) {
-      const index = merged.findIndex((existing) => existing.id === item.id);
-      if (index < 0) {
-        merged.push(item);
-      } else {
-        merged[index] = item;
-      }
+  const merged = [...views.panels];
+  for (const panel of panels) {
+    const index = merged.findIndex((existing) => existing.id === panel.id);
+    if (index < 0) {
+      merged.push(panel);
+    } else {
+      merged[index] = panel;
     }
-    return merged;
-  };
-  return { ...views, views: merge(views.views, extra.views), panels: merge(views.panels, extra.panels) };
+  }
+  return { ...views, panels: merged };
+}
+
+/**
+ * Checks the view `id` of a manifest (AGT-010, AGT-074): `{ title?, layout }`, or `{ title?, view }` naming a TSX file
+ * of `.omfp/views/`, never both.
+ */
+export function parseView(id: string, view: unknown): Parsed<ListedView> {
+  if (!isObject(view)) {
+    return { ok: false, error: `views.${id}: expected { title, layout }` };
+  }
+  const title = typeof view.title === "string" ? view.title : id;
+  if (Object.hasOwn(view, "view")) {
+    if (Object.hasOwn(view, "layout")) {
+      return { ok: false, error: `views.${id}: a layout or a view file, not both` };
+    }
+    const file = view.view;
+    return typeof file === "string" && VIEW_FILE.test(file)
+      ? { ok: true, value: { id, title, file } }
+      : { ok: false, error: `views.${id}.view: expected "./views/<name>.tsx"` };
+  }
+  const tree = parseLayout(view.layout, `views.${id}.layout`);
+  if (!tree.ok) {
+    return tree;
+  }
+  // Checked by `parseLayout` just above.
+  return { ok: true, value: { id, title, layout: view.layout as LayoutNode, tree: tree.value } };
 }
 
 /** Checks a manifest (AGT-010, AGT-060): views, then panels, then the default; the error names the JSON path and the
@@ -115,22 +167,13 @@ function parseManifest(manifest: unknown): Parsed<Views> {
   if (!isObject(manifest) || !isObject(manifest.views)) {
     return { ok: false, error: "views: expected an object of views" };
   }
-  const views: ResolvedView[] = [];
+  const views: ListedView[] = [];
   for (const [id, view] of Object.entries(manifest.views).sort(([a], [b]) => compareIds(a, b))) {
-    if (!isObject(view)) {
-      return { ok: false, error: `views.${id}: expected { title, layout }` };
+    const parsed = parseView(id, view);
+    if (!parsed.ok) {
+      return parsed;
     }
-    const tree = parseLayout(view.layout, `views.${id}.layout`);
-    if (!tree.ok) {
-      return tree;
-    }
-    views.push({
-      id,
-      title: typeof view.title === "string" ? view.title : id,
-      // Checked by `parseLayout` just above.
-      layout: view.layout as LayoutNode,
-      tree: tree.value,
-    });
+    views.push(parsed.value);
   }
   const [first] = views;
   if (first === undefined) {

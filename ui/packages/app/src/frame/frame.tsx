@@ -25,12 +25,21 @@ import {
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { useAppearance, useUserTheme } from "../theme/theme.ts";
+import { useFileView } from "../view/file-view.tsx";
 import { chatCell, containsWidget, hasMainSlot } from "../view/layout.ts";
 import { BUILTIN_WIDGETS, INTERACTION_WIDGETS } from "../view/registry.ts";
 import { ViewRenderer } from "../view/render.tsx";
 import { resolveWidget, type WidgetRegistry } from "../view/resolve.ts";
 import { WidgetBoundary } from "../view/slot.tsx";
-import { type ResolvedView, resolveViews, type Views, withInitViews } from "../view/views.ts";
+import {
+  BUILTIN_VIEW,
+  isFileView,
+  type ListedView,
+  type ResolvedView,
+  resolveViews,
+  type Views,
+  withInitPanels,
+} from "../view/views.ts";
 import { InteractionsWidget } from "../widgets/chat/index.ts";
 import { ThreadsWidget } from "../widgets/threads/index.ts";
 import { AgentFiles } from "./agent-files.tsx";
@@ -90,16 +99,28 @@ export function Frame({
   useWindowReports(workspaceId);
   const manifest = state?.manifest;
   const manifestError = state?.error;
-  // What the init files add to this window: views and panels over the manifest's, bindings over every keymap (UI-261).
+  // What the init files add to this window: the views they use or transform (for the manifest they read), panels,
+  // bindings over every keymap (UI-261, UI-267).
   const init = useInit();
-  const views = useMemo(() => withInitViews(viewsOf(manifest, manifestError), init), [manifest, manifestError, init]);
+  const views = useMemo(() => {
+    const own = viewsOf(manifest, manifestError);
+    const used = init.views !== undefined && init.views.manifest === manifest ? init.views.views : undefined;
+    return withInitPanels(used === undefined ? own : { ...used, error: own.error }, init.panels);
+  }, [manifest, manifestError, init]);
   const [active, setActive] = useWindowState(ACTIVE_VIEW);
-  const view =
+  const listed =
     views.views.find((candidate) => candidate.id === active) ??
     views.views.find((candidate) => candidate.id === views.defaultId);
+  // A TSX view renders its file first (UI-268); while it fails, the default view stands in.
+  const file = useFileView(listed !== undefined && isFileView(listed) ? listed : undefined, workspaceId, state);
+  const view =
+    listed === undefined || !isFileView(listed)
+      ? listed
+      : (file.view ?? (file.error === undefined ? undefined : BUILTIN_VIEW));
+  const locked = editLock(listed);
   const [layoutEdit] = useWindowState(LAYOUT_EDIT);
-  const editing = layoutEdit && workspaceId !== undefined;
-  const write = useLayoutWriter(workspaceId, state, view?.id ?? views.defaultId);
+  const editing = layoutEdit && workspaceId !== undefined && locked === undefined;
+  const write = useLayoutWriter(workspaceId, state, listed?.id ?? views.defaultId, view);
   const settings = useSettings();
   // The defaults < the daemon's `[keymap]` entries < the current workspace's `.omfp/keymap.json` < the init files',
   // live (UI-097, UI-210, UI-262).
@@ -127,6 +148,17 @@ export function Frame({
       )}
       <KeymapError views={state} />
       <InitErrors errors={init.errors} />
+      {listed !== undefined && isFileView(listed) && file.error !== undefined && (
+        <div
+          className="omfp-banner"
+          data-tone="error"
+          role="alert"
+          data-testid="view-file-error"
+          data-file={listed.file}
+        >
+          {strings.init.viewFile.banner(strings.init.viewFile.path(listed.file), file.error)}
+        </div>
+      )}
       {settings.error !== null && settings.error !== undefined && (
         <div className="omfp-banner" data-tone="error" role="alert" data-testid="settings-error">
           {strings.shell.settings.error(settings.error)}
@@ -152,14 +184,14 @@ export function Frame({
               hideLabel
               data-testid="view-switcher"
               items={views.views.map((candidate) => ({ id: candidate.id, label: candidate.title }))}
-              selectedKey={view?.id ?? null}
+              selectedKey={listed?.id ?? null}
               onSelectionChange={(key) => {
                 if (key !== null) {
                   setActive(String(key));
                 }
               }}
             />
-            <LayoutEditToggle editing={editing} enabled={workspaceId !== undefined} />
+            <LayoutEditToggle editing={editing} enabled={workspaceId !== undefined} locked={locked} />
             {editing && (
               <AddWidget
                 registry={registry}
@@ -211,6 +243,7 @@ export function Frame({
       <AgentFiles />
       <AgentNotices />
       <InitLoader workspaceId={workspaceId} views={state} />
+      {file.source}
     </div>
   );
 }
@@ -235,6 +268,22 @@ function FrameModeLine({
       <FilePickerLine />
     </ModeLine>
   );
+}
+
+/**
+ * Why Edit layout is off for `view` (UI-269): its layout is a TSX file, or an init file added it (writing `views.json`
+ * would change nothing the window shows); `undefined` when it edits `views.json`, init transforms of a `views.json`
+ * view included.
+ */
+function editLock(view: ListedView | undefined): string | undefined {
+  const text = strings.init.viewFile;
+  if (view === undefined) {
+    return undefined;
+  }
+  if (isFileView(view)) {
+    return text.lockedFile(text.path(view.file));
+  }
+  return view.init === undefined ? undefined : text.lockedInit(strings.init.files[view.init]);
 }
 
 /** The views of the workspace's manifest; the default view without one, before it arrives, or with the daemon's

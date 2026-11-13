@@ -5,7 +5,7 @@ import type { FileContent, GitStatus } from "@omfp/protocol";
 import { workspaceTopic } from "@omfp/protocol";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { type OmfpHost, OPEN_FILES, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { type OmfpHost, OPEN_FILES, SELECTED_THREAD, type WidgetProps } from "../../src/sdk/index.ts";
 import { ChangesWidget } from "../../src/widgets/changes/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { renderWithHost, type TestHost, testHost } from "../support/host.tsx";
@@ -43,7 +43,10 @@ let current: FileContent = {
   repo: "fe",
 };
 
-function setup(select: (host: OmfpHost) => void = (host) => host.window.set(SELECTED_THREAD, "t1")) {
+function setup(
+  select: (host: OmfpHost) => void = (host) => host.window.set(SELECTED_THREAD, "t1"),
+  props: WidgetProps = {},
+) {
   const base = testHost();
   base.client.answers.set("workspaces.status", () => STATUS);
   base.client.answers.set("workspaces.rescan", () => ({}));
@@ -52,7 +55,7 @@ function setup(select: (host: OmfpHost) => void = (host) => host.window.set(SELE
   }));
   base.client.answers.set("workspaces.read_file", () => current);
   select(base.host);
-  const test = renderWithHost(<ChangesWidget />, base);
+  const test = renderWithHost(<ChangesWidget {...props} />, base);
   test.client.connected();
   test.client.index({
     workspaces: [workspace("w1", [repo("w1", "fe", "feat"), repo("w1", "be", "main")]), workspace("w2")],
@@ -99,6 +102,12 @@ describe("omfp:changes", () => {
     expect(within(file).getByTestId("changes-counts").textContent).toBe("+1 −1");
     expect(within(repoSection("be")).getByTestId("changes-summary").textContent).toBe("clean");
     expect(within(repoSection("be")).queryByTestId("changes-file")).toBeNull();
+  });
+
+  // spec: UI-080, UI-267
+  test("with a repo prop it lists only that repository", () => {
+    setup(undefined, { repo: "be" });
+    expect(screen.getAllByTestId("changes-repo").map((element) => element.dataset.repo)).toEqual(["be"]);
   });
 
   // spec: UI-146, UI-165

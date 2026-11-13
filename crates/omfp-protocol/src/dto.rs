@@ -525,6 +525,10 @@ pub struct ViewsState {
     /// one.
     #[serde(default)]
     pub init: Option<String>,
+    /// (Experimental) The version of `.omfp/views/` (TSX views, PRT-096): a hash of its files' paths, sizes and
+    /// modification times (`folders::version`); `null` without the folder.
+    #[serde(default)]
+    pub view_files: Option<String>,
 }
 
 /// A job's process state (DMN-080).

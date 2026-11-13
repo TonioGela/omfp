@@ -125,7 +125,8 @@ ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token 
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs, live.ts:
                       the window's live voice session `LiveClient` and its browser `LiveMedia`, init.ts: the init files'
-                      runs and their API, experimental), vm
+                      runs and their API, init-views.ts: the views they build, layout.tsx: the layout components of
+                      TSX views, experimental), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
                       column, mode line with the `:` line and file picker, view switcher, layout editing, floating
@@ -134,7 +135,9 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       bar, the left column's splitter; init.tsx: loading the init files and their banner;
                       describe.ts(x): `:describe-key` / `:describe-command`), view (layout tree, edits, reference
                       resolution, widget slot,
-                      the `main` slot's file tabs; sizes.ts and splitter.tsx: the window's splitter sizes), gallery
+                      the `main` slot's file tabs; file-view.tsx: TSX views, experimental; origins.ts: where the nodes
+                      of a views.json view init files changed come from, experimental; sizes.ts and splitter.tsx: the
+                      window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
                       logo sheet), keymap, theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
                       map, widget-exports.json, builtin-widgets/, the favicon from docs/brand)

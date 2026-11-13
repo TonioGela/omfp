@@ -1,14 +1,14 @@
 /**
  * The init files in the window (UI-260..UI-263, experimental, branch idea/init): imports the user's `init.ts` (its
  * version on the `index` topic) and the current workspace's `.omfp/init.ts` (on its `views/<id>` topic) from the
- * daemon's widget base, again when a version or the current workspace changes; hands thread changes to their listeners;
- * and shows the banner of a file that failed. What the files add (bindings, views, panels) the frame reads with
- * {@link useInit}.
+ * daemon's widget base, again when a version or the current workspace changes; gives them the current workspace, its
+ * `views.json` and repositories (UI-267); hands thread changes to their listeners; and shows the banner of a file that
+ * failed. What the files add (bindings, views, panels) the frame reads with {@link useInit}.
  */
 
 import type { ThreadSummary, ViewsState } from "@omfp/protocol";
-import { type ReactNode, useEffect, useRef, useSyncExternalStore } from "react";
-import { type InitError, type InitSnapshot, useHost, useSnapshot, useThreads } from "../sdk/index.ts";
+import { type ReactNode, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { type InitError, type InitRepo, type InitSnapshot, useHost, useSnapshot, useThreads } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { useWidgetBase } from "../view/slot.tsx";
 import { threadNotices } from "./notifications.ts";
@@ -38,7 +38,22 @@ export function InitLoader({
   const base = useWidgetBase();
   const user = useSnapshot((snapshot) => snapshot.index.init);
   const workspace = views?.init ?? null;
-  // The user's file first: loads run in call order, and effects in declaration order.
+  const repos = useSnapshot((snapshot) =>
+    workspaceId === undefined ? undefined : snapshot.index.workspaces.get(workspaceId)?.repos,
+  );
+  // Only what `omfp.workspace.repos` gives: a new branch or commit must not run the files again.
+  const listed = (repos ?? []).map(({ name, path, kind }): InitRepo => ({ name, path, kind }));
+  const reposKey = JSON.stringify(listed);
+  const manifest = views?.manifest;
+  const manifestError = views?.error;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `reposKey` stands for `listed`
+  const context = useMemo(
+    () => ({ workspaceId, manifest, manifestError, repos: listed }),
+    [workspaceId, manifest, manifestError, reposKey],
+  );
+  // Before the loads, so a run reads this context; the user's file first: loads run in call order, and effects in
+  // declaration order.
+  useEffect(() => init.setContext(context), [init, context]);
   useEffect(() => {
     if (base !== undefined) {
       void init.load("user", user === null ? undefined : initUrl(base, "user", user));

@@ -27,7 +27,7 @@ pub(crate) use mcp::Sessions as McpSessions;
 pub(crate) use services::Services;
 
 use crate::token::Token;
-use crate::widgets::{Served, init, workspace_widgets};
+use crate::widgets::{Served, init, views_folder, workspace_widgets};
 
 /// Protocol versions the daemon accepts in `system.hello`: the current one and, during a transition, the previous
 /// one (PRT-032). There is no previous version yet.
@@ -88,6 +88,10 @@ async fn theme_css(State(state): State<Arc<AppState>>) -> Response {
 ///
 /// (Experimental) `GET /widgets/<key>/init/<scope>/<version>/init.ts` (DMN-185, PRT-095): the user's init file
 /// (`<scope>` = `user`) or a workspace's `.omfp/init.ts` (`<scope>` = its id), compiled; the version only busts caches.
+///
+/// (Experimental) `GET /widgets/<key>/views/<workspaceId>/<version>/<path>` (DMN-186, PRT-096): the file `<path>` of
+/// the workspace's `.omfp/views/` (subfolders too, so relative imports resolve to siblings by URL), compiled when it is
+/// TypeScript or JSX, the stand-in module when it does not compile; `<version>` (`viewFiles`) only busts caches.
 async fn widget_file(
     State(state): State<Arc<AppState>>,
     extract::Path(rest): extract::Path<String>,
@@ -124,6 +128,12 @@ async fn widget_file(
                 init::workspace_init(&services.store.workspace(&name).ok()?.path)
             };
             return services.widgets.serve_init(&file).map(Served::Module);
+        }
+        if source == "views" {
+            let workspace = services.store.workspace(&name).ok()?.path;
+            return services
+                .widgets
+                .serve_view(&views_folder(&workspace), &path);
         }
         let library = if source == "user" {
             services.widgets.user_library().to_path_buf()

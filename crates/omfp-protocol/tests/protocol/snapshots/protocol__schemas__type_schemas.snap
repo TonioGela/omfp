@@ -1771,6 +1771,25 @@ expression: type_schemas()
         "type": "object"
       },
       {
+        "description": "(Experimental) A file of the workspace's `.omfp/views/` (TSX views) appeared, changed or went away, or the\nfolder did (PRT-096): replaces `viewFiles`.",
+        "properties": {
+          "kind": {
+            "const": "views_files",
+            "type": "string"
+          },
+          "viewFiles": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
+      {
         "description": "A widget stored a value (`null`: removed the key, DMN-086).",
         "properties": {
           "instance": {
@@ -1926,6 +1945,14 @@ expression: type_schemas()
         },
         "description": "What widgets stored with `useStored` (DMN-086): instance → key → value.",
         "type": "object"
+      },
+      "viewFiles": {
+        "default": null,
+        "description": "(Experimental) The version of `.omfp/views/` (TSX views, PRT-096): a hash of its files' paths, sizes and\nmodification times (`folders::version`); `null` without the folder.",
+        "type": [
+          "string",
+          "null"
+        ]
       },
       "widgets": {
         "description": "Widget folders of the workspace, then of the user library, each by name.",

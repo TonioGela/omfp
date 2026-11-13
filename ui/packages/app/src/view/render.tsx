@@ -45,6 +45,7 @@ import {
   type LayoutTree,
   MAIN_SLOT,
 } from "./layout.ts";
+import { addedBy, type NodeOrigins } from "./origins.ts";
 import type { WidgetRegistry } from "./resolve.ts";
 import { effectiveSizes, PANE_SIZES, sizesKey, withSizes } from "./sizes.ts";
 import { WidgetSlot } from "./slot.tsx";
@@ -87,6 +88,8 @@ interface Scope {
   /** Whether the view holds a single widget (which cannot be hidden). */
   readonly single: boolean;
   readonly viewId: string;
+  /** Where the nodes of a `views.json` view init files changed come from (UI-269). */
+  readonly origins: NodeOrigins | undefined;
   /** On a phone: the area shown. */
   readonly area: Area | undefined;
   /** Hide was pressed on the toolbar at `index` (document order), or `undefined`: its edit failed; the focus moves on
@@ -130,7 +133,11 @@ function useFocusAfterHide(tree: LayoutTree): [RefObject<HTMLDivElement | null>,
 }
 
 export function ViewRenderer({ view, registry, workspaceId, views, onEdit, area }: ViewRendererProps): ReactNode {
-  const targets = useMemo(() => moveTargets(view.tree, "0"), [view.tree]);
+  // A node an init file added is no Move target (UI-269).
+  const targets = useMemo(
+    () => moveTargets(view.tree, "0").filter((target) => addedBy(view.origins, target.path) === undefined),
+    [view.tree, view.origins],
+  );
   const [root, onHide] = useFocusAfterHide(view.tree);
   const scope: Scope = {
     registry,
@@ -140,6 +147,7 @@ export function ViewRenderer({ view, registry, workspaceId, views, onEdit, area 
     targets,
     single: view.tree.kind === "widget",
     viewId: view.id,
+    origins: view.origins,
     area,
     onHide,
   };
@@ -177,6 +185,7 @@ export function PanelLayout({ id, tree, registry, workspaceId, views }: PanelLay
     targets: [],
     single: true,
     viewId: path,
+    origins: undefined,
     area: undefined,
     onHide: undefined,
   };
@@ -204,7 +213,13 @@ function Node({ tree, path, scope }: { tree: LayoutTree; path: string; scope: Sc
       // One wrapper in and out of edit mode, so toggling it never remounts the widget.
       <div className="omfp-view__item">
         {scope.onEdit !== undefined && (
-          <WidgetToolbar reference={tree.name} path={path} scope={scope} onEdit={scope.onEdit} />
+          <WidgetToolbar
+            reference={tree.name}
+            path={path}
+            scope={scope}
+            onEdit={scope.onEdit}
+            added={addedBy(scope.origins, path)}
+          />
         )}
         <WidgetSlot
           reference={tree.name}
@@ -280,6 +295,7 @@ function TabsNode({
         {children.map(({ child, id }) => (
           <Tab key={id} id={id} data-testid="view-tab">
             {nodeTitle(child)}
+            {scope.onEdit !== undefined && <InitMark file={addedBy(scope.origins, id)} />}
           </Tab>
         ))}
       </TabList>
@@ -336,6 +352,7 @@ function MainTabs({
             ...own.map(({ child, id }) => (
               <Tab key={id} id={id} data-testid="view-tab">
                 {nodeTitle(child)}
+                {scope.onEdit !== undefined && <InitMark file={addedBy(scope.origins, id)} />}
               </Tab>
             )),
             ...files.tabs.map((tab) => (
@@ -563,11 +580,49 @@ interface ToolbarProps {
   readonly path: string;
   readonly scope: Scope;
   readonly onEdit: (edit: LayoutEdit) => Promise<boolean>;
+  /** The init file that added this widget (UI-269): it cannot move or hide, its toolbar names the file to edit. */
+  readonly added: "user" | "workspace" | undefined;
 }
 
-/** A widget's edit-mode toolbar: its reference, Move (before/after another widget, end of a container) and Hide. */
-function WidgetToolbar({ reference, path, scope, onEdit }: ToolbarProps): ReactNode {
+/** The mark of a node an init file added (UI-269), in edit mode: names the file on hover and for screen readers. */
+function InitMark({ file }: { file: "user" | "workspace" | undefined }): ReactNode {
+  if (file === undefined) {
+    return null;
+  }
+  const label = strings.init.edit.added(strings.init.files[file]);
+  return (
+    <span className="omfp-init-mark" title={label} data-testid="init-mark" data-file={file}>
+      <span aria-hidden="true">{strings.init.edit.mark}</span>
+      <span className="omfp-visually-hidden">{label}</span>
+    </span>
+  );
+}
+
+/**
+ * A widget's edit-mode toolbar: its reference, Move (before/after another widget, end of a container) and Hide; for a
+ * widget an init file added, its mark and the file to edit instead.
+ */
+function WidgetToolbar({ reference, path, scope, onEdit, added }: ToolbarProps): ReactNode {
   const targets = scope.targets.filter((target) => target.path !== path);
+  if (added !== undefined) {
+    const note = strings.init.edit.added(strings.init.files[added]);
+    return (
+      <Toolbar
+        className="omfp-widget-toolbar"
+        aria-label={layoutText.toolbar(reference)}
+        data-testid="widget-toolbar"
+        data-path={path}
+        data-widget={reference}
+        data-init={added}
+      >
+        <span className="omfp-widget-toolbar__reference">{reference}</span>
+        <span className="omfp-init-mark" title={note} aria-hidden="true" data-testid="init-mark" data-file={added}>
+          {strings.init.edit.mark}
+        </span>
+        <span className="omfp-widget-toolbar__note">{note}</span>
+      </Toolbar>
+    );
+  }
   return (
     <Toolbar
       className="omfp-widget-toolbar"
