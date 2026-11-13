@@ -11,17 +11,20 @@ only be reachable from the human UI.
 
 ## Read first
 
-- `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M14 done, with M2b, M5b, M5c, M5d and M6b; the terminal was removed, D-06);
-  `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
-- The spec for the area you touch (`00`…`08`).
+- `docs/specs/README.md` — index, conventions, decision log (D-01…D-20), open questions.
+- `docs/specs/07-roadmap.md` — milestones and spike results (done: M0–M8 with M2b, M5b, M5c, M5d, M6b, M8b and M8c,
+  M10, M12, M13, M14; in progress: M9 hardening, M11 macOS desktop, M15 downloads without Nix; the terminal was
+  removed, D-06); `docs/specs/milestones.toml` — requirement IDs and `status` per milestone (enforced by
+  `cargo xtask spec-trace`).
+- The spec for the area you touch (`00`…`09`).
 
 ## Ground rules
 
 - Everything in **English**: code, comments, docs, commit messages.
 - **TDD**: tests first. Every test covering a requirement has `// spec: ID[, ID…]` right above it (parsed by
-  `cargo xtask spec-trace`; never put the marker plus an ID inside a string literal). Deterministic tests only: no
-  sleeps, temp dirs, no network beyond loopback, no real models.
+  `cargo xtask spec-trace`; never put the marker plus an ID inside a string literal). Deterministic and isolated tests
+  only (TST-003): no sleeps (wait on conditions with timeouts), temporary directories only (never the user's), port 0,
+  no network beyond loopback, no real models.
 - **Conventional Commits** (checked by commitizen in the commit-msg hook). Push to `master`; no branches/PRs during the
   PoC. Commits are SSH-signed with the user's key: if signing fails, ask the user to load the key, never disable it.
 - Keep docs in sync: when behavior or a decision changes, update the spec rows (and spike results) in the same change.
@@ -104,6 +107,9 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       the one restart of a thread's omp and the restarts the daemon owes, with their reasons);
                       `thread.session`, a thread's session facts without omp's whole state (server/dispatch/session.rs);
                       the prompt history and `prompts.history` (server/prompts.rs; store migration 0010);
+                      the options of `omfp daemon` over the config file's `[daemon]` (config.rs) and the config file
+                      with its `[ui]`/`[keymap]` settings, written back by `settings.set` (config_file.rs);
+                      widgets/layout.rs: the placement of `views.mount`/`omfp_ui_mount` in the manifest;
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` and `omfp desktop`;
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
 crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI),
@@ -151,7 +157,8 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
                       column, mode line with the view tabs, the `:` line and file picker, `:widget add` (layout.tsx),
                       floating file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
-                      state), toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
+                      state), toasts, dialogs, login.tsx (logging in to omp's providers, UI-380..UI-386);
+                      responsive.ts(x): breakpoints, the strip, drawer and phone area
                       bar, the left column's splitter; commands-sheet.ts(x): the phone's commands sheet (UI-460);
                       init.tsx: loading the init files and their banner;
                       describe.ts(x): `:describe-key` / `:describe-command`; which-key.tsx: the which-key panel;
@@ -178,6 +185,8 @@ contrib/release/        release packages without Nix (M15, ENV-060..065): packag
 contrib/flatpak/        the Flatpak manifest (io.github.aciceri.omfp.yml), its launcher script, desktop entry and
                         AppStream metadata; in the sandbox the daemon runs omp, git and jobs on the host
                         (crates/omfp-daemon/src/flatpak.rs, ENV-064)
+contrib/matugen/        a matugen template (omfp.css, config.toml) making an omfp theme from a Material 3 scheme
+nix/                    the flake's packages: package.nix (`omfp`, `omfp-headless`), web.nix (the web bundle)
 ```
 
 ## Version pinning
