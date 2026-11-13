@@ -201,7 +201,7 @@ pub(crate) fn thread_summary(
         process: status.process,
         settled: status.settled,
         needs_attention: status.needs_attention,
-        mcp_reload_pending: status.mcp_reload_pending,
+        restart_pending: status.restart_pending,
         provenance: provenance(&thread.created_by, clients.get(&thread.id)),
         created_at: thread.created_at,
         updated_at,

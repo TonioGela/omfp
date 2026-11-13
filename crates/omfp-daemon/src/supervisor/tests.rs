@@ -893,7 +893,7 @@ async fn a_restart_dropped_mid_way_still_starts_the_new_process() {
     h.supervisor.start(&id).await.unwrap();
     let close = h.launcher.gate_closes();
 
-    drop_at_close(&close, h.supervisor.restart(&id)).await;
+    drop_at_close(&close, h.supervisor.restart(&id, Restart::User)).await;
     close.open();
 
     // The lifecycle lock orders this start after the restart: a restart cut short would leave no process and its slot
@@ -1821,7 +1821,7 @@ async fn an_idle_thread_restarts_at_once_when_its_mcp_configs_change() {
     h.supervisor.check_mcp_configs().await;
 
     assert_eq!(h.launcher.launches().len(), 2, "the new process read them");
-    assert!(!h.supervisor.status(&id).mcp_reload_pending);
+    assert_eq!(h.supervisor.status(&id).restart_pending, Vec::new());
 }
 
 // spec: DMN-203
@@ -1857,7 +1857,7 @@ async fn a_reauthorized_server_restarts_a_busy_thread_once_its_turn_settles() {
     h.wait(&id, "the output", |state| !state.notices.is_empty())
         .await;
     assert_eq!(h.launcher.launches().len(), 1, "the turn goes on");
-    assert!(!h.supervisor.status(&id).mcp_reload_pending);
+    assert_eq!(h.supervisor.status(&id).restart_pending, Vec::new());
 
     h.launcher
         .process(0)
@@ -1900,12 +1900,15 @@ async fn background_work_holds_the_reload_back_and_flags_the_thread_until_it_end
     h.supervisor.check_mcp_configs().await;
 
     assert_eq!(changes.recv().await.unwrap(), id);
-    assert!(h.supervisor.status(&id).mcp_reload_pending);
+    assert_eq!(
+        h.supervisor.status(&id).restart_pending,
+        [RestartReason::McpConfig]
+    );
     assert_eq!(h.launcher.launches().len(), 1);
 
     h.launcher.process(0).emit(vec![subagent("completed")]);
     h.launched(&id, 2).await;
-    assert!(!h.supervisor.status(&id).mcp_reload_pending);
+    assert_eq!(h.supervisor.status(&id).restart_pending, Vec::new());
 }
 
 // spec: DMN-204, PRT-121
@@ -1922,10 +1925,75 @@ async fn a_reconnect_loads_the_held_back_tools_and_clears_the_flag() {
         .await;
     write_mcp_config(&folder, &json!({ "fs": { "command": "fs" } }));
     h.supervisor.check_mcp_configs().await;
-    assert!(h.supervisor.status(&id).mcp_reload_pending);
+    assert_eq!(
+        h.supervisor.status(&id).restart_pending,
+        [RestartReason::McpConfig]
+    );
 
     h.supervisor.mcp_reconnect(&id, None).await.unwrap();
 
     assert_eq!(h.launcher.launches().len(), 2);
-    assert!(!h.supervisor.status(&id).mcp_reload_pending);
+    assert_eq!(h.supervisor.status(&id).restart_pending, Vec::new());
+}
+
+// spec: DMN-224, DMN-228, PRT-121, PRT-134
+#[tokio::test]
+async fn a_held_back_restart_names_each_reason_once_in_the_order_they_came() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let (_, folder) = workspace_of(&h, &id);
+    h.supervisor.start(&id).await.unwrap();
+    h.launcher.process(0).emit(vec![subagent("started")]);
+    h.wait(&id, "the subagent", |state| !state.subagents.is_empty())
+        .await;
+
+    h.supervisor.restart_after_login();
+    assert_eq!(
+        h.supervisor.status(&id).restart_pending,
+        [RestartReason::Login]
+    );
+    write_mcp_config(&folder, &json!({ "fs": { "command": "fs" } }));
+    h.supervisor.check_mcp_configs().await;
+    h.supervisor.restart_after_login();
+    assert_eq!(
+        h.supervisor.status(&id).restart_pending,
+        [RestartReason::Login, RestartReason::McpConfig]
+    );
+    assert_eq!(h.launcher.launches().len(), 1);
+
+    h.launcher.process(0).emit(vec![subagent("completed")]);
+    h.launched(&id, 2).await;
+    assert_eq!(h.supervisor.status(&id).restart_pending, Vec::new());
+}
+
+// spec: DMN-227, DMN-226
+#[tokio::test]
+async fn a_restart_waits_for_the_message_on_its_way_to_omp() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    h.supervisor.start(&id).await.unwrap();
+    let gate = h.launcher.gate("prompt");
+
+    let sending = tokio::spawn({
+        let (supervisor, id) = (h.supervisor.clone(), id.clone());
+        async move { supervisor.prompt(&id, prompt("/dirs")).await }
+    });
+    gate.arrived(1).await;
+    let restarting = tokio::spawn({
+        let (supervisor, id) = (h.supervisor.clone(), id.clone());
+        async move { supervisor.restart(&id, Restart::User).await }
+    });
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        h.launcher.launches().len(),
+        1,
+        "the restart waits for omp's answer"
+    );
+    gate.open();
+    sending.await.unwrap().unwrap();
+    restarting.await.unwrap().unwrap();
+
+    assert_eq!(h.launcher.launches().len(), 2);
 }

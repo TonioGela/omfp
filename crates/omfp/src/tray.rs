@@ -378,7 +378,7 @@ mod tests {
             process,
             settled: true,
             needs_attention: false,
-            mcp_reload_pending: false,
+            restart_pending: Vec::new(),
             provenance: Provenance {
                 created_by: CreatedBy::User,
                 client: None,

@@ -2,7 +2,7 @@
 
 import { describe, expect, test } from "bun:test";
 import type { McpServer, McpServers } from "@omfp/protocol";
-import { mcpRows, mcpStatus, reauthPrompt } from "../../src/vm/mcp.ts";
+import { mcpRows, mcpStatus, pendingRestart, reauthPrompt } from "../../src/vm/mcp.ts";
 
 function server(name: string, extra: Partial<McpServer> = {}): McpServer {
   return {
@@ -107,5 +107,21 @@ describe("mcpRows", () => {
       ["off", false],
     ]);
     expect(reauthPrompt("docs")).toBe("/mcp reauth docs");
+  });
+});
+
+describe("pendingRestart", () => {
+  // spec: UI-349, PRT-134
+  test("a held-back restart is named by its reasons, and only an MCP reason shows it in omfp:mcp", () => {
+    expect(pendingRestart(undefined)).toBeUndefined();
+    expect(pendingRestart([])).toBeUndefined();
+    const named = (reasons: Parameters<typeof pendingRestart>[0]) => {
+      const restart = pendingRestart(reasons);
+      return [restart?.label, restart?.mcp];
+    };
+    expect(named(["mcp_config"])).toEqual(["Reload to load MCP tools", true]);
+    expect(named(["mcp_reauth", "mcp_config"])).toEqual(["Reload to load MCP tools", true]);
+    expect(named(["login"])).toEqual(["Restart to load new models", false]);
+    expect(named(["login", "mcp_reauth"])).toEqual(["Restart to load new models and MCP tools", true]);
   });
 });

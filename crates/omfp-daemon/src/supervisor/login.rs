@@ -4,12 +4,13 @@
 //! short-lived omp of its own with an explicit model of omp's bundled catalog ([`LOGIN_MODEL`]): omp starts with it
 //! without a credential. omp keeps credentials in the store of its agent directory, which every omp of the daemon
 //! shares (same environment), so one login serves every thread; omp loads a thread's models only at startup, so the
-//! running threads restart once they are free (DMN-224).
+//! running threads restart once they are free (DMN-224, DMN-228).
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Receiver;
 
+use omfp_protocol::RestartReason;
 use omp_rpc::Event;
 use tracing::{info, warn};
 
@@ -152,17 +153,15 @@ impl Supervisor {
         Some(running.provider_id)
     }
 
-    /// A login stored a credential (DMN-224): every running thread restarts like an MCP reload (DMN-203, DMN-204) —
-    /// at once when idle, after its turn when working, held back by background work — so its omp loads the models
-    /// the credential unlocked.
-    pub fn reload_after_login(&self) {
+    /// A login stored a credential (DMN-224): every running thread owes a restart for `login` (DMN-228) — at once
+    /// when idle, after its turn when working, held back by background work — so its omp loads the models the
+    /// credential unlocked.
+    pub fn restart_after_login(&self) {
         let actors: Vec<_> = lock(&self.inner.actors).values().cloned().collect();
         for actor in actors {
-            if actor.process().is_none() {
-                continue;
+            if actor.process().is_some() {
+                self.restart_for(&actor, RestartReason::Login);
             }
-            lock(&actor.mcp_reload).want();
-            self.reload_mcp_when_free(&actor);
         }
     }
 }

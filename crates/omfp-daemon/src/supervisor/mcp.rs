@@ -1,93 +1,27 @@
 //! The MCP servers of a workspace and a thread (M13): the configured list (DMN-190), the check of each server by the
 //! thread's running omp with `/mcp test` (DMN-191), and the reconnect, a restart of the idle process (DMN-192).
 //!
-//! omp loads MCP servers only at startup, so the daemon reloads a thread's omp by itself when the servers it would
-//! load change: the configs' [`omp_mcp::fingerprint`] changed (DMN-201) or omp said a
-//! server needs a new connection (`✓ Reauthorized`, `Added MCP server`, DMN-202). The restart waits for the turn to
-//! settle (DMN-203); background work (omp jobs, subagents, a pending dialog, a live session) holds it back and marks
-//! the thread `mcp_reload_pending` until it ends or the user reconnects (DMN-204).
+//! omp loads MCP servers only at startup, so the daemon restarts a thread's omp by itself (`restart.rs`) when the
+//! servers it would load change: the configs' [`omp_mcp::fingerprint`] changed (DMN-201) or omp said a server needs a
+//! new connection (`✓ Reauthorized`, `Added MCP server`, DMN-202).
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 
-use omfp_core::wire::SubagentLifecycleStatus;
-use omfp_core::{JobState, ProcessState};
-use omfp_protocol::{McpServer, McpServers};
+use omfp_protocol::{McpServer, McpServers, RestartReason};
 use omp_rpc::PromptCommand;
 use tokio::sync::oneshot;
 use tracing::{info, warn};
 
+use super::restart::Restart;
 use super::{Actor, Result, Supervisor, SupervisorError, blocking, lock};
-use crate::omp_mcp::{self, Check, ConfigFingerprint, Homes};
+use crate::omp_mcp::{self, Check, Homes};
 
 /// The daemon's `/mcp test` of server `name` waiting for its `command_output` (DMN-200).
 pub(super) struct PendingCheck {
     name: String,
     answer: oneshot::Sender<Check>,
-}
-
-/// Whether a thread's omp should connect anew to load new MCP tools (DMN-201..204).
-#[derive(Debug, Default)]
-pub(super) struct Reload {
-    /// The workspace folder the running omp read its configs from and their fingerprint then.
-    loaded: Option<(PathBuf, ConfigFingerprint)>,
-    /// A reload is due.
-    wanted: bool,
-    /// Background work holds the due reload back (the thread's `mcp_reload_pending`).
-    blocked: bool,
-    /// A reload task is on its way.
-    running: bool,
-}
-
-impl Reload {
-    pub(super) fn want(&mut self) {
-        self.wanted = true;
-    }
-
-    pub(super) fn blocked(&self) -> bool {
-        self.blocked
-    }
-
-    /// A process read the configs (`Some`), or none runs any more (`None`): nothing is due.
-    pub(super) fn loaded(&mut self, configs: Option<(PathBuf, ConfigFingerprint)>) {
-        *self = Self {
-            loaded: configs,
-            ..Self::default()
-        };
-    }
-}
-
-/// What keeps a due reload from running now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Hold {
-    /// A turn runs (or the process is not up yet): the reload waits for it to settle.
-    Turn,
-    /// Background work would die with the process: the user decides (`mcp_reload_pending`).
-    Background,
-}
-
-fn hold(actor: &Actor) -> Option<Hold> {
-    if lock(&actor.voice).is_some() {
-        return Some(Hold::Background);
-    }
-    actor.log.with_state(|state| {
-        if state.process != ProcessState::Running || !state.settled {
-            return Some(Hold::Turn);
-        }
-        let jobs = state.tools.iter().any(|run| {
-            run.background
-                .as_ref()
-                .is_some_and(|job| job.state == JobState::Running)
-        });
-        let subagents = state.subagents.values().any(|subagent| {
-            subagent
-                .lifecycle
-                .as_ref()
-                .is_some_and(|lifecycle| lifecycle.status == SubagentLifecycleStatus::Started)
-        });
-        (jobs || subagents || !state.interactions.is_empty()).then_some(Hold::Background)
-    })
 }
 
 /// How long the check's `command_output` may trail omp's answer to the prompt: omp writes the output first, so it is
@@ -121,11 +55,7 @@ impl Supervisor {
     /// `/mcp reload` does not reconnect), so the idle process restarts and connects them all again; then `name`, or
     /// every checkable server, is checked (PRT-112, DMN-192). A working thread is refused: a restart would abort it.
     pub async fn mcp_reconnect(&self, thread_id: &str, name: Option<&str>) -> Result<McpServers> {
-        let actor = self.actor(thread_id).await?;
-        if !actor.status().settled {
-            return Err(SupervisorError::Busy);
-        }
-        self.restart(thread_id).await?;
+        self.restart(thread_id, Restart::Reconnect).await?;
         self.thread_servers(thread_id, name).await
     }
 
@@ -234,22 +164,22 @@ impl Supervisor {
         true
     }
 
-    /// Records the configs the thread's omp is about to read: nothing is due any more (DMN-201).
+    /// Records the configs the thread's omp is about to read (DMN-201).
     pub(super) async fn loading_mcp_configs(&self, actor: &Actor, workspace: PathBuf) {
         let homes = self.homes();
         let folder = workspace.clone();
         match blocking(move || omp_mcp::fingerprint(&folder, &homes)).await {
-            Ok(fingerprint) => lock(&actor.mcp_reload).loaded(Some((workspace, fingerprint))),
+            Ok(fingerprint) => *lock(&actor.mcp_configs) = Some((workspace, fingerprint)),
             Err(error) => warn!(thread = %actor.id, %error, "cannot read the MCP configs"),
         }
     }
 
-    /// Compares the MCP configs of every running thread with the ones its omp read; a change makes a reload due
-    /// (DMN-201). The workspace polls call it every round.
+    /// Compares the MCP configs of every running thread with the ones its omp read; a change makes a restart due
+    /// (DMN-201, DMN-228). The workspace polls call it every round.
     pub async fn check_mcp_configs(&self) {
         let actors: Vec<Arc<Actor>> = lock(&self.inner.actors).values().cloned().collect();
         for actor in actors {
-            let Some((workspace, _)) = lock(&actor.mcp_reload).loaded.clone() else {
+            let Some((workspace, _)) = lock(&actor.mcp_configs).clone() else {
                 continue;
             };
             if actor.process().is_none() {
@@ -259,85 +189,17 @@ impl Supervisor {
             let Ok(now) = blocking(move || omp_mcp::fingerprint(&workspace, &homes)).await else {
                 continue;
             };
-            let changed = {
-                let mut reload = lock(&actor.mcp_reload);
-                match &mut reload.loaded {
-                    Some((_, fingerprint)) if *fingerprint != now => {
-                        *fingerprint = now;
-                        reload.wanted = true;
-                        true
-                    }
-                    _ => false,
+            let changed = match &mut *lock(&actor.mcp_configs) {
+                Some((_, fingerprint)) if *fingerprint != now => {
+                    *fingerprint = now;
+                    true
                 }
+                _ => false,
             };
             if changed {
                 info!(thread = %actor.id, "MCP configs changed");
-                self.reload_mcp_when_free(&actor);
+                self.restart_for(&actor, RestartReason::McpConfig);
             }
-        }
-    }
-
-    /// Runs a due reload if nothing holds it back: at once when the thread is idle, after the turn when it works
-    /// (DMN-203); background work marks the thread instead (DMN-204). Called after every event of the thread.
-    pub(super) fn reload_mcp_when_free(&self, actor: &Actor) {
-        {
-            let reload = lock(&actor.mcp_reload);
-            if !reload.wanted || reload.running {
-                return;
-            }
-        }
-        if actor.process().is_none() {
-            // A stopped thread reads the configs when it starts again.
-            lock(&actor.mcp_reload).loaded(None);
-            return;
-        }
-        let hold = hold(actor);
-        let mut reload = lock(&actor.mcp_reload);
-        if !reload.wanted || reload.running {
-            return;
-        }
-        let blocked = hold == Some(Hold::Background);
-        let changed = reload.blocked != blocked;
-        reload.blocked = blocked;
-        if hold.is_none() {
-            reload.running = true;
-            let supervisor = self.clone();
-            let id = actor.id.clone();
-            tokio::spawn(async move { supervisor.reload_mcp(&id).await });
-        }
-        drop(reload);
-        if changed {
-            let _ = self.inner.changes.send(actor.id.clone());
-        }
-    }
-
-    /// The reload task: once no prompt is on its way and no lifecycle operation runs, restarts the thread's omp if it
-    /// is still free (same session, `--continue`, DMN-032).
-    async fn reload_mcp(&self, id: &str) {
-        let Some(actor) = self.lookup(id) else {
-            return;
-        };
-        let quiet = actor.prompting.write().await;
-        let lifecycle = actor.lifecycle.lock().await;
-        if actor.process().is_none() {
-            lock(&actor.mcp_reload).loaded(None);
-            return;
-        }
-        if hold(&actor).is_some() {
-            // Work started meanwhile: wait again.
-            lock(&actor.mcp_reload).running = false;
-            drop((lifecycle, quiet));
-            self.reload_mcp_when_free(&actor);
-            return;
-        }
-        info!(thread = %id, "restarting omp to load MCP tools");
-        let restarted = match self.stop_locked(&actor).await {
-            Ok(()) => self.start_locked(&actor).await.map(drop),
-            Err(error) => Err(error),
-        };
-        if let Err(error) = restarted {
-            warn!(thread = %id, %error, "restart for MCP tools failed");
-            lock(&actor.mcp_reload).running = false;
         }
     }
 }

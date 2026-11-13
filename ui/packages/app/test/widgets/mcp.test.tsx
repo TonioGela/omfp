@@ -215,10 +215,10 @@ describe("omfp:mcp", () => {
 
   // spec: UI-349
   test("while the daemon holds a restart for new MCP tools, one click reloads the thread", async () => {
-    const { client, user } = setup({ mcpReloadPending: true });
+    const { client, user } = setup({ restartPending: ["mcp_reauth", "login"] });
     await waitFor(() => expect(boxes().length).toBe(3));
     const reload = screen.getByTestId("mcp-reload-tools");
-    expect(reload.textContent).toBe("Reload to load MCP tools");
+    expect(reload.textContent).toBe("Restart to load new models and MCP tools");
     await user.click(reload);
     expect(client.callsTo("thread.mcp_reconnect").map((call) => call.params)).toEqual([{ threadId: "t1" }]);
   });

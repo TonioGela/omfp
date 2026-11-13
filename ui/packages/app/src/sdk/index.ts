@@ -140,6 +140,8 @@ export {
   type McpRow,
   mcpRows,
   mcpStatus,
+  type PendingRestart,
+  pendingRestart,
   reauthPrompt,
 } from "../vm/mcp.ts";
 export { type NoticeRow, noticeRow } from "../vm/notice.ts";

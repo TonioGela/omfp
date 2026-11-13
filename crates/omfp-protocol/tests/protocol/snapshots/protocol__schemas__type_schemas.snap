@@ -249,6 +249,26 @@ expression: type_schemas()
         ],
         "type": "object"
       },
+      "RestartReason": {
+        "description": "Why the daemon restarts a thread's omp by itself (PRT-134, DMN-228): omp loads MCP servers and lists a provider's\nmodels only at startup.",
+        "oneOf": [
+          {
+            "const": "mcp_config",
+            "description": "The MCP servers the thread's omp would load changed: a config file (DMN-201) or `/mcp add` (DMN-202).",
+            "type": "string"
+          },
+          {
+            "const": "mcp_reauth",
+            "description": "An MCP server was reauthorized (`/mcp reauth`, DMN-202): omp applies the credential on the next connection.",
+            "type": "string"
+          },
+          {
+            "const": "login",
+            "description": "A login stored a provider's credential (DMN-224): omp lists its models from the next start.",
+            "type": "string"
+          }
+        ]
+      },
       "Settings": {
         "description": "UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097).",
         "properties": {
@@ -310,10 +330,6 @@ expression: type_schemas()
           "id": {
             "type": "string"
           },
-          "mcpReloadPending": {
-            "description": "The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon\ndid not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.",
-            "type": "boolean"
-          },
           "needsAttention": {
             "description": "Interactive requests are waiting for an answer.",
             "type": "boolean"
@@ -323,6 +339,13 @@ expression: type_schemas()
           },
           "provenance": {
             "$ref": "#/$defs/Provenance"
+          },
+          "restartPending": {
+            "description": "Why the thread's omp should restart while background work holds the restart back (PRT-121, PRT-134,\nDMN-204): each reason once, in the order they came; `thread.mcp_reconnect` restarts it now. Absent when empty.",
+            "items": {
+              "$ref": "#/$defs/RestartReason"
+            },
+            "type": "array"
           },
           "settled": {
             "description": "Idle with nothing queued or pending (omp's `session_settled`).",
@@ -872,6 +895,26 @@ expression: type_schemas()
         ],
         "type": "object"
       },
+      "RestartReason": {
+        "description": "Why the daemon restarts a thread's omp by itself (PRT-134, DMN-228): omp loads MCP servers and lists a provider's\nmodels only at startup.",
+        "oneOf": [
+          {
+            "const": "mcp_config",
+            "description": "The MCP servers the thread's omp would load changed: a config file (DMN-201) or `/mcp add` (DMN-202).",
+            "type": "string"
+          },
+          {
+            "const": "mcp_reauth",
+            "description": "An MCP server was reauthorized (`/mcp reauth`, DMN-202): omp applies the credential on the next connection.",
+            "type": "string"
+          },
+          {
+            "const": "login",
+            "description": "A login stored a provider's credential (DMN-224): omp lists its models from the next start.",
+            "type": "string"
+          }
+        ]
+      },
       "Settings": {
         "description": "UI settings and key bindings the daemon keeps in its config file (DMN-009, UI-097).",
         "properties": {
@@ -933,10 +976,6 @@ expression: type_schemas()
           "id": {
             "type": "string"
           },
-          "mcpReloadPending": {
-            "description": "The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon\ndid not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.",
-            "type": "boolean"
-          },
           "needsAttention": {
             "description": "Interactive requests are waiting for an answer.",
             "type": "boolean"
@@ -946,6 +985,13 @@ expression: type_schemas()
           },
           "provenance": {
             "$ref": "#/$defs/Provenance"
+          },
+          "restartPending": {
+            "description": "Why the thread's omp should restart while background work holds the restart back (PRT-121, PRT-134,\nDMN-204): each reason once, in the order they came; `thread.mcp_reconnect` restarts it now. Absent when empty.",
+            "items": {
+              "$ref": "#/$defs/RestartReason"
+            },
+            "type": "array"
           },
           "settled": {
             "description": "Idle with nothing queued or pending (omp's `session_settled`).",

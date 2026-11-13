@@ -1024,6 +1024,18 @@ export type RespondParams = {
   threadId: string;
 };
 
+/**
+ * Why the daemon restarts a thread's omp by itself (PRT-134, DMN-228): omp loads MCP servers and lists a provider's
+ * models only at startup.
+ */
+export type RestartReason =
+  /** The MCP servers the thread's omp would load changed: a config file (DMN-201) or `/mcp add` (DMN-202). */
+  | "mcp_config"
+  /** An MCP server was reauthorized (`/mcp reauth`, DMN-202): omp applies the credential on the next connection. */
+  | "mcp_reauth"
+  /** A login stored a provider's credential (DMN-224): omp lists its models from the next start. */
+  | "login";
+
 /** Why a window did not run a command (PRT-124). */
 export type RunFailure =
   /** No command answers to the name in the global scope. */
@@ -1321,16 +1333,16 @@ export type ThreadSummary = {
   archivedAt?: number | null;
   createdAt: number;
   id: string;
-  /**
-   * The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon
-   * did not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.
-   */
-  mcpReloadPending?: boolean;
   /** Interactive requests are waiting for an answer. */
   needsAttention: boolean;
   /** `omfp_core::ProcessState`. */
   process: ProcessState;
   provenance: Provenance;
+  /**
+   * Why the thread's omp should restart while background work holds the restart back (PRT-121, PRT-134,
+   * DMN-204): each reason once, in the order they came; `thread.mcp_reconnect` restarts it now. Absent when empty.
+   */
+  restartPending?: RestartReason[];
   /** Idle with nothing queued or pending (omp's `session_settled`). */
   settled: boolean;
   /** `""` until the first message (DMN-073). */

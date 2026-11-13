@@ -8,6 +8,7 @@ import type { ThreadSummary, Workspace } from "@omfp/protocol";
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { needsLogin } from "./login.ts";
+import { type PendingRestart, pendingRestart } from "./mcp.ts";
 import {
   displayTitle,
   isArchived,
@@ -76,8 +77,8 @@ export interface HeaderView {
   readonly action: ProcessAction | undefined;
   /** The header offers unarchive instead of archive (UI-026). */
   readonly archived: boolean;
-  /** The daemon holds a restart that loads new MCP tools while background work runs: offer it (UI-349). */
-  readonly mcpReload: boolean;
+  /** The daemon holds a restart while background work runs: offer it, named by its reasons (UI-349, PRT-134). */
+  readonly restart: PendingRestart | undefined;
   /** The process failed because omp has no model it can use without a login or a key: offer Log in (UI-388). */
   readonly login: boolean;
   /** omp offers no model at all: the model list offers Log in (UI-388). */
@@ -124,7 +125,7 @@ export function headerView(
     failure: process.state === "failed" ? process.message : undefined,
     action: processAction(process.state),
     archived: isArchived(summary),
-    mcpReload: summary.mcpReloadPending === true,
+    restart: pendingRestart(summary.restartPending),
     login: process.state === "failed" && (needsLogin(process.message) || needsLogin(process.stderr_tail)),
     noModels: details.modelsLoaded && models.length === 0,
   };

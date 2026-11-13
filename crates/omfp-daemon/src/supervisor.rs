@@ -16,6 +16,7 @@ use std::time::Duration;
 use omfp_core::{
     LiveOwner, NotifyRequest, OpenFileRequest, ProcessState, SessionInfo, ThreadEvent, ThreadState,
 };
+use omfp_protocol::RestartReason;
 use omp_rpc::{
     FollowUpCommand, GetMessagesResult, LiveLevelsEvent, PromptCommand, RpcAgentEvent,
     RpcNotification, SteerCommand,
@@ -41,8 +42,10 @@ mod live;
 mod login;
 mod mcp;
 mod naming;
+mod restart;
 
 pub use login::{AuthOmp, LOGIN_MODEL};
+pub use restart::Restart;
 
 /// The event log of one thread: omp frames and daemon events folded by the shared reducer (ARC-006).
 pub type ThreadLog = EventLog<ThreadEvent, ThreadState>;
@@ -248,8 +251,8 @@ pub struct ThreadStatus {
     pub process: ProcessState,
     pub settled: bool,
     pub needs_attention: bool,
-    /// New MCP tools wait for a restart that background work holds back (DMN-204).
-    pub mcp_reload_pending: bool,
+    /// Why the thread's omp should restart while background work holds the restart back (DMN-204, DMN-228).
+    pub restart_pending: Vec<RestartReason>,
 }
 
 impl Default for ThreadStatus {
@@ -258,7 +261,7 @@ impl Default for ThreadStatus {
             process: ProcessState::Stopped,
             settled: true,
             needs_attention: false,
-            mcp_reload_pending: false,
+            restart_pending: Vec::new(),
         }
     }
 }
@@ -323,10 +326,12 @@ struct Actor {
     local_commands: tokio::sync::Mutex<()>,
     /// The daemon's `/mcp test` in flight: its `command_output` goes here, not into the transcript (DMN-200).
     mcp_check: Mutex<Option<mcp::PendingCheck>>,
-    /// The thread's omp should connect anew to load new MCP tools (DMN-201..204).
-    mcp_reload: Mutex<mcp::Reload>,
-    /// Held (shared) while a prompt is on its way to omp, so a reload never cuts the answer of the prompt that asked
-    /// for it (`/mcp add`, DMN-203).
+    /// The workspace folder the running omp read its MCP configs from and their fingerprint then (DMN-201).
+    mcp_configs: Mutex<Option<(PathBuf, crate::omp_mcp::ConfigFingerprint)>>,
+    /// The restart the daemon owes the thread's omp, and why (DMN-203, DMN-204, DMN-228).
+    restart: Mutex<restart::DueRestart>,
+    /// Held (shared) while a message is on its way to omp (DMN-226), so a restart never cuts it, nor the answer of
+    /// the prompt that asked for it (`/mcp add`, DMN-203, DMN-227).
     prompting: tokio::sync::RwLock<()>,
 }
 
@@ -354,7 +359,8 @@ impl Actor {
             last_prompt: Mutex::new(None),
             local_commands: tokio::sync::Mutex::new(()),
             mcp_check: Mutex::new(None),
-            mcp_reload: Mutex::new(mcp::Reload::default()),
+            mcp_configs: Mutex::new(None),
+            restart: Mutex::new(restart::DueRestart::default()),
             prompting: tokio::sync::RwLock::new(()),
         }
     }
@@ -366,12 +372,12 @@ impl Actor {
     }
 
     fn status(&self) -> ThreadStatus {
-        let mcp_reload_pending = lock(&self.mcp_reload).blocked();
+        let restart_pending = lock(&self.restart).pending();
         self.log.with_state(|state| ThreadStatus {
             process: state.process.clone(),
             settled: state.settled,
             needs_attention: !state.interactions.is_empty(),
-            mcp_reload_pending,
+            restart_pending,
         })
     }
 
@@ -725,19 +731,6 @@ impl Supervisor {
         failed.map_or(Ok(stopped), Err)
     }
 
-    /// Stops and starts the thread's process; the history reloads from the session (DMN-032). Cancellation-safe
-    /// ([`Self::detached`]).
-    pub async fn restart(&self, id: &str) -> Result<()> {
-        let id = id.to_owned();
-        self.detached(|supervisor| async move {
-            let actor = supervisor.actor(&id).await?;
-            let _lifecycle = actor.lifecycle.lock().await;
-            supervisor.stop_locked(&actor).await?;
-            supervisor.start_locked(&actor).await.map(drop)
-        })
-        .await
-    }
-
     /// Runs a lifecycle operation as a task of its own that the caller only awaits, so dropping the caller cannot
     /// interrupt it half-way: an agent stopping or restarting its own thread through a host tool loses that call when
     /// its omp process dies, and an operation cut after taking the process would never report it stopped nor release
@@ -1082,8 +1075,8 @@ impl Supervisor {
             if Self::take_check_output(actor, &output.text) {
                 return;
             }
-            if crate::omp_mcp::wants_reload(&output.text) {
-                lock(&actor.mcp_reload).want();
+            if let Some(reason) = crate::omp_mcp::restart_reason(&output.text) {
+                lock(&actor.restart).want(reason);
             }
         }
         if matches!(
@@ -1105,7 +1098,7 @@ impl Supervisor {
         if tool_end {
             let _ = self.inner.tool_ends.send(actor.id.clone());
         }
-        self.reload_mcp_when_free(actor);
+        self.restart_when_free(actor);
         if after.settled && !before.settled && actor.roots_pending.load(Ordering::SeqCst) {
             let supervisor = self.clone();
             let id = actor.id.clone();
@@ -1188,7 +1181,9 @@ impl Supervisor {
 
     async fn launch(&self, actor: &Arc<Actor>) -> Result<Arc<dyn AgentProcess>> {
         let (thread, spec, mut recorded, add_dirs) = self.launch_spec(actor).await?;
-        // Taken before omp reads the files: a change while it starts reloads it once more (DMN-201).
+        // Taken before omp reads the files: a change while it starts reloads it once more (DMN-201). The new process
+        // loads everything a due restart was for (DMN-203).
+        lock(&actor.restart).clear();
         self.loading_mcp_configs(actor, spec.cwd.clone()).await;
         self.push(
             actor,
@@ -1422,8 +1417,9 @@ impl Supervisor {
         blocking(move || drop(process)).await?;
         let _ = ended.wait_for(|ended| *ended).await;
         self.inner.running.fetch_sub(1, Ordering::SeqCst);
-        // The next process reads the MCP configs anew (DMN-203).
-        lock(&actor.mcp_reload).loaded(None);
+        // The next process loads everything anew (DMN-203).
+        lock(&actor.mcp_configs).take();
+        lock(&actor.restart).clear();
         self.push(
             actor,
             ThreadEvent::Process {

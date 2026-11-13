@@ -891,6 +891,9 @@ requirements = [
   # QA fixes: the daemon (atomic writes, steer/follow-up bookkeeping, one restart routine)
   "DMN-225",
   "DMN-226",
+  "DMN-227",
+  "DMN-228",
+  "PRT-134",
   # Journeys
   "E2E-22",
   "E2E-23",

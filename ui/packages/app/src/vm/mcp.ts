@@ -3,7 +3,7 @@
  * `thread.mcp_servers`, PRT-110..PRT-114) as text, marks and actions.
  */
 
-import type { McpServer, McpServers } from "@omfp/protocol";
+import type { McpServer, McpServers, RestartReason } from "@omfp/protocol";
 import { strings } from "../strings/index.ts";
 
 const text = strings.shell.mcp;
@@ -43,6 +43,25 @@ export type McpPending =
   | { readonly kind: "reconnect"; readonly name: string | undefined };
 
 export const MCP_IDLE: McpPending = { kind: "none" };
+
+/** A restart the daemon holds back while background work runs (UI-349): its button's label and hint. */
+export interface PendingRestart {
+  readonly label: string;
+  readonly hint: string;
+  /** It loads new MCP tools: `omfp:mcp` offers it too. */
+  readonly mcp: boolean;
+}
+
+/** The restart a thread summary's `restartPending` holds (PRT-134), named by its reasons; `undefined` when none. */
+export function pendingRestart(reasons: readonly RestartReason[] | undefined): PendingRestart | undefined {
+  if (reasons === undefined || reasons.length === 0) {
+    return undefined;
+  }
+  const login = reasons.includes("login");
+  const mcp = reasons.some((reason) => reason !== "login");
+  const text = strings.shell.mcp.restartPending;
+  return { ...(login ? (mcp ? text.both : text.login) : text.mcp), mcp };
+}
 
 /** The prompt that makes the thread's omp authorize `name` again (UI-348): a local slash command, answered by
  * `command_output` notices. */

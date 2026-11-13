@@ -24,7 +24,7 @@ use crate::server::convert::{internal, supervisor_error, thread_error, workspace
 use crate::server::prompts;
 use crate::server::services::{Services, blocking};
 use crate::store::TitleSource;
-use crate::supervisor::QueuedMessage;
+use crate::supervisor::{QueuedMessage, Restart};
 use crate::threads::NewThread;
 use crate::titles;
 
@@ -443,7 +443,7 @@ pub(super) async fn thread(services: &Services, principal: &Principal, call: Cal
         }
         Call::ThreadRestart(params) => {
             supervisor
-                .restart(&params.thread_id)
+                .restart(&params.thread_id, Restart::User)
                 .await
                 .map_err(supervisor_error)?;
             empty()

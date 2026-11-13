@@ -37,7 +37,10 @@ use omfp_protocol::{
     AuthProvider, AuthProviders, LoggedIn, LoggedOut, LoginCancelled, ProviderRef,
 };
 use omfp_protocol::{ContextUsage, SessionTokens, SessionUsage, ThreadSession};
-use omfp_protocol::{CreatedBy, ListThreadsParams, Provenance, ThreadList, WorkspaceList};
+use omfp_protocol::{
+    CreatedBy, ListThreadsParams, Provenance, RestartReason, ThreadList, ThreadSummary,
+    WorkspaceList,
+};
 use omfp_protocol::{FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
 use omfp_protocol::{
     LibraryComponent, MountParams, MountPlace, MountUpdateParams, Mounted, SaveWidgetParams,
@@ -1791,6 +1794,30 @@ fn a_new_thread_takes_its_title_only_from_scripts_and_agents() {
     );
     let summary = serde_json::to_value(thread()).unwrap();
     assert_eq!(summary["titleSource"], json!("generated"));
+}
+
+// spec: PRT-121, PRT-134
+#[test]
+fn a_held_back_restart_carries_its_reasons_and_none_is_absent() {
+    let summary = serde_json::to_value(thread()).unwrap();
+    assert_eq!(summary.get("restartPending"), None);
+    let held = ThreadSummary {
+        restart_pending: vec![
+            RestartReason::McpConfig,
+            RestartReason::McpReauth,
+            RestartReason::Login,
+        ],
+        ..thread()
+    };
+    let summary = serde_json::to_value(&held).unwrap();
+    assert_eq!(
+        summary["restartPending"],
+        json!(["mcp_config", "mcp_reauth", "login"])
+    );
+    assert_eq!(
+        serde_json::from_value::<ThreadSummary>(summary).unwrap(),
+        held
+    );
 }
 
 // spec: DMN-075

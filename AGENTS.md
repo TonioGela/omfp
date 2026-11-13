@@ -99,7 +99,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       time, the reload of running threads after a login; server/services/logins.rs: `auth.*` and the
                       `login_*` window requests of a login's flow);
                       the MCP servers omp loads for a workspace (omp_mcp.rs: the config files omp reads, the `/mcp test`
-                      reply; supervisor/mcp.rs: checks by the thread's omp, reconnect by restart, M13);
+                      reply; supervisor/mcp.rs: checks by the thread's omp, reconnect by restart, M13; supervisor/restart.rs:
+                      the one restart of a thread's omp and the restarts the daemon owes, with their reasons);
                       `thread.session`, a thread's session facts without omp's whole state (server/dispatch/session.rs);
                       the prompt history and `prompts.history` (server/prompts.rs; store migration 0010);
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` and `omfp desktop`;

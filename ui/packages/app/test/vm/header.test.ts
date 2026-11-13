@@ -100,9 +100,11 @@ describe("header", () => {
   });
 
   // spec: UI-349
-  test("a thread whose daemon holds a restart for new MCP tools offers the reload", () => {
-    expect(headerView(thread("t", "x", "w", { mcpReloadPending: true }), NO_DETAILS, []).mcpReload).toBe(true);
-    expect(headerView(thread("t", "x", "w"), NO_DETAILS, []).mcpReload).toBe(false);
+  test("a thread whose daemon holds a restart offers it, named by its reasons", () => {
+    const restart = (summary: ReturnType<typeof thread>) => headerView(summary, NO_DETAILS, []).restart?.label;
+    expect(restart(thread("t", "x", "w", { restartPending: ["mcp_config"] }))).toBe("Reload to load MCP tools");
+    expect(restart(thread("t", "x", "w", { restartPending: ["login"] }))).toBe("Restart to load new models");
+    expect(restart(thread("t", "x", "w"))).toBeUndefined();
   });
 
   // spec: UI-388

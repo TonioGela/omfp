@@ -5,8 +5,8 @@
  * failed, the spinner while checked), tool count, error line, command or URL, and the config file it comes from (a
  * workspace file opens in a file tab). "Reconnect" and "Reload all" restart the thread's omp, the only reconnect omp
  * offers over RPC (`thread.mcp_reconnect`, PRT-112). "Reauthorize" sends `/mcp reauth <name>` to the thread for an
- * HTTP or SSE server (UI-348); while the daemon holds a restart for new MCP tools, "Reload to load MCP tools" does it
- * (UI-349).
+ * HTTP or SSE server (UI-348); while the daemon holds a restart for new MCP tools, "Reload to load MCP tools" (or
+ * "Restart to load new models and MCP tools" when a login waits for it too) does it (UI-349).
  */
 
 import type { McpServers } from "@omfp/protocol";
@@ -16,6 +16,7 @@ import {
   type McpPending,
   mcpRows,
   mcpStatus,
+  pendingRestart,
   reauthPrompt,
   SELECTED_THREAD,
   strings,
@@ -51,6 +52,7 @@ function Mcp({ workspaceId, threadId }: { workspaceId: string; threadId: string 
   const summary = useThreadSummary(threadId);
   // A thread that starts or stops changes what its omp can check: list again.
   const process = summary?.process.state;
+  const restart = pendingRestart(summary?.restartPending);
   const [listing, setListing] = useState<McpServers | undefined>(undefined);
   const [pending, setPending] = useState<McpPending>(MCP_IDLE);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -147,7 +149,7 @@ function Mcp({ workspaceId, threadId }: { workspaceId: string; threadId: string 
           </>
         )}
       </div>
-      {threadId !== undefined && summary?.mcpReloadPending === true && (
+      {threadId !== undefined && restart?.mcp === true && (
         <div className="omfp-mcp__reload" data-testid="mcp-reload-pending">
           <Button
             size="sm"
@@ -155,10 +157,10 @@ function Mcp({ workspaceId, threadId }: { workspaceId: string; threadId: string 
             icon={<Icon name="refresh-cw" />}
             isDisabled={busy}
             onPress={() => reconnect(undefined)}
-            aria-description={text.reloadPendingHint}
+            aria-description={restart.hint}
             data-testid="mcp-reload-tools"
           >
-            {text.reloadPending}
+            {restart.label}
           </Button>
         </div>
       )}

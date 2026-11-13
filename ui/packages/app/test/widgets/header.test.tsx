@@ -238,12 +238,12 @@ describe("omfp:header", () => {
   });
 
   // spec: UI-349
-  test("Reload to load MCP tools shows while the daemon holds the restart; a refusal is an error toast", async () => {
-    expect(setup().view.container.querySelector("[data-testid=mcp-reload-tools]")).toBeNull();
+  test("the held-back restart shows named by its reasons; a refusal is an error toast", async () => {
+    expect(setup().view.container.querySelector("[data-testid=restart-pending]")).toBeNull();
     cleanup();
-    const { client, host, user } = setup(thread("t1", "checkout", "w1", { mcpReloadPending: true }));
-    const reload = screen.getByTestId("mcp-reload-tools");
-    expect(reload.textContent).toBe("Reload to load MCP tools");
+    const { client, host, user } = setup(thread("t1", "checkout", "w1", { restartPending: ["login"] }));
+    const reload = screen.getByTestId("restart-pending");
+    expect(reload.textContent).toBe("Restart to load new models");
     await user.click(reload);
     const [reconnect] = client.callsTo("thread.mcp_reconnect");
     expect(reconnect?.params).toEqual({ threadId: "t1" });

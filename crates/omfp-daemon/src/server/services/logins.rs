@@ -254,7 +254,7 @@ impl Services {
         }
         match result? {
             Ok(_) => {
-                self.supervisor.reload_after_login();
+                self.supervisor.restart_after_login();
                 Ok(LoggedIn {
                     provider_id: provider.id,
                     name: provider.name,

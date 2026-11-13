@@ -261,10 +261,21 @@ export const shell = {
     /** `/mcp reauth <name>` in the thread (UI-348). */
     reauthorize: "Reauthorize",
     reauthorizeLabel: (name: string) => `Reauthorize ${name} (sends /mcp reauth ${name} to the thread)`,
-    /** The daemon holds a restart for new MCP tools while background work runs (UI-349). */
-    reloadPending: "Reload to load MCP tools",
-    reloadPendingHint:
-      "The MCP servers changed while background work ran, so the thread's omp was not restarted; this restarts it now",
+    /** The daemon holds a restart while background work runs (UI-349), named by what it loads (PRT-134). */
+    restartPending: {
+      mcp: {
+        label: "Reload to load MCP tools",
+        hint: "The MCP servers changed while background work ran, so the thread's omp was not restarted; this restarts it now",
+      },
+      login: {
+        label: "Restart to load new models",
+        hint: "You logged in to a provider while background work ran, so the thread's omp was not restarted; this restarts it now to list the provider's models",
+      },
+      both: {
+        label: "Restart to load new models and MCP tools",
+        hint: "You logged in to a provider and the MCP servers changed while background work ran, so the thread's omp was not restarted; this restarts it now",
+      },
+    },
   },
   /** `omfp:todos` (UI-082). */
   todos: {

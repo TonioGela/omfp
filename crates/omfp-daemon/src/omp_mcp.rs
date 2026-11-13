@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use omfp_protocol::{McpScope, McpServer, McpSource, McpState, McpTransport};
+use omfp_protocol::{McpScope, McpServer, McpSource, McpState, McpTransport, RestartReason};
 use serde::Deserializer;
 use serde::de::{DeserializeSeed, IgnoredAny, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Value};
@@ -350,13 +350,19 @@ pub fn fingerprint(workspace: &Path, homes: &Homes) -> ConfigFingerprint {
     ConfigFingerprint(hasher.finish())
 }
 
-/// Whether one `command_output` text of omp says the thread's omp must connect anew to get new MCP tools (DMN-202):
-/// `✓ Reauthorized "<name>" …` (over RPC omp applies the credential on the next connection, unless it says it
-/// reconnected the server itself) or `Added MCP server "<name>" …` (`/mcp add` wrote a config file).
+/// Why one `command_output` text of omp says the thread's omp must connect anew to get new MCP tools (DMN-202,
+/// DMN-228): `✓ Reauthorized "<name>" …` (over RPC omp applies the credential on the next connection, unless it says
+/// it reconnected the server itself) or `Added MCP server "<name>" …` (`/mcp add` wrote a config file).
 #[must_use]
-pub fn wants_reload(text: &str) -> bool {
-    (text.starts_with("✓ Reauthorized \"") && !text.trim_end().ends_with("Server reconnected."))
-        || text.starts_with("Added MCP server \"")
+pub fn restart_reason(text: &str) -> Option<RestartReason> {
+    if text.starts_with("✓ Reauthorized \"") && !text.trim_end().ends_with("Server reconnected.")
+    {
+        Some(RestartReason::McpReauth)
+    } else if text.starts_with("Added MCP server \"") {
+        Some(RestartReason::McpConfig)
+    } else {
+        None
+    }
 }
 
 /// omp's answer to `/mcp test <name>` (DMN-191).
@@ -638,18 +644,28 @@ mod tests {
         assert_ne!(fingerprint(&l.workspace, &l.homes), imported);
     }
 
-    // spec: DMN-202
+    // spec: DMN-202, DMN-228
     #[test]
-    fn reauthorized_and_added_servers_want_a_reload() {
-        assert!(wants_reload(
-            "✓ Reauthorized \"gh\" (user config). Credentials apply on the next connection; restart the session if \
-             the server stays disconnected."
-        ));
-        assert!(wants_reload("Added MCP server \"fs\" (project)."));
-        assert!(!wants_reload(
-            "✓ Reauthorized \"gh\" (user config). Server reconnected."
-        ));
-        assert!(!wants_reload("Reauthorization cancelled for \"gh\"."));
-        assert!(!wants_reload("Server \"gh\" connected (2 tools)."));
+    fn reauthorized_and_added_servers_want_a_restart_with_their_reason() {
+        assert_eq!(
+            restart_reason(
+                "✓ Reauthorized \"gh\" (user config). Credentials apply on the next connection; restart the session \
+                 if the server stays disconnected."
+            ),
+            Some(RestartReason::McpReauth)
+        );
+        assert_eq!(
+            restart_reason("Added MCP server \"fs\" (project)."),
+            Some(RestartReason::McpConfig)
+        );
+        assert_eq!(
+            restart_reason("✓ Reauthorized \"gh\" (user config). Server reconnected."),
+            None
+        );
+        assert_eq!(
+            restart_reason("Reauthorization cancelled for \"gh\"."),
+            None
+        );
+        assert_eq!(restart_reason("Server \"gh\" connected (2 tools)."), None);
     }
 }

@@ -131,15 +131,28 @@ pub struct ThreadSummary {
     pub settled: bool,
     /// Interactive requests are waiting for an answer.
     pub needs_attention: bool,
-    /// The thread's MCP configuration changed (or a server was reauthorized) while background work ran, so the daemon
-    /// did not restart its omp: `thread.mcp_reconnect` loads the new tools (PRT-121, DMN-204). Absent when `false`.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub mcp_reload_pending: bool,
+    /// Why the thread's omp should restart while background work holds the restart back (PRT-121, PRT-134,
+    /// DMN-204): each reason once, in the order they came; `thread.mcp_reconnect` restarts it now. Absent when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub restart_pending: Vec<RestartReason>,
     pub provenance: Provenance,
     pub created_at: i64,
     pub updated_at: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<i64>,
+}
+
+/// Why the daemon restarts a thread's omp by itself (PRT-134, DMN-228): omp loads MCP servers and lists a provider's
+/// models only at startup.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum RestartReason {
+    /// The MCP servers the thread's omp would load changed: a config file (DMN-201) or `/mcp add` (DMN-202).
+    McpConfig,
+    /// An MCP server was reauthorized (`/mcp reauth`, DMN-202): omp applies the credential on the next connection.
+    McpReauth,
+    /// A login stored a provider's credential (DMN-224): omp lists its models from the next start.
+    Login,
 }
 
 /// Where a thread's title comes from (DMN-073).
