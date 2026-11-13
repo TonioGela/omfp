@@ -1909,6 +1909,63 @@
     min-inline-size: 0;
   }
 
+  /* The message log (UI-522): the time in a column, then the kind in the tone's color, the title and the text. */
+  .omfp-messages {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: var(--omfp-s1) var(--omfp-s3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--omfp-fs-sm);
+  }
+
+  .omfp-messages__line {
+    --message-tone: var(--omfp-primary);
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: baseline;
+  }
+
+  .omfp-messages__line[data-tone="attention"] {
+    --message-tone: var(--omfp-warn);
+  }
+
+  .omfp-messages__line[data-tone="error"] {
+    --message-tone: var(--omfp-error);
+  }
+
+  .omfp-messages__line[data-tone="ok"] {
+    --message-tone: var(--omfp-ok);
+  }
+
+  .omfp-messages__time {
+    font-size: var(--omfp-fs-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-messages__body {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-messages__kind {
+    color: var(--message-tone);
+  }
+
+  .omfp-messages__title {
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-messages__empty {
+    margin: 0;
+    font-size: var(--omfp-fs-sm);
+    color: var(--omfp-on-surface-variant);
+  }
+
   /* Empty states (UI-161) */
   .omfp-empty {
     display: flex;
@@ -2420,6 +2477,32 @@
   .omfp-modeline__notice-more {
     font-variant-numeric: tabular-nums;
     color: var(--omfp-on-surface-variant);
+  }
+
+  /* The way back to the window's messages (UI-523): a quiet icon after the notice. */
+  .omfp-modeline__messages {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    box-sizing: border-box;
+    block-size: calc(var(--omfp-status-h) - 2 * var(--omfp-s1));
+    aspect-ratio: 1;
+    padding: 0;
+    border: none;
+    border-radius: var(--omfp-r-chip);
+    color: var(--omfp-on-surface-variant);
+    background: none;
+    cursor: pointer;
+  }
+
+  .omfp-modeline__messages:is([data-hovered], .is-hover) {
+    color: var(--omfp-on-surface);
+    background: color-mix(in oklab, var(--omfp-on-surface) 10%, transparent);
+  }
+
+  .omfp-modeline__messages .omfp-ic {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
   }
 
   /* The window's views as small tabs (UI-301, UI-441), before the notice: `Default · Review · Ops`. */

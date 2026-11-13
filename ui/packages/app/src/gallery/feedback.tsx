@@ -12,6 +12,8 @@ import {
   KindMark,
   Log,
   type LogEntry,
+  MessageLog,
+  type MessageLogEntry,
   Meter,
   Progress,
   StateBadge,
@@ -150,6 +152,53 @@ interface LiveToast {
   readonly text: string;
 }
 
+/** The window's messages as `:messages` lists them (UI-522), newest first: each tone. */
+const MESSAGES: readonly MessageLogEntry[] = [
+  {
+    key: 1,
+    tone: "ok",
+    kind: "done",
+    time: "14:03:12",
+    dateTime: "2026-11-13T14:03:12Z",
+    text: "Copied to ./widgets/board",
+  },
+  {
+    key: 2,
+    tone: "attention",
+    kind: "notice",
+    time: "14:02:40",
+    dateTime: "2026-11-13T14:02:40Z",
+    title: "Fix flaky checkout test",
+    text: "needs you",
+  },
+  {
+    key: 3,
+    tone: "error",
+    kind: "error",
+    time: "14:01:05",
+    dateTime: "2026-11-13T14:01:05Z",
+    text: "No workspace widget ./widgets/bord: a long error that wraps under itself rather than running off the dialog's edge",
+  },
+  {
+    key: 4,
+    tone: "ok",
+    kind: "notice",
+    time: "13:59:30",
+    dateTime: "2026-11-13T13:59:30Z",
+    title: "checkout",
+    text: "finished its turn",
+  },
+  {
+    key: 5,
+    tone: "info",
+    kind: "notice",
+    time: "13:58:51",
+    dateTime: "2026-11-13T13:58:51Z",
+    title: "CI",
+    text: "is green again",
+  },
+];
+
 export function Toasts() {
   const [toasts, setToasts] = useState<readonly LiveToast[]>([]);
   const next = useRef(0);
@@ -160,7 +209,7 @@ export function Toasts() {
   };
   const dismiss = (id: number) => setToasts((all) => all.filter((toast) => toast.id !== id));
   return (
-    <Section title="Toasts" note="UI-160 · buttons spawn live ones">
+    <Section title="Toasts · messages" note="UI-160 · UI-522 · buttons spawn live ones">
       <Toast onDismiss={() => undefined}>Theme changed by another window</Toast>
       <Toast tone="success">
         Workspace <b>omfp</b> rescanned
@@ -193,6 +242,8 @@ export function Toasts() {
           </Toast>
         ))}
       </ToastRegion>
+      <MessageLog entries={MESSAGES} emptyText="No messages yet" aria-label="Messages" />
+      <MessageLog entries={[]} emptyText="No messages yet: notices and the results of your actions land here." />
     </Section>
   );
 }

@@ -60,6 +60,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "help.open": commandTitles.help,
   "help.describeKey": strings.init.describe.key,
   "help.describeCommand": strings.init.describe.command,
+  "help.messages": commandTitles.messages,
   "thread.nextAttention": commandTitles.nextAttention,
   "thread.new": commandTitles.new,
   "workspace.new": commandTitles.newWorkspace,

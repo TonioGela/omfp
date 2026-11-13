@@ -76,6 +76,8 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   // Leader groups (UI-326).
   { mode: "normal", keys: "Space h h", command: "help.open" },
   { mode: "normal", keys: "Space h k", command: "help.describeKey" },
+  // The notices and toasts that went by, as Emacs's `C-h e` (UI-522).
+  { mode: "normal", keys: "Space h e", command: "help.messages" },
   { mode: "normal", keys: "Space p n", command: "workspace.new" },
   { mode: "normal", keys: "Space p r", command: "workspace.rescan" },
   { mode: "normal", keys: "Space f o", command: "file.open" },

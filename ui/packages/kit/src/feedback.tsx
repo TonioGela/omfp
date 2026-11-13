@@ -1,4 +1,4 @@
-/** Toasts (UI-160) and empty states (UI-161). */
+/** Toasts (UI-160), the message log (UI-522) and empty states (UI-161). */
 import { type HTMLAttributes, type ReactNode, useEffect, useRef } from "react";
 import { IconButton } from "./button.tsx";
 import { cx } from "./class.ts";
@@ -69,6 +69,58 @@ export type ToastRegionProps = HTMLAttributes<HTMLDivElement>;
 /** The bottom-right stack of toasts, newest at the bottom (UI-160). */
 export function ToastRegion({ className, ...props }: ToastRegionProps) {
   return <div {...props} className={cx("omfp-toasts", className)} />;
+}
+
+/** The tone of a message: something awaiting the user, a failure, something that went well, anything else. */
+export type MessageLogTone = "attention" | "error" | "ok" | "info";
+
+/** One line of a {@link MessageLog}. */
+export interface MessageLogEntry {
+  readonly key: string | number;
+  readonly tone: MessageLogTone;
+  /** What kind of message it was, in words (`failed`, `error`, `done`), in the tone's color after `◆`. */
+  readonly kind: string;
+  /** When, as shown (`14:03:12`), and as a machine-readable date (`dateTime`). */
+  readonly time: string;
+  readonly dateTime: string;
+  /** What it is about (a thread title), before the text. */
+  readonly title?: ReactNode;
+  readonly text: ReactNode;
+}
+
+export interface MessageLogProps extends Omit<HTMLAttributes<HTMLOListElement>, "children"> {
+  entries: readonly MessageLogEntry[];
+  /** The one muted line of an empty log. */
+  emptyText: string;
+}
+
+/**
+ * Messages that went by (UI-522), like Emacs's `*Messages*`: one line per message in the given order, its time in a
+ * column, then `◆` and its kind in the tone's color, its title and its text, wrapping.
+ */
+export function MessageLog({ entries, emptyText, className, ...props }: MessageLogProps) {
+  if (entries.length === 0) {
+    return <p className="omfp-messages__empty">{emptyText}</p>;
+  }
+  return (
+    <ol {...props} className={cx("omfp-messages", className)}>
+      {entries.map((entry) => (
+        <li key={entry.key} className="omfp-messages__line" data-tone={entry.tone} data-testid="message">
+          <time className="omfp-messages__time" dateTime={entry.dateTime}>
+            {entry.time}
+          </time>
+          <span className="omfp-messages__body">
+            <span className="omfp-messages__kind">
+              <span aria-hidden="true">◆ </span>
+              {entry.kind}
+            </span>{" "}
+            {entry.title !== undefined && <span className="omfp-messages__title">{entry.title}</span>}{" "}
+            <span className="omfp-messages__text">{entry.text}</span>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 export interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {

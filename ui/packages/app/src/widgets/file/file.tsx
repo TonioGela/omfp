@@ -21,10 +21,10 @@ import {
   EDITOR_MODE,
   type FileState,
   strings,
-  useAnnounce,
   useFile,
   useMissingFile,
   useReportError,
+  useReportSuccess,
   useWindowState,
   type WidgetProps,
 } from "omfp/sdk";
@@ -146,7 +146,7 @@ interface TextFileProps {
 }
 
 function TextFile({ file, content, line, jump, diff, save, reload, root }: TextFileProps): ReactNode {
-  const announce = useAnnounce();
+  const reportSuccess = useReportSuccess();
   const reportError = useReportError();
   const [, setEditorMode] = useWindowState(EDITOR_MODE);
   const editor = useRef<CodeEditorHandle | null>(null);
@@ -186,7 +186,7 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
         setMine(undefined);
         setNotice(undefined);
         setMode("edit");
-        announce(text.saved(result.file.path));
+        reportSuccess(text.saved(result.file.path));
       } else if (result.conflict) {
         setMine(textToSave);
         setMode("conflict");
@@ -195,7 +195,7 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
         reportError(new Error(text.saveFailed(result.error)));
       }
     },
-    [save, reload, announce, reportError],
+    [save, reload, reportSuccess, reportError],
   );
 
   const onSave = useCallback((textToSave: string) => void write(textToSave, base.hash), [write, base.hash]);

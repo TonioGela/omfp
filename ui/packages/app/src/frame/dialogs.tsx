@@ -68,7 +68,6 @@ export function ResetViewsDialog(): ReactNode {
   const reset = async (id: string) => {
     try {
       await host.client.call("views.set", { workspaceId: id, manifest: DEFAULT_MANIFEST });
-      host.announcer.announce(strings.shell.layout.reset);
       reportSuccess(host, strings.shell.layout.reset);
     } catch (error) {
       reportError(host, error);

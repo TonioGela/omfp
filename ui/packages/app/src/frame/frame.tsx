@@ -61,6 +61,7 @@ import { Help } from "./help.tsx";
 import { InitErrors, InitLoader, useInit } from "./init.tsx";
 import { useAddWidget, widgetReferences } from "./layout.tsx";
 import { Login } from "./login.tsx";
+import { Messages } from "./messages.tsx";
 import { type ModeLineViews, useMode, WindowModeLine } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
@@ -286,6 +287,7 @@ export function Frame({
       <DeleteWorkspaceDialog />
       <ResetViewsDialog />
       <Help bindings={bindings} now={now} />
+      <Messages />
       <Describe bindings={bindings} />
       <GlobalCommands
         viewIds={viewIds}

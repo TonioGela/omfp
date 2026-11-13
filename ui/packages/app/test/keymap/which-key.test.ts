@@ -110,6 +110,7 @@ describe("which-key model", () => {
       "Space Space cmdline.open",
       "Space h h help.open",
       "Space h k help.describeKey",
+      "Space h e help.messages",
       "Space p n workspace.new",
       "Space p r workspace.rescan",
       "Space f o file.open",

@@ -152,6 +152,27 @@ export function ModeNotice({ tone, title, body, more = 0, kbd, className, ...pro
   );
 }
 
+export interface ModeMessagesProps extends Omit<AriaButtonProps, "children" | "aria-label"> {
+  /** Accessible name (`Messages`). */
+  label: string;
+}
+
+/**
+ * The way back to the window's messages (UI-523): a quiet icon button at the right end of the mode line, after the
+ * notice, that opens them.
+ */
+export function ModeMessages({ label, className, ...props }: ModeMessagesProps) {
+  return (
+    <AriaButton
+      {...props}
+      aria-label={label}
+      className={withClass("omfp-modeline__messages omfp-focus-inset", className)}
+    >
+      <Icon name="message-square" />
+    </AriaButton>
+  );
+}
+
 export type CommandLineProps = HTMLAttributes<HTMLSpanElement>;
 
 /**

@@ -167,6 +167,11 @@
     },
     {
       "mode": "normal",
+      "keys": "Space h e",
+      "command": "help.messages"
+    },
+    {
+      "mode": "normal",
       "keys": "Space p n",
       "command": "workspace.new"
     },
@@ -304,6 +309,13 @@
       "title": "Describe a key: what it runs and where it is bound",
       "aliases": [
         "describe-key"
+      ]
+    },
+    {
+      "id": "help.messages",
+      "title": "Show the notices and toasts that went by (newest first)",
+      "aliases": [
+        "messages"
       ]
     },
     {

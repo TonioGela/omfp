@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { draftKey, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { draftKey, SELECTED_THREAD, SUCCESSES } from "../../src/sdk/index.ts";
 import { TreeWidget } from "../../src/widgets/tree/index.ts";
 import { renderWithHost, testHost } from "../support/host.tsx";
 import { fixtureEvents, summary } from "./chat/fixtures.ts";
@@ -82,7 +82,7 @@ describe("omfp:tree", () => {
     expect(within(row("u1")).queryByTestId("tree-summarize")).toBeNull();
   });
 
-  // spec: UI-083
+  // spec: UI-083, UI-520
   test("going to a user message puts its text in the composer, after what the draft already had", async () => {
     const test = setup();
     test.host.window.set(draftKey(THREAD), { text: "half typed", images: [], pastes: [] });
@@ -93,6 +93,10 @@ describe("omfp:tree", () => {
     await waitFor(() => expect(test.host.window.get(draftKey(THREAD)).text).toBe("half typed\n\nsecond question"));
     // The tree is read again after the move.
     await waitFor(() => expect(test.client.callsTo("thread.tree").length).toBe(2));
+    // The move is the user's action: a success toast says what happened.
+    expect(test.host.window.get(SUCCESSES).map((success) => success.text)).toEqual([
+      "Moved in the session tree; the message is back in the composer",
+    ]);
 
     await test.user.click(within(row("u3")).getByTestId("tree-summarize"));
     expect(test.client.callsTo("thread.navigate").at(-1)?.params).toEqual({
@@ -102,13 +106,16 @@ describe("omfp:tree", () => {
     });
   });
 
-  // spec: UI-083
-  test("fork from an entry and label one (an empty label removes it)", async () => {
+  // spec: UI-083, UI-520
+  test("fork from an entry, with a success toast, and label one (an empty label removes it)", async () => {
     const test = setup();
     await test.user.click(within(await screen.findByTestId("tree")).getAllByTestId("tree-fork")[1] as HTMLElement);
     expect(test.client.callsTo("thread.fork").map((call) => call.params)).toEqual([
       { threadId: THREAD, entryId: "a1" },
     ]);
+    await waitFor(() =>
+      expect(test.host.window.get(SUCCESSES).map((success) => success.text)).toEqual(["Forked into a new session"]),
+    );
 
     await test.user.click(within(row("u1")).getByTestId("tree-label-edit"));
     await test.user.type(within(row("u1")).getByTestId("tree-label-input"), "start");

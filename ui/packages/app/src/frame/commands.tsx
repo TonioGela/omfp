@@ -18,6 +18,7 @@ import {
   RENAMING_THREAD,
   RESET_VIEWS,
   reportError,
+  reportSuccess,
   SELECTED_THREAD,
   useCommand,
   useHost,
@@ -174,10 +175,8 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
       try {
         const { threadIds } = await host.client.call("thread.stop", { threadId, cascade: true });
         const thread = summary();
-        const title = thread === undefined ? "" : displayTitle(thread);
-        host.notices.notify({ title, body: strings.shell.threads.stoppedSpawned(threadIds.length), threadId }, "info", {
-          onThread: true,
-        });
+        const stopped = strings.shell.threads.stoppedSpawned(threadIds.length);
+        reportSuccess(host, thread === undefined ? stopped : `${displayTitle(thread)}: ${stopped}`);
       } catch (error) {
         reportError(host, error);
       }
@@ -316,7 +315,7 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
       const text = strings.shell.widgetCopy;
       if (action === "add" && widget !== undefined && name === undefined) {
         if (await addWidget(widget)) {
-          host.announcer.announce(text.added(widget, currentView ?? ""));
+          reportSuccess(host, text.added(widget, currentView ?? ""));
         }
         return;
       }
@@ -337,7 +336,7 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
             widget,
             ...(name === undefined ? {} : { name }),
           });
-          host.announcer.announce(text.copied(copied.name));
+          reportSuccess(host, text.copied(copied.name));
         } else {
           const saved = await host.client.call("widgets.save", {
             workspaceId,
@@ -345,7 +344,7 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
             name: name ?? widget.replace(/^\.\/widgets\//, ""),
             replace: action === "save!",
           });
-          host.announcer.announce(text.saved(saved.reference));
+          reportSuccess(host, text.saved(saved.reference));
         }
       } catch (error) {
         reportError(host, error);

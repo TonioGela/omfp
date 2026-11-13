@@ -15,6 +15,7 @@ import {
   OPEN_FILES,
   openTab,
   SELECTED_THREAD,
+  SUCCESSES,
 } from "../../src/sdk/index.ts";
 import { FileWidget } from "../../src/widgets/file/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
@@ -161,8 +162,8 @@ describe("omfp:file", () => {
     });
   });
 
-  // spec: UI-111, AGT-027
-  test("Edit switches to editing; Save writes with the hash the text was based on", async () => {
+  // spec: UI-111, AGT-027, UI-520
+  test("Edit switches to editing; Save writes with the hash the text was based on, with a success toast", async () => {
     const test = setup();
     await editorText();
     await test.user.click(screen.getByTestId("file-edit"));
@@ -173,6 +174,9 @@ describe("omfp:file", () => {
       { workspaceId: "w1", path: "fe/src/lib.rs", content: TEXT, expectedHash: `h-${TEXT.length}` },
     ]);
     act(() => write[0]?.resolve({ path: "fe/src/lib.rs", hash: "h-saved", size: TEXT.length }));
+    await waitFor(() =>
+      expect(test.host.window.get(SUCCESSES).map((success) => success.text)).toEqual(["Saved fe/src/lib.rs"]),
+    );
     // Done goes back to read-only.
     await test.user.click(await screen.findByTestId("file-done"));
     await waitFor(() => expect(screen.getByTestId("file-editor").dataset.readOnly).toBe("true"));

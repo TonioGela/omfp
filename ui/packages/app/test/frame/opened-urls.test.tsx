@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
-import { act, cleanup, screen, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Frame } from "../../src/frame/frame.tsx";
 import { OPENED_URL_MS } from "../../src/frame/opened-urls.tsx";
@@ -55,7 +55,7 @@ function setup() {
 const toasts = () => screen.queryAllByTestId("opened-url-toast");
 
 describe("opened URLs", () => {
-  // spec: UI-346
+  // spec: UI-346, UI-520
   test("a URL a followed thread opens later shows once as a toast with Open and Copy; earlier ones do not", async () => {
     const test = setup();
     expect(toasts().length).toBe(0);
@@ -87,6 +87,10 @@ describe("opened URLs", () => {
       expect(opened).toEqual([[LOGIN, "_blank", "noopener"]]);
       await test.user.click(within(toast).getByTestId("opened-url-copy"));
       expect(copied).toEqual([LOGIN]);
+      // Copying is a user action: its outcome is a success toast (UI-520).
+      await waitFor(() =>
+        expect(screen.getAllByTestId("success").map((success) => success.textContent)).toEqual(["Copied the URL"]),
+      );
     } finally {
       window.open = open;
       Reflect.deleteProperty(navigator, "clipboard");
@@ -98,7 +102,6 @@ describe("opened URLs", () => {
     expect(toasts().length).toBe(1);
     await test.user.click(within(toast).getByTestId("toast-dismiss"));
     expect(toasts().length).toBe(0);
-    expect(screen.queryByTestId("toasts")).toBeNull();
   });
 
   // spec: UI-346, UI-160

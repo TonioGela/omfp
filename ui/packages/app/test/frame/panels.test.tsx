@@ -310,8 +310,8 @@ describe("props updates", () => {
 });
 
 describe("widget save", () => {
-  // spec: UI-233, AGT-064
-  test("`:widget save <widget> [<name>]` saves to the user library and announces user:<name>; save! replaces", async () => {
+  // spec: UI-233, AGT-064, UI-520
+  test("`:widget save <widget> [<name>]` saves to the user library, a success toast says user:<name>; save! replaces", async () => {
     const test = setup();
     test.client.answers.set("widgets.save", (params) => {
       const { name } = params as { name: string };
@@ -336,6 +336,10 @@ describe("widget save", () => {
     await waitFor(() =>
       expect(screen.getByTestId("live-region").textContent).toBe("Saved to the user library as user:dash"),
     );
+    expect(screen.getAllByTestId("success").map((success) => success.textContent)).toEqual([
+      "Saved to the user library as user:board",
+      "Saved to the user library as user:dash",
+    ]);
 
     test.client.answers.delete("widgets.save");
     press(":");

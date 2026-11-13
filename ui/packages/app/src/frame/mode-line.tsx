@@ -4,12 +4,21 @@
  * window's views as small tabs when it has several (UI-301).
  */
 
-import { type NoticeTone as KitTone, ModeLine, ModeNotice, ModeSegment, ModeViews, type VimMode } from "@omfp/kit";
+import {
+  type NoticeTone as KitTone,
+  ModeLine,
+  ModeMessages,
+  ModeNotice,
+  ModeSegment,
+  ModeViews,
+  type VimMode,
+} from "@omfp/kit";
 import { type ReactNode, useEffect, useState } from "react";
 import { modeAt } from "../keymap/handler.ts";
 import { type Binding, keyLabel, type Mode } from "../keymap/keymap.ts";
 import {
   FOCUS_COMPOSER,
+  MESSAGES,
   NOTICES,
   type Notice,
   type NoticeTone,
@@ -23,6 +32,7 @@ import {
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import { displayTitle, statusLabel, threadStatus } from "../vm/threads.ts";
+import { MESSAGES_COMMAND } from "./messages.tsx";
 
 const text = strings.shell.mode;
 
@@ -81,8 +91,8 @@ export interface ModeLineViews {
 /**
  * The window's mode line, the kit's (UI-167, UI-441): the mode pill — the keymap's mode, or vim's while a file editor
  * has the focus (`vim`, UI-112) — then the selected thread's title and state, the window's views when it has several
- * (UI-301), and the newest notice at the right end (UI-192); in command mode `children` (the `:` line or the file
- * picker) replace the segments, the views and the notice.
+ * (UI-301), and the newest notice at the right end (UI-192) with the messages button (UI-523); in command mode
+ * `children` (the `:` line or the file picker) replace the segments, the views and the notice.
  */
 export function WindowModeLine({
   mode,
@@ -113,7 +123,14 @@ export function WindowModeLine({
         views !== undefined &&
         views.views.length > 1 && <ModeViews label={strings.shell.frame.viewTabs} data-testid="mode-views" {...views} />
       }
-      notice={mode !== "cmdline" && <NoticeSlot bindings={bindings} open={open} />}
+      notice={
+        mode !== "cmdline" && (
+          <>
+            <NoticeSlot bindings={bindings} open={open} />
+            <MessagesButton />
+          </>
+        )
+      }
     >
       {mode !== "cmdline" && <ThreadSegments />}
       {children}
@@ -175,6 +192,22 @@ function NoticeSlot({ bindings, open }: { bindings: readonly Binding[]; open: ()
       more={shown.length - 1}
       {...(key === undefined ? {} : { kbd: keyLabel(key) })}
       onPress={open}
+    />
+  );
+}
+
+/** Opens the window's messages (UI-523), once there are some: the way back to notices gone from the mode line. */
+function MessagesButton(): ReactNode {
+  const { commands } = useHost();
+  const [messages] = useWindowState(MESSAGES);
+  if (messages.length === 0) {
+    return null;
+  }
+  return (
+    <ModeMessages
+      label={strings.shell.messages.open}
+      data-testid="mode-messages"
+      onPress={() => commands.run(MESSAGES_COMMAND)}
     />
   );
 }

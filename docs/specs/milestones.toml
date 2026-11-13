@@ -961,6 +961,11 @@ requirements = [
   "DMN-237",
   "PRT-140",
   "PRT-141",
+  # QA fixes: a user action shows its result, the window's messages (user decision D8)
+  "UI-520",
+  "UI-521",
+  "UI-522",
+  "UI-523",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -977,6 +982,7 @@ requirements = [
   "E2E-41",
   "E2E-42",
   "E2E-43",
+  "E2E-45",
   # Touch phones: sizes at the root, sideways phones, no invisible or tiny targets, no key hints
   "UI-413",
   "UI-414",

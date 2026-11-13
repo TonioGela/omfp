@@ -1204,7 +1204,7 @@ describe("adding a widget", () => {
     return test;
   }
 
-  // spec: UI-300
+  // spec: UI-300, UI-520
   test("`:widget add ` completes built-ins, workspace and user widgets; the widget goes to the current view, written", async () => {
     const test = adding({
       manifest: MANIFEST,
@@ -1241,6 +1241,9 @@ describe("adding a widget", () => {
     };
     expect(written(test)).toEqual([{ workspaceId: "w1", manifest }]);
     await waitFor(() => expect(screen.getByTestId("live-region").textContent).toBe("Added user:clock to view work"));
+    expect(screen.getAllByTestId("success").map((success) => success.textContent)).toEqual([
+      "Added user:clock to view work",
+    ]);
     // Rendering follows the daemon's push, not the local change.
     expect(shownWidgets()).toEqual(["omfp:chat", "omfp:workspace"]);
     client.viewsEvents("w1", { kind: "views_manifest", manifest, error: null });
@@ -1299,8 +1302,8 @@ describe("adding a widget", () => {
 });
 
 describe("widget copy", () => {
-  // spec: UI-106
-  test("`:widget copy <reference> [<name>]` copies into the current workspace and announces ./widgets/<name>", async () => {
+  // spec: UI-106, UI-520
+  test("`:widget copy <reference> [<name>]` copies into the current workspace; a success toast says ./widgets/<name>", async () => {
     const { client, host, user } = setup();
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "widget copy omfp:workspace{Enter}");
@@ -1314,6 +1317,9 @@ describe("widget copy", () => {
       { workspaceId: "w1", widget: "omfp:workspace", name: "board" },
     ]);
     await waitFor(() => expect(screen.getByTestId("live-region").textContent).toBe("Copied to ./widgets/board"));
+    expect(screen.getAllByTestId("success").map((success) => success.textContent)).toEqual([
+      "Copied to ./widgets/board",
+    ]);
     client.answers.delete("widgets.copy");
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "widget copy user:clock{Enter}");
@@ -1329,7 +1335,7 @@ describe("widget copy", () => {
     ]);
   });
 
-  // spec: UI-107, UI-430, DMN-088
+  // spec: UI-107, UI-430, DMN-088, UI-520
   test("`:view-reset` asks first; only Reset writes the default manifest over views.json, with a success toast", async () => {
     const { client, host, user } = setup();
     press(":");

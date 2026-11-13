@@ -540,6 +540,23 @@ export const shell = {
     open: "Open the newest notice",
     announce: (title: string, body: string) => `${title} ${body}`,
   },
+  /** The window's messages (UI-521..UI-523): the notices and toasts that went by. */
+  messages: {
+    title: "Messages",
+    /** The mode line's button that opens them. */
+    open: "Messages",
+    empty: "No messages yet: notices and the results of your actions land here.",
+    close: "Close",
+    /** A message's kind, after `◆` in its tone's color: a notice (its text says what happened), or a toast's. */
+    kinds: {
+      attention: "notice",
+      failed: "notice",
+      finished: "notice",
+      info: "notice",
+      success: "done",
+      error: "error",
+    },
+  },
   commands: {
     new: "New thread in the current workspace",
     newWorkspace: "New workspace",
@@ -578,6 +595,7 @@ export const shell = {
     toggleThreads: "Show or hide the threads column (narrow window)",
     login: "Log in to a provider (:login [<provider>]; without one, pick it)",
     logout: "Log out of a provider (:logout <provider>)",
+    messages: "Show the notices and toasts that went by (newest first)",
   },
   /** The help panel (UI-198): the effective keymap by mode and the `:` commands. */
   help: {

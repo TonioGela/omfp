@@ -18,6 +18,7 @@ import {
   useAnnounce,
   useCall,
   useReportError,
+  useReportSuccess,
   useThread,
   useWindowState,
   type WidgetProps,
@@ -46,6 +47,7 @@ function SessionTree({ threadId }: { threadId: string }): ReactNode {
   const call = useCall();
   const reportError = useReportError();
   const announce = useAnnounce();
+  const reportSuccess = useReportSuccess();
   const [, setDraft] = useWindowState(draftKey(threadId));
   const [result, setResult] = useState<unknown>(undefined);
   const [requested, setRequested] = useState(0);
@@ -81,26 +83,30 @@ function SessionTree({ threadId }: { threadId: string }): ReactNode {
         if (outcome.kind === "unchanged") {
           announce(text.announce.cancelled);
         } else if (outcome.editorText === undefined) {
-          announce(text.announce.navigated);
+          reportSuccess(text.announce.navigated);
         } else {
           const restored = outcome.editorText;
           setDraft((draft) => ({ ...draft, text: withEditorText(draft.text, restored) }));
-          announce(text.announce.editorText);
+          reportSuccess(text.announce.editorText);
         }
         refresh();
       }, reportError);
     },
-    [call, threadId, announce, setDraft, refresh, reportError],
+    [call, threadId, announce, reportSuccess, setDraft, refresh, reportError],
   );
 
   const fork = useCallback(
     (row: TreeRow) => {
       call("thread.fork", { threadId, entryId: row.id }).then((answer) => {
-        announce(navigateOutcome(answer).kind === "unchanged" ? text.announce.cancelled : text.announce.forked);
+        if (navigateOutcome(answer).kind === "unchanged") {
+          announce(text.announce.cancelled);
+        } else {
+          reportSuccess(text.announce.forked);
+        }
         refresh();
       }, reportError);
     },
-    [call, threadId, announce, refresh, reportError],
+    [call, threadId, announce, reportSuccess, refresh, reportError],
   );
 
   const label = useCallback(

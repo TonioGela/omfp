@@ -253,6 +253,7 @@ describe("Space leader menu", () => {
     expect(entries()).toEqual([
       ["help", "h", "command", "Show every key and command (this help)"],
       ["help", "k", "command", "Describe a key: what it runs and where it is bound"],
+      ["help", "e", "command", "Show the notices and toasts that went by (newest first)"],
     ]);
     keys("k");
     expect(open()).toBe(0);

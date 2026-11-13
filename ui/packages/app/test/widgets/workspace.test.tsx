@@ -6,7 +6,7 @@ import type { WorkspaceRepo } from "@omfp/protocol";
 import { workspaceTopic } from "@omfp/protocol";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { DRAFT_THREAD, ERRORS, type OmfpHost, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { DRAFT_THREAD, ERRORS, type OmfpHost, SELECTED_THREAD, SUCCESSES } from "../../src/sdk/index.ts";
 import { WorkspaceWidget } from "../../src/widgets/workspace/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { renderWithHost, testHost } from "../support/host.tsx";
@@ -96,11 +96,14 @@ describe("omfp:workspace", () => {
     expect(screen.getByTestId("no-workspace")).toBeDefined();
   });
 
-  // spec: UI-025
-  test("the folder path is copied to the clipboard", async () => {
-    const { user } = setup();
+  // spec: UI-025, UI-520
+  test("the folder path is copied to the clipboard, with a success toast", async () => {
+    const { host, user } = setup();
     await user.click(screen.getByTestId("copy-workspace-path"));
     expect(await navigator.clipboard.readText()).toBe("/work/w1");
+    await waitFor(() =>
+      expect(host.window.get(SUCCESSES).map((success) => success.text)).toEqual(["Folder path copied"]),
+    );
   });
 
   // spec: UI-025

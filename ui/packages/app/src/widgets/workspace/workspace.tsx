@@ -30,11 +30,11 @@ import {
   removalNeedsConfirmation,
   reportError,
   strings,
-  useAnnounce,
   useCall,
   useCurrentWorkspaceId,
   useHost,
   usePathSources,
+  useReportSuccess,
   useThreads,
   useWorkspace,
   useWorkspaces,
@@ -104,9 +104,9 @@ function useList<T>(map: ReadonlyMap<string, T>): readonly T[] {
 
 function Header({ workspace, row }: { workspace: Workspace; row: WorkspaceRow }): ReactNode {
   const attempt = useAttempt();
-  const announce = useAnnounce();
+  const reportSuccess = useReportSuccess();
   const copy = () =>
-    void attempt(() => navigator.clipboard.writeText(row.path)).then((ok) => ok && announce(text.copied));
+    void attempt(() => navigator.clipboard.writeText(row.path)).then((ok) => ok && reportSuccess(text.copied));
   return (
     <header className="omfp-workspace__header">
       <WorkspaceName workspace={workspace} />

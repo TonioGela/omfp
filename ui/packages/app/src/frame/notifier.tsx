@@ -63,13 +63,16 @@ export function Notifier({ port, hasFocus, focusWindow }: NotifierProps): ReactN
             actions.select(notice.threadId);
           }
         });
-        // Without focus the mode line keeps it only when no system notification could be shown.
+        // Without focus the mode line keeps it only when no system notification could be shown; the window's
+        // messages keep it either way (UI-521).
         if (focused || system === undefined) {
           notices.show(notice);
           // The live region already speaks the threads awaiting input (UI-092).
           if (notice.tone !== "attention") {
             announce(strings.shell.notices.announce(notice.title, notice.body));
           }
+        } else {
+          notices.remember(notice.tone, notice.body, notice.title);
         }
       }),
     [notices, window, port, mode, hasFocus, focusWindow, actions, announce],

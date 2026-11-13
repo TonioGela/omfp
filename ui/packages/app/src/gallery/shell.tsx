@@ -18,6 +18,7 @@ import {
   Kbd,
   Meter,
   ModeLine,
+  ModeMessages,
   ModeNotice,
   ModeSegment,
   ModeViews,
@@ -58,7 +59,12 @@ export function ModeLines() {
             onSelect={() => undefined}
           />
         }
-        notice={<ModeNotice tone="attention" title="Fix flaky checkout test" body="needs you" more={1} kbd="g n" />}
+        notice={
+          <>
+            <ModeNotice tone="attention" title="Fix flaky checkout test" body="needs you" more={1} kbd="g n" />
+            <ModeMessages label="Messages" />
+          </>
+        }
       >
         <ModeSegment kind="title">Redesign kit tokens</ModeSegment>
         <ModeSegment>running</ModeSegment>
@@ -114,6 +120,10 @@ export function ModeLines() {
         <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
       </ModeLine>
       <ModeLine mode="normal" notice={<ModeNotice tone="info" title="CI" body="is green again" kbd="g n" />}>
+        <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
+      </ModeLine>
+      {/* The way back to the window's messages once the notices are gone (UI-523), hovered. */}
+      <ModeLine mode="normal" notice={<ModeMessages label="Messages" className="is-hover" />}>
         <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
       </ModeLine>
       <div className="omfp-gallery__narrow">

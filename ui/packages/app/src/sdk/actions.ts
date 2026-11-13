@@ -8,7 +8,7 @@ import { useMemo } from "react";
 import { strings } from "../strings/index.ts";
 import { expandPastes } from "../vm/paste.ts";
 import { currentWorkspaceId as workspaceOf } from "../vm/workspaces.ts";
-import { useAnnounce, useThreadSummary, useWindowState } from "./hooks.ts";
+import { useThreadSummary, useWindowState } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
 import { isObject } from "./json.ts";
 import {
@@ -65,14 +65,21 @@ function stderrTail({ failure }: CallError): string | undefined {
   return typeof tail === "string" && tail.trim() !== "" ? tail.trim() : undefined;
 }
 
-/** Adds `error` to the window's error list. */
+/** Adds `error` to the window's error list and its messages (UI-521). */
 export function reportError(host: OmfpHost, error: unknown): void {
-  host.window.set(ERRORS, (errors) => [...errors, errorMessage(error)]);
+  const message = errorMessage(error);
+  host.window.set(ERRORS, (errors) => [...errors, message]);
+  host.notices.remember("error", message);
 }
 
-/** Adds `text` to the window's success messages (UI-385), shown as a success toast that goes by itself. */
+/**
+ * The outcome of a user action (UI-385, UI-520): a success toast that goes by itself, also announced through the live
+ * region and kept in the window's messages (UI-521).
+ */
 export function reportSuccess(host: OmfpHost, text: string): void {
   host.window.set(SUCCESSES, (shown) => [...shown, { key: (shown.at(-1)?.key ?? 0) + 1, text }]);
+  host.announcer.announce(text);
+  host.notices.remember("success", text);
 }
 
 /** Asks the frame to log in (UI-382): to `providerId` at once, else through its provider picker. */
@@ -85,18 +92,23 @@ export function useReportError(): (error: unknown) => void {
   return useMemo(() => (error: unknown) => reportError(host, error), [host]);
 }
 
+/** `reportSuccess` for widgets: the outcome of a user action as a success toast (UI-520). */
+export function useReportSuccess(): (text: string) => void {
+  const host = useHost();
+  return useMemo(() => (text: string) => reportSuccess(host, text), [host]);
+}
+
 /** Opening and copying a URL omp opened on the daemon's host (UI-346, UI-347). */
 export interface UrlActions {
   /** Opens `url` in a new tab of this browser, without access to this window. */
   open(url: string): void;
-  /** Copies `url` to the clipboard and announces it; a refusal (or no clipboard: a page served over plain HTTP from
-   * another machine) goes to the error list. */
+  /** Copies `url` to the clipboard with a success toast (UI-520); a refusal (or no clipboard: a page served over plain
+   * HTTP from another machine) goes to the error list. */
   copy(url: string): void;
 }
 
 export function useUrlActions(): UrlActions {
   const host = useHost();
-  const announce = useAnnounce();
   return useMemo(
     () => ({
       open: (url) => {
@@ -107,12 +119,12 @@ export function useUrlActions(): UrlActions {
         Promise.resolve()
           .then(() => navigator.clipboard.writeText(url))
           .then(
-            () => announce(strings.chat.notice.copied),
+            () => reportSuccess(host, strings.chat.notice.copied),
             (error: unknown) => reportError(host, error),
           );
       },
     }),
-    [host, announce],
+    [host],
   );
 }
 

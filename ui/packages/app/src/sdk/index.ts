@@ -255,6 +255,7 @@ export {
   type UrlActions,
   useCurrentWorkspaceId,
   useReportError,
+  useReportSuccess,
   useThreadActions,
   useUrlActions,
 } from "./actions.ts";
@@ -397,6 +398,10 @@ export {
   WidgetModules,
 } from "./modules.ts";
 export {
+  MESSAGES,
+  MESSAGES_KEPT,
+  type Message,
+  type MessageTone,
   NOTICE_MS,
   NOTICES,
   type Notice,

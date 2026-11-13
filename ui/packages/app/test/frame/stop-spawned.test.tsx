@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, cleanup, waitFor } from "@testing-library/react";
 import { GlobalCommands } from "../../src/frame/commands.tsx";
 import { DEFAULT_BINDINGS } from "../../src/keymap/keymap.ts";
-import { NOTICES, SELECTED_THREAD } from "../../src/sdk/index.ts";
+import { NOTICES, SELECTED_THREAD, SUCCESSES } from "../../src/sdk/index.ts";
 import { thread, workspace } from "../support/fixtures.ts";
 import { ManualTimers, renderWithHost, testHost } from "../support/host.tsx";
 
@@ -32,16 +32,18 @@ function setup(selected: string) {
 }
 
 describe("thread.stopSpawned", () => {
-  // spec: UI-242, PRT-085
-  test("stops the selected thread with its spawned tree and says how many stopped", async () => {
+  // spec: UI-242, PRT-085, UI-520
+  test("stops the selected thread with its spawned tree and says how many stopped in a success toast", async () => {
     const { client, host } = setup("t1");
     act(() => {
       expect(host.commands.run("thread.stopSpawned")).toBe(true);
     });
     expect(client.callsTo("thread.stop").map((call) => call.params)).toEqual([{ threadId: "t1", cascade: true }]);
-    await waitFor(() => expect(host.window.get(NOTICES).length).toBe(1));
-    const [notice] = host.window.get(NOTICES);
-    expect([notice?.title, notice?.body, notice?.threadId]).toEqual(["orchestrator", "Stopped 3 threads", "t1"]);
+    await waitFor(() => expect(host.window.get(SUCCESSES).length).toBe(1));
+    expect(host.window.get(SUCCESSES).map((success) => success.text)).toEqual(["orchestrator: Stopped 3 threads"]);
+    expect(host.announcer.getSnapshot().message).toBe("orchestrator: Stopped 3 threads");
+    // A user command's outcome, not a thread event: no mode-line notice.
+    expect(host.window.get(NOTICES)).toEqual([]);
   });
 
   // spec: UI-242

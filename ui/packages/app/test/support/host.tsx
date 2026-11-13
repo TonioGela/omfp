@@ -267,13 +267,17 @@ export class ManualFrames {
   }
 }
 
-/** Report timers run by the test (`widgets.report` batching, AGT-026). */
+/** Report and notice timers run by the test (`widgets.report` batching, AGT-026; notices, UI-192), and the notices'
+ * clock: `time`, which the test sets. */
 export class ManualTimers {
   #pending: Array<() => void> = [];
+  time = 0;
 
   readonly setTimeout = (run: () => void, _ms: number): void => {
     this.#pending.push(run);
   };
+
+  readonly now = (): number => this.time;
 
   get pending(): number {
     return this.#pending.length;

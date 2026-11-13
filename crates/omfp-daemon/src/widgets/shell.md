@@ -31,9 +31,15 @@ The bar at the bottom of the view area, like vim's:
   focus), then updates it;
 - at the right end the newest **notice** (`◆ title body`, `+n` when more wait): a thread that needs the user, failed
   or finished while the user looked elsewhere, or what a widget, an init file or a thread's agent notified. `g n` or a
-  click opens its thread; it goes after 8 s.
+  click opens its thread; it goes after 8 s;
+- last, once something was said, the **messages** button: it opens `:messages`.
 
 In command mode the `:` line (or the file picker) replaces the title, the view tabs and the notice.
+
+The result of something the user did (`:widget add`, copying a path, a fork in the tree, `:view-reset`, saving a file…)
+shows as a success toast at the bottom right, gone after 5 s; a failure as an error toast that stays until closed.
+`:messages` (`Space h e`, or the mode line's messages button) lists the window's last 100 notices and toasts, newest
+first, each with its kind and time; Escape closes it.
 
 ## File and widget tabs
 
@@ -68,6 +74,7 @@ focus was before the line opened. The built-in ones (`omfp://keymap` has them al
 | `:help` | Every effective key and command, filterable (`?` too). |
 | `:describe-key`, `:describe-command <name>` | What a key runs and where it was bound; a command's names, keys and who registered it. |
 | `:notice` | Open the newest notice. |
+| `:messages` | The notices and toasts that went by, newest first. |
 
 Widgets (`useCommand`) and init files (`omfp.command`) add commands to the same line while they are shown or loaded.
 
@@ -83,7 +90,7 @@ help, `Space p` workspace, `Space f` files, `Space v` views); Escape cancels the
 | `/` | Filter threads. |
 | `i` | Focus the composer. |
 | `:`, `Space :`, `Space Space` | The `:` line. |
-| `?`, `Space h h` | Help; `Space h k` is `:describe-key`. |
+| `?`, `Space h h` | Help; `Space h k` is `:describe-key`, `Space h e` is `:messages`. |
 | `g v`, `Space v v` | Pick a view: the `:` line opens on `view`, its completions are the views. |
 | `] v`, `[ v`, `Space v n`, `Space v p` | Next / previous view (round the list). |
 | `g f`, `Space f o` | Open the focused path (a path link, a tool card, a changed file) in a file tab. |
