@@ -382,7 +382,8 @@ a `history` event, since omp announces no event for a branch change (DMN-111). T
 port, keeps the subagents' lifecycle and progress (PRT-055), the session's `goal` from `goal_updated` (PRT-056) and
 `todo_phases` from the last todo result that changed the list, recomputed on history (PRT-057). Three built-in widgets,
 not in the default view and added through the widget picker: `omfp:subagents` (UI-081) merges the reducer's roster with
-omp's running `thread.subagents` and reads a subagent's transcript incrementally with steer and cancel; `omfp:todos`
+omp's running `thread.subagents` and reads a subagent's transcript incrementally with steer and cancel (merged into
+`omfp:background` by M14's QA fixes, UI-490..UI-493); `omfp:todos`
 (UI-082) shows the goal and one border box per phase; `omfp:tree` (UI-083) shows the session tree with go-here,
 summarize-and-go, fork and label, and a returned `editorText` becomes the thread's composer draft. The contract scenarios
 (TST-060) run a scripted `task` subagent (seen running behind a fake-LLM gate, then its transcript paged by `fromByte`),

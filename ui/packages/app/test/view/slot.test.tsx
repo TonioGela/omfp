@@ -5,6 +5,7 @@ import type { ReportWidgetsParams, ViewsState, WidgetInfo, WidgetReport } from "
 import { act, cleanup, screen } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { OmfpProvider, useStored, useWidget, type WidgetComponent, type WidgetProps } from "../../src/sdk/index.ts";
+import { widgetTitle } from "../../src/view/render.tsx";
 import { resolveWidget, type WidgetRegistry, widgetUrl } from "../../src/view/resolve.ts";
 import { WidgetSlot } from "../../src/view/slot.tsx";
 import { FakeClient, ManualTimers, renderWithHost, type TestHost, testHost } from "../support/host.tsx";
@@ -169,6 +170,15 @@ describe("resolveWidget", () => {
       });
     }
     expect(resolveWidget("./widgets/tests", undefined, undefined, REGISTRY)).toEqual({ kind: "missing" });
+  });
+
+  // spec: UI-493, AGT-022
+  test("the retired omfp:subagents resolves to omfp:background, unless a workspace folder replaces it", () => {
+    const registry: WidgetRegistry = new Map<string, WidgetComponent>([["omfp:background", Builtin]]);
+    const copy = folder("workspace", "subagents", "s1");
+    expect(resolveWidget("omfp:subagents", WS, views(), registry)).toEqual({ kind: "builtin", component: Builtin });
+    expect(resolveWidget("omfp:subagents", WS, views(copy), registry)).toEqual({ kind: "module", widget: copy });
+    expect(widgetTitle("omfp:subagents")).toBe("Background");
   });
 
   // spec: UI-105, AGT-023

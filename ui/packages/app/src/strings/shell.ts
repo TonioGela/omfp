@@ -182,17 +182,25 @@ export const shell = {
     diffLabel: (path: string) => `Diff of ${path}`,
     open: (path: string) => `Open ${path}`,
   },
-  /** `omfp:subagents` (UI-081). */
+  /** The subagent roster and transcripts (`vm/subagents.ts`, UI-081). */
   subagents: {
-    label: "Subagents",
-    noThread: "No thread selected",
-    none: "No subagents in this thread",
-    noneHint: "They appear when the agent delegates with the task tool.",
-    refresh: "Refresh the subagents",
     tools: (count: number) => (count === 1 ? "1 tool" : `${count} tools`),
     tokens: (count: string) => `${count} tokens`,
     toolLine: (tool: string, intent: string | undefined) =>
       intent === undefined ? `→ ${tool}` : `→ ${tool}: ${intent}`,
+  },
+  /** `omfp:background` (UI-271..UI-273, UI-490..UI-492). */
+  background: {
+    label: "Background",
+    noThread: "No thread selected",
+    none: "Nothing runs in the background",
+    noneHint: "Background jobs of the agent and its subagents appear here.",
+    showJob: (id: string) => `Show the card of background job ${id}`,
+    subagent: (name: string) => `Subagent ${name}`,
+    state: { running: "running", completed: "done", failed: "failed", cancelled: "cancelled" },
+    stopRequested: "stop requested",
+    stop: "Stop",
+    cancel: "Cancel",
     transcript: (name: string) => `Transcript of ${name}`,
     loading: "Reading the transcript…",
     empty: "Nothing said yet",
@@ -200,31 +208,8 @@ export const shell = {
     steer: "Steer",
     steerLabel: (name: string) => `Message for ${name}`,
     steerPlaceholder: "Tell it what to do differently",
-    cancel: "Cancel",
-    cancelLabel: (name: string) => `Cancel ${name}`,
-    close: "Close the transcript",
-    open: (name: string) => `Open the transcript of ${name}`,
     roleUser: "task",
     roleAssistant: "subagent",
-    status: {
-      running: "running",
-      completed: "done",
-      failed: "failed",
-      aborted: "cancelled",
-    } as Readonly<Record<string, string>>,
-  },
-  /** `omfp:background` (UI-271..UI-273). */
-  background: {
-    label: "Background",
-    noThread: "No thread selected",
-    none: "Nothing runs in the background",
-    noneHint: "Background jobs of the agent and its subagents appear here.",
-    showJob: (id: string) => `Show the card of background job ${id}`,
-    openSubagent: (name: string) => `Open subagent ${name}`,
-    state: { running: "running", completed: "done", failed: "failed", cancelled: "cancelled" },
-    stopRequested: "stop requested",
-    stop: "Stop",
-    cancel: "Cancel",
   },
   /** `omfp:mcp` (UI-290..UI-294). */
   mcp: {
@@ -443,7 +428,6 @@ export const shell = {
       "omfp:workspace": "Workspace",
       "omfp:changes": "Changes",
       "omfp:file": "File",
-      "omfp:subagents": "Subagents",
       "omfp:background": "Background",
       "omfp:todos": "Todos",
       "omfp:tree": "Tree",

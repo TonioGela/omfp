@@ -112,7 +112,10 @@ export interface RevealRequest {
 
 export const REVEAL_WIDGET = windowKey<RevealRequest | undefined>("revealWidget", undefined);
 
-/** A request to open a subagent's transcript in `omfp:subagents` (UI-271); `nonce` tells one request from the next. */
+/**
+ * A request to open a subagent's detail (transcript and steer) under its row of `omfp:background` (UI-492); reveal
+ * `omfp:background` with it to show it. `nonce` tells one request from the next.
+ */
 export interface OpenSubagentRequest {
   readonly threadId: string;
   readonly subagentId: string;

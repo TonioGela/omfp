@@ -41,7 +41,7 @@ import {
   MAIN_SLOT,
 } from "./layout.ts";
 import { OpenedTabLabel, openedTabBarHandlers } from "./opened-tab.tsx";
-import type { WidgetRegistry } from "./resolve.ts";
+import { builtinReference, type WidgetRegistry } from "./resolve.ts";
 import { effectiveSizes, PANE_SIZES, sizesKey, withSizes } from "./sizes.ts";
 import { WidgetSlot } from "./slot.tsx";
 import { Resizer } from "./splitter.tsx";
@@ -579,7 +579,9 @@ function nodeTitle(tree: LayoutTree): string {
   return typeof tree.props.title === "string" ? tree.props.title : widgetTitle(tree.name);
 }
 
-/** A widget's title without a `title` prop: a built-in's own name, else its reference. */
+/** A widget's title without a `title` prop: a built-in's own name (a retired one's successor's, UI-493), else its
+ * reference. */
 export function widgetTitle(reference: string): string {
-  return Object.hasOwn(text.widgetTitles, reference) ? (text.widgetTitles[reference] ?? reference) : reference;
+  const name = builtinReference(reference);
+  return Object.hasOwn(text.widgetTitles, name) ? (text.widgetTitles[name] ?? reference) : reference;
 }

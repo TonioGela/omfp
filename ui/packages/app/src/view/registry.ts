@@ -1,5 +1,5 @@
 /** The built-in `omfp:*` widgets a view can hold, by reference (AGT-021); the frame renders the threads column itself
- * (UI-100). */
+ * (UI-100). Retired references resolve to their successor (`resolve.ts`, UI-493). */
 
 import type { WidgetComponent } from "../sdk/index.ts";
 import { ActivityWidget } from "../widgets/activity/index.ts";
@@ -9,7 +9,6 @@ import { ChatWidget, ComposerWidget, InteractionsWidget, TranscriptWidget } from
 import { FileWidget } from "../widgets/file/index.ts";
 import { HeaderWidget } from "../widgets/header/index.ts";
 import { McpWidget } from "../widgets/mcp/index.ts";
-import { SubagentsWidget } from "../widgets/subagents/index.ts";
 import { TodosWidget } from "../widgets/todos/index.ts";
 import { TreeWidget } from "../widgets/tree/index.ts";
 import { WorkspaceWidget } from "../widgets/workspace/index.ts";
@@ -20,7 +19,6 @@ export const BUILTIN_WIDGETS: WidgetRegistry = new Map<string, WidgetComponent>(
   ["omfp:workspace", WorkspaceWidget],
   ["omfp:changes", ChangesWidget],
   ["omfp:background", BackgroundWidget],
-  ["omfp:subagents", SubagentsWidget],
   ["omfp:todos", TodosWidget],
   ["omfp:tree", TreeWidget],
   ["omfp:activity", ActivityWidget],

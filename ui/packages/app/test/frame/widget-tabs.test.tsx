@@ -19,7 +19,6 @@ import {
 } from "../../src/sdk/index.ts";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
 import { BackgroundWidget } from "../../src/widgets/background/index.ts";
-import { SubagentsWidget } from "../../src/widgets/subagents/index.ts";
 import { thread, workspace } from "../support/fixtures.ts";
 import { ManualTimers, renderWithHost, testHost } from "../support/host.tsx";
 import { fixtureEvents, isFrame } from "../widgets/chat/fixtures.ts";
@@ -44,7 +43,7 @@ const STUBS: WidgetRegistry = new Map<string, WidgetComponent>([
   ["omfp:workspace", Instance("workspace")],
   ["omfp:changes", () => <p>changes</p>],
   ["omfp:background", Instance("background")],
-  ["omfp:subagents", Instance("subagents")],
+  ["omfp:activity", Instance("activity")],
   ["omfp:todos", Instance("todos")],
   ["omfp:tree", Instance("tree")],
   ["omfp:file", () => <p data-testid="stub-file">file</p>],
@@ -117,37 +116,37 @@ describe("revealed widgets as tabs of the main slot", () => {
   test("a widget the view lacks opens as a selected tab after the files; revealing it again selects it", async () => {
     const test = setup();
     act(() => openFile(test.host, "fe/src/lib.rs"));
-    reveal(test, "omfp:subagents", 1);
-    expect(tabs()).toEqual(["Chat", "lib.rs", "Subagents"]);
-    expect(selectedTab()).toBe("Subagents");
-    expect(widgetTab("omfp:subagents").dataset.testid).toBe("widget-tab");
+    reveal(test, "omfp:activity", 1);
+    expect(tabs()).toEqual(["Chat", "lib.rs", "Activity"]);
+    expect(selectedTab()).toBe("Activity");
+    expect(widgetTab("omfp:activity").dataset.testid).toBe("widget-tab");
     // Its instance is its reference: the same `useStored` state as a view node without `instance`.
-    expect(within(screen.getByTestId("view")).getByTestId("stub-subagents").textContent).toBe("omfp:subagents");
+    expect(within(screen.getByTestId("view")).getByTestId("stub-activity").textContent).toBe("omfp:activity");
     expect(screen.queryAllByTestId("floating-widget").length).toBe(0);
     // The request is done; the tab is window-local, kept in localStorage, never written to views.json.
     expect(test.host.window.get(REVEAL_WIDGET)).toBeUndefined();
     expect(JSON.parse(test.storage.getItem("omfp.openFiles") ?? "{}").w1).toMatchObject({
-      widgets: ["omfp:subagents"],
-      active: widgetTabId("omfp:subagents"),
+      widgets: ["omfp:activity"],
+      active: widgetTabId("omfp:activity"),
     });
     expect(test.client.callsTo("views.set")).toEqual([]);
 
     // A file opened later goes with the files; revealing the widget again selects its one tab.
     act(() => openFile(test.host, "fe/README.md"));
-    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md", "Subagents"]);
+    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md", "Activity"]);
     await test.user.click(tabElements()[0] as HTMLElement);
     expect(selectedTab()).toBe("Chat");
-    reveal(test, "omfp:subagents", 2);
-    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md", "Subagents"]);
-    expect(selectedTab()).toBe("Subagents");
+    reveal(test, "omfp:activity", 2);
+    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md", "Activity"]);
+    expect(selectedTab()).toBe("Activity");
 
     // Each reveal goes the same way: a widget the view holds (the side tabs' Workspace) is shown in place, no tab;
     // another it lacks opens its tab too.
     reveal(test, "omfp:workspace", 3);
-    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md", "Subagents"]);
+    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md", "Activity"]);
     expect(test.host.window.get(REVEAL_WIDGET)).toBeUndefined();
     reveal(test, "omfp:todos", 4);
-    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md", "Subagents", "Todos"]);
+    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md", "Activity", "Todos"]);
     expect(selectedTab()).toBe("Todos");
   });
 
@@ -155,19 +154,19 @@ describe("revealed widgets as tabs of the main slot", () => {
   test("a widget tab closes like a file tab: its ×, a middle click, Delete", async () => {
     const test = setup();
     act(() => openFile(test.host, "fe/src/lib.rs"));
-    reveal(test, "omfp:subagents", 1);
+    reveal(test, "omfp:activity", 1);
     reveal(test, "omfp:tree", 2);
     reveal(test, "omfp:todos", 3);
-    expect(tabs()).toEqual(["Chat", "lib.rs", "Subagents", "Tree", "Todos"]);
+    expect(tabs()).toEqual(["Chat", "lib.rs", "Activity", "Tree", "Todos"]);
 
     // The selected one's own ×: its neighbour is selected.
     expect(screen.getAllByTestId("widget-tab-close").length).toBe(3);
     await test.user.click(within(widgetTab("omfp:todos")).getByTestId("widget-tab-close"));
-    expect(tabs()).toEqual(["Chat", "lib.rs", "Subagents", "Tree"]);
+    expect(tabs()).toEqual(["Chat", "lib.rs", "Activity", "Tree"]);
     expect(selectedTab()).toBe("Tree");
     // A middle click closes the tab under the pointer, without the browser's autoscroll.
-    expect(fireEvent.mouseDown(widgetTab("omfp:subagents"), { button: 1 })).toBe(false);
-    fireEvent(widgetTab("omfp:subagents"), new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
+    expect(fireEvent.mouseDown(widgetTab("omfp:activity"), { button: 1 })).toBe(false);
+    fireEvent(widgetTab("omfp:activity"), new MouseEvent("auxclick", { button: 1, bubbles: true, cancelable: true }));
     expect(tabs()).toEqual(["Chat", "lib.rs", "Tree"]);
     // Delete closes the focused one; the last file is its neighbour.
     act(() => widgetTab("omfp:tree").focus());
@@ -181,13 +180,13 @@ describe("revealed widgets as tabs of the main slot", () => {
   test("the open widget tabs and the selected one come back after a reload", () => {
     const storage = new MemoryStorage();
     const first = setup({ storage });
-    reveal(first, "omfp:subagents", 1);
-    expect(selectedTab()).toBe("Subagents");
+    reveal(first, "omfp:activity", 1);
+    expect(selectedTab()).toBe("Activity");
     cleanup();
     setup({ storage });
-    expect(tabs()).toEqual(["Chat", "Subagents"]);
-    expect(selectedTab()).toBe("Subagents");
-    expect(screen.getByTestId("stub-subagents").textContent).toBe("omfp:subagents");
+    expect(tabs()).toEqual(["Chat", "Activity"]);
+    expect(selectedTab()).toBe("Activity");
+    expect(screen.getByTestId("stub-activity").textContent).toBe("omfp:activity");
   });
 
   // spec: UI-373, UI-274
@@ -195,22 +194,21 @@ describe("revealed widgets as tabs of the main slot", () => {
     const test = setup({
       views: { manifest: { default: "plain", views: { plain: { layout: ["row", {}, "omfp:chat", "omfp:changes"] } } } },
     });
-    reveal(test, "omfp:subagents", 1);
+    reveal(test, "omfp:activity", 1);
     const panel = screen.getByTestId("floating-widget");
-    expect(within(panel).getByTestId("floating-widget-title").textContent).toBe("Subagents");
-    expect(within(panel).getByTestId("stub-subagents").textContent).toBe("omfp:subagents");
+    expect(within(panel).getByTestId("floating-widget-title").textContent).toBe("Activity");
+    expect(within(panel).getByTestId("stub-activity").textContent).toBe("omfp:activity");
     expect(test.host.window.get(OPEN_FILES).w1).toBeUndefined();
     expect(tabs()).toEqual([]);
   });
 
-  // spec: UI-373, UI-271
-  test("a subagent opened from omfp:background shows its transcript in the Subagents tab", async () => {
+  // spec: UI-490, UI-373
+  test("a subagent of omfp:background opens under its row: no tab, no panel", async () => {
     const task = fixtureEvents("task_tool_call");
     const started = task.slice(0, task.findIndex(isFrame("subagent_progress")) + 1);
     const registry: WidgetRegistry = new Map<string, WidgetComponent>([
       ...STUBS,
       ["omfp:background", BackgroundWidget],
-      ["omfp:subagents", SubagentsWidget],
     ]);
     const test = setup({
       registry,
@@ -230,17 +228,46 @@ describe("revealed widgets as tabs of the main slot", () => {
       entries: [],
       messages: [{ role: "user", content: [{ type: "text", text: "Count the functions" }], timestamp: 0 }],
     }));
-    await test.user.click(await screen.findByRole("button", { name: "Open subagent Counter" }));
+    await test.user.click(await screen.findByRole("button", { name: "Subagent Counter" }));
     test.flush();
-    await waitFor(() => expect(selectedTab()).toBe("Subagents"));
-    const main = document.querySelector<HTMLElement>('[data-slot="main"]') as HTMLElement;
-    const box = await within(main).findByTestId("subagent-transcript");
-    expect(test.client.callsTo("thread.subagent_messages").map((call) => call.params)).toEqual([
-      { threadId: "t1", subagentId: "Counter", fromByte: 0 },
-    ]);
+    const detail = screen.getByTestId("background-subagent");
     await waitFor(() =>
-      expect(within(box).getAllByTestId("subagent-line")[0]?.textContent).toBe("▸ taskCount the functions"),
+      expect(within(detail).getAllByTestId("subagent-line")[0]?.textContent).toBe("▸ taskCount the functions"),
     );
+    expect(tabs()).toEqual([]);
     expect(screen.queryAllByTestId("floating-widget").length).toBe(0);
+  });
+
+  // spec: UI-493
+  test("a view naming the retired omfp:subagents shows Background there; revealing Background selects it", () => {
+    const test = setup({
+      views: {
+        manifest: {
+          default: "work",
+          views: {
+            work: {
+              layout: [
+                "row",
+                {},
+                ["tabs", { id: "main" }, "omfp:chat"],
+                ["tabs", {}, "omfp:workspace", "omfp:subagents"],
+              ],
+            },
+          },
+        },
+      },
+    });
+    // Rendered by omfp:background under its old reference, titled like it.
+    expect(screen.getByTestId("stub-background").textContent).toBe("omfp:subagents");
+    expect(screen.queryAllByText("Unknown widget omfp:subagents").length).toBe(0);
+    const side = [...document.querySelectorAll<HTMLElement>('[role="tab"]')].map((tab) => tab.textContent);
+    expect(side).toEqual(["Workspace", "Background"]);
+    // The view holds Background: a reveal selects that tab instead of opening another.
+    reveal(test, "omfp:background", 1);
+    expect(test.host.window.get(REVEAL_WIDGET)).toBeUndefined();
+    expect(test.host.window.get(OPEN_FILES).w1).toBeUndefined();
+    expect(screen.queryAllByTestId("floating-widget").length).toBe(0);
+    const selected = document.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    expect(selected?.textContent).toBe("Background");
   });
 });

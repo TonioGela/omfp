@@ -21,6 +21,17 @@ const BUILTIN = "omfp:";
 const WORKSPACE = "./widgets/";
 const USER = "user:";
 
+/**
+ * Retired built-ins by their old reference, with the built-in that took them over (UI-493): views manifests written
+ * before keep working. `omfp:subagents` merged into `omfp:background`.
+ */
+const RETIRED_BUILTINS: Readonly<Record<string, string>> = { "omfp:subagents": "omfp:background" };
+
+/** The built-in a reference stands for: a retired one's successor (UI-493), else the reference itself. */
+export function builtinReference(reference: string): string {
+  return Object.hasOwn(RETIRED_BUILTINS, reference) ? (RETIRED_BUILTINS[reference] ?? reference) : reference;
+}
+
 /** The widget folder `name` of `source`, from the views state's list. */
 function folder(views: ViewsState, source: WidgetInfo["source"], name: string): WidgetInfo | undefined {
   return views.widgets.find((widget) => widget.source === source && widget.name === name);
@@ -28,8 +39,8 @@ function folder(views: ViewsState, source: WidgetInfo["source"], name: string): 
 
 /**
  * Resolves `reference` in the workspace `workspaceId` with its views state (`undefined` until it arrives):
- * `omfp:<name>` is the workspace widget `<name>` when that folder exists (AGT-022), else the built-in;
- * `./widgets/<name>` the workspace's folder; `user:<name>` the user library's (AGT-023).
+ * `omfp:<name>` is the workspace widget `<name>` when that folder exists (AGT-022), else the built-in (a retired one's
+ * successor, UI-493); `./widgets/<name>` the workspace's folder; `user:<name>` the user library's (AGT-023).
  */
 export function resolveWidget(
   reference: string,
@@ -42,7 +53,7 @@ export function resolveWidget(
     if (override !== undefined) {
       return { kind: "module", widget: override };
     }
-    const component = registry.get(reference);
+    const component = registry.get(builtinReference(reference));
     return component === undefined ? { kind: "missing" } : { kind: "builtin", component };
   }
   const [source, name] = reference.startsWith(WORKSPACE)

@@ -1,7 +1,7 @@
 /**
- * The `omfp:subagents` widget (UI-081): the roster of a thread's subagents from the reducer's subagent frames
- * (`subagents`, PRT-055) merged with omp's `thread.subagents` (only running ones: omp drops finished subagents from
- * it), and a subagent's transcript read incrementally with `thread.subagent_messages` (`fromByte`).
+ * A thread's subagents (UI-081), which `omfp:background` lists and opens (UI-490): the roster from the reducer's
+ * subagent frames (`subagents`, PRT-055) merged with omp's `thread.subagents` (only running ones: omp drops finished
+ * subagents from it), and a subagent's transcript read incrementally with `thread.subagent_messages` (`fromByte`).
  */
 
 import type { AgentMessage, JsonObject, Subagent } from "@omfp/core";

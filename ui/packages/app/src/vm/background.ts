@@ -24,6 +24,8 @@ export interface BackgroundRow {
   readonly lastLine: string | undefined;
   /** Stop was asked for a job (a steer, UI-272) that still runs. */
   readonly stopRequested: boolean;
+  /** A subagent's roster row, which its detail shows (UI-490); `undefined` for a job. */
+  readonly subagent: SubagentRow | undefined;
 }
 
 /** The last non-blank line of `output`, trimmed; `""` without one. */
@@ -107,6 +109,7 @@ export function backgroundRows(
         durationMs: seen === undefined ? undefined : (seen.end ?? now) - seen.start,
         lastLine: line === "" ? undefined : line,
         stopRequested: job.state === "running" && stopping.has(job.job_id),
+        subagent: undefined,
       },
     ];
   });
@@ -120,6 +123,7 @@ export function backgroundRows(
       durationMs: row.durationMs,
       lastLine: row.activity,
       stopRequested: false,
+      subagent: row,
     }),
   );
   return [...jobs.reverse(), ...agents];

@@ -945,6 +945,11 @@ requirements = [
   # QA fixes: the transcript in the composer's column, no cuts where there is room
   "UI-485",
   "UI-486",
+  # QA fixes: subagents open under their row of Background; omfp:subagents retired
+  "UI-490",
+  "UI-491",
+  "UI-492",
+  "UI-493",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -959,6 +964,7 @@ requirements = [
   "E2E-38",
   "E2E-40",
   "E2E-41",
+  "E2E-42",
   # Touch phones: sizes at the root, sideways phones, no invisible or tiny targets, no key hints
   "UI-413",
   "UI-414",

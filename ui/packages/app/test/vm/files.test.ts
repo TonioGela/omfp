@@ -50,19 +50,19 @@ describe("file tabs", () => {
 
   // spec: UI-373
   test("widget tabs open once after the files, selected; closing one selects its neighbour among all opened tabs", () => {
-    let tabs = openWidgetTab(openTab(NO_FILE_TABS, "a.rs"), "omfp:subagents");
+    let tabs = openWidgetTab(openTab(NO_FILE_TABS, "a.rs"), "omfp:activity");
     tabs = openTab(tabs, "b.rs");
     tabs = openWidgetTab(tabs, "omfp:todos");
     expect(openedTabIds(tabs)).toEqual([
       fileTabId("a.rs"),
       fileTabId("b.rs"),
-      widgetTabId("omfp:subagents"),
+      widgetTabId("omfp:activity"),
       widgetTabId("omfp:todos"),
     ]);
     expect(tabs.active).toBe(widgetTabId("omfp:todos"));
-    tabs = openWidgetTab(tabs, "omfp:subagents");
-    expect([tabs.widgets, tabs.active]).toEqual([["omfp:subagents", "omfp:todos"], widgetTabId("omfp:subagents")]);
-    tabs = closeOpenedTab(tabs, widgetTabId("omfp:subagents"));
+    tabs = openWidgetTab(tabs, "omfp:activity");
+    expect([tabs.widgets, tabs.active]).toEqual([["omfp:activity", "omfp:todos"], widgetTabId("omfp:activity")]);
+    tabs = closeOpenedTab(tabs, widgetTabId("omfp:activity"));
     expect([tabs.widgets, tabs.active]).toEqual([["omfp:todos"], fileTabId("b.rs")]);
     tabs = closeTab(tabs, "b.rs");
     expect(tabs.active).toBe(fileTabId("a.rs"));
@@ -80,11 +80,11 @@ describe("file tabs", () => {
         w1: { tabs: [{ path: "a.rs", line: 2, diff: true }, { nope: 1 }, "x"], active: "file:a.rs" },
         w2: { tabs: "bad" },
         w3: null,
-        w4: { tabs: [], widgets: ["omfp:subagents", 3, "omfp:subagents"], active: "widget:omfp:subagents" },
+        w4: { tabs: [], widgets: ["omfp:activity", 3, "omfp:activity"], active: "widget:omfp:activity" },
       }),
     ).toEqual({
       w1: { tabs: [{ path: "a.rs", line: 2, diff: true, seq: 0 }], widgets: [], active: "file:a.rs" },
-      w4: { tabs: [], widgets: ["omfp:subagents"], active: "widget:omfp:subagents" },
+      w4: { tabs: [], widgets: ["omfp:activity"], active: "widget:omfp:activity" },
     });
     expect(decodeOpenFiles([])).toBeUndefined();
     expect(decodeOpenFiles("x")).toBeUndefined();

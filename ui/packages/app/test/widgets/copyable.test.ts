@@ -1,7 +1,7 @@
 /** L0: the built-in widgets are written like agent widgets, so their folders can be copied into a workspace. */
 
 import { describe, expect, test } from "bun:test";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BUILTINS } from "../../builtins.ts";
 import { BUILTIN_WIDGETS } from "../../src/view/registry.ts";
@@ -11,7 +11,6 @@ import * as chat from "../../src/widgets/chat/index.ts";
 import file from "../../src/widgets/file/index.ts";
 import header from "../../src/widgets/header/index.ts";
 import mcp from "../../src/widgets/mcp/index.ts";
-import subagents from "../../src/widgets/subagents/index.ts";
 import todos from "../../src/widgets/todos/index.ts";
 import tree from "../../src/widgets/tree/index.ts";
 import workspace from "../../src/widgets/workspace/index.ts";
@@ -39,7 +38,7 @@ function valueImports(folder: string): { file: string; path: string }[] {
 }
 
 describe("copyable built-ins", () => {
-  // spec: AGT-021, AGT-012, UI-081, UI-082, UI-083, UI-273, UI-290
+  // spec: AGT-021, AGT-012, UI-082, UI-083, UI-273, UI-290
   test("value imports come only from react, omfp/sdk, omfp/kit and the widget's own folder", () => {
     const imports = COPYABLE.flatMap(valueImports);
     expect(imports.length).toBeGreaterThan(0);
@@ -60,14 +59,17 @@ describe("copyable built-ins", () => {
     expect(typeof workspace).toBe("function");
     expect(typeof changes).toBe("function");
     expect(typeof file).toBe("function");
-    for (const widget of [background, subagents, todos, tree, mcp]) {
+    for (const widget of [background, todos, tree, mcp]) {
       expect(typeof widget).toBe("function");
     }
   });
 
-  // spec: AGT-021
+  // spec: AGT-021, UI-493
   test("every built-in `omfp:<name>` a view can hold ships as a copyable folder, and only those", () => {
     const shipped = BUILTINS.map(({ name }) => `omfp:${name}`).sort();
     expect(shipped).toEqual([...BUILTIN_WIDGETS.keys()].sort());
+    // `omfp:subagents` merged into `omfp:background`: no built-in, no folder.
+    expect(BUILTIN_WIDGETS.has("omfp:subagents")).toBe(false);
+    expect(existsSync(join(WIDGETS, "subagents"))).toBe(false);
   });
 });

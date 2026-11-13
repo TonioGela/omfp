@@ -38,7 +38,8 @@ describe("background work", () => {
   // spec: UI-271
   test("rows: jobs newest first with command, state and last line, then subagents", () => {
     const tools = fixture("async_bash_tool_call").tools;
-    const rows = backgroundRows(tools, [subagent("Counter", "aborted", 1500)], new Set(), NO_TIMES, 0);
+    const counter = subagent("Counter", "aborted", 1500);
+    const rows = backgroundRows(tools, [counter], new Set(), NO_TIMES, 0);
     expect(rows).toEqual([
       {
         kind: "job",
@@ -49,6 +50,7 @@ describe("background work", () => {
         durationMs: undefined,
         lastLine: rows[0]?.lastLine,
         stopRequested: false,
+        subagent: undefined,
       },
       {
         kind: "subagent",
@@ -59,6 +61,7 @@ describe("background work", () => {
         durationMs: 1500,
         lastLine: "Reading",
         stopRequested: false,
+        subagent: counter,
       },
     ]);
     expect(rows[0]?.lastLine).toContain("Wall time");

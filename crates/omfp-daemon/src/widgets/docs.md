@@ -43,8 +43,9 @@ Layout nodes: a reference (`"omfp:chat"`), `[reference, props]`, or `[container,
 container is `row`, `col`, `tabs` or `stack` and `props.sizes` (optional) gives one positive flex weight per child.
 Built-in widgets: `omfp:header`, `omfp:chat` (transcript, interactions, queue and composer), `omfp:transcript`,
 `omfp:interactions`, `omfp:composer`, `omfp:workspace`, `omfp:changes` (`{ repo? }`: changed files and diffs of the
-workspace's repositories, or of the repository named `repo` only), `omfp:background` (the selected thread's background jobs and subagents: state, duration, last output
-line; stop a job, cancel a subagent), `omfp:subagents` (the selected thread's subagents, their transcripts, steer and cancel), `omfp:todos`
+workspace's repositories, or of the repository named `repo` only), `omfp:background` (the selected thread's background
+jobs and subagents: state, duration, last output line; stop a job, cancel a subagent; a subagent's row opens its kind,
+use, transcript and, while it runs, a steer field under it), `omfp:todos`
 (its todo list and goal), `omfp:tree` (its session tree: go to an entry, fork from it, label it), `omfp:activity`
 (`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:mcp` (the MCP servers of
 the selected thread, checked by its omp, or those configured for the workspace: state, tools, error, config file;
@@ -61,7 +62,9 @@ built-in's name, else the reference). `instance` names the node's state: `useSto
 workspace, instance and key (default instance: the reference), so two nodes of the same widget with the same instance
 share it — give each its own `instance` when a widget appears twice (`["./widgets/tests", { "instance": "tests-api" }]`).
 It also names the node in `omfp_widget_check`'s report. Built-ins keep no stored state (`omfp:changes` twice, one per
-`repo`, works without it), but an `instance` per node costs nothing.
+`repo`, works without it), but an `instance` per node costs nothing. `omfp:subagents`, merged into `omfp:background`,
+is no built-in any more: an older `views.json` naming it shows `omfp:background` there (titled "Background"; a
+workspace folder `.omfp/widgets/subagents/` still replaces it); write `omfp:background` in new layouts.
 
 ## Views in the window
 
@@ -89,10 +92,10 @@ It also names the node in `omfp_widget_check`'s report. Built-ins keep no stored
   a widget (built-in, `./widgets/<name>`, `user:<name>`) to the current view as the last tab of its `tabs` with
   `"id": "side"`, else at the end of its root container. It refuses views that exist only in code (an init file's
   `views.add`, a TSX view) and names the file to edit. Agents change views with `omfp_ui_mount` and `views.set`.
-- A **reveal** (`REVEAL_WIDGET`: the header's background badge and workspace chip, a subagent opened from
-  `omfp:background`, or any widget's `useWindowState(REVEAL_WIDGET)` setter) shows a widget: the view's tab holding
+- A **reveal** (`REVEAL_WIDGET`: the header's background badge and workspace chip, or any widget's
+  `useWindowState(REVEAL_WIDGET)` setter) shows a widget: the view's tab holding
   it is selected; a view without it opens it as a closable tab of the `main` slot after the open files (titled like a
-  tab, `omfp:subagents` → "Subagents"; revealing it again selects that tab), kept in this window per workspace across
+  tab, `omfp:background` → "Background"; revealing it again selects that tab), kept in this window per workspace across
   reloads and never written to `views.json`; only a view without a `main` slot floats it in a panel. The tab's node has
   no props, so its instance is the reference: its `useStored` state is that of every node of the widget without
   `instance`.
@@ -404,7 +407,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useThreads()` | Thread summaries by id. |
 | `useThreadSummary(threadId)` | One thread's summary (title, process state, workspace). |
 | `useThread(threadId)` | `{ state, closed }`: the thread's full state (transcript, tools, queue, pending interactions). |
-| `useBackground(threadId)` | What `omfp:background` shows: `{ rows, running, stop(jobId), cancel(subagentId) }`, the thread's background jobs and subagents (`rows`: `{ kind, id, toolCallId, label, state, durationMs, lastLine, stopRequested }`, running durations ticking every second) and how many still run; `stop` asks the agent to stop a job (a steer: omp has no kill command), `cancel` cancels a subagent (`thread.subagent_cancel`). |
+| `useBackground(threadId)` | What `omfp:background` shows: `{ rows, running, stop(jobId), cancel(subagentId) }`, the thread's background jobs and subagents (`rows`: `{ kind, id, toolCallId, label, state, durationMs, lastLine, stopRequested, subagent }`, `subagent` a subagent's `useSubagentRows` row, `undefined` for a job; running durations ticking every second) and how many still run; `stop` asks the agent to stop a job (a steer: omp has no kill command), `cancel` cancels a subagent (`thread.subagent_cancel`). |
 | `useRunningInBackground(threadId)` | How many background jobs and subagents of the thread run (the header's badge). |
 | `useSubagentRows(threadId)` | `{ rows, refresh }`: the thread's subagents (`{ id, index, agent, status, description, task, activity, meta, durationMs, live }`), from its state plus `thread.subagents` while omp runs, read again when one starts or ends and on `refresh()`. |
 | `useWorkspaces()` | Workspaces by id. |
@@ -433,7 +436,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `Row`, `Col`, `Tabs`, `Stack`, `Widget` | The layout components of TSX views (see TSX views); they render only in a view file of `.omfp/views/`. |
 | `SELECTED_THREAD` | Window key of the selected thread id (`useWindowState(SELECTED_THREAD)`). |
 | `REVEAL_WIDGET` | Window key of the latest reveal request, `{ reference, nonce }` (`nonce`: a new number per request): shows that widget in its tab of the view, else in a tab of the `main` slot, else in a floating panel (see Views in the window). |
-| `OPEN_SUBAGENT` | Window key of a request to open a subagent's transcript in `omfp:subagents`: set `{ threadId, subagentId, nonce }` (`nonce`: a new number per request). |
+| `OPEN_SUBAGENT` | Window key of a request to open a subagent's transcript and steer field under its row of `omfp:background`: set `{ threadId, subagentId, nonce }` (`nonce`: a new number per request), and reveal `omfp:background` (`REVEAL_WIDGET`) to show it. |
 | `FOCUS_COMPOSER` | Window key of the thread whose composer takes the focus once it shows; the composer clears it. |
 | `DRAFT_THREAD` | Window key of the draft thread, `{ workspaceId }` (`undefined` without one): a new thread being written before its first message is sent. |
 

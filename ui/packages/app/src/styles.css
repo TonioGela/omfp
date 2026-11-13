@@ -871,8 +871,8 @@
     white-space: nowrap;
   }
 
-  /* omfp:subagents (UI-081): a row per subagent (state mark, name, kind, status, task, activity, use), the opened
-   * one's transcript in a border box (UI-187) with its steer and cancel actions. */
+  /* The subagent roster of omfp:background (UI-271, UI-490): a row per subagent (state mark, name, status, duration,
+   * task, activity), the opened one's transcript in a border box (UI-187) under it with its steer field. */
   .omfp-subagents,
   .omfp-todos {
     display: flex;
@@ -880,12 +880,6 @@
     gap: var(--omfp-s3);
     padding: var(--omfp-s2) var(--omfp-s3) var(--omfp-s3);
     font-family: var(--omfp-font-code);
-  }
-
-  .omfp-subagents__bar {
-    display: flex;
-    justify-content: flex-end;
-    margin-block-end: calc(-1 * var(--omfp-s2));
   }
 
   .omfp-subagents__list {
@@ -913,16 +907,30 @@
     cursor: pointer;
   }
 
-  /* omfp:background (UI-271): a row and its stop or cancel button side by side. */
+  /* omfp:background (UI-271, UI-490): a row and its stop or cancel button side by side, a subagent's detail under them. */
   .omfp-background__item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s1);
+  }
+
+  .omfp-background__head {
     display: flex;
     align-items: baseline;
     gap: var(--omfp-s2);
   }
 
-  .omfp-background__item > .omfp-subagents__row {
+  .omfp-background__head > .omfp-subagents__row {
     flex: 1;
     min-inline-size: 0;
+  }
+
+  .omfp-background__subagent {
+    margin-block-end: var(--omfp-s2);
+  }
+
+  .omfp-background__use {
+    margin: 0 0 var(--omfp-s2);
   }
 
   /* The last output line of a running background job in its card's head (UI-270). */
@@ -944,7 +952,7 @@
     color: var(--omfp-primary);
   }
 
-  .omfp-subagents__agent,
+  .omfp-background__use,
   .omfp-subagents__status,
   .omfp-subagents__meta,
   .omfp-subagents__activity,
