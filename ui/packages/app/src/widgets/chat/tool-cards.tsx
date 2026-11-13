@@ -346,7 +346,7 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
 /** A todo tool's phases (UI-163): the kit's todo list per phase, named when there are several. */
 function TodoPhases({ phases }: { phases: readonly TodoPhase[] }): ReactNode {
   return phases.map((phase) => (
-    <section key={phase.name} className="omfp-tool-card__phase" aria-label={phase.name}>
+    <section key={phase.name} aria-label={phase.name}>
       {phases.length > 1 && <h3>{phase.name}</h3>}
       <TodoList
         className="omfp-tool-card__todo"

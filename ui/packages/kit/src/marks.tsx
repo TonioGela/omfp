@@ -190,7 +190,7 @@ export function Meter({ value, max, label, threshold = 0.8, className, "data-tes
           <span className="omfp-gauge__bar">
             <span className="omfp-gauge__fill" style={{ inlineSize: `${percentage}%` }} />
           </span>
-          <span className="omfp-gauge__text">
+          <span>
             {compactNumber(value)}/{compactNumber(max)}
           </span>
         </>

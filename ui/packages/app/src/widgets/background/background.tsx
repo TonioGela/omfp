@@ -79,7 +79,7 @@ function Background({ threadId }: { threadId: string }): ReactNode {
     }
   };
   return (
-    <section className="omfp-subagents omfp-background" data-testid="background" aria-label={text.label}>
+    <section className="omfp-subagents" data-testid="background" aria-label={text.label}>
       {rows.length === 0 ? (
         <EmptyState icon="inbox" title={text.none} data-testid="background-none">
           {text.noneHint}

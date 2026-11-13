@@ -176,13 +176,7 @@ function StreamingMarkdown({
 function ThinkingBlock({ cardKey, text: thinking }: { cardKey: string; text: string }) {
   const [expanded, setExpanded] = useExpanded(cardKey, false);
   return (
-    <Thinking
-      className="omfp-thinking"
-      data-testid="thinking"
-      label={text.thinking}
-      expanded={expanded}
-      onExpandedChange={setExpanded}
-    >
+    <Thinking data-testid="thinking" label={text.thinking} expanded={expanded} onExpandedChange={setExpanded}>
       {thinking}
     </Thinking>
   );
@@ -191,7 +185,7 @@ function ThinkingBlock({ cardKey, text: thinking }: { cardKey: string; text: str
 function RecordBlock({ cardKey, summary, json }: { cardKey: string; summary: string; json: string }) {
   const [expanded, setExpanded] = useExpanded(cardKey, false);
   return (
-    <div className="omfp-record" data-testid="record" data-expanded={expanded}>
+    <div data-testid="record" data-expanded={expanded}>
       <Disclosure title={summary} expanded={expanded} onExpandedChange={setExpanded} level={2}>
         <Code code={json} block data-testid="record-json" />
       </Disclosure>
@@ -224,7 +218,6 @@ export function ToolCardView({ cardKey, card }: { cardKey: string; card: Card })
       data-omfp-path={target?.path}
       data-omfp-line={target?.open.line}
       data-omfp-diff={target?.open.diff === true ? "" : undefined}
-      className="omfp-tool-card"
       data-testid="tool-card"
       data-tool={card.name}
       data-call={card.toolCallId}
@@ -296,7 +289,7 @@ export function NoticeRowView({ cardKey, row }: { cardKey: string; row: NoticeRo
   }
   return (
     <div className="omfp-notice" data-testid="notice" data-kind={row.kind} data-level={row.level}>
-      <span className="omfp-notice__text">{row.text}</span>
+      <span>{row.text}</span>
       {row.json !== undefined && (
         <Disclosure title={text.details} expanded={expanded} onExpandedChange={setExpanded} level={2}>
           <Code code={row.json} block data-testid="notice-json" />
@@ -326,7 +319,7 @@ function CommandOutputCard({ row }: { row: NoticeRow }): ReactNode {
       </pre>
       {row.urls.map((url) => (
         <div key={url} className="omfp-command__url" data-testid="opened-url" data-url={url}>
-          <span className="omfp-command__url-label">{text.notice.openedUrl}</span>
+          <span>{text.notice.openedUrl}</span>
           <code className="omfp-command__url-text">{url}</code>
           <Button
             size="sm"
@@ -350,11 +343,7 @@ function CommandOutputCard({ row }: { row: NoticeRow }): ReactNode {
           </Button>
         </div>
       ))}
-      {row.urls.length > 0 && (
-        <p className="omfp-command__note" data-testid="loopback-note">
-          {text.notice.loopbackNote}
-        </p>
-      )}
+      {row.urls.length > 0 && <p data-testid="loopback-note">{text.notice.loopbackNote}</p>}
     </section>
   );
 }

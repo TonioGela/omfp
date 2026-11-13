@@ -210,7 +210,6 @@ export function LeftSplitter({ aside }: { aside: RefObject<HTMLElement | null> }
       orientation="vertical"
       label={text.leftSplitter}
       value={frameRem > 0 ? (current / frameRem) * 100 : 0}
-      className="omfp-frame__splitter"
       data-testid="left-splitter"
       onPreview={(delta) =>
         showWidth(aside.current, delta === undefined ? width : resizeLeft(current, delta, frameRemOf(aside.current)))

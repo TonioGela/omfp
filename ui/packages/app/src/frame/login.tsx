@@ -346,7 +346,6 @@ function ProviderPicker({
         ) : (
           <ListBox
             aria-label={text.pickerLabel}
-            className="omfp-login__providers"
             items={providers.providers}
             disabledKeys={providers.providers.filter((provider) => !provider.available).map((provider) => provider.id)}
             onAction={(key) => onPick(String(key))}
@@ -360,7 +359,7 @@ function ProviderPicker({
                 data-testid="login-provider"
                 data-provider={provider.id}
               >
-                <span className="omfp-login__name">{provider.name}</span>
+                <span>{provider.name}</span>
                 <code className="omfp-login__id">{provider.id}</code>
                 {provider.authenticated && (
                   <span className="omfp-login__mark" data-testid="login-authenticated">

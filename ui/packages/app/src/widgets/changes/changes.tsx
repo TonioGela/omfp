@@ -188,11 +188,7 @@ function RepoHead({ repo, level, summary }: { repo: ChangesRepo; level: 2 | 3; s
       <span className="omfp-changes__repo-name" title={repo.name}>
         {repo.name}
       </span>
-      {repo.isWorkspace && (
-        <Badge className="omfp-changes__workspace-mark" data-testid="changes-workspace-mark">
-          {text.workspace}
-        </Badge>
-      )}
+      {repo.isWorkspace && <Badge data-testid="changes-workspace-mark">{text.workspace}</Badge>}
       <span className="omfp-changes__branch" title={repo.branch} data-testid="changes-branch">
         <Icon name="git-branch" />
         <span className="omfp-changes__branch-name">{repo.branch}</span>

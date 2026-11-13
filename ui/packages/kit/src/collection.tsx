@@ -127,9 +127,9 @@ export interface MenuSectionProps<T extends object> extends AriaMenuSectionProps
   title?: ReactNode;
 }
 
-export function MenuSection<T extends object>({ title, className, children, items, ...props }: MenuSectionProps<T>) {
+export function MenuSection<T extends object>({ title, children, items, ...props }: MenuSectionProps<T>) {
   return (
-    <AriaMenuSection {...props} className={cx("omfp-menu__section", className)}>
+    <AriaMenuSection {...props}>
       {title !== undefined && <Header className="omfp-menu__header">{title}</Header>}
       {typeof children === "function" ? (
         <Collection {...(items === undefined ? {} : { items })}>{children}</Collection>
@@ -228,7 +228,7 @@ export interface SelectOptionProps<T extends object> extends Omit<ListBoxItemPro
 /** A listbox option with a check column (primary check when selected), label and metadata (UI-152). */
 export function SelectOption<T extends object>({ meta, children, className, ...props }: SelectOptionProps<T>) {
   return (
-    <AriaListBoxItem {...props} className={withClass("omfp-listbox__item omfp-option", className)}>
+    <AriaListBoxItem {...props} className={withClass("omfp-listbox__item", className)}>
       {({ isSelected }) => (
         <>
           <span className="omfp-option__check">{isSelected && <Icon name="check" />}</span>

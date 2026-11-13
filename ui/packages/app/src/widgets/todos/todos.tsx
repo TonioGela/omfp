@@ -38,14 +38,7 @@ export function TodosWidget(_props: WidgetProps): ReactNode {
         </EmptyState>
       ) : (
         view.phases.map((phase) => (
-          <BorderBox
-            key={phase.name}
-            title={phase.name}
-            level={2}
-            end={phase.progress}
-            className="omfp-todos__phase"
-            data-testid="todos-phase"
-          >
+          <BorderBox key={phase.name} title={phase.name} level={2} end={phase.progress} data-testid="todos-phase">
             <TodoList
               itemTestId="todos-task"
               items={phase.tasks.map((task) => ({

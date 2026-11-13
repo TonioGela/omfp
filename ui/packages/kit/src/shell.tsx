@@ -215,7 +215,7 @@ export function CommandMenu({
       <div className="omfp-cmdmenu__title" aria-hidden="true">
         ╭─ {title}
       </div>
-      <div role="listbox" {...listProps} className={cx("omfp-cmdmenu__list", listProps?.className)}>
+      <div role="listbox" {...listProps}>
         {children}
       </div>
       {footer !== undefined && <div className="omfp-cmdmenu__foot">{footer}</div>}
@@ -358,7 +358,7 @@ export function WorkspaceSection({
         {count !== undefined && <span className="omfp-wsection__count">{count}</span>}
         {actions !== undefined && <span className="omfp-wsection__actions">{actions}</span>}
       </div>
-      {expanded && <div className="omfp-wsection__rows">{children}</div>}
+      {expanded && <div>{children}</div>}
     </section>
   );
 }
@@ -655,9 +655,9 @@ export interface WhichKeyGroupProps extends Omit<HTMLAttributes<HTMLDivElement>,
 }
 
 /** One group of the which-key panel: its name (read before its keys), then its keys. */
-export function WhichKeyGroup({ title, className, children, ...props }: WhichKeyGroupProps) {
+export function WhichKeyGroup({ title, children, ...props }: WhichKeyGroupProps) {
   return (
-    <div {...props} className={cx("omfp-whichkey__group", className)}>
+    <div {...props}>
       {title !== undefined && <div className="omfp-whichkey__group-title">{title}</div>}
       <dl className="omfp-whichkey__rows">{children}</dl>
     </div>

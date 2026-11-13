@@ -153,7 +153,7 @@ function InteractionCard({ threadId, request, first }: { threadId: string; reque
       data-kind={request.method}
       aria-busy={answered}
       aria-label={heading}
-      title={<span className="omfp-interaction__title">{headline}</span>}
+      title={headline}
       meta={timeout === undefined ? undefined : <Countdown timeout={timeout} shownAt={shownAt} />}
     >
       {details.length > 0 && (
@@ -217,7 +217,7 @@ function DismissButton({ disabled, onRespond }: Pick<BodyProps<unknown>, "disabl
 function SelectBody({ request, disabled, onRespond }: BodyProps<SelectUiRequest>) {
   const approval = request.title.startsWith(APPROVAL_TITLE);
   return (
-    <div className="omfp-request__actions omfp-interaction__options">
+    <div className="omfp-request__actions">
       <Toolbar className="omfp-request__actions" aria-label={request.title} data-testid="interaction-options">
         {request.options.map((option, index) => (
           <Button
@@ -248,7 +248,7 @@ function ConfirmBody({ request, disabled, onRespond }: BodyProps<ConfirmUiReques
   return (
     <>
       <p className="omfp-interaction__message">{request.message}</p>
-      <div className="omfp-request__actions omfp-interaction__options">
+      <div className="omfp-request__actions">
         <Button
           data-testid="interaction-confirm"
           variant="primary"

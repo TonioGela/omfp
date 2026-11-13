@@ -56,7 +56,7 @@ function PickerInput({ picker }: { picker: FilePicker }): ReactNode {
     event.stopPropagation();
   };
   return (
-    <div className="omfp-cmdline omfp-file-picker" data-testid="file-picker">
+    <div className="omfp-cmdline" data-testid="file-picker">
       <CommandMenu
         className="omfp-cmdline__menu"
         title={strings.shell.frame.filesMenu}

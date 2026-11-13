@@ -88,10 +88,10 @@ export interface SheetSectionProps extends Omit<HTMLAttributes<HTMLElement>, "ti
 }
 
 /** One group of a sheet: its heading, then its rows. */
-export function SheetSection({ title, className, children, ...props }: SheetSectionProps) {
+export function SheetSection({ title, children, ...props }: SheetSectionProps) {
   const heading = useId();
   return (
-    <section {...props} className={cx("omfp-sheet__section", className)} aria-labelledby={heading}>
+    <section {...props} aria-labelledby={heading}>
       <h3 id={heading} className="omfp-sheet__heading">
         {title}
       </h3>

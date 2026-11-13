@@ -29,7 +29,7 @@ export function Progress({ value, max = 100, label, hideLabel = false, className
       {({ percentage, valueText }) => (
         <>
           <div className={cx("omfp-progress__head", hideLabel && "omfp-visually-hidden")}>
-            <Label className="omfp-progress__label">{label}</Label>
+            <Label>{label}</Label>
             {!indeterminate && <span className="omfp-progress__value">{valueText}</span>}
           </div>
           <div className="omfp-progress__track">
