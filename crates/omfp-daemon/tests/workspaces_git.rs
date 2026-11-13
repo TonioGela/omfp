@@ -8,7 +8,6 @@ use omfp_daemon::git::{ChangedFile, Git, GitCli, WorktreeBranch};
 use omfp_daemon::store::Store;
 use omfp_daemon::workspaces::{
     Discovered, NewWorkspace, RepoKind, RepoSource, WorkspaceError, WorkspaceView, Workspaces,
-    fingerprint,
 };
 use omfp_testkit::TempRepo;
 use tempfile::TempDir;
@@ -476,48 +475,4 @@ fn git_cli_reports_toplevel_main_root_branch_head_and_upstream() {
     assert_eq!(env.git.current_branch(&env.root).unwrap(), None);
     assert_eq!(env.git.upstream(&env.root).unwrap(), None);
     assert_eq!(env.git.head(&env.root).unwrap(), Some(env.head_of(&wt)));
-}
-
-// spec: DMN-023
-/// Measures the cheap check (no git call) on a workspace of five real repositories: two links, a worktree and two
-/// clones. Run with `cargo nextest run -p omfp-daemon --run-ignored only --no-capture cheap_check`.
-#[test]
-#[ignore = "measurement: prints the median duration of the cheap check"]
-fn the_cheap_check_of_a_five_repository_workspace_takes_microseconds() {
-    let env = env();
-    let other = TempRepo::new().unwrap();
-    let folder = env.create("bench").workspace.path;
-    symlink(&env.root, folder.join("app")).unwrap();
-    symlink(other.path(), folder.join("lib")).unwrap();
-    let branch = WorktreeBranch::New {
-        name: "topic".into(),
-        base_ref: "main".into(),
-    };
-    env.git
-        .worktree_add(&env.root, &folder.join("wt"), &branch)
-        .unwrap();
-    for clone in ["copy", "copy-2"] {
-        env.git
-            .clone_repo(env.root.to_str().unwrap(), &folder.join(clone))
-            .unwrap();
-    }
-    std::fs::create_dir_all(folder.join(".omp")).unwrap();
-    std::fs::write(folder.join("notes.md"), "x").unwrap();
-
-    let mut times: Vec<std::time::Duration> = (0..2000)
-        .map(|_| {
-            let start = std::time::Instant::now();
-            std::hint::black_box(fingerprint(&folder));
-            start.elapsed()
-        })
-        .collect();
-    times.sort_unstable();
-
-    let (median, p90) = (times[times.len() / 2], times[times.len() * 9 / 10]);
-    println!(
-        "cheap check of 5 repositories: median {} µs, p90 {} µs",
-        median.as_micros(),
-        p90.as_micros()
-    );
-    assert!(median < std::time::Duration::from_millis(5), "{median:?}");
 }

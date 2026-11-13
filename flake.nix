@@ -252,6 +252,9 @@
             }
             // lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
               CHROME_BIN = lib.getExe pkgs.chromium;
+              # The WebKitGTK journeys' driver (e2e::WebKitDriver): `cargo test` does not find it on PATH, whose
+              # entry for it holds a `=`.
+              OMFP_WEBKIT_WEBDRIVER = "${pkgs.webkitgtk_4_1}/bin/WebKitWebDriver";
               # The only fonts of the e2e browsers (e2e/src/lib.rs), never the host's: CI's purged runner has none, and
               # Chromium's renderer crashes without any. fontconfig's own rules map the generic families (and a "Mono"
               # or "Serif" in a family name) onto DejaVu.

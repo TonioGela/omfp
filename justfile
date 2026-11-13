@@ -18,6 +18,11 @@ test-contract:
 # fake LLM; their screenshots for a look by eye go to a new directory of the run (or `OMFP_SCREENSHOT_DIR`)
 test-e2e: (with-web-bundle 'export OMFP_SCREENSHOT_DIR="${OMFP_SCREENSHOT_DIR:-$(mktemp -d /tmp/omfp-shots-XXXXXX)}"; echo "screenshots: $OMFP_SCREENSHOT_DIR"; cargo nextest run -p e2e')
 
+# spec: TST-115 — the benchmarks (`benchmark_*` in e2e/tests, ignored): timings of the transcript, typing and big files
+# in headless Chromium and WebKitGTK and of view switches, printed, one at a time on a release build; by hand, not in
+# `just ci`. Arguments go to nextest, e.g. a test name: `just bench benchmark_file_webkit`
+bench *args: (with-web-bundle "cargo nextest run -p e2e --release --run-ignored only --no-capture --test-threads 1 -E 'test(/^benchmark_/)' " + args)
+
 # spec: TST-033, TST-090, TST-091, ENV-040 — the desktop window (`--features desktop`): on Linux (WebKitGTK) under
 # `xvfb-run`, on macOS (WKWebView, the menu bar item; the darwin dev shell) on the logged-in user's screen; the smoke
 # test and the background daemon shared by two windows; one test at a time, as parallel `xvfb-run -a` can pick the same

@@ -6,13 +6,8 @@
 //!
 //! The test asserts that both switches back show the text at once (the kept view; the window's last result of the
 //! dropped one) and prints the timings (TST-108). The benchmark prints the timings only, so it also runs against a
-//! bundle without kept views for a comparison; it is not part of `just ci`:
-//!
-//! ```sh
-//! just build-web
-//! cargo test -p e2e --release --test view_switch benchmark_view_switch -- --ignored --nocapture
-//! OMFP_WEB_BUNDLE=<another bundle> cargo test -p e2e --release --test view_switch benchmark_view_switch -- --ignored --nocapture
-//! ```
+//! bundle without kept views for a comparison; it is ignored, and `just bench` runs it by hand (TST-115), also on
+//! another bundle (`OMFP_WEB_BUNDLE=<bundle> just bench`).
 
 use std::path::Path;
 
@@ -230,7 +225,7 @@ async fn switching_back_shows_the_widget_with_its_data_at_once() -> anyhow::Resu
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "benchmark: prints timings, asserts nothing"]
+#[ignore = "benchmark: prints timings, asserts nothing (`just bench`)"]
 async fn benchmark_view_switch() -> anyhow::Result<()> {
     let journey = start().await?;
     run(&journey, 5).await?;

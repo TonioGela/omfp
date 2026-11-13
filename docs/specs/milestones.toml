@@ -1015,6 +1015,7 @@ requirements = [
   # QA fixes: tests and tooling
   "TST-112",
   "TST-113",
+  "TST-115",
 ]
 
 [M15]

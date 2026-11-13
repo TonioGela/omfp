@@ -1,20 +1,15 @@
 //! Transcript pinning (UI-042) against a daemon on the fake launcher. While a tool runs, in headless Chromium: a bash
 //! call streams its output into an expanded card, which grows the transcript, while the user scrolls up with the
 //! wheel (a real wheel event through CDP's `Input.dispatchMouseEvent`) and with `PageUp`. While a reply streams, in
-//! headless Chromium and (ignored by default) `WebKitGTK`, the engine of `omfp desktop`: text deltas at a model's rate
+//! headless Chromium and in `WebKitGTK`, the engine of `omfp desktop`: text deltas at a model's rate
 //! grow a long last message while the user scrolls up with the wheel, `PageUp`, and a scrollbar drag. The view must
 //! stay where the user scrolled to and unpinned; `End` pins it again and the growth then keeps the bottom in view.
 //!
 //! Chromium gets a touchpad's many small wheel deltas and a mouse wheel's few notches from WebDriver's wheel input
 //! source. `WebKitGTK`'s `WebKitWebDriver` dispatches those wheel events without scrolling, so the `WebKitGTK` case
 //! clicks the wheel buttons on its X server with `xdotool`: `WebKitGTK` then scrolls smoothly, a few pixels per frame,
-//! as for the user. It drives nixpkgs' `MiniBrowser` through `WebKitWebDriver` under `xvfb-run`, never the user's
-//! display:
-//!
-//! ```sh
-//! just build-web
-//! OMFP_WEBKIT_WEBDRIVER=$(command -v WebKitWebDriver) cargo test -p e2e --test scroll -- --ignored
-//! ```
+//! as for the user. It drives nixpkgs' `MiniBrowser` through `WebKitWebDriver` (`OMFP_WEBKIT_WEBDRIVER` of the dev
+//! shell) under `xvfb-run`, never the user's display.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -652,7 +647,6 @@ async fn scrolling_up_while_a_reply_streams_stays_where_the_user_scrolled() -> a
 
 // spec: UI-042
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "WebKitGTK: needs OMFP_WEBKIT_WEBDRIVER (see the file header)"]
 async fn scrolling_up_while_a_reply_streams_stays_where_the_user_scrolled_in_webkitgtk()
 -> anyhow::Result<()> {
     let launcher = FakeLauncher::new();

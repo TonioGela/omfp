@@ -160,9 +160,9 @@ impl Drop for ChromeDriver {
     }
 }
 
-/// `WebKitWebDriver` (`OMFP_WEBKIT_WEBDRIVER`, else from `PATH`; inside `cargo test` the dev shell's driver is not
-/// found on `PATH`, its store path contains `=`) under its own X server: `xvfb-run`, never the user's display. It
-/// drives nixpkgs' `MiniBrowser`, the `WebKitGTK` engine of `omfp desktop`. The whole process group is killed on drop.
+/// `WebKitWebDriver` (`OMFP_WEBKIT_WEBDRIVER`, set by the dev shell) under its own X server: `xvfb-run`, never the
+/// user's display. It drives nixpkgs' `MiniBrowser`, the `WebKitGTK` engine of `omfp desktop`. The whole process group
+/// is killed on drop.
 #[derive(Debug)]
 pub struct WebKitDriver {
     child: Child,
@@ -177,12 +177,7 @@ impl WebKitDriver {
         use std::os::unix::process::CommandExt;
         let driver = std::env::var_os("OMFP_WEBKIT_WEBDRIVER")
             .map(PathBuf::from)
-            .or_else(|| {
-                std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default())
-                    .map(|dir| dir.join("WebKitWebDriver"))
-                    .find(|path| path.is_file())
-            })
-            .context("set OMFP_WEBKIT_WEBDRIVER to WebKitWebDriver")?;
+            .context("set OMFP_WEBKIT_WEBDRIVER to WebKitWebDriver (run inside `nix develop`)")?;
         let browser = driver
             .parent()
             .and_then(Path::parent)

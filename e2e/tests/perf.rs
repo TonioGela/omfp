@@ -8,18 +8,9 @@
 //! The tests run in headless Chromium and assert structure only (TST-052, TST-107): the DOM stays bounded with 10,000
 //! messages (UI-190), a streamed delta re-renders the streaming row and no other transcript item (UI-191), a key press
 //! in the composer renders the input and nothing else (UI-197), and a 20,000-line file scrolls in the editor's own
-//! scroller, inside a layout root, with a bounded DOM, read-only and as a diff (UI-118). The benchmarks print timings
-//! and assert nothing; they are not part of `just ci`:
-//!
-//! ```sh
-//! just build-web
-//! cargo test -p e2e --release --test perf benchmark_transcript -- --ignored --nocapture
-//! cargo test -p e2e --release --test perf benchmark_typing_chromium -- --ignored --nocapture
-//! cargo test -p e2e --release --test perf benchmark_file_chromium -- --ignored --nocapture
-//! export OMFP_WEBKIT_WEBDRIVER=$(command -v WebKitWebDriver)
-//! cargo test -p e2e --release --test perf benchmark_typing_webkit -- --ignored --nocapture
-//! cargo test -p e2e --release --test perf benchmark_file_webkit -- --ignored --nocapture
-//! ```
+//! scroller, inside a layout root, with a bounded DOM, read-only and as a diff (UI-118). The benchmarks (`benchmark_*`)
+//! print timings and assert nothing; they are ignored, and `just bench` runs them by hand (TST-115). The transcript
+//! benchmark also runs on a short thread in `just test-e2e`, so its code keeps working (TST-100).
 //!
 //! `OMFP_PERF_MESSAGES` (default 10000 for the transcript, 300 for typing), `OMFP_PERF_RATE` (events per second,
 //! default 100) and `OMFP_PERF_SECONDS` (default 10) change the load; with `OMFP_PERF_PROFILE=1` the Chromium
@@ -809,13 +800,8 @@ async fn switch_timed(journey: &Journey, name: &str, id: &str, shown: &str) -> a
     Ok(())
 }
 
-// spec: TST-100
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "benchmark: prints timings, asserts nothing"]
-async fn benchmark_transcript() -> anyhow::Result<()> {
-    let messages = usize::try_from(env_number("OMFP_PERF_MESSAGES", 10_000))?;
-    let rate = env_number("OMFP_PERF_RATE", 100);
-    let seconds = env_number("OMFP_PERF_SECONDS", 10);
+/// The transcript benchmark on a thread of `messages` messages, streaming at `rate` events per second for `seconds`.
+async fn transcript_benchmark(messages: usize, rate: u64, seconds: u64) -> anyhow::Result<()> {
     let launcher = FakeLauncher::new();
     launcher.push_run(FakeRun::fresh().with_history(history(messages)));
     let journey = Journey::start_fake(launcher.clone()).await?;
@@ -883,6 +869,23 @@ async fn benchmark_transcript() -> anyhow::Result<()> {
     report("streaming 200 deltas, renders tracked", &recording, 200);
 
     journey.finish("transcript benchmark").await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "benchmark: prints timings, asserts nothing (`just bench`)"]
+async fn benchmark_transcript() -> anyhow::Result<()> {
+    transcript_benchmark(
+        usize::try_from(env_number("OMFP_PERF_MESSAGES", 10_000))?,
+        env_number("OMFP_PERF_RATE", 100),
+        env_number("OMFP_PERF_SECONDS", 10),
+    )
+    .await
+}
+
+// spec: TST-100, TST-115
+#[tokio::test(flavor = "multi_thread")]
+async fn the_transcript_benchmark_runs_on_a_short_thread() -> anyhow::Result<()> {
+    transcript_benchmark(200, 100, 1).await
 }
 
 /// The text typed into the composer, one key at a time.
@@ -1191,7 +1194,7 @@ async fn typing_runs(
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "benchmark: prints timings, asserts nothing"]
+#[ignore = "benchmark: prints timings, asserts nothing (`just bench`)"]
 async fn benchmark_typing_chromium() -> anyhow::Result<()> {
     let messages = usize::try_from(env_number("OMFP_PERF_MESSAGES", 300))?;
     let launcher = FakeLauncher::new();
@@ -1229,7 +1232,7 @@ fn probed_bundle(source: &Path, into: &Path) -> anyhow::Result<PathBuf> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "benchmark: prints timings, asserts nothing"]
+#[ignore = "benchmark: prints timings, asserts nothing (`just bench`)"]
 async fn benchmark_typing_webkit() -> anyhow::Result<()> {
     let messages = usize::try_from(env_number("OMFP_PERF_MESSAGES", 300))?;
     let launcher = FakeLauncher::new();
@@ -1713,7 +1716,7 @@ async fn file_runs(
 
 // spec: TST-107
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "benchmark: prints timings, asserts nothing"]
+#[ignore = "benchmark: prints timings, asserts nothing (`just bench`)"]
 async fn benchmark_file_chromium() -> anyhow::Result<()> {
     let launcher = FakeLauncher::new();
     launcher.push_run(FakeRun::fresh());
@@ -1732,7 +1735,7 @@ async fn benchmark_file_chromium() -> anyhow::Result<()> {
 
 // spec: TST-107
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "benchmark: prints timings, asserts nothing"]
+#[ignore = "benchmark: prints timings, asserts nothing (`just bench`)"]
 async fn benchmark_file_webkit() -> anyhow::Result<()> {
     let launcher = FakeLauncher::new();
     launcher.push_run(FakeRun::fresh());

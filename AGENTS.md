@@ -47,6 +47,7 @@ just gen-states                  # golden reducer states fixtures/states/<ver>/ 
 just gen-ts                      # ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas
 just gen-bun-nix                 # ui/bun.nix from ui/bun.lock (bun2nix), after every JS dependency change
 just test-e2e                    # L5 journeys: builds a private web bundle, headless Chromium + daemon + omp + fake LLM; shots in a new /tmp/omfp-shots-*
+just bench                       # e2e benchmarks (`benchmark_*`, ignored elsewhere): timings by hand, not in `just ci`
 just test-desktop                # `omfp --features desktop`: desktop unit tests + the Tauri window under xvfb-run (TST-033)
 just build-web                   # release bundle of the TypeScript UI into ui/packages/app/dist (`bun run build`)
 just serve [daemon args]         # try the app: release bundle + `omfp daemon` with your HOME, ~/.omp, default data dir
