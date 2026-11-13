@@ -71,6 +71,40 @@ export function linkReference(href: string | undefined): PathReference | undefin
   return namesFile(decoded) ? { path: decoded, line: line === undefined ? undefined : Number(line) } : undefined;
 }
 
+/**
+ * `target`, a path relative to the folder `base` (a Markdown file's folder, `""` for the root), as one path: empty and
+ * `.` segments dropped, `..` folding the segment before it (kept when there is none, past the root).
+ */
+export function resolvePath(base: string, target: string): string {
+  const segments: string[] = [];
+  for (const segment of [...base.split("/"), ...target.split("/")]) {
+    if (segment === "" || segment === ".") {
+      continue;
+    }
+    if (segment === ".." && segments.length > 0 && segments.at(-1) !== "..") {
+      segments.pop();
+    } else {
+      segments.push(segment);
+    }
+  }
+  return segments.join("/");
+}
+
+/** The file path of a Markdown image's source when it is relative (`img/a.png`, `../a%20b.png`), without its query or
+ * fragment; never a URL, a `data:` URL, an absolute or protocol-relative path. */
+export function relativeSource(src: string | undefined): string | undefined {
+  if (src === undefined || src.startsWith("/") || src.startsWith("#") || SCHEME.test(src)) {
+    return undefined;
+  }
+  const target = src.split(/[?#]/, 1)[0] ?? "";
+  try {
+    const decoded = decodeURI(target);
+    return decoded === "" ? undefined : decoded;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface PathLinkProps {
   readonly reference: PathReference;
   readonly onOpen: OpenPath;

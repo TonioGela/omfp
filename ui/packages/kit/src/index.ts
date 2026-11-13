@@ -153,7 +153,7 @@ export {
   VoiceMeter,
 } from "./live.tsx";
 export { type LogoGradient, LogoIcon, LogoMark, type LogoProps, Wordmark } from "./logo.tsx";
-export { Code, type CodeProps, Markdown, type MarkdownProps } from "./markdown.tsx";
+export { Code, type CodeProps, Markdown, type MarkdownImageProps, type MarkdownProps } from "./markdown.tsx";
 export {
   Count,
   type CountProps,
@@ -184,6 +184,8 @@ export {
   type PathLinkProps,
   type PathReference,
   pathReference,
+  relativeSource,
+  resolvePath,
 } from "./paths.tsx";
 export { PdfView, type PdfViewLabels, type PdfViewProps } from "./pdf.tsx";
 export {

@@ -351,6 +351,9 @@ export const shell = {
     unified: "Unified",
     split: "Side by side",
     layout: "Diff layout",
+    /** The toggle between a file's source and its viewer (UI-560), named by the viewer. */
+    viewers: { markdown: "Preview" },
+    previewLabel: (path: string) => `${path} rendered`,
     saved: (path: string) => `Saved ${path}`,
     saveFailed: (error: string) => `Cannot save: ${error}`,
     unsaved: "Unsaved changes: save with :w, or drop them with :q!",

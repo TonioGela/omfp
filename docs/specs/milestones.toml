@@ -1067,4 +1067,9 @@ requirements = [
   "UI-554",
   "UI-555",
   "E2E-53",
+  # File viewers of omfp:file: the Markdown preview, its links and images
+  "UI-560",
+  "UI-561",
+  "UI-562",
+  "E2E-57",
 ]

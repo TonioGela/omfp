@@ -1922,6 +1922,26 @@
     inline-size: min(100%, 40rem);
   }
 
+  /* A file's viewer (UI-560): the rendered form, scrolled in its own box. */
+  .omfp-file__viewer {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow: auto;
+    padding: var(--omfp-s3) var(--omfp-s4);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+  }
+
+  /* A relative image without a URL to load it from (UI-562): its alt text, framed like a missing image. */
+  .omfp-file__image-alt {
+    display: inline-block;
+    padding: 0 var(--omfp-s1);
+    border: var(--omfp-bw) dashed var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+    color: var(--omfp-on-surface-variant);
+    font-style: italic;
+  }
+
   /* Sized by its text up to 60vh: no size containment (the kit's UI-118 layout root). */
   .omfp-changes__merge {
     max-block-size: 60vh;

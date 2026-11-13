@@ -4,7 +4,8 @@
  * the file on disk against the user's text and writes nothing until the user decides. `diff` shows the whole file
  * against `HEAD`, unified or side by side. The text follows the file on disk while it has no unsaved change. Images
  * zoom, pan and compare with `HEAD` (image.tsx, UI-548..UI-555); video and audio files play in the browser's player
- * (media.tsx, UI-541); PDF documents show in the kit's viewer (pdf.tsx, UI-547).
+ * (media.tsx, UI-541); PDF documents show in the kit's viewer (pdf.tsx, UI-547). A file with a viewer (`viewers.tsx`:
+ * Markdown, UI-560) shows it while read-only, with a toggle to its source.
  */
 
 import type { FileContent } from "@omfp/protocol";
@@ -34,6 +35,7 @@ import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useStat
 import { ImageFile } from "./image.tsx";
 import { extension, MediaFile, mediaKind } from "./media.tsx";
 import { PdfFile } from "./pdf.tsx";
+import { viewerOf } from "./viewers.tsx";
 
 const text = strings.shell.file;
 
@@ -172,6 +174,9 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
   const [mine, setMine] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const editable = file.truncated !== true;
+  // A file with a viewer shows it while read-only, until the toggle shows the source (UI-560).
+  const viewer = viewerOf(file.path);
+  const [preview, setPreview] = useState(true);
 
   // The file on disk changed: follow it while nothing is unsaved (UI-110).
   useEffect(() => {
@@ -223,7 +228,8 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
   );
 
   const editing = mode !== "view";
-  const showEditor = mode !== "view" || !showDiff;
+  const previewing = mode === "view" && !showDiff && preview && viewer !== undefined;
+  const showEditor = mode !== "view" || (!showDiff && !previewing);
   return (
     <>
       <div className="omfp-file__bar" data-testid="file-bar">
@@ -233,6 +239,21 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
           <span data-testid="file-path">{file.path}</span>
         </span>
         <span className="omfp-file__actions">
+          {mode === "view" && viewer !== undefined && (
+            <Button
+              size="sm"
+              variant="quiet"
+              aria-pressed={previewing}
+              onPress={() => {
+                // Over the diff, the toggle shows the viewer; else it switches between the viewer and the source.
+                setPreview((on) => showDiff || !on);
+                setShowDiff(false);
+              }}
+              data-testid="file-view-toggle"
+            >
+              {viewer.label}
+            </Button>
+          )}
           {mode === "view" && (
             <Button
               size="sm"
@@ -306,6 +327,11 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
         />
       )}
       {mode === "view" && showDiff && <HeadDiff file={file} content={content} layout={layout} />}
+      {previewing && (
+        <div className="omfp-file__viewer" data-testid="file-viewer" data-viewer={viewer.name}>
+          <viewer.View file={file} content={content} />
+        </div>
+      )}
       {showEditor && (
         <CodeEditor
           className="omfp-file__editor"

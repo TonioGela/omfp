@@ -55,7 +55,7 @@ while the thread's summary has an MCP reason in `restartPending`, "Reload to loa
 `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against `HEAD`; video and audio files play
 in the browser's player; `.pdf` files show in `PdfView`; images, any size, in `ImageView`, compared with `HEAD` when
-they differ).
+they differ; Markdown files show rendered while read-only, with a Preview toggle to the source).
 Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
 written to `views.json`. Keep the main slot, `["tabs", {"id": "main"}, …"omfp:chat"]`, in every view: the files the
 user opens become its tabs (without it they float in a panel). `:widget add` and `omfp_ui_mount` put side tabs in the

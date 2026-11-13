@@ -672,13 +672,17 @@ HTTP ([02 — Files of a workspace](02-daemon.md#files-of-a-workspace-m5c), DMN-
 `omfp:file` plays video and audio files in the browser's players (UI-541, UI-542) and shows PDF documents in the kit's
 pdf.js viewer, with zoom, a page indicator and selectable text (UI-543..UI-547). Images of any size zoom and pan, and
 compare with their `HEAD` version, which the daemon serves under `?rev=HEAD` (DMN-255), side by side or under a slider
-(UI-548..UI-555).
+(UI-548..UI-555). Text formats show rendered while the file is read-only, with a toggle back to the source
+([04 — File viewers](04-ui.md#file-viewers-m16)): Markdown files (`.md`, `.markdown`, `.mdx`) as the app's Markdown
+preview (UI-560), their relative links opening the files they name next to them (UI-561) and their relative images
+loaded from the daemon's raw-file URL when the SDK serves one, else named by their alt text (UI-562).
 
 Acceptance: a media element, an image or `fetch` loads a workspace file of any size by URL alone, seeks with byte
 ranges, revalidates with its validators; a wrong key, a path leaving the workspace and a missing file are `404`; a
 WAV and a WebM opened with `:open` load and seek in their players (E2E-51); a PDF opened with `:open` draws its pages
 with their text and follows the scroll and the zoom (E2E-52); an image over 8 MiB changed since `HEAD` zooms, pans and
-compares with `HEAD` (E2E-53).
+compares with `HEAD` (E2E-53); the component tests of the viewers pass, and a journey opens a Markdown file of a
+workspace, follows its relative link and toggles to the source (E2E-57).
 
 Design: media elements and `<img>` cannot send the token in a header, and the token must never travel in a URL
 (PRT-002), so the route uses a capability URL like widget modules (DMN-084): a random key made at startup, given only
@@ -688,6 +692,12 @@ signed per-file URLs with an expiry (a long video's range requests outlive any s
 need a round trip first). A leaked file URL opens the workspace files until the daemon restarts, never the
 protocol. Files are served with `Content-Security-Policy: sandbox`, so a workspace's HTML or SVG opened at its URL
 cannot read the window's token from the origin's storage.
+
+The text viewers are chosen by the file's extension in one small table of the widget's folder (`viewers.tsx`), each
+viewer in its own file, so the built-in stays copyable (AGT-021) and other viewers join without touching the editor's
+code. The Markdown preview reuses the kit's renderer, which gained the folder relative links and images resolve
+against (`linkBase`) and a component for relative images; the raw-file route's hook is looked up at run time, so the
+preview does not depend on it at compile time.
 
 ## Terminal (removed)
 

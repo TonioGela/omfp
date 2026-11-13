@@ -1,9 +1,9 @@
-import { type HTMLAttributes, useMemo } from "react";
+import { type ComponentType, type HTMLAttributes, useMemo } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cx } from "./class.ts";
 import { Highlighted } from "./highlight.tsx";
-import { linkReference, type OpenPath, PathLink, pathReference } from "./paths.tsx";
+import { linkReference, type OpenPath, PathLink, pathReference, relativeSource, resolvePath } from "./paths.tsx";
 
 const REMARK_PLUGINS = [remarkGfm];
 
@@ -51,13 +51,18 @@ const COMPONENTS = {
 } satisfies Components;
 
 /** {@link COMPONENTS} where file paths open with `onOpen` (UI-116): inline code that reads as a path, and links to a
- * relative path. A fenced block's text ends with a line break, so it never counts as inline code. */
-function withPaths(onOpen: OpenPath): Components {
+ * relative path (resolved against `linkBase` when given, UI-561). A fenced block's text ends with a line break, so it
+ * never counts as inline code. */
+function withPaths(onOpen: OpenPath, linkBase: string | undefined): Components {
   const { a: Link, code: CodeElement } = COMPONENTS;
   return {
     ...COMPONENTS,
     a: (props) => {
-      const reference = linkReference(props.href);
+      const target = linkReference(props.href);
+      const reference =
+        target === undefined || linkBase === undefined
+          ? target
+          : { path: resolvePath(linkBase, target.path), line: target.line };
       if (reference === undefined) {
         return <Link {...props} />;
       }
@@ -85,19 +90,49 @@ function withPaths(onOpen: OpenPath): Components {
   };
 }
 
+/** A Markdown image whose source is a relative file path (UI-562). */
+export interface MarkdownImageProps {
+  /** The file's path, resolved against `linkBase`. */
+  readonly path: string;
+  readonly alt: string;
+  readonly title: string | undefined;
+}
+
+/** `components` where relative images render with `Image` (UI-562); other images stay react-markdown's `<img>`. */
+function withImage(components: Components, Image: ComponentType<MarkdownImageProps>, linkBase: string): Components {
+  return {
+    ...components,
+    img: ({ node: _node, ...props }) => {
+      const source = relativeSource(props.src);
+      if (source === undefined) {
+        return <img {...props} alt={props.alt ?? ""} />;
+      }
+      return <Image path={resolvePath(linkBase, source)} alt={props.alt ?? ""} title={props.title} />;
+    },
+  };
+}
+
 export interface MarkdownProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
   /** Markdown source (CommonMark + GFM). */
   text: string;
   /** Opens a file path the text names (inline code or a relative link, UI-116); without it paths stay text. */
   onOpenPath?: OpenPath | undefined;
+  /** The folder relative link targets and image sources are relative to (a Markdown file's own folder, `""` for the
+   * root, UI-561); without it link targets are passed on as written. */
+  linkBase?: string | undefined;
+  /** Renders the images whose source is a relative file path (UI-562); without it they are plain `<img>`s. */
+  image?: ComponentType<MarkdownImageProps> | undefined;
 }
 
 /**
  * Renders Markdown as prose (serif). Raw HTML in the source never becomes DOM: react-markdown without `rehype-raw`
  * drops it, and its URL filter removes `javascript:` links. Remote images and code-language classes are kept (UI-040).
  */
-export function Markdown({ text, className, onOpenPath, ...props }: MarkdownProps) {
-  const components = useMemo(() => (onOpenPath === undefined ? COMPONENTS : withPaths(onOpenPath)), [onOpenPath]);
+export function Markdown({ text, className, onOpenPath, linkBase, image, ...props }: MarkdownProps) {
+  const components = useMemo(() => {
+    const linked = onOpenPath === undefined ? COMPONENTS : withPaths(onOpenPath, linkBase);
+    return image === undefined ? linked : withImage(linked, image, linkBase ?? "");
+  }, [onOpenPath, linkBase, image]);
   return (
     <div {...props} className={cx("omfp-prose omfp-markdown", className)}>
       <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
