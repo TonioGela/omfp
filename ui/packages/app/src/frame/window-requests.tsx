@@ -13,6 +13,7 @@ import { ERRORS, errorMessage, type OmfpHost, type ReportTimers, useHost, Widget
 import { strings } from "../strings/index.ts";
 import type { WidgetRegistry } from "../view/resolve.ts";
 import { WidgetSlot } from "../view/slot.tsx";
+import { onlyScope } from "./cmdline.ts";
 
 const text = strings.shell.windowRequests;
 
@@ -34,14 +35,15 @@ const globalTimers: ReportTimers = {
 export async function runRequested(host: OmfpHost, name: string, args: readonly string[]): Promise<WindowAnswer> {
   const command = host.commands.resolve(name, []);
   if (command === undefined) {
-    const named = host.commands
-      .list()
-      .filter((candidate) => candidate.id === name || (candidate.aliases?.includes(name) ?? false));
-    const global = named.find((candidate) => candidate.scope === undefined);
+    const registered = host.commands.list();
+    const global = registered.find(
+      (candidate) =>
+        candidate.scope === undefined && (candidate.id === name || (candidate.aliases?.includes(name) ?? false)),
+    );
     if (global !== undefined) {
       return { kind: "not_run", reason: "disabled", message: text.disabled(global.id) };
     }
-    const scoped = named[0]?.scope;
+    const scoped = onlyScope(name, registered);
     return {
       kind: "not_run",
       reason: "unknown",

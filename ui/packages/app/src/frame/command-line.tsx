@@ -12,7 +12,7 @@ import { CMDLINE_ATTRIBUTE } from "../keymap/handler.ts";
 import { type Binding, keyLabel, keysFor } from "../keymap/keymap.ts";
 import { scopesAt, useCommand, useHost } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
-import { type Completion, completions, parseCommandLine } from "./cmdline.ts";
+import { type Completion, completions, onlyScope, parseCommandLine } from "./cmdline.ts";
 
 const text = strings.shell.frame;
 
@@ -63,7 +63,7 @@ function CommandLineInput({
   // Completions follow commands registered or removed while the line is open.
   const [, changed] = useReducer((count: number) => count + 1, 0);
   useEffect(() => commands.subscribe(changed), [commands]);
-  const options = completions(value, commands.list());
+  const options = completions(value, commands.list(), scopes());
   const highlighted = active === undefined ? undefined : options[active];
   // The arrows move the highlight past the menu's visible rows: keep the highlighted option in view (UI-336).
   useEffect(() => {
@@ -79,7 +79,8 @@ function CommandLineInput({
     }
     const where = scopes();
     if (commands.resolve(parsed.name, where) === undefined) {
-      setError(text.unknownCommand(parsed.name));
+      const scope = onlyScope(parsed.name, commands.list());
+      setError(scope === undefined ? text.unknownCommand(parsed.name) : text.scopedCommand(parsed.name, scope));
       return;
     }
     close(true);

@@ -309,6 +309,32 @@ describe("frame", () => {
     expect(screen.getByTestId("command-line-error").textContent).toBe("Unknown command: nope");
   });
 
+  // spec: UI-095, UI-407
+  test("the `:` line neither lists nor runs a command of a scope it is not in, and says which scope runs it", async () => {
+    const { host, user } = setup();
+    const ran: string[] = [];
+    act(() => {
+      host.commands.register({
+        id: "draft.only",
+        title: "Only in the composer",
+        aliases: ["draftonly"],
+        scope: "composer",
+        run: () => {
+          ran.push("draft.only");
+        },
+      });
+    });
+    document.body.focus();
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "draftonl");
+    expect(screen.queryAllByTestId("command-option").length).toBe(0);
+    await user.type(screen.getByTestId("command-line-input"), "y{Enter}");
+    expect(screen.getByTestId("command-line-error").textContent).toBe(
+      "draftonly runs only with the focus in the composer scope",
+    );
+    expect(ran.length).toBe(0);
+  });
+
   // spec: UI-095, UI-023, UI-021, UI-321
   test("vim keys move through threads, `Space a` reaches the waiting thread, `Space n` opens a draft, `Space w` the + workspace field", () => {
     const { client, flush, host, tick } = setup();

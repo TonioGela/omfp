@@ -1,5 +1,8 @@
 /** Texts of the frame and the shell widgets (threads, header, workspace, dialogs, command line). */
 
+/** What a command of a scope says where it does not run (UI-352, UI-407). */
+const scopedCommand = (name: string, scope: string) => `${name} runs only with the focus in the ${scope} scope`;
+
 export const shell = {
   untitled: "New thread",
   status: {
@@ -418,6 +421,7 @@ export const shell = {
     commandKeys: { complete: "complete", run: "run", cancel: "cancel" },
     filesMenu: "files",
     unknownCommand: (name: string) => `Unknown command: ${name}`,
+    scopedCommand,
     defaultView: "Default",
     /** Tab labels of the built-in widgets without a `title` prop (AGT-010). */
     widgetTitles: {
@@ -453,8 +457,7 @@ export const shell = {
   windowRequests: {
     unknown: (name: string) =>
       `no command ${JSON.stringify(name)}: omfp_windows lists the commands init files and widgets add, omfp://keymap the built-ins`,
-    scoped: (name: string, scope: string) =>
-      `${JSON.stringify(name)} runs only with the focus in the ${scope} scope; run a global command`,
+    scoped: (name: string, scope: string) => `${scopedCommand(JSON.stringify(name), scope)}; run a global command`,
     disabled: (id: string) => `${id} is disabled now`,
     noWorkspace: "this window shows no workspace, so it renders no workspace or user widget",
     unknownWidget: (reference: string) => `this window does not know ${reference} yet`,

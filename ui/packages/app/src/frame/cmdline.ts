@@ -25,12 +25,17 @@ export interface Completion {
 }
 
 /**
- * Completions for `text`: while the first word is typed, the enabled commands whose alias or id starts with it (each
- * command once, named by its first matching alias); after a space, the command's completions of the argument being
- * typed (given the arguments before it) starting with the last word.
+ * Completions for `text`: while the first word is typed, the enabled commands global or of one of `scopes` (the ones
+ * the line runs in, UI-407) whose alias or id starts with it (each command once, named by its first matching alias);
+ * after a space, the command's completions of the argument being typed (given the arguments before it) starting with
+ * the last word.
  */
-export function completions(text: string, commands: readonly Command[]): Completion[] {
-  const enabled = unique(commands.filter((command) => command.enabled?.() ?? true));
+export function completions(text: string, commands: readonly Command[], scopes: readonly string[] = []): Completion[] {
+  const enabled = unique(
+    commands.filter(
+      (command) => (command.scope === undefined || scopes.includes(command.scope)) && (command.enabled?.() ?? true),
+    ),
+  );
   const leading = text.trimStart();
   const space = leading.search(/\s/);
   if (space < 0) {
@@ -57,6 +62,12 @@ export function completions(text: string, commands: readonly Command[]): Complet
   return (command.args?.(words) ?? [])
     .filter((arg) => arg.startsWith(typing))
     .map((arg) => ({ value: `${before} ${arg}`, title: command.title, command: command.id }));
+}
+
+/** The scope of the command `name` (an id or alias) when it has no global registration, so runs only there. */
+export function onlyScope(name: string, commands: readonly Command[]): string | undefined {
+  const named = commands.filter((command) => command.id === name || (command.aliases?.includes(name) ?? false));
+  return named.some((command) => command.scope === undefined) ? undefined : named[0]?.scope;
 }
 
 /** One command per id: the global one when several scopes register it. */

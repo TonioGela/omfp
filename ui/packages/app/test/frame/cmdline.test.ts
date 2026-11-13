@@ -1,7 +1,7 @@
 /** L1: the `:` line's parsing and completion (UI-095) and what deserves a notification (UI-096). */
 
 import { describe, expect, test } from "bun:test";
-import { completions, parseCommandLine } from "../../src/frame/cmdline.ts";
+import { completions, onlyScope, parseCommandLine } from "../../src/frame/cmdline.ts";
 import { threadNotices } from "../../src/frame/notifications.ts";
 import type { Command } from "../../src/sdk/index.ts";
 import { thread } from "../support/fixtures.ts";
@@ -13,6 +13,7 @@ const commands: Command[] = [
   { id: "theme.set", title: "Theme", aliases: ["theme"], args: () => ["system", "light", "dark"], run: noop },
   { id: "nav.next", title: "Next message", scope: "transcript", run: noop },
   { id: "nav.next", title: "Next thread", run: noop },
+  { id: "composer.interrupt", title: "Interrupt", aliases: ["interrupt"], scope: "composer", run: noop },
 ];
 
 describe("command line", () => {
@@ -36,6 +37,17 @@ describe("command line", () => {
     ]);
     expect(completions("theme l", commands).map((option) => option.value)).toEqual(["theme light"]);
     expect(completions("nope x", commands)).toEqual([]);
+  });
+
+  // spec: UI-095, UI-407
+  test("completion lists only the commands of the scopes the line runs in; a scoped command says its scope", () => {
+    expect(completions("int", commands)).toEqual([]);
+    expect(completions("interrupt ", commands)).toEqual([]);
+    expect(completions("int", commands, ["composer"]).map((option) => option.value)).toEqual(["interrupt"]);
+    expect(onlyScope("interrupt", commands)).toBe("composer");
+    expect(onlyScope("composer.interrupt", commands)).toBe("composer");
+    expect(onlyScope("nav.next", commands)).toBeUndefined();
+    expect(onlyScope("nope", commands)).toBeUndefined();
   });
 });
 
