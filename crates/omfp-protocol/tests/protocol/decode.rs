@@ -1,7 +1,7 @@
 //! Rules for decoding client frames (`decode_request`).
 
 use omfp_protocol::{
-    Call, Empty, ErrorCode, ProtocolError, Request, StopThreadParams, decode_request,
+    ApprovalMode, Call, Empty, ErrorCode, ProtocolError, Request, StopThreadParams, decode_request,
 };
 use serde_json::json;
 
@@ -9,6 +9,20 @@ use crate::samples::THREAD_ID;
 
 fn decode(value: &serde_json::Value) -> Result<Request, ProtocolError> {
     decode_request(&value.to_string())
+}
+
+// spec: DMN-210
+#[test]
+fn an_approval_mode_passes_to_omp_as_its_wire_value() {
+    for (mode, value) in [
+        (ApprovalMode::AlwaysAsk, "always-ask"),
+        (ApprovalMode::AlwaysAskCached, "always-ask-cached"),
+        (ApprovalMode::Write, "write"),
+        (ApprovalMode::Yolo, "yolo"),
+    ] {
+        assert_eq!(mode.as_str(), value);
+        assert_eq!(serde_json::to_value(mode).unwrap(), json!(value));
+    }
 }
 
 // spec: PRT-010
