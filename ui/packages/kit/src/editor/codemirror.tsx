@@ -1,12 +1,21 @@
 /**
  * The CodeMirror chunk of the kit (S-13), loaded on the first `CodeEditor` or `CodeDiff`: one `EditorView` per mount
  * whose props reconfigure it through compartments, never remount. The merge view is its own chunk again, loaded only
- * by diffs.
+ * by diffs. An editor hidden by `<Activity>` (a kept view or tab) gives up its view with its effects and builds it again
+ * from the state it had when it shows again (UI-403).
  */
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { bracketMatching } from "@codemirror/language";
 import { searchKeymap } from "@codemirror/search";
-import { Compartment, EditorSelection, EditorState, type Extension, Prec, type Text } from "@codemirror/state";
+import {
+  Compartment,
+  EditorSelection,
+  EditorState,
+  type Extension,
+  Prec,
+  type StateEffect,
+  type Text,
+} from "@codemirror/state";
 import {
   drawSelection,
   EditorView,
@@ -108,6 +117,12 @@ function jumpTo(view: EditorView, line: number): void {
   });
 }
 
+/** What an editor hidden by `<Activity>` gets back as it shows again: its state and scroll position. */
+interface Kept {
+  readonly state: EditorState;
+  readonly scroll: StateEffect<unknown>;
+}
+
 /** The editor of `CodeEditor`: see its props. */
 export function CodeEditorView(props: CodeEditorProps): ReactNode {
   const host = useRef<HTMLDivElement>(null);
@@ -122,9 +137,19 @@ export function CodeEditorView(props: CodeEditorProps): ReactNode {
   // vim's mode, from its `vim-mode-change` events.
   const mode = useRef<VimMode>("normal");
   const compartments = useRef({ language: new Compartment(), readOnly: new Compartment() });
+  // Set as `<Activity>` hides the editor, read as it shows it again.
+  const kept = useRef<Kept | null>(null);
+  // The props last applied to the view: the effects below run again as `<Activity>` shows the editor, and must not
+  // apply them twice (replace the user's text, take the focus, jump back to `line`).
+  const applied = useRef<{
+    value: string;
+    readOnly: boolean | undefined;
+    target: { readonly line: number | undefined; readonly jump: number | undefined } | undefined;
+  }>({ value: props.value, readOnly: undefined, target: undefined });
   const { value, path, readOnly, line, jump } = props;
 
-  // Mount once; the props below flow in through compartments and transactions.
+  // Mount once, and again from the state it had when `<Activity>` shows the editor; the props below flow in through
+  // compartments and transactions.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount once, see above
   useEffect(() => {
     const parent = host.current;
@@ -137,9 +162,11 @@ export function CodeEditorView(props: CodeEditorProps): ReactNode {
         cbRef.current.onDirtyChange?.(next);
       }
     };
-    const view = new EditorView({
-      parent,
-      state: EditorState.create({
+    const restored = kept.current;
+    kept.current = null;
+    const state =
+      restored?.state ??
+      EditorState.create({
         doc: value,
         extensions: [
           appKeys(() => readOnlyRef.current),
@@ -177,9 +204,13 @@ export function CodeEditorView(props: CodeEditorProps): ReactNode {
             }
           }),
         ],
-      }),
-    });
-    base.current = view.state.doc;
+      });
+    const view = new EditorView({ parent, state, ...(restored === null ? {} : { scrollTo: restored.scroll }) });
+    if (restored === null) {
+      base.current = view.state.doc;
+    }
+    // A new view's vim starts in normal mode.
+    mode.current = "normal";
     callbacks.set(view, cbRef);
     getCM(view)?.on("vim-mode-change", (event: { mode: VimMode }) => {
       mode.current = event.mode;
@@ -191,13 +222,14 @@ export function CodeEditorView(props: CodeEditorProps): ReactNode {
     if (props.handle !== undefined) {
       props.handle.current = { text: () => view.state.doc.toString(), focus: () => view.focus() };
     }
-    if (line !== undefined) {
+    if (restored === null && line !== undefined) {
       jumpTo(view, line);
     }
     return () => {
       if (view.hasFocus) {
         cbRef.current.onModeChange?.(undefined);
       }
+      kept.current = { state: view.state, scroll: view.scrollSnapshot() };
       view.destroy();
       viewRef.current = null;
       if (props.handle !== undefined) {
@@ -209,9 +241,10 @@ export function CodeEditorView(props: CodeEditorProps): ReactNode {
   // A new `value` replaces the document (a reload or a discard) and becomes the text without unsaved changes.
   useEffect(() => {
     const view = viewRef.current;
-    if (view === null || base.current === null) {
+    if (view === null || base.current === null || applied.current.value === value) {
       return;
     }
+    applied.current.value = value;
     // The new base first, so the replacement itself is no unsaved change.
     base.current = view.state.toText(value);
     if (!view.state.doc.eq(base.current)) {
@@ -238,9 +271,10 @@ export function CodeEditorView(props: CodeEditorProps): ReactNode {
 
   useEffect(() => {
     const view = viewRef.current;
-    if (view === null) {
+    if (view === null || applied.current.readOnly === readOnly) {
       return;
     }
+    applied.current.readOnly = readOnly;
     view.dispatch({ effects: compartments.current.readOnly.reconfigure(EditorState.readOnly.of(readOnly)) });
     const cm = getCM(view);
     if (!readOnly && cm !== null) {
@@ -254,10 +288,15 @@ export function CodeEditorView(props: CodeEditorProps): ReactNode {
     }
   }, [readOnly]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `jump` asks for the same line again
+  // `jump` asks for the same line again.
   useEffect(() => {
     const view = viewRef.current;
-    if (view !== null && line !== undefined) {
+    const target = applied.current.target;
+    if (view === null || (target !== undefined && target.line === line && target.jump === jump)) {
+      return;
+    }
+    applied.current.target = { line, jump };
+    if (line !== undefined) {
       jumpTo(view, line);
     }
   }, [line, jump]);

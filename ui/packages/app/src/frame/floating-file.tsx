@@ -3,7 +3,8 @@
  * the `main` slot's (selected tab, each tab's own `×`, middle click and Delete, closing selects the neighbour,
  * window-local; UI-365, UI-366). The panel moves by its grip and resizes by its corner (pointer or arrow keys),
  * minimises to its bar, and keeps its place and state in this window. Esc closes the selected file (an Esc the file
- * editor kept for itself does not count).
+ * editor kept for itself does not count). Every file stays mounted, hidden with its effects paused while another tab
+ * shows or the panel is minimised, so it shows again as it was, unsaved edits included (UI-401).
  */
 
 import { IconButton, Tab, TabList, TabPanel, Tabs } from "@omfp/kit";
@@ -70,58 +71,64 @@ export function FloatingFile({ workspaceId, views, registry }: FloatingFileProps
       style={style}
       onKeyDown={onKeyDown}
     >
-      {panel.minimised ? (
-        bar(<span className="omfp-floating-file__title">{text.panel(files.tabs.length)}</span>)
-      ) : (
-        <>
-          <Tabs
-            className="omfp-floating-file__tabs"
-            selectedKey={fileTabId(selected.path)}
-            onSelectionChange={(key) => files.select(String(key))}
-          >
-            {bar(
-              <TabList aria-label={text.tabs} className="omfp-floating-file__list">
-                {files.tabs.map((tab) => (
-                  <Tab
-                    key={fileTabId(tab.path)}
+      <Tabs
+        className="omfp-floating-file__tabs"
+        selectedKey={fileTabId(selected.path)}
+        onSelectionChange={(key) => files.select(String(key))}
+      >
+        {bar(
+          <>
+            {panel.minimised && <span className="omfp-floating-file__title">{text.panel(files.tabs.length)}</span>}
+            {/* Minimised, the tab list stays (it holds the tabs the panels belong to), hidden. */}
+            <TabList aria-label={text.tabs} className="omfp-floating-file__list" hidden={panel.minimised}>
+              {files.tabs.map((tab) => (
+                <Tab
+                  key={fileTabId(tab.path)}
+                  id={fileTabId(tab.path)}
+                  data-testid="floating-file-tab"
+                  data-file={tab.path}
+                  data-tab={fileTabId(tab.path)}
+                >
+                  <OpenedTabLabel
                     id={fileTabId(tab.path)}
-                    data-testid="floating-file-tab"
-                    data-file={tab.path}
-                    data-tab={fileTabId(tab.path)}
-                  >
-                    <OpenedTabLabel
-                      id={fileTabId(tab.path)}
-                      title={fileName(tab.path)}
-                      tooltip={tab.path}
-                      kind="file"
-                      onClose={files.closeTab}
-                    />
-                  </Tab>
-                ))}
-              </TabList>,
-            )}
-            {files.tabs.map((tab) => (
-              <TabPanel key={fileTabId(tab.path)} id={fileTabId(tab.path)} className="omfp-floating-file__body">
-                <WidgetSlot
-                  reference={FILE_WIDGET}
-                  props={fileProps(tab)}
-                  path={fileTabId(tab.path)}
-                  workspaceId={workspaceId}
-                  views={views}
-                  registry={registry}
-                />
-              </TabPanel>
-            ))}
-          </Tabs>
-          <button
-            type="button"
-            className="omfp-floating-file__resize omfp-focus-ring"
-            aria-label={text.resize}
-            title={text.resize}
-            data-testid="floating-file-resize"
-            {...handle(resizePanel)}
-          />
-        </>
+                    title={fileName(tab.path)}
+                    tooltip={tab.path}
+                    kind="file"
+                    onClose={files.closeTab}
+                  />
+                </Tab>
+              ))}
+            </TabList>
+          </>,
+        )}
+        {files.tabs.map((tab) => (
+          <TabPanel
+            key={fileTabId(tab.path)}
+            id={fileTabId(tab.path)}
+            className="omfp-floating-file__body"
+            keepMounted
+            hidden={panel.minimised}
+          >
+            <WidgetSlot
+              reference={FILE_WIDGET}
+              props={fileProps(tab)}
+              path={fileTabId(tab.path)}
+              workspaceId={workspaceId}
+              views={views}
+              registry={registry}
+            />
+          </TabPanel>
+        ))}
+      </Tabs>
+      {!panel.minimised && (
+        <button
+          type="button"
+          className="omfp-floating-file__resize omfp-focus-ring"
+          aria-label={text.resize}
+          title={text.resize}
+          data-testid="floating-file-resize"
+          {...handle(resizePanel)}
+        />
       )}
     </section>
   );

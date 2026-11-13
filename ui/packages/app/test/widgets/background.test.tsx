@@ -2,7 +2,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OPEN_SUBAGENT, REVEAL_WIDGET, SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { BackgroundWidget } from "../../src/widgets/background/index.ts";
@@ -87,11 +87,23 @@ describe("omfp:background", () => {
     expect(test.host.window.get(REVEAL_WIDGET)?.reference).toBe("omfp:subagents");
   });
 
-  // spec: UI-271
-  test("a job's row reveals the chat when its card is not shown", async () => {
+  // spec: UI-271, UI-400
+  test("a job's row reveals the chat when its card is not shown, also when it is mounted in a tab not selected", async () => {
     const test = setup(running);
     await test.user.click(screen.getByRole("button", { name: "Show the card of background job bg_1" }));
     expect(test.host.window.get(REVEAL_WIDGET)?.reference).toBe("omfp:chat");
+    act(() => test.host.window.set(REVEAL_WIDGET, undefined));
+    // Hidden as `<Activity mode="hidden">` hides a tab's content.
+    const hidden = document.createElement("div");
+    hidden.style.setProperty("display", "none", "important");
+    hidden.innerHTML = '<div data-testid="tool-card" data-call="call_bash_bg"></div>';
+    document.body.append(hidden);
+    try {
+      await test.user.click(screen.getByRole("button", { name: "Show the card of background job bg_1" }));
+      expect(test.host.window.get(REVEAL_WIDGET)?.reference).toBe("omfp:chat");
+    } finally {
+      hidden.remove();
+    }
   });
 
   // spec: UI-271

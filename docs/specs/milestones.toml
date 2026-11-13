@@ -869,6 +869,11 @@ requirements = [
   "UI-390",
   "UI-391",
   "UI-392",
+  # Tabs and the floating file panel keep their content mounted
+  "UI-400",
+  "UI-401",
+  "UI-402",
+  "UI-403",
   # QA fixes
   "UI-405",
   "UI-406",
@@ -883,6 +888,7 @@ requirements = [
   "E2E-29",
   "E2E-30",
   "E2E-31",
+  "E2E-35",
 ]
 
 [M15]

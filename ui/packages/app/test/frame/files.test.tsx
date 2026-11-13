@@ -3,7 +3,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ViewsState } from "@omfp/protocol";
-import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Frame } from "../../src/frame/frame.tsx";
 import {
@@ -18,6 +18,7 @@ import {
 } from "../../src/sdk/index.ts";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
 import { fileTabId } from "../../src/vm/files.ts";
+import { FileWidget } from "../../src/widgets/file/index.ts";
 import { thread, workspace } from "../support/fixtures.ts";
 import { ManualTimers, renderWithHost, testHost } from "../support/host.tsx";
 
@@ -28,6 +29,18 @@ afterEach(() => {
 
 /** `omfp:file` as its props, so the tests see what a tab asks for. */
 const StubFile: WidgetComponent = (props) => <p data-testid="stub-file">{JSON.stringify(props)}</p>;
+
+/** The stub files shown: the other open files stay mounted, hidden (UI-400, UI-401). */
+function shownFiles(): HTMLElement[] {
+  return screen.queryAllByTestId("stub-file").filter((file) => file.closest("[hidden]") === null);
+}
+
+/** The props of the one file shown. */
+function shownFile(): unknown {
+  const shown = shownFiles();
+  expect(shown.length).toBe(1);
+  return JSON.parse(shown[0]?.textContent ?? "");
+}
 
 /** A text field `i` focuses, standing for the file editor. */
 const StubChat: WidgetComponent = () => {
@@ -107,20 +120,20 @@ describe("file tabs in the main slot", () => {
     expect(tabs()).toEqual(["Chat", "lib.rs"]);
     const selected = tabElements().find((tab) => tab.getAttribute("aria-selected") === "true");
     expect(selected?.dataset.file).toBe("fe/src/lib.rs");
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({
+    expect(shownFile()).toEqual({
       path: "fe/src/lib.rs",
       line: 3,
       jump: 1,
     });
     act(() => openFile(test.host, "fe/README.md", { diff: true }));
     expect(tabs()).toEqual(["Chat", "lib.rs", "README.md"]);
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({
+    expect(shownFile()).toEqual({
       path: "fe/README.md",
       diff: true,
       jump: 1,
     });
     act(() => openFile(test.host, "fe/src/lib.rs", { line: 9 }));
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({
+    expect(shownFile()).toEqual({
       path: "fe/src/lib.rs",
       line: 9,
       jump: 2,
@@ -199,14 +212,14 @@ describe("file tabs in the main slot", () => {
         .getAllByTestId("floating-file-tab")
         .map((tab) => tab.dataset.file),
     ).toEqual(["fe/src/lib.rs", "fe/src/main.rs"]);
-    expect(JSON.parse(within(panel).getByTestId("stub-file").textContent ?? "")).toEqual({
+    expect(shownFile()).toEqual({
       path: "fe/src/main.rs",
       line: 2,
       jump: 1,
     });
     // Selecting a tab shows its file; the selection is window-local like the main slot's.
     await test.user.click(within(panel).getAllByTestId("floating-file-tab")[0] as HTMLElement);
-    expect(JSON.parse(within(panel).getByTestId("stub-file").textContent ?? "").path).toBe("fe/src/lib.rs");
+    expect(shownFile()).toMatchObject({ path: "fe/src/lib.rs" });
     expect(test.host.window.get(OPEN_FILES).w1?.active).toBe(fileTabId("fe/src/lib.rs"));
     // Closing the selected file by its own × selects its neighbour.
     const lib = within(panel).getAllByTestId("floating-file-tab")[0] as HTMLElement;
@@ -242,13 +255,103 @@ describe("file tabs in the main slot", () => {
     ]);
     await test.user.click(screen.getByTestId("floating-file-minimise"));
     expect(screen.getByTestId("floating-file").dataset.minimised).toBe("");
-    expect(screen.queryByTestId("stub-file")).toBeNull();
+    expect(shownFiles().length).toBe(0);
     expect(JSON.parse(test.storage.getItem("omfp.floatingFiles") ?? "{}")).toEqual({
       box: { left: 16, top: 16, width: 240, height: 120 },
       minimised: true,
     });
     await test.user.click(screen.getByTestId("floating-file-minimise"));
-    expect(screen.getByTestId("stub-file")).toBeDefined();
+    expect(shownFiles().length).toBe(1);
+  });
+});
+
+describe("unsaved edits of an open file", () => {
+  const TEXT = "fn one() {}";
+  const withFile: WidgetRegistry = new Map<string, WidgetComponent>([...registry, ["omfp:file", FileWidget]]);
+
+  /** The frame with the real `omfp:file`, `fe/src/lib.rs` open in it and edited: `XY` typed at its start. */
+  async function edited(views?: Partial<ViewsState>) {
+    const storage = new MemoryStorage();
+    const base = testHost(undefined, {
+      importer: () => new Promise<unknown>(() => {}),
+      reportTimers: new ManualTimers(),
+      storage,
+      filePoll: () => () => {},
+    });
+    base.client.answers.set("widgets.report", () => ({}));
+    base.client.answers.set("workspaces.read_file", () => ({
+      path: "fe/src/lib.rs",
+      kind: "text",
+      size: TEXT.length,
+      hash: "h1",
+      unchanged: false,
+      content: TEXT,
+      truncated: false,
+      repo: "fe",
+      head: TEXT,
+    }));
+    const test = renderWithHost(<Frame registry={withFile} now={() => 0} />, base);
+    test.client.connected();
+    test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "one", "w1")] });
+    act(() => test.host.window.set(SELECTED_THREAD, "t1"));
+    if (views !== undefined) {
+      test.client.views("w1", views);
+    }
+    test.flush();
+    act(() => openFile(test.host, "fe/src/lib.rs"));
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId("file-edit"));
+    await waitFor(() => expect(screen.getByTestId("file-editor").querySelector(".cm-content")).not.toBeNull());
+    // Editing starts in insert mode with the focus in the editor (UI-111).
+    await user.keyboard("XY");
+    expect(editorText()).toBe(`XY${TEXT}`);
+    return { ...test, user };
+  }
+
+  function editorText(): string {
+    const lines = screen.getByTestId("file-editor").querySelectorAll(".cm-line");
+    return [...lines].map((line) => line.textContent).join("\n");
+  }
+
+  /** The file is still being edited, with the user's text, unsaved. */
+  function stillEdited(): void {
+    expect(editorText()).toBe(`XY${TEXT}`);
+    const editor = screen.getByTestId("file-editor");
+    expect([editor.dataset.mode, editor.dataset.dirty, editor.dataset.readOnly]).toEqual(["edit", "true", "false"]);
+    expect(screen.queryAllByTestId("file-save").length).toBe(1);
+  }
+
+  // spec: UI-400
+  test("survive showing another tab of the main slot: the file's tab stays mounted, hidden and inert, then shows as it was", async () => {
+    const test = await edited();
+    const [chat, file] = tabElements();
+    await test.user.click(chat as HTMLElement);
+    const panel = screen.getByTestId("file").closest(".omfp-view__panel") as HTMLElement;
+    expect([panel.hidden, panel.hasAttribute("inert"), panel.getAttribute("role")]).toEqual([true, true, null]);
+    expect(screen.getByTestId("stub-input").closest("[hidden]")).toBeNull();
+    expect(document.querySelectorAll('[data-slot="main"] [role="tabpanel"]').length).toBe(1);
+    await test.user.click(file as HTMLElement);
+    expect(panel.hidden).toBe(false);
+    stillEdited();
+    // Leaving still warns about the unsaved change.
+    await test.user.click(screen.getByTestId("file-done"));
+    expect(screen.getByTestId("file-notice").textContent).toBe("Unsaved changes: save with :w, or drop them with :q!");
+  });
+
+  // spec: UI-401
+  test("survive minimising the floating file panel and restoring it", async () => {
+    const test = await edited({
+      manifest: { default: "plain", views: { plain: { layout: ["row", {}, "omfp:chat"] } } },
+    });
+    await test.user.click(screen.getByTestId("floating-file-minimise"));
+    expect(screen.getByTestId("floating-file").dataset.minimised).toBe("");
+    expect(screen.getByTestId("file").closest("[hidden]")).not.toBeNull();
+    expect(screen.queryAllByTestId("floating-file-tab").filter((tab) => tab.closest("[hidden]") === null).length).toBe(
+      0,
+    );
+    await test.user.click(screen.getByTestId("floating-file-minimise"));
+    expect(screen.getByTestId("file").closest("[hidden]")).toBeNull();
+    stillEdited();
   });
 });
 
@@ -291,7 +394,7 @@ describe("the file picker", () => {
     await test.user.keyboard("{Enter}");
     expect(screen.queryByTestId("file-picker")).toBeNull();
     expect(test.host.window.get(OPEN_FILES).w1?.tabs.map((tab) => [tab.path, tab.line])).toEqual([["lib/theme.ts", 3]]);
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "").path).toBe("lib/theme.ts");
+    expect(shownFile()).toMatchObject({ path: "lib/theme.ts" });
   });
 
   // spec: UI-117
@@ -311,7 +414,7 @@ describe("opening paths", () => {
     act(() => screen.getByTestId("card").focus());
     press("g");
     press("f");
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({
+    expect(shownFile()).toEqual({
       path: "fe/src/lib.rs",
       line: 4,
       jump: 1,
@@ -320,7 +423,7 @@ describe("opening paths", () => {
     act(() => screen.getByTestId("changed").focus());
     press("g");
     press("f");
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({
+    expect(shownFile()).toEqual({
       path: "fe/src/main.rs",
       diff: true,
       jump: 1,
@@ -328,7 +431,7 @@ describe("opening paths", () => {
     act(() => (document.activeElement as HTMLElement | null)?.blur());
     press(":");
     await test.user.keyboard("open docs/a.md:7{Enter}");
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({
+    expect(shownFile()).toEqual({
       path: "docs/a.md",
       line: 7,
       jump: 1,
@@ -350,7 +453,7 @@ describe("files the agent opens", () => {
     test.client.threadEvents("t1", request);
     test.flush();
     expect(tabs()).toEqual(["Chat", "lib.rs"]);
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({
+    expect(shownFile()).toEqual({
       path: "fe/src/lib.rs",
       line: 12,
       jump: 1,
@@ -365,7 +468,7 @@ describe("files the agent opens", () => {
     test.client.threadEvents("t1", { ...request, id: "o3", path: "fe/README.md", line: null });
     test.flush();
     expect(tabs()).toEqual(["Chat", "README.md"]);
-    expect(JSON.parse(screen.getByTestId("stub-file").textContent ?? "")).toEqual({ path: "fe/README.md", jump: 1 });
+    expect(shownFile()).toEqual({ path: "fe/README.md", jump: 1 });
   });
 });
 

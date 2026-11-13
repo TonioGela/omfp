@@ -607,7 +607,9 @@ list the new models (DMN-224).
 Switching views keeps the last two views of the workspace mounted, hidden in React's `<Activity>` with their effects
 paused and their commands and widget reports gone, and the SDK's data hooks show their last result while they refresh:
 switching back to a widget whose call takes 500 ms shows its content in 4–5 ms instead of 503–546 ms (UI-390..UI-392,
-TST-108).
+TST-108). The tabs of a view and the floating file panel keep their content mounted the same way, and the editor
+comes back from a hide as it was, so an unsaved file edit survives showing another tab or minimising the panel
+(UI-400..UI-403, E2E-35).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect } from "react";
 import type { WidgetComponent } from "../../src/sdk/index.ts";
 import { containsWidget, parseLayout } from "../../src/view/layout.ts";
 import { ViewRenderer } from "../../src/view/render.tsx";
@@ -16,6 +17,18 @@ import { renderWithHost } from "../support/host.tsx";
 afterEach(cleanup);
 
 const Named: WidgetComponent = (props) => <span data-testid="named">{String(props.label ?? "plain")}</span>;
+/** A text field whose effect runs while it is shown. */
+const running = new Set<string>();
+const Draft: WidgetComponent = ({ label }) => {
+  const name = String(label);
+  useEffect(() => {
+    running.add(name);
+    return () => {
+      running.delete(name);
+    };
+  }, [name]);
+  return <input aria-label={name} data-testid={`draft-${name}`} />;
+};
 const Broken: WidgetComponent = () => {
   throw new Error("boom");
 };
@@ -23,6 +36,7 @@ const Broken: WidgetComponent = () => {
 const registry: WidgetRegistry = new Map([
   ["omfp:named", Named],
   ["omfp:broken", Broken],
+  ["omfp:draft", Draft],
 ]);
 
 function widgets(): string[] {
@@ -187,11 +201,33 @@ describe("renderer", () => {
     show(["tabs", {}, ["omfp:named", { title: "One", label: "1" }], ["omfp:named", { label: "2" }]]);
     const tabs = screen.getAllByTestId("view-tab");
     expect(tabs.map((tab) => tab.textContent)).toEqual(["One", "omfp:named"]);
-    expect(screen.getByTestId("named").textContent).toBe("1");
+    const shown = () =>
+      screen
+        .getAllByTestId("named")
+        .filter((named) => named.closest("[hidden]") === null)
+        .map((named) => named.textContent);
+    expect(shown()).toEqual(["1"]);
     const user = userEvent.setup();
     await user.click(tabs[0] ?? document.body);
     await user.keyboard("{ArrowRight}");
-    expect(screen.getByTestId("named").textContent).toBe("2");
+    expect(shown()).toEqual(["2"]);
+  });
+
+  // spec: UI-400
+  test("a tab not shown stays mounted, hidden and inert, its effects paused; it shows again as it was", async () => {
+    show(["tabs", {}, ["omfp:draft", { label: "one" }], ["omfp:draft", { label: "two" }]]);
+    const [one, two] = screen.getAllByTestId("view-tab");
+    const panel = (name: string) => screen.getByTestId(`draft-${name}`).closest(".omfp-view__panel") as HTMLElement;
+    expect([panel("one").hidden, panel("two").hidden]).toEqual([false, true]);
+    expect([...running]).toEqual(["one"]);
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId("draft-one"), "typed");
+    await user.click(two ?? document.body);
+    expect([panel("one").hidden, panel("one").hasAttribute("inert"), panel("two").hidden]).toEqual([true, true, false]);
+    expect([...running]).toEqual(["two"]);
+    await user.click(one ?? document.body);
+    expect((screen.getByTestId("draft-one") as HTMLInputElement).value).toBe("typed");
+    expect([...running]).toEqual(["one"]);
   });
 
   // spec: AGT-010, UI-080

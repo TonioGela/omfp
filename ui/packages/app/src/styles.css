@@ -537,6 +537,11 @@
     min-inline-size: 0;
   }
 
+  /* A tab not selected stays mounted, hidden (UI-400). */
+  .omfp-view__panel[hidden] {
+    display: none;
+  }
+
   /* Tab bars of the `main` and `side` slots (UI-154): `bar-h` tall over a rule, the selected tab's gradient indicator
    * on the rule; the `main` bar ends with the close button of the selected file tab (UI-115). */
   .omfp-view__tabs > .omfp-tabs__list,
@@ -655,6 +660,12 @@
     display: flex;
     flex-direction: column;
     min-block-size: 0;
+  }
+
+  /* A file not selected, or every file and the tab list of a minimised panel, stays mounted, hidden (UI-401). */
+  .omfp-floating-file__body[hidden],
+  .omfp-floating-file__list[hidden] {
+    display: none;
   }
 
   .omfp-floating-file__resize {

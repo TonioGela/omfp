@@ -6,6 +6,7 @@ import type { FileCandidate, FileContent, GitStatus } from "@omfp/protocol";
 import { workspaceTopic } from "@omfp/protocol";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Activity, type ReactNode, useState } from "react";
 import {
   FILE_PICKER,
   type FilePoll,
@@ -57,6 +58,19 @@ function text(content: string, extra: Partial<FileContent> = {}): FileContent {
   };
 }
 
+/** Hides its children (`<Activity>`, as a kept view or tab does) and shows them again on each click of `shown`. */
+function Hideable({ children }: { children: ReactNode }): ReactNode {
+  const [shown, setShown] = useState(true);
+  return (
+    <>
+      <button type="button" data-testid="shown" onClick={() => setShown((now) => !now)}>
+        shown
+      </button>
+      <Activity mode={shown ? "visible" : "hidden"}>{children}</Activity>
+    </>
+  );
+}
+
 function setup(props: Record<string, unknown> = {}, first: FileContent = text(TEXT)) {
   const poll = new ManualPoll();
   const base = testHost(new FakeClient(), { filePoll: poll.poll });
@@ -66,7 +80,12 @@ function setup(props: Record<string, unknown> = {}, first: FileContent = text(TE
     const { knownHash } = params as { knownHash?: string };
     return knownHash === disk.hash ? { ...disk, content: null, head: null, unchanged: true } : disk;
   });
-  const test = renderWithHost(<FileWidget path="src/lib.rs" {...props} />, base);
+  const test = renderWithHost(
+    <Hideable>
+      <FileWidget path="src/lib.rs" {...props} />
+    </Hideable>,
+    base,
+  );
   test.client.connected();
   test.client.index({
     workspaces: [workspace("w1", [repo("w1", "fe", "feat")])],
@@ -221,6 +240,28 @@ describe("omfp:file", () => {
     await test.user.click(screen.getByTestId("file-layout"));
     expect(screen.getByTestId("file-head-diff").dataset.layout).toBe("split");
     expect(screen.queryByTestId("file-editor")).toBeNull();
+  });
+
+  // spec: UI-403
+  test("hidden and shown again, the view keeps its diff toggle and layout, the edit mode its text", async () => {
+    const test = setup({ diff: true });
+    await screen.findByTestId("file-head-diff");
+    await test.user.click(screen.getByTestId("file-layout"));
+    await test.user.click(screen.getByTestId("shown"));
+    await test.user.click(screen.getByTestId("shown"));
+    expect(screen.getByTestId("file-head-diff").dataset.layout).toBe("split");
+    await test.user.click(screen.getByTestId("file-diff"));
+    expect(screen.queryAllByTestId("file-head-diff").length).toBe(0);
+    await test.user.click(screen.getByTestId("shown"));
+    await test.user.click(screen.getByTestId("shown"));
+    expect(screen.queryAllByTestId("file-head-diff").length).toBe(0);
+    expect(await editorText()).toBe(TEXT);
+    await test.user.click(screen.getByTestId("file-edit"));
+    await test.user.keyboard("XY");
+    await test.user.click(screen.getByTestId("shown"));
+    await test.user.click(screen.getByTestId("shown"));
+    expect(await editorText()).toBe(`XY${TEXT}`);
+    expect(screen.getByTestId("file-editor").dataset.dirty).toBe("true");
   });
 
   // spec: UI-114

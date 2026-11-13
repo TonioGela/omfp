@@ -152,6 +152,13 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
   const editor = useRef<CodeEditorHandle | null>(null);
   const [mode, setMode] = useState<Mode>("view");
   const [showDiff, setShowDiff] = useState(diff);
+  // A new `diff` prop (the file opened again) sets the toggle; an effect would also reset it each time a hidden tab
+  // or view shows the file again (UI-403).
+  const [diffProp, setDiffProp] = useState(diff);
+  if (diffProp !== diff) {
+    setDiffProp(diff);
+    setShowDiff(diff);
+  }
   const [layout, setLayout] = useState<CodeDiffLayout>("unified");
   const [dirty, setDirty] = useState(false);
   const [base, setBase] = useState<Base>({ content, hash: file.hash });
@@ -159,8 +166,6 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
   const [mine, setMine] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const editable = file.truncated !== true;
-
-  useEffect(() => setShowDiff(diff), [diff]);
 
   // The file on disk changed: follow it while nothing is unsaved (UI-110).
   useEffect(() => {

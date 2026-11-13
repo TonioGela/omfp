@@ -43,9 +43,15 @@ function mark(state: BackgroundRow["state"]) {
   }
 }
 
-/** The tool card of call `toolCallId` in the transcript. */
-function cardOf(toolCallId: string): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`[data-testid="tool-card"][data-call="${CSS.escape(toolCallId)}"]`);
+/**
+ * The tool card of call `toolCallId` in the transcript the window shows: a chat in a tab not selected stays mounted,
+ * hidden (UI-400), as does one in a kept view (UI-390).
+ */
+function cardOf(toolCallId: string): HTMLElement | undefined {
+  const cards = document.querySelectorAll<HTMLElement>(
+    `[data-testid="tool-card"][data-call="${CSS.escape(toolCallId)}"]`,
+  );
+  return [...cards].find((card) => card.checkVisibility());
 }
 
 function Background({ threadId }: { threadId: string }): ReactNode {
@@ -61,7 +67,7 @@ function Background({ threadId }: { threadId: string }): ReactNode {
     }
     const toolCallId = row.toolCallId ?? "";
     const scroll = () => cardOf(toolCallId)?.scrollIntoView?.({ block: "center" });
-    if (cardOf(toolCallId) === null) {
+    if (cardOf(toolCallId) === undefined) {
       // The chat may sit in a tab not shown: show it, then scroll once it rendered.
       reveal({ reference: "omfp:chat", nonce });
       requestAnimationFrame(scroll);

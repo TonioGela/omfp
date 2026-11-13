@@ -10,7 +10,10 @@ use omfp_testkit::TempRepo;
 use serde_json::json;
 use thirtyfour::prelude::*;
 
-const EDITOR: &str = "[data-testid=file] [data-testid=file-editor]";
+/// The editor of the file the window shows: a file in a tab not selected, or in a kept view, stays mounted, hidden
+/// (UI-400, UI-390); only the selected tab's panel has the `tabpanel` role.
+const EDITOR: &str = ":is([data-testid=view], [data-testid=floating-file]) [role=tabpanel] [data-testid=file] \
+                      [data-testid=file-editor]";
 
 /// `path` without its last three characters: typed into a path field, its completions include `path`.
 fn partial(path: &std::path::Path) -> String {
@@ -37,6 +40,59 @@ async fn until_editor_text(journey: &Journey, text: &str) -> anyhow::Result<()> 
             Ok((editor_text(page).await? == text).then_some(()))
         })
         .await
+}
+
+/// Whether a file view is rendered: a file in a tab not selected or a minimised panel stays mounted, not shown.
+async fn file_shown(journey: &Journey) -> anyhow::Result<bool> {
+    let value = journey
+        .eval(
+            "return [...document.querySelectorAll('[data-testid=file]')].some(f => f.checkVisibility());",
+            Vec::new(),
+        )
+        .await?;
+    Ok(value == json!(true))
+}
+
+/// Waits until no file view is rendered while one stays mounted.
+async fn until_file_hidden(journey: &Journey) -> anyhow::Result<()> {
+    journey
+        .until("the file hidden, still mounted", async |page| {
+            let mounted = page.count("[data-testid=file]").await? > 0;
+            Ok((mounted && !file_shown(page).await?).then_some(()))
+        })
+        .await
+}
+
+/// The file is still being edited with `text`, unsaved.
+async fn still_edited(journey: &Journey, text: &str) -> anyhow::Result<()> {
+    until_editor_text(journey, text).await?;
+    until_mode(journey, "edit").await?;
+    assert_eq!(
+        journey.attr(EDITOR, "data-dirty").await?.as_deref(),
+        Some("true"),
+        "the edit is still unsaved"
+    );
+    Ok(())
+}
+
+/// The chat's tab hides the file's without unmounting it: back on the file's tab the unsaved edit is still there and
+/// the editor takes the keys again, vim in normal mode, then `i` inserts (UI-400, UI-403, E2E-35).
+async fn keeps_the_edit_behind_the_chat_tab(journey: &Journey, text: &str) -> anyhow::Result<()> {
+    journey
+        .click("[data-slot=main] [data-testid=view-tab]")
+        .await?;
+    until_file_hidden(journey).await?;
+    journey
+        .element("[data-slot=main] [data-testid=transcript]")
+        .await?;
+    journey
+        .click("[data-slot=main] [data-testid=file-tab]")
+        .await?;
+    still_edited(journey, text).await?;
+    journey.click(&format!("{EDITOR} .cm-content")).await?;
+    until_vim(journey, "normal").await?;
+    journey.keys("i").await?;
+    until_vim(journey, "insert").await
 }
 
 /// Waits until the file editor is in `mode` (`view`, `edit`, `conflict`).
@@ -221,7 +277,7 @@ async fn opens_against_head_from_changes(journey: &Journey) -> anyhow::Result<()
     Ok(())
 }
 
-// spec: E2E-13, UI-110, UI-111, UI-112, UI-113, UI-114, UI-115, UI-116, DMN-089, DMN-090
+// spec: E2E-13, E2E-35, UI-110, UI-111, UI-112, UI-113, UI-114, UI-115, UI-116, UI-400, DMN-089, DMN-090
 #[tokio::test(flavor = "multi_thread")]
 async fn a_file_opened_from_a_tool_card_is_edited_reloaded_conflicted_and_diffed()
 -> anyhow::Result<()> {
@@ -269,6 +325,7 @@ async fn a_file_opened_from_a_tool_card_is_edited_reloaded_conflicted_and_diffed
         })
         .await?;
     journey.screenshot("m5c-editing").await?;
+    keeps_the_edit_behind_the_chat_tab(&journey, "alpha\nbeta\ngamma").await?;
     ex(&journey, "w").await?;
     until_disk(&journey, &disk, "alpha\nbeta\ngamma").await?;
     journey
@@ -303,7 +360,7 @@ async fn file_tabs(journey: &Journey, css: &str) -> anyhow::Result<Vec<String>> 
         .collect())
 }
 
-// spec: E2E-13, UI-115, UI-117, UI-366, DMN-092
+// spec: E2E-13, E2E-35, UI-115, UI-117, UI-366, UI-401, DMN-092
 #[tokio::test(flavor = "multi_thread")]
 async fn bare_names_open_their_file_or_a_picker_and_files_float_as_tabs_without_main()
 -> anyhow::Result<()> {
@@ -408,5 +465,23 @@ async fn bare_names_open_their_file_or_a_picker_and_files_float_as_tabs_without_
     );
     until_editor_text(&journey, "export const theme = 1;\n").await?;
     journey.screenshot("m5c-floating-files").await?;
+
+    // Minimised, the panel keeps its file mounted, hidden: restored, the unsaved edit is still there (UI-401, E2E-35).
+    start_editing(&journey).await?;
+    journey.keys(Key::Control + Key::End).await?;
+    journey.keys("// kept").await?;
+    let edited = "export const theme = 1;\n// kept";
+    until_editor_text(&journey, edited).await?;
+    journey
+        .click("[data-testid=floating-file-minimise]")
+        .await?;
+    journey
+        .element("[data-testid=floating-file][data-minimised]")
+        .await?;
+    until_file_hidden(&journey).await?;
+    journey
+        .click("[data-testid=floating-file-minimise]")
+        .await?;
+    still_edited(&journey, edited).await?;
     journey.finish("E2E-13-names").await
 }

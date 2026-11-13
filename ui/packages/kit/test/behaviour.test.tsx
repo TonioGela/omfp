@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   Card,
@@ -103,6 +103,20 @@ describe("Card", () => {
   });
 });
 
+/** The panels whose effects run. */
+const running = new Set<string>();
+
+/** A text field whose effect runs while its panel shows. */
+function Draft({ name }: { name: string }) {
+  useEffect(() => {
+    running.add(name);
+    return () => {
+      running.delete(name);
+    };
+  }, [name]);
+  return <input aria-label={name} data-testid={`draft-${name}`} />;
+}
+
 describe("Tabs", () => {
   // spec: UI-092
   test("arrow keys move between tabs and show their panel", async () => {
@@ -127,6 +141,45 @@ describe("Tabs", () => {
     expect(focused()).toBe("tab-log");
     expect(screen.getByTestId("tab-log").getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel").textContent).toBe("log panel");
+  });
+
+  // spec: UI-402
+  test("a kept panel stays mounted while another tab shows: hidden, inert, out of the Tab order, effects paused", async () => {
+    const user = userEvent.setup();
+    render(
+      <Tabs>
+        <TabList aria-label="Panels">
+          <Tab id="files" data-testid="tab-files">
+            Files
+          </Tab>
+          <Tab id="log" data-testid="tab-log">
+            Log
+          </Tab>
+        </TabList>
+        <TabPanel id="files" keepMounted data-testid="panel-files">
+          <Draft name="files" />
+        </TabPanel>
+        <TabPanel id="log" keepMounted data-testid="panel-log">
+          <Draft name="log" />
+        </TabPanel>
+      </Tabs>,
+    );
+    const panel = (name: string) => screen.getByTestId(`panel-${name}`);
+    expect([panel("files").hidden, panel("log").hidden]).toEqual([false, true]);
+    expect(panel("log").hasAttribute("inert")).toBe(true);
+    expect([...running]).toEqual(["files"]);
+    await user.type(screen.getByTestId("draft-files"), "unsaved");
+    await user.click(screen.getByTestId("tab-log"));
+    expect([panel("files").hidden, panel("log").hidden]).toEqual([true, false]);
+    expect(panel("files").hasAttribute("inert")).toBe(true);
+    expect(screen.getAllByRole("tabpanel").length).toBe(1);
+    expect([...running]).toEqual(["log"]);
+    // Tab from the selected tab goes into the shown panel, never into the hidden one.
+    await user.tab();
+    expect(focused()).toBe("draft-log");
+    await user.click(screen.getByTestId("tab-files"));
+    expect((screen.getByTestId("draft-files") as HTMLInputElement).value).toBe("unsaved");
+    expect([...running].sort()).toEqual(["files"]);
   });
 });
 

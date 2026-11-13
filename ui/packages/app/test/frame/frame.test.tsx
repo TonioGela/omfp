@@ -144,8 +144,12 @@ class SystemMotion {
   }
 }
 
+/** The widgets the window shows: a `tabs` container's other tabs stay mounted, hidden (UI-400). */
 function shownWidgets(): (string | undefined)[] {
-  return screen.getAllByTestId("widget").map((widget) => widget.dataset.widget);
+  return screen
+    .getAllByTestId("widget")
+    .filter((widget) => widget.closest("[hidden]") === null)
+    .map((widget) => widget.dataset.widget);
 }
 
 /** Selects `t1` (workspace `w1`) and answers its views topic with `state`. */
@@ -188,10 +192,12 @@ describe("frame", () => {
     };
     const withBackground = { registry: new Map([...registry, ["omfp:background", stub("background")]]) };
     const test = inWorkspace({ manifest: tabs }, withBackground);
-    expect(screen.queryByTestId("stub-background")).toBeNull();
+    // The tab not selected keeps its widget mounted, hidden (UI-400).
+    const hidden = () => screen.getByTestId("stub-background").closest("[hidden]") !== null;
+    expect(hidden()).toBe(true);
     act(() => test.host.window.set(REVEAL_WIDGET, { reference: "omfp:background", nonce: 1 }));
     test.flush();
-    await waitFor(() => expect(screen.queryByTestId("stub-background")).not.toBeNull());
+    await waitFor(() => expect(hidden()).toBe(false));
     expect(screen.queryByTestId("floating-widget")).toBeNull();
     // The view showed it: the request is done.
     expect(test.host.window.get(REVEAL_WIDGET)).toBeUndefined();

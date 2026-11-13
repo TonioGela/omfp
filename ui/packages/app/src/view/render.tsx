@@ -182,7 +182,10 @@ function useRevealTab(tabs: readonly { child: LayoutTree; id: string }[], select
   }, [request, target]);
 }
 
-/** A `tabs` container other than `main`: one tab per child, the selected one window-local. */
+/**
+ * A `tabs` container other than `main`: one tab per child, the selected one window-local. Every tab stays mounted, the
+ * ones not selected hidden with their effects paused, so they show again as they were (UI-400).
+ */
 function TabsNode({
   tree,
   path,
@@ -223,7 +226,7 @@ function TabsNode({
         ))}
       </TabList>
       {children.map(({ child, id }) => (
-        <TabPanel key={id} id={id} className="omfp-view__panel">
+        <TabPanel key={id} id={id} className="omfp-view__panel" keepMounted>
           <Node tree={child} path={id} scope={scope} />
         </TabPanel>
       ))}
@@ -235,6 +238,7 @@ function TabsNode({
  * The `tabs` container with `"id": "main"` (UI-115): its own children, then this window's open files of the workspace
  * as tabs (`omfp:file`), then the widgets reveals opened here (UI-373), the selected one window-local too. One tab
  * alone needs no tab bar. A middle click closes the opened tab under the pointer (UI-365), as browsers and editors do.
+ * Every tab stays mounted while another shows, like the other `tabs` containers' (UI-400): a file keeps its edit.
  */
 function MainTabs({
   tree,
@@ -313,12 +317,12 @@ function MainTabs({
         </TabList>
       </div>
       {own.map(({ child, id }) => (
-        <TabPanel key={id} id={id} className="omfp-view__panel">
+        <TabPanel key={id} id={id} className="omfp-view__panel" keepMounted>
           <Node tree={child} path={id} scope={scope} />
         </TabPanel>
       ))}
       {opened.map((tab) => (
-        <TabPanel key={tab.id} id={tab.id} className="omfp-view__panel">
+        <TabPanel key={tab.id} id={tab.id} className="omfp-view__panel" keepMounted>
           <div className="omfp-view__item">
             <WidgetSlot
               reference={tab.reference}
