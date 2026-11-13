@@ -828,6 +828,8 @@ requirements = [
   "UI-362",
   "UI-363",
   "UI-364",
+  # Markdown tables
+  "UI-369",
   # Journeys
   "E2E-22",
   "E2E-23",

@@ -57,6 +57,17 @@ describe("Markdown", () => {
     expect(root.querySelector('a[href="https://example.com"]')).not.toBeNull();
   });
 
+  // spec: UI-369
+  test("a table sits in its own sideways-scrolling region, reachable by keyboard", () => {
+    const root = renderMarkdown("| # | Ticket |\n| - | - |\n| A | PSE-240 |");
+    const region = root.querySelector(".omfp-markdown__table");
+    // A labelled section is a region landmark.
+    expect(region?.tagName).toBe("SECTION");
+    expect(region?.firstElementChild?.tagName).toBe("TABLE");
+    expect(region?.getAttribute("tabindex")).toBe("0");
+    expect(region?.getAttribute("aria-label")).toBe("Table");
+  });
+
   // spec: UI-094
   test("prose gets the prose class, code blocks the code class", () => {
     const root = renderMarkdown("Some *prose* and `inline`.\n\n```\nblock\n```");

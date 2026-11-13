@@ -22,12 +22,19 @@ function fenceLanguage(node: { children?: readonly unknown[] } | undefined): str
   return typeof name === "string" ? name.slice("language-".length) : undefined;
 }
 
-/** Links open in a new tab without leaking the referrer; fenced code with a language is highlighted (UI-090);
- * everything else keeps react-markdown's elements. */
+/** Links open in a new tab without leaking the referrer; fenced code with a language is highlighted (UI-090); a table
+ * sits in a region that scrolls sideways when it is wider than the text (UI-369), focusable so the keyboard can
+ * scroll it; everything else keeps react-markdown's elements. */
 const COMPONENTS = {
   a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
   pre: ({ node, className, ...props }) => (
     <pre {...props} className={cx("omfp-code omfp-code--block", className)} data-lang={fenceLanguage(node)} />
+  ),
+  table: ({ node: _node, ...props }) => (
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable to scroll by keyboard.
+    <section className="omfp-markdown__table" aria-label="Table" tabIndex={0}>
+      <table {...props} />
+    </section>
   ),
   code: ({ node: _node, className, children, ...props }) => {
     const language = FENCE_LANGUAGE.exec(className ?? "")?.[1];

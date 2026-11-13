@@ -134,6 +134,17 @@ describe("kit styles", () => {
     expect(Object.fromEntries(inButton.declarations)).toEqual({ color: "inherit", background: "transparent" });
   });
 
+  // spec: UI-369
+  test("Markdown tables: cells wrap only between words, a wide table scrolls sideways in its region", () => {
+    // Prose breaks anywhere (`overflow-wrap: anywhere`), which makes every column's minimum one character wide.
+    const cells = findRule(kitRules, [LAYER], ".omfp-markdown :is(th, td)");
+    expect(cells.declarations.get("overflow-wrap")).toBe("break-word");
+    expect(cells.declarations.get("word-break")).toBe("normal");
+    const region = findRule(kitRules, [LAYER], ".omfp-markdown__table");
+    expect(region.declarations.get("overflow-x")).toBe("auto");
+    expect(region.declarations.get("max-inline-size")).toBe("100%");
+  });
+
   // spec: UI-145
   test("motion none stops every animation and transition and makes scrolling instant; the effective level is data-motion", () => {
     const none = findRule(

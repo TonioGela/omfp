@@ -1742,7 +1742,7 @@
     margin-block-end: 0;
   }
 
-  .omfp-markdown :is(p, ul, ol, blockquote, pre, table) {
+  .omfp-markdown :is(p, ul, ol, blockquote, pre, .omfp-markdown__table) {
     margin-block: var(--omfp-md-block);
   }
 
@@ -1792,16 +1792,25 @@
     color: var(--omfp-on-surface-variant);
   }
 
+  /* A table scrolls sideways in its own region when it is wider than the text (UI-369). */
+  .omfp-markdown__table {
+    max-inline-size: 100%;
+    overflow-x: auto;
+  }
+
   .omfp-markdown table {
     border-collapse: collapse;
     font-family: var(--omfp-font-ui);
     font-size: var(--omfp-fs-sm);
   }
 
+  /* Cells break only between words: prose's `overflow-wrap: anywhere` would let a column shrink to one character. */
   .omfp-markdown :is(th, td) {
     padding: var(--omfp-s1) var(--omfp-s2);
     border: var(--omfp-bw) solid var(--omfp-rule);
     text-align: start;
+    overflow-wrap: break-word;
+    word-break: normal;
   }
 
   .omfp-markdown th {
