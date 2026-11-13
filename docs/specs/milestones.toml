@@ -1072,4 +1072,10 @@ requirements = [
   "UI-561",
   "UI-562",
   "E2E-57",
+  # The table viewer of CSV and TSV files: sorting, virtual rows, the RFC 4180 parser
+  "UI-563",
+  "UI-564",
+  "UI-565",
+  "UI-566",
+  "E2E-58",
 ]

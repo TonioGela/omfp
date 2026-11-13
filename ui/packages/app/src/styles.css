@@ -1942,6 +1942,76 @@
     font-style: italic;
   }
 
+  /* The table viewer (UI-563..565): the table scrolls in its own box under a sticky header; one line per row, as tall
+     as the virtualizer's `ROW_PX` (table.tsx). */
+  .omfp-file__viewer[data-viewer="table"] {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .omfp-file__table {
+    flex: 1 1 auto;
+    min-block-size: 0;
+    overflow: auto;
+  }
+
+  .omfp-file__table table {
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--omfp-font-code);
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-file__table th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    padding: 0;
+    background: var(--omfp-code-bg);
+    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
+  }
+
+  .omfp-file__sort {
+    inline-size: 100%;
+    padding: var(--omfp-s1) var(--omfp-s2);
+    border: 0;
+    background: none;
+    color: var(--omfp-on-surface);
+    font: inherit;
+    font-weight: var(--omfp-fw-strong);
+    text-align: start;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+
+  .omfp-file__table th[aria-sort="ascending"] .omfp-file__sort::after {
+    content: " ▲";
+    color: var(--omfp-primary);
+  }
+
+  .omfp-file__table th[aria-sort="descending"] .omfp-file__sort::after {
+    content: " ▼";
+    color: var(--omfp-primary);
+  }
+
+  .omfp-file__table td {
+    block-size: 28px;
+    box-sizing: border-box;
+    max-inline-size: 40ch;
+    padding: 0 var(--omfp-s2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: pre;
+    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
+  }
+
+  .omfp-file__viewer[data-viewer="table"] + .omfp-file__notice,
+  .omfp-file__viewer[data-viewer="table"] > .omfp-file__notice {
+    padding: var(--omfp-s1) var(--omfp-s2);
+  }
+
   /* Sized by its text up to 60vh: no size containment (the kit's UI-118 layout root). */
   .omfp-changes__merge {
     max-block-size: 60vh;

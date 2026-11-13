@@ -352,8 +352,14 @@ export const shell = {
     split: "Side by side",
     layout: "Diff layout",
     /** The toggle between a file's source and its viewer (UI-560), named by the viewer. */
-    viewers: { markdown: "Preview" },
+    viewers: { markdown: "Preview", table: "Table" },
     previewLabel: (path: string) => `${path} rendered`,
+    tableLabel: (path: string) => `${path} as a table`,
+    /** The table viewer's line under the table (UI-563, UI-565); `cutSize` when the daemon read only the beginning. */
+    tableSummary: (rows: number, columns: number, cutSize: string | undefined) =>
+      `${rows} ${rows === 1 ? "row" : "rows"}, ${columns} ${columns === 1 ? "column" : "columns"}${
+        cutSize === undefined ? "" : `: the first rows of this ${cutSize} file, which is too large to read whole`
+      }`,
     saved: (path: string) => `Saved ${path}`,
     saveFailed: (error: string) => `Cannot save: ${error}`,
     unsaved: "Unsaved changes: save with :w, or drop them with :q!",

@@ -7,6 +7,7 @@ import type { FileContent } from "@omfp/protocol";
 import { strings } from "omfp/sdk";
 import type { ComponentType } from "react";
 import { MarkdownViewer } from "./markdown.tsx";
+import { CsvViewer, TsvViewer } from "./table.tsx";
 
 /** What a viewer gets: the file as read and its text. */
 export interface ViewerProps {
@@ -22,13 +23,16 @@ export interface Viewer {
   readonly View: ComponentType<ViewerProps>;
 }
 
-const markdown: Viewer = { name: "markdown", label: strings.shell.file.viewers.markdown, View: MarkdownViewer };
+const text = strings.shell.file;
+const markdown: Viewer = { name: "markdown", label: text.viewers.markdown, View: MarkdownViewer };
 
 /** The viewers by lower-case extension (a map: an extension such as `constructor` must find nothing). */
 const VIEWERS: ReadonlyMap<string, Viewer> = new Map([
   ["md", markdown],
   ["markdown", markdown],
   ["mdx", markdown],
+  ["csv", { name: "table", label: text.viewers.table, View: CsvViewer }],
+  ["tsv", { name: "table", label: text.viewers.table, View: TsvViewer }],
 ]);
 
 /** The viewer of the file at `path`, by its extension (case aside), if it has one. */
