@@ -10,8 +10,9 @@ import {
   CommandRegistry,
   RECENT_THREADS,
   SCOPE_ATTRIBUTE,
+  scopesAt,
   useCommand,
-  useRunCommand,
+  useHost,
   useThread,
   useThreads,
   useViews,
@@ -109,14 +110,18 @@ function Scoped() {
       ran.push("global");
     },
   });
-  const run = useRunCommand();
+  const { commands } = useHost();
   return (
     <>
       <div {...{ [SCOPE_ATTRIBUTE]: "transcript" }}>
         <button type="button" data-testid="inside" />
       </div>
       <button type="button" data-testid="outside" />
-      <button type="button" data-testid="run" onClick={() => run("nav.next")} />
+      <button
+        type="button"
+        data-testid="run"
+        onClick={() => commands.run("nav.next", [], scopesAt(document.activeElement))}
+      />
     </>
   );
 }

@@ -178,7 +178,6 @@ export {
 export { type SystemRow, systemMessage, systemNotice } from "../vm/system.ts";
 export {
   type RepoKind,
-  statusGlyph,
   statusLabel,
   type ThreadStatus,
   type WorkspaceChip,
@@ -244,7 +243,6 @@ export {
   type WorkspaceRow,
   workspaceRow,
 } from "../vm/workspaces.ts";
-export { StatusBadge } from "../widgets/threads/badges.tsx";
 export {
   currentWorkspaceId,
   errorMessage,
@@ -291,7 +289,6 @@ export {
 } from "./files.ts";
 export {
   animationFrame,
-  emptyDirty,
   type FrameScheduler,
   FrameStore,
   type ModelSource,
@@ -306,7 +303,6 @@ export {
   useConnection,
   useIndex,
   useLive,
-  useRunCommand,
   useSnapshot,
   useThread,
   useThreadSummary,

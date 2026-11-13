@@ -31,20 +31,6 @@ export function statusLabel(status: ThreadStatus): string {
   return strings.shell.status[status];
 }
 
-const GLYPHS: Readonly<Record<ThreadStatus, string>> = {
-  awaiting: "!",
-  failed: "✕",
-  running: "◐",
-  starting: "◐",
-  idle: "●",
-  stopped: "○",
-};
-
-/** One character shown before the title (the token and label carry the meaning). */
-export function statusGlyph(status: ThreadStatus): string {
-  return GLYPHS[status];
-}
-
 /** The title to show: the thread's, or "New thread" while it has none (DMN-073). */
 export function displayTitle(thread: Pick<ThreadSummary, "title">): string {
   return thread.title.trim() === "" ? strings.shell.untitled : thread.title;

@@ -9,7 +9,7 @@
  * - Calls: {@link useCall} is the full protocol (`call("thread.prompt", { threadId, text })`); `useCall(method, params)`
  *   its result, shown again from the window's last results while a new mount refreshes it (UI-392).
  * - Window: {@link useWindowState} for window-local state shared by key; {@link useCommand} registers a command for
- *   the keymap and the `:` line; {@link useRunCommand} runs one; {@link useAnnounce} speaks through the live region.
+ *   the keymap and the `:` line; {@link useAnnounce} speaks through the live region.
  */
 
 import type { CallMethod, ConnectionStatus, Index, ThreadView, TopicState } from "@omfp/client";
@@ -26,7 +26,7 @@ import {
   workspaceTopic,
 } from "@omfp/protocol";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { type Command, scopesAt } from "./commands.ts";
+import type { Command } from "./commands.ts";
 import type { Snapshot } from "./frame-store.ts";
 import { type OmfpHost, type SdkClient, useHost } from "./host.tsx";
 import type { LiveClient, LiveSnapshot } from "./live.ts";
@@ -250,15 +250,6 @@ export function useCommand(command: Command): void {
  * for init files (UI-261) and frame-level code. */
 export function registerCommand(host: OmfpHost, command: Command): () => void {
   return host.commands.register(command);
-}
-
-/** Runs a command by id or alias in the scopes around the focused element; `false` when nothing answers. */
-export function useRunCommand(): (name: string, args?: readonly string[]) => boolean {
-  const { commands } = useHost();
-  return useCallback(
-    (name: string, args: readonly string[] = []) => commands.run(name, args, scopesAt(document.activeElement)),
-    [commands],
-  );
 }
 
 /** Announces `message` through the window's ARIA live region (UI-092). */

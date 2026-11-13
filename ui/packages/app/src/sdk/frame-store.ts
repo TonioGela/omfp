@@ -41,19 +41,6 @@ export const animationFrame: FrameScheduler = (commit) => {
   requestAnimationFrame(() => commit());
 };
 
-/** A dirty set with nothing in it. */
-export function emptyDirty(): Dirty {
-  return {
-    connection: false,
-    topics: false,
-    index: false,
-    threads: new Set(),
-    workspaces: new Set(),
-    views: new Set(),
-    jobs: new Set(),
-  };
-}
-
 function capture(model: ModelView, dirty: Dirty, frame: number): Snapshot {
   return {
     frame,
