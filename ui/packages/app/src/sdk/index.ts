@@ -15,12 +15,13 @@
  * | `useViews(id)` | the workspace's views manifest, widget folders and stored values, following `views/<id>` |
  * | `useWidget()` | the widget instance being rendered: `{ instance, reference, workspaceId }` |
  * | `useStored(key, initial)` | `[value, set, loaded]`: JSON kept by the daemon per workspace, instance and key (AGT-018) |
- * | `useJob(command, { key? })` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, restart, kill }`: one daemon job per instance and command, or per key (AGT-019, AGT-086) |
+ * | `useJob(command, { key? })` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, refreshing, restart, kill }`: one daemon job per instance and command, or per key (AGT-019, AGT-086); the window's last copy while a new mount follows it again (UI-392) |
  * | `useToolRun(id \| { match, threadId? })` | a tool run of a thread with its live output (AGT-020) |
  * | `useSlotReport()` | the report of the module widget slot being rendered (`widgets.report`, AGT-026); `undefined` in built-ins |
  * | `useTopic(topic)` | any topic's subscription state, followed while mounted |
  * | `useSnapshot(select)` | anything else from the per-frame model snapshot |
  * | `useCall()` | `call(method, params)`: every protocol method, typed |
+ * | `useCall(method, params)` | `{ data, error, refreshing, refresh }`: the call's result, the window's last one while a new mount refreshes it (UI-392) |
  * | `useWindowState(key)` | window-local state by {@link WindowKey} (`SELECTED_THREAD`, `draftKey(id)`, …) |
  * | `useCommand(command)` / `useRunCommand()` | commands for the keymap and the `:` line (UI-095); `registerCommand(host, command)` outside React |
  * | `useAnnounce()` | the ARIA live region (UI-092) |
@@ -33,7 +34,7 @@
  * | `useHost()` | the host itself (registry, window store), for frame-level code |
  * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.motion`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
  * | `useSetSettings()` | `settings.set(patch)`: merges `ui`/`keymap` into the config file; failures go to `ERRORS` |
- * | `useFile(path, { follow? })` | a workspace file (`workspaces.read_file`), followed, with `reload` and `save(content, expectedHash?)` (AGT-027) |
+ * | `useFile(path, { follow? })` | a workspace file (`workspaces.read_file`), followed, with `refreshing`, `reload` and `save(content, expectedHash?)` (AGT-027, UI-392) |
  * | `useOpenFile()` | `openFile(path, { line?, diff? })`: opens a file tab (UI-115) |
  * | `useMissingFile(path, missing, options)` | finds the file a path that does not exist names (`workspaces.find_file`): one opens in its place, several open the frame's picker (UI-117) |
  * | `useFileTabs(workspaceId)` | this window's opened tabs of a workspace's `main` slot (files, then revealed widgets, UI-373), `select`, `close(path)` and `closeTab(id)` |
@@ -341,6 +342,7 @@ export {
   type Snapshot,
 } from "./frame-store.ts";
 export {
+  type CallState,
   registerCommand,
   useAnnounce,
   useCall,
@@ -464,6 +466,7 @@ export {
   useSlotReport,
   WidgetReporter,
 } from "./reports.ts";
+export { jsonSize, RESULT_ENTRIES, RESULT_UNITS, ResultCache, resultKey } from "./results.ts";
 export {
   DEFAULT_DENSITY,
   DEFAULT_FONT_SIZE,

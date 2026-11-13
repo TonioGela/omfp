@@ -864,6 +864,11 @@ requirements = [
   "UI-387",
   "UI-388",
   "UI-389",
+  # Recent views kept mounted, last results while refreshing
+  "TST-108",
+  "UI-390",
+  "UI-391",
+  "UI-392",
   # Journeys
   "E2E-22",
   "E2E-23",

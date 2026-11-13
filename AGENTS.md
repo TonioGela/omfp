@@ -124,7 +124,8 @@ crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normal
 xtask                 spec-trace (Rust, TypeScript, justfile), check-versions, gen-ts (TypeScript protocol types)
 e2e                   L5 harness (thirtyfour + chromedriver, daemon in-process; `Journey::start_fake` runs it on the
                       fake launcher, e.g. live.rs: live voice on a fake microphone, E2E-14), the journeys and the widget
-                      journeys; kit_gallery.rs is the `/kit` contrast test with shots for review (UI-174)
+                      journeys; kit_gallery.rs is the `/kit` contrast test with shots for review (UI-174); view_switch.rs
+                      times switching back to a view whose widget's call is slow (TST-108)
 ui/                   Bun workspace of the TypeScript UI (D-18): strict `tsc` + Biome (`just lint`), `bun run test`
 ui/packages/protocol  @omfp/protocol: generated protocol types + method table (generated.ts), envelope, topics
 ui/packages/core      @omfp/core: the reducer ported from omfp-core, checked against fixtures/states/
@@ -142,7 +143,7 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs, live.ts:
                       the window's live voice session `LiveClient` and its browser `LiveMedia`, init.ts: the init files'
                       runs and their API, init-views.ts: the views they build, layout.tsx: the layout components of
-                      TSX views), vm
+                      TSX views, results.ts: the data hooks' last results), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
                       column, mode line with the view tabs, the `:` line and file picker, `:widget add` (layout.tsx),
@@ -154,7 +155,8 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       commands run and out-of-sight widget checks), view (layout tree, `:widget add`'s
                       manifest edit (edit.ts), reference resolution, widget slot,
                       the `main` slot's file tabs and the widget tabs reveals open there (opened-tab.tsx: their label
-                      and close gestures); file-view.tsx: TSX views; sizes.ts and splitter.tsx:
+                      and close gestures); file-view.tsx: TSX views; kept.ts: the views kept mounted, hidden;
+                      sizes.ts and splitter.tsx:
                       the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
                       logo sheet), keymap (which-key.ts: the which-key panel's model and the leader groups), theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import

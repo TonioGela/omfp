@@ -6,14 +6,17 @@
  *   references, stable while unchanged.
  * - Topics: {@link useThread}, {@link useWorkspace}, {@link useViews} and {@link useTopic} follow their topic while mounted
  *   (reference-counted across widgets), with the protocol's replay/snapshot semantics.
- * - Calls: {@link useCall} is the full protocol (`call("thread.prompt", { threadId, text })`).
+ * - Calls: {@link useCall} is the full protocol (`call("thread.prompt", { threadId, text })`); `useCall(method, params)`
+ *   its result, shown again from the window's last results while a new mount refreshes it (UI-392).
  * - Window: {@link useWindowState} for window-local state shared by key; {@link useCommand} registers a command for
  *   the keymap and the `:` line; {@link useRunCommand} runs one; {@link useAnnounce} speaks through the live region.
  */
 
-import type { ConnectionStatus, Index, ThreadView, TopicState } from "@omfp/client";
+import type { CallMethod, ConnectionStatus, Index, ThreadView, TopicState } from "@omfp/client";
 import {
+  type ParamsOf,
   type RepoStatus,
+  type ResultOf,
   type ThreadSummary,
   type Topic,
   threadTopic,
@@ -22,12 +25,14 @@ import {
   type Workspace,
   workspaceTopic,
 } from "@omfp/protocol";
-import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { type Command, scopesAt } from "./commands.ts";
 import type { Snapshot } from "./frame-store.ts";
 import { type OmfpHost, type SdkClient, useHost } from "./host.tsx";
 import type { LiveClient, LiveSnapshot } from "./live.ts";
 import { useSlotReport } from "./reports.ts";
+import { type ResultCache, resultKey } from "./results.ts";
+import { WidgetScope } from "./widget.ts";
 import type { Update, WindowKey } from "./window-store.ts";
 
 /** `select` applied to the latest frame's snapshot; re-renders only when its result changes (by identity). */
@@ -99,10 +104,106 @@ export function useViews(workspaceId: string | undefined): ViewsState | undefine
   return useSnapshot((snapshot) => (workspaceId === undefined ? undefined : snapshot.views.get(workspaceId)));
 }
 
-/** The protocol: `call(method, params)` resolves to the typed result or rejects with `CallError`. */
-export function useCall(): SdkClient["call"] {
-  const { client } = useHost();
-  return useCallback<SdkClient["call"]>((method, params) => client.call(method, params), [client]);
+/** What `useCall(method, params)` gives (UI-392). */
+export interface CallState<T> {
+  /** The latest result: this mount's, else the window's last one of the same widget, method and params while the
+   * request runs; `undefined` before the first. A failure keeps it. */
+  readonly data: T | undefined;
+  /** Why the latest request failed (a `CallError` for the daemon's errors), `undefined` once one succeeds. */
+  readonly error: unknown;
+  /** A request is on its way: `data`, when there is one, is the previous result. */
+  readonly refreshing: boolean;
+  /** Calls again, keeping `data` until the new result arrives. */
+  refresh(): void;
+}
+
+interface Fetched {
+  /** The request the state is of ({@link resultKey}); `undefined` without params. */
+  readonly key: string | undefined;
+  readonly data: unknown;
+  readonly error: unknown;
+  readonly refreshing: boolean;
+}
+
+/** The state a request starts in: the window's last result for `key`, refreshing. */
+function startOf(results: ResultCache, key: string | undefined): Fetched {
+  return {
+    key,
+    data: key === undefined ? undefined : results.get(key)?.value,
+    error: undefined,
+    refreshing: key !== undefined,
+  };
+}
+
+/**
+ * The protocol. `useCall()` gives `call(method, params)`, which resolves to the typed result or rejects with
+ * `CallError`. `useCall(method, params)` calls `method` whenever the params change (by JSON), on every mount and on
+ * `refresh()`, and gives its {@link CallState}: on a new mount the window's last result of the same widget instance,
+ * method and params shows at once, `refreshing`, until the new one replaces it (UI-392). `params` `null`: no call.
+ */
+export function useCall(): SdkClient["call"];
+export function useCall<M extends CallMethod>(method: M, params: ParamsOf<M> | null): CallState<ResultOf<M>>;
+export function useCall<M extends CallMethod>(
+  method?: M,
+  params?: ParamsOf<M> | null,
+): SdkClient["call"] | CallState<ResultOf<M>> {
+  const { client, results } = useHost();
+  const call = useCallback<SdkClient["call"]>((name, args) => client.call(name, args), [client]);
+  const scope = useContext(WidgetScope);
+  const request = method === undefined || params === null || params === undefined ? undefined : JSON.stringify(params);
+  const key = method === undefined || request === undefined ? undefined : resultKey(scope, method, request);
+  const [fetched, setFetched] = useState<Fetched>(() => startOf(results, key));
+  let state = fetched;
+  if (fetched.key !== key) {
+    // New params: their last result, if any, rather than the previous params' result.
+    state = startOf(results, key);
+    setFetched(state);
+  }
+  const [round, setRound] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `round` (refresh) calls again.
+  useEffect(() => {
+    if (method === undefined || request === undefined || key === undefined) {
+      return;
+    }
+    let live = true;
+    // Shown again (a hidden view, UI-390) or refreshed: the shown result is the previous one until this one answers.
+    setFetched((previous) =>
+      previous.key !== key || previous.refreshing ? previous : { ...previous, refreshing: true },
+    );
+    // `request` is the JSON of the params the key was made of.
+    client.call(method, JSON.parse(request) as ParamsOf<M>).then(
+      (data) => {
+        results.set(key, data);
+        if (live) {
+          setFetched({ key, data, error: undefined, refreshing: false });
+        }
+      },
+      (error: unknown) => {
+        if (live) {
+          setFetched((previous) => ({
+            ...(previous.key === key ? previous : startOf(results, key)),
+            error,
+            refreshing: false,
+          }));
+        }
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [client, results, method, request, key, round]);
+  const refresh = useCallback(() => setRound((count) => count + 1), []);
+  const callState = useMemo(
+    (): CallState<ResultOf<M>> => ({
+      // The result of `method` (or its cached copy), kept untyped.
+      data: state.data as ResultOf<M> | undefined,
+      error: state.error,
+      refreshing: state.refreshing,
+      refresh,
+    }),
+    [state, refresh],
+  );
+  return method === undefined ? call : callState;
 }
 
 /** A slot of window-local state and its setter, shared by every widget using the same key. Pass a stable key

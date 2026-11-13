@@ -8,7 +8,7 @@
 import { CallError } from "@omfp/client";
 import type { VimMode } from "@omfp/kit";
 import type { FileCandidate, FileContent } from "@omfp/protocol";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { strings } from "../strings/index.ts";
 import {
   closeOpenedTab,
@@ -28,6 +28,8 @@ import { currentWorkspaceId, errorMessage, reportError, useCurrentWorkspaceId } 
 import { useCall, useWindowState, useWorkspace } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
 import { SELECTED_THREAD } from "./keys.ts";
+import { type ResultCache, resultKey } from "./results.ts";
+import { WidgetScope } from "./widget.ts";
 import { type WindowKey, windowKey } from "./window-store.ts";
 
 /**
@@ -251,6 +253,9 @@ export interface FileState {
   /** The latest version read (`undefined` while loading, missing or failed). */
   readonly file: FileContent | undefined;
   readonly error: string | undefined;
+  /** The first read since the widget mounted (or the path changed) is on its way: `file`, when `status` is `ready`,
+   * is the window's last copy, read by an earlier mount (UI-392). */
+  readonly refreshing: boolean;
   /** Reads the file again now, `HEAD` text included. */
   reload(): void;
   /** Writes `content` if the file still has `expectedHash` (default: the hash of `file`). */
@@ -263,33 +268,51 @@ export function errorCode(error: unknown): string | undefined {
 }
 
 interface Loaded {
+  /** The file's cache key ({@link resultKey}): the workspace, widget and path the state is of. */
+  readonly key: string;
   readonly status: FileLoadStatus;
   readonly file: FileContent | undefined;
   readonly error: string | undefined;
+  readonly refreshing: boolean;
 }
 
-const LOADING: Loaded = { status: "loading", file: undefined, error: undefined };
+/** What a mount shows before its first read answers: the window's last copy of the file, else `loading`. */
+function startOf(results: ResultCache, key: string): Loaded {
+  const cached = results.get(key)?.value as FileContent | undefined;
+  return cached === undefined
+    ? { key, status: "loading", file: undefined, error: undefined, refreshing: true }
+    : { key, status: "ready", file: cached, error: undefined, refreshing: true };
+}
 
 /**
  * A file of the current workspace (`workspaces.read_file`, DMN-089). With `follow` (the default) it is checked again
  * by the host's poll (`knownHash`, so an unchanged file costs no transfer) and read again whenever the workspace's git
- * status changes (`workspace/<id>`), which also refreshes its `HEAD` text.
+ * status changes (`workspace/<id>`), which also refreshes its `HEAD` text. Until the first read answers, the window's
+ * last copy read by the same widget instance shows, `refreshing` (UI-392).
  */
 export function useFile(path: string, { follow = true }: { readonly follow?: boolean } = {}): FileState {
   const host = useHost();
   const call = useCall();
   const workspaceId = useCurrentWorkspaceId();
   const { status: gitStatus } = useWorkspace(follow ? workspaceId : undefined);
-  const [loaded, setLoaded] = useState<Loaded>(LOADING);
+  const key = resultKey(useContext(WidgetScope), "workspaces.read_file", `${workspaceId ?? ""}\u0000${path}`);
+  const [loaded, setLoaded] = useState<Loaded>(() => startOf(host.results, key));
   const current = useRef<FileContent | undefined>(undefined);
+  /** The key {@link current} belongs to. */
+  const currentKey = useRef<string | undefined>(undefined);
   // Results of an older path or workspace are dropped.
   const generation = useRef(0);
-
   const read = useCallback(
     async (check: boolean) => {
       const asked = generation.current;
       if (workspaceId === undefined) {
-        setLoaded({ status: "error", file: undefined, error: strings.shell.files.noWorkspace(path) });
+        setLoaded({
+          key,
+          status: "error",
+          file: undefined,
+          error: strings.shell.files.noWorkspace(path),
+          refreshing: false,
+        });
         return;
       }
       const known = check ? current.current?.hash : undefined;
@@ -303,28 +326,41 @@ export function useFile(path: string, { follow = true }: { readonly follow?: boo
           return;
         }
         current.current = file;
-        setLoaded({ status: "ready", file, error: undefined });
+        host.results.set(key, file);
+        setLoaded({ key, status: "ready", file, error: undefined, refreshing: false });
       } catch (error) {
         if (asked !== generation.current) {
           return;
         }
         if (errorCode(error) === "not_found") {
           current.current = undefined;
-          setLoaded({ status: "missing", file: undefined, error: errorMessage(error) });
+          host.results.delete(key);
+          setLoaded({ key, status: "missing", file: undefined, error: errorMessage(error), refreshing: false });
         } else if (!check) {
-          setLoaded({ status: "error", file: current.current, error: errorMessage(error) });
+          setLoaded({ key, status: "error", file: current.current, error: errorMessage(error), refreshing: false });
         }
       }
     },
-    [call, workspaceId, path],
+    [call, host, key, workspaceId, path],
   );
 
+  // On mount, a new path or workspace, and when a hidden view shows again (UI-390): read, showing meanwhile what was
+  // shown (the same file) or the window's last copy (another one).
   useEffect(() => {
     generation.current++;
-    current.current = undefined;
-    setLoaded(LOADING);
+    if (currentKey.current !== key) {
+      currentKey.current = key;
+      current.current = host.results.get(key)?.value as FileContent | undefined;
+    }
+    setLoaded((previous) =>
+      previous.key !== key
+        ? startOf(host.results, key)
+        : previous.refreshing
+          ? previous
+          : { ...previous, refreshing: true },
+    );
     void read(false);
-  }, [read]);
+  }, [host, key, read]);
 
   useEffect(() => (follow ? host.filePoll(() => void read(true)) : undefined), [host, follow, read]);
 
@@ -361,14 +397,18 @@ export function useFile(path: string, { follow = true }: { readonly follow?: boo
           truncated: false,
         };
         current.current = saved;
-        setLoaded({ status: "ready", file: saved, error: undefined });
+        host.results.set(key, saved);
+        setLoaded({ key, status: "ready", file: saved, error: undefined, refreshing: false });
         return { ok: true, file: saved };
       } catch (error) {
         return { ok: false, conflict: errorCode(error) === "conflict", error: errorMessage(error) };
       }
     },
-    [call, workspaceId],
+    [call, host, key, workspaceId],
   );
 
-  return useMemo(() => ({ ...loaded, reload: () => void read(false), save }), [loaded, read, save]);
+  return useMemo(() => {
+    const { status, file, error, refreshing } = loaded;
+    return { status, file, error, refreshing, reload: () => void read(false), save };
+  }, [loaded, read, save]);
 }

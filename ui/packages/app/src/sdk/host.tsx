@@ -24,6 +24,7 @@ import { browserLiveMedia, LiveClient, type LiveMedia } from "./live.ts";
 import { browserImporter, type Importer, WidgetModules } from "./modules.ts";
 import { Notices, type NoticeTimers } from "./notify.ts";
 import { type ReportTimers, WidgetReporter } from "./reports.ts";
+import { ResultCache } from "./results.ts";
 import { type KeyValueStorage, WindowStore } from "./window-store.ts";
 
 /** What the SDK needs from `@omfp/client`'s `Client` (tests pass a fake over a real `Model`). */
@@ -162,6 +163,8 @@ export interface OmfpHost {
   readonly notices: Notices;
   /** The user's and the current workspace's init files (UI-260..UI-263). */
   readonly init: InitFiles;
+  /** The data hooks' last results, shown again while a widget mounted again refreshes them (UI-392). */
+  readonly results: ResultCache;
 }
 
 export interface HostOptions {
@@ -208,6 +211,7 @@ export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHo
     }),
     notices: new Notices(window, options.noticeTimers),
     init: new InitFiles(() => host, importer),
+    results: new ResultCache(),
   };
   return host;
 }

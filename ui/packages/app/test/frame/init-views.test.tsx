@@ -150,8 +150,11 @@ function structure(): string[] {
   ];
 }
 
+/** The splitter at `path` of the view shown (the views the frame keeps hidden have theirs, UI-390). */
 function splitter(path: string): HTMLElement {
-  const found = screen.getAllByTestId("splitter").find((element) => element.dataset.path === path);
+  const found = within(screen.getByTestId("view"))
+    .getAllByTestId("splitter")
+    .find((element) => element.dataset.path === path);
   if (found === undefined) {
     throw new Error(`no splitter at ${path}`);
   }
@@ -189,7 +192,11 @@ describe("TSX views", () => {
     await settle(test);
     expect(screen.getByTestId("view").dataset.view).toBe("ops");
     expect(structure()).toEqual(manifest);
-    expect(screen.getAllByTestId("splitter").map((element) => element.dataset.path)).toEqual(["0", "0.1"]);
+    expect(
+      within(screen.getByTestId("view"))
+        .getAllByTestId("splitter")
+        .map((element) => element.dataset.path),
+    ).toEqual(["0", "0.1"]);
     // Files open as tabs of its `main` slot.
     act(() => openFile(test.host, "src/lib.rs"));
     test.flush();
@@ -264,6 +271,27 @@ describe("TSX views", () => {
     expect(banner()).toBeUndefined();
     expect(screen.getByTestId("view").dataset.view).toBe("ops");
     expect(test.fileErrors()).toEqual([]);
+  });
+
+  // spec: UI-268, UI-390
+  test("a kept TSX view shows its last layout when it shows again while its new version loads", async () => {
+    const opsTwoUrl = viewFileUrl(BASE, "w1", "f1", "./views/ops2.tsx");
+    const manifest = { ...MANIFEST, views: { ...MANIFEST.views, ops2: { title: "Ops 2", view: "./views/ops2.tsx" } } };
+    const test = setup({ [opsUrl("f1")]: { default: Ops }, [opsTwoUrl]: { default: Ops } }, { manifest });
+    show(test, "ops");
+    await settle(test);
+    const layout = structure();
+    show(test, "ops2");
+    await settle(test);
+    // A save of `.omfp/views/`: the new versions never finish loading here.
+    test.client.viewsEvents("w1", { kind: "views_files", viewFiles: "f2" });
+    test.flush();
+    await settle(test);
+    expect(screen.getByTestId("view").dataset.view).toBe("ops2");
+    show(test, "ops");
+    await settle(test);
+    expect(screen.getByTestId("view").dataset.view).toBe("ops");
+    expect(structure()).toEqual(layout);
   });
 });
 

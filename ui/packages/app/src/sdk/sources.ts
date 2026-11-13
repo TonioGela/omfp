@@ -13,6 +13,7 @@ import { useSnapshot, useThread, useTopic, useViews, useWindowState } from "./ho
 import { useHost } from "./host.tsx";
 import { SELECTED_THREAD } from "./keys.ts";
 import { JOB_TAIL, useSlotReport } from "./reports.ts";
+import { resultKey } from "./results.ts";
 import { useWidget } from "./widget.ts";
 
 /** A new value, or an updater of the current one; `null` deletes the key. */
@@ -79,6 +80,9 @@ export interface Job {
   readonly endedAt: number | null;
   /** The job as the daemon reports it (`job/<id>`), `undefined` until known. */
   readonly state: JobState | undefined;
+  /** The job's topic is being followed again (the widget mounted again, or its view was shown again): `state` and the
+   * lines are the window's last copy until its snapshot arrives (UI-392). */
+  readonly refreshing: boolean;
   /** Kills the job when it runs, then starts a new one. */
   restart(): void;
   /** Stops the running job (SIGTERM, then SIGKILL after 2 s, DMN-081). */
@@ -123,12 +127,20 @@ function statusOf(state: JobState | undefined): JobRunStatus {
   return status.code === 0 ? "succeeded" : "failed";
 }
 
+/** What {@link useJob} keeps in the window's results ({@link OmfpHost.results}) for its next mount. */
+interface KeptJob {
+  readonly key: string;
+  readonly id: string;
+  readonly state: JobState;
+}
+
 /**
  * Runs `command` in the workspace (`jobs.start`, DMN-080) once per widget instance: the job's id and the runs are
  * stored with {@link useStored} under `job:<command>` as `{ id, runs }`; while nothing is stored or the daemon no
  * longer knows the stored job, a job is started; otherwise the stored job is followed (`job/<id>`), running or
  * finished, so reloads, other windows and moving the widget never start a second one. The job is part of the widget
- * slot's report (AGT-026).
+ * slot's report (AGT-026). Until the followed job's snapshot arrives, the window's last copy of it shows,
+ * `refreshing` (UI-392).
  *
  * With `options.key` (AGT-086) the slot is the key, stored under `jobkey:<key>` as `{ id, runs, command }`: when the
  * command changes, the hook starts the new one with `replaces` set to the stored job, which the daemon kills if it
@@ -137,7 +149,8 @@ function statusOf(state: JobState | undefined): JobRunStatus {
 export function useJob(command: string, options: JobOptions = {}): Job {
   const { key } = options;
   const host = useHost();
-  const { workspaceId } = useWidget();
+  const widget = useWidget();
+  const { workspaceId } = widget;
   const storeKey = key === undefined ? `job:${command}` : `jobkey:${key}`;
   const [value, setStored, loaded] = useStored<unknown>(storeKey, null);
   const stored = storedJob(value);
@@ -147,7 +160,30 @@ export function useJob(command: string, options: JobOptions = {}): Job {
   const stale = key !== undefined && stored !== null && stored.command !== command;
   const shownId = stale ? null : jobId;
   const topic = useTopic(shownId === null ? undefined : jobTopic(shownId));
-  const state = useSnapshot((snapshot) => (shownId === null ? undefined : snapshot.jobs.get(shownId)));
+  const live = useSnapshot((snapshot) => (shownId === null ? undefined : snapshot.jobs.get(shownId)));
+  const gone = topic?.sync.kind === "failed" && topic.sync.error.code === "not_found";
+  // The job as last shown, kept in the window's results when the widget unmounts or its view hides.
+  const resultsKey = resultKey(widget, "job", storeKey);
+  const kept = useRef<KeptJob | undefined>(undefined);
+  if (live !== undefined && shownId !== null) {
+    kept.current = { key: resultsKey, id: shownId, state: live };
+  }
+  useEffect(
+    () => () => {
+      const last = kept.current;
+      if (last !== undefined) {
+        // Its lines' text, plus a little per line.
+        const size = last.state.lines.reduce((total, line) => total + line.text.length + 16, 256);
+        host.results.set(last.key, last, size);
+      }
+    },
+    [host],
+  );
+  const cached =
+    live !== undefined || shownId === null || gone
+      ? undefined
+      : (host.results.get(resultsKey)?.value as KeptJob | undefined);
+  const state = live ?? (cached?.id === shownId ? cached.state : undefined);
   // The stored id (or `null`) a start was made for: no second start until the stored id changes.
   const startedFor = useRef<string | null | undefined>(undefined);
   // The same, to render `pending` while the start is on its way.
@@ -179,7 +215,6 @@ export function useJob(command: string, options: JobOptions = {}): Job {
     [host, workspaceId, command, key, setStored],
   );
 
-  const gone = topic?.sync.kind === "failed" && topic.sync.error.code === "not_found";
   useEffect(() => {
     if (loaded && (jobId === null || gone || stale) && startedFor.current !== jobId) {
       start(jobId, runs);
@@ -245,7 +280,7 @@ export function useJob(command: string, options: JobOptions = {}): Job {
   }, [slot, storeKey, command, job.status, job.exitCode, job.signal, job.runs, job.startedAt, tail]);
   useEffect(() => () => slot?.setJob(storeKey, undefined), [slot, storeKey]);
 
-  return { ...job, ...output, state, restart, kill };
+  return { ...job, ...output, state, refreshing: live === undefined && state !== undefined, restart, kill };
 }
 
 /** Which tool run {@link useToolRun} follows. */

@@ -8,7 +8,16 @@
 
 import { Tab, TabList, TabPanel, Tabs } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
-import { Fragment, type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  type KeyboardEvent,
+  memo,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   fileName,
   fileTabId,
@@ -49,6 +58,8 @@ export interface ViewRendererProps {
   readonly views?: ViewsState | undefined;
   /** On a phone (UI-204): the area shown; absent on wider frames. */
   readonly area?: Area | undefined;
+  /** `false` for a view the frame keeps mounted hidden (UI-390): its root is a `kept-view`, not the `view`. */
+  readonly shown?: boolean;
 }
 
 /** What every node of one render shares. */
@@ -61,14 +72,58 @@ interface Scope {
   readonly area: Area | undefined;
 }
 
-export function ViewRenderer({ view, registry, workspaceId, views, area }: ViewRendererProps): ReactNode {
+/**
+ * A view. Kept mounted while hidden (UI-390), it gives up the focus as it hides (its elements stay in the DOM, not
+ * shown) and takes it back where it was when it shows again.
+ */
+export const ViewRenderer = memo(function ViewRenderer({
+  view,
+  registry,
+  workspaceId,
+  views,
+  area,
+  shown = true,
+}: ViewRendererProps): ReactNode {
   const scope: Scope = { registry, workspaceId, views, viewId: view.id, area };
+  const root = useRef<HTMLDivElement>(null);
+  const focused = useRef<HTMLElement | null>(null);
+  // Effects are cleaned up as `<Activity>` hides the view and run again as it shows it. The layout cleanup sees the
+  // focus before React's commit puts it back on the element it was on; the passive one, after.
+  useLayoutEffect(() => {
+    const element = root.current;
+    const before = focused.current;
+    focused.current = null;
+    if (before?.isConnected === true && element?.contains(before) === true) {
+      before.focus({ preventScroll: true });
+    }
+    return () => {
+      const active = document.activeElement;
+      if (element !== null && active instanceof HTMLElement && element.contains(active)) {
+        focused.current = active;
+      }
+    };
+  }, []);
+  useEffect(() => {
+    const element = root.current;
+    return () => {
+      const active = document.activeElement;
+      if (element !== null && active instanceof HTMLElement && element.contains(active)) {
+        active.blur();
+      }
+    };
+  }, []);
   return (
-    <div className="omfp-view" data-testid="view" data-view={view.id} data-area={area}>
+    <div
+      ref={root}
+      className="omfp-view"
+      data-testid={shown ? "view" : "kept-view"}
+      data-view={view.id}
+      data-area={area}
+    >
       <Node tree={view.tree} path="0" scope={scope} />
     </div>
   );
-}
+});
 
 export interface PanelLayoutProps {
   /** The panel's id (AGT-060): its nodes' paths start at `panel:<id>`. */
@@ -339,7 +394,14 @@ function Cells({
       data-boxes={(boxes && !tabbed) || undefined}
     >
       {tabbed && choices.length > 1 && (
-        <CellTabs tree={tree} path={path} choices={choices} selected={selected} onSelect={setPicked} />
+        <CellTabs
+          tree={tree}
+          path={path}
+          viewId={scope.viewId}
+          choices={choices}
+          selected={selected}
+          onSelect={setPicked}
+        />
       )}
       {tree.children.map((child, index) => {
         const id = `${path}.${index}`;
@@ -369,7 +431,7 @@ function Cells({
             )}
             <div
               className="omfp-view__cell"
-              id={tabbed ? cellId(id) : undefined}
+              id={tabbed ? cellId(scope.viewId, id) : undefined}
               role={tabbed ? "tabpanel" : undefined}
               hidden={tabbed && index !== selected}
               style={shown === undefined || tabbed ? undefined : { flexGrow: shown[index] }}
@@ -383,8 +445,9 @@ function Cells({
   );
 }
 
-function cellId(path: string): string {
-  return `omfp-cell-${path.replaceAll(".", "-")}`;
+/** A phone's tab panel id: unique in the page, which holds the hidden views the frame keeps too (UI-390). */
+function cellId(viewId: string, path: string): string {
+  return `omfp-cell-${encodeURIComponent(viewId)}-${path.replaceAll(".", "-")}`;
 }
 
 /**
@@ -394,12 +457,14 @@ function cellId(path: string): string {
 function CellTabs({
   tree,
   path,
+  viewId,
   choices,
   selected,
   onSelect,
 }: {
   tree: Exclude<LayoutTree, { kind: "widget" }>;
   path: string;
+  viewId: string;
   choices: readonly number[];
   selected: number;
   onSelect: (index: number) => void;
@@ -431,7 +496,7 @@ function CellTabs({
             role="tab"
             className="omfp-tabs__tab"
             aria-selected={index === selected}
-            aria-controls={cellId(id)}
+            aria-controls={cellId(viewId, id)}
             tabIndex={index === selected ? 0 : -1}
             data-selected={index === selected || undefined}
             data-testid="cell-tab"

@@ -97,6 +97,31 @@ export function useFileView(
     () => (key === undefined || currentUrl === undefined ? undefined : newCollector(key, setRendered)),
     [key, currentUrl],
   );
+  const shown = rendered !== undefined && rendered.key === key ? rendered.layout : undefined;
+  // One view object per rendered layout: the frame keeps it (UI-390) and reports it.
+  const parsed = useMemo((): Parsed<ResolvedView> | undefined => {
+    if (listed === undefined || shown === undefined) {
+      return undefined;
+    }
+    if (!shown.ok) {
+      return shown;
+    }
+    const tree = parseLayout(shown.value, listed.file);
+    if (!tree.ok) {
+      return tree;
+    }
+    return {
+      ok: true,
+      value: {
+        id: listed.id,
+        title: listed.title,
+        layout: shown.value,
+        tree: tree.value,
+        file: listed.file,
+        ...(listed.init === undefined ? {} : { init: listed.init }),
+      },
+    };
+  }, [listed, shown]);
   if (listed === undefined || current === undefined || collector === undefined) {
     return IDLE;
   }
@@ -106,23 +131,12 @@ export function useFileView(
   const source = (
     <ViewSource key={current.url} component={current.loaded.component as ComponentType} collector={collector} />
   );
-  const shown = rendered !== undefined && rendered.key === key ? rendered.layout : undefined;
-  if (shown === undefined) {
+  if (parsed === undefined) {
     return { view: undefined, error: undefined, source };
   }
-  const tree = shown.ok ? parseLayout(shown.value, listed.file) : shown;
-  if (!tree.ok || !shown.ok) {
-    return { view: undefined, error: tree.ok ? undefined : tree.error, source };
-  }
-  const view: ResolvedView = {
-    id: listed.id,
-    title: listed.title,
-    layout: shown.value,
-    tree: tree.value,
-    file: listed.file,
-    ...(listed.init === undefined ? {} : { init: listed.init }),
-  };
-  return { view, error: undefined, source };
+  return parsed.ok
+    ? { view: parsed.value, error: undefined, source }
+    : { view: undefined, error: parsed.error, source };
 }
 
 /**

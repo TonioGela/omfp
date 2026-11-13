@@ -604,6 +604,10 @@ thread starts; the daemon runs omp's OAuth logins on a short-lived omp of its ow
 in the calling window (the URL to open, progress, a paste-code dialog; `:login`, `:logout`, Log in on start errors, a
 failed thread's header and an empty model selector, UI-380..UI-389) and restarts the running threads once free so they
 list the new models (DMN-224).
+Switching views keeps the last two views of the workspace mounted, hidden in React's `<Activity>` with their effects
+paused and their commands and widget reports gone, and the SDK's data hooks show their last result while they refresh:
+switching back to a widget whose call takes 500 ms shows its content in 4–5 ms instead of 503–546 ms (UI-390..UI-392,
+TST-108).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and

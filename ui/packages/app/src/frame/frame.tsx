@@ -10,7 +10,7 @@
 
 import { useWidthClass } from "@omfp/kit";
 import { type FileErrorReport, type ViewsState, viewsTopic } from "@omfp/protocol";
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { createKeyHandler } from "../keymap/handler.ts";
 import { type Binding, DEFAULT_BINDINGS } from "../keymap/keymap.ts";
 import { globalKeyTimers, type KeyTimers, WhichKeyState } from "../keymap/which-key.ts";
@@ -32,6 +32,7 @@ import {
 import { strings } from "../strings/index.ts";
 import { useAppearance, useUserTheme } from "../theme/theme.ts";
 import { useFileView } from "../view/file-view.tsx";
+import { keepViews, NO_KEPT_VIEWS } from "../view/kept.ts";
 import { chatCell, containsWidget, hasMainSlot } from "../view/layout.ts";
 import { BUILTIN_WIDGETS, INTERACTION_WIDGETS } from "../view/registry.ts";
 import { ViewRenderer } from "../view/render.tsx";
@@ -132,12 +133,28 @@ export function Frame({
     views.views.find((candidate) => candidate.id === views.defaultId);
   // A TSX view renders its file first (UI-268); while it fails, the default view stands in.
   const file = useFileView(listed !== undefined && isFileView(listed) ? listed : undefined, workspaceId, state);
+  const fileError = listed !== undefined && isFileView(listed) ? file.error : undefined;
+  // The last views shown stay mounted, hidden (UI-390); a TSX view shown again shows as it was until it rendered.
+  const [kept, setKept] = useState(NO_KEPT_VIEWS);
+  const keptListed =
+    listed === undefined || kept.workspaceId !== workspaceId
+      ? undefined
+      : kept.views.find((entry) => entry.id === listed.id)?.view;
   const view =
     listed === undefined || !isFileView(listed)
       ? listed
-      : (file.view ?? (file.error === undefined ? undefined : BUILTIN_VIEW));
+      : (file.view ??
+        (file.error !== undefined ? BUILTIN_VIEW : keptListed?.file === listed.file ? keptListed : undefined));
+  const keeping = keepViews(
+    kept,
+    workspaceId,
+    listed === undefined || view === undefined ? undefined : { id: listed.id, view },
+    views.views,
+  );
+  if (keeping !== kept) {
+    setKept(keeping);
+  }
   const addWidget = useAddWidget(workspaceId, state, listed);
-  const fileError = listed !== undefined && isFileView(listed) ? file.error : undefined;
   const fileErrors = useMemo(
     (): FileErrorReport[] => [
       ...init.errors.map(
@@ -226,15 +243,21 @@ export function Frame({
         </aside>
         {breakpoint === "wide" && <LeftSplitter aside={asideRef} />}
         <div className="omfp-frame__main">
-          {view !== undefined && (
-            <ViewRenderer
-              view={view}
-              registry={registry}
-              workspaceId={workspaceId}
-              views={state}
-              area={breakpoint === "mobile" ? (side ? area : "chat") : undefined}
-            />
-          )}
+          {keeping.views.map((entry) => {
+            const shown = view !== undefined && entry.id === listed?.id;
+            return (
+              <Activity key={entry.key} mode={shown ? "visible" : "hidden"}>
+                <ViewRenderer
+                  view={entry.view}
+                  registry={registry}
+                  workspaceId={workspaceId}
+                  views={state}
+                  area={breakpoint === "mobile" ? (side ? area : "chat") : undefined}
+                  shown={shown}
+                />
+              </Activity>
+            );
+          })}
           {view !== undefined && !hasMainSlot(view.tree) && (
             <FloatingFile workspaceId={workspaceId} views={state} registry={registry} />
           )}
