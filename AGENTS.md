@@ -13,9 +13,9 @@ only be reachable from the human UI.
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-20), open questions.
 - `docs/specs/07-roadmap.md` — milestones and spike results (done: M0–M8 with M2b, M5b, M5c, M5d, M6b, M8b and M8c,
-  M10, M12, M13, M14; in progress: M9 hardening, M11 macOS desktop, M15 downloads without Nix; the terminal was
-  removed, D-06); `docs/specs/milestones.toml` — requirement IDs and `status` per milestone (enforced by
-  `cargo xtask spec-trace`).
+  M10, M12, M13, M14; in progress: M9 hardening, M11 macOS desktop, M15 downloads without Nix, M16 media and file
+  viewers; the terminal was removed, D-06); `docs/specs/milestones.toml` — requirement IDs and `status` per milestone
+  (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`09`).
 
 ## Ground rules
@@ -96,7 +96,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       `omfp_widget_check` warns about; server/services/widget_tools.rs: what the widget check does), WebSocket server (polling of watched workspaces:
                       server/services/polls.rs; the windows' reports, `windows.*` and the requests to windows:
                       server/services/windows.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
-                      and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs),
+                      and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs;
+                      the raw bytes of workspace files at `/files/<key>/…`: server/raw_files.rs, M16),
                       the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
                       token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue and the static docs as resources);
                       the logins to omp's providers (supervisor/login.rs: the short-lived login omp, one login at a

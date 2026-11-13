@@ -387,7 +387,7 @@ export function decodeServerFrame(value: unknown): Decoded<ServerFrame> {
   }
 }
 
-/** Decodes the result of `system.hello` (PRT-005, PRT-051). */
+/** Decodes the result of `system.hello` (PRT-005, PRT-051, PRT-150). */
 export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
   if (
     !isObject(value) ||
@@ -396,9 +396,10 @@ export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
     typeof value.omp !== "string" ||
     !isStringArray(value.warnings) ||
     typeof value.widgetBase !== "string" ||
+    typeof value.fileBase !== "string" ||
     !isSeq(value.connection)
   ) {
-    return invalid("expected `protocol`, `daemon`, `omp`, `warnings`, `widgetBase` and `connection`");
+    return invalid("expected `protocol`, `daemon`, `omp`, `warnings`, `widgetBase`, `fileBase` and `connection`");
   }
   return {
     ok: true,
@@ -408,6 +409,7 @@ export function decodeHelloResult(value: unknown): Decoded<HelloResult> {
       omp: value.omp,
       warnings: value.warnings,
       widgetBase: value.widgetBase,
+      fileBase: value.fileBase,
       connection: value.connection,
     },
   };

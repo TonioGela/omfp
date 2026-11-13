@@ -19,6 +19,7 @@ expression: golden
     "result": {
       "connection": 3,
       "daemon": "0.1.0",
+      "fileBase": "/files/a07e…",
       "omp": "18.18.6",
       "protocol": 1,
       "warnings": [

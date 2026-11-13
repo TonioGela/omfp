@@ -39,6 +39,9 @@ pub struct HelloResult {
     pub warnings: Vec<String>,
     /// Path under which this daemon serves widget modules to this client (`/widgets/<key>`, DMN-084, PRT-042).
     pub widget_base: String,
+    /// Path under which this daemon serves the raw bytes of workspace files to this client (`/files/<key>`, DMN-250,
+    /// PRT-150): `<fileBase>/<workspaceId>/<path>`.
+    pub file_base: String,
     /// Number of this connection, unique while the daemon runs: the `owner.connection` of the live sessions it
     /// starts (PRT-051).
     pub connection: u64,

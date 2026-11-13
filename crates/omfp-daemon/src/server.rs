@@ -1,6 +1,7 @@
 //! The WebSocket server (03-protocol): `/api/ws` for clients, the MCP server at `/mcp` for agents outside omfp
-//! (DMN-155), the user's theme at `/theme.css` (DMN-075), widget modules under the secret `widgetBase` (DMN-084), and
-//! the web UI's static files at `/` when `--static-dir` is set.
+//! (DMN-155), the user's theme at `/theme.css` (DMN-075), widget modules under the secret `widgetBase` (DMN-084),
+//! workspace files under the secret `fileBase` (DMN-250), and the web UI's static files at `/` when `--static-dir` is
+//! set.
 
 mod activity;
 mod auth;
@@ -9,6 +10,7 @@ pub(crate) mod convert;
 pub(crate) mod dispatch;
 mod mcp;
 mod prompts;
+mod raw_files;
 mod services;
 
 use std::path::{Component, Path, PathBuf};
@@ -27,6 +29,7 @@ pub use auth::{Permission, Principal, authorize, origin_allowed, parse_origin, p
 #[cfg(test)]
 pub(crate) use connection::Outbound;
 pub(crate) use mcp::Sessions as McpSessions;
+pub(crate) use raw_files::PREFIX as FILES_PREFIX;
 pub(crate) use services::{CHECK_WAIT, Services};
 
 use crate::token::Token;
@@ -52,6 +55,9 @@ pub(crate) struct AppState {
     pub static_dir: Option<PathBuf>,
     /// `/widgets/<key>`: where authenticated clients load widget modules, the key random per start (DMN-084).
     pub widget_base: String,
+    /// `/files/<key>`: where authenticated clients load the raw bytes of workspace files, the key random per start
+    /// and distinct from the widget key (DMN-250).
+    pub file_base: String,
     pub services: Services,
     /// The MCP server's legacy sessions (DMN-157).
     pub mcp_sessions: McpSessions,
@@ -67,6 +73,7 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         .route(mcp::PATH, post(mcp::post).delete(mcp::delete))
         .route("/theme.css", get(theme_css))
         .route("/widgets/{*rest}", get(widget_file))
+        .route("/files/{*rest}", get(raw_files::serve))
         .fallback(static_file)
         .with_state(state)
 }

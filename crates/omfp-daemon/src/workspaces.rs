@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 
-pub use files::{IMAGE_CAP, TEXT_CAP};
+pub use files::{IMAGE_CAP, TEXT_CAP, image_mime};
 pub use find::{MAX_CANDIDATES, named_files};
 pub use fingerprint::{Fingerprint, fingerprint};
 pub use scan::{Discovered, RepoKind, scan};

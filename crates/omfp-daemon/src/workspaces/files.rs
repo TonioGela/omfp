@@ -40,7 +40,9 @@ const MAX_LINKS: usize = 40;
 /// Bytes read at a time.
 const CHUNK: usize = 64 * 1024;
 
-fn image_mime(path: &Path) -> Option<&'static str> {
+/// The MIME type of an image file, by its extension (case-insensitive); `None` for other files.
+#[must_use]
+pub fn image_mime(path: &Path) -> Option<&'static str> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     IMAGES
         .iter()
@@ -247,10 +249,10 @@ fn new_file_target(full: &Path, path: &str) -> Result<PathBuf> {
 }
 
 impl Workspaces {
-    /// The file `path` of workspace `id` (DMN-089). A relative path the folder does not hold is looked up in each
-    /// repository, in scan order. With `known_hash` equal to the file's hash the result is `unchanged`, without its
-    /// content or `HEAD` text.
-    pub fn read_file(&self, id: &str, path: &str, known_hash: Option<&str>) -> Result<FileContent> {
+    /// Where the file `path` of workspace `id` is (DMN-089): the workspace's folder, the path relative to it and the
+    /// repositories the last scan found. A relative path the folder does not hold is looked up in each repository, in
+    /// scan order.
+    fn locate(&self, id: &str, path: &str) -> Result<(PathBuf, PathBuf, Vec<Discovered>)> {
         let ws = self.get(id)?;
         let mut relative = resolve(&ws.path, path)?;
         let repos = self.discovered(id)?;
@@ -264,7 +266,23 @@ impl Workspaces {
                 relative = found;
             }
         }
-        let mut file = open(&ws.path.join(&relative), path)?;
+        Ok((ws.path, relative, repos))
+    }
+
+    /// The file `path` of workspace `id`, opened for reading its raw bytes (DMN-250), with its path relative to the
+    /// workspace folder: resolved, refused and looked up in the repositories as [`Self::read_file`] does.
+    pub fn open_file(&self, id: &str, path: &str) -> Result<(File, PathBuf)> {
+        let (folder, relative, _) = self.locate(id, path)?;
+        let file = open(&folder.join(&relative), path)?;
+        Ok((file, relative))
+    }
+
+    /// The file `path` of workspace `id` (DMN-089). A relative path the folder does not hold is looked up in each
+    /// repository, in scan order. With `known_hash` equal to the file's hash the result is `unchanged`, without its
+    /// content or `HEAD` text.
+    pub fn read_file(&self, id: &str, path: &str, known_hash: Option<&str>) -> Result<FileContent> {
+        let (folder, relative, repos) = self.locate(id, path)?;
+        let mut file = open(&folder.join(&relative), path)?;
         let mime = image_mime(&relative);
         let keep = if mime.is_some() { IMAGE_CAP } else { TEXT_CAP };
         let scanned = scan(&mut file, keep)?;

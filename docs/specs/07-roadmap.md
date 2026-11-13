@@ -18,6 +18,7 @@ flowchart LR
   M10 --> M13[M13 MCP servers]
   M10 & M13 --> M14[M14 Init files, TSX views and keys]
   M11 --> M15[M15 Downloads without Nix]
+  M5c & M14 --> M16[M16 Media and file viewers]
 ```
 
 ## Spikes
@@ -662,6 +663,24 @@ binary built in the dev shell runs there with the runtime's loader. omp has to r
 keeps only the window and the daemon, and the daemon starts omp, git and jobs through the development portal; the
 bundled omp runs from the app's deployment on the host (`app-path`), so it is always the pinned one. Not done: Flathub,
 Intel Macs, arm64 Linux.
+
+## M16 — Media and file viewers
+
+Scope: `omfp:file` shows more than text and small images. The daemon serves the raw bytes of workspace files over
+HTTP ([02 — Files of a workspace](02-daemon.md#files-of-a-workspace-m5c), DMN-250..DMN-254) under the secret
+`fileBase` of `system.hello` (PRT-150), and the SDK's `useFileUrl(path)` (UI-540) gives a file's URL to widgets.
+
+Acceptance: a media element, an image or `fetch` loads a workspace file of any size by URL alone, seeks with byte
+ranges, revalidates with its validators; a wrong key, a path leaving the workspace and a missing file are `404`.
+
+Design: media elements and `<img>` cannot send the token in a header, and the token must never travel in a URL
+(PRT-002), so the route uses a capability URL like widget modules (DMN-084): a random key made at startup, given only
+to authenticated clients, distinct from the widget key so a widget module's URL in an error report opens no files.
+A cookie was rejected (cookies are per host, not per port, so two daemons on one machine would share it) and so were
+signed per-file URLs with an expiry (a long video's range requests outlive any short expiry, and every URL would
+need a round trip first). A leaked file URL opens the workspace files until the daemon restarts, never the
+protocol. Files are served with `Content-Security-Policy: sandbox`, so a workspace's HTML or SVG opened at its URL
+cannot read the window's token from the origin's storage.
 
 ## Terminal (removed)
 

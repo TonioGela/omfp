@@ -139,6 +139,7 @@ export class FakeClient implements SdkClient {
         omp: "18.18.6",
         warnings: [],
         widgetBase: "/widgets/test",
+        fileBase: "/files/test",
         connection: 1,
       },
     });

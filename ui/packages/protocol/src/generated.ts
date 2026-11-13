@@ -425,6 +425,11 @@ export type HelloResult = {
   connection: number;
   /** Daemon version. */
   daemon: string;
+  /**
+   * Path under which this daemon serves the raw bytes of workspace files to this client (`/files/<key>`, DMN-250,
+   * PRT-150): `<fileBase>/<workspaceId>/<path>`.
+   */
+  fileBase: string;
   /** omp version. */
   omp: string;
   protocol: number;

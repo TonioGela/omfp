@@ -1,8 +1,9 @@
 /**
  * Files in the SDK (AGT-027, UI-110..117): `useFile` reads a workspace file through the daemon and follows its changes,
- * `useOpenFile` opens one in a file tab of the view's `main` slot (or the frame's floating panel), `useMissingFile`
- * finds the file a path that does not exist names (`workspaces.find_file`, DMN-092), and the window keys the file
- * tabs, the floating panel, the file picker and the mode line read.
+ * `useFileUrl` gives the URL of its raw bytes (UI-540), `useOpenFile` opens one in a file tab of the view's `main` slot
+ * (or the frame's floating panel), `useMissingFile` finds the file a path that does not exist names
+ * (`workspaces.find_file`, DMN-092), and the window keys the file tabs, the floating panel, the file picker and the
+ * mode line read.
  */
 
 import { CallError } from "@omfp/client";
@@ -25,7 +26,7 @@ import {
   retargetTab,
 } from "../vm/files.ts";
 import { currentWorkspaceId, errorMessage, reportError, useCurrentWorkspaceId } from "./actions.ts";
-import { useCall, useWindowState, useWorkspace } from "./hooks.ts";
+import { useCall, useSnapshot, useWindowState, useWorkspace } from "./hooks.ts";
 import { type OmfpHost, useHost } from "./host.tsx";
 import { SELECTED_THREAD } from "./keys.ts";
 import { type ResultCache, resultKey } from "./results.ts";
@@ -411,4 +412,37 @@ export function useFile(path: string, { follow = true }: { readonly follow?: boo
     const { status, file, error, refreshing } = loaded;
     return { status, file, error, refreshing, reload: () => void read(false), save };
   }, [loaded, read, save]);
+}
+
+/**
+ * The URL of the raw bytes of `path` in workspace `workspaceId` (DMN-250): `<fileBase>/<workspaceId>/<path>`, each
+ * path segment percent-encoded and the slashes kept, so an absolute path keeps its leading one.
+ */
+export function fileUrl(fileBase: string, workspaceId: string, path: string): string {
+  const encoded = path.split("/").map(encodeURIComponent).join("/");
+  return `${fileBase}/${encodeURIComponent(workspaceId)}/${encoded}`;
+}
+
+/** The `fileBase` of the latest `system.hello` (PRT-150), kept while reconnecting. */
+function useFileBase(): string | undefined {
+  const current = useSnapshot((snapshot) =>
+    snapshot.connection.kind === "connected" ? snapshot.connection.hello.fileBase : undefined,
+  );
+  const latest = useRef(current);
+  if (current !== undefined) {
+    latest.current = current;
+  }
+  return latest.current;
+}
+
+/**
+ * The URL of the raw bytes of a file of the current workspace (UI-540, DMN-250), for `<video>`, `<audio>`, `<img>` or
+ * `fetch`: `path` as `useFile` takes it, served with its type, byte ranges and cache validators. `undefined` without
+ * a current workspace or before the first `system.hello`. The URL carries a secret of this daemon's run instead of
+ * the token, so it works where no header can be set; keep it inside the window.
+ */
+export function useFileUrl(path: string): string | undefined {
+  const workspaceId = useCurrentWorkspaceId();
+  const base = useFileBase();
+  return base === undefined || workspaceId === undefined || path === "" ? undefined : fileUrl(base, workspaceId, path);
 }

@@ -1032,3 +1032,16 @@ requirements = [
   "ENV-064",
   "ENV-065",
 ]
+
+[M16]
+status = "in-progress"
+requirements = [
+  # Raw workspace files: the `/files/<key>` route, its types, ranges, validators and headers; `fileBase`; `useFileUrl`
+  "DMN-250",
+  "DMN-251",
+  "DMN-252",
+  "DMN-253",
+  "DMN-254",
+  "PRT-150",
+  "UI-540",
+]

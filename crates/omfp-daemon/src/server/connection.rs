@@ -180,6 +180,7 @@ async fn hello(
             omp: app.omp_version.clone(),
             warnings: app.warnings.clone(),
             widget_base: app.widget_base.clone(),
+            file_base: app.file_base.clone(),
             connection: number,
         };
         send(out, Outbound::response(id, to_value(&result))).await;

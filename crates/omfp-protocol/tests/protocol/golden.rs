@@ -129,6 +129,7 @@ fn system_examples() -> Vec<(&'static str, Value)> {
                 omp: "18.18.6".to_owned(),
                 warnings: vec!["omp version mismatch allowed (--allow-omp-mismatch)".to_owned()],
                 widget_base: "/widgets/8c1f…".to_owned(),
+                file_base: "/files/a07e…".to_owned(),
                 connection: 3,
             },
         ),
@@ -1411,11 +1412,30 @@ fn hello_names_where_widgets_are_served() {
         omp: "18.18.6".to_owned(),
         warnings: Vec::new(),
         widget_base: "/widgets/abc".to_owned(),
+        file_base: "/files/def".to_owned(),
         connection: 1,
     };
     assert_eq!(
         serde_json::to_value(&result).unwrap()["widgetBase"],
         json!("/widgets/abc")
+    );
+}
+
+// spec: PRT-150
+#[test]
+fn hello_names_where_workspace_files_are_served() {
+    let result = HelloResult {
+        protocol: PROTOCOL_VERSION,
+        daemon: "0.1.0".to_owned(),
+        omp: "18.18.6".to_owned(),
+        warnings: Vec::new(),
+        widget_base: "/widgets/abc".to_owned(),
+        file_base: "/files/def".to_owned(),
+        connection: 1,
+    };
+    assert_eq!(
+        serde_json::to_value(&result).unwrap()["fileBase"],
+        json!("/files/def")
     );
 }
 
@@ -1428,6 +1448,7 @@ fn hello_names_the_connection() {
         omp: "18.18.6".to_owned(),
         warnings: Vec::new(),
         widget_base: "/widgets/abc".to_owned(),
+        file_base: "/files/def".to_owned(),
         connection: 42,
     };
     assert_eq!(

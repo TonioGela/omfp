@@ -421,8 +421,11 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
     .context("cannot write daemon.json")?;
 
     let (stop, stopping) = watch::channel(false);
-    let mut widget_key = [0_u8; 16];
-    getrandom::fill(&mut widget_key).map_err(|error| anyhow::anyhow!("no randomness: {error}"))?;
+    // Two secrets: a widget module's URL may show in an error report, which must not open the workspace's files.
+    let (mut widget_key, mut file_key) = ([0_u8; 16], [0_u8; 16]);
+    for key in [&mut widget_key, &mut file_key] {
+        getrandom::fill(key).map_err(|error| anyhow::anyhow!("no randomness: {error}"))?;
+    }
     let state = Arc::new(AppState {
         token: token.clone(),
         omp_version: ports.omp_version,
@@ -430,6 +433,7 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
         allowed_origins: config.allowed_origins,
         static_dir: config.static_dir,
         widget_base: format!("/widgets/{}", hex::encode(widget_key)),
+        file_base: format!("{}{}", server::FILES_PREFIX, hex::encode(file_key)),
         services,
         mcp_sessions: server::McpSessions::default(),
         shutdown: stopping.clone(),

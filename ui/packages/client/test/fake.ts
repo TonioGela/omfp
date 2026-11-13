@@ -191,7 +191,15 @@ export interface CallCell {
 }
 
 export function hello(): HelloResult {
-  return { protocol: 1, daemon: "0.1.0", omp: OMP_VERSION, warnings: [], widgetBase: "/widgets/test", connection: 1 };
+  return {
+    protocol: 1,
+    daemon: "0.1.0",
+    omp: OMP_VERSION,
+    warnings: [],
+    widgetBase: "/widgets/test",
+    fileBase: "/files/test",
+    connection: 1,
+  };
 }
 
 /** A client on the fake network with a manual timer. */

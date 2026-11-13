@@ -31,6 +31,8 @@ clap = { version = "4", features = ["derive", "string"] }
 futures = "0.3"
 getrandom = "0.4"
 hex = "0.4"
+# `Last-Modified` and `If-Modified-Since` of raw workspace files (DMN-253); already in the tree through hyper.
+httpdate = "1"
 insta = { version = "1", features = ["json"] }
 # Widget modules (DMN-084, DMN-085): TypeScript/JSX → ES modules, checked imports; oxc pinned as validated in S-12.
 oxc_allocator = "=0.158.0"

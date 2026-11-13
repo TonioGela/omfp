@@ -271,6 +271,7 @@ async fn hello_reports_versions_and_warnings_and_refuses_unknown_protocols() {
             "omp": omfp_core::OMP_VERSION,
             "warnings": ["running anyway (--allow-omp-mismatch)"],
             "widgetBase": base,
+            "fileBase": accepted["result"]["fileBase"].as_str().expect("a file base"),
             "connection": accepted["result"]["connection"].as_u64().expect("a connection number"),
         })
     );

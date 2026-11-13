@@ -263,6 +263,7 @@ export {
   type SaveResult,
   useFile,
   useFileTabs,
+  useFileUrl,
   useMissingFile,
   useOpenFile,
 } from "./files.ts";

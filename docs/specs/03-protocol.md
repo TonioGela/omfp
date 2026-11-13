@@ -2,8 +2,9 @@
 
 One WebSocket per client at `/api/ws`, JSON text frames only, for requests, responses and events (PRT-135). All types
 live in `omfp-protocol` (serde), shared by daemon and UI. Plain HTTP
-besides: the web bundle at `/` (DMN-008) and the user's theme at `/theme.css` (DMN-075), both without the token, and
-widget modules under the `widgetBase` path a client gets in `system.hello` (DMN-084, PRT-042).
+besides: the web bundle at `/` (DMN-008) and the user's theme at `/theme.css` (DMN-075), both without the token,
+widget modules under the `widgetBase` path a client gets in `system.hello` (DMN-084, PRT-042), and the raw bytes of
+workspace files under its `fileBase` path (DMN-250, PRT-150).
 
 ## Connection and authentication
 
@@ -13,7 +14,7 @@ sequenceDiagram
   participant D as daemon
   C->>D: WS upgrade /api/ws (Origin checked)
   C->>D: {"type":"request","id":"1","method":"system.hello","params":{"token":"…","protocol":1,"client":"omfp/web"}}
-  D-->>C: {"type":"response","id":"1","ok":true,"result":{"protocol":1,"daemon":"0.1.0","omp":"18.18.6","warnings":[],"widgetBase":"/widgets/3f…"}}
+  D-->>C: {"type":"response","id":"1","ok":true,"result":{"protocol":1,"daemon":"0.1.0","omp":"18.18.6","warnings":[],"widgetBase":"/widgets/3f…","fileBase":"/files/a0…"}}
   C->>D: subscribe index, thread/<id>, …
 ```
 
@@ -258,6 +259,7 @@ the tool definitions and the system prompt).
 | PRT-040 | `views/<workspaceId>` (DMN-082): the state is `ViewsState { manifest, error, widgets: [{ source: "workspace" \| "user", name, version, entry }], stored: { <instance>: { <key>: value } } }`; its events are `views_manifest { manifest, error }` and `views_widgets { widgets }` (each replaces those fields) and `widget_stored { instance, key, value }` (`null` removes the key). Subscribing to an unknown workspace is `not_found`. |
 | PRT-041 | `job/<id>` (DMN-080): the state is `JobState { job, lines: [{ stream: "stdout" \| "stderr", text }], dropped }`; its events are `job_output { stream, text }` (appends a line) and `job_exited { code, signal, endedAt }` (the job's `status` becomes `{ state: "exited", code, signal, endedAt }`). Subscribing to an unknown job is `not_found`. |
 | PRT-042 | The `system.hello` result MUST carry `widgetBase`, the path under which this daemon serves widget modules to authenticated clients (DMN-084). |
+| PRT-150 | (M16) The `system.hello` result MUST carry `fileBase`, the path under which this daemon serves the raw bytes of workspace files to authenticated clients (`/files/<key>`, DMN-250): a client loads the file `path` of workspace `id` from `<fileBase>/<id>/<path>`. |
 | PRT-043 | `widgets.report` (AGT-026) is a window's report on the workspace and user widgets of the view it shows (built-ins are not reported): each call replaces the connection's previous report (a window shows one workspace), the daemon forgets it when the connection closes, and `omfp_widget_check` reads it (DMN-063). An instance's `state` is `loading`, `rendered`, `compile_error`, `load_error` or `render_error`; `errors` are the import's, compile stand-in's or error boundary's messages (`file:line:column: message` when known), `console` the console errors and uncaught errors whose stack names the widget's module, `text` the rendered text, `jobs` its `useJob` jobs (`command`, `status`, `exitCode`, `signal`, `runs`, `startedAt`, `tail`: the last output lines). The daemon keeps at most 4,000 characters of `text`, 20 `errors`, 20 `console` entries and 10 `tail` lines per instance, each entry at most 2,000 characters. A report also carries the window's init file and TSX view errors, `fileErrors` (PRT-115). |
 | PRT-060 | `ViewsState` (PRT-040) carries `keymap: [{ mode, keys, command, args? }]` and `keymapError: string \| null`, the workspace's `.omfp/keymap.json` (DMN-121); the event `views_keymap { keymap, error }` replaces both. A state without them (an older daemon) reads as no bindings and no error. |
 | PRT-095 | `IndexSnapshot` carries `init: string \| null`, the version of the user's init file (DMN-185), replaced by the `index` event `init_changed { init }`; `ViewsState` (PRT-040) carries `init: string \| null`, the version of the workspace's `.omfp/init.ts`, replaced by the `views/<id>` event `views_init { init }`. A state without the field (an older daemon) reads as `null`. A client loads an init file as the ES module `<widgetBase>/init/<scope>/<version>/init.ts` (PRT-042), `<scope>` being `user` or the workspace id and `<version>` the published version (`404` without a file). |
