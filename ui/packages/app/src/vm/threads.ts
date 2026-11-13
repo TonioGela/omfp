@@ -4,6 +4,7 @@
  * the "next thread needing attention" shortcut.
  */
 
+import type { ThreadState as MarkState } from "@omfp/kit";
 import type { CreateWorkspaceParams, ThreadSummary, Workspace, WorkspaceRepo } from "@omfp/protocol";
 import { strings } from "../strings/index.ts";
 
@@ -24,6 +25,21 @@ export function threadStatus(thread: ThreadSummary): ThreadStatus {
       return thread.settled ? "idle" : "running";
     case "stopped":
       return "stopped";
+  }
+}
+
+/** The kit state mark of a thread (UI-137, UI-157): running, awaiting and failed win; else unread or idle. */
+export function threadMark(status: ThreadStatus, unread = false): MarkState {
+  switch (status) {
+    case "running":
+    case "starting":
+      return "running";
+    case "awaiting":
+      return "awaiting";
+    case "failed":
+      return "failed";
+    default:
+      return unread ? "unread" : "idle";
   }
 }
 

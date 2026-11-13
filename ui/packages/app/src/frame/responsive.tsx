@@ -11,7 +11,7 @@ import { strings } from "../strings/index.ts";
 import type { Area } from "../view/layout.ts";
 import { LEFT_WIDTH, resizeLeft } from "../view/sizes.ts";
 import { Resizer } from "../view/splitter.tsx";
-import { threadMarkState } from "../widgets/threads/marks.ts";
+import { threadMark } from "../vm/threads.ts";
 import { CommandsSheet } from "./commands-sheet.tsx";
 import {
   type Breakpoint,
@@ -113,7 +113,7 @@ export function LeftStrip(): ReactNode {
       stripThreads([...threads.values()]).map((thread) => ({
         id: thread.id,
         title: thread.title,
-        state: threadMarkState(thread.status, false),
+        state: threadMark(thread.status),
         selected: thread.id === selected,
       })),
     [threads, selected],

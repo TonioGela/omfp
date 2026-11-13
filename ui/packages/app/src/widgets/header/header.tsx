@@ -23,7 +23,6 @@ import {
   Select,
   StateBadge,
   TextField,
-  type ThreadState,
   useMediaQuery,
   useWidthClass,
 } from "omfp/kit";
@@ -48,6 +47,7 @@ import {
   strings,
   type ThreadDetails,
   type ThreadStatus,
+  threadMark,
   useCall,
   useHost,
   useReportError,
@@ -614,15 +614,6 @@ function Lifecycle({ threadId, archived, onDone }: { threadId: string; archived:
   );
 }
 
-const BADGE_STATE: Readonly<Record<ThreadStatus, ThreadState>> = {
-  awaiting: "awaiting",
-  failed: "failed",
-  running: "running",
-  starting: "running",
-  idle: "idle",
-  stopped: "idle",
-};
-
 /** The thread's state (UI-157, UI-483): glyph and word without a box, popping when it changes after the header opened;
  * why the process failed as its tooltip and accessible description. */
 function HeaderState({ status, failure }: { status: ThreadStatus; failure: string | undefined }): ReactNode {
@@ -630,7 +621,7 @@ function HeaderState({ status, failure }: { status: ThreadStatus; failure: strin
   return (
     <StateBadge
       key={status}
-      state={BADGE_STATE[status]}
+      state={threadMark(status)}
       fresh={status !== first.current}
       bare
       title={failure}

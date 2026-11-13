@@ -1,16 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import { threadMark } from "../../src/vm/threads.ts";
 import { relativeAge } from "../../src/widgets/threads/age.ts";
-import { threadMarkState } from "../../src/widgets/threads/marks.ts";
 
 describe("left column rows", () => {
-  // spec: UI-137, UI-169
+  // spec: UI-137, UI-169, UI-157
   test("a thread's mark: running, awaiting and failed win; otherwise unread or idle", () => {
-    expect(threadMarkState("running", true)).toBe("running");
-    expect(threadMarkState("starting", false)).toBe("running");
-    expect(threadMarkState("awaiting", true)).toBe("awaiting");
-    expect(threadMarkState("failed", false)).toBe("failed");
-    expect(threadMarkState("idle", true)).toBe("unread");
-    expect(threadMarkState("stopped", false)).toBe("idle");
+    expect(threadMark("running", true)).toBe("running");
+    expect(threadMark("starting")).toBe("running");
+    expect(threadMark("awaiting", true)).toBe("awaiting");
+    expect(threadMark("failed")).toBe("failed");
+    expect(threadMark("idle", true)).toBe("unread");
+    expect(threadMark("idle")).toBe("idle");
+    expect(threadMark("stopped")).toBe("idle");
   });
 
   // spec: UI-169

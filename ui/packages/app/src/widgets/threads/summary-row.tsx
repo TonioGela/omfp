@@ -7,10 +7,10 @@ import type { ThreadSummary } from "@omfp/protocol";
 import type { ReactNode } from "react";
 import { useThreadActions, useWindowState } from "../../sdk/index.ts";
 import { strings } from "../../strings/index.ts";
-import { displayTitle, statusLabel, threadStatus } from "../../vm/threads.ts";
+import { displayTitle, statusLabel, threadMark, threadStatus } from "../../vm/threads.ts";
 import { relativeAge } from "./age.ts";
 import { SPAWNED_BY } from "./keys.ts";
-import { threadMarkState, useFresh } from "./marks.ts";
+import { useFresh } from "./marks.ts";
 
 const text = strings.shell.threads;
 
@@ -38,7 +38,7 @@ export function SummaryRow({
   const filtering = spawnedBy === thread.id;
   return (
     <ThreadRow
-      state={threadMarkState(status, unread)}
+      state={threadMark(status, unread)}
       stateLabel={statusLabel(status)}
       markProps={{ "data-status": status }}
       title={title}

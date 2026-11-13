@@ -163,6 +163,7 @@ export {
   type RepoKind,
   statusLabel,
   type ThreadStatus,
+  threadMark,
   type WorkspaceChip,
   workspaceChip,
 } from "../vm/threads.ts";
