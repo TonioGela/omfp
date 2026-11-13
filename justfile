@@ -134,9 +134,10 @@ spec-trace:
 deny:
     cargo deny check
 
-# spec: TST-070, TST-071, TST-072, TST-073, TST-075, TST-076, TST-092, ENV-042 — the GitHub workflow (.github/workflows/ci.yml)
-# passes actionlint and runs what `just ci` runs, in the dev shell, with its caches, the shared web bundle, the
-# runner's disk pooled for Nix and a macOS job (.github/check-workflow.ts)
+# spec: TST-070, TST-071, TST-072, TST-073, TST-075, TST-076, TST-092, ENV-042, ENV-060 — the GitHub workflow
+# (.github/workflows/ci.yml) passes actionlint and runs what `just ci` runs, in the dev shell, with its caches, the
+# shared web bundle, the runner's disk pooled for Nix and a macOS job; the release workflow (release.yml) builds the
+# packages in the dev shell and writes only from its tag-only job (.github/check-workflow.ts)
 check-workflow:
     bun .github/check-workflow.ts {{ quote(just_executable()) }}
 
@@ -144,6 +145,16 @@ check-workflow:
 # the wrapper's PATH; on macOS also `Applications/omfp.app`) and `omfp-headless` (without the desktop window)
 package:
     nix build --no-link .#omfp .#omfp-headless
+
+# spec: ENV-061, ENV-062 — the Linux x86_64 download without Nix (the release workflow, ENV-060): `omfp`, the pinned
+# omp's release build and the web bundle as `omfp-<version>-linux-x86_64.tar.gz` in `out`
+package-linux out="dist":
+    contrib/release/package-linux.sh {{ quote(out) }}
+
+# spec: ENV-061, ENV-063 — the macOS arm64 download without Nix (ENV-060): `omfp.app` with the pinned omp and the web
+# bundle, ad-hoc or Developer ID signed (and notarized), as `omfp-<version>-macos-arm64.dmg` and `.zip` in `out`
+package-macos out="dist":
+    contrib/release/package-macos.sh {{ quote(out) }}
 
 # Static checks: formatting and lints, version pins, traceability, wasm, dependencies, the CI workflow
 check: lint check-versions spec-trace check-wasm deny check-workflow

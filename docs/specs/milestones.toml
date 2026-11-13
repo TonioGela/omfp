@@ -845,3 +845,13 @@ requirements = [
   "E2E-30",
   "E2E-31",
 ]
+
+[M15]
+status = "in-progress"
+requirements = [
+  # The release workflow, the bundled omp, the Linux tarball and the macOS app
+  "ENV-060",
+  "ENV-061",
+  "ENV-062",
+  "ENV-063",
+]

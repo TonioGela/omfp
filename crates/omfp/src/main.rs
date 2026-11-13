@@ -56,9 +56,13 @@ fn run_daemon(args: DaemonArgs) -> anyhow::Result<()> {
 }
 
 fn main() -> ExitCode {
+    let args: Vec<_> = std::env::args_os().collect();
+    // The release `omfp.app` runs its executable without arguments (ENV-063).
+    #[cfg(all(feature = "desktop", target_os = "macos"))]
+    let args = omfp::launch::args(args, std::env::current_exe().ok().as_deref());
     let matches = Omfp::command()
         .version(omfp_daemon::version_string())
-        .get_matches();
+        .get_matches_from(args);
     let omfp = Omfp::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
     match omfp.command {
         Command::Daemon(args) => report("omfp daemon", run_daemon(args).map(|()| None)),

@@ -17,6 +17,7 @@ flowchart LR
   M8 --> M12[M12 Background work]
   M10 --> M13[M13 MCP servers]
   M10 & M13 --> M14[M14 Init files, TSX views and keys]
+  M11 --> M15[M15 Downloads without Nix]
 ```
 
 ## Spikes
@@ -504,8 +505,7 @@ click handling. `UNUserNotificationCenter` needs an app bundle around the runnin
 from the shell does not have.
 
 Later (S-15 step 9, not in M11): a single-instance app with Cmd-N windows (D-16 on macOS); a LaunchAgent for start at
-login; Developer ID signing, hardened runtime with `com.apple.security.device.audio-input` and notarization for a
-downloadable `.dmg` (and a microphone grant that survives updates).
+login. The downloadable `.dmg` with Developer ID signing, the hardened runtime and notarization is M15's.
 
 ## M12 — Background work (done)
 
@@ -606,6 +606,31 @@ in every window without a reload; the views API works on the manifest the window
 views) or `:widget add`, which agents and users share. omp 18.18.6 applies a reauthorized credential only on the next
 connection and `/mcp reload` reconnects nothing, so the daemon restarts the thread (same session) once no background
 job, subagent, dialog or turn holds it back.
+
+## M15 — Downloads without Nix
+
+Scope: release packages for people who do not use Nix ([01 — Release packages](01-dev-environment.md#release-packages),
+ENV-060..ENV-063): a headless tarball for x86_64 Linux and `omfp.app` for arm64 Macs as a `.dmg` and a `.zip`, each
+with the pinned omp's official release build and the web bundle, built by scripts in the dev shell (`just
+package-linux`, `just package-macos`) and attached with `SHA256SUMS` to a draft GitHub release by
+`.github/workflows/release.yml` on a `v*` tag. The app is signed ad-hoc unless the Apple Developer secrets are set; then
+it is signed with a Developer ID under the hardened runtime, notarized and stapled.
+
+Acceptance: `just package-linux` gives a tarball whose `omfp daemon` starts and serves the UI with its bundled omp on a
+plain glibc 2.34+ system (checked on an Ubuntu 22.04 root file system, outside Nix); `just package-macos` gives an app
+with no `/nix/store` reference in any Mach-O whose `omfp daemon` serves the UI from `Contents/Resources/web` with
+`Contents/MacOS/omp`; the release workflow passes `just check-workflow`; a first tag drafts a release with both packages
+(waits for GitHub Actions); by hand once: the downloaded `.dmg` opens a window after Gatekeeper's prompt.
+
+Design: omp's own releases publish Bun single-file executables for every platform (`omp-<os>-<arch>`, with
+`SHA256SUMS.txt`), the same version the flake builds from source, so the packages download the pinned one and check it
+against the hashes kept in the repository rather than building omp. The Linux binary is linked with cargo-zigbuild
+against glibc 2.34's symbols: built against Nix's glibc it needed GLIBC_2.34 and, through weak references in std
+(`pidfd_spawnp`), GLIBC_2.39, which an older loader reports at every start. The macOS binary needs only nixpkgs'
+libiconv relinked to the system's. The app bundle has no wrapper: `Contents/MacOS/omfp` run without arguments opens
+`omfp desktop`, and the daemon also looks for the web bundle in `Contents/Resources` (non-code in `Contents/MacOS` breaks
+code signing). Not done: a Linux desktop package (a `.deb` linking the distribution's WebKitGTK 4.1, or an AppImage
+bundling it), Intel Macs, arm64 Linux.
 
 ## Terminal (deferred)
 

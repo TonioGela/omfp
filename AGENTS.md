@@ -50,6 +50,8 @@ just serve [daemon args]         # try the app: release bundle + `omfp daemon` w
 nix build .#omfp                 # the install: omfp with the desktop window, the web bundle and the pinned omp (nix/);
                                  # .#omfp-headless without WebKit
 just desktop [desktop args]      # try the desktop app: one more window on your local daemon (started in the background)
+just package-linux [out]         # release download without Nix: headless x86_64 tarball (omfp, omp, web/) in dist/
+just package-macos [out]         # release download without Nix (arm64 Mac): omfp.app as .dmg and .zip in dist/
 just brand                       # regenerate the logo: docs/brand SVGs, kit outlines, favicon, desktop icon
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
 cargo xtask check-versions       # omp / omp-rpc pins agree
@@ -109,7 +111,8 @@ crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs
                       Linux StatusNotifierItem + dbusmenu over gio, tray/macos.rs the macOS menu bar item (AppKit on
                       the main thread, the daemon on another); build.rs (also the tray pixmaps and, on macOS, the
                       embedded Info.plist), Info.plist, tauri.conf.json, icons/ with the icons' HTML sources
-                      (tray.html: the tray's π states); tests/desktop_smoke.rs, TST-033, TST-090; tests/daemon_tray.rs,
+                      (tray.html: the tray's π states); launch.rs (a bare launch of the release `omfp.app` opens
+                      `desktop`); tests/desktop_smoke.rs, TST-033, TST-090; tests/daemon_tray.rs,
                       TST-061 (Linux); tests/menu_bar.rs, TST-091 (macOS))
 crates/fake-llm       scripted OpenAI-compatible server (gated steps hold a reply to keep omp busy)
 crates/omfp-testkit   TempRepo, OmpEnv (isolated omp), DenyProxy, fixture normalization
@@ -158,13 +161,16 @@ fixtures/states/<ver>/   ThreadState JSONL, one line per fixture event: the Rust
 fixtures/views/         cases.json: views manifests with their expected errors, checked by the daemon and the app
 docs/brand/             the logo (UI-220): generate.py (`just brand`, from the bundled Commit Mono Bold), wordmark,
                         mark and icon SVGs, the 32 px favicon PNG, README screenshots
+contrib/release/        release packages without Nix (M15, ENV-060..063): package-linux.sh, package-macos.sh (lib.sh
+                        shared), omp.sha256 (the pinned omp release assets), the macOS entitlements, notes.sh (release
+                        notes); run by .github/workflows/release.yml on `v*` tags
 ```
 
 ## Version pinning
 
-omp is pinned in three places that must agree (checked by `cargo xtask check-versions`): the `oh-my-pi` flake input
-tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upgrade, follow the playbook in
-`docs/specs/01-dev-environment.md` (ENV-020).
+omp is pinned in four places that must agree (checked by `cargo xtask check-versions`): the `oh-my-pi` flake input
+tag, the `omp-rpc` git tag in `Cargo.toml`, `omfp_core::OMP_VERSION` and the release assets' tag in
+`contrib/release/omp.sha256`. To upgrade, follow the playbook in `docs/specs/01-dev-environment.md` (ENV-020).
 
 ## omp facts learned the hard way (omp 18.18.6)
 

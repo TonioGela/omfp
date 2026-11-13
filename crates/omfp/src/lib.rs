@@ -6,6 +6,7 @@
 
 #[cfg(feature = "desktop")]
 pub mod desktop;
+pub mod launch;
 pub mod mcp;
 pub mod remote;
 pub mod theme;

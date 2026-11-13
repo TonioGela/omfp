@@ -22,6 +22,8 @@ pub struct Observed {
     pub code_version: String,
     /// Version printed by `omp --version`.
     pub omp_version: String,
+    /// Tags of the omp release assets the release packages bundle (`contrib/release/omp.sha256`, ENV-061).
+    pub release_tags: Vec<String>,
 }
 
 /// Every disagreement between the observed versions; empty when consistent.
@@ -60,7 +62,36 @@ pub fn mismatches(observed: &Observed) -> Vec<String> {
             observed.omp_version, observed.code_version
         ));
     }
+    if observed.release_tags.is_empty() {
+        problems.push(format!(
+            "ENV-061: {RELEASE_ASSETS} names no omp release asset"
+        ));
+    }
+    for tag in &observed.release_tags {
+        if *tag != expected_tag {
+            problems.push(format!(
+                "ENV-010: {RELEASE_ASSETS} names omp `{tag}` != `{expected_tag}`"
+            ));
+        }
+    }
     problems
+}
+
+/// The pinned hashes of the omp release assets the release packages bundle (ENV-061).
+pub const RELEASE_ASSETS: &str = "contrib/release/omp.sha256";
+
+/// The tag of every asset line (`<tag> <asset> <sha256>`) of [`RELEASE_ASSETS`]; `#` starts a comment line.
+pub fn release_asset_tags(text: &str) -> anyhow::Result<Vec<String>> {
+    let line_format = Regex::new(r"^(v\S+) omp-\S+ [0-9a-f]{64}$").expect("valid regex");
+    text.lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(|line| {
+            line_format
+                .captures(line)
+                .map(|captures| captures[1].to_owned())
+                .ok_or_else(|| anyhow!("{RELEASE_ASSETS}: not `<tag> <asset> <sha256>`: {line:?}"))
+        })
+        .collect()
 }
 
 /// `(ref, rev)` of the `oh-my-pi` input in a `flake.lock`.
@@ -123,6 +154,8 @@ pub fn observe(root: &Path) -> anyhow::Result<Observed> {
         std::fs::read_to_string(root.join("Cargo.lock")).context("reading Cargo.lock")?;
     let (flake_ref, flake_rev) = flake_omp_pin(&flake_lock)?;
     let (cargo_tag, cargo_rev) = cargo_omp_rpc_pin(&cargo_lock)?;
+    let assets = std::fs::read_to_string(root.join(RELEASE_ASSETS))
+        .with_context(|| format!("reading {RELEASE_ASSETS}"))?;
     Ok(Observed {
         flake_ref,
         flake_rev,
@@ -130,6 +163,7 @@ pub fn observe(root: &Path) -> anyhow::Result<Observed> {
         cargo_rev,
         code_version: omfp_core::OMP_VERSION.to_owned(),
         omp_version: tool_version("omp")?,
+        release_tags: release_asset_tags(&assets)?,
     })
 }
 
@@ -145,6 +179,7 @@ mod tests {
             cargo_rev: "9058ab9".into(),
             code_version: "18.18.6".into(),
             omp_version: "18.18.6".into(),
+            release_tags: vec!["v18.18.6".into(), "v18.18.6".into()],
         }
     }
 
@@ -152,6 +187,33 @@ mod tests {
     #[test]
     fn consistent_versions_have_no_mismatches() {
         assert_eq!(mismatches(&consistent()), Vec::<String>::new());
+    }
+
+    // spec: ENV-010, ENV-061
+    #[test]
+    fn the_bundled_omp_assets_must_be_the_pinned_release() {
+        let mut observed = consistent();
+        observed.release_tags = vec!["v18.18.6".into(), "v18.18.5".into()];
+        assert_eq!(
+            mismatches(&observed),
+            ["ENV-010: contrib/release/omp.sha256 names omp `v18.18.5` != `v18.18.6`"]
+        );
+        observed.release_tags = Vec::new();
+        assert_eq!(
+            mismatches(&observed),
+            ["ENV-061: contrib/release/omp.sha256 names no omp release asset"]
+        );
+    }
+
+    // spec: ENV-061
+    #[test]
+    fn parses_the_release_asset_hashes() {
+        let hash = "a".repeat(64);
+        let text =
+            format!("# comment\nv1.2.3 omp-linux-x64 {hash}\n\nv1.2.3 omp-darwin-arm64 {hash}\n");
+        assert_eq!(release_asset_tags(&text).unwrap(), ["v1.2.3", "v1.2.3"]);
+        assert!(release_asset_tags("v1.2.3 omp-linux-x64 abc\n").is_err());
+        assert!(release_asset_tags(&format!("omp-linux-x64 {hash}\n")).is_err());
     }
 
     // spec: ENV-010

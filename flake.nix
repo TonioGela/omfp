@@ -217,6 +217,8 @@
               pkgs.nixfmt
               # GitHub Actions workflow lint (`just check`, .github/workflows)
               pkgs.actionlint
+              # The release packages download the pinned omp's release build (ENV-061)
+              pkgs.curl
             ]
             ++ config.pre-commit.settings.enabledPackages
             ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [
@@ -234,6 +236,9 @@
               pkgs.glib-networking
               # A private session bus with a stub settings portal for the desktop tests (UI-195)
               pkgs.dbus
+              # The Linux release package (`just package-linux`, ENV-062): linked against an older glibc's symbols
+              pkgs.cargo-zigbuild
+              pkgs.zig
             ];
 
             env = {

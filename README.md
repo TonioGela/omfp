@@ -32,6 +32,23 @@ Early and changing fast.
   <img alt="omfp with a running thread" src="docs/brand/screenshot-light.png">
 </picture>
 
+## Install
+
+**With Nix** (Linux, macOS on Apple silicon): `nix profile install github:aciceri/omfp` (or `nix run
+github:aciceri/omfp -- desktop`). It brings the right oh-my-pi with it.
+
+**Without Nix**: download from the [releases](https://github.com/aciceri/omfp/releases); each one comes with its own
+oh-my-pi, and you need git.
+
+- **macOS (Apple silicon, macOS 14+)**: open `omfp-<version>-macos-arm64.dmg` and drag omfp to Applications. Unless a
+  release says it is notarized, macOS refuses to open it the first time: open it once, then allow it in System
+  Settings → Privacy & Security → Open Anyway (or run `xattr -dr com.apple.quarantine /Applications/omfp.app`).
+- **Linux (x86_64, glibc 2.34+)**: unpack `omfp-<version>-linux-x86_64.tar.gz` and run `./omfp daemon`, then open the
+  URL it prints. This one has no desktop window yet, only the browser UI; the window needs Nix for now.
+
+To check a download, compare `shasum -a 256 <file>` (macOS) or `sha256sum <file>` (Linux) with its line in the
+release's `SHA256SUMS`.
+
 <sub>This README is for humans. The slop lives in [docs/overview.md](docs/overview.md); anything else, ask your agent
 how omfp works.\*</sub>
 

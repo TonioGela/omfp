@@ -212,16 +212,21 @@ fn origins(entries: &[String], source: &str) -> Result<Vec<String>, String> {
 /// Name of the web bundle directory shipped next to the `omfp` executable (packaging, DMN-008).
 pub const BUNDLED_WEB_DIR: &str = "web";
 
-/// The web UI to serve (DMN-008): `--static-dir`, else the bundle next to the executable when it holds an
-/// `index.html`; `None` serves only the API.
+/// The web UI to serve (DMN-008): `--static-dir`, else the bundle next to the executable, else the one in the
+/// `Resources/` directory beside the executable's directory (the release `omfp.app`, whose `Contents/MacOS` holds code
+/// only, ENV-063), the first that holds an `index.html`; `None` serves only the API.
 #[must_use]
 pub fn web_bundle(explicit: Option<&Path>, exe_dir: Option<&Path>) -> Option<PathBuf> {
     if let Some(explicit) = explicit {
         return Some(explicit.to_path_buf());
     }
-    exe_dir
-        .map(|dir| dir.join(BUNDLED_WEB_DIR))
-        .filter(|bundle| bundle.join("index.html").is_file())
+    let exe_dir = exe_dir?;
+    let resources = exe_dir
+        .parent()
+        .map(|contents| contents.join("Resources").join(BUNDLED_WEB_DIR));
+    std::iter::once(exe_dir.join(BUNDLED_WEB_DIR))
+        .chain(resources)
+        .find(|bundle| bundle.join("index.html").is_file())
 }
 
 #[cfg(test)]
@@ -480,5 +485,23 @@ allow_omp_mismatch = true
         std::fs::write(bundle.join("index.html"), "<!doctype html>").unwrap();
         assert_eq!(web_bundle(None, Some(exe_dir.path())), Some(bundle));
         assert_eq!(web_bundle(None, None), None);
+    }
+
+    // spec: DMN-008, ENV-063
+    #[test]
+    fn the_web_bundle_of_an_app_bundle_is_in_its_resources() {
+        let app = tempfile::tempdir().unwrap();
+        let macos = app.path().join("Contents/MacOS");
+        let resources = app.path().join("Contents/Resources/web");
+        std::fs::create_dir_all(&macos).unwrap();
+        std::fs::create_dir_all(&resources).unwrap();
+        assert_eq!(web_bundle(None, Some(&macos)), None);
+        std::fs::write(resources.join("index.html"), "<!doctype html>").unwrap();
+        assert_eq!(web_bundle(None, Some(&macos)), Some(resources));
+        // `web/` next to the executable comes first.
+        let next_to = macos.join(BUNDLED_WEB_DIR);
+        std::fs::create_dir(&next_to).unwrap();
+        std::fs::write(next_to.join("index.html"), "<!doctype html>").unwrap();
+        assert_eq!(web_bundle(None, Some(&macos)), Some(next_to));
     }
 }

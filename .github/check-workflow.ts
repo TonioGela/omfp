@@ -16,6 +16,9 @@
  *   it is built.
  * - TST-076: the `dev-shell` job runs no recipe and every other Linux job needs it; CARGO_HOME lives on the Nix volume.
  * - TST-092: one job on a macOS runner runs `just test-desktop` and `just package` on pushes to master only.
+ * - ENV-060: `release.yml` runs on `v*` tags and by hand; its jobs build the packages in the dev shell (`just
+ *   package-linux` on Linux, `just package-macos` on macOS); only its job that runs on tags alone may write the
+ *   repository's contents, the workflow reads them.
  */
 import { $ } from "bun";
 
@@ -30,10 +33,12 @@ interface Job {
   if?: string;
   needs?: string | string[];
   env?: Record<string, string>;
+  permissions?: Record<string, string>;
   steps?: Step[];
 }
 interface Workflow {
-  on?: { push?: { branches?: string[] }; pull_request?: unknown };
+  on?: { push?: { branches?: string[]; tags?: string[] }; pull_request?: unknown; workflow_dispatch?: unknown };
+  permissions?: Record<string, string>;
   jobs: Record<string, Job>;
 }
 interface Action {
@@ -191,6 +196,29 @@ if (
   })
 ) {
   problems.push(`one job on a macOS runner must run ${MACOS_RECIPES.join(" and ")} on pushes to master only`);
+}
+
+// ENV-060
+const RELEASE = ".github/workflows/release.yml";
+const RELEASE_RECIPES: Record<string, RegExp> = { "package-linux": /^ubuntu-/, "package-macos": /^macos-\d+$/ };
+const release = Bun.YAML.parse(await Bun.file(RELEASE).text()) as Workflow;
+if (!release.on?.push?.tags?.includes("v*") || !release.on || !("workflow_dispatch" in release.on)) {
+  problems.push(`${RELEASE} must run on pushed v* tags and by hand (workflow_dispatch)`);
+}
+if (release.permissions?.contents !== "read") problems.push(`${RELEASE} must only read the contents by default`);
+for (const [recipe, runner] of Object.entries(RELEASE_RECIPES)) {
+  const builds = Object.values(release.jobs).some(
+    (job) =>
+      runner.test(job["runs-on"] ?? "") &&
+      (job.steps ?? []).some((step) => step.uses === SETUP_USES) &&
+      (job.steps ?? []).some((step) => RUN.exec(step.run?.trim() ?? "")?.[1] === recipe),
+  );
+  if (!builds) problems.push(`${RELEASE}: a job on a ${runner} runner must run \`just ${recipe}\` in the dev shell`);
+}
+for (const [id, job] of Object.entries(release.jobs)) {
+  if (job.permissions?.contents === "write" && job.if !== "github.ref_type == 'tag'") {
+    problems.push(`${RELEASE}: job ${id} writes the contents, so it must run on tags only`);
+  }
 }
 
 if (problems.length > 0) {

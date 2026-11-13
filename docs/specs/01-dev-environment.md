@@ -16,7 +16,8 @@ nix develop          # or: direnv allow (.envrc contains `use flake`)
 | TypeScript (`ui/`) | `bun` 1.4.4 (runtime, package manager, test runner), `bun2nix` 2.1.2 (patched, see below), `biome` 2.6.5 (format and lint; from nixpkgs because the npm build is a glibc binary NixOS cannot run); `typescript` 7.0.2 (native `tsc`) and `@types/bun` come from `ui/bun.lock` through `ui/bun.nix` |
 | E2E / smoke (Linux) | `chromium`, `chromedriver`, `xvfb-run` |
 | Desktop (Linux, M7) | `pkg-config`, `webkitgtk_4_1` (WebKitGTK 2.54, ABI 4.1; GTK3, GLib, cairo come through its `.pc` files), `libsoup_3`, `glib-networking` (TLS for `omfp desktop --connect https://…`), `dbus` (the private session bus of the color-scheme tests, UI-195). No Tauri CLI and no libxdo/appindicator: `cargo build -p omfp --features desktop` is enough (S-04) |
-| Utilities | `just`, `git`, `jq`, `websocat`, `nixfmt`, `actionlint` |
+| Utilities | `just`, `git`, `jq`, `websocat`, `nixfmt`, `actionlint`, `curl` (the release packages download omp, ENV-061) |
+| Release packages (Linux) | `cargo-zigbuild` and `zig` (`just package-linux` links against glibc 2.34's symbols, ENV-062) |
 
 Environment set by the shell: `RUST_SRC_PATH`, `OMFP_BUN_CACHE` (the Bun install cache of `ui/`'s dependencies, built by
 Nix from `ui/bun.nix`); on Linux also `CHROME_BIN`, `OMFP_E2E_FONTCONFIG_FILE` (a fontconfig file with DejaVu, the only
@@ -84,6 +85,56 @@ remote-build hook builds with `--option builders ''`.
 | ENV-041 | (M11) On macOS `nix build .#omfp` MUST give `bin/omfp` (the desktop build, a compiled wrapper as on Linux, ENV-032) and `Applications/omfp.app`: `Info.plist` from `crates/omfp/Info.plist` with the workspace version (the one build.rs embeds in the binary, UI-251), `Resources/omfp.icns` from `crates/omfp/icons/icon.png` (`png2icns`), `MacOS/omfp` a binary wrapper of `bin/.omfp-wrapped desktop` (DMN-008 finds `web/` next to the real binary), and an ad-hoc signature of the whole bundle as the last step (`rcodesign`), so macOS knows the app as `dev.omfp.desktop`. Installed with nix-darwin or home-manager, the app is linked into `/Applications/Nix Apps` or `~/Applications/Home Manager Apps`. Ad-hoc means a new microphone permission after every rebuild and no Gatekeeper approval for a download; Developer ID signing and notarization are later work (07, M11). |
 | ENV-042 | (M11) CI MUST build and test the macOS desktop on GitHub's arm64 macOS runner on pushes to `master` (TST-092), whose Cachix daemon pushes the darwin closure (omp, the dev shell, the packages) to the `omfp` cache. |
 
+## Release packages
+
+For people without Nix (M15): downloads that carry everything `omfp` needs but git, built by plain scripts in the dev
+shell (`contrib/release/`) and attached to a GitHub release by `.github/workflows/release.yml`.
+
+```sh
+just package-linux [out]   # out/omfp-<version>-linux-x86_64.tar.gz (x86_64 Linux)
+just package-macos [out]   # out/omfp-<version>-macos-arm64.dmg and .zip (arm64 Mac); `out` defaults to dist/
+```
+
+| Download | Content |
+| --- | --- |
+| `omfp-<version>-linux-x86_64.tar.gz` | `omfp-<version>-linux-x86_64/`: `omfp` (daemon only, no desktop window), `omp`, `web/`, `LICENSE`, `README.txt`; runs on glibc ≥ 2.34 (Ubuntu 22.04, Debian 12, RHEL 9) |
+| `omfp-<version>-macos-arm64.dmg`, `.zip` | `omfp.app` (window and menu bar item): `Contents/MacOS/omfp`, `Contents/MacOS/omp`, `Contents/Resources/web/`, `Contents/Resources/omfp.icns`, `Contents/Info.plist`; macOS 14 or newer |
+| `SHA256SUMS` | the SHA-256 of every download |
+
+The Linux desktop window is not packaged yet: a `.deb` or AppImage would have to link WebKitGTK 4.1 against the
+distribution's (or bundle it), and neither is built and tested yet; on Linux the window comes with Nix (ENV-030).
+
+Signing on macOS: without secrets the app is signed ad-hoc, which Gatekeeper refuses on first open for a download (the
+user allows it in System Settings → Privacy & Security → Open Anyway, or removes the quarantine with `xattr -dr
+com.apple.quarantine /Applications/omfp.app`), and macOS asks for the microphone again after every update. With an
+Apple Developer account the workflow signs with a Developer ID under the hardened runtime and notarizes and staples the
+app and the disk image. Secrets (repository settings → Secrets and variables → Actions; locally the same environment
+variables, or `OMFP_SIGN_IDENTITY` naming a Developer ID identity of your keychain):
+
+| Name | Use |
+| --- | --- |
+| `APPLE_CERTIFICATE` | the Developer ID Application certificate and its private key as a base64 `.p12` (`base64 -i cert.p12`) |
+| `APPLE_CERTIFICATE_PASSWORD` | the `.p12` export password |
+| `APPLE_ID`, `APPLE_APP_PASSWORD` | the Apple ID notarytool submits with and an app-specific password of it (appleid.apple.com) |
+| `APPLE_TEAM_ID` | the team of the certificate |
+
+Entitlements under the hardened runtime: `contrib/release/omfp.entitlements` (the microphone,
+`com.apple.security.device.audio-input`; WKWebView's JavaScript runs in WebKit's own processes) and
+`contrib/release/omp.entitlements` (what Bun documents for its single-file executables: JIT, unsigned executable
+memory, no library validation for the native addons it extracts).
+
+Releasing: set the workspace version in `Cargo.toml`, commit, push a tag `v<version>`; the workflow builds both
+packages, then drafts the release with `SHA256SUMS` and notes from the Conventional Commits since the previous tag
+(`contrib/release/notes.sh`); check the draft and publish it. Run by hand (Actions → Release → Run workflow) it builds
+the packages as the run's artifacts only.
+
+| ID | Requirement |
+| --- | --- |
+| ENV-060 | (M15) `.github/workflows/release.yml` MUST build the packages on a pushed tag `v*` and on `workflow_dispatch`, each in the dev shell with one recipe (`just package-linux` on `ubuntu-latest`, `just package-macos` on `macos-15`), and on a tag only attach them with `SHA256SUMS` to a draft release (`gh release create --draft --verify-tag`); the workflow reads the contents, and only the release job, which runs on tags only, writes them (`just check-workflow`). On a tag the packages MUST fail unless it is `v` + the workspace version, so the binary's `--version`, the Info.plist and the release agree. |
+| ENV-061 | (M15) The packages MUST bundle the pinned omp's official release build (`omp-linux-x64`, `omp-darwin-arm64` from `github.com/can1357/oh-my-pi/releases/download/<tag>/`, a Bun single-file executable), checked against the SHA-256 pinned in `contrib/release/omp.sha256`, whose tag `cargo xtask check-versions` checks against the pinned omp (ENV-010). It goes next to `omfp`, where the daemon finds it first (DMN-006). |
+| ENV-062 | (M15) `just package-linux` MUST build `omfp` without the `desktop` feature with `cargo zigbuild` for `x86_64-unknown-linux-gnu.2.34`: interpreter `/lib64/ld-linux-x86-64.so.2`, no RUNPATH, no glibc symbol version newer than 2.34 (weak ones included), only libc, libm, libgcc_s and the loader as libraries, std's paths remapped (no `/nix/store` string); the archive is reproducible (sorted, no owners, the commit's time). |
+| ENV-063 | (M15) `just package-macos` MUST build `omfp.app` without a `/nix/store` reference in any Mach-O (`otool -L`, `otool -l`: nixpkgs' libiconv is relinked to the system's), the web bundle in `Contents/Resources/web` (DMN-008), the Info.plist of ENV-041 with the version, and sign it: ad-hoc, or with a Developer ID, the hardened runtime and the entitlements above, then notarized and stapled (the app first, then the disk image) when the Apple ID secrets are set. Run without arguments, an app bundle's `omfp` (`<name>.app/Contents/MacOS/omfp`) opens `omfp desktop`. |
+
 ## Continuous integration
 
 GitHub Actions (`.github/workflows/ci.yml`, for `aciceri/omfp`) runs on every push to `master` and every pull request.
@@ -149,7 +200,7 @@ exact omp version its client was built for.
 
 | ID | Requirement |
 | --- | --- |
-| ENV-010 | `cargo xtask check-versions` (part of `just ci`) MUST check that the oh-my-pi tag and commit in `flake.lock`, the `omp-rpc` tag and commit in `Cargo.lock`, `omfp_core::OMP_VERSION`, and `omp --version` all agree. |
+| ENV-010 | `cargo xtask check-versions` (part of `just ci`) MUST check that the oh-my-pi tag and commit in `flake.lock`, the `omp-rpc` tag and commit in `Cargo.lock`, `omfp_core::OMP_VERSION`, `omp --version` and the tag of every omp release asset in `contrib/release/omp.sha256` (ENV-061) all agree. |
 | ENV-011 | omp MUST be pinned to a release tag, never to `main` or an untagged commit. |
 
 ENV-012 (the `wasm-bindgen` and `dioxus` pins agree with the shell's `wasm-bindgen-cli` and `dx`) was retired in M3
@@ -165,7 +216,8 @@ with the Dioxus UI (D-18); the ID is not reused.
 2. Read the upstream diff of `docs/rpc.md` and `packages/coding-agent/CHANGELOG.md` between the two tags.
 3. Update `inputs.oh-my-pi.url` and run `nix flake lock --update-input oh-my-pi`.
 4. Update the `omp-rpc` tag and `omfp_core::OMP_VERSION`; run `cargo update -p omp-rpc`, then update
-   `outputHashes."omp-rpc-…"` in `nix/package.nix` to the hash `nix build .#omfp` reports (ENV-030).
+   `outputHashes."omp-rpc-…"` in `nix/package.nix` to the hash `nix build .#omfp` reports (ENV-030), and the lines of
+   `contrib/release/omp.sha256` to the new tag and the hashes of its `SHA256SUMS.txt` (ENV-061).
 5. Re-record contract fixtures (`OMFP_RECORD_FIXTURES=1 just test-contract`) and review their diff: new event kinds,
    renamed fields, changed tool argument shapes (TST-012, UI-051).
 6. Re-sync the vendored live prompt `crates/omfp-daemon/src/live_instructions.txt` from omp's
