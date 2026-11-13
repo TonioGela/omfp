@@ -729,7 +729,9 @@ once. The column is not a React Aria collection (its rows are plain buttons with
 small pointer implementation (pointer events, measured boxes) rather than `useDragAndDrop`, which also keeps it
 drivable by WebDriver's pointer actions. New workspaces and threads go last.
 
-Open: the E2E journey dragging with WebDriver actions in headless Chromium (E2E-60) is not written yet.
+Acceptance: E2E-60 — in headless Chromium, WebDriver pointer actions drag a thread within its workspace, a thread onto
+another workspace and a section; `Alt-ArrowDown` moves the focused thread and is announced; a reload shows the same
+order.
 
 ## Terminal (removed)
 
