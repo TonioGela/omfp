@@ -21,6 +21,7 @@ import {
   MenuItem,
   Popover,
   TextArea,
+  type TextAreaProps,
   useWidthClass,
 } from "omfp/kit";
 import {
@@ -70,6 +71,7 @@ import {
   type DragEvent,
   type KeyboardEvent,
   memo,
+  type RefObject,
   useCallback,
   useEffect,
   useRef,
@@ -150,33 +152,14 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
     }
     inputRef.current?.blur();
   };
-  useCommand({ id: "composer.focus", title: text.focus, run: () => inputRef.current?.focus() });
-  useCommand({ id: "focus.leave", title: text.leave, scope: "composer", run: leave });
+  useFocusCommands(inputRef, leave);
   const pastes = usePastes(message, setMessage, inputRef);
   const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== inputRef.current || event.nativeEvent.isComposing) {
       return;
     }
     pastes.onKeyDown(event, modifiersOf(event));
-    const action = keyAction(event.key, modifiersOf(event), {
-      busy: false,
-      hasSuggestions: false,
-      repeat: event.repeat,
-      touch,
-    });
-    if (action.type === "send" || action.type === "leave" || action.type === "ignore") {
-      event.preventDefault();
-      event.stopPropagation();
-      if (action.type === "send") {
-        send();
-      } else if (action.type === "leave") {
-        leave();
-      }
-    } else if (action.type === "newline") {
-      event.preventDefault();
-      event.stopPropagation();
-      insertLineBreak(inputRef.current, pastes.onChange);
-    }
+    composerKey(event, inputRef.current, { busy: false, touch, onChange: pastes.onChange, send, leave });
   };
   return (
     <form
@@ -194,11 +177,9 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
     >
       <KitComposer mode={insert ? "insert" : "normal"}>
         {message.pastes.length > 0 && <PasteChips draft={message} setDraft={setMessage} inputRef={inputRef} />}
-        <TextArea
-          className="omfp-compose__field"
-          label={text.label}
-          hideLabel
-          rows={2}
+        <ComposerTextArea
+          touch={touch}
+          keys="Enter Alt+Enter Escape"
           placeholder={labels.placeholder}
           value={message.text}
           onChange={pastes.onChange}
@@ -206,12 +187,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
           onBlur={() => setInsert(false)}
           isReadOnly={sending}
           inputRef={inputRef}
-          inputProps={{
-            ...testId("composer-input"),
-            ...proseInput(touch),
-            "aria-keyshortcuts": `Enter Alt+Enter Escape ${ariaKeys(rawPasteKeys())}`,
-            onPaste: pastes.onPaste,
-          }}
+          onPaste={pastes.onPaste}
         />
         <ComposerBar hints={touch ? undefined : <KeyHints abortable={false} interruptHint={false} />}>
           <Button
@@ -302,6 +278,79 @@ function nearestTranscript(from: HTMLElement | null): HTMLElement | undefined {
 
 function modifiersOf(event: KeyboardEvent): Modifiers {
   return { shift: event.shiftKey, alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey };
+}
+
+/**
+ * The composer's own keys once its suggestions and prompt history had theirs (UI-060, UI-095): Enter sends (`send`
+ * gets the mode), Alt+Enter breaks the line, Esc leaves; other keys stay in the text area, except the chords that do
+ * not send, which go on to the keymap.
+ */
+function composerKey(
+  event: KeyboardEvent<HTMLElement>,
+  input: HTMLTextAreaElement,
+  actions: {
+    busy: boolean;
+    touch: boolean;
+    onChange: (text: string) => void;
+    send: (mode: SendMode) => void;
+    leave: () => void;
+  },
+): void {
+  const modifiers = modifiersOf(event);
+  const action = keyAction(event.key, modifiers, {
+    busy: actions.busy,
+    hasSuggestions: false,
+    repeat: event.repeat,
+    touch: actions.touch,
+  });
+  if ((modifiers.ctrl || modifiers.alt || modifiers.meta) && event.key !== "Enter" && action.type !== "send") {
+    return;
+  }
+  event.stopPropagation();
+  if (action.type === "none") {
+    return;
+  }
+  event.preventDefault();
+  if (action.type === "send") {
+    actions.send(action.mode);
+  } else if (action.type === "newline") {
+    insertLineBreak(input, actions.onChange);
+  } else if (action.type === "leave") {
+    actions.leave();
+  }
+}
+
+/** `composer.focus`, and `focus.leave` while the focus is in the composer (UI-095). */
+function useFocusCommands(inputRef: RefObject<HTMLTextAreaElement | null>, leave: () => void): void {
+  useCommand({ id: "composer.focus", title: text.focus, run: () => inputRef.current?.focus() });
+  useCommand({ id: "focus.leave", title: text.leave, scope: "composer", run: leave });
+}
+
+interface ComposerTextAreaProps
+  extends Omit<TextAreaProps, "className" | "label" | "hideLabel" | "rows" | "inputProps" | "onPaste"> {
+  readonly touch: boolean;
+  /** The keys it answers, as `aria-keyshortcuts` writes them; the raw paste keys follow. */
+  readonly keys: string;
+  readonly onPaste: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
+}
+
+/** The text area of a composer, the thread's and the draft's (UI-060, UI-422). */
+function ComposerTextArea({ touch, keys, onPaste, ...props }: ComposerTextAreaProps) {
+  return (
+    <TextArea
+      {...props}
+      className="omfp-compose__field"
+      label={text.label}
+      hideLabel
+      rows={2}
+      inputProps={{
+        ...testId("composer-input"),
+        ...proseInput(touch),
+        "aria-keyshortcuts": `${keys} ${ariaKeys(rawPasteKeys())}`,
+        onPaste,
+      }}
+    />
+  );
 }
 
 /** `Ctrl-Shift-v` as `aria-keyshortcuts` writes it: `Control+Shift+V`. */
@@ -491,14 +540,8 @@ export const Composer = memo(function Composer({
     });
   }, [clock, interruptHint]);
 
-  useCommand({ id: "composer.focus", title: text.focus, run: () => inputRef.current?.focus() });
+  useFocusCommands(inputRef, leave);
   useCommand({ id: "thread.abort", title: text.abortCommand, enabled: () => abortable, run: abort });
-  useCommand({
-    id: "focus.leave",
-    title: text.leave,
-    scope: "composer",
-    run: leave,
-  });
   useCommand({ id: "composer.interrupt", title: text.interruptCommand, scope: "composer", run: interrupt });
   useCommand({
     id: "composer.restore",
@@ -546,22 +589,7 @@ export const Composer = memo(function Composer({
       event.stopPropagation();
       return;
     }
-    const action = keyAction(event.key, modifiers, { busy, hasSuggestions: false, repeat: event.repeat, touch });
-    if ((modifiers.ctrl || modifiers.alt || modifiers.meta) && event.key !== "Enter" && action.type !== "send") {
-      return;
-    }
-    event.stopPropagation();
-    if (action.type === "none") {
-      return;
-    }
-    event.preventDefault();
-    if (action.type === "send") {
-      send(action.mode);
-    } else if (action.type === "newline") {
-      insertLineBreak(inputRef.current, pastes.onChange);
-    } else if (action.type === "leave") {
-      leave();
-    }
+    composerKey(event, inputRef.current, { busy, touch, onChange: pastes.onChange, send, leave });
   };
   const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = [...event.clipboardData.files].filter((file) => file.type.startsWith("image/"));
@@ -610,11 +638,9 @@ export const Composer = memo(function Composer({
             setInterruptHint(false);
           }}
         >
-          <TextArea
-            className="omfp-compose__field"
-            label={text.label}
-            hideLabel
-            rows={2}
+          <ComposerTextArea
+            touch={touch}
+            keys="Enter Control+Enter Meta+Enter Shift+Enter Control+Q Alt+Enter Escape Tab"
             placeholder={busy ? (touch ? text.placeholderBusyTouch : text.placeholderBusy) : text.placeholderIdle}
             inputRef={inputRef}
             onFocus={() => setInsert(true)}
@@ -622,12 +648,7 @@ export const Composer = memo(function Composer({
               setQueueHeld(false);
               setInsert(false);
             }}
-            inputProps={{
-              ...testId("composer-input"),
-              ...proseInput(touch),
-              "aria-keyshortcuts": `Enter Control+Enter Meta+Enter Shift+Enter Control+Q Alt+Enter Escape Tab ${ariaKeys(rawPasteKeys())}`,
-              onPaste,
-            }}
+            onPaste={onPaste}
           />
           <Popover
             className="omfp-composer__menu"
