@@ -8,7 +8,7 @@
  */
 
 import { type CommandRegistry, scopesAt } from "../sdk/index.ts";
-import { type Binding, KeymapMatcher, keyToken, type Mode } from "./keymap.ts";
+import { type Binding, composesText, KeymapMatcher, keyToken, type Mode } from "./keymap.ts";
 import { type KeyTimers, opensAtOnce, type PendingKeys, WHICH_KEY_DELAY_MS } from "./which-key.ts";
 
 /** Marks the `:` line's input: the window is in `cmdline` mode while it has the focus. */
@@ -144,6 +144,9 @@ export function createKeyHandler(options: KeymapOptions): KeyHandler {
     }
     const mode = modeAt(element);
     if (mode === "normal" && token === "Ctrl-c" && matcher.pending === undefined && hasSelection()) {
+      return;
+    }
+    if (mode === "insert" && composesText(event)) {
       return;
     }
     const match = matcher.feed(token, mode);

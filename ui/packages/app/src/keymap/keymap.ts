@@ -119,6 +119,14 @@ function altChordKey(event: KeyInput): string {
   return letter === null ? event.key : (letter[1] ?? letter[2] ?? event.key);
 }
 
+/**
+ * Whether a key press is macOS's Option composing text (`å`, the dead key of `ñ`, `õ`): an Alt press without Ctrl or
+ * Meta whose key is not ASCII. While typing it types its text instead of running a chord (UI-405).
+ */
+export function composesText(event: KeyInput): boolean {
+  return event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "Dead" || !ASCII.test(event.key));
+}
+
 /** The token of a key press; `undefined` for a lone modifier. */
 export function keyToken(event: KeyInput): string | undefined {
   const key = event.altKey ? altChordKey(event) : event.key;

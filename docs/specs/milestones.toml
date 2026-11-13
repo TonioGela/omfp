@@ -869,6 +869,8 @@ requirements = [
   "UI-390",
   "UI-391",
   "UI-392",
+  # QA fixes
+  "UI-405",
   # Journeys
   "E2E-22",
   "E2E-23",

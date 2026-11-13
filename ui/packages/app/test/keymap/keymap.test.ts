@@ -246,8 +246,8 @@ describe("global key handler", () => {
     expect(document.activeElement === field).toBe(false);
   });
 
-  // spec: UI-021
-  test("the attention and new-thread chords run from macOS's Option keys, while typing too", () => {
+  // spec: UI-021, UI-405
+  test("macOS's Option keys run the attention and new-thread chords in normal mode, and type their text while typing", () => {
     document.body.innerHTML = `<input id="field"><p id="out" tabindex="-1"></p>`;
     const { register, ran, press } = setup();
     register("thread.nextAttention");
@@ -257,9 +257,16 @@ describe("global key handler", () => {
     if (field === null || out === null) {
       throw new Error("fixture");
     }
-    expect(press(field, "å", { altKey: true }, "KeyA")).toBe(true);
+    expect(press(out, "å", { altKey: true }, "KeyA")).toBe(true);
     expect(press(out, "Dead", { altKey: true }, "KeyN")).toBe(true);
     expect(ran).toEqual(["global:thread.nextAttention", "global:thread.new"]);
+    // In a field Option composes `å`, `ñ`, `õ`: the keys are the text's, not the chords'.
+    expect(press(field, "å", { altKey: true }, "KeyA")).toBe(false);
+    expect(press(field, "Dead", { altKey: true }, "KeyN")).toBe(false);
+    expect(ran.length).toBe(2);
+    // Alt keeps the chord where it leaves the key as typed (Linux, Windows).
+    expect(press(field, "a", { altKey: true }, "KeyA")).toBe(true);
+    expect(ran.length).toBe(3);
   });
 
   // spec: UI-063, UI-095, UI-368
