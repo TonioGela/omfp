@@ -880,6 +880,7 @@ requirements = [
   "UI-407",
   "UI-408",
   # The composer on a phone: Enter, prose input, one row of actions, the keyboard resizing the page
+  "UI-421",
   "UI-422",
   "UI-424",
   # Journeys

@@ -80,6 +80,7 @@ import { PasteChips, usePastes } from "./pastes.tsx";
 import { testId, type WidgetProps } from "./props.ts";
 import { QueueChips } from "./queue.tsx";
 import { clearedDraftKey, useClock, useSelectedThread } from "./state.ts";
+import { useCoarsePointer } from "./touch.ts";
 
 const text = strings.chat.composer;
 
@@ -124,6 +125,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
   /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
   const [insert, setInsert] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const touch = useCoarsePointer();
   const labels = strings.shell.draft;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `draft` is a new object each time the draft is opened
   useEffect(() => {
@@ -158,6 +160,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
       busy: false,
       hasSuggestions: false,
       repeat: event.repeat,
+      touch,
     });
     if (action.type === "send" || action.type === "leave" || action.type === "ignore") {
       event.preventDefault();
@@ -202,7 +205,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
           inputRef={inputRef}
           inputProps={{
             ...testId("composer-input"),
-            ...PROSE_INPUT,
+            ...proseInput(touch),
             "aria-keyshortcuts": `Enter Alt+Enter Escape ${ariaKeys(rawPasteKeys())}`,
             onPaste: pastes.onPaste,
           }}
@@ -238,9 +241,17 @@ function sendKey(mode: SendMode): string {
 
 /**
  * The composer's text area takes prose (UI-422): autocorrect, capitals and the spell check on, which React Aria's
- * `Autocomplete` would turn off as for a search field.
+ * `Autocomplete` would turn off as for a search field; the on-screen keyboard's Enter key reads "enter" on a touch
+ * screen, where it makes a new line (UI-421), else "send".
  */
-const PROSE_INPUT = { autoCorrect: "on", autoCapitalize: "sentences", spellCheck: true } as const;
+function proseInput(touch: boolean) {
+  return {
+    autoCorrect: "on",
+    autoCapitalize: "sentences",
+    spellCheck: true,
+    enterKeyHint: touch ? "enter" : "send",
+  } as const;
+}
 
 /**
  * Alt+Enter (UI-060): a line break replaces the selection, the caret after it. The field's value and caret are set
@@ -339,6 +350,7 @@ export const Composer = memo(function Composer({
   /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
   const [insert, setInsert] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const touch = useCoarsePointer();
   const [focusRequest, setFocusRequest] = useWindowState(FOCUS_COMPOSER);
   // Asked to take the focus once shown, e.g. after `g n` (UI-286).
   useEffect(() => {
@@ -496,7 +508,7 @@ export const Composer = memo(function Composer({
       event.stopPropagation();
       return;
     }
-    const action = keyAction(event.key, modifiers, { busy, hasSuggestions: false, repeat: event.repeat });
+    const action = keyAction(event.key, modifiers, { busy, hasSuggestions: false, repeat: event.repeat, touch });
     if ((modifiers.ctrl || modifiers.alt || modifiers.meta) && event.key !== "Enter" && action.type !== "send") {
       return;
     }
@@ -571,7 +583,7 @@ export const Composer = memo(function Composer({
             }}
             inputProps={{
               ...testId("composer-input"),
-              ...PROSE_INPUT,
+              ...proseInput(touch),
               "aria-keyshortcuts": `Enter Control+Enter Meta+Enter Shift+Enter Control+Q Alt+Enter Escape Tab ${ariaKeys(rawPasteKeys())}`,
               onPaste,
             }}

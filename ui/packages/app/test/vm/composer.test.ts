@@ -74,6 +74,18 @@ describe("composer", () => {
     expect(keyAction("Enter", { ...PLAIN, shift: true }, { ...BUSY, repeat: true })).toEqual({ type: "ignore" });
   });
 
+  // spec: UI-421
+  test("on a touch screen a plain enter is left to the text area (a newline); modified enters keep their roles", () => {
+    expect(keyAction("Enter", PLAIN, { ...IDLE, touch: true })).toEqual({ type: "none" });
+    expect(keyAction("Enter", PLAIN, { ...BUSY, touch: true, repeat: true })).toEqual({ type: "none" });
+    expect(keyAction("Enter", { ...PLAIN, ctrl: true }, { ...BUSY, touch: true })).toEqual({
+      type: "send",
+      mode: "follow-up",
+    });
+    expect(keyAction("Enter", { ...PLAIN, alt: true }, { ...IDLE, touch: true })).toEqual({ type: "newline" });
+    expect(keyAction("Enter", PLAIN, { ...IDLE, touch: false })).toEqual({ type: "send", mode: "prompt" });
+  });
+
   // spec: UI-063, UI-095
   test("escape leaves the composer, busy or not; abortable means busy or queued", () => {
     expect(keyAction("Escape", PLAIN, BUSY)).toEqual({ type: "leave" });

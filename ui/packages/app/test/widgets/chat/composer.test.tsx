@@ -382,6 +382,38 @@ describe("touch screens", () => {
     pointer = undefined;
   });
 
+  // spec: UI-421
+  test("Enter makes a new line and the send buttons send; ctrl+enter from a hardware keyboard still queues", async () => {
+    pointer = new PointerMedia(true);
+    const { client } = renderThread(<ComposerWidget />, busyEvents());
+    expect(input().getAttribute("enterkeyhint")).toBe("enter");
+    await userEvent.click(input());
+    await userEvent.keyboard("first{Enter}second");
+    expect(input().value).toBe("first\nsecond");
+    expect(client.callsTo("thread.prompt")).toHaveLength(0);
+    await userEvent.click(screen.getByTestId("send"));
+    await userEvent.click(input());
+    await userEvent.keyboard("later");
+    await userEvent.click(screen.getByTestId("send-alternative"));
+    await userEvent.click(input());
+    await userEvent.keyboard("keyed{Control>}{Enter}{/Control}");
+    expect(client.callsTo("thread.prompt").map((call) => call.params)).toEqual([
+      { threadId: THREAD, text: "first\nsecond", behavior: "steer" },
+      { threadId: THREAD, text: "later", behavior: "followUp" },
+      { threadId: THREAD, text: "keyed", behavior: "followUp" },
+    ]);
+  });
+
+  // spec: UI-060, UI-421
+  test("with a mouse Enter still sends, and the keyboard's Enter key reads send", async () => {
+    pointer = new PointerMedia(false);
+    const { client } = renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+    expect(input().getAttribute("enterkeyhint")).toBe("send");
+    await userEvent.click(input());
+    await userEvent.keyboard("hello{Enter}");
+    expect(client.callsTo("thread.prompt").map((call) => call.params)).toEqual([{ threadId: THREAD, text: "hello" }]);
+  });
+
   // spec: UI-422
   test("the composer takes prose: autocorrect, capitals and the spell check are on, touch or not", () => {
     for (const coarse of [false, true]) {

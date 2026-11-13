@@ -112,6 +112,11 @@ export interface KeyContext {
   readonly hasSuggestions: boolean;
   /** The key is auto-repeating (`KeyboardEvent.repeat`). */
   readonly repeat?: boolean;
+  /**
+   * A touch screen (`pointer: coarse`, UI-421): its on-screen keyboard's Enter has no modifier, so a plain Enter is
+   * left to the text area (a line break) and the send button sends.
+   */
+  readonly touch?: boolean;
 }
 
 /** The composer's key bindings. */
@@ -120,6 +125,9 @@ export function keyAction(key: string, modifiers: Modifiers, context: KeyContext
     case "Enter":
       if (modifiers.alt) {
         return { type: "newline" };
+      }
+      if (context.touch === true && !queueModifier(modifiers)) {
+        return { type: "none" };
       }
       return context.repeat === true
         ? { type: "ignore" }
