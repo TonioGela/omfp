@@ -74,6 +74,19 @@ describe("omfp:header", () => {
     expect(screen.queryByTestId("background-badge")).toBeNull();
   });
 
+  // spec: UI-340
+  test("one workspace chip: name and repository count, the repositories as its tooltip; a press shows omfp:workspace", async () => {
+    const test = setup();
+    const chip = screen.getByTestId("workspace-chip");
+    expect([chip.textContent, chip.dataset.repos]).toEqual(["w1 · 1 repo", "1"]);
+    const label = chip.querySelector("[title]");
+    expect(label?.getAttribute("title")).toBe("fe:main (worktree)");
+    const description = document.getElementById(chip.getAttribute("aria-describedby") ?? "");
+    expect(description?.textContent).toBe("fe:main (worktree)");
+    await test.user.click(chip);
+    expect(test.host.window.get(REVEAL_WIDGET)?.reference).toBe("omfp:workspace");
+  });
+
   // spec: UI-030
   test("without a selected thread the header says so", () => {
     renderWithHost(<HeaderWidget />);
@@ -85,7 +98,7 @@ describe("omfp:header", () => {
     setup();
     expect(screen.getByTestId("thread-title").textContent).toBe("checkout");
     expect(screen.queryByTestId("edit-tags")).toBeNull();
-    expect(screen.getAllByTestId("workspace-chip").map((chip) => chip.textContent)).toEqual(["⌂w1", "fe:main"]);
+    expect(screen.getAllByTestId("workspace-chip").map((chip) => chip.textContent)).toEqual(["w1 · 1 repo"]);
     expect(screen.getByTestId("thread-state").dataset.status).toBe("idle");
     await waitFor(() => expect(screen.getByTestId("context-usage").textContent).toBe("84k/200k"));
     expect(screen.getByTestId("context-usage").getAttribute("aria-label")).toBe("Context window usage: 42% of 200k");
@@ -199,7 +212,7 @@ describe("omfp:header", () => {
         within(more)
           .getAllByTestId("workspace-chip")
           .map((chip) => chip.textContent),
-      ).toEqual(["⌂w1", "fe:main"]);
+      ).toEqual(["w1 · 1 repo"]);
       await user.click(within(more).getByTestId("rename-thread"));
       expect(screen.queryAllByTestId("header-more-dialog").length).toBe(0);
       expect(within(header).queryAllByTestId("title-input").length).toBe(1);

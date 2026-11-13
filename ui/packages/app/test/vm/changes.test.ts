@@ -27,6 +27,7 @@ describe("changes", () => {
     expect(view).toEqual([
       {
         name: "fe",
+        isWorkspace: false,
         branch: "feat",
         aheadBehind: "↑2 ↓1",
         summary: "3 files +10 −1",
@@ -37,7 +38,17 @@ describe("changes", () => {
         ],
       },
       // No status yet: the files are unknown, not empty.
-      { name: "be", branch: "main", aheadBehind: undefined, summary: undefined, files: undefined },
+      { name: "be", isWorkspace: false, branch: "main", aheadBehind: undefined, summary: undefined, files: undefined },
+    ]);
+  });
+
+  // spec: UI-341
+  test("the workspace folder's own repository is marked as the workspace; the others are not", () => {
+    const root: WorkspaceRepo = { ...repo("w1", "geo", "main"), isRoot: true };
+    const view = changesView(workspace("w1", [root, repo("w1", "fe", "main")]), undefined);
+    expect(view.map((row) => [row.name, row.isWorkspace])).toEqual([
+      ["geo", true],
+      ["fe", false],
     ]);
   });
 

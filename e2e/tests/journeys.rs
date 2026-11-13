@@ -18,19 +18,18 @@ fn repository(marker: &str) -> TempRepo {
     repo
 }
 
-/// The header's workspace and repository chips as `(kind, text)`.
+/// The header's chips (UI-340: the workspace's only) as `(text, tooltip)`, the tooltip listing the repositories.
 async fn header_chips(journey: &Journey) -> anyhow::Result<Vec<(String, String)>> {
     let css = "[data-testid=thread-header] [data-testid=workspace-chip]";
-    let kinds = journey.attrs(css, "data-kind").await?;
     let texts = journey.texts(css).await?;
-    Ok(kinds
+    let tooltips = journey.attrs(&format!("{css} [title]"), "title").await?;
+    Ok(texts
         .into_iter()
-        .map(Option::unwrap_or_default)
-        .zip(texts)
+        .zip(tooltips.into_iter().map(Option::unwrap_or_default))
         .collect())
 }
 
-// spec: E2E-01, UI-001, UI-002, UI-012, UI-023, TST-031
+// spec: E2E-01, UI-001, UI-002, UI-012, UI-023, UI-340, TST-031
 #[tokio::test(flavor = "multi_thread")]
 async fn a_draft_thread_in_a_workspace_linking_a_repository_is_created_by_its_first_message()
 -> anyhow::Result<()> {
@@ -64,18 +63,21 @@ async fn a_draft_thread_in_a_workspace_linking_a_repository_is_created_by_its_fi
         .await?;
     let thread = journey.first_message("hello").await?;
 
-    // The workspace chip, named after the repository's folder, then the link.
+    // One workspace chip, named after the repository's folder with its one repository, the link in its tooltip.
     let name = dir_name(&repo);
     let chips = journey
-        .until("the link chip", async |page| {
+        .until("the workspace chip counting the link", async |page| {
             let chips = header_chips(page).await?;
-            Ok((chips.len() == 2).then_some(chips))
+            Ok(chips
+                .iter()
+                .any(|(text, _)| text.ends_with("1 repo"))
+                .then_some(chips))
         })
         .await?;
-    assert_eq!(chips[0].0, "workspace", "{chips:?}");
+    assert_eq!(chips.len(), 1, "{chips:?}");
+    assert!(chips[0].0.contains(&name), "{chips:?}");
     assert!(chips[0].1.contains(&name), "{chips:?}");
-    assert_eq!(chips[1].0, "link", "{chips:?}");
-    assert!(chips[1].1.contains(&name), "{chips:?}");
+    assert!(chips[0].1.contains("(link)"), "{chips:?}");
 
     journey.reply("Hello from the linked repository.").await?;
     journey.status(&thread, "idle").await?;
@@ -547,9 +549,16 @@ async fn link_two_by_completion(
         new_entry(journey, links, &before).await?;
     }
     journey
-        .until("the workspace and both repository chips", async |page| {
-            Ok((header_chips(page).await?.len() == 3).then_some(()))
-        })
+        .until(
+            "the workspace chip counting both repositories",
+            async |page| {
+                let chips = header_chips(page).await?;
+                Ok(chips
+                    .iter()
+                    .any(|(text, _)| text.ends_with("2 repos"))
+                    .then_some(()))
+            },
+        )
         .await
 }
 

@@ -25,7 +25,7 @@ import {
   updateSeen,
   visibleOrder,
   waitingCount,
-  workspaceChips,
+  workspaceChip,
 } from "../../src/vm/threads.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 
@@ -111,16 +111,17 @@ describe("thread list", () => {
     expect(displayTitle(thread("t", "checkout", "w"))).toBe("checkout");
   });
 
-  // spec: UI-020, UI-011
-  test("chips show the workspace then each repository with kind and branch", () => {
+  // spec: UI-340, UI-011
+  test("the workspace chip is the name and repository count, the repositories with branch and kind its tooltip", () => {
     const { workspaces, threads } = index();
-    const chips = workspaceChips(threads[0]?.workspaceId ?? "", workspaces);
-    expect(chips.map((chip) => [chip.label, chip.kind])).toEqual([
-      ["checkout", "workspace"],
-      ["fe:feat/checkout", "worktree"],
-      ["be:main", "link"],
-    ]);
-    expect(workspaceChips("w-unknown", workspaces)).toEqual([]);
+    const workspaceId = threads[0]?.workspaceId ?? "";
+    expect(workspaceChip(workspaceId, workspaces)).toEqual({
+      workspaceId,
+      label: "checkout · 2 repos",
+      tooltip: "fe:feat/checkout (worktree)\nbe:main (link)",
+      repoCount: 2,
+    });
+    expect(workspaceChip("w-unknown", workspaces)).toBeUndefined();
   });
 
   // spec: UI-020, UI-026

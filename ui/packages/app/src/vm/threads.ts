@@ -55,30 +55,31 @@ export function displayTitle(thread: Pick<ThreadSummary, "title">): string {
 
 export type RepoKind = WorkspaceRepo["kind"];
 
-/** A thread's workspace, or one of its repositories, as shown next to the thread. */
+/** A thread's workspace as its header shows it (UI-340): one chip, its repositories only in the tooltip. */
 export interface WorkspaceChip {
-  /** Unique among a thread's chips: the workspace id, then `<workspace id>/<repository name>`. */
-  readonly key: string;
-  /** `workspace` (the thread's cwd), or the repository's kind. */
-  readonly kind: "workspace" | RepoKind;
-  /** The workspace's name, or the repository's `name:branch` (`name` on a detached HEAD). */
+  readonly workspaceId: string;
+  /** The workspace's name and how many repositories it holds (`geosurge · 10 repos`). */
   readonly label: string;
+  /** The repositories in folder order, one `name:branch (kind)` per line; says so when there is none. */
+  readonly tooltip: string;
+  readonly repoCount: number;
 }
 
-/** The chip of the workspace, then one per repository in folder order; none for an unknown id. */
-export function workspaceChips(workspaceId: string, workspaces: readonly Workspace[]): WorkspaceChip[] {
+/** The workspace chip of a thread's header; `undefined` for an unknown id. */
+export function workspaceChip(workspaceId: string, workspaces: readonly Workspace[]): WorkspaceChip | undefined {
   const workspace = workspaces.find((candidate) => candidate.id === workspaceId);
   if (workspace === undefined) {
-    return [];
+    return undefined;
   }
-  return [
-    { key: workspace.id, kind: "workspace", label: workspace.name },
-    ...workspace.repos.map((repo) => ({
-      key: `${workspace.id}/${repo.name}`,
-      kind: repo.kind,
-      label: repoLabel(repo),
-    })),
-  ];
+  const text = strings.shell.chip;
+  const repoCount = workspace.repos.length;
+  return {
+    workspaceId: workspace.id,
+    label: text.label(workspace.name, repoCount),
+    tooltip:
+      repoCount === 0 ? text.noRepos : workspace.repos.map((repo) => `${repoLabel(repo)} (${repo.kind})`).join("\n"),
+    repoCount,
+  };
 }
 
 /** `name:branch`, or `name` on a detached HEAD. */

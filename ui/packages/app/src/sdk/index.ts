@@ -175,7 +175,7 @@ export {
   statusLabel,
   type ThreadStatus,
   type WorkspaceChip,
-  workspaceChips,
+  workspaceChip,
 } from "../vm/threads.ts";
 export { type GoalView, type TodoPhaseView, type TodoRow, type TodosView, todosView } from "../vm/todos.ts";
 export { expandedByDefault, formatDuration, resultText, type ToolCard } from "../vm/tool.ts";
@@ -227,7 +227,7 @@ export {
   type WorkspaceRow,
   workspaceRow,
 } from "../vm/workspaces.ts";
-export { StatusBadge, WorkspaceChipView } from "../widgets/threads/badges.tsx";
+export { StatusBadge } from "../widgets/threads/badges.tsx";
 export {
   currentWorkspaceId,
   errorMessage,

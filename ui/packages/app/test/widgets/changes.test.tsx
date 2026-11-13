@@ -104,6 +104,27 @@ describe("omfp:changes", () => {
     expect(within(repoSection("be")).queryByTestId("changes-file")).toBeNull();
   });
 
+  // spec: UI-341
+  test("the workspace folder's own repository has the workspace icon, mark and name; the repositories keep their look", () => {
+    const base = testHost();
+    base.host.window.set(SELECTED_THREAD, "t1");
+    const test = renderWithHost(<ChangesWidget />, base);
+    test.client.connected();
+    test.client.index({
+      workspaces: [workspace("w1", [{ ...repo("w1", "geo", "main"), isRoot: true }, repo("w1", "fe", "feat")])],
+      threads: [thread("t1", "one", "w1")],
+    });
+    test.flush();
+    const geo = repoSection("geo");
+    const fe = repoSection("fe");
+    expect([geo.dataset.workspace, geo.getAttribute("aria-label")]).toEqual(["true", "geo, the workspace folder"]);
+    expect(within(geo).getByTestId("changes-workspace-mark").textContent).toBe("workspace");
+    expect(geo.querySelectorAll(".omfp-changes__workspace-icon").length).toBe(1);
+    expect([fe.dataset.workspace, fe.getAttribute("aria-label")]).toEqual([undefined, "fe"]);
+    expect(within(fe).queryByTestId("changes-workspace-mark")).toBeNull();
+    expect(fe.querySelectorAll(".omfp-changes__workspace-icon").length).toBe(0);
+  });
+
   // spec: UI-080, UI-267
   test("with a repo prop it lists only that repository", () => {
     setup(undefined, { repo: "be" });

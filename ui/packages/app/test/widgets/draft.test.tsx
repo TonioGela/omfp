@@ -30,7 +30,7 @@ function setup() {
 
 describe("draft thread", () => {
   // spec: UI-023
-  test("it shows an empty conversation, a placeholder title with its workspace's chips, and a focused composer", async () => {
+  test("it shows an empty conversation, a placeholder title with its workspace's chip, and a focused composer", async () => {
     setup();
     expect(screen.getByTestId("draft-thread-view").dataset.workspaceId).toBe("w1");
     expect(screen.getByTestId("draft-empty")).toBeDefined();
@@ -41,7 +41,7 @@ describe("draft thread", () => {
       within(header)
         .getAllByTestId("workspace-chip")
         .map((chip) => chip.textContent),
-    ).toEqual(["⌂checkout", "fe:main"]);
+    ).toEqual(["checkout · 1 repo"]);
     await waitFor(() => expect(document.activeElement === screen.getByTestId("composer-input")).toBe(true));
   });
 

@@ -12,8 +12,8 @@ export const shell = {
     terminal: "in terminal",
   },
   chip: {
-    cwd: "cwd",
-    workingDirectory: "Working directory",
+    label: (name: string, repos: number) => `${name} · ${repos} ${repos === 1 ? "repo" : "repos"}`,
+    noRepos: "No repositories",
   },
   threads: {
     label: "Threads",
@@ -154,6 +154,9 @@ export const shell = {
     label: "Changes",
     none: "No workspace selected",
     noRepos: "No repository in this workspace",
+    /** The mark of the workspace folder's own repository (UI-341). */
+    workspace: "workspace",
+    workspaceLabel: (name: string) => `${name}, the workspace folder`,
     refresh: "Refresh the changes",
     loading: "Reading the git status…",
     loadingDiff: "Reading the diff…",

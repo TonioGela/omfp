@@ -408,8 +408,20 @@
     margin: 0;
   }
 
-  /* The full header (UI-202) keeps two rows: its chips give way (ellipsis) to the session controls instead of the bar
-   * wrapping onto a third row. */
+  /* The workspace chip (UI-340): one button, its label cut with an ellipsis when the bar is short. */
+  .omfp-thread-header__workspace {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+
+  .omfp-thread-header__workspace-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The full header (UI-202) keeps two rows: its workspace chip gives way (ellipsis) to the session controls instead
+   * of the bar wrapping onto a third row. */
   .omfp-thread-header:not([data-compact]) .omfp-chat-header__bar {
     flex-wrap: nowrap;
   }
@@ -421,7 +433,7 @@
     overflow: hidden;
   }
 
-  .omfp-thread-header:not([data-compact]) .omfp-chat-header__bar :is(.omfp-chip, .omfp-chip__label) {
+  .omfp-thread-header:not([data-compact]) .omfp-chat-header__bar .omfp-thread-header__workspace {
     flex: 0 1 auto;
     min-inline-size: 0;
   }
@@ -1328,6 +1340,18 @@
     font-size: var(--omfp-fs-sm);
     font-weight: var(--omfp-fw-strong);
     color: var(--omfp-primary);
+  }
+
+  /* The workspace folder's own repository (UI-341): its icon and mark, and a rule before the repositories after it. */
+  .omfp-changes__workspace-icon {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    color: var(--omfp-primary);
+  }
+
+  .omfp-changes__repo[data-workspace] + .omfp-changes__repo {
+    padding-block-start: var(--omfp-s3);
+    border-block-start: 1px solid var(--omfp-outline-variant);
   }
 
   .omfp-changes__branch,

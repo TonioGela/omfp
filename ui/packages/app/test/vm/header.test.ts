@@ -56,8 +56,8 @@ function withCosts(...costs: number[]): ThreadState {
 }
 
 describe("header", () => {
-  // spec: UI-030, UI-011
-  test("the header shows model, thinking, context and the workspace chips", () => {
+  // spec: UI-030, UI-011, UI-340
+  test("the header shows model, thinking, context and the workspace chip", () => {
     const workspaces = [workspace("w1", [repo("w1", "fe", "main")])];
     const view = headerView(thread("t", "checkout", "w1"), details(), workspaces);
     expect(view.model).toBe("anthropic/opus");
@@ -68,7 +68,12 @@ describe("header", () => {
     expect(view.thinking).toBe("high");
     expect(view.thinkingLevels).toEqual(["high", "off", "low"]);
     expect(view.context).toBe("42% of 200k");
-    expect(view.chips.map((chip) => chip.label)).toEqual(["w1", "fe:main"]);
+    expect(view.workspace).toEqual({
+      workspaceId: "w1",
+      label: "w1 · 1 repo",
+      tooltip: "fe:main (worktree)",
+      repoCount: 1,
+    });
     expect(view.action).toBe("stop");
   });
 

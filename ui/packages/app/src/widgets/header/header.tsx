@@ -1,8 +1,8 @@
 /**
- * `omfp:header`, the selected thread's header (UI-030): title with rename in place, the workspace and
- * repository chips, model and thinking selectors, context usage, session cost, the process state with stop/restart,
+ * `omfp:header`, the selected thread's header (UI-030): title with rename in place, the workspace chip (UI-340),
+ * model and thinking selectors, context usage, session cost, the process state with stop/restart,
  * and archive/unarchive/delete (UI-026; delete asks first, in the frame's confirmation dialog). For the draft thread
- * (UI-023): its placeholder title and its workspace's chips. Narrower than {@link COMPACT_BELOW_REM} it is one row
+ * (UI-023): its placeholder title and its workspace's chip. Narrower than {@link COMPACT_BELOW_REM} it is one row
  * (UI-202): title, state and model, the rest in a `⋯` popover.
  */
 
@@ -49,10 +49,10 @@ import {
   useWindowState,
   useWorkspaces,
   type WidgetProps,
-  WorkspaceChipView,
-  workspaceChips,
+  type WorkspaceChip,
+  workspaceChip,
 } from "omfp/sdk";
-import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 
 const text = strings.shell.header;
 
@@ -80,7 +80,7 @@ export function HeaderWidget(_props: WidgetProps): ReactNode {
 
 function DraftHeader({ draft }: { draft: DraftThread }): ReactNode {
   const workspaces = useWorkspaces();
-  const chips = useMemo(() => workspaceChips(draft.workspaceId, [...workspaces.values()]), [draft, workspaces]);
+  const chip = useMemo(() => workspaceChip(draft.workspaceId, [...workspaces.values()]), [draft, workspaces]);
   return (
     <header className="omfp-chat-header omfp-thread-header" data-testid="thread-header" data-draft="true">
       <div className="omfp-thread-header__top">
@@ -93,9 +93,7 @@ function DraftHeader({ draft }: { draft: DraftThread }): ReactNode {
         </h1>
       </div>
       <div className="omfp-chat-header__bar">
-        {chips.map((chip) => (
-          <WorkspaceChipView key={chip.key} chip={chip} />
-        ))}
+        <WorkspaceChipButton chip={chip} />
       </div>
     </header>
   );
@@ -347,10 +345,41 @@ function InlineEditor({
 function Chips({ view }: { view: HeaderView }): ReactNode {
   return (
     <div className="omfp-thread-header__chips">
-      {view.chips.map((chip) => (
-        <WorkspaceChipView key={chip.key} chip={chip} />
-      ))}
+      <WorkspaceChipButton chip={view.workspace} />
     </div>
+  );
+}
+
+/**
+ * The thread's workspace (UI-340): its name and repository count, the repositories as its tooltip and description; a
+ * press shows `omfp:workspace`, which lists them — its tab, or a floating panel when the view lacks it.
+ */
+function WorkspaceChipButton({ chip }: { chip: WorkspaceChip | undefined }): ReactNode {
+  const [, reveal] = useWindowState(REVEAL_WIDGET);
+  const reposId = useId();
+  if (chip === undefined) {
+    return null;
+  }
+  return (
+    <>
+      <Button
+        size="sm"
+        variant="quiet"
+        icon={<Icon name="folder" />}
+        className="omfp-thread-header__workspace"
+        data-testid="workspace-chip"
+        data-repos={chip.repoCount}
+        aria-describedby={reposId}
+        onPress={() => reveal({ reference: "omfp:workspace", nonce: Date.now() })}
+      >
+        <span className="omfp-thread-header__workspace-label" title={chip.tooltip}>
+          {chip.label}
+        </span>
+      </Button>
+      <span id={reposId} hidden>
+        {chip.tooltip}
+      </span>
+    </>
   );
 }
 

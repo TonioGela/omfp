@@ -1,5 +1,5 @@
 /**
- * The thread header (UI-030): title (placeholder until named, DMN-073), workspace and repository chips, model and
+ * The thread header (UI-030): title (placeholder until named, DMN-073), the workspace chip (UI-340), model and
  * thinking options, context usage, session cost, and process state with its action; archive state (UI-026).
  */
 
@@ -13,7 +13,7 @@ import {
   type ThreadStatus,
   threadStatus,
   type WorkspaceChip,
-  workspaceChips,
+  workspaceChip,
 } from "./threads.ts";
 
 /** A model as `thread.models` and `thread.state` describe it (the fields the header uses). */
@@ -55,8 +55,8 @@ export interface HeaderView {
   readonly title: string;
   /** The title is the "New thread" placeholder (DMN-073). */
   readonly placeholder: boolean;
-  /** The thread's workspace, then its repositories. */
-  readonly chips: readonly WorkspaceChip[];
+  /** The thread's workspace; `undefined` while it is unknown. */
+  readonly workspace: WorkspaceChip | undefined;
   /** `provider/id` of the current model. */
   readonly model: string | undefined;
   /** The available models; the current one is included even when the list has not arrived. */
@@ -98,7 +98,7 @@ export function headerView(
   return {
     title: displayTitle(summary),
     placeholder: summary.titleSource === "placeholder" || summary.title.trim() === "",
-    chips: workspaceChips(summary.workspaceId, workspaces),
+    workspace: workspaceChip(summary.workspaceId, workspaces),
     model,
     models,
     thinking,

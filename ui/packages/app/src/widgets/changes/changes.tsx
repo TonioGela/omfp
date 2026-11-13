@@ -6,7 +6,7 @@
  */
 
 import type { FileContent, FileDiff } from "@omfp/protocol";
-import { CodeDiff, Diff, Disclosure, EmptyState, Icon, IconButton, languageOfPath, useCountUp } from "omfp/kit";
+import { Badge, CodeDiff, Diff, Disclosure, EmptyState, Icon, IconButton, languageOfPath, useCountUp } from "omfp/kit";
 import {
   type ChangedFile,
   type ChangesRepo,
@@ -85,15 +85,7 @@ function Changes({ workspaceId, only }: { workspaceId: string; only: string | un
       {repos.length === 0 ? (
         <EmptyState icon="folder-git-2" title={text.noRepos} data-testid="changes-no-repo" />
       ) : (
-        repos.map((repo) => (
-          <RepoChanges
-            key={repo.name}
-            workspaceId={workspaceId}
-            repo={repo}
-            isRoot={workspace?.repos.find((candidate) => candidate.name === repo.name)?.isRoot === true}
-            runs={runs}
-          />
-        ))
+        repos.map((repo) => <RepoChanges key={repo.name} workspaceId={workspaceId} repo={repo} runs={runs} />)
       )}
     </section>
   );
@@ -102,16 +94,27 @@ function Changes({ workspaceId, only }: { workspaceId: string; only: string | un
 interface RepoChangesProps {
   readonly workspaceId: string;
   readonly repo: ChangesRepo;
-  /** The repository is the workspace folder itself. */
-  readonly isRoot: boolean;
   readonly runs: string;
 }
 
-function RepoChanges({ workspaceId, repo, isRoot, runs }: RepoChangesProps): ReactNode {
+/** A repository's changes; the workspace folder's own one (UI-341) has the workspace icon and mark, and a rule below. */
+function RepoChanges({ workspaceId, repo, runs }: RepoChangesProps): ReactNode {
   return (
-    <section className="omfp-changes__repo" data-testid="changes-repo" data-repo={repo.name} aria-label={repo.name}>
+    <section
+      className="omfp-changes__repo"
+      data-testid="changes-repo"
+      data-repo={repo.name}
+      data-workspace={repo.isWorkspace ? "true" : undefined}
+      aria-label={repo.isWorkspace ? text.workspaceLabel(repo.name) : repo.name}
+    >
       <h2 className="omfp-changes__repo-head">
+        {repo.isWorkspace && <Icon name="folder" className="omfp-changes__workspace-icon" />}
         <span className="omfp-changes__repo-name">{repo.name}</span>
+        {repo.isWorkspace && (
+          <Badge className="omfp-changes__workspace-mark" data-testid="changes-workspace-mark">
+            {text.workspace}
+          </Badge>
+        )}
         <span className="omfp-changes__branch">
           <Icon name="git-branch" />
           {repo.branch}
@@ -134,7 +137,7 @@ function RepoChanges({ workspaceId, repo, isRoot, runs }: RepoChangesProps): Rea
               <FileChanges
                 workspaceId={workspaceId}
                 repo={repo.name}
-                filePath={workspaceFilePath({ name: repo.name, isRoot }, file.path)}
+                filePath={workspaceFilePath({ name: repo.name, isRoot: repo.isWorkspace }, file.path)}
                 file={file}
                 runs={runs}
               />

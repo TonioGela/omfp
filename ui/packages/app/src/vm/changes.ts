@@ -1,5 +1,6 @@
 /**
- * The `omfp:changes` widget (UI-080): for each repository of the current workspace, its branch, ahead/behind and
+ * The `omfp:changes` widget (UI-080): for each repository of the current workspace (the workspace folder's own marked,
+ * UI-341), its branch, ahead/behind and
  * changed files with +/− counts (the `workspace/<id>` topic's git status, DMN-026), and the key that changes when the
  * selected thread's agent may have changed files.
  */
@@ -28,6 +29,8 @@ export interface ChangedFile {
 /** One repository of the workspace. */
 export interface ChangesRepo {
   readonly name: string;
+  /** The repository is the workspace folder itself, listed first and marked as the workspace (UI-341). */
+  readonly isWorkspace: boolean;
   /** Checked-out branch (live status first, else the index), or `detached`. */
   readonly branch: string;
   /** `↑2 ↓1` when HEAD and its upstream differ. */
@@ -45,6 +48,7 @@ export function changesView(workspace: Workspace, status: readonly RepoStatus[] 
     if (git === undefined) {
       return {
         name: repo.name,
+        isWorkspace: repo.isRoot === true,
         branch: repo.branch ?? text.detached,
         aheadBehind: undefined,
         summary: undefined,
@@ -53,6 +57,7 @@ export function changesView(workspace: Workspace, status: readonly RepoStatus[] 
     }
     return {
       name: repo.name,
+      isWorkspace: repo.isRoot === true,
       branch: git.branch ?? text.detached,
       aheadBehind: git.ahead > 0 || git.behind > 0 ? text.aheadBehind(git.ahead, git.behind) : undefined,
       summary: gitSummary({ ...git, ahead: 0, behind: 0, dirty: false }),
