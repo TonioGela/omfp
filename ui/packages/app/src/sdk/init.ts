@@ -43,8 +43,8 @@ export interface InitBinding {
   readonly args?: readonly string[];
 }
 
-/** A command an init file registers: a {@link Command} without `init`, which the API sets. */
-export type InitCommand = Omit<Command, "init">;
+/** A command an init file registers: a {@link Command} without `init`, which the API sets, nor `widget`. */
+export type InitCommand = Omit<Command, "init" | "widget">;
 
 /** A repository of the workspace, as `omfp.workspace.repos` lists it. */
 export interface InitRepo {

@@ -22,6 +22,7 @@ import {
   type ViewsEvent,
   type ViewsState,
   viewsTopic,
+  type WindowRequestFrame,
 } from "@omfp/protocol";
 import { act, type RenderResult, render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -81,6 +82,22 @@ export class FakeClient implements SdkClient {
       this.subscribed.push(topic);
     }
     this.notify();
+  }
+
+  readonly #windowRequests = new Set<(frame: WindowRequestFrame) => void>();
+
+  onWindowRequest(listener: (frame: WindowRequestFrame) => void): () => void {
+    this.#windowRequests.add(listener);
+    return () => {
+      this.#windowRequests.delete(listener);
+    };
+  }
+
+  /** Delivers a request of the daemon to this window (PRT-124), as the session does. */
+  windowRequest(frame: WindowRequestFrame): void {
+    for (const listener of [...this.#windowRequests]) {
+      listener(frame);
+    }
   }
 
   unsubscribe(topic: Topic): void {

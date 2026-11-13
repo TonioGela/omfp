@@ -10,6 +10,7 @@ use crate::envelope::{
     ErrorBody, ErrorCode, IndexEvent, JobEvent, TransientEvent, ViewsEvent, WorkspaceEvent,
 };
 use crate::topic::Topic;
+use crate::windows::WindowRequest;
 
 /// Schemas keyed by type name; each schema's `title` is that name.
 #[must_use]
@@ -25,6 +26,7 @@ pub fn type_schemas() -> Value {
         ("JobState", schema_for!(JobState)),
         ("JobEvent", schema_for!(JobEvent)),
         ("TransientEvent", schema_for!(TransientEvent)),
+        ("WindowRequest", schema_for!(WindowRequest)),
         ("ErrorCode", schema_for!(ErrorCode)),
         ("ErrorBody", schema_for!(ErrorBody)),
     ];

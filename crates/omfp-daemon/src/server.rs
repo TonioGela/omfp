@@ -23,6 +23,8 @@ use subtle::ConstantTimeEq;
 use tokio::sync::{Semaphore, watch};
 
 pub use auth::{Permission, Principal, authorize, origin_allowed, parse_origin, permission};
+#[cfg(test)]
+pub(crate) use connection::Outbound;
 pub(crate) use mcp::Sessions as McpSessions;
 pub(crate) use services::Services;
 

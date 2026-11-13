@@ -14,6 +14,7 @@ import {
   useHost,
   useSnapshot,
   type WidgetProps,
+  type WidgetReporter,
   WidgetScope,
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
@@ -32,6 +33,9 @@ export interface WidgetSlotProps {
   /** That workspace's views state (`useViews`), `undefined` until it arrives. */
   readonly views: ViewsState | undefined;
   readonly registry: WidgetRegistry;
+  /** Where the module widget's report goes; the window's reports by default (an out-of-sight check passes its own,
+   * UI-353). */
+  readonly reporter?: WidgetReporter | undefined;
 }
 
 /** A module as shown: the folder it came from, its version and what its import gave. */
@@ -125,8 +129,9 @@ function renderedText(element: HTMLElement | null): string {
 }
 
 /**
- * The report of a module widget slot (AGT-026): part of the window's reports while mounted, following the widget's
- * identity, load and rendered text (`element`'s); `undefined` for built-ins and unresolved references.
+ * The report of a module widget slot (AGT-026): part of `reporter`'s reports (the window's by default) while mounted,
+ * following the widget's identity, load and rendered text (`element`'s); `undefined` for built-ins and unresolved
+ * references.
  */
 function useModuleReport(
   widget: WidgetInfo | undefined,
@@ -135,8 +140,10 @@ function useModuleReport(
   instance: string,
   workspaceId: string | undefined,
   element: RefObject<HTMLDivElement | null>,
+  reporter: WidgetReporter | undefined,
 ): SlotReport | undefined {
-  const { reports } = useHost();
+  const host = useHost();
+  const reports = reporter ?? host.reports;
   const base = useWidgetBase() ?? "";
   const identity =
     widget === undefined || workspaceId === undefined
@@ -202,14 +209,22 @@ function useModuleReport(
   return report;
 }
 
-export function WidgetSlot({ reference, props, path, workspaceId, views, registry }: WidgetSlotProps): ReactNode {
+export function WidgetSlot({
+  reference,
+  props,
+  path,
+  workspaceId,
+  views,
+  registry,
+  reporter,
+}: WidgetSlotProps): ReactNode {
   const instance = typeof props.instance === "string" ? props.instance : reference;
   const scope = useMemo(() => ({ instance, reference, workspaceId }), [instance, reference, workspaceId]);
   const resolved = resolveWidget(reference, workspaceId, views, registry);
   const widget = resolved.kind === "module" ? resolved.widget : undefined;
   const module = useWidgetModule(widget, workspaceId);
   const element = useRef<HTMLDivElement>(null);
-  const report = useModuleReport(widget, module, reference, instance, workspaceId, element);
+  const report = useModuleReport(widget, module, reference, instance, workspaceId, element, reporter);
 
   let body: ReactNode;
   switch (resolved.kind) {

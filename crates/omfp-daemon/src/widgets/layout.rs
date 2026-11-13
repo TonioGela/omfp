@@ -92,6 +92,39 @@ fn instances(node: &Value, out: &mut Vec<String>) {
     }
 }
 
+/// Whether `node` holds the widget `reference`.
+fn holds(node: &Value, reference: &str) -> bool {
+    if is_container(node) {
+        return node
+            .as_array()
+            .into_iter()
+            .flatten()
+            .skip(2)
+            .any(|child| holds(child, reference));
+    }
+    match node {
+        Value::String(name) => name == reference,
+        Value::Array(items) => items.first().and_then(Value::as_str) == Some(reference),
+        _ => false,
+    }
+}
+
+/// The ids of the views of `manifest` whose layout holds the widget `reference` (DMN-209), in the manifest's order.
+#[must_use]
+pub fn views_using(manifest: &Value, reference: &str) -> Vec<String> {
+    manifest
+        .get("views")
+        .and_then(Value::as_object)
+        .into_iter()
+        .flatten()
+        .filter(|(_, view)| {
+            view.get("layout")
+                .is_some_and(|layout| holds(layout, reference))
+        })
+        .map(|(id, _)| id.clone())
+        .collect()
+}
+
 /// The `tabs` container of `node` whose `id` prop is `id`.
 fn find_slot<'a>(node: &'a mut Value, id: &str) -> Option<&'a mut Value> {
     if !is_container(node) {

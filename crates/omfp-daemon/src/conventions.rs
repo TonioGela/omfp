@@ -94,7 +94,11 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
          - After writing a widget call omfp_widget_check {{ name }} (compile errors, what open windows render; it also \
          checks init files, `init` and `user:init`, and TSX views, `views/<file>`); omfp_views_errors lists the runtime \
          errors windows show for init files and TSX views. Place a widget with omfp_view_add {{ widget, where }} rather \
-         than rewriting views.json.\n\
+         than rewriting views.json. Verify in the user's window: write → omfp_widget_check (it renders a widget no \
+         view shows out of sight) → \
+         omfp_windows (each window's views and where each comes from, added commands, errors) → omfp_window_run \
+         {{ command: \"view.switch\", args: [\"<view>\"] }} to show a view → omfp_windows again for its errors. \
+         omfp_window_run runs only registered commands, never code.\n\
          - Keys: {display}/.omfp/keymap.json (schema omfp://schemas/keymap.json) binds keys to commands, built-in or a \
          widget's useCommand, in windows showing this workspace; give a widget a command and bind it there.\n\
          - Notify the user with omfp_notify {{ title, body }} when a long task finished or you need them; once per \
@@ -264,7 +268,7 @@ mod tests {
         assert!(!text.ends_with('\n'));
     }
 
-    // spec: AGT-024, AGT-028, AGT-029, AGT-031, AGT-032, AGT-074, AGT-075, AGT-076
+    // spec: AGT-024, AGT-028, AGT-029, AGT-031, AGT-032, AGT-074, AGT-075, AGT-076, AGT-084
     #[test]
     fn the_widgets_note_says_where_widgets_live_what_they_import_and_how_to_check_and_place_them() {
         let library = Path::new("/data/omfp/widgets");
@@ -295,6 +299,8 @@ mod tests {
             "`{ \"view\": \"./views/<name>.tsx\" }` for /ws/checkout/.omfp/views/<name>.tsx (see omfp://docs/widgets)",
             "it also checks init files, `init` and `user:init`, and TSX views, `views/<file>`",
             "omfp_views_errors lists the runtime errors windows show for init files and TSX views",
+            "Verify in the user's window: write → omfp_widget_check",
+            "omfp_window_run runs only registered commands, never code.",
             "omfp://docs indexes the docs: omfp://docs/shell (the window and its `:` commands), omfp://keymap (its keys \
              and commands)",
         ] {

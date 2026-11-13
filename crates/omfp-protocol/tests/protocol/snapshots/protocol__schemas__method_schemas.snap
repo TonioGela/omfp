@@ -4444,6 +4444,23 @@ expression: method_schemas()
   "widgets.report": {
     "params": {
       "$defs": {
+        "CommandSource": {
+          "description": "Who registered a command of a window (PRT-122).",
+          "oneOf": [
+            {
+              "enum": [
+                "user_init",
+                "workspace_init"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "widget",
+              "description": "A workspace or user widget (`widget` names it).",
+              "type": "string"
+            }
+          ]
+        },
         "FileErrorKind": {
           "description": "What kind of file a [`FileErrorReport`] is about (PRT-115).",
           "oneOf": [
@@ -4481,6 +4498,15 @@ expression: method_schemas()
           ],
           "type": "object"
         },
+        "KeymapMode": {
+          "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+          "enum": [
+            "normal",
+            "insert",
+            "cmdline"
+          ],
+          "type": "string"
+        },
         "Position": {
           "description": "A position in a topic's event stream.",
           "properties": {
@@ -4499,6 +4525,785 @@ expression: method_schemas()
           ],
           "type": "object"
         },
+        "ViewSource": {
+          "description": "Where a view of a window comes from (PRT-122).",
+          "oneOf": [
+            {
+              "const": "builtin",
+              "description": "The built-in default view: `views.json` is missing, invalid or not loaded yet.",
+              "type": "string"
+            },
+            {
+              "const": "views_json",
+              "description": "The workspace's `.omfp/views.json` (even when an init file changed its layout).",
+              "type": "string"
+            },
+            {
+              "const": "user_init",
+              "description": "Added by the user's init file.",
+              "type": "string"
+            },
+            {
+              "const": "workspace_init",
+              "description": "Added by the workspace's `.omfp/init.ts`.",
+              "type": "string"
+            }
+          ]
+        },
+        "WidgetJobReport": {
+          "description": "A `useJob` job of a widget instance (AGT-019).",
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "exitCode": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "runs": {
+              "description": "How many jobs the instance started for the command.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "signal": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "startedAt": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "description": "`pending`, `running`, `succeeded` or `failed`.",
+              "type": "string"
+            },
+            "tail": {
+              "description": "The last output lines (stdout and stderr), oldest first.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "command",
+            "status",
+            "runs",
+            "tail"
+          ],
+          "type": "object"
+        },
+        "WidgetReport": {
+          "description": "One widget instance as a window shows it (PRT-043).",
+          "properties": {
+            "console": {
+              "description": "Console errors and uncaught errors whose stack names the widget's module, oldest first.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "errors": {
+              "description": "The compile stand-in's, import's and error boundary's errors (`file:line:column: message` when known).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "instance": {
+              "description": "The node's `instance` prop when it is a string, else its reference.",
+              "type": "string"
+            },
+            "jobs": {
+              "description": "Its `useJob` jobs (AGT-019).",
+              "items": {
+                "$ref": "#/$defs/WidgetJobReport"
+              },
+              "type": "array"
+            },
+            "name": {
+              "description": "The widget folder's name.",
+              "type": "string"
+            },
+            "reference": {
+              "description": "The view node's reference (`./widgets/tests`, `user:clock`, or `omfp:<name>` overridden by the workspace).",
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/WidgetSource"
+            },
+            "state": {
+              "$ref": "#/$defs/WidgetReportState"
+            },
+            "text": {
+              "description": "The text the widget renders.",
+              "type": "string"
+            },
+            "version": {
+              "description": "The folder version the window imported; `null` while nothing is imported.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "reference",
+            "instance",
+            "source",
+            "name",
+            "state",
+            "errors",
+            "console",
+            "text",
+            "jobs"
+          ],
+          "type": "object"
+        },
+        "WidgetReportState": {
+          "description": "Where a widget instance stands in a window (PRT-043).",
+          "enum": [
+            "loading",
+            "rendered",
+            "compile_error",
+            "load_error",
+            "render_error"
+          ],
+          "type": "string"
+        },
+        "WidgetSource": {
+          "description": "Where a widget folder lives (AGT-012, AGT-023).",
+          "oneOf": [
+            {
+              "const": "workspace",
+              "description": "`<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`.",
+              "type": "string"
+            },
+            {
+              "const": "user",
+              "description": "`<data-dir>/widgets/<name>/`, referenced as `user:<name>`.",
+              "type": "string"
+            }
+          ]
+        },
+        "WindowBinding": {
+          "description": "A key binding of a command (PRT-122).",
+          "properties": {
+            "args": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "keys": {
+              "description": "Tokens separated by spaces, e.g. `g h`.",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/KeymapMode"
+            }
+          },
+          "required": [
+            "mode",
+            "keys"
+          ],
+          "type": "object"
+        },
+        "WindowCommand": {
+          "description": "A command registered beyond the built-ins (PRT-122).",
+          "properties": {
+            "aliases": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bindings": {
+              "default": [],
+              "description": "The keys bound to it, in every mode.",
+              "items": {
+                "$ref": "#/$defs/WindowBinding"
+              },
+              "type": "array"
+            },
+            "enabled": {
+              "description": "Whether it runs now (a command may disable itself).",
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/CommandSource"
+            },
+            "title": {
+              "type": "string"
+            },
+            "widget": {
+              "default": null,
+              "description": "The widget reference that registered it; `null` for an init file's.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "source",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "WindowReport": {
+          "description": "What a window shows besides its widgets (PRT-122): sent as `widgets.report`'s `window`.",
+          "properties": {
+            "activeView": {
+              "default": null,
+              "description": "The view the window shows; `null` without a workspace.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "commands": {
+              "default": [],
+              "description": "The commands registered beyond the built-ins: by an init file or a workspace or user widget.",
+              "items": {
+                "$ref": "#/$defs/WindowCommand"
+              },
+              "type": "array"
+            },
+            "defaultView": {
+              "default": null,
+              "description": "The view shown when none is chosen.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "focused": {
+              "default": false,
+              "description": "Whether the window has the focus.",
+              "type": "boolean"
+            },
+            "threadId": {
+              "default": null,
+              "description": "The thread the window shows; `null` for none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "views": {
+              "default": [],
+              "description": "The views of the window's switcher, after `views.json`, the init files and their transforms, in its order.",
+              "items": {
+                "$ref": "#/$defs/WindowView"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
+        "WindowView": {
+          "description": "One view of a window (PRT-122).",
+          "properties": {
+            "file": {
+              "default": null,
+              "description": "The TSX file (`./views/<name>.tsx`) the view renders; `null` for a written layout.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/ViewSource"
+            },
+            "title": {
+              "type": "string"
+            },
+            "widgets": {
+              "default": null,
+              "description": "The widget references of its layout; `null` for a TSX view this window has not rendered.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "source"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.report` params (PRT-043, AGT-026): what this connection's window shows of a workspace's own widgets.",
+      "properties": {
+        "fileErrors": {
+          "default": [],
+          "description": "The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.",
+          "items": {
+            "$ref": "#/$defs/FileErrorReport"
+          },
+          "type": "array"
+        },
+        "views": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Position"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The position of `views/<workspaceId>` the window rendered; `null` before that topic arrived."
+        },
+        "widgets": {
+          "description": "Every workspace and user widget instance of the view the window shows (built-ins are not reported).",
+          "items": {
+            "$ref": "#/$defs/WidgetReport"
+          },
+          "type": "array"
+        },
+        "window": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WindowReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What else the window shows (PRT-122): its thread, views, commands; absent from clients that do not report it."
+        },
+        "workspaceId": {
+          "description": "The workspace whose view the window shows; `null` when it shows none.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "widgets"
+      ],
+      "title": "ReportWidgetsParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
+  "widgets.save": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.save` params (PRT-083, AGT-064): exactly one of `widget` (with `workspaceId`) and `code`.",
+      "properties": {
+        "code": {
+          "description": "The component's source (TSX), saved as its `index.tsx`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "The component's name in the user library (a widget name).",
+          "type": "string"
+        },
+        "replace": {
+          "description": "Replace an existing component of that name.",
+          "type": "boolean"
+        },
+        "widget": {
+          "description": "A widget of that workspace: `./widgets/<name>` or a bare name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "SaveWidgetParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.save` result (PRT-083).",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "reference": {
+          "description": "`user:<name>`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "reference"
+      ],
+      "title": "WidgetSaved",
+      "type": "object"
+    }
+  },
+  "widgets.state_set": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`widgets.state_set` params (DMN-086).",
+      "properties": {
+        "instance": {
+          "description": "The widget instance: its `instance` prop, else its reference (AGT-010).",
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "value": {
+          "description": "Any JSON value; `null` deletes the key."
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "instance",
+        "key",
+        "value"
+      ],
+      "title": "SetWidgetStateParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
+  "windows.answer": {
+    "params": {
+      "$defs": {
+        "RunFailure": {
+          "description": "Why a window did not run a command (PRT-124).",
+          "oneOf": [
+            {
+              "const": "unknown",
+              "description": "No command answers to the name in the global scope.",
+              "type": "string"
+            },
+            {
+              "const": "disabled",
+              "description": "The command is registered but disabled now.",
+              "type": "string"
+            },
+            {
+              "const": "failed",
+              "description": "It threw, rejected or reported an error.",
+              "type": "string"
+            }
+          ]
+        },
+        "WidgetJobReport": {
+          "description": "A `useJob` job of a widget instance (AGT-019).",
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "exitCode": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "runs": {
+              "description": "How many jobs the instance started for the command.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "signal": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "startedAt": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "description": "`pending`, `running`, `succeeded` or `failed`.",
+              "type": "string"
+            },
+            "tail": {
+              "description": "The last output lines (stdout and stderr), oldest first.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "command",
+            "status",
+            "runs",
+            "tail"
+          ],
+          "type": "object"
+        },
+        "WidgetReport": {
+          "description": "One widget instance as a window shows it (PRT-043).",
+          "properties": {
+            "console": {
+              "description": "Console errors and uncaught errors whose stack names the widget's module, oldest first.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "errors": {
+              "description": "The compile stand-in's, import's and error boundary's errors (`file:line:column: message` when known).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "instance": {
+              "description": "The node's `instance` prop when it is a string, else its reference.",
+              "type": "string"
+            },
+            "jobs": {
+              "description": "Its `useJob` jobs (AGT-019).",
+              "items": {
+                "$ref": "#/$defs/WidgetJobReport"
+              },
+              "type": "array"
+            },
+            "name": {
+              "description": "The widget folder's name.",
+              "type": "string"
+            },
+            "reference": {
+              "description": "The view node's reference (`./widgets/tests`, `user:clock`, or `omfp:<name>` overridden by the workspace).",
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/WidgetSource"
+            },
+            "state": {
+              "$ref": "#/$defs/WidgetReportState"
+            },
+            "text": {
+              "description": "The text the widget renders.",
+              "type": "string"
+            },
+            "version": {
+              "description": "The folder version the window imported; `null` while nothing is imported.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "reference",
+            "instance",
+            "source",
+            "name",
+            "state",
+            "errors",
+            "console",
+            "text",
+            "jobs"
+          ],
+          "type": "object"
+        },
+        "WidgetReportState": {
+          "description": "Where a widget instance stands in a window (PRT-043).",
+          "enum": [
+            "loading",
+            "rendered",
+            "compile_error",
+            "load_error",
+            "render_error"
+          ],
+          "type": "string"
+        },
+        "WidgetSource": {
+          "description": "Where a widget folder lives (AGT-012, AGT-023).",
+          "oneOf": [
+            {
+              "const": "workspace",
+              "description": "`<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`.",
+              "type": "string"
+            },
+            {
+              "const": "user",
+              "description": "`<data-dir>/widgets/<name>/`, referenced as `user:<name>`.",
+              "type": "string"
+            }
+          ]
+        },
+        "WindowAnswer": {
+          "description": "A window's answer to a [`WindowRequest`] (PRT-124).",
+          "oneOf": [
+            {
+              "description": "The command ran; `command` is the id the name resolved to.",
+              "properties": {
+                "command": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "ran",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "command"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "The command did not run, or failed.",
+              "properties": {
+                "kind": {
+                  "const": "not_run",
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "reason": {
+                  "$ref": "#/$defs/RunFailure"
+                }
+              },
+              "required": [
+                "kind",
+                "reason",
+                "message"
+              ],
+              "type": "object"
+            },
+            {
+              "description": "The out-of-sight render of a `check_widget`.",
+              "properties": {
+                "kind": {
+                  "const": "checked",
+                  "type": "string"
+                },
+                "report": {
+                  "$ref": "#/$defs/WidgetReport"
+                },
+                "settled": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "kind",
+                "report",
+                "settled"
+              ],
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`windows.answer` params (PRT-124): a window's answer to the daemon's request `requestId`.",
+      "properties": {
+        "answer": {
+          "$ref": "#/$defs/WindowAnswer"
+        },
+        "requestId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId",
+        "answer"
+      ],
+      "title": "AnswerWindowParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    }
+  },
+  "windows.check_widget": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`windows.check_widget` params (PRT-124).",
+      "properties": {
+        "widget": {
+          "description": "The widget reference: `./widgets/<name>` or `user:<name>`.",
+          "type": "string"
+        },
+        "windowId": {
+          "description": "The window; default: the most recently focused window showing the workspace.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId",
+        "widget"
+      ],
+      "title": "CheckWidgetParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
         "WidgetJobReport": {
           "description": "A `useJob` job of a widget instance (AGT-019).",
           "properties": {
@@ -4647,36 +5452,602 @@ expression: method_schemas()
         }
       },
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "`widgets.report` params (PRT-043, AGT-026): what this connection's window shows of a workspace's own widgets.",
+      "description": "`windows.check_widget` result (PRT-124).",
       "properties": {
+        "report": {
+          "$ref": "#/$defs/WidgetReport",
+          "description": "The out-of-sight instance as the window saw it when it rendered, failed or ran out of time."
+        },
+        "settled": {
+          "description": "`false` when the window ran out of time before the widget rendered or failed (`report.state` is `loading`).",
+          "type": "boolean"
+        },
+        "windowId": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "windowId",
+        "report",
+        "settled"
+      ],
+      "title": "WidgetChecked",
+      "type": "object"
+    }
+  },
+  "windows.list": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`windows.list` params (PRT-123).",
+      "properties": {
+        "workspaceId": {
+          "description": "Only the windows showing this workspace; every window when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "title": "ListWindowsParams",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "WindowSummary": {
+          "description": "One window of `windows.list` (PRT-123).",
+          "properties": {
+            "activeView": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "client": {
+              "description": "The `client` of its `system.hello`.",
+              "type": "string"
+            },
+            "errors": {
+              "description": "How many errors it shows: init files and TSX views (`fileErrors`) and widgets in an error state.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "focused": {
+              "type": "boolean"
+            },
+            "threadId": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "windowId": {
+              "description": "The window's connection number (`system.hello`'s `connection`).",
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspaceId": {
+              "description": "The workspace it shows; `null` for none.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "windowId",
+            "client",
+            "focused",
+            "errors"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`windows.list` result (PRT-123).",
+      "properties": {
+        "windows": {
+          "description": "The windows that reported, the most recently focused first.",
+          "items": {
+            "$ref": "#/$defs/WindowSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "windows"
+      ],
+      "title": "WindowList",
+      "type": "object"
+    }
+  },
+  "windows.run": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`windows.run` params (PRT-124).",
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "command": {
+          "description": "A command id or alias registered in the window (`view.switch`, `view`), run in the global scope.",
+          "type": "string"
+        },
+        "windowId": {
+          "description": "The window; default: the most recently focused window showing `workspaceId` (any window without it).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "workspaceId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "title": "RunInWindowParams",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`windows.run` result (PRT-124).",
+      "properties": {
+        "command": {
+          "description": "The id of the command the name resolved to.",
+          "type": "string"
+        },
+        "windowId": {
+          "description": "The window that ran it.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "windowId",
+        "command"
+      ],
+      "title": "RanInWindow",
+      "type": "object"
+    }
+  },
+  "windows.state": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one window (PRT-123).",
+      "properties": {
+        "windowId": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "windowId"
+      ],
+      "title": "WindowRef",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "CommandSource": {
+          "description": "Who registered a command of a window (PRT-122).",
+          "oneOf": [
+            {
+              "enum": [
+                "user_init",
+                "workspace_init"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "widget",
+              "description": "A workspace or user widget (`widget` names it).",
+              "type": "string"
+            }
+          ]
+        },
+        "FileErrorKind": {
+          "description": "What kind of file a [`FileErrorReport`] is about (PRT-115).",
+          "oneOf": [
+            {
+              "const": "init",
+              "description": "An init file: the user's or the workspace's `.omfp/init.ts`.",
+              "type": "string"
+            },
+            {
+              "const": "view",
+              "description": "A TSX view file of the workspace's `.omfp/views/`.",
+              "type": "string"
+            }
+          ]
+        },
+        "FileErrorReport": {
+          "description": "One runtime error a window shows of an init file or a TSX view (PRT-115).",
+          "properties": {
+            "file": {
+              "description": "`user` for the user's init file, else the workspace-relative path (`.omfp/init.ts`, `.omfp/views/ops.tsx`).",
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/$defs/FileErrorKind"
+            },
+            "message": {
+              "description": "The error as the window shows it: a compile error with `file:line:column`, a throw, a render or layout error.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "file",
+            "message"
+          ],
+          "type": "object"
+        },
+        "KeymapMode": {
+          "description": "The keymap mode a binding belongs to: `[keymap]`, `[keymap.insert]`, `[keymap.cmdline]`.",
+          "enum": [
+            "normal",
+            "insert",
+            "cmdline"
+          ],
+          "type": "string"
+        },
+        "ViewSource": {
+          "description": "Where a view of a window comes from (PRT-122).",
+          "oneOf": [
+            {
+              "const": "builtin",
+              "description": "The built-in default view: `views.json` is missing, invalid or not loaded yet.",
+              "type": "string"
+            },
+            {
+              "const": "views_json",
+              "description": "The workspace's `.omfp/views.json` (even when an init file changed its layout).",
+              "type": "string"
+            },
+            {
+              "const": "user_init",
+              "description": "Added by the user's init file.",
+              "type": "string"
+            },
+            {
+              "const": "workspace_init",
+              "description": "Added by the workspace's `.omfp/init.ts`.",
+              "type": "string"
+            }
+          ]
+        },
+        "WidgetJobReport": {
+          "description": "A `useJob` job of a widget instance (AGT-019).",
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "exitCode": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "runs": {
+              "description": "How many jobs the instance started for the command.",
+              "format": "uint32",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "signal": {
+              "format": "int32",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "startedAt": {
+              "format": "int64",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "status": {
+              "description": "`pending`, `running`, `succeeded` or `failed`.",
+              "type": "string"
+            },
+            "tail": {
+              "description": "The last output lines (stdout and stderr), oldest first.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "command",
+            "status",
+            "runs",
+            "tail"
+          ],
+          "type": "object"
+        },
+        "WidgetReport": {
+          "description": "One widget instance as a window shows it (PRT-043).",
+          "properties": {
+            "console": {
+              "description": "Console errors and uncaught errors whose stack names the widget's module, oldest first.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "errors": {
+              "description": "The compile stand-in's, import's and error boundary's errors (`file:line:column: message` when known).",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "instance": {
+              "description": "The node's `instance` prop when it is a string, else its reference.",
+              "type": "string"
+            },
+            "jobs": {
+              "description": "Its `useJob` jobs (AGT-019).",
+              "items": {
+                "$ref": "#/$defs/WidgetJobReport"
+              },
+              "type": "array"
+            },
+            "name": {
+              "description": "The widget folder's name.",
+              "type": "string"
+            },
+            "reference": {
+              "description": "The view node's reference (`./widgets/tests`, `user:clock`, or `omfp:<name>` overridden by the workspace).",
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/WidgetSource"
+            },
+            "state": {
+              "$ref": "#/$defs/WidgetReportState"
+            },
+            "text": {
+              "description": "The text the widget renders.",
+              "type": "string"
+            },
+            "version": {
+              "description": "The folder version the window imported; `null` while nothing is imported.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "reference",
+            "instance",
+            "source",
+            "name",
+            "state",
+            "errors",
+            "console",
+            "text",
+            "jobs"
+          ],
+          "type": "object"
+        },
+        "WidgetReportState": {
+          "description": "Where a widget instance stands in a window (PRT-043).",
+          "enum": [
+            "loading",
+            "rendered",
+            "compile_error",
+            "load_error",
+            "render_error"
+          ],
+          "type": "string"
+        },
+        "WidgetSource": {
+          "description": "Where a widget folder lives (AGT-012, AGT-023).",
+          "oneOf": [
+            {
+              "const": "workspace",
+              "description": "`<workspace>/.omfp/widgets/<name>/`, referenced as `./widgets/<name>`.",
+              "type": "string"
+            },
+            {
+              "const": "user",
+              "description": "`<data-dir>/widgets/<name>/`, referenced as `user:<name>`.",
+              "type": "string"
+            }
+          ]
+        },
+        "WindowBinding": {
+          "description": "A key binding of a command (PRT-122).",
+          "properties": {
+            "args": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "keys": {
+              "description": "Tokens separated by spaces, e.g. `g h`.",
+              "type": "string"
+            },
+            "mode": {
+              "$ref": "#/$defs/KeymapMode"
+            }
+          },
+          "required": [
+            "mode",
+            "keys"
+          ],
+          "type": "object"
+        },
+        "WindowCommand": {
+          "description": "A command registered beyond the built-ins (PRT-122).",
+          "properties": {
+            "aliases": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "bindings": {
+              "default": [],
+              "description": "The keys bound to it, in every mode.",
+              "items": {
+                "$ref": "#/$defs/WindowBinding"
+              },
+              "type": "array"
+            },
+            "enabled": {
+              "description": "Whether it runs now (a command may disable itself).",
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/CommandSource"
+            },
+            "title": {
+              "type": "string"
+            },
+            "widget": {
+              "default": null,
+              "description": "The widget reference that registered it; `null` for an init file's.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "source",
+            "enabled"
+          ],
+          "type": "object"
+        },
+        "WindowView": {
+          "description": "One view of a window (PRT-122).",
+          "properties": {
+            "file": {
+              "default": null,
+              "description": "The TSX file (`./views/<name>.tsx`) the view renders; `null` for a written layout.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "source": {
+              "$ref": "#/$defs/ViewSource"
+            },
+            "title": {
+              "type": "string"
+            },
+            "widgets": {
+              "default": null,
+              "description": "The widget references of its layout; `null` for a TSX view this window has not rendered.",
+              "items": {
+                "type": "string"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "source"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`windows.state` result (PRT-123): all a window reports.",
+      "properties": {
+        "activeView": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "client": {
+          "type": "string"
+        },
+        "commands": {
+          "items": {
+            "$ref": "#/$defs/WindowCommand"
+          },
+          "type": "array"
+        },
+        "defaultView": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "fileErrors": {
-          "default": [],
-          "description": "The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.",
+          "description": "The errors it shows of init files and TSX views (PRT-115).",
           "items": {
             "$ref": "#/$defs/FileErrorReport"
           },
           "type": "array"
         },
+        "focused": {
+          "type": "boolean"
+        },
+        "threadId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "views": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/Position"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "The position of `views/<workspaceId>` the window rendered; `null` before that topic arrived."
+          "items": {
+            "$ref": "#/$defs/WindowView"
+          },
+          "type": "array"
         },
         "widgets": {
-          "description": "Every workspace and user widget instance of the view the window shows (built-ins are not reported).",
+          "description": "The workspace and user widgets of its current view (PRT-043).",
           "items": {
             "$ref": "#/$defs/WidgetReport"
           },
           "type": "array"
         },
+        "windowId": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
         "workspaceId": {
-          "description": "The workspace whose view the window shows; `null` when it shows none.",
           "type": [
             "string",
             "null"
@@ -4684,110 +6055,15 @@ expression: method_schemas()
         }
       },
       "required": [
+        "windowId",
+        "client",
+        "focused",
+        "views",
+        "commands",
+        "fileErrors",
         "widgets"
       ],
-      "title": "ReportWidgetsParams",
-      "type": "object"
-    },
-    "result": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "No params, or the `{}` result.",
-      "title": "Empty",
-      "type": "object"
-    }
-  },
-  "widgets.save": {
-    "params": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "`widgets.save` params (PRT-083, AGT-064): exactly one of `widget` (with `workspaceId`) and `code`.",
-      "properties": {
-        "code": {
-          "description": "The component's source (TSX), saved as its `index.tsx`.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "description": "The component's name in the user library (a widget name).",
-          "type": "string"
-        },
-        "replace": {
-          "description": "Replace an existing component of that name.",
-          "type": "boolean"
-        },
-        "widget": {
-          "description": "A widget of that workspace: `./widgets/<name>` or a bare name.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "workspaceId": {
-          "type": [
-            "string",
-            "null"
-          ]
-        }
-      },
-      "required": [
-        "name"
-      ],
-      "title": "SaveWidgetParams",
-      "type": "object"
-    },
-    "result": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "`widgets.save` result (PRT-083).",
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "reference": {
-          "description": "`user:<name>`.",
-          "type": "string"
-        }
-      },
-      "required": [
-        "name",
-        "reference"
-      ],
-      "title": "WidgetSaved",
-      "type": "object"
-    }
-  },
-  "widgets.state_set": {
-    "params": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "`widgets.state_set` params (DMN-086).",
-      "properties": {
-        "instance": {
-          "description": "The widget instance: its `instance` prop, else its reference (AGT-010).",
-          "type": "string"
-        },
-        "key": {
-          "type": "string"
-        },
-        "value": {
-          "description": "Any JSON value; `null` deletes the key."
-        },
-        "workspaceId": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "workspaceId",
-        "instance",
-        "key",
-        "value"
-      ],
-      "title": "SetWidgetStateParams",
-      "type": "object"
-    },
-    "result": {
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "No params, or the `{}` result.",
-      "title": "Empty",
+      "title": "WindowState",
       "type": "object"
     }
   },

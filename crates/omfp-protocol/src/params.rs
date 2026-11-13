@@ -829,6 +829,9 @@ pub struct ReportWidgetsParams {
     /// The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.
     #[serde(default)]
     pub file_errors: Vec<FileErrorReport>,
+    /// What else the window shows (PRT-122): its thread, views, commands; absent from clients that do not report it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window: Option<crate::windows::WindowReport>,
 }
 
 /// What kind of file a [`FileErrorReport`] is about (PRT-115).

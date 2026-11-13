@@ -148,6 +148,24 @@ describe("widget reports", () => {
     ]);
   });
 
+  // spec: UI-350
+  test("the window state rides along once set; an unchanged state sends nothing", () => {
+    const { host, timers, sent } = reporting();
+    host.reports.show(WS, undefined);
+    timers.run();
+    expect(sent()[0]?.window).toBeUndefined();
+    const window = { threadId: "t1", focused: true, activeView: "work", defaultView: "work", views: [], commands: [] };
+    host.reports.setWindow(window);
+    timers.run();
+    expect(sent()[1]?.window).toEqual(window);
+    host.reports.setWindow({ ...window });
+    timers.run();
+    expect(sent().length).toBe(2);
+    host.reports.setWindow({ ...window, focused: false });
+    timers.run();
+    expect(sent()[2]?.window?.focused).toBe(false);
+  });
+
   // spec: AGT-026
   test("a report the daemon did not take is sent again with the next change", async () => {
     const { client, host, timers, sent } = reporting();

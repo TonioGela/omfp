@@ -2,9 +2,11 @@
  * Window reports (AGT-026, PRT-043): what this window shows of the workspace and user widgets of its view — import
  * state and errors, error boundary errors, console errors from the widget's module, the rendered text and its
  * `useJob` jobs — sent to the daemon with `widgets.report`, so the agent's `omfp_widget_check` sees them (DMN-063),
- * and the errors of its init files and TSX view (`fileErrors`, UI-304), which agents read with `views.errors`. Each
- * widget slot owns a {@link SlotReport}; the {@link WidgetReporter} batches changes (at most one report every
- * {@link REPORT_DELAY_MS}) and sends only what differs from the last report.
+ * the errors of its init files and TSX view (`fileErrors`, UI-304), which agents read with `views.errors`, and the
+ * window's own state (`window`, UI-350, UI-351: thread, focus, views and where each comes from, added commands), which
+ * agents read with `windows.list` / `windows.state`. Each widget slot owns a {@link SlotReport}; the
+ * {@link WidgetReporter} batches changes (at most one report every {@link REPORT_DELAY_MS}) and sends only what
+ * differs from the last report.
  */
 
 import type {
@@ -15,6 +17,7 @@ import type {
   WidgetReport,
   WidgetReportState,
   WidgetSource,
+  WindowReport,
 } from "@omfp/protocol";
 import { createContext, useContext } from "react";
 
@@ -160,12 +163,18 @@ export class WidgetReporter {
   #workspaceId: string | null = null;
   #views: Position | null = null;
   #fileErrors: readonly FileErrorReport[] = [];
+  #window: WindowReport | undefined;
   #scheduled = false;
   #last: string | undefined;
 
   constructor(sink: ReportSink, timers: ReportTimers = globalTimers) {
     this.#sink = sink;
     this.#timers = timers;
+  }
+
+  /** The timers its batching runs on. */
+  get timers(): ReportTimers {
+    return this.#timers;
   }
 
   /** The workspace whose view the window shows and the views topic position it rendered (`undefined`: none). */
@@ -188,6 +197,14 @@ export class WidgetReporter {
   setFileErrors(errors: readonly FileErrorReport[]): void {
     if (JSON.stringify(errors) !== JSON.stringify(this.#fileErrors)) {
       this.#fileErrors = errors;
+      this.schedule();
+    }
+  }
+
+  /** What the window shows besides its widgets (UI-350, UI-351); sent with every report once set. */
+  setWindow(window: WindowReport): void {
+    if (JSON.stringify(window) !== JSON.stringify(this.#window)) {
+      this.#window = window;
       this.schedule();
     }
   }
@@ -242,6 +259,7 @@ export class WidgetReporter {
       views: this.#views,
       widgets: this.#workspaceId === null ? [] : [...this.#slots].map((slot) => slot.report()),
       fileErrors: [...this.#fileErrors],
+      ...(this.#window === undefined ? {} : { window: this.#window }),
     };
   }
 

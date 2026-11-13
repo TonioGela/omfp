@@ -27,6 +27,7 @@ import {
   type ViewsEvent,
   type ViewsState,
   type WidgetInfo,
+  type WindowRequest,
   type WorkspaceBinding,
   type WorkspaceEvent,
 } from "@omfp/protocol";
@@ -257,7 +258,35 @@ function decodeTransientEvent(topic: ParsedTopic, event: unknown): Decoded<Trans
   return { ok: true, value: { kind: "live_levels", input, output } };
 }
 
-/** Decodes a JSON-parsed daemon frame (PRT-010, PRT-022, PRT-023, PRT-054). */
+/** Decodes the `request` of a window request frame (PRT-124): `run_command` or `check_widget`. */
+function decodeWindowRequest(request: unknown): Decoded<WindowRequest> {
+  if (!isObject(request)) {
+    return invalid("a window request needs a `request` object");
+  }
+  switch (request.kind) {
+    case "run_command": {
+      const { command, args } = request;
+      return typeof command === "string" && isStringArray(args)
+        ? { ok: true, value: { kind: "run_command", command, args } }
+        : invalid("`run_command` needs a string `command` and string `args`");
+    }
+    case "check_widget": {
+      const { reference, version, timeoutMs } = request;
+      if (
+        typeof reference !== "string" ||
+        !(version === undefined || version === null || typeof version === "string") ||
+        !isSeq(timeoutMs)
+      ) {
+        return invalid("`check_widget` needs a string `reference`, a `version` and a `timeoutMs`");
+      }
+      return { ok: true, value: { kind: "check_widget", reference, version: version ?? null, timeoutMs } };
+    }
+    default:
+      return invalid("unknown window request `kind`");
+  }
+}
+
+/** Decodes a JSON-parsed daemon frame (PRT-010, PRT-022, PRT-023, PRT-054, PRT-124). */
 export function decodeServerFrame(value: unknown): Decoded<ServerFrame> {
   if (!isObject(value)) {
     return invalid("a frame must be a JSON object");
@@ -308,6 +337,14 @@ export function decodeServerFrame(value: unknown): Decoded<ServerFrame> {
       }
       const event = decodeTransientEvent(parsed, value.event);
       return event.ok ? { ok: true, value: { type: "transient", topic, event: event.value } } : event;
+    }
+    case "window_request": {
+      const { id } = value;
+      if (typeof id !== "string") {
+        return invalid("a window request needs a string `id`");
+      }
+      const request = decodeWindowRequest(value.request);
+      return request.ok ? { ok: true, value: { type: "window_request", id, request: request.value } } : request;
     }
     default:
       return invalid("unknown frame `type`");

@@ -1977,6 +1977,67 @@ expression: type_schemas()
     "title": "ViewsState",
     "type": "object"
   },
+  "WindowRequest": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "description": "What the daemon asks a window (PRT-124): sent as `{ type: \"window_request\", id, request }`.",
+    "oneOf": [
+      {
+        "description": "Runs a registered command by id or alias, in the global scope.",
+        "properties": {
+          "args": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "command": {
+            "type": "string"
+          },
+          "kind": {
+            "const": "run_command",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "command",
+          "args"
+        ],
+        "type": "object"
+      },
+      {
+        "description": "Mounts the widget out of sight, waits until it rendered or failed (at most `timeoutMs`), then unmounts it.",
+        "properties": {
+          "kind": {
+            "const": "check_widget",
+            "type": "string"
+          },
+          "reference": {
+            "type": "string"
+          },
+          "timeoutMs": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "version": {
+            "description": "The folder version to wait for; `null` takes whatever the window has.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "kind",
+          "reference",
+          "timeoutMs"
+        ],
+        "type": "object"
+      }
+    ],
+    "title": "WindowRequest"
+  },
   "WorkspaceEvent": {
     "$defs": {
       "FileChange": {

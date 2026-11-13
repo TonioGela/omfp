@@ -8,6 +8,7 @@ mod mounts;
 mod polls;
 mod views;
 mod widget_tools;
+mod windows;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -33,7 +34,8 @@ use crate::watch::{self, WatchedFile};
 use crate::widgets::Widgets;
 use crate::workspaces::{WorkspaceView, Workspaces};
 use views::ViewsLog;
-use widget_tools::{ServicesWidgetHost, WidgetReports};
+use widget_tools::ServicesWidgetHost;
+use windows::Windows;
 
 /// Replaces `path` with `text` in one step (a temporary file renamed over it), so a reader never sees half a file;
 /// the parent directory is created when missing.
@@ -133,8 +135,8 @@ pub(crate) struct Services {
     views_logs: Arc<Mutex<HashMap<String, Arc<ViewsLog>>>>,
     /// Serializes views refreshes and widget state writes so their events never interleave.
     views_refresh: Arc<tokio::sync::Mutex<()>>,
-    /// Every window's latest widget report (AGT-026, PRT-043).
-    reports: Arc<WidgetReports>,
+    /// Every window's latest report and its connection (AGT-026, PRT-043, DMN-205).
+    windows: Arc<Windows>,
     /// Serializes the mount edits of `views.json` (PRT-080..082), each a read, a change and a write.
     manifest_edits: Arc<tokio::sync::Mutex<()>>,
     /// The followed user init file (DMN-185), served from here; `None` follows none.
@@ -188,7 +190,7 @@ impl Services {
             widgets,
             views_logs: Arc::new(Mutex::new(HashMap::new())),
             views_refresh: Arc::new(tokio::sync::Mutex::new(())),
-            reports: Arc::new(WidgetReports::new()),
+            windows: Arc::new(Windows::new()),
             manifest_edits: Arc::new(tokio::sync::Mutex::new(())),
             init_file: Arc::new(Mutex::new(None)),
         };

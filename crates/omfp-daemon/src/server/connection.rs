@@ -95,6 +95,8 @@ pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>, permit: OwnedSe
         None
     };
     if let Some(principal) = principal {
+        // The daemon's requests to this window (`window_request`, PRT-124) go through its outbound queue.
+        app.services.link_window(number, out.clone());
         let (dropped_tx, dropped) = mpsc::unbounded_channel();
         let mut connection = Connection {
             app: Arc::clone(&app),
@@ -106,7 +108,8 @@ pub(crate) async fn serve(socket: WebSocket, app: Arc<AppState>, permit: OwnedSe
             generation: 0,
         };
         connection.run(&mut stream, dropped).await;
-        // Closing the socket unsubscribes everything (PRT-024) and forgets the window's widget report (PRT-043).
+        // Closing the socket unsubscribes everything (PRT-024) and forgets the window's report and requests (PRT-043,
+        // DMN-205).
         connection.subscriptions.clear();
         app.services.forget_widget_reports(connection.number);
         // The window's audio peer is gone with it: stop the live sessions it started (DMN-103).
@@ -299,6 +302,15 @@ impl Connection {
                     .services
                     .report_widgets(self.number, self.principal.client(), params);
                 let result = to_value(&omfp_protocol::Empty {});
+                send(&self.out, Outbound::response(id, result)).await;
+            }
+            Call::WindowsAnswer(params) => {
+                // Only the window a request went to answers it (PRT-124).
+                let result = self
+                    .app
+                    .services
+                    .answer_window(self.number, params)
+                    .and_then(|()| to_value(&omfp_protocol::Empty {}));
                 send(&self.out, Outbound::response(id, result)).await;
             }
             Call::ThreadLiveConnect(params) => {

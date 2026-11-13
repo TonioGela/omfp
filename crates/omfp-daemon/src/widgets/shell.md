@@ -93,3 +93,11 @@ characters becomes a chip (`Pasted text #1 · 120 lines`) and a `[Paste #1, +120
 message is sent; `Ctrl-Shift-v` (`Cmd-Shift-v` on macOS) pastes it as plain text instead. Keys are rebindable: the
 daemon's `[keymap]` config, the workspace's `.omfp/keymap.json`, then the init files' `bind` (each layer wins over the
 ones before it).
+
+## Agents and the window
+
+Each window reports to the daemon what it shows — its thread, focus, views and where each comes from, the commands
+init files and widgets added, its errors — which agents read with `omfp_windows` (`omfp://windows`). An agent runs a
+command in a window with `omfp_window_run` (`view.switch` with a view id shows that view), as `:<command> <args>`
+would: only registered commands, never code. `omfp_widget_check` mounts a widget no view shows out of sight for a
+moment to report how it renders; nothing of it appears on screen.

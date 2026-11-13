@@ -445,6 +445,16 @@ export const shell = {
     leftSplitter: "Resize the threads column",
     tabs: (container: string, path: string) => `${container} ${path}`,
   },
+  /** Answers to the daemon's requests for an agent (UI-352, UI-353): never shown in the window. */
+  windowRequests: {
+    unknown: (name: string) =>
+      `no command ${JSON.stringify(name)}: omfp_windows lists the commands init files and widgets add, omfp://keymap the built-ins`,
+    scoped: (name: string, scope: string) =>
+      `${JSON.stringify(name)} runs only with the focus in the ${scope} scope; run a global command`,
+    disabled: (id: string) => `${id} is disabled now`,
+    noWorkspace: "this window shows no workspace, so it renders no workspace or user widget",
+    unknownWidget: (reference: string) => `this window does not know ${reference} yet`,
+  },
   layout: {
     splitter: (container: string, path: string, index: number) => `Resize ${container} ${path} at ${index}`,
     noView: (id: string) => `No view ${id}`,

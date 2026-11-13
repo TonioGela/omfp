@@ -9,7 +9,8 @@ use std::time::Duration;
 
 use omfp_protocol::{ErrorBody, FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
 
-use super::widget_tools::{Window, behind, location};
+use super::widget_tools::{behind, location};
+use super::windows::Window;
 use super::{Services, blocking};
 use crate::widgets::compile::{self, CompileError};
 use crate::widgets::{Widgets, init, view_files_version, views_folder};
@@ -202,14 +203,9 @@ fn entry(text: &mut String, line: &str) {
     }
 }
 
-/// `Window <n> (<client>)[, after waiting <s> s, <why>]`.
-fn window_title(
-    number: usize,
-    window: &Window,
-    unsettled: Option<&String>,
-    waited: Duration,
-) -> String {
-    let mut title = format!("Window {number} ({})", window.client);
+/// `Window <id> (<client>)[, after waiting <s> s, <why>]`.
+fn window_title(window: &Window, unsettled: Option<&String>, waited: Duration) -> String {
+    let mut title = format!("Window {} ({})", window.id, window.client);
     if let Some(why) = unsettled {
         let _ = write!(title, ", after waiting {} s, {why}", waited.as_secs());
     }
@@ -233,8 +229,8 @@ fn describe_windows(
     let name = file_name(&examined.file);
     let _ = writeln!(text, "{} window(s) show this workspace:", windows.len());
     let mut reported = false;
-    for (number, (window, unsettled)) in windows.iter().enumerate() {
-        let title = window_title(number + 1, window, unsettled.as_ref(), waited);
+    for (window, unsettled) in windows {
+        let title = window_title(window, unsettled.as_ref(), waited);
         let errors: Vec<&FileErrorReport> = window
             .report
             .file_errors
@@ -273,8 +269,8 @@ fn describe_errors(windows: &[(Window, Option<String>)], waited: Duration) -> St
     } else {
         ".\n"
     });
-    for (number, (window, unsettled)) in windows.iter().enumerate() {
-        let title = window_title(number + 1, window, unsettled.as_ref(), waited);
+    for (window, unsettled) in windows {
+        let title = window_title(window, unsettled.as_ref(), waited);
         if window.report.file_errors.is_empty() {
             let _ = writeln!(text, "{title}: no init file or TSX view errors.");
             continue;
@@ -308,7 +304,7 @@ impl Services {
         .await?;
         Ok(ViewErrors {
             windows: self
-                .reports
+                .windows
                 .showing(workspace_id)
                 .into_iter()
                 .map(|window| WindowFileErrors {

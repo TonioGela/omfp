@@ -92,10 +92,14 @@ function setup(props: FrameProps = {}, connect = true) {
     ...test,
     timers,
     noticeTimers,
-    /** Runs the report timers and gives the `widgets.report` params sent so far. */
+    /** Runs the report timers and gives the `widgets.report` params sent so far, without the window state (UI-350,
+     * tested in window-requests.test.tsx). */
     reports: () => {
       timers.run();
-      return test.client.callsTo("widgets.report").map((call) => call.params);
+      return test.client
+        .callsTo("widgets.report")
+        .map((call) => call.params as Record<string, unknown>)
+        .map(({ window: _window, ...report }) => report);
     },
     user: userEvent.setup(),
     tick: (ms: number) => {

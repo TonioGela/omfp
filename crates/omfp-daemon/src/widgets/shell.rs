@@ -15,6 +15,8 @@ pub const INDEX_URL: &str = "omfp://docs";
 pub const SHELL_URL: &str = "omfp://docs/shell";
 /// Host URI of the rendered keymap (DMN-199).
 pub const KEYMAP_URL: &str = "omfp://keymap";
+/// Host URI describing the open windows showing the thread's workspace (AGT-081), as `omfp_windows` does.
+pub const WINDOWS_URL: &str = "omfp://windows";
 /// The window's reference: left column, mode line and view tabs, `:` commands, default keys (DMN-198).
 pub const SHELL: &str = include_str!("shell.md");
 /// The app's default bindings and commands, generated from the UI (DMN-199).
@@ -112,7 +114,10 @@ pub fn index() -> String {
          - {} — the JSON Schema of `.omfp/keymap.json`.\n\
          - {BUILTIN_URL} — the built-in widgets; {BUILTIN_URL}/<name>[/<path>] their sources.\n\
          - {CHECK_URL}/<name> — checks a widget (`<name>`, `./widgets/<name>`, `user:<name>`), an init file (`init`, \
-         `user:init`) or a TSX view (`views/<file>`): compile errors and what open windows report.\n\
+         `user:init`) or a TSX view (`views/<file>`): compile errors and what open windows report, a widget no \
+         window shows rendered out of sight.\n\
+         - {WINDOWS_URL} — the open windows showing this workspace (as `omfp_windows`): their views and where each \
+         comes from, the commands init files and widgets add, their errors.\n\
          - {} — the protocol methods `omfp_call` accepts; {}/<name> gives one's params and result schemas.\n",
         keymap::SCHEMA_URL,
         crate::agent_tools::catalog::METHODS_URL,
@@ -366,7 +371,7 @@ mod tests {
         );
     }
 
-    // spec: DMN-198
+    // spec: DMN-198, AGT-081
     #[test]
     fn the_docs_index_names_every_docs_resource_once() {
         let text = index();
@@ -378,6 +383,7 @@ mod tests {
             keymap::SCHEMA_URL,
             BUILTIN_URL,
             "omfp://widgets/check/<name>",
+            WINDOWS_URL,
             crate::agent_tools::catalog::METHODS_URL,
         ] {
             assert!(

@@ -5,8 +5,9 @@ use std::path::Path;
 use omfp_core::{ProcessState, ThreadEvent};
 use omfp_protocol::{
     ErrorBody, ErrorCode, EventFrame, IndexEvent, JobEvent, JobStream, KeymapMode, MAX_FRAME_BYTES,
-    PROTOCOL_VERSION, Response, ServerFrame, Topic, TopicEvent, TransientEvent, ViewsEvent,
-    ViewsState, WidgetInfo, WidgetSource, WorkspaceBinding, WorkspaceEvent,
+    PROTOCOL_VERSION, ReportWidgetsParams, Response, ServerFrame, Topic, TopicEvent,
+    TransientEvent, ViewsEvent, ViewsState, WidgetInfo, WidgetSource, WindowRequest,
+    WorkspaceBinding, WorkspaceEvent,
 };
 use serde_json::{Value, json};
 
@@ -432,6 +433,69 @@ fn transient_frame_carries_live_levels_without_a_position() {
         })
     );
     insta::assert_json_snapshot!("transient_live_levels", golden);
+}
+
+// spec: PRT-124
+#[test]
+fn a_window_request_frame_carries_the_request_id_and_its_kind() {
+    let run = ServerFrame::WindowRequest {
+        id: "w1".to_owned(),
+        request: WindowRequest::RunCommand {
+            command: "view.switch".to_owned(),
+            args: vec!["ops".to_owned()],
+        },
+    };
+    assert_eq!(
+        round_trip(&run),
+        json!({
+            "type": "window_request",
+            "id": "w1",
+            "request": { "kind": "run_command", "command": "view.switch", "args": ["ops"] }
+        })
+    );
+    let check = ServerFrame::WindowRequest {
+        id: "w2".to_owned(),
+        request: WindowRequest::CheckWidget {
+            reference: "./widgets/tests".to_owned(),
+            version: Some("3f2a".to_owned()),
+            timeout_ms: 3000,
+        },
+    };
+    let golden = round_trip(&check);
+    assert_eq!(
+        golden,
+        json!({
+            "type": "window_request",
+            "id": "w2",
+            "request": {
+                "kind": "check_widget",
+                "reference": "./widgets/tests",
+                "version": "3f2a",
+                "timeoutMs": 3000
+            }
+        })
+    );
+    insta::assert_json_snapshot!("window_request_check_widget", golden);
+}
+
+// spec: PRT-122
+#[test]
+fn a_report_without_window_state_still_decodes() {
+    let report: ReportWidgetsParams =
+        serde_json::from_value(json!({ "workspaceId": null, "views": null, "widgets": [] }))
+            .unwrap();
+    assert_eq!(report.window, None);
+    let report: ReportWidgetsParams = serde_json::from_value(json!({
+        "workspaceId": WORKSPACE_ID,
+        "views": null,
+        "widgets": [],
+        "window": { "focused": true }
+    }))
+    .unwrap();
+    let window = report.window.unwrap();
+    assert!(window.focused);
+    assert_eq!(window.views, Vec::new());
+    assert_eq!(window.active_view, None);
 }
 
 // spec: TST-012

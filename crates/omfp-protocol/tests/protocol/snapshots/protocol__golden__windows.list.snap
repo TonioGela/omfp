@@ -1,0 +1,32 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "windows.list",
+    "params": {
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "windows": [
+        {
+          "activeView": "ops",
+          "client": "web",
+          "errors": 1,
+          "focused": true,
+          "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
+          "windowId": 3,
+          "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+        }
+      ]
+    },
+    "type": "response"
+  }
+}

@@ -583,12 +583,17 @@ widget docs and agent notes say what a `useJob` command runs in (shell, folder, 
 retention; AGT-087), and `useJob(command, { key })` keeps one job per key, the daemon replacing the previous one
 (AGT-086, DMN-215, UI-355, UI-356). Large pastes become chips in the composer, like omp's TUI paste markers: an atomic
 `[Paste #N, …]` token expanded on send, editable and removable, kept in the draft, `Ctrl+Shift+V` for a raw paste
-(UI-357..UI-360, E2E-29).
+(UI-357..UI-360, E2E-29). The agent's verification loop: windows report their thread, focus, views (with where each
+comes from) and added commands (PRT-122, UI-350, UI-351, DMN-205), agents read them with `windows.list`/`windows.state`
+and `omfp_windows` (PRT-123, AGT-081), run a command in a window with `windows.run`/`omfp_window_run` (PRT-124,
+DMN-206, UI-352, UI-354, AGT-082), and `omfp_widget_check` renders a widget no window shows out of sight and names the
+views that already hold it (DMN-207..DMN-209, UI-353), documented step by step (AGT-083, AGT-084).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and
 recover from errors (E2E-23); `Space` shows the leader menu and its groups run their commands (E2E-26); an `open_url`
-from omp shows a toast with the URL and `/dirs` shows a command-output card (E2E-27).
+from omp shows a toast with the URL and `/dirs` shows a command-output card (E2E-27); an agent lists the window, switches its view and checks a widget out of
+sight, error then fixed, through the protocol (E2E-28).
 
 Result: done. Init files and TSX views are ES modules the daemon compiles and serves per version, so a save re-runs them
 in every window without a reload; the views API works on the manifest the window would show, so init files compose with

@@ -75,7 +75,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       suggestions of seen repositories), path completion (fs_complete.rs), conversation search over
                       session files (search.rs), threads, git port + FakeGit, host tools and the `omfp://` host URIs
                       (host_tools.rs), the agent tool registry (agent_tools/: `omfp_call`, `omfp_thread_wait`, the
-                      method catalogue `omfp://protocol/methods`, the RPC host tool adapter, the mount tools),
+                      method catalogue `omfp://protocol/methods`, the RPC host tool adapter, the mount tools, the
+                      window tools `omfp_windows`/`omfp_window_run` in agent_tools/windows.rs),
                       jobs (jobs.rs: shell commands of a workspace, `job/<id>`), widgets (widgets.rs: views manifest
                       check, widget folders and versions, oxc transpiling and the `/widgets/<key>/…` route, copies;
                       widgets/docs.md is `omfp://docs/widgets`, widgets/shell.md `omfp://docs/shell`,
@@ -85,7 +86,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       TSX view files); widgets/keymap.rs: the workspace `.omfp/keymap.json`;
                       widgets/init.rs: the init files; widgets/mounts.rs: mounts and floating panels as `views.json`
                       edits; widgets/library.rs: the component library), WebSocket server (polling of watched workspaces:
-                      server/services/polls.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
+                      server/services/polls.rs; the windows' reports, `windows.*` and the requests to windows:
+                      server/services/windows.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
                       and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs),
                       the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
                       token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue as resources);
@@ -138,7 +140,9 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       floating file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
                       state), toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
                       bar, the left column's splitter; init.tsx: loading the init files and their banner;
-                      describe.ts(x): `:describe-key` / `:describe-command`; which-key.tsx: the which-key panel), view (layout tree, `:widget add`'s
+                      describe.ts(x): `:describe-key` / `:describe-command`; which-key.tsx: the which-key panel;
+                      window-state.ts: the window state agents read; window-requests.tsx: the daemon's requests,
+                      commands run and out-of-sight widget checks), view (layout tree, `:widget add`'s
                       manifest edit (edit.ts), reference resolution, widget slot,
                       the `main` slot's file tabs; file-view.tsx: TSX views; sizes.ts and splitter.tsx:
                       the window's splitter sizes), gallery

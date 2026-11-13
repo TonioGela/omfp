@@ -18,6 +18,11 @@ export interface Command {
   readonly description?: string;
   /** The init file that registered it (UI-261), for `:describe-command`; `undefined` for widgets and the frame. */
   readonly init?: "user" | "workspace";
+  /**
+   * The workspace or user widget that registered it (its reference, UI-351): set by `useCommand` inside a module
+   * widget; `undefined` for built-ins, the frame and init files.
+   */
+  readonly widget?: string;
   /** Names typed after `:` besides the id, e.g. `archive` for `thread.archive`. */
   readonly aliases?: readonly string[];
   /** Widget scope it belongs to; global when absent. */

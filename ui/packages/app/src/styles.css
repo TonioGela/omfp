@@ -215,6 +215,17 @@
     overflow: auto;
   }
 
+  /* A widget rendered out of sight for an agent's check (UI-353): laid out like a side tab, never seen nor reached. */
+  .omfp-offscreen-check {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline-start: -10000px;
+    inline-size: 480px;
+    block-size: 600px;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
   .omfp-form-error {
     margin: 0;
     color: var(--omfp-error);

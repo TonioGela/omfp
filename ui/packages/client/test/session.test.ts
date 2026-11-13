@@ -218,6 +218,40 @@ describe("session", () => {
     expect(subscribes(server.frames())).toEqual([]);
   });
 
+  // spec: PRT-124, UI-354
+  test("window requests reach their listener, and without one the client answers that it takes none", () => {
+    const [rig, server] = following();
+    const run = { type: "window_request", id: "w1", request: { kind: "run_command", command: "view", args: ["ops"] } };
+    server.send(run);
+    const answered = server.frames();
+    expect(answered).toEqual([
+      {
+        type: "request",
+        id: answered[0]?.id,
+        method: "windows.answer",
+        params: {
+          requestId: "w1",
+          answer: { kind: "not_run", reason: "failed", message: "this client takes no window requests" },
+        },
+      },
+    ]);
+
+    const seen: unknown[] = [];
+    const stop = rig.client.onWindowRequest((frame) => seen.push(frame));
+    const check = {
+      type: "window_request",
+      id: "w2",
+      request: { kind: "check_widget", reference: "./widgets/tests", version: "3f2a", timeoutMs: 4000 },
+    };
+    server.send(run);
+    server.send(check);
+    // An invalid request is dropped.
+    server.send({ type: "window_request", id: "w3", request: { kind: "eval", code: "alert(1)" } });
+    stop();
+    expect(seen).toEqual([run, check]);
+    expect(methods(server.frames())).toEqual([]);
+  });
+
   // spec: PRT-022
   test("a gap in the stream resubscribes without position", () => {
     const [rig, server] = following();

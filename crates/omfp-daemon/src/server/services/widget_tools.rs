@@ -1,133 +1,29 @@
-//! The windows' widget reports (`widgets.report`, PRT-043, AGT-026) and what the widget host tools do with them and
-//! with the views manifest: `omfp_widget_check` (DMN-063) and `omfp_view_add` (DMN-064). The init file and TSX view
-//! checks and errors (DMN-196, DMN-197) are in `file_checks`.
+//! What the widget host tools do with the windows' reports (`widgets.report`, PRT-043, AGT-026, kept by `windows`) and
+//! with the views manifest: `omfp_widget_check` (DMN-063, with the out-of-sight render of DMN-207 and the views that
+//! use the widget, DMN-209) and `omfp_view_add` (DMN-064). The init file and TSX view checks and errors (DMN-196,
+//! DMN-197) are in `file_checks`.
 
-use std::collections::BTreeMap;
 use std::fmt::Write as _;
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
-use omfp_protocol::{Position, ReportWidgetsParams, WidgetReport, WidgetReportState, WidgetSource};
-use tokio::sync::watch;
+use omfp_protocol::{Position, WidgetChecked, WidgetReport, WidgetReportState, WidgetSource};
 
 use super::file_checks::CheckedFile;
+use super::windows::Window;
 use super::{Services, blocking, write_atomically};
+use crate::agent_tools::windows::view_source_name;
 use crate::host_tools::WidgetHost;
 use crate::server::convert::internal;
 use crate::widgets::compile::{CompileError, IMPORT_MAP};
 use crate::widgets::layout::{self, Addition};
-use crate::widgets::{Widgets, folders, keymap, manifest, manifest_path, shell};
+use crate::widgets::{Widgets, folders, keymap, manifest, manifest_path, shell, views_folder};
 
 /// How long `omfp_widget_check` waits for the windows to report the current version (DMN-063).
 pub(crate) const CHECK_WAIT: Duration = Duration::from_secs(5);
 /// How often a waiting check looks at the cancellation flag.
 const CANCEL_POLL: Duration = Duration::from_millis(100);
-
-/// What the daemon keeps of a report (PRT-043).
-const MAX_TEXT: usize = 4000;
-const MAX_ENTRIES: usize = 20;
-const MAX_TAIL: usize = 10;
-const MAX_ENTRY: usize = 2000;
-
-/// `text` cut to `max` characters, with `…` when cut.
-fn clip(text: &str, max: usize) -> String {
-    match text.char_indices().nth(max) {
-        Some((end, _)) => format!("{}…", &text[..end]),
-        None => text.to_owned(),
-    }
-}
-
-/// The last `max` entries of `entries`, each clipped.
-fn last(entries: &[String], max: usize) -> Vec<String> {
-    entries[entries.len().saturating_sub(max)..]
-        .iter()
-        .map(|entry| clip(entry, MAX_ENTRY))
-        .collect()
-}
-
-/// A report as the daemon keeps it (PRT-043, DMN-195).
-fn trimmed(mut report: ReportWidgetsParams) -> ReportWidgetsParams {
-    for widget in &mut report.widgets {
-        widget.text = clip(&widget.text, MAX_TEXT);
-        widget.errors = last(&widget.errors, MAX_ENTRIES);
-        widget.console = last(&widget.console, MAX_ENTRIES);
-        for job in &mut widget.jobs {
-            job.tail = last(&job.tail, MAX_TAIL);
-        }
-    }
-    let files = &mut report.file_errors;
-    files.drain(..files.len().saturating_sub(MAX_ENTRIES));
-    for error in files {
-        error.message = clip(&error.message, MAX_ENTRY);
-    }
-    report
-}
-
-/// The latest report of one window (connection).
-#[derive(Debug, Clone)]
-pub(super) struct Window {
-    /// The `client` of its `system.hello`.
-    pub(super) client: String,
-    pub(super) report: ReportWidgetsParams,
-}
-
-/// Every connected window's latest widget report (AGT-026), by connection.
-#[derive(Debug)]
-pub(crate) struct WidgetReports {
-    windows: Mutex<BTreeMap<u64, Window>>,
-    next: AtomicU64,
-    /// Bumped on every change, for checks waiting for reports.
-    changed: watch::Sender<u64>,
-}
-
-impl WidgetReports {
-    pub(crate) fn new() -> Self {
-        Self {
-            windows: Mutex::new(BTreeMap::new()),
-            next: AtomicU64::new(1),
-            changed: watch::channel(0).0,
-        }
-    }
-
-    /// A new connection's number.
-    pub(crate) fn connection(&self) -> u64 {
-        self.next.fetch_add(1, Ordering::Relaxed)
-    }
-
-    fn windows(&self) -> std::sync::MutexGuard<'_, BTreeMap<u64, Window>> {
-        self.windows.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Replaces the report of `connection`.
-    pub(crate) fn set(&self, connection: u64, client: &str, report: ReportWidgetsParams) {
-        self.windows().insert(
-            connection,
-            Window {
-                client: client.to_owned(),
-                report: trimmed(report),
-            },
-        );
-        self.changed.send_modify(|count| *count += 1);
-    }
-
-    /// Forgets the report of a closed connection.
-    pub(crate) fn forget(&self, connection: u64) {
-        if self.windows().remove(&connection).is_some() {
-            self.changed.send_modify(|count| *count += 1);
-        }
-    }
-
-    /// The windows whose latest report is about `workspace`, by connection.
-    pub(super) fn showing(&self, workspace: &str) -> Vec<Window> {
-        self.windows()
-            .values()
-            .filter(|window| window.report.workspace_id.as_deref() == Some(workspace))
-            .cloned()
-            .collect()
-    }
-}
 
 /// The widget being checked.
 #[derive(Debug)]
@@ -226,9 +122,26 @@ pub(super) fn list(text: &mut String, title: &str, entries: &[String]) {
     }
 }
 
+/// A view that holds the checked widget (DMN-209): its id and where it comes from, in words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Use {
+    view: String,
+    from: String,
+}
+
+/// The out-of-sight render of the checked widget in a window (DMN-207), or why there is none.
+type Offscreen = Result<WidgetChecked, String>;
+
 /// The answer of `omfp_widget_check` (DMN-063); `windows` are those showing the workspace, with why each one has not
-/// settled (`None` when it has).
-fn describe(target: &Target, windows: &[(Window, Option<String>)], waited: Duration) -> String {
+/// settled (`None` when it has). When none shows the widget, `uses` are the views that hold it (DMN-209) and
+/// `offscreen` its out-of-sight render (DMN-207).
+fn describe(
+    target: &Target,
+    windows: &[(Window, Option<String>)],
+    waited: Duration,
+    uses: &[Use],
+    offscreen: Option<&Offscreen>,
+) -> String {
     let reference = target.reference();
     let mut text = format!(
         "Widget {reference} (folder {}, version {}, entry {})\n\n",
@@ -279,8 +192,8 @@ fn describe(target: &Target, windows: &[(Window, Option<String>)], waited: Durat
     text.push('\n');
     if windows.is_empty() {
         text.push_str(
-            "No omfp window shows this workspace now, so nothing rendered the widget: only the daemon's compile check \
-             above applies.\n",
+            "No omfp window shows this workspace now, so nothing rendered the widget, not even out of sight: only \
+             the daemon's compile check above applies.\n",
         );
         return text;
     }
@@ -289,16 +202,19 @@ fn describe(target: &Target, windows: &[(Window, Option<String>)], waited: Durat
         .filter(|(window, _)| !target.instances(window).is_empty())
         .count();
     if showing == 0 {
-        let _ = writeln!(
+        let _ = write!(
             text,
-            "{} window(s) show this workspace, but none shows {reference} in its current view. Add it with \
-             omfp_view_add {{ \"widget\": \"{reference}\" }}.",
+            "{} window(s) show this workspace, but none shows {reference} in its current view.",
             windows.len()
         );
+        describe_uses(&mut text, &reference, uses);
+        if let Some(offscreen) = offscreen {
+            describe_offscreen(&mut text, windows, offscreen);
+        }
         return text;
     }
-    for (number, (window, unsettled)) in windows.iter().enumerate() {
-        let _ = write!(text, "Window {} ({})", number + 1, window.client);
+    for (window, unsettled) in windows {
+        let _ = write!(text, "Window {} ({})", window.id, window.client);
         if let Some(why) = unsettled {
             let _ = write!(text, ", after waiting {} s, {why}", waited.as_secs());
         }
@@ -312,6 +228,61 @@ fn describe(target: &Target, windows: &[(Window, Option<String>)], waited: Durat
         }
     }
     text
+}
+
+/// Where the widget is placed, when no window shows it (DMN-209): `omfp_view_add` only when no view holds it.
+fn describe_uses(text: &mut String, reference: &str, uses: &[Use]) {
+    let Some(first) = uses.first() else {
+        let _ = writeln!(
+            text,
+            " No view uses it: add it with omfp_view_add {{ \"widget\": \"{reference}\" }}."
+        );
+        return;
+    };
+    let views: Vec<String> = uses
+        .iter()
+        .map(|used| format!("\"{}\" ({})", used.view, used.from))
+        .collect();
+    let _ = writeln!(
+        text,
+        " It is in view {}: show it with omfp_window_run {{ \"command\": \"view.switch\", \"args\": [\"{}\"] }} \
+         instead of adding it again with omfp_view_add.",
+        views.join(", "),
+        first.view
+    );
+}
+
+/// The out-of-sight render (DMN-207).
+fn describe_offscreen(
+    text: &mut String,
+    windows: &[(Window, Option<String>)],
+    offscreen: &Offscreen,
+) {
+    match offscreen {
+        Ok(checked) => {
+            let client = windows
+                .iter()
+                .find(|(window, _)| window.id == checked.window_id)
+                .map_or("window", |(window, _)| window.client.as_str());
+            let _ = write!(
+                text,
+                "Out-of-sight render in window {} ({client}), mounted in a hidden container for this check",
+                checked.window_id
+            );
+            if !checked.settled {
+                let _ = write!(
+                    text,
+                    ", which neither rendered nor failed within {} s",
+                    super::windows::RENDER_TIMEOUT.as_secs()
+                );
+            }
+            text.push_str(":\n");
+            describe_instance(text, &checked.report);
+        }
+        Err(why) => {
+            let _ = writeln!(text, "No out-of-sight render: {why}.");
+        }
+    }
 }
 
 /// Where a compile error is: `<prefix><file>:<line>:<column>`, as far as it is known.
@@ -363,21 +334,6 @@ fn describe_instance(text: &mut String, instance: &WidgetReport) {
 }
 
 impl Services {
-    /// A new connection's number, naming its widget report (PRT-043).
-    pub fn reports_connection(&self) -> u64 {
-        self.reports.connection()
-    }
-
-    /// `widgets.report` from `connection` (PRT-043): replaces its report.
-    pub fn report_widgets(&self, connection: u64, client: &str, report: ReportWidgetsParams) {
-        self.reports.set(connection, client, report);
-    }
-
-    /// Forgets the report of a closed connection (PRT-043).
-    pub fn forget_widget_reports(&self, connection: u64) {
-        self.reports.forget(connection);
-    }
-
     /// `omfp_widget_check` (DMN-063): the daemon's compile of the widget `name` of workspace `workspace_id`, then
     /// what the windows showing the workspace report, waiting at most `wait` for them to settle on the current version.
     /// An init file or a TSX view `name` is checked as DMN-197 says.
@@ -437,9 +393,112 @@ impl Services {
                 target.unsettled(window, views)
             })
             .await?;
-        Ok(describe(&target, &windows, wait))
+        let shown = windows
+            .iter()
+            .any(|(window, _)| !target.instances(window).is_empty());
+        if windows.is_empty() || shown {
+            return Ok(describe(&target, &windows, wait, &[], None));
+        }
+        // No window shows it: where it is placed, and a render out of sight (DMN-207, DMN-209).
+        let reference = target.reference();
+        let uses = self.views_using(workspace_id, &reference, &windows).await;
+        let offscreen = until_cancelled(
+            self.render_offscreen(workspace_id, None, &reference, Some(target.version.clone())),
+            is_cancelled,
+        )
+        .await?
+        .map_err(|error| error.message);
+        Ok(describe(&target, &windows, wait, &uses, Some(&offscreen)))
     }
 
+    /// The views that hold widget `reference` (DMN-209): those the windows report (a TSX view none rendered when its
+    /// file names the widget), then those of `views.json`, each once.
+    async fn views_using(
+        &self,
+        workspace_id: &str,
+        reference: &str,
+        windows: &[(Window, Option<String>)],
+    ) -> Vec<Use> {
+        let mut uses: Vec<Use> = Vec::new();
+        let mut unrendered: Vec<(String, String, String)> = Vec::new();
+        for (window, _) in windows {
+            for view in window.report.window.iter().flat_map(|state| &state.views) {
+                let from = match &view.file {
+                    Some(file) => format!("{}, TSX view {file}", view_source_name(view.source)),
+                    None => view_source_name(view.source).to_owned(),
+                };
+                match (&view.widgets, &view.file) {
+                    (Some(widgets), _) if widgets.iter().any(|widget| widget == reference) => {
+                        uses.push(Use {
+                            view: view.id.clone(),
+                            from,
+                        });
+                    }
+                    (None, Some(file)) => unrendered.push((view.id.clone(), from, file.clone())),
+                    _ => {}
+                }
+            }
+        }
+        let store = Arc::clone(&self.store);
+        let (id, wanted) = (workspace_id.to_owned(), reference.to_owned());
+        let found = blocking(move || {
+            let workspace = store.workspace(&id)?.path;
+            Ok(placed_in_files(&workspace, &wanted, unrendered))
+        })
+        .await
+        .unwrap_or_default();
+        for found in found {
+            if !uses.iter().any(|used| used.view == found.view) {
+                uses.push(found);
+            }
+        }
+        uses
+    }
+}
+
+/// The views of `unrendered` (id, source in words, `./views/<file>`) whose TSX file names `reference`, then the views
+/// of the workspace's `views.json` whose layout holds it (DMN-209).
+fn placed_in_files(
+    workspace: &Path,
+    reference: &str,
+    unrendered: Vec<(String, String, String)>,
+) -> Vec<Use> {
+    let mut uses = Vec::new();
+    for (view, from, file) in unrendered {
+        let path = views_folder(workspace).join(file.trim_start_matches("./views/"));
+        if std::fs::read_to_string(path).is_ok_and(|source| source.contains(reference)) {
+            uses.push(Use { view, from });
+        }
+    }
+    if let (Some(manifest), None) = Widgets::manifest(workspace) {
+        for view in layout::views_using(&manifest, reference) {
+            uses.push(Use {
+                view,
+                from: "views.json".to_owned(),
+            });
+        }
+    }
+    uses
+}
+
+/// Runs `work` until it ends or `is_cancelled` says so, looking every [`CANCEL_POLL`].
+async fn until_cancelled<T>(
+    work: impl Future<Output = T>,
+    is_cancelled: &dyn Fn() -> bool,
+) -> Result<T, String> {
+    let mut work = std::pin::pin!(work);
+    loop {
+        if is_cancelled() {
+            return Err("cancelled".to_owned());
+        }
+        tokio::select! {
+            result = &mut work => return Ok(result),
+            () = tokio::time::sleep(CANCEL_POLL) => {}
+        }
+    }
+}
+
+impl Services {
     /// The windows showing workspace `workspace_id`, each with why it has not settled (`None` when it has), waiting at
     /// most `wait` until all have (DMN-063): `unsettled` judges a window against the latest position of the views
     /// topic.
@@ -456,12 +515,12 @@ impl Services {
                 epoch: position.epoch,
                 seq: position.seq,
             });
-        let mut changes = self.reports.changed.subscribe();
+        let mut changes = self.windows.changed.subscribe();
         let deadline = tokio::time::Instant::now() + wait;
         loop {
             changes.borrow_and_update();
             let windows: Vec<(Window, Option<String>)> = self
-                .reports
+                .windows
                 .showing(workspace_id)
                 .into_iter()
                 .map(|window| {
@@ -594,6 +653,16 @@ impl WidgetHost for ServicesWidgetHost {
         self.runtime
             .block_on(self.services.keymap_additions(workspace_id))
     }
+
+    fn windows(&self, workspace_id: &str) -> String {
+        let states = self.services.window_states(Some(workspace_id));
+        let others = self
+            .services
+            .window_states(None)
+            .len()
+            .saturating_sub(states.len());
+        crate::agent_tools::windows::describe_windows(Some(workspace_id), &states, others)
+    }
 }
 
 #[cfg(test)]
@@ -601,7 +670,9 @@ mod tests {
     use std::path::Path;
 
     use omfp_protocol::{
-        FileErrorKind, FileErrorReport, ViewErrors, WidgetJobReport, WindowFileErrors,
+        AnswerWindowParams, FileErrorKind, FileErrorReport, ReportWidgetsParams, ServerFrame,
+        ViewErrors, ViewSource, WidgetJobReport, WindowAnswer, WindowFileErrors, WindowReport,
+        WindowRequest, WindowView,
     };
     use serde_json::{Map, json};
     use tempfile::TempDir;
@@ -610,6 +681,7 @@ mod tests {
     use crate::agent::FakeLauncher;
     use crate::git::{FakeGit, Git};
     use crate::paths::DataDir;
+    use crate::server::Outbound;
     use crate::store::{Store, Workspace};
     use crate::supervisor::{Supervisor, SupervisorConfig};
     use crate::threads::Threads;
@@ -696,8 +768,54 @@ mod tests {
                     views,
                     widgets,
                     file_errors,
+                    window: None,
                 },
             );
+        }
+
+        /// Window `connection` shows the workspace with `views` and none of its widgets in its current view.
+        fn report_views(&self, connection: u64, views: Vec<WindowView>) {
+            self.services.report_widgets(
+                connection,
+                "web",
+                ReportWidgetsParams {
+                    workspace_id: Some(self.workspace.clone()),
+                    views: None,
+                    widgets: Vec::new(),
+                    file_errors: Vec::new(),
+                    window: Some(WindowReport {
+                        views,
+                        ..WindowReport::default()
+                    }),
+                },
+            );
+        }
+
+        /// Window `connection` answers every request of the daemon with `answer`.
+        fn answering(
+            &self,
+            connection: u64,
+            answer: impl Fn(WindowRequest) -> WindowAnswer + Send + 'static,
+        ) -> tokio::task::JoinHandle<Vec<WindowRequest>> {
+            let (out, mut frames) = tokio::sync::mpsc::channel(8);
+            self.services.link_window(connection, out);
+            let services = self.services.clone();
+            tokio::spawn(async move {
+                let mut asked = Vec::new();
+                while let Some(Outbound::Text(text)) = frames.recv().await {
+                    if let Ok(ServerFrame::WindowRequest { id, request }) =
+                        serde_json::from_str(&text)
+                    {
+                        asked.push(request.clone());
+                        let params = AnswerWindowParams {
+                            request_id: id,
+                            answer: answer(request),
+                        };
+                        services.answer_window(connection, params).unwrap();
+                    }
+                }
+                asked
+            })
         }
 
         async fn check_named(&self, name: &str, wait: Duration) -> String {
@@ -807,9 +925,10 @@ mod tests {
         assert!(text.contains("Keep that slot"), "{text}");
     }
 
-    // spec: DMN-063, PRT-043, AGT-026
+    // spec: DMN-063, PRT-043, AGT-026, DMN-209
     #[tokio::test]
-    async fn the_check_reports_what_each_window_shows_and_names_omfp_view_add_when_none_shows_it() {
+    async fn the_check_reports_what_each_window_shows_and_names_omfp_view_add_when_no_view_uses_it()
+    {
         let h = harness().await;
         h.report(7, None, Vec::new());
         let text = h.check(Duration::ZERO).await;
@@ -818,8 +937,14 @@ mod tests {
             "{text}"
         );
         assert!(
-            text.contains("omfp_view_add { \"widget\": \"./widgets/tests\" }"),
+            text.contains(
+                "No view uses it: add it with omfp_view_add { \"widget\": \"./widgets/tests\" }."
+            ),
             "{text}"
+        );
+        assert!(
+            text.contains("No out-of-sight render: omfp window 7 is closed."),
+            "a window without a connection renders nothing: {text}"
         );
 
         h.report(
@@ -829,7 +954,7 @@ mod tests {
         );
         let text = h.check(Duration::ZERO).await;
         for needle in [
-            "Window 1 (web):\n- ./widgets/tests: render error (version ",
+            "Window 7 (web):\n- ./widgets/tests: render error (version ",
             "  errors:\n    - index.tsx:3:7: boom\n",
             "  console errors:\n    - TypeError: x is undefined\n          at Tests (index.tsx:4:2)\n",
             "  jobs:\n    - `make test`: running, run 2\n      last lines:\n      PASS 1\n",
@@ -837,13 +962,170 @@ mod tests {
         ] {
             assert!(text.contains(needle), "{needle:?} missing: {text}");
         }
+        assert!(!text.contains("out-of-sight"), "{text}");
 
         // A closed window's report goes with it.
         h.services.forget_widget_reports(7);
+        let text = h.check(Duration::ZERO).await;
         assert!(
-            h.check(Duration::ZERO)
-                .await
-                .contains("No omfp window shows this workspace now")
+            text.contains(
+                "No omfp window shows this workspace now, so nothing rendered the widget, not even out of sight"
+            ),
+            "{text}"
+        );
+    }
+
+    fn view(
+        id: &str,
+        source: ViewSource,
+        file: Option<&str>,
+        widgets: Option<&[&str]>,
+    ) -> WindowView {
+        WindowView {
+            id: id.to_owned(),
+            title: id.to_owned(),
+            source,
+            file: file.map(str::to_owned),
+            widgets: widgets
+                .map(|widgets| widgets.iter().map(|&widget| widget.to_owned()).collect()),
+        }
+    }
+
+    // spec: DMN-209
+    #[tokio::test]
+    async fn the_check_names_the_views_that_hold_the_widget_instead_of_omfp_view_add() {
+        let h = harness().await;
+        // An init file's view holds it, a TSX view no window rendered names it, views.json holds it too.
+        write(
+            &h.folder,
+            ".omfp/views/ops.tsx",
+            "export default () => <Row><Widget use=\"./widgets/tests\" /></Row>;\n",
+        );
+        write(
+            &h.folder,
+            ".omfp/views/other.tsx",
+            "export default () => <Row><Widget use=\"omfp:chat\" /></Row>;\n",
+        );
+        h.report_views(
+            7,
+            vec![
+                view("default", ViewSource::ViewsJson, None, Some(&["omfp:chat"])),
+                view(
+                    "solo",
+                    ViewSource::WorkspaceInit,
+                    None,
+                    Some(&["./widgets/tests"]),
+                ),
+                view("ops", ViewSource::UserInit, Some("./views/ops.tsx"), None),
+                view(
+                    "other",
+                    ViewSource::ViewsJson,
+                    Some("./views/other.tsx"),
+                    None,
+                ),
+            ],
+        );
+        let text = h.check(Duration::ZERO).await;
+        assert!(
+            text.contains(
+                " It is in view \"solo\" (the workspace's init file), \"ops\" (the user's init file, TSX view \
+                 ./views/ops.tsx): show it with omfp_window_run { \"command\": \"view.switch\", \"args\": [\"solo\"] } \
+                 instead of adding it again with omfp_view_add."
+            ),
+            "{text}"
+        );
+        assert!(!text.contains("No view uses it"), "{text}");
+
+        write(
+            &h.folder,
+            ".omfp/views.json",
+            r#"{ "views": { "default": { "layout": ["row", {}, "omfp:chat", ["./widgets/tests", { "instance": "t" }]] } } }"#,
+        );
+        h.report_views(7, Vec::new());
+        let text = h.check(Duration::ZERO).await;
+        assert!(
+            text.contains(" It is in view \"default\" (views.json): show it with omfp_window_run"),
+            "views.json counts when no window lists its views: {text}"
+        );
+    }
+
+    // spec: DMN-207, DMN-208
+    #[tokio::test]
+    async fn the_check_renders_a_widget_no_window_shows_out_of_sight_in_the_last_focused_window() {
+        let h = harness().await;
+        h.report_views(7, Vec::new());
+        h.report_views(8, Vec::new());
+        h.services.report_widgets(
+            8,
+            "desktop",
+            ReportWidgetsParams {
+                workspace_id: Some(h.workspace.clone()),
+                views: None,
+                widgets: Vec::new(),
+                file_errors: Vec::new(),
+                window: Some(WindowReport {
+                    focused: true,
+                    ..WindowReport::default()
+                }),
+            },
+        );
+        let version = h.version();
+        let unused = h.answering(7, |_| unreachable!("the focused window renders it"));
+        let answered = h.answering(8, |request| {
+            let WindowRequest::CheckWidget {
+                reference, version, ..
+            } = request
+            else {
+                unreachable!("{request:?}")
+            };
+            let mut report = instance(version, WidgetReportState::RenderError);
+            report.instance = format!("{reference}@check");
+            report.errors = vec!["x is not defined".to_owned()];
+            report.jobs = Vec::new();
+            WindowAnswer::Checked {
+                report,
+                settled: true,
+            }
+        });
+        let text = h.check(Duration::ZERO).await;
+        for needle in [
+            "2 window(s) show this workspace, but none shows ./widgets/tests in its current view.",
+            "Out-of-sight render in window 8 (desktop), mounted in a hidden container for this check:\n\
+             - ./widgets/tests@check: render error (version ",
+            "  errors:\n    - x is not defined\n",
+        ] {
+            assert!(text.contains(needle), "{needle:?} missing: {text}");
+        }
+        h.services.forget_widget_reports(7);
+        h.services.forget_widget_reports(8);
+        assert_eq!(unused.await.unwrap(), Vec::new());
+        assert_eq!(
+            answered.await.unwrap(),
+            vec![WindowRequest::CheckWidget {
+                reference: "./widgets/tests".to_owned(),
+                version: Some(version),
+                timeout_ms: 4000,
+            }],
+            "the window waits for the folder's current version"
+        );
+    }
+
+    // spec: DMN-207
+    #[tokio::test]
+    async fn a_window_out_of_time_says_so() {
+        let h = harness().await;
+        h.report_views(7, Vec::new());
+        let _window = h.answering(7, |_| WindowAnswer::Checked {
+            report: instance(None, WidgetReportState::Loading),
+            settled: false,
+        });
+        let text = h.check(Duration::ZERO).await;
+        assert!(
+            text.contains(
+                "Out-of-sight render in window 7 (web), mounted in a hidden container for this check, which neither \
+                 rendered nor failed within 4 s:\n- ./widgets/tests: loading (version none)"
+            ),
+            "{text}"
         );
     }
 
@@ -887,6 +1169,7 @@ mod tests {
                     views: Some(seen),
                     widgets: vec![instance(Some(version), WidgetReportState::Rendered)],
                     file_errors: Vec::new(),
+                    window: None,
                 },
             );
         });
@@ -922,47 +1205,6 @@ mod tests {
         assert_eq!(cancelled, Err("cancelled".to_owned()));
     }
 
-    // spec: PRT-043, DMN-195
-    #[tokio::test]
-    async fn reports_are_trimmed_to_what_the_daemon_keeps() {
-        let mut widget = instance(None, WidgetReportState::Rendered);
-        widget.text = "x".repeat(MAX_TEXT + 10);
-        widget.console = (0..30).map(|n| format!("error {n}")).collect();
-        widget.errors = vec!["e".repeat(MAX_ENTRY + 5)];
-        widget.jobs[0].tail = (0..15).map(|n| n.to_string()).collect();
-        let mut file_errors: Vec<FileErrorReport> = (0..25)
-            .map(|n| {
-                file_error(
-                    FileErrorKind::View,
-                    ".omfp/views/ops.tsx",
-                    &format!("error {n}"),
-                )
-            })
-            .collect();
-        file_errors[24].message = "m".repeat(MAX_ENTRY + 5);
-        let kept = trimmed(ReportWidgetsParams {
-            workspace_id: None,
-            views: None,
-            widgets: vec![widget],
-            file_errors,
-        });
-        let widget = &kept.widgets[0];
-        assert_eq!(widget.text.chars().count(), MAX_TEXT + 1, "cut, with …");
-        assert_eq!(widget.console.len(), MAX_ENTRIES);
-        assert_eq!(widget.console[0], "error 10", "the newest are kept");
-        assert_eq!(widget.errors[0].chars().count(), MAX_ENTRY + 1);
-        assert_eq!(
-            widget.jobs[0].tail,
-            (5..15).map(|n| n.to_string()).collect::<Vec<_>>()
-        );
-        assert_eq!(kept.file_errors.len(), MAX_ENTRIES);
-        assert_eq!(kept.file_errors[0].message, "error 5", "the last are kept");
-        assert_eq!(
-            kept.file_errors[MAX_ENTRIES - 1].message.chars().count(),
-            MAX_ENTRY + 1
-        );
-    }
-
     fn file_error(kind: FileErrorKind, file: &str, message: &str) -> FileErrorReport {
         FileErrorReport {
             kind,
@@ -993,6 +1235,7 @@ mod tests {
                 views: None,
                 widgets: Vec::new(),
                 file_errors: vec![broken.clone()],
+                window: None,
             },
         );
         assert_eq!(

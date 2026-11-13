@@ -63,7 +63,9 @@ pub enum Permission {
 pub fn permission(method: &str) -> Option<Permission> {
     use Permission::{Connect, Drive, Manage, Read, Terminal};
     Some(match method {
-        "system.hello" | "subscribe" | "unsubscribe" | "widgets.report" => Connect,
+        "system.hello" | "subscribe" | "unsubscribe" | "widgets.report" | "windows.answer" => {
+            Connect
+        }
         "repos.suggest"
         | "fs.complete"
         | "threads.search"
@@ -87,6 +89,8 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "settings.get"
         | "widgets.library"
         | "views.errors"
+        | "windows.list"
+        | "windows.state"
         | "workspaces.mcp_servers"
         | "thread.mcp_servers" => Read,
         "workspaces.create"
@@ -136,7 +140,9 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.mcp_reconnect"
         | "interaction.respond"
         | "jobs.start"
-        | "jobs.kill" => Drive,
+        | "jobs.kill"
+        | "windows.run"
+        | "windows.check_widget" => Drive,
         "terminal.open" | "terminal.resize" | "terminal.close" | "terminal.list" => Terminal,
         _ => return None,
     })
@@ -433,5 +439,15 @@ mod tests {
     fn the_lists_are_reads() {
         assert_eq!(permission("threads.list"), Some(Permission::Read));
         assert_eq!(permission("workspaces.list"), Some(Permission::Read));
+    }
+
+    // spec: PRT-123, PRT-124
+    #[test]
+    fn agents_read_and_drive_windows_but_only_a_window_answers_a_request() {
+        assert_eq!(permission("windows.list"), Some(Permission::Read));
+        assert_eq!(permission("windows.state"), Some(Permission::Read));
+        assert_eq!(permission("windows.run"), Some(Permission::Drive));
+        assert_eq!(permission("windows.check_widget"), Some(Permission::Drive));
+        assert_eq!(permission("windows.answer"), Some(Permission::Connect));
     }
 }

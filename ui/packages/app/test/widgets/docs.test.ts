@@ -28,6 +28,24 @@ function documented(heading: string): string[] {
 }
 
 describe("widget docs", () => {
+  // spec: AGT-083
+  test("the docs walk agents through checking their work in the window", () => {
+    for (const needle of [
+      "## Checking your work in the window",
+      "omfp_widget_check { name }",
+      "out of sight",
+      "omfp_windows",
+      'omfp_window_run { command: "view.switch", args: ["<view>"] }',
+      "It never runs code",
+      "`windows.list`, `windows.state`, `windows.run` and `windows.check_widget`",
+    ]) {
+      expect(DOCS).toContain(needle);
+    }
+    for (const needle of ["## Agents and the window", "omfp_windows", "omfp_window_run", "never code"]) {
+      expect(SHELL).toContain(needle);
+    }
+  });
+
   // spec: AGT-016, AGT-025
   test("every name the omfp/sdk table lists is exported by omfp/sdk", () => {
     const names = documented("omfp/sdk");

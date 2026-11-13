@@ -7,6 +7,7 @@ pub(crate) mod mounts;
 mod omfp_call;
 pub(crate) mod rpc;
 mod wait;
+pub(crate) mod windows;
 
 use std::pin::Pin;
 
@@ -29,6 +30,7 @@ pub const CONNECTION_ONLY: &[&str] = &[
     "subscribe",
     "unsubscribe",
     "widgets.report",
+    "windows.answer",
     "thread.live_connect",
     "thread.live_start",
 ];
@@ -72,6 +74,7 @@ pub(crate) struct AgentTool {
 pub(crate) fn registry() -> Vec<AgentTool> {
     let mut tools = vec![omfp_call::tool(), wait::tool()];
     tools.extend(mounts::tools());
+    tools.extend(windows::tools());
     tools
 }
 

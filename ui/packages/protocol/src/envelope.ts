@@ -1,6 +1,7 @@
 /**
  * Frames on the WebSocket (mirrors `omfp_protocol::envelope`): client requests, and daemon responses, events,
- * `resync_required` and transient frames. Hand-written: their serde forms are custom, so they have no JSON Schema.
+ * `resync_required`, transient frames and window requests. Hand-written: their serde forms are custom, so they have
+ * no JSON Schema.
  */
 
 import type { ThreadEvent } from "@omfp/core";
@@ -13,6 +14,7 @@ import type {
   Topic,
   TransientEvent,
   ViewsEvent,
+  WindowRequest,
   WorkspaceEvent,
 } from "./generated.ts";
 
@@ -45,8 +47,14 @@ export type ResyncRequired = { type: "resync_required"; topic: Topic };
  */
 export type TransientFrame = { type: "transient"; topic: Topic; event: TransientEvent };
 
+/**
+ * A request of the daemon to this window (PRT-124): run a command or render a widget out of sight; the window answers
+ * with `windows.answer { requestId: id, answer }`.
+ */
+export type WindowRequestFrame = { type: "window_request"; id: string; request: WindowRequest };
+
 /** A frame from the daemon. */
-export type ServerFrame = Response | EventFrame | ResyncRequired | TransientFrame;
+export type ServerFrame = Response | EventFrame | ResyncRequired | TransientFrame | WindowRequestFrame;
 
 /** A request frame for `method`. */
 export function request<M extends MethodName>(id: string, method: M, params: ParamsOf<M>): Request<M> {

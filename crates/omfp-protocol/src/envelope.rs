@@ -302,6 +302,11 @@ pub enum ServerFrame {
         topic: Topic,
         event: TransientEvent,
     },
+    /// A request of the daemon to this window (PRT-124), answered with `windows.answer { requestId: id, answer }`.
+    WindowRequest {
+        id: String,
+        request: crate::windows::WindowRequest,
+    },
 }
 
 /// The `event` of a transient frame (PRT-054).

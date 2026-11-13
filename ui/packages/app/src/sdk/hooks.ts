@@ -27,6 +27,7 @@ import { type Command, scopesAt } from "./commands.ts";
 import type { Snapshot } from "./frame-store.ts";
 import { type OmfpHost, type SdkClient, useHost } from "./host.tsx";
 import type { LiveClient, LiveSnapshot } from "./live.ts";
+import { useSlotReport } from "./reports.ts";
 import type { Update, WindowKey } from "./window-store.ts";
 
 /** `select` applied to the latest frame's snapshot; re-renders only when its result changes (by identity). */
@@ -118,11 +119,13 @@ export function useWindowState<T>(key: WindowKey<T>): [T, (update: Update<T>) =>
 
 /**
  * Registers `command` while mounted. The latest `command` object is the one run, so it may close over fresh state;
- * the registration itself changes only with `id`, `scope`, `title` or `description`. Init files and other code outside
- * React use its sibling {@link registerCommand} (UI-261).
+ * the registration itself changes only with `id`, `scope`, `title` or `description`. Inside a workspace or user widget
+ * the command carries the widget's reference (UI-351). Init files and other code outside React use its sibling
+ * {@link registerCommand} (UI-261).
  */
 export function useCommand(command: Command): void {
   const { commands } = useHost();
+  const widget = useSlotReport()?.identity.reference;
   const latest = useRef(command);
   latest.current = command;
   const { id, scope, title, description } = command;
@@ -134,11 +137,12 @@ export function useCommand(command: Command): void {
       ...(description === undefined ? {} : { description }),
       ...(scope === undefined ? {} : { scope }),
       ...(aliases === undefined ? {} : { aliases }),
+      ...(widget === undefined ? {} : { widget }),
       args: (before) => latest.current.args?.(before) ?? [],
       enabled: () => latest.current.enabled?.() ?? true,
       run: (args) => latest.current.run(args),
     });
-  }, [commands, id, scope, title, description]);
+  }, [commands, id, scope, title, description, widget]);
 }
 
 /** Registers `command` in `host`'s registry until the returned function is called: {@link useCommand} outside React,

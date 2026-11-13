@@ -1,9 +1,9 @@
 /**
  * The protocol session (03-protocol): `system.hello` with the token (PRT-001, PRT-002), request/response correlation
  * by id (PRT-010), subscriptions resumed from their `{epoch, seq}` (PRT-020..024), transient frames handed to their
- * listeners outside the model (PRT-054), and reconnect with exponential
- * backoff capped at 10 s (UI-003). A refused token (`unauthorized`, close 4401) or protocol version
- * (`version_mismatch`, close 4426, PRT-004) stops the client instead of retrying.
+ * listeners outside the model (PRT-054), the daemon's window requests handed to their listener (PRT-124), and
+ * reconnect with exponential backoff capped at 10 s (UI-003). A refused token (`unauthorized`, close 4401) or protocol
+ * version (`version_mismatch`, close 4426, PRT-004) stops the client instead of retrying.
  *
  * The session is an event-driven state machine: transport callbacks, timer callbacks and the host's commands each run
  * to completion synchronously; only call results are promises.
@@ -20,6 +20,7 @@ import {
   type ResultOf,
   type Topic,
   type TransientFrame,
+  type WindowRequestFrame,
 } from "@omfp/protocol";
 import { ChangeHub, Changes } from "./changes.ts";
 import { decodeHelloResult, decodeServerFrame, decodeSubscribeResult } from "./decode.ts";
@@ -192,6 +193,7 @@ export class Client {
   #cancelRetry: (() => void) | undefined;
   #stopped = false;
   readonly #transient = new Set<(frame: TransientFrame) => void>();
+  readonly #windowRequests = new Set<(frame: WindowRequestFrame) => void>();
 
   /** Starts connecting at once; see {@link connect}. */
   constructor(options: ClientOptions) {
@@ -258,6 +260,17 @@ export class Client {
     this.#transient.add(listener);
     return () => {
       this.#transient.delete(listener);
+    };
+  }
+
+  /**
+   * Calls `listener` with every request of the daemon to this window (PRT-124) until the returned function is called;
+   * the listener answers it with `windows.answer`. Without a listener the client answers that it takes no requests.
+   */
+  onWindowRequest(listener: (frame: WindowRequestFrame) => void): () => void {
+    this.#windowRequests.add(listener);
+    return () => {
+      this.#windowRequests.delete(listener);
     };
   }
 
@@ -498,6 +511,29 @@ export class Client {
           }
         }
         return undefined;
+      case "window_request":
+        this.#onWindowRequest(link, frame);
+        return undefined;
+    }
+  }
+
+  /** Hands a window request to the listeners (PRT-124); without one, answers that this client takes none. */
+  #onWindowRequest(link: Link, frame: WindowRequestFrame): void {
+    if (this.#windowRequests.size === 0) {
+      const params = {
+        requestId: frame.id,
+        answer: {
+          kind: "not_run" as const,
+          reason: "failed" as const,
+          message: "this client takes no window requests",
+        },
+      };
+      const call: Call = { method: "windows.answer", params, resolve: () => {}, reject: () => {} };
+      this.#send(link, "windows.answer", params, { kind: "call", call });
+      return;
+    }
+    for (const listener of [...this.#windowRequests]) {
+      listener(frame);
     }
   }
 

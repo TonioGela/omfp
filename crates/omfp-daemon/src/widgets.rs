@@ -182,6 +182,30 @@ pub fn read_keymap(
     }))
 }
 
+/// `omfp://windows` read by a thread (AGT-081): the open windows showing the thread's workspace, as `omfp_windows`
+/// describes them, read fresh every time; `None` when `url` is not that URL.
+#[must_use]
+pub fn read_windows(
+    url: &str,
+    workspace_id: &str,
+    host: Option<&dyn WidgetHost>,
+) -> Option<Result<HostUriRead, String>> {
+    if url.trim_end_matches('/') != shell::WINDOWS_URL {
+        return None;
+    }
+    let Some(host) = host else {
+        return Some(Err(
+            "this omfp daemon cannot describe its windows for this thread".to_owned(),
+        ));
+    };
+    Some(Ok(HostUriRead {
+        content: host.windows(workspace_id),
+        content_type: Some(HostUriResultContentType::TextPlain),
+        immutable: Some(false),
+        ..HostUriRead::default()
+    }))
+}
+
 fn builtin_folder(builtin: Option<&Path>) -> Result<&Path, String> {
     builtin.filter(|dir| dir.is_dir()).ok_or_else(|| {
         "no built-in widget sources: this omfp daemon serves no web bundle".to_owned()
@@ -890,6 +914,26 @@ mod tests {
                 }])),
             }
         }
+
+        fn windows(&self, workspace_id: &str) -> String {
+            format!("windows of {workspace_id}")
+        }
+    }
+
+    // spec: AGT-081
+    #[test]
+    fn the_windows_url_describes_the_windows_of_the_threads_workspace_fresh_every_time() {
+        let read = read_windows("omfp://windows/", "01WS", Some(&Checks))
+            .unwrap()
+            .unwrap();
+        assert_eq!(read.content, "windows of 01WS");
+        assert_eq!(read.immutable, Some(false), "never cached: windows change");
+        assert!(
+            read_windows("omfp://windows", "01WS", None)
+                .unwrap()
+                .is_err()
+        );
+        assert_eq!(read_windows("omfp://keymap", "01WS", Some(&Checks)), None);
     }
 
     // spec: DMN-108

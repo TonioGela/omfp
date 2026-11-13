@@ -26,6 +26,12 @@ use omfp_protocol::{
     WidgetReportState, WidgetSource, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
     decode_request, method,
 };
+use omfp_protocol::{
+    AnswerWindowParams, CheckWidgetParams, CommandSource, KeymapMode, ListWindowsParams,
+    RanInWindow, RunFailure, RunInWindowParams, ViewSource, WidgetChecked, WindowAnswer,
+    WindowBinding, WindowCommand, WindowList, WindowRef, WindowReport, WindowState, WindowSummary,
+    WindowView,
+};
 use omfp_protocol::{ContextUsage, SessionTokens, SessionUsage, ThreadSession};
 use omfp_protocol::{CreatedBy, ListThreadsParams, Provenance, ThreadList, WorkspaceList};
 use omfp_protocol::{FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
@@ -843,6 +849,7 @@ fn widget_examples() -> Vec<(&'static str, Value)> {
                     file: ".omfp/init.ts".to_owned(),
                     message: ".omfp/init.ts:3:7: Unexpected token".to_owned(),
                 }],
+                window: Some(window_report()),
             },
             &Empty {},
         ),
@@ -896,6 +903,144 @@ fn view_error_examples() -> Vec<(&'static str, Value)> {
             ],
         },
     )]
+}
+
+/// What a window reports besides its widgets (PRT-122).
+fn window_report() -> WindowReport {
+    WindowReport {
+        thread_id: Some(THREAD_ID.to_owned()),
+        focused: true,
+        active_view: Some("ops".to_owned()),
+        default_view: Some("default".to_owned()),
+        views: vec![
+            WindowView {
+                id: "default".to_owned(),
+                title: "Default".to_owned(),
+                source: ViewSource::ViewsJson,
+                file: None,
+                widgets: Some(vec![
+                    "omfp:header".to_owned(),
+                    "omfp:chat".to_owned(),
+                    "./widgets/tests".to_owned(),
+                ]),
+            },
+            WindowView {
+                id: "ops".to_owned(),
+                title: "Ops".to_owned(),
+                source: ViewSource::WorkspaceInit,
+                file: Some("./views/ops.tsx".to_owned()),
+                widgets: None,
+            },
+        ],
+        commands: vec![WindowCommand {
+            id: "demo.solo".to_owned(),
+            title: "Show the init view".to_owned(),
+            aliases: vec!["solo".to_owned()],
+            source: CommandSource::WorkspaceInit,
+            widget: None,
+            enabled: true,
+            bindings: vec![WindowBinding {
+                mode: KeymapMode::Normal,
+                keys: "g h".to_owned(),
+                args: Vec::new(),
+            }],
+        }],
+    }
+}
+
+fn widget_report(state: WidgetReportState, errors: Vec<String>) -> WidgetReport {
+    WidgetReport {
+        reference: "./widgets/tests".to_owned(),
+        instance: "./widgets/tests@check".to_owned(),
+        source: WidgetSource::Workspace,
+        name: "tests".to_owned(),
+        version: Some("3f2a".to_owned()),
+        state,
+        errors,
+        console: Vec::new(),
+        text: "Tests 1/3".to_owned(),
+        jobs: Vec::new(),
+    }
+}
+
+/// The windows as agents see and drive them (PRT-123, PRT-124).
+fn window_examples() -> Vec<(&'static str, Value)> {
+    let report = window_report();
+    vec![
+        example::<method::WindowsList>(
+            ListWindowsParams {
+                workspace_id: Some(WORKSPACE_ID.to_owned()),
+            },
+            &WindowList {
+                windows: vec![WindowSummary {
+                    window_id: 3,
+                    client: "web".to_owned(),
+                    workspace_id: Some(WORKSPACE_ID.to_owned()),
+                    thread_id: Some(THREAD_ID.to_owned()),
+                    focused: true,
+                    active_view: Some("ops".to_owned()),
+                    errors: 1,
+                }],
+            },
+        ),
+        example::<method::WindowsState>(
+            WindowRef { window_id: 3 },
+            &WindowState {
+                window_id: 3,
+                client: "web".to_owned(),
+                workspace_id: Some(WORKSPACE_ID.to_owned()),
+                thread_id: report.thread_id,
+                focused: report.focused,
+                active_view: report.active_view,
+                default_view: report.default_view,
+                views: report.views,
+                commands: report.commands,
+                file_errors: vec![FileErrorReport {
+                    kind: FileErrorKind::View,
+                    file: ".omfp/views/ops.tsx".to_owned(),
+                    message: "Row: unknown widget ./widgets/nope".to_owned(),
+                }],
+                widgets: vec![widget_report(WidgetReportState::Rendered, Vec::new())],
+            },
+        ),
+        example::<method::WindowsRun>(
+            RunInWindowParams {
+                window_id: None,
+                workspace_id: Some(WORKSPACE_ID.to_owned()),
+                command: "view".to_owned(),
+                args: vec!["ops".to_owned()],
+            },
+            &RanInWindow {
+                window_id: 3,
+                command: "view.switch".to_owned(),
+            },
+        ),
+        example::<method::WindowsCheckWidget>(
+            CheckWidgetParams {
+                window_id: None,
+                workspace_id: WORKSPACE_ID.to_owned(),
+                widget: "./widgets/tests".to_owned(),
+            },
+            &WidgetChecked {
+                window_id: 3,
+                report: widget_report(
+                    WidgetReportState::RenderError,
+                    vec!["x is not defined".to_owned()],
+                ),
+                settled: true,
+            },
+        ),
+        example::<method::WindowsAnswer>(
+            AnswerWindowParams {
+                request_id: "w7".to_owned(),
+                answer: WindowAnswer::NotRun {
+                    reason: RunFailure::Disabled,
+                    message: "view.next is disabled".to_owned(),
+                },
+            },
+            &Empty {},
+        ),
+    ]
 }
 
 fn mount_examples() -> Vec<(&'static str, Value)> {
@@ -1366,6 +1511,7 @@ fn every_method_has_a_golden_request_and_response() {
         ui_settings_examples(),
         widget_examples(),
         view_error_examples(),
+        window_examples(),
         mount_examples(),
         activity_examples(),
         list_examples(),

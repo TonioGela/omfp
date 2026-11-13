@@ -43,6 +43,12 @@ export type AddRepoParams = {
   workspaceId: string;
 };
 
+/** `windows.answer` params (PRT-124): a window's answer to the daemon's request `requestId`. */
+export type AnswerWindowParams = {
+  answer: WindowAnswer;
+  requestId: string;
+};
+
 /**
  * omp's `--approval-mode` (`tools.approvalMode`): which tool calls omp asks the user to approve (DMN-074, DMN-210).
  * omp 18.18.6 exits at startup on any other value.
@@ -75,6 +81,21 @@ export type BtwParams = {
   recordId?: string | null;
   threadId: string;
 };
+
+/** `windows.check_widget` params (PRT-124). */
+export type CheckWidgetParams = {
+  /** The widget reference: `./widgets/<name>` or `user:<name>`. */
+  widget: string;
+  /** The window; default: the most recently focused window showing the workspace. */
+  windowId?: number | null;
+  workspaceId: string;
+};
+
+/** Who registered a command of a window (PRT-122). */
+export type CommandSource =
+  | "user_init" | "workspace_init"
+  /** A workspace or user widget (`widget` names it). */
+  | "widget";
 
 /** `thread.compact` params. */
 export type CompactParams = {
@@ -551,6 +572,12 @@ export type ListThreadsParams = {
   workspaceId?: string | null;
 };
 
+/** `windows.list` params (PRT-123). */
+export type ListWindowsParams = {
+  /** Only the windows showing this workspace; every window when absent. */
+  workspaceId?: string | null;
+};
+
 /** `thread.live_connect` params (PRT-050, DMN-100). */
 export type LiveConnectParams = {
   /** SDP offer of the client's WebRTC peer: one sendrecv Opus audio track plus an `oai-events` data channel. */
@@ -807,6 +834,14 @@ export type QueueMessageParams = {
   threadId: string;
 };
 
+/** `windows.run` result (PRT-124). */
+export type RanInWindow = {
+  /** The id of the command the name resolved to. */
+  command: string;
+  /** The window that ran it. */
+  windowId: number;
+};
+
 /** `workspaces.read_file` params (DMN-089). */
 export type ReadFileParams = {
   /**
@@ -893,6 +928,8 @@ export type ReportWidgetsParams = {
   views?: Position | null;
   /** Every workspace and user widget instance of the view the window shows (built-ins are not reported). */
   widgets: WidgetReport[];
+  /** What else the window shows (PRT-122): its thread, views, commands; absent from clients that do not report it. */
+  window?: WindowReport | null;
   /** The workspace whose view the window shows; `null` when it shows none. */
   workspaceId?: string | null;
 };
@@ -909,6 +946,25 @@ export type RespondParams = {
   interactionId: string;
   response: InteractionResponse;
   threadId: string;
+};
+
+/** Why a window did not run a command (PRT-124). */
+export type RunFailure =
+  /** No command answers to the name in the global scope. */
+  | "unknown"
+  /** The command is registered but disabled now. */
+  | "disabled"
+  /** It threw, rejected or reported an error. */
+  | "failed";
+
+/** `windows.run` params (PRT-124). */
+export type RunInWindowParams = {
+  args?: string[];
+  /** A command id or alias registered in the window (`view.switch`, `view`), run in the global scope. */
+  command: string;
+  /** The window; default: the most recently focused window showing `workspaceId` (any window without it). */
+  windowId?: number | null;
+  workspaceId?: string | null;
 };
 
 /** `widgets.save` params (PRT-083, AGT-064): exactly one of `widget` (with `workspaceId`) and `code`. */
@@ -1311,6 +1367,17 @@ export type ViewErrors = {
   windows: WindowFileErrors[];
 };
 
+/** Where a view of a window comes from (PRT-122). */
+export type ViewSource =
+  /** The built-in default view: `views.json` is missing, invalid or not loaded yet. */
+  | "builtin"
+  /** The workspace's `.omfp/views.json` (even when an init file changed its layout). */
+  | "views_json"
+  /** Added by the user's init file. */
+  | "user_init"
+  /** Added by the workspace's `.omfp/init.ts`. */
+  | "workspace_init";
+
 /** Change on a `views/<workspaceId>` topic, whose state is a `ViewsState` (PRT-040). */
 export type ViewsEvent =
   /** The manifest changed: replaces `manifest` and `error`. */
@@ -1384,6 +1451,15 @@ export type ViewsState = {
   viewFiles?: string | null;
   /** Widget folders of the workspace, then of the user library, each by name. */
   widgets: WidgetInfo[];
+};
+
+/** `windows.check_widget` result (PRT-124). */
+export type WidgetChecked = {
+  /** The out-of-sight instance as the window saw it when it rendered, failed or ran out of time. */
+  report: WidgetReport;
+  /** `false` when the window ran out of time before the widget rendered or failed (`report.state` is `loading`). */
+  settled: boolean;
+  windowId: number;
 };
 
 /** `widgets.copy` result: the new widget is `./widgets/<name>`. */
@@ -1460,11 +1536,140 @@ export type WidgetSource =
   /** `<data-dir>/widgets/<name>/`, referenced as `user:<name>`. */
   | "user";
 
+/** A window's answer to a [`WindowRequest`] (PRT-124). */
+export type WindowAnswer =
+  /** The command ran; `command` is the id the name resolved to. */
+  | {
+    command: string;
+    kind: "ran";
+  }
+  /** The command did not run, or failed. */
+  | {
+    kind: "not_run";
+    message: string;
+    reason: RunFailure;
+  }
+  /** The out-of-sight render of a `check_widget`. */
+  | {
+    kind: "checked";
+    report: WidgetReport;
+    settled: boolean;
+  };
+
+/** A key binding of a command (PRT-122). */
+export type WindowBinding = {
+  args?: string[];
+  /** Tokens separated by spaces, e.g. `g h`. */
+  keys: string;
+  mode: KeymapMode;
+};
+
+/** A command registered beyond the built-ins (PRT-122). */
+export type WindowCommand = {
+  aliases?: string[];
+  /** The keys bound to it, in every mode. */
+  bindings?: WindowBinding[];
+  /** Whether it runs now (a command may disable itself). */
+  enabled: boolean;
+  id: string;
+  source: CommandSource;
+  title: string;
+  /** The widget reference that registered it; `null` for an init file's. */
+  widget?: string | null;
+};
+
 /** The init file and TSX view errors one window reports (PRT-116). */
 export type WindowFileErrors = {
   /** The `client` of the window's `system.hello`. */
   client: string;
   errors: FileErrorReport[];
+};
+
+/** `windows.list` result (PRT-123). */
+export type WindowList = {
+  /** The windows that reported, the most recently focused first. */
+  windows: WindowSummary[];
+};
+
+/** Params naming one window (PRT-123). */
+export type WindowRef = {
+  windowId: number;
+};
+
+/** What a window shows besides its widgets (PRT-122): sent as `widgets.report`'s `window`. */
+export type WindowReport = {
+  /** The view the window shows; `null` without a workspace. */
+  activeView?: string | null;
+  /** The commands registered beyond the built-ins: by an init file or a workspace or user widget. */
+  commands?: WindowCommand[];
+  /** The view shown when none is chosen. */
+  defaultView?: string | null;
+  /** Whether the window has the focus. */
+  focused?: boolean;
+  /** The thread the window shows; `null` for none. */
+  threadId?: string | null;
+  /** The views of the window's switcher, after `views.json`, the init files and their transforms, in its order. */
+  views?: WindowView[];
+};
+
+/** What the daemon asks a window (PRT-124): sent as `{ type: "window_request", id, request }`. */
+export type WindowRequest =
+  /** Runs a registered command by id or alias, in the global scope. */
+  | {
+    args: string[];
+    command: string;
+    kind: "run_command";
+  }
+  /** Mounts the widget out of sight, waits until it rendered or failed (at most `timeoutMs`), then unmounts it. */
+  | {
+    kind: "check_widget";
+    reference: string;
+    timeoutMs: number;
+    /** The folder version to wait for; `null` takes whatever the window has. */
+    version?: string | null;
+  };
+
+/** `windows.state` result (PRT-123): all a window reports. */
+export type WindowState = {
+  activeView?: string | null;
+  client: string;
+  commands: WindowCommand[];
+  defaultView?: string | null;
+  /** The errors it shows of init files and TSX views (PRT-115). */
+  fileErrors: FileErrorReport[];
+  focused: boolean;
+  threadId?: string | null;
+  views: WindowView[];
+  /** The workspace and user widgets of its current view (PRT-043). */
+  widgets: WidgetReport[];
+  windowId: number;
+  workspaceId?: string | null;
+};
+
+/** One window of `windows.list` (PRT-123). */
+export type WindowSummary = {
+  activeView?: string | null;
+  /** The `client` of its `system.hello`. */
+  client: string;
+  /** How many errors it shows: init files and TSX views (`fileErrors`) and widgets in an error state. */
+  errors: number;
+  focused: boolean;
+  threadId?: string | null;
+  /** The window's connection number (`system.hello`'s `connection`). */
+  windowId: number;
+  /** The workspace it shows; `null` for none. */
+  workspaceId?: string | null;
+};
+
+/** One view of a window (PRT-122). */
+export type WindowView = {
+  /** The TSX file (`./views/<name>.tsx`) the view renders; `null` for a written layout. */
+  file?: string | null;
+  id: string;
+  source: ViewSource;
+  title: string;
+  /** The widget references of its layout; `null` for a TSX view this window has not rendered. */
+  widgets?: string[] | null;
 };
 
 /** A folder threads work in; its repositories are its top-level entries (D-11, DMN-020). */
@@ -1650,6 +1855,11 @@ export interface Methods {
   "jobs.start": { params: StartJobParams; result: JobInfo };
   "jobs.kill": { params: JobRef; result: Empty };
   "views.errors": { params: WorkspaceRef; result: ViewErrors };
+  "windows.list": { params: ListWindowsParams; result: WindowList };
+  "windows.state": { params: WindowRef; result: WindowState };
+  "windows.run": { params: RunInWindowParams; result: RanInWindow };
+  "windows.check_widget": { params: CheckWidgetParams; result: WidgetChecked };
+  "windows.answer": { params: AnswerWindowParams; result: Empty };
   "views.mount": { params: MountParams; result: Mounted };
   "views.mount_update": { params: MountUpdateParams; result: Mounted };
   "views.unmount": { params: UnmountParams; result: Unmounted };
@@ -1739,6 +1949,11 @@ export const METHODS: readonly MethodName[] = [
   "jobs.start",
   "jobs.kill",
   "views.errors",
+  "windows.list",
+  "windows.state",
+  "windows.run",
+  "windows.check_widget",
+  "windows.answer",
   "views.mount",
   "views.mount_update",
   "views.unmount",

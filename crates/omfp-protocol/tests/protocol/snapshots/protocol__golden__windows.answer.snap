@@ -1,0 +1,25 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "windows.answer",
+    "params": {
+      "answer": {
+        "kind": "not_run",
+        "message": "view.next is disabled",
+        "reason": "disabled"
+      },
+      "requestId": "w7"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {},
+    "type": "response"
+  }
+}

@@ -72,6 +72,8 @@ pub trait WidgetHost: Send + Sync {
     ) -> Result<String, String>;
     /// What the daemon's config file and the `.omfp/keymap.json` of workspace `workspace_id` add to the default keys.
     fn keymap_additions(&self, workspace_id: &str) -> shell::Additions;
+    /// The `omfp://windows` answer for workspace `workspace_id`: the open windows showing it (AGT-081).
+    fn windows(&self, workspace_id: &str) -> String;
 }
 
 /// Builds the host tools of a thread's agent from the agent tool registry (AGT-040, DMN-151); the server implements
@@ -114,7 +116,8 @@ pub fn thread_tools(
 /// The host URI schemes of every thread (DMN-062): `omfp://`, read-only — the method catalogue (AGT-042), the docs and
 /// their index, the schemas, the built-in widgets' sources from `builtin` (`<static-dir>/builtin-widgets/` when the
 /// daemon serves a bundle) and, with `widgets` (the thread's workspace id and the widget host),
-/// `omfp://widgets/check/<name>` (DMN-108) and `omfp://keymap` with the workspace's bindings (DMN-199).
+/// `omfp://widgets/check/<name>` (DMN-108), `omfp://keymap` with the workspace's bindings (DMN-199) and
+/// `omfp://windows` (AGT-081).
 pub fn host_uris(
     builtin: Option<PathBuf>,
     widgets: Option<(String, Arc<dyn WidgetHost>)>,
@@ -126,6 +129,7 @@ pub fn host_uris(
         catalog::read_uri(url)
             .or_else(|| widgets::read_check(url, || context.is_cancelled(), workspace_id, host))
             .or_else(|| widgets::read_keymap(url, workspace_id, host))
+            .or_else(|| widgets::read_windows(url, workspace_id, host))
             .unwrap_or_else(|| widgets::read_uri(url, builtin.as_deref()))
             .map_err(Into::into)
     })?
@@ -135,13 +139,16 @@ pub fn host_uris(
          files, TSX views); {} describes the window and {} its keys and commands; {SCHEMA_URL} is the JSON Schema of \
          .omfp/views.json and {} of .omfp/keymap.json; {BUILTIN_URL} lists the built-in widgets and \
          {BUILTIN_URL}/<name> shows one's source; {CHECK_URL}/<name> checks a widget, an init file (`init`, \
-         `user:init`) or a TSX view (`views/<file>`): compile errors, what open windows report",
+         `user:init`) or a TSX view (`views/<file>`): compile errors, what open windows report, a widget no window \
+         shows rendered out of sight; {} describes the open windows showing this workspace (views and where each \
+         comes from, added commands, errors)",
         shell::INDEX_URL,
         catalog::METHODS_URL,
         catalog::METHODS_URL,
         shell::SHELL_URL,
         shell::KEYMAP_URL,
-        keymap::SCHEMA_URL
+        keymap::SCHEMA_URL,
+        shell::WINDOWS_URL
     ))
     .immutable(true);
     Ok(vec![omfp])
@@ -790,6 +797,10 @@ mod tests {
 
         fn keymap_additions(&self, _workspace_id: &str) -> shell::Additions {
             shell::Additions::default()
+        }
+
+        fn windows(&self, workspace_id: &str) -> String {
+            format!("windows of {workspace_id}")
         }
     }
 

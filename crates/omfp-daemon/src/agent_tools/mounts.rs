@@ -147,7 +147,7 @@ fn list() -> AgentTool {
 }
 
 /// The optional string argument `key`, trimmed and not empty.
-fn text(arguments: &Map<String, Value>, key: &str) -> Result<Option<String>, String> {
+pub(super) fn text(arguments: &Map<String, Value>, key: &str) -> Result<Option<String>, String> {
     match arguments.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(text)) if !text.trim().is_empty() => Ok(Some(text.trim().to_owned())),
@@ -164,7 +164,7 @@ fn code(arguments: &Map<String, Value>, key: &str) -> Result<Option<String>, Str
     }
 }
 
-fn required(arguments: &Map<String, Value>, key: &str) -> Result<String, String> {
+pub(super) fn required(arguments: &Map<String, Value>, key: &str) -> Result<String, String> {
     text(arguments, key)?.ok_or_else(|| format!("`{key}` must be a non-empty string"))
 }
 
@@ -185,14 +185,20 @@ fn flag(arguments: &Map<String, Value>, key: &str) -> Result<bool, String> {
 }
 
 /// `workspaceId`, else the calling thread's workspace (AGT-066).
-fn workspace(context: &ToolContext, arguments: &Map<String, Value>) -> Result<String, String> {
+pub(super) fn workspace(
+    context: &ToolContext,
+    arguments: &Map<String, Value>,
+) -> Result<String, String> {
     text(arguments, "workspaceId")?
         .or_else(|| context.workspace_id.clone())
         .ok_or_else(|| "`workspaceId` is required: no calling thread names a workspace".to_owned())
 }
 
 /// Runs `request` as the context's principal and decodes its result.
-async fn run_call<T: DeserializeOwned>(context: &ToolContext, request: Call) -> Result<T, String> {
+pub(super) async fn run_call<T: DeserializeOwned>(
+    context: &ToolContext,
+    request: Call,
+) -> Result<T, String> {
     let result = call(context, request)
         .await
         .map_err(|error| error_text(&error))?;

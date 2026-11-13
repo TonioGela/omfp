@@ -15,6 +15,7 @@ mod params;
 mod schema;
 mod session;
 mod topic;
+mod windows;
 
 pub use activity::{
     ActivityEntry, ActivityPage, ListActivityParams, StopThreadParams, ThreadsStopped,
@@ -60,6 +61,12 @@ pub use params::{
 pub use schema::type_schemas;
 pub use session::{ContextUsage, SessionTokens, SessionUsage, ThreadSession};
 pub use topic::{Topic, TopicParseError};
+pub use windows::{
+    AnswerWindowParams, CheckWidgetParams, CommandSource, ListWindowsParams, RanInWindow,
+    RunFailure, RunInWindowParams, ViewSource, WidgetChecked, WindowAnswer, WindowBinding,
+    WindowCommand, WindowList, WindowRef, WindowReport, WindowRequest, WindowState, WindowSummary,
+    WindowView,
+};
 
 /// Protocol version announced in `system.hello` (PRT-004).
 pub const PROTOCOL_VERSION: u32 = 1;

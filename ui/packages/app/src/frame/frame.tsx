@@ -2,10 +2,10 @@
  * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), the left column of
  * workspaces and threads (UI-100), the view of the current workspace with its error banner (UI-100..102, AGT-011)
  * and its view tabs in the mode line (UI-301), the keymap, `:` command line (UI-095), which-key panel (UI-320) and
- * help panel (UI-198), the runtime errors of init files and TSX views reported to the daemon (UI-304), the safety net
- * for pending interactions (AGT-015), floating panels (UI-230), notices and notifications (UI-096, UI-192), the live
- * region (UI-092), dialogs, the files the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094).
- * Everything else is a widget of the view.
+ * help panel (UI-198), the runtime errors of init files and TSX views reported to the daemon (UI-304), the window's
+ * state for agents and their requests to it (UI-350..UI-353), the safety net for pending interactions (AGT-015),
+ * floating panels (UI-230), notices and notifications (UI-096, UI-192), the live region (UI-092), dialogs, the files
+ * the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything else is a widget of the view.
  */
 
 import { useWidthClass } from "@omfp/kit";
@@ -18,6 +18,8 @@ import { KeymapError, useBindings } from "../keymap/workspace.tsx";
 import {
   ACTIVE_VIEW,
   EDITOR_MODE,
+  type ReportTimers,
+  SELECTED_THREAD,
   useCurrentWorkspaceId,
   useHost,
   useSettings,
@@ -71,6 +73,8 @@ import {
 } from "./responsive.tsx";
 import { ConnectionBanner, StatusLiveRegion, Toasts } from "./status.tsx";
 import { WhichKey } from "./which-key.tsx";
+import { WindowRequests } from "./window-requests.tsx";
+import { useWindowFocus, useWindowStateReport } from "./window-state.ts";
 
 export interface FrameProps {
   /** Built-in widgets by reference; {@link BUILTIN_WIDGETS} by default. */
@@ -85,6 +89,8 @@ export interface FrameProps {
   readonly notifications?: NotificationPort;
   readonly hasFocus?: () => boolean;
   readonly focusWindow?: () => void;
+  /** Timers of the out-of-sight widget checks agents ask for (UI-353); the global timers by default. */
+  readonly checkTimers?: ReportTimers;
 }
 
 const performanceNow = () => performance.now();
@@ -99,6 +105,7 @@ export function Frame({
   notifications,
   hasFocus = documentHasFocus,
   focusWindow = focusThisWindow,
+  checkTimers,
 }: FrameProps): ReactNode {
   const workspaceId = useCurrentWorkspaceId();
   const state = useViews(workspaceId);
@@ -147,6 +154,9 @@ export function Frame({
   const bindings = useBindings(defaults, settings.keymap, state, init.bindings);
   const [whichKey] = useState(() => new WhichKeyState());
   useKeymap(bindings, now, keyTimers, whichKey);
+  const [selectedThread] = useWindowState(SELECTED_THREAD);
+  const focused = useWindowFocus(hasFocus);
+  useWindowStateReport({ workspaceId, threadId: selectedThread, focused, views, listed, shown: view, bindings });
   useAppearance();
   useUserTheme();
   const appRef = useRef<HTMLDivElement>(null);
@@ -253,6 +263,7 @@ export function Frame({
       <AgentNotices />
       <OpenedUrls />
       <InitLoader workspaceId={workspaceId} views={state} />
+      <WindowRequests workspaceId={workspaceId} views={state} registry={registry} timers={checkTimers} />
       {file.source}
     </div>
   );

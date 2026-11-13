@@ -13,7 +13,7 @@ use crate::dto::{
     DiffPage, FileCandidates, FileContent, FileWritten, GitStatus, JobInfo, Settings, Theme,
     ThreadSummary, Workspace,
 };
-use crate::{activity, lists, mcp, params, session};
+use crate::{activity, lists, mcp, params, session, windows};
 use omfp_core::wire;
 
 /// A protocol method: its wire name and the types of its params and result.
@@ -265,6 +265,19 @@ methods! {
     JobsKill = "jobs.kill" (params::JobRef) -> params::Empty;
     /// The init file and TSX view errors every window showing the workspace reports (PRT-116).
     ViewsErrors = "views.errors" (params::WorkspaceRef) -> params::ViewErrors;
+    /// The windows that reported to the daemon, the most recently focused first: workspace, thread, view, errors
+    /// (PRT-123).
+    WindowsList = "windows.list" (windows::ListWindowsParams) -> windows::WindowList;
+    /// All a window reports: its views and where each comes from, its added commands and bindings, its errors and
+    /// widgets (PRT-123).
+    WindowsState = "windows.state" (windows::WindowRef) -> windows::WindowState;
+    /// Runs a registered command (id or alias) in a window, by default the most recently focused one showing the
+    /// workspace; never JavaScript (PRT-124).
+    WindowsRun = "windows.run" (windows::RunInWindowParams) -> windows::RanInWindow;
+    /// Renders a widget out of sight in a window showing the workspace and returns what it rendered (PRT-124).
+    WindowsCheckWidget = "windows.check_widget" (windows::CheckWidgetParams) -> windows::WidgetChecked;
+    /// A window's answer to the daemon's `window_request` frame (PRT-124).
+    WindowsAnswer = "windows.answer" (windows::AnswerWindowParams) -> params::Empty;
     /// Mounts a widget (a reference or inline code) into a view or as a floating panel; replaces an earlier mount of
     /// the same id (PRT-080, AGT-061).
     ViewsMount = "views.mount" (params::MountParams) -> params::Mounted;

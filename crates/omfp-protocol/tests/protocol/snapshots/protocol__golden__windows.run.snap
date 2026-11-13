@@ -1,0 +1,27 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "windows.run",
+    "params": {
+      "args": [
+        "ops"
+      ],
+      "command": "view",
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "command": "view.switch",
+      "windowId": 3
+    },
+    "type": "response"
+  }
+}

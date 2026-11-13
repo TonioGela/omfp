@@ -5,7 +5,15 @@
  */
 
 import type { CallMethod } from "@omfp/client";
-import { INDEX_TOPIC, type ParamsOf, parseTopic, type ResultOf, type Topic, type TransientFrame } from "@omfp/protocol";
+import {
+  INDEX_TOPIC,
+  type ParamsOf,
+  parseTopic,
+  type ResultOf,
+  type Topic,
+  type TransientFrame,
+  type WindowRequestFrame,
+} from "@omfp/protocol";
 import { createContext, type ReactNode, useContext } from "react";
 import { strings } from "../strings/index.ts";
 import { CommandRegistry } from "./commands.ts";
@@ -26,6 +34,8 @@ export interface SdkClient extends ModelSource {
   unsubscribe(topic: Topic): void;
   /** Transient frames of followed topics (PRT-054) until the returned function is called. */
   onTransient(listener: (frame: TransientFrame) => void): () => void;
+  /** The daemon's requests to this window (PRT-124) until the returned function is called. */
+  onWindowRequest(listener: (frame: WindowRequestFrame) => void): () => void;
 }
 
 /** How many threads stay followed after no widget shows them any more (UI-335). */

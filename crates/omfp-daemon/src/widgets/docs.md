@@ -311,6 +311,27 @@ it was bound (default keymap, `[keymap]`, `.omfp/keymap.json`, the user's or the
 `:describe-command <name>` shows a command's names, scope, who registered it and every key bound to it. Point the user
 at them to check what an init file did.
 
+## Checking your work in the window
+
+Errors mostly show only in the user's window, so check there, step by step:
+
+1. Write the widget, `.omfp/init.ts` or the TSX view.
+2. `omfp_widget_check { name }` (`init`, `user:init`, `views/<file>` for the others): the daemon's compile, then what
+   each window showing the workspace renders. A widget no window shows in its current view (placed only in an init
+   file's or a TSX view, or not placed yet) is mounted out of sight in the most recently focused window — a hidden
+   container outside every view, with the same error boundary and SDK — for a few seconds, and its render or error is
+   reported; without a window only the compile check applies. When no view holds the widget it names `omfp_view_add`,
+   else the views that hold it.
+3. `omfp_windows` (or `omfp://windows`): each window showing the workspace by id, the most recently focused first —
+   its thread, its views after `views.json`, the init files and their transforms (where each comes from, its TSX
+   file, its widgets, the active one), the commands init files and widgets added with their keys, and its errors.
+4. `omfp_window_run { command: "view.switch", args: ["<view>"] }` shows a view in that window (`windowId` picks one);
+   any registered command id or alias runs the same way, as `:<command> <args>` would. It never runs code: an unknown
+   command, a disabled one or a failure comes back as the tool's error.
+5. `omfp_windows` again (or `omfp_views_errors`) for the errors of what it shows now; fix and repeat.
+
+Over the protocol the same steps are `windows.list`, `windows.state`, `windows.run` and `windows.check_widget`.
+
 ## Imports
 
 Only these specifiers resolve; everything else must be a relative file of the widget's folder:

@@ -50,6 +50,7 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
         | Call::Subscribe(_)
         | Call::Unsubscribe(_)
         | Call::WidgetsReport(_)
+        | Call::WindowsAnswer(_)
         | Call::ThreadLiveConnect(_)
         | Call::ThreadLiveStart(_) => Err(bad_request("handled by the connection")),
         Call::ReposSuggest(params) => {
@@ -164,6 +165,10 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
         Call::SettingsGet(_) => ok(&services.settings()),
         Call::SettingsSet(params) => ok(&services.set_settings(params).await?),
         Call::ViewsErrors(params) => ok(&services.view_errors(&params.workspace_id).await?),
+        Call::WindowsList(params) => ok(&services.list_windows(params).await?),
+        Call::WindowsState(params) => ok(&services.window_state(&params)?),
+        Call::WindowsRun(params) => ok(&services.run_in_window(params).await?),
+        Call::WindowsCheckWidget(params) => ok(&services.check_in_window(params).await?),
         Call::ViewsSet(params) => {
             services.set_views(params).await?;
             empty()
