@@ -3,9 +3,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
 import type { ThreadSummary } from "@omfp/protocol";
-import { threadTopic } from "@omfp/protocol";
+import { threadTopic, viewsTopic } from "@omfp/protocol";
 import { act, cleanup, screen } from "@testing-library/react";
-import { useState } from "react";
+import { Activity, useState } from "react";
 import {
   CommandRegistry,
   RECENT_THREADS,
@@ -14,10 +14,11 @@ import {
   useRunCommand,
   useThread,
   useThreads,
+  useViews,
   useWindowState,
   windowKey,
 } from "../../src/sdk/index.ts";
-import { renderWithHost, testHost } from "../support/host.tsx";
+import { released, renderWithHost, testHost } from "../support/host.tsx";
 
 afterEach(cleanup);
 
@@ -43,6 +44,27 @@ const SHOWN = windowKey<string | undefined>("test/shown", undefined);
 function ShownThread() {
   const [id] = useWindowState(SHOWN);
   return id === undefined ? null : <ThreadProbe id={id} />;
+}
+
+function ViewsProbe({ tab }: { tab: string }) {
+  const views = useViews("01W");
+  return <span data-testid={`views-${tab}`}>{views === undefined ? "none" : views.widgets.length}</span>;
+}
+
+/** Two tabs following the same `views/<id>` topic, one shown at a time, the other kept hidden (`<Activity>`) as the
+ * view's `tabs` keep theirs. */
+function TwoTabs() {
+  const [shown, setShown] = useState("a");
+  return (
+    <>
+      {["a", "b"].map((tab) => (
+        <Activity key={tab} mode={tab === shown ? "visible" : "hidden"}>
+          <ViewsProbe tab={tab} />
+        </Activity>
+      ))}
+      <button type="button" data-testid="switch" onClick={() => setShown((tab) => (tab === "a" ? "b" : "a"))} />
+    </>
+  );
 }
 
 /** A history of `count` user messages. */
@@ -185,6 +207,22 @@ describe("hooks", () => {
     client.indexEvents({ kind: "thread_removed", threadId: "01A" });
     flush();
     expect(client.unsubscribed).toEqual([threadTopic("01A")]);
+  });
+
+  // spec: UI-335
+  test("a topic the hidden tab releases as the shown one follows it stays subscribed, its state kept", async () => {
+    const topic = viewsTopic("01W");
+    const { client, flush } = renderWithHost(<TwoTabs />, testHost());
+    client.views("01W", { widgets: [{ source: "user", name: "clock", version: "1", entry: "index.tsx" }] });
+    flush();
+    expect(screen.getByTestId("views-a").textContent).toBe("1");
+
+    act(() => screen.getByTestId("switch").click());
+    await released();
+    flush();
+    expect(screen.getByTestId("views-b").textContent).toBe("1");
+    expect(client.subscribed).toEqual([topic]);
+    expect(client.unsubscribed).toEqual([]);
   });
 
   // spec: UI-012

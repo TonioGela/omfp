@@ -18,7 +18,7 @@ import {
   type WidgetInfoScope,
   WidgetScope,
 } from "../../src/sdk/index.ts";
-import { type CallRecord, renderWithHost, type TestHost, testHost } from "../support/host.tsx";
+import { type CallRecord, released, renderWithHost, type TestHost, testHost } from "../support/host.tsx";
 
 afterEach(cleanup);
 
@@ -77,7 +77,7 @@ describe("widget scope", () => {
   });
 
   // spec: PRT-040, AGT-016
-  test("useViews follows views/<id> while mounted", () => {
+  test("useViews follows views/<id> while mounted", async () => {
     const { client, flush, view } = renderWithHost(<ViewsProbe />);
     expect(client.subscribed).toEqual([viewsTopic(WS)]);
     expect(text("views")).toBe("none");
@@ -85,6 +85,7 @@ describe("widget scope", () => {
     flush();
     expect(text("views")).toBe("1");
     view.unmount();
+    await released();
     expect(client.unsubscribed).toEqual([viewsTopic(WS)]);
   });
 });

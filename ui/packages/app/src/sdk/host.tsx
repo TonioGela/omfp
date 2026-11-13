@@ -44,12 +44,17 @@ export const RECENT_THREADS = 5;
 
 /** Topics followed while at least one widget needs them. A `thread/<id>` topic stays followed after its last release,
  * among the {@link RECENT_THREADS} most recently released ones, so showing that thread again needs no new snapshot: its
- * state is already in the model and kept live (UI-335). A kept thread gone from the index (deleted) is released. */
+ * state is already in the model and kept live (UI-335). A kept thread gone from the index (deleted) is released. Any
+ * other topic goes in a microtask after its last release, unless retained again by then: a tab or view hidden while
+ * another one following the same topic shows (one React commit cleans up the hidden one's effects, then runs the shown
+ * one's) leaves it followed, its state in the model. */
 export class TopicRefs {
   readonly #client: SdkClient;
   readonly #counts = new Map<Topic, number>();
   /** Released thread topics still followed, oldest first. */
   readonly #recent = new Set<Topic>();
+  /** Released topics of other kinds, unsubscribed in a microtask unless retained again. */
+  readonly #released = new Set<Topic>();
 
   constructor(client: SdkClient, frames: FrameStore) {
     this.#client = client;
@@ -62,6 +67,7 @@ export class TopicRefs {
     this.#counts.set(topic, count + 1);
     if (count === 0) {
       this.#recent.delete(topic);
+      this.#released.delete(topic);
       // A no-op for a kept topic, unless its subscription failed: then it is retried.
       this.#client.subscribe(topic);
     }
@@ -81,10 +87,16 @@ export class TopicRefs {
     };
   }
 
-  /** Keeps a released thread topic followed (the oldest kept one goes over the bound); unsubscribes anything else. */
+  /** Keeps a released thread topic followed (the oldest kept one goes over the bound); unsubscribes anything else in a
+   * microtask, unless it is retained again by then. */
   #keep(topic: Topic): void {
     if (parseTopic(topic)?.kind !== "thread") {
-      this.#client.unsubscribe(topic);
+      this.#released.add(topic);
+      queueMicrotask(() => {
+        if (this.#released.delete(topic)) {
+          this.#client.unsubscribe(topic);
+        }
+      });
       return;
     }
     this.#recent.add(topic);

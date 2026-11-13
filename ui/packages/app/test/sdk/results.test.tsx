@@ -16,7 +16,7 @@ import {
   WidgetScope,
 } from "../../src/sdk/index.ts";
 import { thread, workspace } from "../support/fixtures.ts";
-import { type CallRecord, type TestHost, testHost } from "../support/host.tsx";
+import { type CallRecord, released, type TestHost, testHost } from "../support/host.tsx";
 
 afterEach(cleanup);
 
@@ -213,7 +213,7 @@ function JobLines() {
 
 describe("useJob", () => {
   // spec: UI-392
-  test("a new mount shows the window's last copy of the job until its topic's snapshot arrives", () => {
+  test("a new mount shows the window's last copy of the job until its topic's snapshot arrives", async () => {
     const test = testHost();
     // The frame follows the current workspace's views topic, whatever widgets mount.
     test.host.topics.retain(viewsTopic(WS));
@@ -225,6 +225,7 @@ describe("useJob", () => {
     test.flush();
     expect(text("job")).toBe("running one|two done");
     unmount();
+    await released();
     test.flush();
     // The topic was released: its state left the model.
     expect(test.client.unsubscribed).toContain("job/01JOB");

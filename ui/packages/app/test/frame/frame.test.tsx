@@ -29,7 +29,7 @@ import { markTabEdges } from "../../src/view/render.tsx";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
 import { DEFAULT_MANIFEST } from "../../src/view/views.ts";
 import { thread, workspace } from "../support/fixtures.ts";
-import { type FakeClient, ManualTimers, renderWithHost, testHost } from "../support/host.tsx";
+import { type FakeClient, ManualTimers, released, renderWithHost, testHost } from "../support/host.tsx";
 import { installResizeObserver, resize } from "../support/resize.ts";
 
 afterEach(() => {
@@ -860,7 +860,7 @@ describe("daemon settings", () => {
 
 describe("views of the current workspace", () => {
   // spec: UI-100
-  test("the frame follows the current workspace's views topic; the default view until it answers", () => {
+  test("the frame follows the current workspace's views topic; the default view until it answers", async () => {
     const { client, flush, host } = setup();
     expect(client.subscribed.filter((topic) => topic.startsWith("views/"))).toEqual([]);
     act(() => host.window.set(SELECTED_THREAD, "t1"));
@@ -875,6 +875,7 @@ describe("views of the current workspace", () => {
       host.window.set(SELECTED_THREAD, undefined);
       host.window.set(DRAFT_THREAD, { workspaceId: "w2" });
     });
+    await released();
     expect(client.unsubscribed).toContain("views/w1");
     expect(client.subscribed).toContain("views/w2");
     expect(screen.getByTestId("view").dataset.view).toBe("default");

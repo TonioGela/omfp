@@ -306,6 +306,11 @@ export function testHost(client = new FakeClient(), options: Omit<HostOptions, "
   };
 }
 
+/** Lets the released topics go: `TopicRefs` unsubscribes a topic in a microtask after its last release (UI-335). */
+export async function released(): Promise<void> {
+  await Promise.resolve();
+}
+
 /** Renders `ui` inside the test host's provider. */
 export function renderWithHost(ui: ReactNode, test: TestHost = testHost()): TestHost & { view: RenderResult } {
   const view = render(<OmfpProvider host={test.host}>{ui}</OmfpProvider>);
