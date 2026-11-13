@@ -268,7 +268,7 @@ describe("frame", () => {
     expect(screen.getByTestId("command-line-error").textContent).toBe("Unknown command: nope");
   });
 
-  // spec: UI-095, UI-023, UI-021
+  // spec: UI-095, UI-023, UI-021, UI-321
   test("vim keys move through threads, `Space a` reaches the waiting thread, `Space n` opens a draft, `Space w` the + workspace field", () => {
     const { client, flush, host, tick } = setup();
     document.body.focus();
@@ -283,10 +283,12 @@ describe("frame", () => {
     expect(host.window.get(SELECTED_THREAD)).toBe("t2");
     client.indexEvents({ kind: "thread_upserted", thread: thread("t1", "checkout", "w1", { needsAttention: true }) });
     flush();
-    press(" ");
+    // A sequence whose next key comes too late is dropped (the leader menu, shown at once, waits instead: UI-321).
+    press("g");
     tick(5000);
-    press("a");
+    press("g");
     expect(host.window.get(SELECTED_THREAD)).toBe("t2");
+    press("Escape");
     press(" ");
     press("a");
     expect(host.window.get(SELECTED_THREAD)).toBe("t1");

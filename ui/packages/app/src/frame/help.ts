@@ -56,6 +56,8 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "thread.abort": composer.abortCommand,
   "cmdline.open": commandTitles.cmdline,
   "help.open": commandTitles.help,
+  "help.describeKey": strings.init.describe.key,
+  "help.describeCommand": strings.init.describe.command,
   "thread.nextAttention": commandTitles.nextAttention,
   "thread.new": commandTitles.new,
   "workspace.new": commandTitles.newWorkspace,

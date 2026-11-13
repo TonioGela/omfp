@@ -59,21 +59,23 @@ Widgets (`useCommand`) and init files (`omfp.command`) add commands to the same 
 
 ## Default keys
 
-In normal mode (no text field focused):
+In normal mode (no text field focused). A started sequence (`g`, `Space h`) shows the which-key panel above the mode
+line after 300 ms with the keys that complete it; `Space` alone shows it at once (the leader menu: groups `Space h`
+help, `Space p` workspace, `Space f` files, `Space v` views); Escape cancels the sequence.
 
 | Keys | What they do |
 | --- | --- |
 | `j` / `k`, `g g` / `G`, `Ctrl-d` / `Ctrl-u` | Next / previous, first / last, half a page — threads in the left column, messages in the transcript. |
 | `/` | Filter threads. |
 | `i` | Focus the composer. |
-| `:`, `Space :` | The `:` line. |
-| `?` | Help. |
-| `g v` | Pick a view: the `:` line opens on `view`, its completions are the views. |
-| `] v`, `[ v` | Next / previous view (round the list). |
-| `g f` | Open the focused path (a path link, a tool card, a changed file) in a file tab. |
+| `:`, `Space :`, `Space Space` | The `:` line. |
+| `?`, `Space h h` | Help; `Space h k` is `:describe-key`. |
+| `g v`, `Space v v` | Pick a view: the `:` line opens on `view`, its completions are the views. |
+| `] v`, `[ v`, `Space v n`, `Space v p` | Next / previous view (round the list). |
+| `g f`, `Space f o` | Open the focused path (a path link, a tool card, a changed file) in a file tab. |
 | `g n` | Open the newest notice. |
 | `Space a`, `] a`, `Alt-a` | Next thread needing the user. |
-| `Space n`, `Alt-n` | New thread; `Space w` new workspace. |
+| `Space n`, `Alt-n` | New thread; `Space w` or `Space p n` new workspace, `Space p r` rescan it. |
 | `Space r`, `Space x`, `Space u`, `Space d` | Rename, archive, unarchive, delete the selected thread. |
 | `Space s`, `Space S`, `Space R` | Stop the thread (with the threads it spawned); restart it. |
 | `Space t` | Show or hide the threads column (narrow window). |

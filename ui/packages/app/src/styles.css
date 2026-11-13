@@ -246,6 +246,16 @@
     display: none;
   }
 
+  /* The which-key panel (UI-320): kit `omfp-whichkey`, a popover above the mode line like the `:` line's menu. */
+  .omfp-frame__which-key {
+    position: absolute;
+    inset-block-end: calc(100% + var(--omfp-s1));
+    inset-inline-start: var(--omfp-s1);
+    z-index: 10;
+    max-block-size: 50vh;
+    white-space: normal;
+  }
+
   .omfp-cmdline__menu .omfp-cmdmenu__item:hover:not([data-selected]) {
     background: var(--omfp-hover);
   }

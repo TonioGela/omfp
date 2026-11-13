@@ -29,7 +29,11 @@ export interface Binding {
   readonly source?: BindingSource;
 }
 
-/** The defaults: vim-style navigation, `:` command line, `Space` leader (UI-095). */
+/**
+ * The defaults: vim-style navigation, `:` command line, `Space` leader (UI-095). `Space` alone opens the leader menu
+ * (UI-324): the flat leader keys stay as they were; the groups `Space h` (help), `Space p` (workspace), `Space f`
+ * (files) and `Space v` (views) hold the rest (UI-326).
+ */
 export const DEFAULT_BINDINGS: readonly Binding[] = [
   { mode: "normal", keys: "j", command: "nav.next" },
   { mode: "normal", keys: "k", command: "nav.prev" },
@@ -67,6 +71,17 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   // The left column of the narrow layout, shown over the view or hidden again.
   { mode: "normal", keys: "Space t", command: "threads.toggle" },
   { mode: "normal", keys: "Space :", command: "cmdline.open" },
+  // The full command line from the leader menu (UI-325); `:` stays.
+  { mode: "normal", keys: "Space Space", command: "cmdline.open" },
+  // Leader groups (UI-326).
+  { mode: "normal", keys: "Space h h", command: "help.open" },
+  { mode: "normal", keys: "Space h k", command: "help.describeKey" },
+  { mode: "normal", keys: "Space p n", command: "workspace.new" },
+  { mode: "normal", keys: "Space p r", command: "workspace.rescan" },
+  { mode: "normal", keys: "Space f o", command: "file.open" },
+  { mode: "normal", keys: "Space v v", command: "view.pick" },
+  { mode: "normal", keys: "Space v n", command: "view.next" },
+  { mode: "normal", keys: "Space v p", command: "view.prev" },
   { mode: "insert", keys: "Esc", command: "focus.leave" },
   // In the composer: clear the draft, then abort; `u` restores the last cleared draft (UI-063). Elsewhere `Ctrl-c`
   // resolves to no command and copies as usual.
@@ -129,14 +144,14 @@ export type Match =
 
 /**
  * Matches key presses against bindings, one sequence at a time. A sequence whose next key does not arrive within
- * `timeoutMs` (by the injected clock) is dropped. A complete binding wins over longer ones sharing its prefix, so
- * defaults never bind both `g` and `g g`.
+ * `timeoutMs` (by the injected clock) is dropped, unless it is held ({@link KeymapMatcher.hold}). A complete binding
+ * wins over longer ones sharing its prefix, so defaults never bind both `g` and `g g`.
  */
 export class KeymapMatcher {
   readonly #bindings: readonly Binding[];
   readonly #now: () => number;
   readonly #timeoutMs: number;
-  #pending: { keys: string[]; mode: Mode; at: number } | undefined;
+  #pending: { keys: string[]; mode: Mode; at: number; held: boolean } | undefined;
 
   constructor(bindings: readonly Binding[], now: () => number, timeoutMs = SEQUENCE_TIMEOUT_MS) {
     this.#bindings = bindings;
@@ -164,6 +179,13 @@ export class KeymapMatcher {
     this.#pending = undefined;
   }
 
+  /** Keeps the sequence typed so far from timing out until it ends: the which-key panel shows it (UI-321). */
+  hold(): void {
+    if (this.#pending !== undefined) {
+      this.#pending = { ...this.#pending, held: true };
+    }
+  }
+
   #match(keys: string[], mode: Mode): Match | undefined {
     const sequence = keys.join(" ");
     const candidates = this.#bindings.filter((binding) => binding.mode === mode);
@@ -173,7 +195,7 @@ export class KeymapMatcher {
       return { kind: "command", binding: exact };
     }
     if (candidates.some((binding) => binding.keys.startsWith(`${sequence} `))) {
-      this.#pending = { keys, mode, at: this.#now() };
+      this.#pending = { keys, mode, at: this.#now(), held: false };
       return { kind: "pending", keys: sequence };
     }
     return undefined;
@@ -186,7 +208,7 @@ export class KeymapMatcher {
 
   #live(): { keys: string[]; mode: Mode } | undefined {
     const pending = this.#pending;
-    if (pending !== undefined && this.#now() - pending.at > this.#timeoutMs) {
+    if (pending !== undefined && !pending.held && this.#now() - pending.at > this.#timeoutMs) {
       this.#pending = undefined;
       return undefined;
     }

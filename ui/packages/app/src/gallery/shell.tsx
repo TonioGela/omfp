@@ -1,5 +1,5 @@
-/** The gallery's shell parts (UI-173): mode lines, help panels, the left column and the narrow and phone frame's
- * parts. */
+/** The gallery's shell parts (UI-173): mode lines, the which-key panel, help panels, the left column and the narrow
+ * and phone frame's parts. */
 import {
   ActionRow,
   AreaBar,
@@ -24,6 +24,9 @@ import {
   TextField,
   ThreadRow,
   ThreadStrip,
+  WhichKey,
+  WhichKeyGroup,
+  WhichKeyItem,
   WorkspaceSection,
 } from "@omfp/kit";
 import { useState } from "react";
@@ -31,7 +34,7 @@ import { Line, Section } from "./parts.tsx";
 
 export function ModeLines() {
   return (
-    <Section title="Mode line · command line" note="UI-167 · UI-168 · UI-193" wide>
+    <Section title="Mode line · command line · which-key" note="UI-167 · UI-168 · UI-193 · UI-320" wide>
       <ModeLine mode="normal">
         <ModeSegment kind="title">omfp › Redesign kit tokens</ModeSegment>
         <ModeSegment>
@@ -134,6 +137,37 @@ export function ModeLines() {
             </CommandLine>
           </ModeLine>
         </div>
+      </div>
+      <div className="omfp-gallery__command">
+        <WhichKey
+          keys="spc"
+          label="Keys after spc"
+          footer={
+            <>
+              <Kbd>esc</Kbd> <span>cancel</span>
+            </>
+          }
+        >
+          <WhichKeyGroup title="threads">
+            <WhichKeyItem chip="a" description="Next thread needing attention" />
+            <WhichKeyItem chip="n" description="New thread in the current workspace" />
+            <WhichKeyItem chip="x" description="Archive the thread" disabled />
+          </WhichKeyGroup>
+          <WhichKeyGroup title="views">
+            <WhichKeyItem chip="t" description="Show or hide the threads column (narrow window)" />
+            <WhichKeyItem chip="v" kind="prefix" description="views…" />
+          </WhichKeyGroup>
+          <WhichKeyGroup title="help">
+            <WhichKeyItem chip="h" kind="prefix" description="help…" />
+          </WhichKeyGroup>
+          <WhichKeyGroup title="other">
+            <WhichKeyItem chip="o" kind="prefix" description="2 bindings…" />
+            <WhichKeyItem chip="l" description="Switch view" args="logs" />
+          </WhichKeyGroup>
+        </WhichKey>
+        <ModeLine mode="normal">
+          <ModeSegment kind="title">omfp › checkout</ModeSegment>
+        </ModeLine>
       </div>
     </Section>
   );

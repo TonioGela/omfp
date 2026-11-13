@@ -103,7 +103,7 @@ describe("help panel", () => {
     expect(rows("normal", "thread.nextAttention")).toEqual([
       ["spc a, ] a, alt+a", "", "Next thread needing attention"],
     ]);
-    expect(rows("normal", "help.open")).toEqual([["?", "", "Show every key and command (this help)"]]);
+    expect(rows("normal", "help.open")).toEqual([["?, spc h h", "", "Show every key and command (this help)"]]);
     expect(rows("transcript", "nav.next")).toEqual([["j", "", "Next message"]]);
     expect(rows("insert", "focus.leave")).toEqual([["esc", "", "Leave the composer"]]);
     expect(rows("commands", "theme.set")).toEqual([
@@ -127,7 +127,7 @@ describe("help panel", () => {
     expect(screen.queryByTestId("command-line")).toBeNull();
     expect(rows("normal", "thread.new")).toEqual([["alt+n, spc h", "", "New thread in the current workspace"]]);
     keymap([{ mode: "normal", keys: "g h", command: "help.open" }]);
-    expect(rows("normal", "help.open")).toEqual([["?, g h", "", "Show every key and command (this help)"]]);
+    expect(rows("normal", "help.open")).toEqual([["?, spc h h, g h", "", "Show every key and command (this help)"]]);
     expect(rows("normal", "thread.new")).toEqual([["spc n, alt+n", "", "New thread in the current workspace"]]);
   });
 

@@ -1,8 +1,8 @@
 /**
  * The shell's pieces (UI-167..UI-170): the mode line with its mode pill, the command line and its completion menu,
- * the brand, workspace sections and the left column's rows, and the help panel (UI-198). They are presentational: the
- * app wires keys, focus and data; forced state classes (`is-hover`, `is-focus`) render hover and focus statically
- * (UI-173).
+ * the brand, workspace sections and the left column's rows, the help panel (UI-198) and the which-key panel (UI-320).
+ * They are presentational: the app wires keys, focus and data; forced state classes (`is-hover`, `is-focus`) render
+ * hover and focus statically (UI-173).
  */
 import type { HTMLAttributes, ReactNode } from "react";
 import {
@@ -443,6 +443,93 @@ export function HelpRow({ keys, args, description, className, ...props }: HelpRo
         {args !== undefined && <span className="omfp-help__args">{args}</span>}
       </dt>
       <dd className="omfp-help__description">{description}</dd>
+    </div>
+  );
+}
+
+export interface WhichKeyProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
+  /** The chip label of the keys typed so far (`spc`, `g`), after `╭─`. */
+  keys: string;
+  /** The panel's accessible name. */
+  label: string;
+  /** The key row under the groups (`esc` cancel). */
+  footer?: ReactNode;
+  /** {@link WhichKeyGroup}s. */
+  children?: ReactNode;
+}
+
+/**
+ * The which-key panel (UI-320): a popover titled `╭─ <keys>` listing, in groups laid out in columns, the keys that
+ * complete a started sequence. A labelled region that never takes the focus: the keys keep going to the page.
+ */
+export function WhichKey({ keys, label, footer, className, children, ...props }: WhichKeyProps) {
+  return (
+    <section {...props} aria-label={label} className={cx("omfp-popover omfp-whichkey", className)}>
+      <div className="omfp-whichkey__title" aria-hidden="true">
+        ╭─ <Kbd>{keys}</Kbd>
+      </div>
+      <div className="omfp-whichkey__groups">{children}</div>
+      {footer !== undefined && <div className="omfp-whichkey__foot">{footer}</div>}
+    </section>
+  );
+}
+
+export interface WhichKeyGroupProps extends Omit<HTMLAttributes<HTMLDivElement>, "title"> {
+  /** The group's name above its keys (`threads`); none when the panel has a single group. */
+  title?: string | undefined;
+  /** {@link WhichKeyItem}s. */
+  children?: ReactNode;
+}
+
+/** One group of the which-key panel: its name (read before its keys), then its keys. */
+export function WhichKeyGroup({ title, className, children, ...props }: WhichKeyGroupProps) {
+  return (
+    <div {...props} className={cx("omfp-whichkey__group", className)}>
+      {title !== undefined && <div className="omfp-whichkey__group-title">{title}</div>}
+      <dl className="omfp-whichkey__rows">{children}</dl>
+    </div>
+  );
+}
+
+export interface WhichKeyItemProps extends Omit<HTMLAttributes<HTMLDivElement>, "children"> {
+  /** The next key's chip label (`n`, `spc`). */
+  chip: string;
+  description: ReactNode;
+  /** The binding's arguments, after the description. */
+  args?: string | undefined;
+  /** `prefix`: the key starts longer bindings, the description names them (`help…`); `command` by default. */
+  kind?: "command" | "prefix";
+  /** No command answers to the key now: dimmed. */
+  disabled?: boolean;
+}
+
+/** One key of the which-key panel: its chip, an arrow, then what it runs or the group it opens. */
+export function WhichKeyItem({
+  chip,
+  description,
+  args,
+  kind = "command",
+  disabled = false,
+  className,
+  ...props
+}: WhichKeyItemProps) {
+  return (
+    <div
+      {...props}
+      className={cx("omfp-whichkey__item", className)}
+      data-kind={kind}
+      data-disabled={disabled || undefined}
+    >
+      <dt className="omfp-whichkey__key">
+        <Kbd>{chip}</Kbd>
+        <span className="omfp-whichkey__arrow" aria-hidden="true">
+          →
+        </span>
+      </dt>
+      <dd className="omfp-whichkey__description">
+        {description}
+        {args !== undefined && <span className="omfp-whichkey__args">{args}</span>}
+      </dd>
     </div>
   );
 }

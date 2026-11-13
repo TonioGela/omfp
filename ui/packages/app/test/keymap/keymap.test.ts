@@ -109,9 +109,9 @@ describe("keymap", () => {
     expect(table("nav.halfUp")).toEqual(["Ctrl-u"]);
     expect(table("nav.search")).toEqual(["/"]);
     expect(table("composer.focus")).toEqual(["i"]);
-    expect(table("cmdline.open")).toEqual([":", "Space :"]);
+    expect(table("cmdline.open")).toEqual([":", "Space :", "Space Space"]);
     expect(table("thread.new")).toEqual(["Space n", "Alt-n"]);
-    expect(table("workspace.new")).toEqual(["Space w"]);
+    expect(table("workspace.new")).toEqual(["Space w", "Space p n"]);
     expect(table("nav.delete")).toEqual(["d d"]);
     expect(table("nav.toggleSection")).toEqual(["z a"]);
     expect(table("focus.leave", "insert")).toEqual(["Esc"]);

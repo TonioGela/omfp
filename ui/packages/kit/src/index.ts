@@ -216,6 +216,12 @@ export {
   type ThreadRowProps,
   ThreadStrip,
   type ThreadStripProps,
+  WhichKey,
+  WhichKeyGroup,
+  type WhichKeyGroupProps,
+  WhichKeyItem,
+  type WhichKeyItemProps,
+  type WhichKeyProps,
   WorkspaceSection,
   type WorkspaceSectionProps,
 } from "./shell.tsx";

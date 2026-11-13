@@ -232,7 +232,7 @@
     min-inline-size: 0;
   }
 
-  .omfp-gallery__command .omfp-cmdmenu {
+  .omfp-gallery__command :is(.omfp-cmdmenu, .omfp-whichkey) {
     inline-size: 100%;
   }
 

@@ -121,6 +121,26 @@ line is open). `keys` are tokens separated by spaces: a printable key is its cha
 their name (`Space`, `Esc`, `Enter`, `Tab`), prefixed by `Ctrl-`, `Alt-`, `Meta-` (`g g`, `Space t`, `Ctrl-k`). `args`
 are passed to the command's `run(args)`; `"command": ""` removes a binding.
 
+While a started sequence waits for its next key (`g`, `Space`, `Space h`), the window shows the which-key
+panel after 300 ms: every key that completes it with the title of the command it runs now, or the group of the longer
+bindings it starts (`h → help…`). It is built from the bindings in force, so the bindings of this file, of init files
+and the titles of widget commands show there as soon as they apply; give a command a short `title`. Escape cancels the
+sequence. `Space` alone opens it at once: the leader menu. The leader map (experimental, branch idea/init):
+
+| Keys | Command |
+| --- | --- |
+| `Space Space`, `Space :` | the `:` command line (`:` too) |
+| `Space a` / `n` / `r` / `x` / `u` / `d` | next waiting thread / new thread / rename / archive / unarchive / delete |
+| `Space s` / `S` / `R` | stop the thread / with the threads it spawned / restart it |
+| `Space w`, `Space p n`, `Space p r` | new workspace, again, rescan the workspace |
+| `Space t` | show or hide the threads column |
+| `Space v v`, `Space v n` / `p` | pick a view (`g v`), next / previous view (`] v` / `[ v`) |
+| `Space f o` | open the focused path (`g f`) |
+| `Space h h`, `Space h k` | the help panel (`?`, `:help`), `:describe-key` |
+
+Bind your own under a free letter (`Space T` above, or groups like `Space o a`, `Space o b`); a binding of a group's own
+keys (`Space h`) replaces the group.
+
 ## Init files (experimental)
 
 An init file is the window's `init.el`: an ES module every window imports at startup and runs again whenever it changes.

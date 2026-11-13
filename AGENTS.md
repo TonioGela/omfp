@@ -137,12 +137,14 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       floating file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
                       state), toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
                       bar, the left column's splitter; init.tsx: loading the init files and their banner;
-                      describe.ts(x): `:describe-key` / `:describe-command`), view (layout tree, `:widget add`'s
+                      describe.ts(x): `:describe-key` / `:describe-command`; which-key.tsx: the which-key panel,
+                      experimental), view (layout tree, `:widget add`'s
                       manifest edit (edit.ts), reference resolution, widget slot,
                       the `main` slot's file tabs; file-view.tsx: TSX views, experimental; sizes.ts and splitter.tsx:
                       the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
-                      logo sheet), keymap, theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
+                      logo sheet), keymap (which-key.ts: the which-key panel's model and the leader groups,
+                      experimental), theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
                       map, widget-exports.json, builtin-widgets/, the favicon from docs/brand)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)

@@ -2456,6 +2456,91 @@
     margin-inline-end: var(--omfp-s2);
   }
 
+  /* Which-key panel (UI-320): the keys completing a started sequence, groups in columns, on the pop surface (its pop
+   * animation is the popovers' row of the motion catalogue). */
+  .omfp-whichkey {
+    inline-size: min(52rem, 92%);
+    min-inline-size: 0;
+    font-size: var(--omfp-fs-xs);
+  }
+
+  .omfp-whichkey__title {
+    padding: 0 var(--omfp-s2) var(--omfp-s1);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-whichkey__groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+    gap: var(--omfp-s2) var(--omfp-s4);
+    padding: 0 var(--omfp-s2);
+  }
+
+  .omfp-whichkey__group-title {
+    margin-block-end: var(--omfp-s1);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-whichkey__rows {
+    margin: 0;
+  }
+
+  .omfp-whichkey__item {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s2);
+    min-block-size: var(--omfp-row-h);
+  }
+
+  .omfp-whichkey__key {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--omfp-s1);
+    min-inline-size: 4.5em;
+  }
+
+  .omfp-whichkey__arrow {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-whichkey__description {
+    min-inline-size: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .omfp-whichkey__item[data-kind="prefix"] .omfp-whichkey__description {
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-whichkey__item[data-disabled] .omfp-whichkey__description {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-whichkey__args {
+    margin-inline-start: var(--omfp-s1);
+    font-family: var(--omfp-font-code);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-whichkey__foot {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s1);
+    margin-block-start: var(--omfp-s1);
+    padding: var(--omfp-s1) var(--omfp-s2) 0;
+    border-block-start: var(--omfp-bw) solid var(--omfp-rule);
+    font-size: var(--omfp-fs-2xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
   /* Help panel (UI-198): a modal border box (UI-187) on the pop surface; the filter stays, the sections scroll. */
   .omfp-help-modal {
     display: flex;

@@ -1,18 +1,19 @@
 /**
  * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), the left column of
  * workspaces and threads (UI-100), the view of the current workspace with its error banner (UI-100..102, AGT-011)
- * and its view tabs in the mode line (UI-301), the keymap, `:` command line (UI-095) and help panel (UI-198), the
- * runtime errors of init files and TSX views reported to the daemon (UI-304), the safety net for
- * pending interactions (AGT-015), floating panels (UI-230), notices and notifications (UI-096, UI-192), the live region
- * (UI-092), dialogs, the files the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything
- * else is a widget of the view.
+ * and its view tabs in the mode line (UI-301), the keymap, `:` command line (UI-095), which-key panel (UI-320) and
+ * help panel (UI-198), the runtime errors of init files and TSX views reported to the daemon (UI-304), the safety net
+ * for pending interactions (AGT-015), floating panels (UI-230), notices and notifications (UI-096, UI-192), the live
+ * region (UI-092), dialogs, the files the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094).
+ * Everything else is a widget of the view.
  */
 
 import { useWidthClass } from "@omfp/kit";
 import { type FileErrorReport, type ViewsState, viewsTopic } from "@omfp/protocol";
-import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react";
+import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { createKeyHandler } from "../keymap/handler.ts";
 import { type Binding, DEFAULT_BINDINGS } from "../keymap/keymap.ts";
+import { globalKeyTimers, type KeyTimers, WhichKeyState } from "../keymap/which-key.ts";
 import { KeymapError, useBindings } from "../keymap/workspace.tsx";
 import {
   ACTIVE_VIEW,
@@ -68,6 +69,7 @@ import {
   useVisualViewport,
 } from "./responsive.tsx";
 import { ConnectionBanner, Errors, StatusLiveRegion } from "./status.tsx";
+import { WhichKey } from "./which-key.tsx";
 
 export interface FrameProps {
   /** Built-in widgets by reference; {@link BUILTIN_WIDGETS} by default. */
@@ -76,6 +78,8 @@ export interface FrameProps {
   readonly bindings?: readonly Binding[];
   /** Clock of key sequences; `performance.now` by default. */
   readonly now?: () => number;
+  /** Timers of the which-key panel's delay (UI-321); the global timers by default. */
+  readonly keyTimers?: KeyTimers;
   /** The Notification API; none by default (main.tsx passes the browser's). */
   readonly notifications?: NotificationPort;
   readonly hasFocus?: () => boolean;
@@ -90,6 +94,7 @@ export function Frame({
   registry = BUILTIN_WIDGETS,
   bindings: defaults = DEFAULT_BINDINGS,
   now = performanceNow,
+  keyTimers = globalKeyTimers,
   notifications,
   hasFocus = documentHasFocus,
   focusWindow = focusThisWindow,
@@ -139,7 +144,8 @@ export function Frame({
   // The defaults < the daemon's `[keymap]` entries < the current workspace's `.omfp/keymap.json` < the init files',
   // live (UI-097, UI-210, UI-262).
   const bindings = useBindings(defaults, settings.keymap, state, init.bindings);
-  useKeymap(bindings, now);
+  const [whichKey] = useState(() => new WhichKeyState());
+  useKeymap(bindings, now, keyTimers, whichKey);
   useAppearance();
   useUserTheme();
   const appRef = useRef<HTMLDivElement>(null);
@@ -223,7 +229,7 @@ export function Frame({
             views={state}
             registry={registry}
           />
-          <FrameModeLine appRef={appRef} bindings={bindings} views={modeViews} />
+          <FrameModeLine appRef={appRef} bindings={bindings} views={modeViews} whichKey={whichKey} />
         </div>
       </main>
       {breakpoint === "mobile" && <Areas side={side} />}
@@ -255,10 +261,12 @@ function FrameModeLine({
   appRef,
   bindings,
   views,
+  whichKey,
 }: {
   appRef: RefObject<HTMLDivElement | null>;
   bindings: readonly Binding[];
   views: ModeLineViews;
+  whichKey: WhichKeyState;
 }): ReactNode {
   const mode = useMode();
   const [editorMode] = useWindowState(EDITOR_MODE);
@@ -269,6 +277,7 @@ function FrameModeLine({
   return (
     <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} bindings={bindings} views={views}>
       <CommandLine bindings={bindings} />
+      <WhichKey state={whichKey} bindings={bindings} />
       <FilePickerLine />
     </ModeLine>
   );
@@ -320,14 +329,30 @@ function useFileErrorReports(errors: readonly FileErrorReport[]): void {
   useEffect(() => reports.setFileErrors(errors), [reports, errors]);
 }
 
-/** One global key handler for the window (UI-095). */
-function useKeymap(bindings: readonly Binding[], now: () => number): void {
+/**
+ * One global key handler for the window (UI-095), showing waiting sequences in the which-key panel (UI-320); a click
+ * or the window losing the focus drops a waiting sequence (UI-322).
+ */
+function useKeymap(bindings: readonly Binding[], now: () => number, timers: KeyTimers, whichKey: WhichKeyState): void {
   const { commands } = useHost();
   useEffect(() => {
-    const handler = createKeyHandler({ bindings, commands, now });
+    const handler = createKeyHandler({
+      bindings,
+      commands,
+      now,
+      whichKey: { timers, show: (pending) => whichKey.set(pending) },
+    });
+    const { cancel } = handler;
     document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [bindings, commands, now]);
+    document.addEventListener("pointerdown", cancel, true);
+    window.addEventListener("blur", cancel);
+    return () => {
+      document.removeEventListener("keydown", handler);
+      document.removeEventListener("pointerdown", cancel, true);
+      window.removeEventListener("blur", cancel);
+      cancel();
+    };
+  }, [bindings, commands, now, timers, whichKey]);
 }
 
 interface SafetyNetProps {

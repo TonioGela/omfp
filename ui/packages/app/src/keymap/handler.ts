@@ -2,11 +2,13 @@
  * The one global key handler (UI-095): turns key presses into command runs through {@link KeymapMatcher}, in the mode
  * the focused element puts the window in. It listens on the document in the bubbling phase, so widgets that handle a
  * key themselves (the transcript's PageUp/PageDown/Home/End, React Aria's menus and lists) stop it first; inside a
- * modal dialog no binding applies.
+ * modal dialog no binding applies. While a sequence waits for its next key it tells the which-key panel (UI-320):
+ * after {@link WHICH_KEY_DELAY_MS}, at once for the leader, and Escape cancels the sequence.
  */
 
 import { type CommandRegistry, scopesAt } from "../sdk/index.ts";
 import { type Binding, KeymapMatcher, keyToken, type Mode } from "./keymap.ts";
+import { type KeyTimers, opensAtOnce, type PendingKeys, WHICH_KEY_DELAY_MS } from "./which-key.ts";
 
 /** Marks the `:` line's input: the window is in `cmdline` mode while it has the focus. */
 export const CMDLINE_ATTRIBUTE = "data-omfp-cmdline";
@@ -50,6 +52,15 @@ function keepsSpace(element: Element | null): boolean {
   return SPACE_ROLES.has(element.getAttribute("role") ?? "");
 }
 
+/** Where the handler shows a waiting sequence (UI-320, UI-321). */
+export interface WhichKeyOptions {
+  /** The waiting sequence once the panel shows it; `undefined` when it ends (a key, Escape, {@link KeyHandler.cancel}). */
+  readonly show: (pending: PendingKeys | undefined) => void;
+  readonly timers: KeyTimers;
+  /** Default {@link WHICH_KEY_DELAY_MS}. */
+  readonly delayMs?: number;
+}
+
 export interface KeymapOptions {
   readonly bindings: readonly Binding[];
   readonly commands: CommandRegistry;
@@ -57,13 +68,55 @@ export interface KeymapOptions {
   readonly now: () => number;
   /** The focused element; default `document.activeElement`. */
   readonly focused?: () => Element | null;
+  /** The which-key panel; none: sequences wait unseen. */
+  readonly whichKey?: WhichKeyOptions;
 }
 
+/** The document's `keydown` handler; `cancel` drops a waiting sequence (a click, the window losing the focus). */
+export type KeyHandler = ((event: KeyboardEvent) => void) & { readonly cancel: () => void };
+
 /** `keydown` handler for the document; returns it so the frame can add and remove it. */
-export function createKeyHandler(options: KeymapOptions): (event: KeyboardEvent) => void {
+export function createKeyHandler(options: KeymapOptions): KeyHandler {
   const matcher = new KeymapMatcher(options.bindings, options.now);
   const focused = options.focused ?? (() => document.activeElement);
-  return (event) => {
+  const whichKey = options.whichKey;
+  // Each sequence change makes a new generation, so a delay set for an older one does nothing.
+  let generation = 0;
+  let shown = false;
+  const hide = () => {
+    generation += 1;
+    if (shown) {
+      shown = false;
+      whichKey?.show(undefined);
+    }
+  };
+  const reveal = (pending: PendingKeys) => {
+    // The panel lists the next keys: the sequence waits for them as long as it shows.
+    matcher.hold();
+    shown = true;
+    whichKey?.show(pending);
+  };
+  const wait = (pending: PendingKeys) => {
+    generation += 1;
+    if (whichKey === undefined) {
+      return;
+    }
+    if (shown || opensAtOnce(pending)) {
+      reveal(pending);
+      return;
+    }
+    const current = generation;
+    whichKey.timers.setTimeout(() => {
+      if (current === generation && matcher.pending === pending.keys) {
+        reveal(pending);
+      }
+    }, whichKey.delayMs ?? WHICH_KEY_DELAY_MS);
+  };
+  const cancel = () => {
+    matcher.reset();
+    hide();
+  };
+  const handle = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing) {
       return;
     }
@@ -76,12 +129,20 @@ export function createKeyHandler(options: KeymapOptions): (event: KeyboardEvent)
     if (token === "Space" && matcher.pending === undefined && keepsSpace(element)) {
       return;
     }
+    if (token === "Esc" && matcher.pending !== undefined) {
+      // Escape ends the sequence and nothing else (UI-322).
+      cancel();
+      event.preventDefault();
+      return;
+    }
     const mode = modeAt(element);
     const match = matcher.feed(token, mode);
     if (match.kind === "pending") {
       event.preventDefault();
+      wait({ keys: match.keys, mode, scopes: scopesAt(element) });
       return;
     }
+    hide();
     if (match.kind === "none") {
       return;
     }
@@ -97,4 +158,5 @@ export function createKeyHandler(options: KeymapOptions): (event: KeyboardEvent)
       event.preventDefault();
     }
   };
+  return Object.assign(handle, { cancel });
 }
