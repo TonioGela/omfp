@@ -8,21 +8,11 @@
 
 import { Tab, TabList, TabPanel, Tabs } from "@omfp/kit";
 import type { ViewsState } from "@omfp/protocol";
+import { Fragment, memo, type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  Fragment,
-  type KeyboardEvent,
-  memo,
-  type ReactNode,
-  type RefObject,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
-import {
+  type FileTabsState,
   fileName,
   fileTabId,
-  openedTabIds,
   REVEAL_WIDGET,
   useFileTabs,
   useWindowState,
@@ -158,9 +148,6 @@ function Node({ tree, path, scope }: { tree: LayoutTree; path: string; scope: Sc
     );
   }
   if (tree.kind === "tabs") {
-    if (tree.props.id === MAIN_SLOT) {
-      return <MainTabs tree={tree} path={path} scope={scope} />;
-    }
     return <TabsNode tree={tree} path={path} scope={scope} />;
   }
   return <Cells tree={tree} path={path} scope={scope} />;
@@ -234,94 +221,21 @@ function useTabBar(selected: string | undefined): RefObject<HTMLDivElement | nul
   return bar;
 }
 
-/**
- * A `tabs` container other than `main`: one tab per child, the selected one window-local. Every tab stays mounted, the
- * ones not selected hidden with their effects paused, so they show again as they were (UI-400).
- */
-function TabsNode({
-  tree,
-  path,
-  scope,
-}: {
-  tree: Exclude<LayoutTree, { kind: "widget" }>;
-  path: string;
-  scope: Scope;
-}): ReactNode {
-  const children = tree.children.map((child, index) => ({ child, id: `${path}.${index}` }));
-  const [picked, setPicked] = useState<string | undefined>(undefined);
-  useRevealTab(children, setPicked);
-  const selected = children.find(({ id }) => id === picked)?.id ?? children[0]?.id;
-  const bar = useTabBar(selected);
-  const [only] = children;
-  if (only !== undefined && children.length === 1) {
-    // One tab needs no tab bar (AGT-010): the default view's `main` slot holds the chat alone until files open.
-    return (
-      <div className="omfp-view__tabs" data-layout="tabs" data-path={path}>
-        <div className="omfp-view__panel">
-          <Node tree={only.child} path={only.id} scope={scope} />
-        </div>
-      </div>
-    );
-  }
-  return (
-    <Tabs
-      className="omfp-view__tabs"
-      data-layout="tabs"
-      data-path={path}
-      {...(selected === undefined ? {} : { selectedKey: selected })}
-      onSelectionChange={(key) => setPicked(String(key))}
-    >
-      <div className="omfp-view__tabbar" ref={bar}>
-        <TabList aria-label={text.views}>
-          {children.map(({ child, id }) => (
-            <Tab key={id} id={id} data-testid="view-tab">
-              {nodeTitle(child)}
-            </Tab>
-          ))}
-        </TabList>
-      </div>
-      {children.map(({ child, id }) => (
-        <TabPanel key={id} id={id} className="omfp-view__panel" keepMounted>
-          <Node tree={child} path={id} scope={scope} />
-        </TabPanel>
-      ))}
-    </Tabs>
-  );
+/** A tab the `main` slot opened: a file (`omfp:file`) or a widget a reveal opened there (UI-373). */
+interface OpenedTab {
+  readonly id: string;
+  readonly kind: "file" | "widget";
+  readonly title: string;
+  readonly tooltip: string;
+  readonly reference: string;
+  readonly props: Readonly<Record<string, unknown>>;
+  readonly file: string | undefined;
 }
 
-/**
- * The `tabs` container with `"id": "main"` (UI-115): its own children, then this window's open files of the workspace
- * as tabs (`omfp:file`), then the widgets reveals opened here (UI-373), the selected one window-local too. One tab
- * alone needs no tab bar. A middle click closes the opened tab under the pointer (UI-365), as browsers and editors do.
- * Every tab stays mounted while another shows, like the other `tabs` containers' (UI-400): a file keeps its edit.
- */
-function MainTabs({
-  tree,
-  path,
-  scope,
-}: {
-  tree: Exclude<LayoutTree, { kind: "widget" }>;
-  path: string;
-  scope: Scope;
-}): ReactNode {
-  const files = useFileTabs(scope.workspaceId);
-  const own = tree.children.map((child, index) => ({ child, id: `${path}.${index}` }));
-  useRevealTab(own, files.select);
-  const ids = [...own.map(({ id }) => id), ...openedTabIds(files)];
-  const selected = files.active !== undefined && ids.includes(files.active) ? files.active : ids[0];
-  const bar = useTabBar(selected);
-  const [only] = own;
-  if (only !== undefined && ids.length === 1) {
-    return (
-      <div className="omfp-view__tabs" data-layout="tabs" data-path={path} data-slot={MAIN_SLOT}>
-        <div className="omfp-view__panel">
-          <Node tree={only.child} path={only.id} scope={scope} />
-        </div>
-      </div>
-    );
-  }
-  // A widget tab has no props: its instance (useStored, AGT-018) is its reference, as a view node without `instance`.
-  const opened = [
+/** This window's open files of the workspace, then the widgets reveals opened in the `main` slot. A widget tab has no
+ * props: its instance (useStored, AGT-018) is its reference, as a view node without `instance`. */
+function openedTabs(files: FileTabsState): OpenedTab[] {
+  return [
     ...files.tabs.map((tab) => ({
       id: fileTabId(tab.path),
       kind: "file" as const,
@@ -341,17 +255,58 @@ function MainTabs({
       file: undefined,
     })),
   ];
+}
+
+/**
+ * A `tabs` container: one tab per child, the selected one window-local. The one with `"id": "main"` (UI-115) also
+ * holds this window's open files of the workspace and the widgets reveals opened there (UI-373), after its own
+ * children; a middle click closes the opened tab under the pointer (UI-365), as browsers and editors do. One tab alone
+ * needs no tab bar (AGT-010): the default view's `main` slot holds the chat alone until files open. Every tab stays
+ * mounted, the ones not selected hidden with their effects paused, so they show again as they were (UI-400): a file
+ * keeps its edit.
+ */
+function TabsNode({
+  tree,
+  path,
+  scope,
+}: {
+  tree: Exclude<LayoutTree, { kind: "widget" }>;
+  path: string;
+  scope: Scope;
+}): ReactNode {
+  const main = tree.props.id === MAIN_SLOT;
+  const files = useFileTabs(scope.workspaceId);
+  const [picked, setPicked] = useState<string | undefined>(undefined);
+  const own = tree.children.map((child, index) => ({ child, id: `${path}.${index}` }));
+  const opened = main ? openedTabs(files) : [];
+  const select = main ? files.select : setPicked;
+  useRevealTab(own, select);
+  const ids = [...own.map(({ id }) => id), ...opened.map(({ id }) => id)];
+  const active = main ? files.active : picked;
+  const selected = active !== undefined && ids.includes(active) ? active : ids[0];
+  const bar = useTabBar(selected);
+  const slot = main ? MAIN_SLOT : undefined;
+  const [only] = own;
+  if (only !== undefined && ids.length === 1) {
+    return (
+      <div className="omfp-view__tabs" data-layout="tabs" data-path={path} data-slot={slot}>
+        <div className="omfp-view__panel">
+          <Node tree={only.child} path={only.id} scope={scope} />
+        </div>
+      </div>
+    );
+  }
   return (
     <Tabs
       className="omfp-view__tabs"
       data-layout="tabs"
       data-path={path}
-      data-slot={MAIN_SLOT}
+      data-slot={slot}
       {...(selected === undefined ? {} : { selectedKey: selected })}
-      onSelectionChange={(key) => files.select(String(key))}
+      onSelectionChange={(key) => select(String(key))}
     >
-      <div className="omfp-view__tabbar" ref={bar} {...openedTabBarHandlers(files.closeTab)}>
-        <TabList aria-label={text.views}>
+      <div className="omfp-view__tabbar" ref={bar} {...(main ? openedTabBarHandlers(files.closeTab) : {})}>
+        <TabList aria-label={strings.shell.responsive.tabs(tree.kind, main ? MAIN_SLOT : path)}>
           {[
             ...own.map(({ child, id }) => (
               <Tab key={id} id={id} data-testid="view-tab">
@@ -445,6 +400,43 @@ function Cells({
     setPreview(undefined);
     setOwn((previous) => withSizes(previous, key, resizeSizes(current, index, delta)));
   };
+  if (tabbed && choices.length > 1) {
+    // One tab per cell it may show, labelled like a `tabs` container's (UI-154); a cell it may not show (the other
+    // area's) stays mounted, hidden.
+    return (
+      <Tabs
+        className={`omfp-view__${tree.kind}`}
+        data-layout={tree.kind}
+        data-path={path}
+        data-tabbed
+        selectedKey={String(selected)}
+        onSelectionChange={(key) => setPicked(Number(key))}
+      >
+        <TabList className="omfp-view__celltabs" aria-label={strings.shell.responsive.tabs(tree.kind, path)}>
+          {choices.map((index) => {
+            const child = tree.children[index];
+            return (
+              <Tab key={index} id={String(index)} data-testid="cell-tab" data-index={index}>
+                {child === undefined ? `${path}.${index}` : nodeTitle(child)}
+              </Tab>
+            );
+          })}
+        </TabList>
+        {tree.children.map((child, index) => {
+          const id = `${path}.${index}`;
+          return choices.includes(index) ? (
+            <TabPanel key={id} id={String(index)} className="omfp-view__cell" keepMounted>
+              <Node tree={child} path={id} scope={scope} />
+            </TabPanel>
+          ) : (
+            <div key={id} className="omfp-view__cell" hidden>
+              <Node tree={child} path={id} scope={scope} />
+            </div>
+          );
+        })}
+      </Tabs>
+    );
+  }
   return (
     <div
       className={`omfp-view__${tree.kind}`}
@@ -453,16 +445,6 @@ function Cells({
       data-tabbed={tabbed || undefined}
       data-boxes={(boxes && !tabbed) || undefined}
     >
-      {tabbed && choices.length > 1 && (
-        <CellTabs
-          tree={tree}
-          path={path}
-          viewId={scope.viewId}
-          choices={choices}
-          selected={selected}
-          onSelect={setPicked}
-        />
-      )}
       {tree.children.map((child, index) => {
         const id = `${path}.${index}`;
         const before = shown?.[index - 1] ?? 1;
@@ -491,80 +473,12 @@ function Cells({
             )}
             <div
               className="omfp-view__cell"
-              id={tabbed ? cellId(scope.viewId, id) : undefined}
-              role={tabbed ? "tabpanel" : undefined}
               hidden={tabbed && index !== selected}
               style={shown === undefined || tabbed ? undefined : { flexGrow: shown[index] }}
             >
               <Node tree={child} path={id} scope={scope} />
             </div>
           </Fragment>
-        );
-      })}
-    </div>
-  );
-}
-
-/** A phone's tab panel id: unique in the page, which holds the hidden views the frame keeps too (UI-390). */
-function cellId(viewId: string, path: string): string {
-  return `omfp-cell-${encodeURIComponent(viewId)}-${path.replaceAll(".", "-")}`;
-}
-
-/**
- * The tab bar of a container shown as tabs on a phone (UI-204): one tab per cell it may show, labelled like the
- * `tabs` container's (UI-154); the arrow keys move between them.
- */
-function CellTabs({
-  tree,
-  path,
-  viewId,
-  choices,
-  selected,
-  onSelect,
-}: {
-  tree: Exclude<LayoutTree, { kind: "widget" }>;
-  path: string;
-  viewId: string;
-  choices: readonly number[];
-  selected: number;
-  onSelect: (index: number) => void;
-}): ReactNode {
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    const step = { ArrowLeft: -1, ArrowRight: 1 }[event.key];
-    if (step === undefined) {
-      return;
-    }
-    event.preventDefault();
-    const next = choices[(choices.indexOf(selected) + step + choices.length) % choices.length] ?? selected;
-    onSelect(next);
-    event.currentTarget.querySelector<HTMLElement>(`[data-index="${next}"]`)?.focus();
-  };
-  return (
-    <div
-      className="omfp-tabs__list omfp-view__celltabs"
-      role="tablist"
-      aria-label={strings.shell.responsive.tabs(tree.kind, path)}
-      onKeyDown={onKeyDown}
-    >
-      {choices.map((index) => {
-        const child = tree.children[index];
-        const id = `${path}.${index}`;
-        return (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            className="omfp-tabs__tab"
-            aria-selected={index === selected}
-            aria-controls={cellId(viewId, id)}
-            tabIndex={index === selected ? 0 : -1}
-            data-selected={index === selected || undefined}
-            data-testid="cell-tab"
-            data-index={index}
-            onClick={() => onSelect(index)}
-          >
-            {child === undefined ? id : nodeTitle(child)}
-          </button>
         );
       })}
     </div>

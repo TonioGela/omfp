@@ -404,7 +404,6 @@ export const shell = {
     announce: (name: string) => `${name} mode`,
   },
   frame: {
-    views: "View",
     /** The view tabs of the mode line (UI-301). */
     viewTabs: "Views",
     invalidView: (error: string) => `The view is invalid, showing the default view: ${error}`,

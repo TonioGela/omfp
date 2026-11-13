@@ -251,6 +251,7 @@ describe("a view on a phone", () => {
     expect(shown()).toEqual(["repos"]);
     act(() => (tabs()[3] ?? document.body).click());
     expect(shown()).toEqual(["changes"]);
+    act(() => tabs()[0]?.focus());
     fireEvent.keyDown(tabs()[0] ?? document.body, { key: "ArrowRight" });
     expect(shown()).toEqual(["todos"]);
     expect(document.activeElement === tabs()[1]).toBe(true);
