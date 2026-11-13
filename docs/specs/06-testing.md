@@ -168,7 +168,8 @@ Kept few and focused on journeys; everything else belongs to lower layers.
 
 | ID | Requirement |
 | --- | --- |
-| TST-040 | `cargo xtask spec-trace` MUST list every requirement ID in `docs/specs/*.md` and the sources citing it (`spec: <ID>` in Rust or TypeScript sources or the justfile; `target/`, `node_modules/` and hidden directories are skipped), and fail on IDs cited but missing from the specs. `docs/specs/milestones.toml` lists each milestone's requirements: once a milestone is marked `done`, any of them without a citation fails `just ci`. |
+| TST-040 | `cargo xtask spec-trace` MUST list every requirement ID in `docs/specs/*.md` and the sources citing it (`spec: <ID>` in Rust or TypeScript sources or the justfile; `target/`, `node_modules/` and hidden directories but `.github/` are skipped), and fail on IDs cited but missing from the specs. `docs/specs/milestones.toml` lists each milestone's requirements: once a milestone is marked `done`, any of them without a citation fails `just ci`. |
+| TST-114 | (QA) A citation counts as a test of its requirement only where something runs it: `cargo xtask spec-trace` MUST list apart (`not run:`) the citations of Rust tests with an `#[ignore]` among the attributes under the marker, of TypeScript tests right under it that are `.skip`/`.todo`, of justfile recipes `just ci` does not run (`ci`, the recipes of `ci_recipes` and their dependencies run; the release packages do not) and of justfile comments outside any recipe, and MUST count none of them as coverage: a done milestone's requirement cited only there fails with those places named. |
 
 ## Commands
 
