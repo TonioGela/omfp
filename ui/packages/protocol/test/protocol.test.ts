@@ -4,12 +4,8 @@ import {
   INDEX_TOPIC,
   jobTopic,
   METHODS,
-  type MethodName,
   type ParamsOf,
-  PROTOCOL_VERSION,
   parseTopic,
-  type ResultOf,
-  request,
   threadTopic,
   viewsTopic,
   workspaceTopic,
@@ -60,30 +56,10 @@ describe("topics", () => {
 });
 
 describe("method table", () => {
-  // spec: AGT-007
-  test("lists every method once and types params and results", () => {
+  test("lists every method once and types the params", () => {
     expect(new Set(METHODS).size).toBe(METHODS.length);
-    expect(METHODS).toContain("system.hello");
-    expect(METHODS).toContain("thread.prompt");
-
-    const hello: ParamsOf<"system.hello"> = { token: "t", client: "omfp/test", protocol: PROTOCOL_VERSION };
-    const frame = request("1", "system.hello", hello);
-    expect(frame).toEqual({ type: "request", id: "1", method: "system.hello", params: hello });
-
-    const result: ResultOf<"system.hello"> = {
-      daemon: "0.1.0",
-      omp: "18.18.6",
-      protocol: 1,
-      warnings: [],
-      widgetBase: "/widgets/0123",
-      connection: 1,
-    };
-    expect(result.protocol).toBe(PROTOCOL_VERSION);
-
     // @ts-expect-error: `text` is required by `thread.prompt`.
     const missing: ParamsOf<"thread.prompt"> = { threadId: "01J" };
-    expect(missing.threadId).toBe("01J");
-    const name: MethodName = "subscribe";
-    expect(METHODS).toContain(name);
+    void missing;
   });
 });

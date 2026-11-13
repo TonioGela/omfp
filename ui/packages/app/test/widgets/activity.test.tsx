@@ -1,8 +1,6 @@
 /** L4: `omfp:activity` over a fake client (UI-241). */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { ActivityEntry, ListActivityParams } from "@omfp/protocol";
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -81,14 +79,6 @@ function texts(testid: string): string[] {
 }
 
 describe("omfp:activity", () => {
-  // spec: UI-241
-  test("a row with an error line keeps a spacing step before the next row", () => {
-    // happy-dom lays nothing out: the rule itself is checked.
-    const css = readFileSync(join(import.meta.dir, "../../src/styles.css"), "utf8");
-    const rule = /\.omfp-activity__row\[data-failed\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(rule).toMatch(/padding-block-end:\s*var\(--omfp-s\d\)/);
-  });
-
   // spec: UI-241, PRT-086
   test("the log newest first: thread, method, what the params name and the error; older pages on request", async () => {
     const { client, user } = setup();

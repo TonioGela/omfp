@@ -296,5 +296,5 @@ by X", a cascade stop for everything a thread spawned, and an activity log of ag
 | AGT-004 | The UI uses a panel registry, not a fixed layout (UI-024). |
 | AGT-005 | Threads are not bound to repositories, and workspaces can be attached and detached live (ARC-008, DMN-029). |
 | AGT-006 | Host tools are registered from a single registry in the daemon (DMN-060), so adding tools needs no change in the supervisor. |
-| AGT-007 | Protocol methods are self-describing: params and results have JSON Schemas generated from `omfp-protocol` types (`schemars`), checked by golden tests, so agent tool schemas can be derived automatically. |
+| AGT-007 | Protocol methods are self-describing: params and results have JSON Schemas generated from `omfp-protocol` types (`schemars`), so agent tool schemas can be derived automatically. Their text is pinned once, by the TypeScript types generated from them (`ui/packages/protocol/src/generated.ts`, `just gen-ts`), whose staleness test fails on any change; the wire format by the per-method goldens (PRT-031). |
 | AGT-008 | No operation an agent could reasonably perform may require a human in the loop by design (e.g. creating a thread or workspace has no mandatory interactive step); where confirmation is required, it goes through interactions (DMN-050), which agent-originated requests can raise too. |

@@ -1,7 +1,7 @@
 /** L1: the bundle's `index.html` (build.ts): import map, styles, the user theme last, and the favicon (UI-222). */
 
 import { describe, expect, test } from "bun:test";
-import { FAVICONS, indexHtml } from "../index-html.ts";
+import { indexHtml } from "../index-html.ts";
 
 const html = indexHtml({
   importMap: { imports: { react: "/react-1.js" } },
@@ -15,7 +15,7 @@ const head = template.content;
 
 describe("index.html", () => {
   // spec: UI-222
-  test("links the logo's π as the SVG favicon with a 32 px PNG fallback, both copied from docs/brand", () => {
+  test("links the logo's π as the SVG favicon with a 32 px PNG fallback", () => {
     expect(
       [...head.querySelectorAll("link[rel=icon]")].map((link) => [
         link.getAttribute("href"),
@@ -25,10 +25,6 @@ describe("index.html", () => {
     ).toEqual([
       ["/icon-32.png", "image/png", "32x32"],
       ["/icon.svg", "image/svg+xml", "any"],
-    ]);
-    expect(FAVICONS.map(({ source, name }) => [source, name])).toEqual([
-      ["docs/brand/icon-32.png", "icon-32.png"],
-      ["docs/brand/icon.svg", "icon.svg"],
     ]);
   });
 

@@ -1,5 +1,5 @@
 //! L3: the real daemon with the pinned omp and the fake LLM answers omp-forwarded methods with their declared result
-//! types (`Method::Result`, AGT-007): omp's response data, not `omp-rpc`'s unwrapped outputs.
+//! types (`Method::Result`, TST-117): omp's response data, not `omp-rpc`'s unwrapped outputs.
 
 mod client;
 mod common;
@@ -69,7 +69,7 @@ async fn follow_up(client: &mut Client, view: &mut Follower, thread: &str, text:
     .await;
 }
 
-// spec: AGT-007
+// spec: TST-117
 #[tokio::test(flavor = "multi_thread")]
 async fn omp_forwarded_methods_return_their_declared_results() {
     let harness = Harness::new(vec![Step::reply(Reply::text("slow answer")).gated()]).await;

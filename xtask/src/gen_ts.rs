@@ -508,10 +508,5 @@ mod tests {
             committed == generated,
             "{OUTPUT} is stale: run `just gen-ts` and commit the result"
         );
-        assert!(
-            generated.contains("\"system.hello\": { params: HelloParams; result: HelloResult };")
-        );
-        assert!(generated.contains("export type ThreadSummary = {"));
-        assert!(generated.contains("  process: ProcessState;"));
     }
 }

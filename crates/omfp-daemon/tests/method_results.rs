@@ -1,4 +1,4 @@
-//! Integration tests (L2): every method answers with its declared result type (`Method::Result`, AGT-007), checked
+//! Integration tests (L2): every method answers with its declared result type (`Method::Result`, TST-117), checked
 //! by decoding the daemon's response over a real WebSocket. The daemon runs on the fake launcher and fake git.
 
 mod client;
@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use clap::Parser;
 use client::{Client, Follower};
-use omfp_core::wire::{ExtensionUiRequest, GoalOp, ThinkingLevel};
+use omfp_core::wire::{ExtensionUiRequest, ThinkingLevel};
 use omfp_daemon::agent::{FakeLauncher, FakeRun};
 use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
@@ -16,25 +16,21 @@ use omfp_daemon::{DaemonHandle, Ports, start_with};
 use omfp_protocol::method::ActivityList;
 use omfp_protocol::method::{
     FsComplete, InteractionRespond, ReposSuggest, Subscribe, SystemHello, ThemeGet, ThemeSet,
-    ThreadAbort, ThreadBash, ThreadBtw, ThreadCommands, ThreadCompact, ThreadFollowUp, ThreadFork,
-    ThreadGit, ThreadGoal, ThreadLabel, ThreadModels, ThreadNavigate, ThreadPrompt,
-    ThreadQueuePromote, ThreadQueueRemove, ThreadRestart, ThreadSetModel, ThreadSetThinking,
-    ThreadState, ThreadSteer, ThreadStop, ThreadSubagentCancel, ThreadSubagentMessages,
-    ThreadSubagentSteer, ThreadSubagents, ThreadThinkingLevels, ThreadTree, ThreadsArchive,
-    ThreadsCreate, ThreadsDelete, ThreadsSearch, ThreadsUnarchive, ThreadsUpdate, Unsubscribe,
-    WorkspacesAddRepo, WorkspacesCreate, WorkspacesDiff, WorkspacesFindFile, WorkspacesReadFile,
-    WorkspacesRemove, WorkspacesRemoveRepo, WorkspacesRescan, WorkspacesStatus, WorkspacesUpdate,
-    WorkspacesWriteFile,
+    ThreadFollowUp, ThreadGit, ThreadLabel, ThreadPrompt, ThreadRestart, ThreadSetModel,
+    ThreadSetThinking, ThreadSteer, ThreadStop, ThreadSubagentCancel, ThreadSubagentSteer,
+    ThreadsArchive, ThreadsCreate, ThreadsDelete, ThreadsSearch, ThreadsUnarchive, ThreadsUpdate,
+    Unsubscribe, WorkspacesAddRepo, WorkspacesCreate, WorkspacesDiff, WorkspacesFindFile,
+    WorkspacesReadFile, WorkspacesRemove, WorkspacesRemoveRepo, WorkspacesRescan, WorkspacesStatus,
+    WorkspacesUpdate, WorkspacesWriteFile,
 };
 use omfp_protocol::{
-    AddRepoParams, ApprovalMode, BashParams, BtwParams, CompactParams, CompletePathParams,
-    CreateThreadParams, CreateWorkspaceParams, Empty, FileMatch, FindFileParams, ForkParams,
-    GoalParams, HelloParams, InteractionResponse, LabelParams, MessageParams, NavigateParams,
-    PromptParams, QueueMessageParams, ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams,
-    RepoRef, RepoSource, RespondParams, SearchThreadsParams, SetModelParams, SetThinkingParams,
-    SubagentMessagesParams, SubagentRef, SubagentSteerParams, SubscribeParams, SubscribeResult,
-    SuggestReposParams, Theme, ThreadRef, ThreadWorkspace, Topic, TopicParams, UpdateThreadParams,
-    UpdateWorkspaceParams, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
+    AddRepoParams, ApprovalMode, CompletePathParams, CreateThreadParams, CreateWorkspaceParams,
+    Empty, FileMatch, FindFileParams, HelloParams, InteractionResponse, LabelParams, MessageParams,
+    PromptParams, ReadFileParams, RemoveRepoParams, RemoveWorkspaceParams, RepoRef, RepoSource,
+    RespondParams, SearchThreadsParams, SetModelParams, SetThinkingParams, SubagentRef,
+    SubagentSteerParams, SubscribeParams, SubscribeResult, SuggestReposParams, Theme, ThreadRef,
+    ThreadWorkspace, Topic, TopicParams, UpdateThreadParams, UpdateWorkspaceParams,
+    WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
 };
 use omfp_protocol::{ListActivityParams, StopThreadParams};
 use tempfile::TempDir;
@@ -125,7 +121,7 @@ fn message(thread_id: &str, text: &str) -> MessageParams {
     }
 }
 
-// spec: AGT-007
+// spec: TST-117
 #[tokio::test(flavor = "multi_thread")]
 #[allow(clippy::too_many_lines)] // One method after the other.
 async fn connection_repository_and_workspace_methods_return_their_declared_results() {
@@ -259,7 +255,7 @@ async fn connection_repository_and_workspace_methods_return_their_declared_resul
         .await;
 }
 
-// spec: AGT-007
+// spec: TST-117
 #[tokio::test(flavor = "multi_thread")]
 async fn thread_management_methods_return_their_declared_results() {
     let daemon = daemon().await;
@@ -315,7 +311,7 @@ async fn thread_management_methods_return_their_declared_results() {
     assert_eq!(found.results, Vec::new());
 }
 
-// spec: AGT-007, DMN-075
+// spec: TST-117, DMN-075
 #[tokio::test(flavor = "multi_thread")]
 async fn theme_methods_return_their_declared_results() {
     let daemon = daemon().await;
@@ -332,7 +328,7 @@ async fn theme_methods_return_their_declared_results() {
     assert_eq!(client.typed::<ThemeGet>(Empty {}).await, theme);
 }
 
-// spec: AGT-007
+// spec: TST-117
 #[tokio::test(flavor = "multi_thread")]
 async fn agent_methods_the_daemon_answers_itself_return_their_declared_results() {
     let daemon = daemon().await;
@@ -412,83 +408,5 @@ async fn agent_methods_the_daemon_answers_itself_return_their_declared_results()
     assert_eq!(stopped.thread_ids, vec![thread.clone()]);
     client
         .typed::<ActivityList>(ListActivityParams::default())
-        .await;
-}
-
-/// Forwarded methods pass omp's response data through; the fake answers like omp, so these decode as well.
-// spec: AGT-007
-#[tokio::test(flavor = "multi_thread")]
-async fn forwarded_methods_return_their_declared_results_on_the_fake() {
-    let daemon = daemon().await;
-    let mut client = daemon.client().await;
-    let thread = client
-        .typed::<ThreadsCreate>(new_thread("forwarded"))
-        .await
-        .id;
-    let queued = |message: &str| QueueMessageParams {
-        thread_id: thread.clone(),
-        message: message.into(),
-        queue: None,
-    };
-
-    client.typed::<ThreadState>(thread_ref(&thread)).await;
-    client.typed::<ThreadModels>(thread_ref(&thread)).await;
-    client
-        .typed::<ThreadThinkingLevels>(thread_ref(&thread))
-        .await;
-    client.typed::<ThreadCommands>(thread_ref(&thread)).await;
-    client.typed::<ThreadAbort>(thread_ref(&thread)).await;
-    client.typed::<ThreadQueueRemove>(queued("a")).await;
-    client.typed::<ThreadQueuePromote>(queued("a")).await;
-    client
-        .typed::<ThreadCompact>(CompactParams {
-            thread_id: thread.clone(),
-            instructions: None,
-        })
-        .await;
-    client.typed::<ThreadTree>(thread_ref(&thread)).await;
-    client
-        .typed::<ThreadNavigate>(NavigateParams {
-            thread_id: thread.clone(),
-            entry_id: "e1".into(),
-            summarize: None,
-            instructions: None,
-        })
-        .await;
-    client
-        .typed::<ThreadFork>(ForkParams {
-            thread_id: thread.clone(),
-            entry_id: None,
-        })
-        .await;
-    client.typed::<ThreadSubagents>(thread_ref(&thread)).await;
-    client
-        .typed::<ThreadSubagentMessages>(SubagentMessagesParams {
-            thread_id: thread.clone(),
-            subagent_id: "s1".into(),
-            from_byte: None,
-        })
-        .await;
-    client
-        .typed::<ThreadGoal>(GoalParams {
-            thread_id: thread.clone(),
-            op: GoalOp::Get,
-            objective: None,
-            token_budget: None,
-        })
-        .await;
-    client
-        .typed::<ThreadBtw>(BtwParams {
-            thread_id: thread.clone(),
-            question: "why?".into(),
-            record_id: None,
-        })
-        .await;
-    client
-        .typed::<ThreadBash>(BashParams {
-            thread_id: thread.clone(),
-            command: "true".into(),
-            exclude_from_context: None,
-        })
         .await;
 }

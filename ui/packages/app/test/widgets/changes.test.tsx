@@ -8,6 +8,7 @@ import { workspaceTopic } from "@omfp/protocol";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { findRule, parseCss } from "../../../kit/test/support/css.ts";
 import { type OmfpHost, OPEN_FILES, SELECTED_THREAD, type WidgetProps, WidgetScope } from "../../src/sdk/index.ts";
 import { ChangesWidget } from "../../src/widgets/changes/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
@@ -241,17 +242,19 @@ describe("omfp:changes", () => {
   // spec: UI-343
   test("a repository's head stays on one line: the name and the branch shrink with an ellipsis, the rest never", () => {
     // happy-dom lays nothing out: the rules themselves are checked.
-    const css = readFileSync(join(import.meta.dir, "../../src/styles.css"), "utf8");
-    const rule = (selector: string) =>
-      new RegExp(`${selector.replaceAll(".", "\\.").replaceAll("*", "\\*")}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
-    expect(rule(".omfp-changes__repo-head")).toMatch(/flex-wrap:\s*nowrap/);
-    expect(rule(".omfp-changes__repo-head > *")).toMatch(/flex:\s*none/);
+    const rules = parseCss(readFileSync(join(import.meta.dir, "../../src/styles.css"), "utf8"));
+    const rule = (selector: string) => findRule(rules, ["@layer omfp-widgets"], selector).declarations;
+    expect(rule(".omfp-changes__repo-head").get("flex-wrap")).toBe("nowrap");
+    expect(rule(".omfp-changes__repo-head > *").get("flex")).toBe("none");
     for (const shrinking of [".omfp-changes__repo-head > .omfp-changes__repo-name", ".omfp-changes__branch-name"]) {
-      expect(rule(shrinking)).toMatch(
-        /min-inline-size:[^;]*;[\s\S]*overflow:\s*hidden;[\s\S]*text-overflow:\s*ellipsis/,
-      );
+      const declarations = rule(shrinking);
+      expect([
+        declarations.has("min-inline-size"),
+        declarations.get("overflow"),
+        declarations.get("text-overflow"),
+      ]).toEqual([true, "hidden", "ellipsis"]);
     }
-    expect(rule(".omfp-changes__repo-head > .omfp-changes__branch")).toMatch(/flex:\s*0 \d+ auto/);
+    expect(rule(".omfp-changes__repo-head > .omfp-changes__branch").get("flex")).toMatch(/^0 \d+ auto$/);
   });
 
   // spec: UI-341
