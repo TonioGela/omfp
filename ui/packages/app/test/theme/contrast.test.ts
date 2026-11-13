@@ -5,6 +5,7 @@ import {
   AA,
   contrastAdjustments,
   contrastRatio,
+  deltaE,
   failingPairs,
   GUARDED_ROLES,
   lowestRatio,
@@ -57,6 +58,15 @@ describe("contrast", () => {
         { text: "outline", background: "surface", ratio: 4.2 },
       ]),
     ).toEqual(["outline on surface: 4.20"]);
+  });
+
+  // spec: UI-132
+  test("ΔEok is the OKLab distance × 100: zero for one color, 100 from black to white", () => {
+    expect(deltaE([12, 34, 56], [12, 34, 56])).toBe(0);
+    expect(deltaE([0, 0, 0], [255, 255, 255])).toBeCloseTo(100, 3);
+    expect(deltaE([255, 255, 255], [0, 0, 0])).toBeCloseTo(100, 3);
+    // Synth light: primary at 12 % over the surface (composited in sRGB) against the surface.
+    expect(deltaE([0xdc, 0xe7, 0xef], [0xfa, 0xf8, 0xff])).toBeGreaterThan(3);
   });
 });
 

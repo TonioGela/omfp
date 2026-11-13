@@ -81,7 +81,7 @@ function Background({ threadId }: { threadId: string }): ReactNode {
             <li key={`${row.kind}:${row.id}`} className="omfp-background__item">
               <button
                 type="button"
-                className="omfp-subagents__row"
+                className="omfp-subagents__row omfp-focus-item"
                 data-testid="background-row"
                 data-kind={row.kind}
                 data-id={row.id}

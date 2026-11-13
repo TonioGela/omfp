@@ -4,6 +4,7 @@ import { Button, Icon, Select, TextField, ThreadRow } from "@omfp/kit";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AA, type Adjustment, type ContrastPair, contrastRatio } from "../theme/contrast.ts";
 import { cssColorReader } from "../theme/guard.ts";
+import { type FocusMeasure, FocusTable, measureFocus } from "./focus.tsx";
 import { LogoSheet } from "./logo.tsx";
 import { Label, LEVELS, Line, Section } from "./parts.tsx";
 
@@ -218,10 +219,12 @@ function GuardTable({ adjustments }: { adjustments: readonly Adjustment[] }) {
 
 export function TokenSheet({ guard, onMeasured }: { guard: readonly Adjustment[]; onMeasured: () => void }) {
   const [pairs, setPairs] = useState<readonly ContrastPair[] | undefined>();
+  const [focus, setFocus] = useState<readonly FocusMeasure[]>([]);
   const measured = useRef(onMeasured);
   measured.current = onMeasured;
   useLayoutEffect(() => {
     setPairs(measure());
+    setFocus(measureFocus());
   }, []);
   useEffect(() => {
     if (pairs !== undefined) {
@@ -305,6 +308,7 @@ export function TokenSheet({ guard, onMeasured }: { guard: readonly Adjustment[]
           </tbody>
         </table>
       </Section>
+      <FocusTable measures={focus} />
       <GuardTable adjustments={guard} />
     </>
   );

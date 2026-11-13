@@ -70,7 +70,7 @@ function FileView({ path, line, jump, diff }: FileViewProps): ReactNode {
   return (
     <section
       ref={root}
-      className="omfp-file"
+      className="omfp-file omfp-focus-inset"
       data-testid="file"
       data-path={path}
       data-status={file.status}

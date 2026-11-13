@@ -15,6 +15,7 @@ import { Composers, LiveVoice, Transcript } from "./chat.tsx";
 import { Buttons, Choices, Dialogs, Fields, MenuDemo, PathFields, Selects, TabsDemo } from "./controls.tsx";
 import duxTheme from "./dux-solarized.css" with { type: "text" };
 import { Empties, Logs, Marks, ProgressDemo, Toasts } from "./feedback.tsx";
+import { FocusStates } from "./focus.tsx";
 import forestTheme from "./matugen-forest.css" with { type: "text" };
 import { type GalleryParams, type GalleryTheme, galleryParams } from "./params.ts";
 import { HelpPanels, LeftColumn, ModeLines, ResponsiveParts } from "./shell.tsx";
@@ -110,6 +111,7 @@ export function Gallery({ search }: { search: string }) {
         <Diffs />
         <CodeDemo />
         <LeftColumn />
+        <FocusStates />
         <ResponsiveParts />
         <Transcript />
         <Composers />

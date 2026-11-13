@@ -148,7 +148,7 @@ function FloatingWidget({ panel, index, workspaceId, views, registry, onClose }:
       <div className="omfp-floating-file__bar">
         <button
           type="button"
-          className="omfp-floating-file__grip"
+          className="omfp-floating-file__grip omfp-focus-ring"
           aria-label={text.move(title)}
           title={text.move(title)}
           data-testid="floating-widget-move"
@@ -174,7 +174,7 @@ function FloatingWidget({ panel, index, workspaceId, views, registry, onClose }:
       {!state.minimised && (
         <button
           type="button"
-          className="omfp-floating-file__resize"
+          className="omfp-floating-file__resize omfp-focus-ring"
           aria-label={text.resize(title)}
           title={text.resize(title)}
           data-testid="floating-widget-resize"

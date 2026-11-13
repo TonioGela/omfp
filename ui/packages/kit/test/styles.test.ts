@@ -34,12 +34,16 @@ const APP_SRC = join(KIT_SRC, "..", "..", "app", "src");
 const tokensCss = readFileSync(join(KIT_SRC, "tokens.css"), "utf8");
 const kitRules = parseCss(readFileSync(join(KIT_SRC, "kit.css"), "utf8"));
 const LAYER = "@layer omfp-kit";
+const FORCED_COLORS = "@media (forced-colors: active)";
 
-/** Color literals of one stylesheet: hex colors, color functions and named colors in declaration values. */
+/**
+ * Color literals of one stylesheet: hex colors, color functions and named colors in declaration values. System colors
+ * are what forced colors (UI-132) ask for, so rules under `@media (forced-colors: active)` may name them.
+ */
 function colorLiterals(css: string): string[] {
   const text = stripComments(css);
   const literals = [...(text.match(HEX_COLOR) ?? []), ...(text.match(COLOR_FUNCTION) ?? [])];
-  for (const rule of parseCss(css)) {
+  for (const rule of parseCss(css).filter((rule) => !rule.at.includes(FORCED_COLORS))) {
     for (const [property, value] of rule.declarations) {
       const words = value.replace(VAR_REF, "var(").match(/-?[a-z][\w-]*/gi) ?? [];
       literals.push(...words.filter((word) => NAMED_COLORS.has(word.toLowerCase())).map((w) => `${property}: ${w}`));
@@ -62,10 +66,11 @@ describe("kit styles", () => {
     expect(colorLiterals(readFileSync(path, "utf8"))).toEqual([]);
   });
 
-  // spec: UI-091
-  test("the scanner catches every kind of color literal", () => {
+  // spec: UI-091, UI-132
+  test("the scanner catches every kind of color literal, and lets forced colors name system colors", () => {
     const sample = `.a { color: #fff; background: rgb(0 0 0); border-color: hsl(1 2% 3%); fill: RebeccaPurple; }
-      .b { outline-color: Canvas; color: color-mix(in srgb, var(--omfp-primary) 50%, transparent); }`;
+      .b { outline-color: Canvas; color: color-mix(in srgb, var(--omfp-primary) 50%, transparent); }
+      @media (forced-colors: active) { .c { outline-color: Highlight; } }`;
     expect(colorLiterals(sample)).toEqual(["#fff", "rgb(", "hsl(", "fill: RebeccaPurple", "outline-color: Canvas"]);
   });
 
@@ -286,6 +291,110 @@ describe("kit styles", () => {
     ]);
     const appCss = cssFiles(APP_SRC).map((path) => readFileSync(path, "utf8"));
     expect(appCss.filter((css) => css.includes("omfp-blink")).length).toBe(0);
+  });
+
+  const RING = "var(--omfp-focus-w) solid var(--omfp-focus-color)";
+  /** The shared focus rules (UI-132): items (the shadow drawing the bar), the ring, the inset ring's offset. */
+  const itemRules = kitRules.filter((rule) => rule.declarations.get("box-shadow")?.includes("--omfp-focus-bar"));
+  const ringRules = kitRules.filter((rule) => rule.declarations.get("outline") === RING);
+  const insetRules = kitRules.filter(
+    (rule) => rule.declarations.get("outline-offset") === "calc(-1 * var(--omfp-focus-w))",
+  );
+
+  // spec: UI-132
+  test("focused items take a primary tint and a 2 px primary bar, both inset shadows: no outline, glow or transition", () => {
+    const [item, ...more] = itemRules;
+    expect(more.length).toBe(0);
+    expect(Object.fromEntries(item?.declarations ?? [])).toEqual({
+      outline: "var(--focus-item-outline, none)",
+      "outline-offset": "-2px",
+      "box-shadow": "inset 2px 0 0 var(--omfp-focus-bar), inset 0 0 0 999rem var(--omfp-focus-bg)",
+    });
+    const selector = item?.selector ?? "";
+    for (const part of [
+      ".omfp-row",
+      ".omfp-menu__item",
+      ".omfp-listbox__item",
+      ".omfp-tool__head:not(.omfp-bbox__head)",
+      ".omfp-wsection__head",
+      ".omfp-modeline__notice",
+      ".omfp-strip__thread",
+      ":is(.omfp-row, .omfp-focus-item):focus-visible",
+      ".omfp-focus-item.is-focus",
+      ".omfp-focus-item:has(.omfp-focus-item__target:focus-visible, .omfp-focus-item__target :focus-visible)",
+      ".omfp-tool__head.omfp-bbox__head:is([data-focus-visible], .is-focus) .omfp-tool__label",
+    ]) {
+      expect(selector).toContain(part);
+    }
+    // A selected row's own bar (inset, gradient) gives way to the focus bar at full height.
+    const selected = kitRules.filter(
+      (rule) => rule.selector.startsWith(".omfp-row[data-selected]:is(") && rule.selector.endsWith("::before"),
+    );
+    expect(selected.map((rule) => Object.fromEntries(rule.declarations))).toEqual([
+      { "inset-block": "0", background: "var(--omfp-focus-bar)" },
+    ]);
+  });
+
+  // spec: UI-132
+  test("controls and regions keep a quiet 1 px primary ring without glow, inset ones inside; fields only their border", () => {
+    const [ring, ...more] = ringRules;
+    expect(more.length).toBe(0);
+    expect(Object.fromEntries(ring?.declarations ?? [])).toEqual({
+      outline: RING,
+      "outline-offset": "var(--omfp-focus-off)",
+    });
+    for (const part of [
+      ".omfp-button",
+      ".omfp-select__button",
+      ".omfp-tabs__tab",
+      ".omfp-focus-ring",
+      ".omfp-focus-inset",
+      ".omfp-help__list",
+      ":is(.omfp-checkbox, .omfp-radio):is([data-focus-visible], .is-focus) :is(.omfp-checkbox__box, .omfp-radio__dot)",
+    ]) {
+      expect(ring?.selector).toContain(part);
+    }
+    // Text fields take no ring: the primary border is their focus (the composer's box draws its own, UI-172).
+    expect(ring?.selector).not.toContain("input-box");
+    const field = findRule(kitRules, [LAYER], ".omfp-input-box:focus-within, .omfp-field.is-focus .omfp-input-box");
+    expect(Object.fromEntries(field.declarations)).toEqual({ "border-color": "var(--omfp-focus-color)" });
+    const [inset, ...others] = insetRules;
+    expect(others.length).toBe(0);
+    expect(inset?.selector).toContain(".omfp-focus-inset");
+    expect(inset?.declarations.size).toBe(1);
+    const css = [
+      tokensCss,
+      ...[join(KIT_SRC, "kit.css"), ...cssFiles(APP_SRC)].map((path) => readFileSync(path, "utf8")),
+    ];
+    expect(css.filter((text) => text.includes("focus-glow")).length).toBe(0);
+  });
+
+  // spec: UI-132, UI-146
+  test("one convention: no other kit or app rule draws a focus outline or shadow, and only insert mode pulses", () => {
+    const FOCUS_STATE = /focus-visible|focus-within|\.is-focus|:focus\b/;
+    const shared = new Set([...itemRules, ...ringRules, ...insetRules].map((rule) => rule.selector));
+    const drawing = [join(KIT_SRC, "kit.css"), ...cssFiles(APP_SRC)].flatMap((path) =>
+      parseCss(readFileSync(path, "utf8"))
+        .filter((rule) => FOCUS_STATE.test(rule.selector) && !shared.has(rule.selector))
+        .filter((rule) =>
+          ["outline", "outline-offset", "box-shadow"].some((property) => rule.declarations.has(property)),
+        )
+        .map((rule) => `${basename(path)}: ${rule.selector}`),
+    );
+    expect(drawing).toEqual([]);
+    const glowing = kitRules.filter((rule) => rule.declarations.get("animation")?.startsWith("omfp-glow"));
+    expect(glowing.map((rule) => rule.selector)).toEqual([
+      ':root[data-motion="full"] .omfp-compose[data-mode="insert"]',
+    ]);
+  });
+
+  // spec: UI-132
+  test("forced colors: items take a 2 px Highlight outline inside their edge, the ring turns Highlight", () => {
+    const forced = findRule(kitRules, [LAYER, FORCED_COLORS], ":root");
+    expect(Object.fromEntries(forced.declarations)).toEqual({
+      "--omfp-focus-color": "Highlight",
+      "--focus-item-outline": "2px solid Highlight",
+    });
   });
 });
 

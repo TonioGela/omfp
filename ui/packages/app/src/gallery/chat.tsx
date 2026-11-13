@@ -51,9 +51,12 @@ export function Transcript() {
           tone and the focus ring. A reader of the transcript skims this reasoning, so it stays light and secondary
           beside the reply below, which carries the answer.
         </Thinking>
-        <Message author="assistant" name="omp">
-          <Markdown text={"Done: the tokens now live in **one namespace**, `--omfp-*`."} />
-        </Message>
+        {/* A transcript item with the keyboard focus (UI-132): the tint and the bar beside the message. */}
+        <div className="omfp-focus-item omfp-gallery__item is-focus">
+          <Message author="assistant" name="omp">
+            <Markdown text={"Done: the tokens now live in **one namespace**, `--omfp-*`."} />
+          </Message>
+        </div>
         <Message author="assistant" name="omp">
           <p className="omfp-prose">
             Restyling the buttons now, starting with the primary gradient

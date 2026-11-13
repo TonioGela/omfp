@@ -43,7 +43,7 @@ export function FloatingFile({ workspaceId, views, registry }: FloatingFileProps
     <div className="omfp-floating-file__bar" {...openedTabBarHandlers(files.closeTab)}>
       <button
         type="button"
-        className="omfp-floating-file__grip"
+        className="omfp-floating-file__grip omfp-focus-ring"
         aria-label={text.move}
         title={text.move}
         data-testid="floating-file-move"
@@ -115,7 +115,7 @@ export function FloatingFile({ workspaceId, views, registry }: FloatingFileProps
           </Tabs>
           <button
             type="button"
-            className="omfp-floating-file__resize"
+            className="omfp-floating-file__resize omfp-focus-ring"
             aria-label={text.resize}
             title={text.resize}
             data-testid="floating-file-resize"

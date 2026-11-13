@@ -1,8 +1,9 @@
 //! The `/kit` gallery (UI-173, UI-174) at motion `none`, 17 px, compact, in light and dark for the built-in Synth
 //! palette, the matugen fixture theme and the Dux Solarized preset (whose tertiary and secondary sit on the surface at
 //! 1.14:1 until the contrast guard, UI-196, moves them): every text role, status color and gradient stop the page
-//! measures reaches WCAG AA, and the guard overrides nothing in Synth and the matugen fixture. Full-page shots land in `/tmp/omfp-kit-<theme>-<scheme>.png` (or `OMFP_SCREENSHOT_DIR`) for a look by eye;
-//! nothing compares them.
+//! measures reaches WCAG AA, the guard overrides nothing in Synth and the matugen fixture, and there the item focus
+//! (UI-132) stays visible: its bar at 3:1, its tint apart from the other states. Full-page shots land in
+//! `/tmp/omfp-kit-<theme>-<scheme>.png` (or `OMFP_SCREENSHOT_DIR`) for a look by eye; nothing compares them.
 
 use std::path::PathBuf;
 
@@ -82,7 +83,21 @@ async fn contrast_failures(journey: &Journey) -> anyhow::Result<Vec<String>> {
     Ok(serde_json::from_value(value)?)
 }
 
-// spec: UI-173, UI-174, UI-124, UI-135, UI-140, UI-145, UI-196, UI-337, UI-338
+/// The focus measures (UI-132) as `(passes, what on surface: value / threshold)`, printed for the record.
+async fn focus_measures(journey: &Journey) -> anyhow::Result<Vec<(bool, String)>> {
+    let measured = journey.count("[data-testid=focus-contrast]").await?;
+    anyhow::ensure!(measured > 0, "the gallery measured no focus");
+    let value = journey
+        .eval(
+            "return [...document.querySelectorAll('[data-testid=focus-contrast]')].map(({ dataset: row }) =>
+               [row.pass === 'true', `${row.what} on ${row.surface}: ${row.value} / ${row.threshold}`]);",
+            Vec::new(),
+        )
+        .await?;
+    Ok(serde_json::from_value(value)?)
+}
+
+// spec: UI-173, UI-174, UI-124, UI-132, UI-135, UI-140, UI-145, UI-196, UI-337, UI-338
 #[tokio::test(flavor = "multi_thread")]
 async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
@@ -103,6 +118,12 @@ async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> 
                 problems.push(format!(
                     "{theme} {scheme}: contrast guard overrides {guarded:?}"
                 ));
+            }
+            for (passes, measure) in focus_measures(&journey).await? {
+                eprintln!("focus {theme} {scheme}: {measure}");
+                if !passes && GOOD_THEMES.contains(&theme) {
+                    problems.push(format!("{theme} {scheme}: focus not visible: {measure}"));
+                }
             }
             // The gallery's four composers start their text where their bars' chips start.
             anyhow::ensure!(

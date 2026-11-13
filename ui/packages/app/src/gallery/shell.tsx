@@ -236,6 +236,7 @@ export function LeftColumn() {
           <ThreadRow state="idle" title="Selected thread" meta="1d" selected />
           <ThreadRow state="idle" title="Hovered thread" meta="2d" className="is-hover" onDelete={() => undefined} />
           <ThreadRow state="idle" title="Focused thread" meta="2d" className="is-focus" onDelete={() => undefined} />
+          <ThreadRow state="idle" title="Selected and focused" meta="2d" selected className="is-focus" />
           <ThreadRow state="awaiting" title="Fresh: just started awaiting" meta="now" fresh />
           <ActionRow icon="plus">thread</ActionRow>
           <ActionRow kind="archived" icon="archive">
@@ -254,7 +255,7 @@ export function LeftColumn() {
 const STRIP_THREADS: readonly StripItem[] = [
   { id: "awaiting", title: "Awaiting the user", state: "awaiting" },
   { id: "running", title: "Running thread", state: "running", selected: true },
-  { id: "failed", title: "Failed thread", state: "failed" },
+  { id: "failed", title: "Failed thread, focused", state: "failed", className: "is-focus" },
 ];
 
 const AREAS: readonly AreaItem[] = [

@@ -36,7 +36,7 @@ export function ThreadRow({
   const filtering = spawnedBy === thread.id;
   return (
     <li
-      className="omfp-row omfp-thread omfp-thread-item"
+      className="omfp-row omfp-thread omfp-thread-item omfp-focus-item"
       data-state={state}
       data-unread={unread || undefined}
       data-selected={selected || undefined}
@@ -46,7 +46,7 @@ export function ThreadRow({
     >
       <button
         type="button"
-        className="omfp-thread-row"
+        className="omfp-thread-row omfp-focus-item__target"
         data-testid="thread-row"
         data-thread-id={thread.id}
         data-status={status}

@@ -330,7 +330,7 @@ function AddRepository({ workspaceId }: { workspaceId: string }): ReactNode {
       >
         <div className="omfp-workspace__kind-options">
           {ADD_KINDS.map((candidate) => (
-            <Radio key={candidate} value={candidate} data-value={candidate}>
+            <Radio key={candidate} value={candidate} data-value={candidate} className="omfp-focus-inset">
               <Icon name={ADD_ICON[candidate]} />
               {text.kinds[candidate]}
             </Radio>

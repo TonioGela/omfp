@@ -256,6 +256,29 @@
     background: var(--omfp-side-bg);
   }
 
+  /* The focus sheet (UI-132): one column per surface items sit on. */
+  .omfp-gallery__focus {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--omfp-s4);
+  }
+
+  .omfp-gallery__focus-surface {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s1);
+    padding: var(--omfp-s3) var(--omfp-s2);
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+  }
+
+  /* A transcript item as the transcript draws it: reaching `s2` into the gutter, so its bar sits beside the message. */
+  .omfp-gallery__item {
+    margin-inline: calc(-1 * var(--omfp-s2));
+    padding: var(--omfp-s1) var(--omfp-s2);
+    border-radius: var(--omfp-r-row);
+  }
+
   /* Splitters between two panes, the phone's bottom bar at a phone's width (UI-208). */
   .omfp-gallery__split {
     display: flex;

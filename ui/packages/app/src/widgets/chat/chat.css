@@ -125,18 +125,16 @@
     padding-block: var(--omfp-s4);
   }
 
-  .omfp-transcript:focus-visible,
-  .omfp-transcript__item:focus-visible {
-    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
-    outline-offset: calc(-1 * var(--omfp-focus-w));
-  }
-
+  /* An item reaches `s2` into the gutter on both sides, so its focus bar and selected background (UI-132) sit beside
+     the message, not on its own left border; the content keeps the measure. */
   .omfp-transcript__item {
-    padding-block: calc(var(--omfp-msg-gap) / 2);
+    box-sizing: content-box;
+    margin-inline: calc(-1 * var(--omfp-s2));
+    padding: calc(var(--omfp-msg-gap) / 2) var(--omfp-s2);
+    border-radius: var(--omfp-r-row);
   }
 
   .omfp-transcript__item[aria-current="true"] {
-    border-radius: var(--omfp-r-row);
     background: var(--omfp-sel-bg);
   }
 
@@ -710,9 +708,6 @@
   .omfp-compose__field .omfp-input-box:focus-within {
     padding: 0;
     border: 0;
-    outline: none;
-    box-shadow: none;
-    animation: none;
     background: none;
   }
 

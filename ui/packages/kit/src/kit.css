@@ -2600,12 +2600,6 @@
     overscroll-behavior: contain;
   }
 
-  /* The list takes the focus so the keyboard can scroll it (UI-092). */
-  .omfp-help__list:focus-visible {
-    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
-    outline-offset: calc(-1 * var(--omfp-focus-w));
-  }
-
   .omfp-help__list .omfp-bbox__rule {
     margin: 0;
   }
@@ -2965,12 +2959,6 @@
     background: var(--omfp-sel-bg);
   }
 
-  .omfp-strip__thread:is([data-focus-visible], .is-focus) {
-    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
-    outline-offset: var(--omfp-focus-off);
-    box-shadow: var(--omfp-focus-glow);
-  }
-
   /* The phone's bottom bar (UI-204, UI-208): equal 44 px buttons, icon over label; the shown area in `primary` with a
    * 2 px gradient bar on its top edge. */
   .omfp-areabar {
@@ -3022,11 +3010,6 @@
     block-size: 2px;
     border-radius: 2px;
     background: var(--omfp-grad);
-  }
-
-  .omfp-areabar__item:is([data-focus-visible], .is-focus) {
-    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
-    outline-offset: calc(-1 * var(--omfp-focus-w));
   }
 
   /* A dialog in a popover (UI-202): `╭─ title` in `primary` over its rows. */
@@ -3321,33 +3304,89 @@
     text-decoration: underline;
   }
 
-  /* Focus ring (UI-132): one rule for every focusable part; fields show it on :focus-within. Last, so it wins over
-     the components' own borders and shadows. */
+  /* Focus (UI-132), last so it wins over the components' own outlines, backgrounds and shadows. Two looks, one rule
+     each; app and widget elements opt in with the `omfp-focus-*` classes. The indicator appears without a transition.
+
+     Items you move between (rows, menu and list options, card and section heads, mode-line notices, strip threads,
+     transcript items; `omfp-focus-item`, or its `omfp-focus-item__target` when a child takes the focus): a primary
+     tint and a 2 px primary bar on the inline-start edge, both inset shadows, so they lay over the item's own
+     background (hovered, selected) and follow its radius; nothing moves. */
+  :is(
+    .omfp-menu__item,
+    .omfp-listbox__item,
+    .omfp-card__toggle,
+    .omfp-disclosure__trigger,
+    .omfp-tool__head:not(.omfp-bbox__head),
+    .omfp-wsection__head,
+    .omfp-row,
+    .omfp-reasoning__head,
+    .omfp-modeline__notice,
+    .omfp-strip__thread
+  ):is([data-focus-visible], .is-focus),
+  :is(.omfp-row, .omfp-focus-item):focus-visible,
+  .omfp-focus-item.is-focus,
+  .omfp-focus-item:has(.omfp-focus-item__target:focus-visible, .omfp-focus-item__target :focus-visible),
+  .omfp-tool__head.omfp-bbox__head:is([data-focus-visible], .is-focus) .omfp-tool__label {
+    outline: var(--focus-item-outline, none);
+    outline-offset: -2px;
+    box-shadow:
+      inset 2px 0 0 var(--omfp-focus-bar),
+      inset 0 0 0 999rem var(--omfp-focus-bg);
+  }
+
+  /* A selected row's own bar (inset, primary → tertiary) gives way to the focus bar, full height. */
+  .omfp-row[data-selected]:is(
+    [data-focus-visible],
+    .is-focus,
+    :focus-visible,
+    :has(.omfp-focus-item__target:focus-visible, .omfp-focus-item__target :focus-visible)
+  )::before {
+    inset-block: 0;
+    background: var(--omfp-focus-bar);
+  }
+
+  /* Controls (buttons, selects, tabs, checkboxes and radios) and focusable regions: a quiet 1 px primary ring, no glow.
+     Text fields take no ring: their primary border is their focus. App controls opt in with `omfp-focus-ring`; regions
+     and controls inside a clipping box with `omfp-focus-inset`, whose ring sits inside. */
   :is(
     .omfp-button,
     .omfp-select__button,
     .omfp-tabs__tab,
-    .omfp-menu__item,
-    .omfp-card__toggle,
-    .omfp-disclosure__trigger,
-    .omfp-tool__head,
-    .omfp-wsection__head,
-    .omfp-row,
-    .omfp-reasoning__head,
     .omfp-search__clear,
     .omfp-tabs__panel,
-    .omfp-modeline__notice
+    .omfp-areabar__item,
+    .omfp-focus-ring,
+    .omfp-focus-inset
   ):is([data-focus-visible], .is-focus),
-  :is(.omfp-row, .omfp-path-link, .omfp-log, .omfp-markdown a, .omfp-live):focus-visible,
+  :is(
+    .omfp-path-link,
+    .omfp-log,
+    .omfp-markdown a,
+    .omfp-live,
+    .omfp-chat-header__title,
+    .omfp-help__list,
+    .omfp-focus-ring,
+    .omfp-focus-inset
+  ):focus-visible,
   .omfp-live.is-focus,
   .omfp-select.is-focus .omfp-select__button,
-  :is(.omfp-checkbox, .omfp-radio):is([data-focus-visible], .is-focus) :is(.omfp-checkbox__box, .omfp-radio__dot),
-  .omfp-chat-header__title:focus-visible,
-  .omfp-input-box:focus-within,
-  .omfp-field.is-focus .omfp-input-box {
+  :is(.omfp-checkbox, .omfp-radio):is([data-focus-visible], .is-focus) :is(.omfp-checkbox__box, .omfp-radio__dot) {
     outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
     outline-offset: var(--omfp-focus-off);
-    box-shadow: var(--omfp-focus-glow);
+  }
+
+  :is(.omfp-areabar__item, .omfp-focus-inset):is([data-focus-visible], .is-focus, :focus-visible),
+  .omfp-help__list:focus-visible {
+    outline-offset: calc(-1 * var(--omfp-focus-w));
+  }
+
+  /* Forced colors (Windows high contrast): shadows and tints are dropped, so items take a 2 px `Highlight` outline
+     inside their edge and the ring uses `Highlight` too. */
+  @media (forced-colors: active) {
+    :root {
+      --omfp-focus-color: Highlight;
+      --focus-item-outline: 2px solid Highlight;
+    }
   }
 
   /* Motion at `full` only (UI-146): flows, shimmer, breathe, slide-ins, stagger, glow, flash, bounce, pops. */
@@ -3422,14 +3461,6 @@
     animation-delay: 100ms;
   }
 
-  :root[data-motion="full"]
-    :is(.omfp-button, .omfp-select__button, .omfp-tabs__tab, .omfp-row, .omfp-tool__head, .omfp-menu__item):is(
-      [data-focus-visible],
-      .is-focus
-    ),
-  :root[data-motion="full"] .omfp-select.is-focus .omfp-select__button,
-  :root[data-motion="full"] .omfp-input-box:focus-within,
-  :root[data-motion="full"] .omfp-field.is-focus .omfp-input-box,
   :root[data-motion="full"] .omfp-compose[data-mode="insert"] {
     animation: omfp-glow 2.2s ease-in-out infinite;
   }

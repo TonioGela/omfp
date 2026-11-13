@@ -107,8 +107,8 @@ export const SHAPE_TOKENS: Readonly<Record<string, string>> = {
   "focus-w": "1px",
   "focus-off": "1px",
   "focus-color": "var(--omfp-primary)",
-  "focus-glow":
-    "0 0 0 3px color-mix(in oklab, var(--omfp-primary) 22%, transparent), 0 0 0.9rem color-mix(in oklab, var(--omfp-primary) 40%, transparent)",
+  "focus-bg": "color-mix(in oklab, var(--omfp-primary) 12%, transparent)",
+  "focus-bar": "var(--omfp-primary)",
   hover: "color-mix(in oklab, var(--omfp-primary) 8%, transparent)",
   press: "color-mix(in oklab, var(--omfp-primary) 15%, transparent)",
   "sel-bg": "var(--omfp-grad-soft)",

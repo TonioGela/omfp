@@ -330,7 +330,7 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
   return (
     <div
       ref={containerRef}
-      className="omfp-transcript"
+      className="omfp-transcript omfp-focus-inset"
       data-testid="transcript"
       data-thread-id={threadId}
       data-pinned={pin.pinned}
@@ -380,7 +380,7 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
                 data-testid="transcript-item"
                 aria-current={current === virtual.index ? true : undefined}
                 tabIndex={-1}
-                className="omfp-transcript__item"
+                className="omfp-transcript__item omfp-focus-item"
                 style={{
                   position: "absolute",
                   top: 0,

@@ -229,13 +229,12 @@
     --omfp-ic-sm: 0.8125rem;
     --omfp-ic-stroke: 2;
 
-    /* Focus (UI-132) and interactive states (UI-133) */
+    /* Focus (UI-132) and interactive states (UI-133): controls take a quiet ring, items a tint and a bar. */
     --omfp-focus-w: 1px;
     --omfp-focus-off: 1px;
     --omfp-focus-color: var(--omfp-primary);
-    --omfp-focus-glow:
-      0 0 0 3px color-mix(in oklab, var(--omfp-primary) 22%, transparent),
-      0 0 0.9rem color-mix(in oklab, var(--omfp-primary) 40%, transparent);
+    --omfp-focus-bg: color-mix(in oklab, var(--omfp-primary) 12%, transparent);
+    --omfp-focus-bar: var(--omfp-primary);
     --omfp-hover: color-mix(in oklab, var(--omfp-primary) 8%, transparent);
     --omfp-press: color-mix(in oklab, var(--omfp-primary) 15%, transparent);
     --omfp-sel-bg: var(--omfp-grad-soft);

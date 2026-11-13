@@ -124,7 +124,7 @@ function ViewTabs({ views, current, onSelect }: ModeLineViews): ReactNode {
         <button
           key={id}
           type="button"
-          className="omfp-modeline__view"
+          className="omfp-modeline__view omfp-focus-inset"
           aria-current={id === current || undefined}
           data-current={id === current || undefined}
           data-testid="mode-view"

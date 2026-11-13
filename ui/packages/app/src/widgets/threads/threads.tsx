@@ -415,11 +415,11 @@ function WorkspaceSection({
       data-current={current ? "true" : undefined}
       aria-labelledby={headingId}
     >
-      <div className="omfp-ws__head">
+      <div className="omfp-ws__head omfp-focus-item">
         <button
           ref={head}
           type="button"
-          className="omfp-ws__chevron"
+          className="omfp-ws__chevron omfp-focus-item__target"
           data-testid="workspace-collapse"
           aria-expanded={!collapsed}
           aria-label={collapsed ? text.expand(workspace.name) : text.collapse(workspace.name)}
@@ -498,13 +498,13 @@ function WorkspaceSection({
             })}
             {draftHere && (
               <li
-                className="omfp-row omfp-thread omfp-thread-item"
+                className="omfp-row omfp-thread omfp-thread-item omfp-focus-item"
                 data-state="idle"
                 data-selected={selected === undefined || undefined}
               >
                 <button
                   type="button"
-                  className="omfp-thread-row"
+                  className="omfp-thread-row omfp-focus-item__target"
                   data-testid="draft-thread"
                   data-workspace-id={workspace.id}
                   aria-current={selected === undefined ? "true" : undefined}

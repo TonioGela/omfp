@@ -62,7 +62,14 @@ export function ToolCards() {
       <ToolCard status="running" name="bash" arg="bun test packages/kit" meta="4.2s" expanded={false}>
         <span />
       </ToolCard>
-      <ToolCard status="done" name="read" arg="ui/packages/kit/src/kit.css" meta="1,148 lines" expanded={false}>
+      <ToolCard
+        status="done"
+        name="read"
+        arg="ui/packages/kit/src/kit.css"
+        meta="1,148 lines · focus"
+        expanded={false}
+        headClassName="is-focus"
+      >
         <span />
       </ToolCard>
       <ToolCard
@@ -101,7 +108,7 @@ export function ToolCards() {
         <BoxRule label="Output" />
         <Code block code="error: UI-174 is not cited by any test" />
       </ToolCard>
-      <ToolCard status="done" name="write" arg="docs/notes.md" meta="3 lines" expanded>
+      <ToolCard status="done" name="write" arg="docs/notes.md" meta="3 lines · focus" expanded headClassName="is-focus">
         <Code block code={"# Notes\n\n- the title sits on the border"} language="markdown" />
       </ToolCard>
       <ToolCard status="done" name="todo" arg="3 items" expanded>

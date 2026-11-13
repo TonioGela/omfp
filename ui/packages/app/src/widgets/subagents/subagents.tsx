@@ -79,7 +79,7 @@ function Subagents({ threadId }: { threadId: string }): ReactNode {
             <li key={row.id}>
               <button
                 type="button"
-                className="omfp-subagents__row"
+                className="omfp-subagents__row omfp-focus-item"
                 data-testid="subagent-row"
                 data-subagent={row.id}
                 data-status={row.status}

@@ -93,6 +93,8 @@ export interface ToolCardProps extends Omit<HTMLAttributes<HTMLElement>, "title"
   onExpandedChange?: (expanded: boolean) => void;
   /** `data-testid` of the head (`tool-head` by default). */
   headTestId?: string;
+  /** Class names of the head (forced states in the gallery). */
+  headClassName?: string;
   /** The body: a tool renderer (output, diff, todo list). Without one the head is not clickable. */
   children?: ReactNode;
 }
@@ -111,6 +113,7 @@ export function ToolCard({
   expanded = false,
   onExpandedChange,
   headTestId = "tool-head",
+  headClassName,
   className,
   children,
   ...props
@@ -129,7 +132,7 @@ export function ToolCard({
       {boxed && <BorderLine />}
     </>
   );
-  const headClass = cx("omfp-tool__head", boxed && "omfp-bbox__head");
+  const headClass = cx("omfp-tool__head", boxed && "omfp-bbox__head", headClassName);
   return (
     <section {...props} className={cx("omfp-tool", boxed && "omfp-bbox", className)} data-status={status}>
       {hasBody ? (

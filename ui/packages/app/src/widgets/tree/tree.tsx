@@ -153,7 +153,7 @@ function SessionTree({ threadId }: { threadId: string }): ReactNode {
           {view.rows.map((row) => (
             <li
               key={row.id}
-              className="omfp-tree__row"
+              className="omfp-tree__row omfp-focus-item"
               data-testid="tree-row"
               data-entry={row.id}
               data-kind={row.kind}
@@ -175,7 +175,7 @@ function SessionTree({ threadId }: { threadId: string }): ReactNode {
               {labelling === row.id ? (
                 <LabelField row={row} onSave={label} onCancel={() => setLabelling(undefined)} />
               ) : (
-                <span className="omfp-tree__actions">
+                <span className="omfp-tree__actions omfp-focus-item__target">
                   {!row.leaf && (
                     <Button
                       size="sm"

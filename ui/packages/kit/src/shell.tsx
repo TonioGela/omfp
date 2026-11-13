@@ -549,6 +549,8 @@ export interface StripItem {
   title: string;
   state: ThreadState;
   selected?: boolean;
+  /** Class names of its button (forced states in the gallery). */
+  className?: string;
 }
 
 export interface ThreadStripProps extends Omit<HTMLAttributes<HTMLElement>, "onToggle" | "onSelect"> {
@@ -597,7 +599,7 @@ export function ThreadStrip({
         {threads.map((thread) => (
           <li key={thread.id}>
             <AriaButton
-              className="omfp-strip__thread"
+              className={cx("omfp-strip__thread", thread.className)}
               aria-label={thread.title}
               data-state={thread.state}
               data-selected={thread.selected === true || undefined}

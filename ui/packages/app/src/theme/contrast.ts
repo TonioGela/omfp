@@ -152,6 +152,15 @@ export function contrastRatio(a: Rgb, b: Rgb): number {
   return ((high ?? 0) + 0.05) / ((low ?? 0) + 0.05);
 }
 
+/**
+ * How far apart two colors look: the OKLab distance × 100 (ΔEok; about 2 is the least step people notice). For
+ * backgrounds too close in luminance for a contrast ratio to say anything, such as a tint and its surface (UI-132).
+ */
+export function deltaE(a: Rgb, b: Rgb): number {
+  const [x, y] = [toOklab(a), toOklab(b)];
+  return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) * 100;
+}
+
 /** The pairs under AA, as `text on background: ratio`. */
 export function failingPairs(pairs: readonly ContrastPair[]): string[] {
   return pairs
