@@ -123,13 +123,14 @@ describe("Markdown preview", () => {
   });
 
   // spec: UI-562
-  test("relative images show their alt text until the SDK serves files by URL", async () => {
+  test("relative images load from the SDK's file URL, resolved against the Markdown file's folder", async () => {
     setup("fe/docs/guide.md", "![the chart](img/chart.png)\n\n![remote](https://example.com/r.png)\n");
     const preview = await screen.findByTestId("file-viewer");
-    expect(screen.getByTestId("file-image-alt").textContent).toBe("the chart");
-    expect([...preview.querySelectorAll("img")].map((img) => img.getAttribute("src"))).toEqual([
-      "https://example.com/r.png",
-    ]);
+    expect(screen.queryAllByTestId("file-image-alt").length).toBe(0);
+    const sources = [...preview.querySelectorAll("img")].map((img) => img.getAttribute("src") ?? "");
+    expect(sources.length).toBe(2);
+    expect(sources[0]).toEndWith("/w1/fe/docs/img/chart.png");
+    expect(sources[1]).toBe("https://example.com/r.png");
   });
 
   // spec: UI-562
