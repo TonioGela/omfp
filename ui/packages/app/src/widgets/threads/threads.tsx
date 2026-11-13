@@ -81,6 +81,7 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
   const [collapsed] = useWindowState(COLLAPSED_WORKSPACES);
   const [archivedOpen] = useWindowState(ARCHIVED_OPEN);
   const [spawnedBy, setSpawnedBy] = useWindowState(SPAWNED_BY);
+  // The column is `aria-busy` until the index is live (again while it resubscribes after a reconnect).
   const loaded = useSnapshot((snapshot) =>
     snapshot.topics.some((topic) => topic.topic === INDEX_TOPIC && topic.sync.kind === "live"),
   );
@@ -135,7 +136,14 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
   });
   if (workspaces.length === 0) {
     return (
-      <nav ref={root} className="omfp-threads" aria-label={text.label} data-testid="sidebar" data-omfp-scope="threads">
+      <nav
+        ref={root}
+        className="omfp-threads"
+        aria-label={text.label}
+        aria-busy={!loaded}
+        data-testid="sidebar"
+        data-omfp-scope="threads"
+      >
         <Brand host={location.hostname} />
         <NewWorkspace inputRef={newWorkspace} focus={loaded} />
         {loaded && (
@@ -147,7 +155,14 @@ export function ThreadsWidget(_props: WidgetProps): ReactNode {
     );
   }
   return (
-    <nav ref={root} className="omfp-threads" aria-label={text.label} data-testid="sidebar" data-omfp-scope="threads">
+    <nav
+      ref={root}
+      className="omfp-threads"
+      aria-label={text.label}
+      aria-busy={!loaded}
+      data-testid="sidebar"
+      data-omfp-scope="threads"
+    >
       <Brand host={location.hostname} />
       <ThreadFilterField search={search} />
       <NewWorkspace inputRef={newWorkspace} focus={false} />

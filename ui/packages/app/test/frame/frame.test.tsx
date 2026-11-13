@@ -327,6 +327,19 @@ describe("frame", () => {
     );
   });
 
+  // spec: UI-023, UI-095
+  test("a `:` line opened before the index arrives keeps the focus when the column then shows no workspace", () => {
+    const { client, flush } = setup({}, false);
+    client.connected();
+    flush();
+    press(":");
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("command-line-input");
+    client.index({ workspaces: [], threads: [] });
+    flush();
+    expect(screen.getByTestId("no-workspaces-hint")).toBeDefined();
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("command-line-input");
+  });
+
   // spec: UI-095, UI-091, UI-094, UI-097
   test("`:` opens the command line; `:theme dark` is window-local, `:density normal` goes to the daemon", async () => {
     const { client, flush, user } = setup();

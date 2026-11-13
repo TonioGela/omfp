@@ -10,7 +10,8 @@ import { isWorkspacePath, newWorkspaceParams } from "../../vm/threads.ts";
 const text = strings.shell.threads;
 
 /** "+ workspace" (UI-023): one field taking a name (optional) or, when it starts with `/` or `~`, the path of a
- * repository to link (completed as in DMN-021); Enter creates the workspace and opens a draft thread in it. */
+ * repository to link (completed as in DMN-021); Enter creates the workspace and opens a draft thread in it. With
+ * `focus` it takes the focus, unless the user put it somewhere meanwhile (the `:` line opened while the index loads). */
 export function NewWorkspace({
   inputRef,
   focus,
@@ -26,7 +27,8 @@ export function NewWorkspace({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
   useEffect(() => {
-    if (focus) {
+    const active = document.activeElement;
+    if (focus && (active === null || active === document.body)) {
       inputRef.current?.focus();
     }
   }, [focus, inputRef]);

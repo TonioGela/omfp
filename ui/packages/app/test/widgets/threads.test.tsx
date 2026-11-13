@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { IndexSnapshot } from "@omfp/protocol";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { DeleteThreadDialog, DeleteWorkspaceDialog } from "../../src/frame/dialogs.tsx";
 import { DELETE_THREAD, DELETE_WORKSPACE, DRAFT_MESSAGE, DRAFT_THREAD, SELECTED_THREAD } from "../../src/sdk/index.ts";
 import { COLLAPSED_WORKSPACES, SPAWNED_BY, ThreadsWidget } from "../../src/widgets/threads/index.ts";
@@ -24,9 +25,11 @@ const INDEX: Partial<IndexSnapshot> = {
   ],
 };
 
-function setup(index: Partial<IndexSnapshot> = INDEX) {
+/** The column over a fake client, connected, with `index` (`null`: not arrived yet); `before` renders ahead of it. */
+function setup(index: Partial<IndexSnapshot> | null = INDEX, before: ReactNode = null) {
   const test = renderWithHost(
     <>
+      {before}
       <ThreadsWidget />
       <DeleteThreadDialog />
       <DeleteWorkspaceDialog />
@@ -38,7 +41,9 @@ function setup(index: Partial<IndexSnapshot> = INDEX) {
   test.client.answers.set("fs.complete", () => ({ entries: [] }));
   test.client.answers.set("threads.search", () => ({ results: [] }));
   test.client.connected();
-  test.client.index(index);
+  if (index !== null) {
+    test.client.index(index);
+  }
   test.flush();
   return { ...test, user: userEvent.setup() };
 }
@@ -290,6 +295,18 @@ describe("omfp:threads", () => {
     expect(screen.queryByTestId("thread-filter")).toBeNull();
     expect(screen.queryByTestId("workspace-section")).toBeNull();
     await waitFor(() => expect(document.activeElement === screen.getByTestId("new-workspace-input")).toBe(true));
+  });
+
+  // spec: UI-023, UI-092
+  test("the column is busy until the index arrives; the + workspace field then takes only a focus nobody has", () => {
+    const { client, flush } = setup(null, <input data-testid="elsewhere" />);
+    expect(screen.getByTestId("sidebar").getAttribute("aria-busy")).toBe("true");
+    act(() => screen.getByTestId("elsewhere").focus());
+    client.index({ workspaces: [], threads: [] });
+    flush();
+    expect(screen.getByTestId("sidebar").getAttribute("aria-busy")).toBe("false");
+    expect(screen.getByTestId("no-workspaces-hint")).toBeDefined();
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("elsewhere");
   });
 
   // spec: UI-020
