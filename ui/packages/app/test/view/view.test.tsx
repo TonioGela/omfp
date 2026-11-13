@@ -3,13 +3,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, cleanup, fireEvent, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { OmfpProvider, type WidgetComponent } from "../../src/sdk/index.ts";
-import type { LayoutEdit } from "../../src/view/edit.ts";
+import type { WidgetComponent } from "../../src/sdk/index.ts";
 import { containsWidget, parseLayout } from "../../src/view/layout.ts";
 import { ViewRenderer } from "../../src/view/render.tsx";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
+import { PANE_SIZES } from "../../src/view/sizes.ts";
 import { DEFAULT_MANIFEST, DEFAULT_VIEW, isFileView, type ResolvedView, resolveViews } from "../../src/view/views.ts";
 import { renderWithHost } from "../support/host.tsx";
 
@@ -144,16 +144,9 @@ function only(manifest: unknown): ResolvedView {
   return view;
 }
 
-/** Renders `layout` as the view `v`, in edit mode when `edits` collects the changes. */
-function show(layout: unknown, edits?: LayoutEdit[]) {
-  const onEdit =
-    edits === undefined
-      ? undefined
-      : async (edit: LayoutEdit) => {
-          edits.push(edit);
-          return true;
-        };
-  return renderWithHost(<ViewRenderer view={only({ views: { v: { layout } } })} registry={registry} onEdit={onEdit} />);
+/** Renders `layout` as the view `v`. */
+function show(layout: unknown) {
+  return renderWithHost(<ViewRenderer view={only({ views: { v: { layout } } })} registry={registry} />);
 }
 
 describe("renderer", () => {
@@ -168,8 +161,7 @@ describe("renderer", () => {
       .getByTestId("view")
       .querySelectorAll<HTMLElement>(":scope > [data-layout=row] > .omfp-view__cell");
     expect([...cells].map((cell) => cell.style.flexGrow)).toEqual(["2", "1"]);
-    expect(screen.queryAllByTestId("widget-toolbar").length).toBe(0);
-    // Splitters are always there (UI-206); only the toolbars wait for edit mode.
+    // Splitters are always there (UI-206).
     expect(screen.getAllByTestId("splitter").map((splitter) => splitter.dataset.path)).toEqual(["0"]);
   });
 
@@ -220,7 +212,7 @@ describe("renderer", () => {
   });
 });
 
-describe("edit mode", () => {
+describe("splitters", () => {
   const LAYOUT = [
     "row",
     { sizes: [3, 1] },
@@ -228,111 +220,9 @@ describe("edit mode", () => {
     ["tabs", {}, "omfp:other", "omfp:named"],
   ];
 
-  // spec: UI-103
-  test("every widget gets a toolbar with its reference, Move and Hide, widgets in tabs too", () => {
-    show(LAYOUT, []);
-    const toolbars = screen.getAllByTestId("widget-toolbar");
-    expect(toolbars.map((toolbar) => [toolbar.dataset.path, toolbar.dataset.widget])).toEqual([
-      ["0.0.0", "omfp:named"],
-      ["0.0.1", "omfp:named"],
-      ["0.1.0", "omfp:other"],
-    ]);
-    const [first] = toolbars;
-    expect(first?.getAttribute("role")).toBe("toolbar");
-    expect(first?.textContent).toContain("omfp:named");
-    expect(within(first ?? document.body).getByTestId("widget-move").textContent).toBe("Move");
-    expect(within(first ?? document.body).getByTestId("widget-hide").textContent).toBe("Hide");
-    // The other tab's widget gets its toolbar once shown.
-    act(() => {
-      (screen.getAllByTestId("view-tab")[1] ?? document.body).click();
-    });
-    expect(screen.getAllByTestId("widget-toolbar").map((toolbar) => toolbar.dataset.path)).toContain("0.1.1");
-  });
-
-  // spec: UI-103
-  test("Move lists every other widget (before, after) and every container (end); picking one edits", async () => {
-    const edits: LayoutEdit[] = [];
-    show(LAYOUT, edits);
-    const user = userEvent.setup();
-    const toolbar = screen.getAllByTestId("widget-toolbar")[1] ?? document.body;
-    await user.click(within(toolbar).getByTestId("widget-move"));
-    const targets = screen.getAllByTestId("move-target");
-    expect(targets.map((target) => `${target.dataset.place} ${target.dataset.path}`)).toEqual([
-      "before 0.0.0",
-      "after 0.0.0",
-      "end 0.0",
-      "before 0.1.0",
-      "after 0.1.0",
-      "before 0.1.1",
-      "after 0.1.1",
-      "end 0.1",
-      "end 0",
-    ]);
-    await user.click(
-      targets.find((target) => target.dataset.place === "end" && target.dataset.path === "0") ?? toolbar,
-    );
-    expect(edits).toEqual([{ kind: "move", from: "0.0.1", place: "end", to: "0" }]);
-  });
-
-  // spec: UI-103
-  test("Hide edits; the view's last widget cannot be hidden", async () => {
-    const edits: LayoutEdit[] = [];
-    show(LAYOUT, edits);
-    const user = userEvent.setup();
-    await user.click(within(screen.getAllByTestId("widget-toolbar")[2] ?? document.body).getByTestId("widget-hide"));
-    expect(edits).toEqual([{ kind: "hide", path: "0.1.0" }]);
-    cleanup();
-    show("omfp:named", edits);
-    expect((screen.getByTestId("widget-hide") as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  // spec: UI-092, UI-103, UI-285
-  test("after Hide the focus goes to the next widget's toolbar, else the previous one", async () => {
-    const edits: LayoutEdit[] = [];
-    const onEdit = async (edit: LayoutEdit) => {
-      edits.push(edit);
-      return true;
-    };
-    const labelled = (...labels: string[]) => ["col", {}, ...labels.map((label) => ["omfp:named", { label }])];
-    const frame = (layout: unknown) => (
-      <>
-        <button type="button" data-testid="layout-edit">
-          Edit layout
-        </button>
-        <ViewRenderer view={only({ views: { v: { layout } } })} registry={registry} onEdit={onEdit} />
-      </>
-    );
-    const { host, view } = renderWithHost(frame(labelled("a", "b", "c")));
-    const rerender = (layout: unknown) => view.rerender(<OmfpProvider host={host}>{frame(layout)}</OmfpProvider>);
-    const user = userEvent.setup();
-    const hide = (index: number) =>
-      user.click(within(screen.getAllByTestId("widget-toolbar")[index] ?? document.body).getByTestId("widget-hide"));
-    /** The focused control's test id and the path of the toolbar holding it. */
-    const focused = () => {
-      const element = document.activeElement;
-      const toolbar = element?.closest<HTMLElement>('[data-testid="widget-toolbar"]');
-      return [element?.getAttribute("data-testid"), toolbar?.dataset.path];
-    };
-    // The middle widget: the next one, which takes its place.
-    await hide(1);
-    rerender(labelled("a", "c"));
-    await act(async () => {});
-    expect(focused()).toEqual(["widget-move", "0.1"]);
-    // The last widget: the previous one.
-    await hide(1);
-    rerender(labelled("a"));
-    await act(async () => {});
-    expect(focused()).toEqual(["widget-move", "0.0"]);
-    expect(edits).toEqual([
-      { kind: "hide", path: "0.1" },
-      { kind: "hide", path: "0.1" },
-    ]);
-  });
-
-  // spec: UI-103
-  test("splitters between cells of rows and columns resize with the arrow keys in 5 % steps", () => {
-    const edits: LayoutEdit[] = [];
-    show(LAYOUT, edits);
+  // spec: UI-206
+  test("splitters between cells of rows and columns resize this window's sizes with the arrow keys in 5 % steps", () => {
+    const { host } = show(LAYOUT);
     const splitters = screen.getAllByTestId("splitter");
     // Document order: the column's splitter sits inside the row's first cell.
     expect(splitters.map((splitter) => [splitter.dataset.path, splitter.dataset.index])).toEqual([
@@ -346,32 +236,10 @@ describe("edit mode", () => {
     expect(col?.getAttribute("aria-orientation")).toBe("horizontal");
     expect(col?.getAttribute("aria-valuenow")).toBe("50");
     fireEvent.keyDown(row ?? document.body, { key: "ArrowRight" });
+    expect(host.window.get(PANE_SIZES)).toEqual({ "-/v/0": [3.2, 0.8] });
     fireEvent.keyDown(row ?? document.body, { key: "ArrowLeft" });
     fireEvent.keyDown(col ?? document.body, { key: "ArrowDown" });
     fireEvent.keyDown(col ?? document.body, { key: "Enter" });
-    expect(edits).toEqual([
-      { kind: "resize", path: "0", index: 1, delta: 0.05 },
-      { kind: "resize", path: "0", index: 1, delta: -0.05 },
-      { kind: "resize", path: "0.0", index: 1, delta: 0.05 },
-    ]);
-  });
-
-  // spec: UI-103
-  test("a pointer drag previews the new sizes and writes them once released", () => {
-    const edits: LayoutEdit[] = [];
-    show(LAYOUT, edits);
-    const splitter = screen.getAllByTestId("splitter").find((element) => element.dataset.path === "0") ?? document.body;
-    const container = splitter.parentElement ?? document.body;
-    container.getBoundingClientRect = () => DOMRect.fromRect({ x: 0, y: 0, width: 400, height: 300 });
-    splitter.setPointerCapture = () => {};
-    const cells = () =>
-      [...container.querySelectorAll<HTMLElement>(":scope > .omfp-view__cell")].map((cell) => cell.style.flexGrow);
-    fireEvent.pointerDown(splitter, { pointerId: 1, clientX: 100, clientY: 0 });
-    fireEvent.pointerMove(splitter, { pointerId: 1, clientX: 140, clientY: 0 });
-    expect(cells()).toEqual(["3.4", "0.6"]);
-    expect(edits).toEqual([]);
-    fireEvent.pointerUp(splitter, { pointerId: 1, clientX: 140, clientY: 0 });
-    expect(edits).toEqual([{ kind: "resize", path: "0", index: 1, delta: 0.1 }]);
-    expect(cells()).toEqual(["3.4", "0.6"]);
+    expect(host.window.get(PANE_SIZES)).toEqual({ "-/v/0": [3, 1], "-/v/0.0": [1.1, 0.9] });
   });
 });

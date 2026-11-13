@@ -78,7 +78,11 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       method catalogue `omfp://protocol/methods`, the RPC host tool adapter, the mount tools),
                       jobs (jobs.rs: shell commands of a workspace, `job/<id>`), widgets (widgets.rs: views manifest
                       check, widget folders and versions, oxc transpiling and the `/widgets/<key>/…` route, copies;
-                      widgets/docs.md is `omfp://docs/widgets`; widgets/keymap.rs: the workspace `.omfp/keymap.json`;
+                      widgets/docs.md is `omfp://docs/widgets`, widgets/shell.md `omfp://docs/shell`,
+                      widgets/keymap-defaults.json `omfp://keymap` (written by the app's keymap-export test with
+                      `OMFP_UPDATE_KEYMAP=1`; widgets/shell.rs serves them and the `omfp://docs` index;
+                      server/services/file_checks.rs: `views.errors`, `omfp_views_errors` and the checks of init and
+                      TSX view files); widgets/keymap.rs: the workspace `.omfp/keymap.json`;
                       widgets/init.rs: the init files; widgets/mounts.rs: mounts and floating panels as `views.json`
                       edits; widgets/library.rs: the component library), WebSocket server (polling of watched workspaces:
                       server/services/polls.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
@@ -129,15 +133,14 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       TSX views, experimental), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
-                      column, mode line with the `:` line and file picker, view switcher, layout editing, floating
-                      file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
+                      column, mode line with the view tabs, the `:` line and file picker, `:widget add` (layout.tsx),
+                      floating file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
                       state), toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
                       bar, the left column's splitter; init.tsx: loading the init files and their banner;
-                      describe.ts(x): `:describe-key` / `:describe-command`), view (layout tree, edits, reference
-                      resolution, widget slot,
-                      the `main` slot's file tabs; file-view.tsx: TSX views, experimental; origins.ts: where the nodes
-                      of a views.json view init files changed come from, experimental; sizes.ts and splitter.tsx: the
-                      window's splitter sizes), gallery
+                      describe.ts(x): `:describe-key` / `:describe-command`), view (layout tree, `:widget add`'s
+                      manifest edit (edit.ts), reference resolution, widget slot,
+                      the `main` slot's file tabs; file-view.tsx: TSX views, experimental; sizes.ts and splitter.tsx:
+                      the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
                       logo sheet), keymap, theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
                       map, widget-exports.json, builtin-widgets/, the favicon from docs/brand)

@@ -68,7 +68,7 @@ export interface InitContext {
 const NO_CONTEXT: InitContext = { workspaceId: undefined, manifest: undefined, manifestError: undefined, repos: [] };
 
 /** `omfp.views` (UI-267). */
-export interface InitViewsApi {
+export interface ViewsApi {
   /** The views of the workspace's `.omfp/views.json` (only that file loads), as the window shows them. */
   load(file: "views.json"): InitViews;
   /** Shows `views` as they are now in this window instead of `views.json`'s; the last file's call wins. */
@@ -106,7 +106,7 @@ export interface InitApi {
   /** Calls `listener` whenever a thread starts needing the user, fails, or finishes a turn; returns its removal. */
   on(event: ThreadEventKind, listener: (thread: ThreadSummary) => void): () => void;
   /** The views of this window (UI-267): `load`, `use`, `transform`. */
-  readonly views: InitViewsApi;
+  readonly views: ViewsApi;
   /** The current workspace and its repositories. */
   readonly workspace: InitWorkspace;
   /** Floats `node` (a layout node; its `title` prop labels it) over every view of this window. */
@@ -535,7 +535,7 @@ export class InitFiles {
     }
     const { manifestError } = this.#context;
     // Views a file used are those of the manifest it read: until it runs again with a new one, the frame shows
-    // `views.json`'s own, whose paths Edit layout writes.
+    // `views.json`'s own, so the window never mixes views of two manifests.
     const manifest = used === undefined ? this.#context.manifest : owner.readManifest;
     let views = used ?? InitViews.load(manifest, manifestError, "user");
     for (const { file, transform } of transforms) {

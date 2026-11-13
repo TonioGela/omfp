@@ -26,6 +26,7 @@ use omfp_protocol::{
     decode_request, method,
 };
 use omfp_protocol::{CreatedBy, ListThreadsParams, Provenance, ThreadList, WorkspaceList};
+use omfp_protocol::{FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
 use omfp_protocol::{
     LibraryComponent, MountParams, MountPlace, MountUpdateParams, Mounted, SaveWidgetParams,
     UnmountParams, Unmounted, WidgetLibrary, WidgetSaved,
@@ -796,6 +797,11 @@ fn widget_examples() -> Vec<(&'static str, Value)> {
                         tail: vec!["PASS 1".to_owned()],
                     }],
                 }],
+                file_errors: vec![FileErrorReport {
+                    kind: FileErrorKind::Init,
+                    file: ".omfp/init.ts".to_owned(),
+                    message: ".omfp/init.ts:3:7: Unexpected token".to_owned(),
+                }],
             },
             &Empty {},
         ),
@@ -819,6 +825,35 @@ fn widget_examples() -> Vec<(&'static str, Value)> {
             &Empty {},
         ),
     ]
+}
+
+fn view_error_examples() -> Vec<(&'static str, Value)> {
+    vec![example::<method::ViewsErrors>(
+        workspace_ref(),
+        &ViewErrors {
+            windows: vec![
+                WindowFileErrors {
+                    client: "web".to_owned(),
+                    errors: vec![
+                        FileErrorReport {
+                            kind: FileErrorKind::Init,
+                            file: "user".to_owned(),
+                            message: "TypeError: x is undefined".to_owned(),
+                        },
+                        FileErrorReport {
+                            kind: FileErrorKind::View,
+                            file: ".omfp/views/ops.tsx".to_owned(),
+                            message: "Row: unknown widget ./widgets/nope".to_owned(),
+                        },
+                    ],
+                },
+                WindowFileErrors {
+                    client: "desktop".to_owned(),
+                    errors: Vec::new(),
+                },
+            ],
+        },
+    )]
 }
 
 fn mount_examples() -> Vec<(&'static str, Value)> {
@@ -1104,6 +1139,58 @@ fn what_an_mcp_client_created_says_so() {
     );
 }
 
+// spec: PRT-115, PRT-116
+#[test]
+fn a_report_without_file_errors_has_none_and_view_errors_name_kind_file_and_message() {
+    let older: ReportWidgetsParams = serde_json::from_value(
+        json!({ "workspaceId": WORKSPACE_ID, "views": null, "widgets": [] }),
+    )
+    .expect("a report of an older window decodes");
+    assert_eq!(older.file_errors, Vec::new());
+    let report: ReportWidgetsParams = serde_json::from_value(json!({
+        "workspaceId": WORKSPACE_ID,
+        "views": null,
+        "widgets": [],
+        "fileErrors": [
+            { "kind": "init", "file": "user", "message": "boom" },
+            { "kind": "view", "file": ".omfp/views/ops.tsx", "message": "ops.tsx:2:3: x" },
+        ],
+    }))
+    .expect("decodes");
+    assert_eq!(
+        report.file_errors,
+        [
+            FileErrorReport {
+                kind: FileErrorKind::Init,
+                file: "user".to_owned(),
+                message: "boom".to_owned(),
+            },
+            FileErrorReport {
+                kind: FileErrorKind::View,
+                file: ".omfp/views/ops.tsx".to_owned(),
+                message: "ops.tsx:2:3: x".to_owned(),
+            },
+        ]
+    );
+    assert!(
+        serde_json::from_value::<FileErrorReport>(
+            json!({ "kind": "widget", "file": "x", "message": "y" })
+        )
+        .is_err(),
+        "only init and view files"
+    );
+    assert_eq!(
+        serde_json::to_value(ViewErrors {
+            windows: vec![WindowFileErrors {
+                client: "web".to_owned(),
+                errors: Vec::new(),
+            }],
+        })
+        .unwrap(),
+        json!({ "windows": [{ "client": "web", "errors": [] }] })
+    );
+}
+
 // spec: PRT-042
 #[test]
 fn hello_names_where_widgets_are_served() {
@@ -1236,6 +1323,7 @@ fn every_method_has_a_golden_request_and_response() {
         theme_examples(),
         ui_settings_examples(),
         widget_examples(),
+        view_error_examples(),
         mount_examples(),
         activity_examples(),
         list_examples(),

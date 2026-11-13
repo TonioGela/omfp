@@ -216,6 +216,22 @@ export type FileDiff = {
   truncated: boolean;
 };
 
+/** (Experimental) What kind of file a [`FileErrorReport`] is about (PRT-115). */
+export type FileErrorKind =
+  /** An init file: the user's or the workspace's `.omfp/init.ts`. */
+  | "init"
+  /** A TSX view file of the workspace's `.omfp/views/`. */
+  | "view";
+
+/** (Experimental) One runtime error a window shows of an init file or a TSX view (PRT-115). */
+export type FileErrorReport = {
+  /** `user` for the user's init file, else the workspace-relative path (`.omfp/init.ts`, `.omfp/views/ops.tsx`). */
+  file: string;
+  kind: FileErrorKind;
+  /** The error as the window shows it: a compile error with `file:line:column`, a throw, a render or layout error. */
+  message: string;
+};
+
 /** What a file of a workspace holds, as `workspaces.read_file` shows it (DMN-089). */
 export type FileKind =
   /** UTF-8 text without NUL bytes. */
@@ -843,6 +859,8 @@ export type RepoSuggestions = {
 
 /** `widgets.report` params (PRT-043, AGT-026): what this connection's window shows of a workspace's own widgets. */
 export type ReportWidgetsParams = {
+  /** (Experimental) The runtime errors the window shows of init files and TSX views (PRT-115); absent means none. */
+  fileErrors?: FileErrorReport[];
   /** The position of `views/<workspaceId>` the window rendered; `null` before that topic arrived. */
   views?: Position | null;
   /** Every workspace and user widget instance of the view the window shows (built-ins are not reported). */
@@ -1183,6 +1201,15 @@ export type UpdateWorkspaceParams = {
   workspaceId: string;
 };
 
+/**
+ * (Experimental) `views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose
+ * report is about the workspace, by connection.
+ */
+export type ViewErrors = {
+  /** One entry per window showing the workspace, those without errors included. */
+  windows: WindowFileErrors[];
+};
+
 /** Change on a `views/<workspaceId>` topic, whose state is a `ViewsState` (PRT-040). */
 export type ViewsEvent =
   /** The manifest changed: replaces `manifest` and `error`. */
@@ -1331,6 +1358,13 @@ export type WidgetSource =
   | "workspace"
   /** `<data-dir>/widgets/<name>/`, referenced as `user:<name>`. */
   | "user";
+
+/** (Experimental) The init file and TSX view errors one window reports (PRT-116). */
+export type WindowFileErrors = {
+  /** The `client` of the window's `system.hello`. */
+  client: string;
+  errors: FileErrorReport[];
+};
 
 /** A folder threads work in; its repositories are its top-level entries (D-11, DMN-020). */
 export type Workspace = {
@@ -1513,6 +1547,7 @@ export interface Methods {
   "widgets.report": { params: ReportWidgetsParams; result: Empty };
   "jobs.start": { params: StartJobParams; result: JobInfo };
   "jobs.kill": { params: JobRef; result: Empty };
+  "views.errors": { params: WorkspaceRef; result: ViewErrors };
   "views.mount": { params: MountParams; result: Mounted };
   "views.mount_update": { params: MountUpdateParams; result: Mounted };
   "views.unmount": { params: UnmountParams; result: Unmounted };
@@ -1600,6 +1635,7 @@ export const METHODS: readonly MethodName[] = [
   "widgets.report",
   "jobs.start",
   "jobs.kill",
+  "views.errors",
   "views.mount",
   "views.mount_update",
   "views.unmount",

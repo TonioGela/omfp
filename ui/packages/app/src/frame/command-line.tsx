@@ -2,7 +2,8 @@
  * The `:` command line (UI-095), also the command palette: an input with a listbox of completions (ARIA combobox
  * pattern). Tab completes, the arrows move through the options, Enter runs the line (or the highlighted option),
  * Escape closes. Commands run in the scopes around the element that had the focus before the line opened, and the
- * focus goes back there first.
+ * focus goes back there first. `cmdline.open` with arguments opens the line on them (`g v` opens it on `view `, so its
+ * completions are the views, UI-302).
  */
 
 import { CommandItem, CommandMenu, Kbd, ModeSegment, CommandLine as Prompt } from "@omfp/kit";
@@ -16,41 +17,46 @@ import { type Completion, completions, parseCommandLine } from "./cmdline.ts";
 const text = strings.shell.frame;
 
 export function CommandLine({ bindings }: { bindings: readonly Binding[] }): ReactNode {
-  const [open, setOpen] = useState(false);
+  // The line's first text while open; `undefined` while closed.
+  const [open, setOpen] = useState<string | undefined>(undefined);
   const previous = useRef<Element | null>(null);
   useCommand({
     id: "cmdline.open",
     title: strings.shell.commands.cmdline,
-    run: () => {
+    run: (args) => {
       previous.current = document.activeElement;
-      setOpen(true);
+      setOpen(args.length === 0 ? "" : `${args.join(" ")} `);
     },
   });
-  if (!open) {
+  if (open === undefined) {
     return null;
   }
   /** Closes the line; `refocus` puts the focus back where it was (not when the user clicked elsewhere). */
   const close = (refocus: boolean) => {
-    setOpen(false);
+    setOpen(undefined);
     const back = previous.current;
     if (refocus && back instanceof HTMLElement && back.isConnected) {
       back.focus();
     }
   };
-  return <CommandLineInput bindings={bindings} close={close} scopes={() => scopesAt(previous.current)} />;
+  return (
+    <CommandLineInput initial={open} bindings={bindings} close={close} scopes={() => scopesAt(previous.current)} />
+  );
 }
 
 function CommandLineInput({
+  initial,
   bindings,
   close,
   scopes,
 }: {
+  initial: string;
   bindings: readonly Binding[];
   close: (refocus: boolean) => void;
   scopes: () => string[];
 }): ReactNode {
   const { commands } = useHost();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initial);
   const [active, setActive] = useState<number | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const listId = useId();
@@ -141,6 +147,8 @@ function CommandLineInput({
           spellCheck={false}
           // biome-ignore lint/a11y/noAutofocus: the line opens on `:` and takes the focus
           autoFocus
+          // The caret after the text the line opened on.
+          onFocus={(event) => event.currentTarget.setSelectionRange(value.length, value.length)}
           value={value}
           onChange={(event) => {
             setValue(event.target.value);

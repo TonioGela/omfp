@@ -166,7 +166,7 @@ async fn root_share(journey: &Journey) -> anyhow::Result<String> {
     Ok(value.as_str().unwrap_or_default().to_owned())
 }
 
-// spec: E2E-23, UI-267, UI-268, UI-269, DMN-186, AGT-074
+// spec: E2E-23, UI-267, UI-268, UI-300, UI-301, UI-302, DMN-186, AGT-074
 #[tokio::test(flavor = "multi_thread")]
 async fn an_init_file_adds_a_computed_view_and_a_tsx_view_that_resizes_and_survives_a_syntax_error()
 -> anyhow::Result<()> {
@@ -177,33 +177,43 @@ async fn an_init_file_adds_a_computed_view_and_a_tsx_view_that_resizes_and_survi
 
     write_ops(&folder, OPS)?;
     write_init(&folder, VIEWS_INIT)?;
-    // The computed view: the chat beside the changes of each repository.
+    // The computed view, a tab of the mode line: the chat beside the changes of each repository.
     journey
-        .until("the init file's views", async |page| {
-            let listed = page
-                .eval(
-                    "return [...document.querySelectorAll('[data-testid=view-switcher] option')]\
-                     .some((option) => option.textContent.trim() === 'Review');",
-                    Vec::new(),
-                )
-                .await?;
-            Ok((listed == serde_json::Value::Bool(true)).then_some(()))
-        })
+        .element("[data-testid=mode-view][data-view=review]")
         .await?;
-    journey.command("view review").await?;
+    journey
+        .click("[data-testid=mode-view][data-view=review]")
+        .await?;
     journey
         .element("[data-testid=view][data-view=review]")
         .await?;
-    let note = journey.text("[data-testid=layout-edit-note]").await?;
-    assert!(note.contains("the workspace's .omfp/init.ts"), "{note}");
+    journey
+        .element("[data-testid=mode-view][data-view=review][aria-current=true]")
+        .await?;
+    // It exists only in the init file: `:widget add` names the file instead of writing views.json.
+    journey.command("widget add omfp:todos").await?;
+    let refused = journey.text("[data-testid=error]").await?;
+    assert!(
+        refused.contains("the workspace's .omfp/init.ts"),
+        "{refused}"
+    );
 
-    // The TSX view: laid out like a manifest view, files open in its `main` tabs, its splitters resize.
-    journey.command("view ops").await?;
+    // The TSX view, picked with `g v`: laid out like a manifest view, files open in its `main` tabs, its splitters
+    // resize.
+    journey
+        .eval(
+            "if (document.activeElement) { document.activeElement.blur(); }",
+            Vec::new(),
+        )
+        .await?;
+    journey.keys("gv").await?;
+    journey.until_focused("command-line-input").await?;
+    journey
+        .click("[data-testid=command-option][data-value=\"view ops\"]")
+        .await?;
     journey
         .element("[data-testid=view][data-view=ops] [data-slot=main]")
         .await?;
-    let note = journey.text("[data-testid=layout-edit-note]").await?;
-    assert!(note.contains(".omfp/views/ops.tsx"), "{note}");
     assert_eq!(root_share(&journey).await?, "60");
     journey
         .eval(

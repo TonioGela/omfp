@@ -85,6 +85,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "theme.get"
         | "settings.get"
         | "widgets.library"
+        | "views.errors"
         | "workspaces.mcp_servers"
         | "thread.mcp_servers" => Read,
         "workspaces.create"

@@ -162,6 +162,7 @@ async fn run(services: &Services, principal: &Principal, call: Call) -> Reply {
         }
         Call::SettingsGet(_) => ok(&services.settings()),
         Call::SettingsSet(params) => ok(&services.set_settings(params).await?),
+        Call::ViewsErrors(params) => ok(&services.view_errors(&params.workspace_id).await?),
         Call::ViewsSet(params) => {
             services.set_views(params).await?;
             empty()

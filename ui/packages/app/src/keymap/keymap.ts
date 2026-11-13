@@ -47,6 +47,10 @@ export const DEFAULT_BINDINGS: readonly Binding[] = [
   { mode: "normal", keys: "g n", command: "notice.open" },
   { mode: "normal", keys: "i", command: "composer.focus" },
   { mode: "normal", keys: ":", command: "cmdline.open" },
+  // The views of the window (UI-302): `g v` opens the `:` line on `view ` (its completions are the views).
+  { mode: "normal", keys: "g v", command: "view.pick" },
+  { mode: "normal", keys: "] v", command: "view.next" },
+  { mode: "normal", keys: "[ v", command: "view.prev" },
   // Every effective binding and `:` command, filterable (UI-198).
   { mode: "normal", keys: "?", command: "help.open" },
   { mode: "normal", keys: "Space a", command: "thread.nextAttention" },

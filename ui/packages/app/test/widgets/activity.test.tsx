@@ -150,8 +150,8 @@ describe("omfp:activity", () => {
     expect(screen.queryAllByTestId("activity-this-thread").length).toBe(0);
   });
 
-  // spec: UI-241, UI-104
-  test("a built-in offered by the widget picker, not in the default view", () => {
+  // spec: UI-241, UI-300
+  test("a built-in `:widget add` offers, not in the default view", () => {
     expect(BUILTIN_WIDGETS.has("omfp:activity")).toBe(true);
     expect(JSON.stringify(DEFAULT_MANIFEST)).not.toContain("omfp:activity");
   });

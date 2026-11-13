@@ -1,12 +1,19 @@
-/** L0: the agents' widget reference (`omfp://docs/widgets`) lists only names `omfp/sdk` and `omfp/kit` export. */
+/**
+ * L0: the agents' widget reference (`omfp://docs/widgets`) lists only names `omfp/sdk` and `omfp/kit` export, and it
+ * and the window's reference (`omfp://docs/shell`) say what agents writing views and init files need.
+ */
 
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import * as kit from "omfp/kit";
+import type { InitApi, ViewsApi } from "omfp/sdk";
 import * as sdk from "omfp/sdk";
+import { DEFAULT_BINDINGS } from "../../src/keymap/keymap.ts";
 
-const DOCS = readFileSync(join(import.meta.dir, "../../../../../crates/omfp-daemon/src/widgets/docs.md"), "utf8");
+const WIDGETS = join(import.meta.dir, "../../../../../crates/omfp-daemon/src/widgets");
+const DOCS = readFileSync(join(WIDGETS, "docs.md"), "utf8");
+const SHELL = readFileSync(join(WIDGETS, "shell.md"), "utf8");
 
 /** The identifiers of the first column of the table under `## <heading>` (`useJob(command)` → `useJob`). */
 function documented(heading: string): string[] {
@@ -33,5 +40,51 @@ describe("widget docs", () => {
     const names = documented("omfp/kit");
     expect(names.length).toBeGreaterThan(10);
     expect(names.filter((name) => !(name in kit))).toEqual([]);
+  });
+});
+
+describe("views and init files for agents", () => {
+  // spec: AGT-078
+  test("the widget docs say how views switch, which is default, what writes views.json, ids and instances", () => {
+    for (const fact of [
+      "## Views in the window",
+      "`:view <id>`",
+      "`g v`",
+      "`] v` / `[ v`",
+      "survives reloads",
+      "`views.withDefault(id)`",
+      "`:widget add <reference>`",
+      '`"views.json"` is the only file it loads',
+      "`ws.<action>`",
+      "replaces it while the file is loaded",
+      "keeps answering to that older command",
+      "own `instance` when a widget appears twice",
+      '["tabs", { id: "main" }, "omfp:chat"]',
+      "instance: `changes-",
+      "omfp_views_errors",
+      'omfp_widget_check { name: "init" }',
+    ]) {
+      expect(DOCS.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+    expect(DOCS.includes("Edit layout")).toBe(false);
+  });
+
+  // spec: AGT-078
+  test("the shell docs describe the left column, the mode line, the `:` line and every default key", () => {
+    for (const heading of ["## Left column", "## Mode line", "## The `:` line", "## Default keys"]) {
+      expect(SHELL.includes(heading) ? heading : `missing: ${heading}`).toBe(heading);
+    }
+    const missing = DEFAULT_BINDINGS.map((binding) => binding.keys).filter((keys) => !SHELL.includes(`\`${keys}\``));
+    expect(missing).toEqual([]);
+  });
+
+  // spec: AGT-079
+  test("omfp/sdk gives init files their types and the Layout class", () => {
+    // Compiles only while the types are what the docs show: `omfp.views` is the `ViewsApi`.
+    const viewsOf = (omfp: InitApi): ViewsApi => omfp.views;
+    expect(typeof viewsOf).toBe("function");
+    expect(typeof sdk.Layout).toBe("function");
+    expect(DOCS.includes("export default function init(omfp: InitApi)")).toBe(true);
+    expect(DOCS.includes('import type { InitApi } from "omfp/sdk"')).toBe(true);
   });
 });

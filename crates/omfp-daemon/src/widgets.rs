@@ -13,6 +13,7 @@ pub mod layout;
 pub mod library;
 pub mod manifest;
 pub mod mounts;
+pub mod shell;
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -115,12 +116,16 @@ fn markdown(content: String) -> HostUriRead {
     }
 }
 
-/// What an `omfp://` URL reads (DMN-062, DMN-122): the docs, the schemas, the built-in widgets' sources from `builtin`
+/// What an `omfp://` URL reads (DMN-062, DMN-122, DMN-198, DMN-199): the docs and their index, the schemas, the
+/// default keymap (without a workspace's additions), the built-in widgets' sources from `builtin`
 /// (`<static-dir>/builtin-widgets/`, `None` without a bundle), or an error naming what there is.
 pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String> {
     let url = url.trim_end_matches('/');
     match url {
+        shell::INDEX_URL => Ok(markdown(shell::index())),
         DOCS_URL => Ok(markdown(DOCS.to_owned())),
+        shell::SHELL_URL => Ok(markdown(shell::SHELL.to_owned())),
+        shell::KEYMAP_URL => Ok(markdown(shell::render_keymap(&shell::Additions::default()))),
         SCHEMA_URL => Ok(HostUriRead {
             content: VIEWS_SCHEMA.to_owned(),
             content_type: Some(HostUriResultContentType::ApplicationJson),
@@ -140,16 +145,41 @@ pub fn read_uri(url: &str, builtin: Option<&Path>) -> Result<HostUriRead, String
         {
             Some(rest) => read_builtin(builtin_folder(builtin)?, rest),
             None => Err(format!(
-                "unknown omfp URL {url}: omfp serves {} (the protocol methods omfp_call accepts) and {}/<name> \
-                 (one's schemas), {DOCS_URL} (the widget SDK and kit reference), {SCHEMA_URL} (the views manifest \
-                 schema), {} (the workspace keymap schema), {BUILTIN_URL} (the built-in widgets), \
-                 {BUILTIN_URL}/<name>[/<path>] (their sources) and {CHECK_URL}/<name> (a widget's check report)",
+                "unknown omfp URL {url}: omfp serves {} (the index of these docs), {} (the protocol methods omfp_call \
+                 accepts) and {}/<name> (one's schemas), {DOCS_URL} (the widget SDK and kit reference), {} (the \
+                 window: left column, mode line, view tabs, `:` commands), {} (the default keys and commands), \
+                 {SCHEMA_URL} (the views manifest schema), {} (the workspace keymap schema), {BUILTIN_URL} (the \
+                 built-in widgets), {BUILTIN_URL}/<name>[/<path>] (their sources) and {CHECK_URL}/<name> (the check \
+                 report of a widget, of an init file with `init` or `user:init`, of a TSX view with `views/<file>`)",
+                shell::INDEX_URL,
                 crate::agent_tools::catalog::METHODS_URL,
                 crate::agent_tools::catalog::METHODS_URL,
+                shell::SHELL_URL,
+                shell::KEYMAP_URL,
                 keymap::SCHEMA_URL
             )),
         },
     }
+}
+
+/// `omfp://keymap` read by a thread (DMN-199): the defaults with what the daemon's config and the thread's workspace
+/// add, from `host`; `None` when `url` is not that URL or there is no host.
+#[must_use]
+pub fn read_keymap(
+    url: &str,
+    workspace_id: &str,
+    host: Option<&dyn WidgetHost>,
+) -> Option<Result<HostUriRead, String>> {
+    if url.trim_end_matches('/') != shell::KEYMAP_URL {
+        return None;
+    }
+    let additions = host?.keymap_additions(workspace_id);
+    Some(Ok(HostUriRead {
+        content: shell::render_keymap(&additions),
+        content_type: Some(HostUriResultContentType::TextMarkdown),
+        immutable: Some(false),
+        ..HostUriRead::default()
+    }))
 }
 
 fn builtin_folder(builtin: Option<&Path>) -> Result<&Path, String> {
@@ -255,7 +285,9 @@ pub fn read_check(
         .strip_prefix('/')?;
     let Some(host) = host else {
         return Some(Err(
-            "this omfp daemon cannot check widgets for this thread".to_owned()
+            "this omfp daemon cannot check widgets, init files (`init`, `user:init`) or TSX views (`views/<file>`) \
+             for this thread"
+                .to_owned(),
         ));
     };
     let mut arguments = serde_json::Map::new();
@@ -412,6 +444,20 @@ impl Widgets {
         }
         let file = resolve(&folder, &relative_path(path)?)?;
         self.served(&folder, file)
+    }
+
+    /// (Experimental) The file at `path` of a workspace's views folder `folder` resolved as [`Self::serve_view`]
+    /// resolves it (DMN-197): its path relative to `folder` and, when it is TypeScript or JSX, its compile error;
+    /// `None` when the folder or the file does not exist or `path` leaves the folder.
+    #[must_use]
+    pub fn check_view(&self, folder: &Path, path: &str) -> Option<(PathBuf, Option<CompileError>)> {
+        let folder = std::fs::canonicalize(folder).ok()?;
+        let file = resolve(&folder, &relative_path(path)?)?;
+        let relative = file.strip_prefix(&folder).ok()?.to_owned();
+        let error = compile::is_compiled(&relative)
+            .then(|| self.compile(&folder, &relative).err())
+            .flatten();
+        Some((relative, error))
     }
 
     /// The resolved `file` of the canonical `folder`: compiled (or its stand-in) when it is TypeScript or JSX, else
@@ -664,7 +710,15 @@ mod tests {
 
         let error = read_uri("omfp://docs/nothing", None).unwrap_err();
         assert!(error.contains("omfp://docs/nothing"), "{error}");
-        for url in [DOCS_URL, SCHEMA_URL, keymap::SCHEMA_URL, BUILTIN_URL] {
+        for url in [
+            DOCS_URL,
+            SCHEMA_URL,
+            keymap::SCHEMA_URL,
+            BUILTIN_URL,
+            shell::INDEX_URL,
+            shell::SHELL_URL,
+            shell::KEYMAP_URL,
+        ] {
             assert!(error.contains(url), "{url} missing: {error}");
         }
         let schema = read_uri("omfp://schemas/keymap.json", None).unwrap();
@@ -673,6 +727,43 @@ mod tests {
             schema.content_type,
             Some(HostUriResultContentType::ApplicationJson)
         );
+    }
+
+    // spec: DMN-198, DMN-199
+    #[test]
+    fn omfp_urls_read_the_docs_index_the_shell_reference_and_the_keymap() {
+        for url in ["omfp://docs", "omfp://docs/"] {
+            let index = read_uri(url, None).unwrap();
+            assert_eq!(index.content, shell::index(), "{url}");
+            assert_eq!(
+                index.content_type,
+                Some(HostUriResultContentType::TextMarkdown)
+            );
+        }
+        let docs = read_uri("omfp://docs/shell", None).unwrap();
+        assert_eq!(docs.content, shell::SHELL);
+        assert_eq!(
+            docs.content_type,
+            Some(HostUriResultContentType::TextMarkdown)
+        );
+        let keys = read_uri("omfp://keymap", None).unwrap();
+        assert_eq!(
+            keys.content,
+            shell::render_keymap(&shell::Additions::default())
+        );
+
+        assert_eq!(read_keymap("omfp://docs", "01WS", Some(&Checks)), None);
+        assert_eq!(read_keymap("omfp://keymap", "01WS", None), None);
+        let read = read_keymap("omfp://keymap/", "01WS", Some(&Checks))
+            .unwrap()
+            .unwrap();
+        assert!(
+            read.content
+                .contains("  - normal mode: `g 01WS` → `tests.run`\n"),
+            "the thread's workspace's bindings: {}",
+            read.content
+        );
+        assert_eq!(read.immutable, Some(false), "the files change");
     }
 
     /// A bundle's `builtin-widgets/` with `header` (two files) and `chat`.
@@ -764,7 +855,7 @@ mod tests {
         assert!(error.contains("serves no web bundle"), "{error}");
     }
 
-    /// A widget host answering checks with the workspace and name it was asked for.
+    /// A widget host answering checks with the workspace and name it was asked for, and binding `g <workspace>`.
     struct Checks;
 
     impl WidgetHost for Checks {
@@ -782,6 +873,22 @@ mod tests {
 
         fn add_to_view(&self, _: &str, _: &layout::Addition<'_>) -> Result<String, String> {
             unreachable!("the check URI never places a widget")
+        }
+
+        fn views_errors(&self, _: &str, _: &dyn Fn() -> bool) -> Result<String, String> {
+            unreachable!("no URI reads the views errors")
+        }
+
+        fn keymap_additions(&self, workspace_id: &str) -> shell::Additions {
+            shell::Additions {
+                daemon: Vec::new(),
+                workspace: Some(Ok(vec![omfp_protocol::WorkspaceBinding {
+                    mode: omfp_protocol::KeymapMode::Normal,
+                    keys: format!("g {workspace_id}"),
+                    command: "tests.run".to_owned(),
+                    args: Vec::new(),
+                }])),
+            }
         }
     }
 
@@ -992,6 +1099,51 @@ mod tests {
             "{stand_in}"
         );
         assert_ne!(view_files_version(ws.path()), Some(version), "a save");
+    }
+
+    // spec: DMN-197
+    #[test]
+    fn a_view_file_is_checked_as_it_is_served() {
+        let ws = tempfile::tempdir().unwrap();
+        let library = tempfile::tempdir().unwrap();
+        let widgets = Widgets::new(library.path().to_owned(), None);
+        let folder = views_folder(ws.path());
+        assert_eq!(widgets.check_view(&folder, "ops.tsx"), None, "no folder");
+        std::fs::create_dir_all(folder.join("lib")).unwrap();
+        std::fs::write(
+            folder.join("ops.tsx"),
+            "import { label } from \"./lib/label\";\nexport default function Ops() {\n  return <p>{label}</p>;\n}\n",
+        )
+        .unwrap();
+        std::fs::write(folder.join("lib/label.js"), "export const label = 1;\n").unwrap();
+        std::fs::write(ws.path().join(".omfp/secret.ts"), "export {};\n").unwrap();
+
+        assert_eq!(
+            widgets.check_view(&folder, "ops.tsx"),
+            Some((PathBuf::from("ops.tsx"), None))
+        );
+        assert_eq!(
+            widgets.check_view(&folder, "ops"),
+            Some((PathBuf::from("ops.tsx"), None)),
+            "resolved like a request"
+        );
+        assert_eq!(
+            widgets.check_view(&folder, "lib/label.js"),
+            Some((PathBuf::from("lib/label.js"), None)),
+            "served as it is"
+        );
+        for missing in ["nope.tsx", "../secret.ts", ""] {
+            assert_eq!(widgets.check_view(&folder, missing), None, "{missing:?}");
+        }
+        std::fs::write(
+            folder.join("ops.tsx"),
+            "export default function Ops() {\n  return <p>;\n}\n",
+        )
+        .unwrap();
+        let (relative, error) = widgets.check_view(&folder, "ops.tsx").unwrap();
+        assert_eq!(relative, PathBuf::from("ops.tsx"));
+        let error = error.unwrap();
+        assert_eq!((error.file.as_str(), error.line), ("ops.tsx", Some(3)));
     }
 
     #[test]

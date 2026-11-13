@@ -267,12 +267,11 @@ requirements = [
   "PRT-040",
   "PRT-041",
   "PRT-042",
-  # UI: frame, views, layout editing, widget loader
+  # UI: frame, views, widget loader (UI-103 layout editing and UI-104 the widget picker were removed on branch
+  # idea/init, UI-303)
   "UI-100",
   "UI-101",
   "UI-102",
-  "UI-103",
-  "UI-104",
   "UI-105",
   "UI-106",
   # End-to-end journeys

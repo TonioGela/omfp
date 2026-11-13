@@ -14,7 +14,10 @@ function setup(selected: string) {
   const base = testHost(undefined, { noticeTimers: new ManualTimers() });
   base.host.window.set(SELECTED_THREAD, selected);
   base.client.answers.set("thread.stop", () => ({ threadIds: ["t1", "t2", "t3"] }));
-  const test = renderWithHost(<GlobalCommands viewIds={[]} />, base);
+  const test = renderWithHost(
+    <GlobalCommands viewIds={[]} currentView={undefined} widgets={[]} addWidget={() => Promise.resolve(false)} />,
+    base,
+  );
   test.client.connected();
   test.client.index({
     workspaces: [workspace("w1")],

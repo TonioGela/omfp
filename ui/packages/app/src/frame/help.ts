@@ -73,7 +73,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "density.set": commandTitles.density,
   "settings.set": commandTitles.set,
   "view.switch": commandTitles.view,
-  "layout.edit": commandTitles.layout,
+  "view.next": commandTitles.nextView,
+  "view.prev": commandTitles.prevView,
+  "view.pick": commandTitles.pickView,
   "widget.copy": commandTitles.widget,
 };
 
@@ -227,7 +229,7 @@ export function helpSections(bindings: readonly Binding[], commands: readonly Co
       id: "commands",
       title: text.sections.commands,
       rows: unique(commands).map((command) => {
-        const args = command.args?.() ?? [];
+        const args = command.args?.([]) ?? [];
         return {
           keys: commandNames(command),
           ...(args.length === 0 ? {} : { args: args.join(" | ") }),

@@ -1,0 +1,524 @@
+{
+  "bindings": [
+    {
+      "mode": "normal",
+      "keys": "j",
+      "command": "nav.next"
+    },
+    {
+      "mode": "normal",
+      "keys": "k",
+      "command": "nav.prev"
+    },
+    {
+      "mode": "normal",
+      "keys": "g g",
+      "command": "nav.top"
+    },
+    {
+      "mode": "normal",
+      "keys": "G",
+      "command": "nav.bottom"
+    },
+    {
+      "mode": "normal",
+      "keys": "Ctrl-d",
+      "command": "nav.halfDown"
+    },
+    {
+      "mode": "normal",
+      "keys": "Ctrl-u",
+      "command": "nav.halfUp"
+    },
+    {
+      "mode": "normal",
+      "keys": "/",
+      "command": "nav.search"
+    },
+    {
+      "mode": "normal",
+      "keys": "d d",
+      "command": "nav.delete"
+    },
+    {
+      "mode": "normal",
+      "keys": "z a",
+      "command": "nav.toggleSection"
+    },
+    {
+      "mode": "normal",
+      "keys": "g f",
+      "command": "file.open"
+    },
+    {
+      "mode": "normal",
+      "keys": "g n",
+      "command": "notice.open"
+    },
+    {
+      "mode": "normal",
+      "keys": "i",
+      "command": "composer.focus"
+    },
+    {
+      "mode": "normal",
+      "keys": ":",
+      "command": "cmdline.open"
+    },
+    {
+      "mode": "normal",
+      "keys": "g v",
+      "command": "view.pick"
+    },
+    {
+      "mode": "normal",
+      "keys": "] v",
+      "command": "view.next"
+    },
+    {
+      "mode": "normal",
+      "keys": "[ v",
+      "command": "view.prev"
+    },
+    {
+      "mode": "normal",
+      "keys": "?",
+      "command": "help.open"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space a",
+      "command": "thread.nextAttention"
+    },
+    {
+      "mode": "normal",
+      "keys": "] a",
+      "command": "thread.nextAttention"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space n",
+      "command": "thread.new"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space w",
+      "command": "workspace.new"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space r",
+      "command": "thread.rename"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space x",
+      "command": "thread.archive"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space u",
+      "command": "thread.unarchive"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space d",
+      "command": "thread.delete"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space s",
+      "command": "thread.stop"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space S",
+      "command": "thread.stopSpawned"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space R",
+      "command": "thread.restart"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space t",
+      "command": "threads.toggle"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space :",
+      "command": "cmdline.open"
+    },
+    {
+      "mode": "insert",
+      "keys": "Esc",
+      "command": "focus.leave"
+    },
+    {
+      "mode": "insert",
+      "keys": "Ctrl-c",
+      "command": "composer.interrupt"
+    },
+    {
+      "mode": "normal",
+      "keys": "Ctrl-c",
+      "command": "composer.interrupt"
+    },
+    {
+      "mode": "normal",
+      "keys": "u",
+      "command": "composer.restore"
+    },
+    {
+      "mode": "normal",
+      "keys": "Alt-a",
+      "command": "thread.nextAttention"
+    },
+    {
+      "mode": "insert",
+      "keys": "Alt-a",
+      "command": "thread.nextAttention"
+    },
+    {
+      "mode": "normal",
+      "keys": "Alt-n",
+      "command": "thread.new"
+    },
+    {
+      "mode": "insert",
+      "keys": "Alt-n",
+      "command": "thread.new"
+    }
+  ],
+  "commands": [
+    {
+      "id": "cmdline.open",
+      "title": "Open the command line",
+      "aliases": []
+    },
+    {
+      "id": "composer.focus",
+      "title": "Focus the composer",
+      "aliases": []
+    },
+    {
+      "id": "composer.interrupt",
+      "title": "Clear the draft, or abort when it is empty (Ctrl-C)",
+      "aliases": [],
+      "scope": "composer"
+    },
+    {
+      "id": "composer.restore",
+      "title": "Restore the last cleared draft",
+      "aliases": []
+    },
+    {
+      "id": "density.set",
+      "title": "Density (compact, normal)",
+      "aliases": [
+        "density"
+      ]
+    },
+    {
+      "id": "file.open",
+      "title": "Open a file (:open <path>[:<line>]), or the focused path (g f)",
+      "aliases": [
+        "open"
+      ]
+    },
+    {
+      "id": "focus.leave",
+      "title": "Leave the composer",
+      "aliases": [],
+      "scope": "composer"
+    },
+    {
+      "id": "help.describeCommand",
+      "title": "Describe a command: its keys and where they are bound (:describe-command <name>)",
+      "aliases": [
+        "describe-command"
+      ]
+    },
+    {
+      "id": "help.describeKey",
+      "title": "Describe a key: what it runs and where it is bound",
+      "aliases": [
+        "describe-key"
+      ]
+    },
+    {
+      "id": "help.open",
+      "title": "Show every key and command (this help)",
+      "aliases": [
+        "help"
+      ]
+    },
+    {
+      "id": "nav.bottom",
+      "title": "Last thread",
+      "aliases": []
+    },
+    {
+      "id": "nav.bottom",
+      "title": "Last thread",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "nav.bottom",
+      "title": "Last message",
+      "aliases": [],
+      "scope": "transcript"
+    },
+    {
+      "id": "nav.delete",
+      "title": "Delete the focused thread or workspace…",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "nav.halfDown",
+      "title": "Half a page of threads down",
+      "aliases": []
+    },
+    {
+      "id": "nav.halfDown",
+      "title": "Half a page of threads down",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "nav.halfDown",
+      "title": "Half a page down",
+      "aliases": [],
+      "scope": "transcript"
+    },
+    {
+      "id": "nav.halfUp",
+      "title": "Half a page of threads up",
+      "aliases": []
+    },
+    {
+      "id": "nav.halfUp",
+      "title": "Half a page of threads up",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "nav.halfUp",
+      "title": "Half a page up",
+      "aliases": [],
+      "scope": "transcript"
+    },
+    {
+      "id": "nav.next",
+      "title": "Next thread",
+      "aliases": []
+    },
+    {
+      "id": "nav.next",
+      "title": "Next thread",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "nav.next",
+      "title": "Next message",
+      "aliases": [],
+      "scope": "transcript"
+    },
+    {
+      "id": "nav.prev",
+      "title": "Previous thread",
+      "aliases": []
+    },
+    {
+      "id": "nav.prev",
+      "title": "Previous thread",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "nav.prev",
+      "title": "Previous message",
+      "aliases": [],
+      "scope": "transcript"
+    },
+    {
+      "id": "nav.search",
+      "title": "Filter threads",
+      "aliases": [
+        "search",
+        "filter"
+      ]
+    },
+    {
+      "id": "nav.toggleSection",
+      "title": "Collapse or expand the focused workspace",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "nav.top",
+      "title": "First thread",
+      "aliases": []
+    },
+    {
+      "id": "nav.top",
+      "title": "First thread",
+      "aliases": [],
+      "scope": "threads"
+    },
+    {
+      "id": "nav.top",
+      "title": "First message",
+      "aliases": [],
+      "scope": "transcript"
+    },
+    {
+      "id": "notice.open",
+      "title": "Open the newest notice",
+      "aliases": [
+        "notice"
+      ]
+    },
+    {
+      "id": "settings.set",
+      "title": "Change a setting (:set key=value)",
+      "aliases": [
+        "set"
+      ]
+    },
+    {
+      "id": "theme.set",
+      "title": "Colour scheme (system, light, dark)",
+      "aliases": [
+        "theme"
+      ]
+    },
+    {
+      "id": "thread.abort",
+      "title": "Abort the running turn",
+      "aliases": []
+    },
+    {
+      "id": "thread.archive",
+      "title": "Archive the thread",
+      "aliases": [
+        "archive"
+      ]
+    },
+    {
+      "id": "thread.delete",
+      "title": "Delete the thread…",
+      "aliases": [
+        "delete"
+      ]
+    },
+    {
+      "id": "thread.new",
+      "title": "New thread in the current workspace",
+      "aliases": [
+        "new"
+      ]
+    },
+    {
+      "id": "thread.nextAttention",
+      "title": "Next thread needing attention",
+      "aliases": [
+        "next"
+      ]
+    },
+    {
+      "id": "thread.rename",
+      "title": "Rename the thread (:rename <title>, or in place without one)",
+      "aliases": [
+        "rename"
+      ]
+    },
+    {
+      "id": "thread.restart",
+      "title": "Restart the thread's process",
+      "aliases": [
+        "restart"
+      ]
+    },
+    {
+      "id": "thread.stop",
+      "title": "Stop the thread's process",
+      "aliases": [
+        "stop"
+      ]
+    },
+    {
+      "id": "thread.stopSpawned",
+      "title": "Stop the thread and every thread it spawned",
+      "aliases": [
+        "stop!"
+      ]
+    },
+    {
+      "id": "thread.unarchive",
+      "title": "Unarchive the thread",
+      "aliases": [
+        "unarchive"
+      ]
+    },
+    {
+      "id": "threads.spawnedBy",
+      "title": "Show only the threads the selected one spawned (again: every thread)",
+      "aliases": [
+        "spawned"
+      ]
+    },
+    {
+      "id": "threads.toggle",
+      "title": "Show or hide the threads column (narrow window)",
+      "aliases": []
+    },
+    {
+      "id": "view.next",
+      "title": "Next view",
+      "aliases": []
+    },
+    {
+      "id": "view.pick",
+      "title": "Pick a view (opens :view with the views to complete)",
+      "aliases": []
+    },
+    {
+      "id": "view.prev",
+      "title": "Previous view",
+      "aliases": []
+    },
+    {
+      "id": "view.switch",
+      "title": "Switch view (:view <id>), or :view reset to restore the default views.json",
+      "aliases": [
+        "view"
+      ]
+    },
+    {
+      "id": "widget.copy",
+      "title": "Add a widget to the view, copy one into the workspace or save one to the user library (:widget add <reference>, :widget copy|save[!] <widget> [<name>])",
+      "aliases": [
+        "widget"
+      ]
+    },
+    {
+      "id": "workspace.new",
+      "title": "New workspace",
+      "aliases": [
+        "workspace"
+      ]
+    },
+    {
+      "id": "workspace.rescan",
+      "title": "Rescan the current workspace",
+      "aliases": [
+        "rescan"
+      ]
+    }
+  ]
+}

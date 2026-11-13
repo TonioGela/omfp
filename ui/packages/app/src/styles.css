@@ -99,28 +99,44 @@
     color: var(--omfp-error);
   }
 
-  /* The view switcher and layout editing, at the foot of the left column under the threads. */
-  .omfp-frame__views {
-    flex: none;
+  /* The views as small tabs in the mode line (UI-301), before the notice: `Default · Review · Ops`. */
+  .omfp-modeline__views {
     display: flex;
-    flex-wrap: wrap;
+    flex: 0 1 auto;
     align-items: center;
-    gap: var(--omfp-s1) var(--omfp-s2);
-    padding: var(--omfp-s2);
-    border-block-start: var(--omfp-bw) solid var(--omfp-rule);
-  }
-
-  .omfp-frame__views > .omfp-select {
-    flex: 1 1 8rem;
     min-inline-size: 0;
+    overflow: hidden;
   }
 
-  /* Why Edit layout is off for this view (UI-269): a TSX view, or one an init file made. */
-  .omfp-frame__note {
-    flex: 1 1 100%;
-    margin: 0;
-    font-size: var(--omfp-fs-2xs);
+  .omfp-modeline__view {
+    flex: none;
+    padding: 0 var(--omfp-s1);
+    border: none;
+    border-radius: var(--omfp-r-chip);
+    font: inherit;
     color: var(--omfp-on-surface-variant);
+    background: none;
+    cursor: pointer;
+  }
+
+  .omfp-modeline__view + .omfp-modeline__view::before {
+    content: "·";
+    margin-inline-end: var(--omfp-s2);
+    color: var(--omfp-rule-strong);
+  }
+
+  .omfp-modeline__view:hover {
+    color: var(--omfp-on-surface);
+  }
+
+  .omfp-modeline__view[data-current] {
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-primary);
+  }
+
+  .omfp-modeline__view:focus-visible {
+    outline: var(--omfp-focus-w) solid var(--omfp-focus-color);
+    outline-offset: calc(-1 * var(--omfp-focus-w));
   }
 
   .omfp-shell {
@@ -647,102 +663,6 @@
   /* A module widget while it loads (UI-105). */
   .omfp-widget__loading {
     margin: var(--omfp-s3);
-    font-size: var(--omfp-fs-xs);
-    color: var(--omfp-on-surface-variant);
-  }
-
-  /* Layout editing (UI-103, UI-104): each widget in a dashed frame (provisional) under its toolbar. */
-  .omfp-view[data-editing="true"] .omfp-view__item {
-    margin: var(--omfp-s1);
-    border: var(--omfp-bw) dashed var(--omfp-rule-strong);
-    border-radius: var(--omfp-r-card);
-    overflow: hidden;
-  }
-
-  .omfp-widget-toolbar {
-    display: flex;
-    align-items: center;
-    gap: var(--omfp-s1);
-    min-block-size: var(--omfp-row-h);
-    padding: 0 var(--omfp-s1) 0 var(--omfp-s3);
-    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
-    background: var(--omfp-surface-container-low);
-    color: var(--omfp-on-surface-variant);
-    font-family: var(--omfp-font-code);
-    font-size: var(--omfp-fs-xs);
-  }
-
-  .omfp-widget-toolbar__reference {
-    flex: 1 1 auto;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: var(--omfp-fw-strong);
-    color: var(--omfp-primary);
-  }
-
-  .omfp-widget-toolbar__reference::before {
-    content: "◆ ";
-  }
-
-  /* A node an init file added (UI-269): its mark in edit mode, and the toolbar's note naming the file to edit. */
-  .omfp-init-mark {
-    flex: none;
-    margin-inline-start: var(--omfp-s1);
-    padding: 0 var(--omfp-s1);
-    border-radius: var(--omfp-s1);
-    background: var(--omfp-tertiary-container);
-    color: var(--omfp-on-tertiary-container);
-    font-family: var(--omfp-font-code);
-    font-size: var(--omfp-fs-2xs);
-  }
-
-  .omfp-widget-toolbar__note {
-    flex: 0 1 auto;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* The widget picker (UI-104): groups titled `╭─ <group>`, references as rows. */
-  .omfp-widget-picker {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--omfp-s3);
-  }
-
-  .omfp-widget-picker__title {
-    margin: 0 0 var(--omfp-s1);
-    font-family: var(--omfp-font-code);
-    font-size: var(--omfp-fs-2xs);
-    font-weight: var(--omfp-fw-regular);
-    color: var(--omfp-primary);
-  }
-
-  .omfp-widget-picker__title::before {
-    content: "╭─ ";
-  }
-
-  .omfp-widget-picker__list {
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .omfp-widget-picker__list .omfp-button {
-    inline-size: 100%;
-    justify-content: flex-start;
-    font-family: var(--omfp-font-code);
-  }
-
-  .omfp-widget-picker__empty {
-    margin: 0;
-    padding-inline: var(--omfp-s2);
     font-size: var(--omfp-fs-xs);
     color: var(--omfp-on-surface-variant);
   }

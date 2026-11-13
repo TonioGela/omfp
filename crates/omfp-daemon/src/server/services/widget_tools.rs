@@ -1,5 +1,6 @@
 //! The windows' widget reports (`widgets.report`, PRT-043, AGT-026) and what the widget host tools do with them and
-//! with the views manifest: `omfp_widget_check` (DMN-063) and `omfp_view_add` (DMN-064).
+//! with the views manifest: `omfp_widget_check` (DMN-063) and `omfp_view_add` (DMN-064). The init file and TSX view
+//! checks and errors (DMN-196, DMN-197) are in `file_checks`.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -11,12 +12,13 @@ use std::time::Duration;
 use omfp_protocol::{Position, ReportWidgetsParams, WidgetReport, WidgetReportState, WidgetSource};
 use tokio::sync::watch;
 
+use super::file_checks::CheckedFile;
 use super::{Services, blocking, write_atomically};
 use crate::host_tools::WidgetHost;
 use crate::server::convert::internal;
 use crate::widgets::compile::{CompileError, IMPORT_MAP};
 use crate::widgets::layout::{self, Addition};
-use crate::widgets::{Widgets, folders, manifest, manifest_path};
+use crate::widgets::{Widgets, folders, keymap, manifest, manifest_path, shell};
 
 /// How long `omfp_widget_check` waits for the windows to report the current version (DMN-063).
 pub(crate) const CHECK_WAIT: Duration = Duration::from_secs(5);
@@ -45,7 +47,7 @@ fn last(entries: &[String], max: usize) -> Vec<String> {
         .collect()
 }
 
-/// A report as the daemon keeps it (PRT-043).
+/// A report as the daemon keeps it (PRT-043, DMN-195).
 fn trimmed(mut report: ReportWidgetsParams) -> ReportWidgetsParams {
     for widget in &mut report.widgets {
         widget.text = clip(&widget.text, MAX_TEXT);
@@ -55,15 +57,20 @@ fn trimmed(mut report: ReportWidgetsParams) -> ReportWidgetsParams {
             job.tail = last(&job.tail, MAX_TAIL);
         }
     }
+    let files = &mut report.file_errors;
+    files.drain(..files.len().saturating_sub(MAX_ENTRIES));
+    for error in files {
+        error.message = clip(&error.message, MAX_ENTRY);
+    }
     report
 }
 
 /// The latest report of one window (connection).
 #[derive(Debug, Clone)]
-struct Window {
+pub(super) struct Window {
     /// The `client` of its `system.hello`.
-    client: String,
-    report: ReportWidgetsParams,
+    pub(super) client: String,
+    pub(super) report: ReportWidgetsParams,
 }
 
 /// Every connected window's latest widget report (AGT-026), by connection.
@@ -113,7 +120,7 @@ impl WidgetReports {
     }
 
     /// The windows whose latest report is about `workspace`, by connection.
-    fn showing(&self, workspace: &str) -> Vec<Window> {
+    pub(super) fn showing(&self, workspace: &str) -> Vec<Window> {
         self.windows()
             .values()
             .filter(|window| window.report.workspace_id.as_deref() == Some(workspace))
@@ -157,15 +164,8 @@ impl Target {
 
     /// Why `window` has not settled on the current version yet; `None` once it has (DMN-063).
     fn unsettled(&self, window: &Window, views: Option<&Position>) -> Option<String> {
-        let caught_up = match (views, &window.report.views) {
-            (None, _) => true,
-            (Some(current), Some(seen)) => seen.epoch == current.epoch && seen.seq >= current.seq,
-            (Some(_), None) => false,
-        };
-        if !caught_up {
-            return Some(
-                "has not caught up with the latest change of the workspace's views".to_owned(),
-            );
+        if let Some(why) = behind(window, views) {
+            return Some(why);
         }
         for instance in self.instances(window) {
             if instance.state == WidgetReportState::Loading {
@@ -189,6 +189,18 @@ impl Target {
     }
 }
 
+/// Why `window` has not caught up with `views`, the latest position of the workspace's views topic (`None` before the
+/// topic exists); `None` once it has (DMN-063).
+pub(super) fn behind(window: &Window, views: Option<&Position>) -> Option<String> {
+    let caught_up = match (views, &window.report.views) {
+        (None, _) => true,
+        (Some(current), Some(seen)) => seen.epoch == current.epoch && seen.seq >= current.seq,
+        (Some(_), None) => false,
+    };
+    (!caught_up)
+        .then(|| "has not caught up with the latest change of the workspace's views".to_owned())
+}
+
 fn state_name(state: WidgetReportState) -> &'static str {
     match state {
         WidgetReportState::Loading => "loading",
@@ -199,7 +211,7 @@ fn state_name(state: WidgetReportState) -> &'static str {
     }
 }
 
-fn list(text: &mut String, title: &str, entries: &[String]) {
+pub(super) fn list(text: &mut String, title: &str, entries: &[String]) {
     if entries.is_empty() {
         let _ = writeln!(text, "  {title}: none");
         return;
@@ -242,12 +254,7 @@ fn describe(target: &Target, windows: &[(Window, Option<String>)], waited: Durat
             target.compile.len()
         );
         for error in &target.compile {
-            let at = match (error.line, error.column) {
-                (Some(line), Some(column)) => format!("{}:{line}:{column}", error.file),
-                (Some(line), None) => format!("{}:{line}", error.file),
-                _ => error.file.clone(),
-            };
-            let _ = writeln!(text, "- {at}: {}", error.message);
+            let _ = writeln!(text, "- {}: {}", location("", error), error.message);
         }
     }
     if let Some(error) = &target.manifest_error {
@@ -307,6 +314,15 @@ fn describe(target: &Target, windows: &[(Window, Option<String>)], waited: Durat
     text
 }
 
+/// Where a compile error is: `<prefix><file>:<line>:<column>`, as far as it is known.
+pub(super) fn location(prefix: &str, error: &CompileError) -> String {
+    match (error.line, error.column) {
+        (Some(line), Some(column)) => format!("{prefix}{}:{line}:{column}", error.file),
+        (Some(line), None) => format!("{prefix}{}:{line}", error.file),
+        _ => format!("{prefix}{}", error.file),
+    }
+}
+
 /// One widget instance of a window's report, for `omfp_widget_check` (DMN-063).
 fn describe_instance(text: &mut String, instance: &WidgetReport) {
     let _ = writeln!(
@@ -364,6 +380,7 @@ impl Services {
 
     /// `omfp_widget_check` (DMN-063): the daemon's compile of the widget `name` of workspace `workspace_id`, then
     /// what the windows showing the workspace report, waiting at most `wait` for them to settle on the current version.
+    /// An init file or a TSX view `name` is checked as DMN-197 says.
     pub async fn check_widget(
         &self,
         workspace_id: &str,
@@ -371,11 +388,20 @@ impl Services {
         is_cancelled: &dyn Fn() -> bool,
         wait: Duration,
     ) -> Result<String, String> {
+        if let Some(file) = CheckedFile::parse(name) {
+            return self
+                .check_file(workspace_id, file, is_cancelled, wait)
+                .await;
+        }
         let (store, widgets) = (Arc::clone(&self.store), Arc::clone(&self.widgets));
         let (id, name) = (workspace_id.to_owned(), name.to_owned());
         let (source, name, folder) = blocking(move || {
             let path = store.workspace(&id)?.path;
-            widgets.locate(&path, &name).map_err(internal)
+            widgets.locate(&path, &name).map_err(|error| {
+                internal(format!(
+                    "{error}; check an init file with `init` or `user:init` and a TSX view with `views/<file>`"
+                ))
+            })
         })
         .await
         .map_err(|error| error.message)?;
@@ -406,6 +432,24 @@ impl Services {
         .await
         .map_err(|error| error.message)?;
 
+        let windows = self
+            .settled_windows(workspace_id, is_cancelled, wait, |window, views| {
+                target.unsettled(window, views)
+            })
+            .await?;
+        Ok(describe(&target, &windows, wait))
+    }
+
+    /// The windows showing workspace `workspace_id`, each with why it has not settled (`None` when it has), waiting at
+    /// most `wait` until all have (DMN-063): `unsettled` judges a window against the latest position of the views
+    /// topic.
+    pub(super) async fn settled_windows(
+        &self,
+        workspace_id: &str,
+        is_cancelled: &dyn Fn() -> bool,
+        wait: Duration,
+        unsettled: impl Fn(&Window, Option<&Position>) -> Option<String>,
+    ) -> Result<Vec<(Window, Option<String>)>, String> {
         let views = self
             .views_log_position(workspace_id)
             .map(|position| Position {
@@ -421,13 +465,13 @@ impl Services {
                 .showing(workspace_id)
                 .into_iter()
                 .map(|window| {
-                    let unsettled = target.unsettled(&window, views.as_ref());
-                    (window, unsettled)
+                    let why = unsettled(&window, views.as_ref());
+                    (window, why)
                 })
                 .collect();
-            let settled = windows.iter().all(|(_, unsettled)| unsettled.is_none());
+            let settled = windows.iter().all(|(_, why)| why.is_none());
             if settled || tokio::time::Instant::now() >= deadline {
-                return Ok(describe(&target, &windows, wait));
+                return Ok(windows);
             }
             if is_cancelled() {
                 return Err("cancelled".to_owned());
@@ -479,6 +523,23 @@ impl Services {
         }
         Ok(text)
     }
+
+    /// What the daemon's `[keymap]` and the `.omfp/keymap.json` of workspace `workspace_id` add to the default keys,
+    /// for `omfp://keymap` (DMN-199).
+    pub async fn keymap_additions(&self, workspace_id: &str) -> shell::Additions {
+        let store = Arc::clone(&self.store);
+        let id = workspace_id.to_owned();
+        let workspace = blocking(move || {
+            let path = store.workspace(&id)?.path;
+            Ok(keymap::read(&keymap::path(&path)).map(Option::unwrap_or_default))
+        })
+        .await
+        .unwrap_or_else(|error| Err(error.message));
+        shell::Additions {
+            daemon: self.settings().keymap,
+            workspace: Some(workspace),
+        }
+    }
 }
 
 /// The server's [`WidgetHost`]: runs the services' futures on the daemon's runtime from the `omp-rpc` handler
@@ -516,13 +577,32 @@ impl WidgetHost for ServicesWidgetHost {
         self.runtime
             .block_on(self.services.add_to_view(workspace_id, addition))
     }
+
+    fn views_errors(
+        &self,
+        workspace_id: &str,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<String, String> {
+        self.runtime.block_on(self.services.describe_view_errors(
+            workspace_id,
+            is_cancelled,
+            CHECK_WAIT,
+        ))
+    }
+
+    fn keymap_additions(&self, workspace_id: &str) -> shell::Additions {
+        self.runtime
+            .block_on(self.services.keymap_additions(workspace_id))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::Path;
 
-    use omfp_protocol::WidgetJobReport;
+    use omfp_protocol::{
+        FileErrorKind, FileErrorReport, ViewErrors, WidgetJobReport, WindowFileErrors,
+    };
     use serde_json::{Map, json};
     use tempfile::TempDir;
 
@@ -598,6 +678,16 @@ mod tests {
         }
 
         fn report(&self, connection: u64, views: Option<Position>, widgets: Vec<WidgetReport>) {
+            self.report_files(connection, views, widgets, Vec::new());
+        }
+
+        fn report_files(
+            &self,
+            connection: u64,
+            views: Option<Position>,
+            widgets: Vec<WidgetReport>,
+            file_errors: Vec<FileErrorReport>,
+        ) {
             self.services.report_widgets(
                 connection,
                 "web",
@@ -605,8 +695,16 @@ mod tests {
                     workspace_id: Some(self.workspace.clone()),
                     views,
                     widgets,
+                    file_errors,
                 },
             );
+        }
+
+        async fn check_named(&self, name: &str, wait: Duration) -> String {
+            self.services
+                .check_widget(&self.workspace, name, &|| false, wait)
+                .await
+                .unwrap()
         }
 
         async fn check(&self, wait: Duration) -> String {
@@ -788,6 +886,7 @@ mod tests {
                     workspace_id: Some(workspace),
                     views: Some(seen),
                     widgets: vec![instance(Some(version), WidgetReportState::Rendered)],
+                    file_errors: Vec::new(),
                 },
             );
         });
@@ -823,7 +922,7 @@ mod tests {
         assert_eq!(cancelled, Err("cancelled".to_owned()));
     }
 
-    // spec: PRT-043
+    // spec: PRT-043, DMN-195
     #[tokio::test]
     async fn reports_are_trimmed_to_what_the_daemon_keeps() {
         let mut widget = instance(None, WidgetReportState::Rendered);
@@ -831,10 +930,21 @@ mod tests {
         widget.console = (0..30).map(|n| format!("error {n}")).collect();
         widget.errors = vec!["e".repeat(MAX_ENTRY + 5)];
         widget.jobs[0].tail = (0..15).map(|n| n.to_string()).collect();
+        let mut file_errors: Vec<FileErrorReport> = (0..25)
+            .map(|n| {
+                file_error(
+                    FileErrorKind::View,
+                    ".omfp/views/ops.tsx",
+                    &format!("error {n}"),
+                )
+            })
+            .collect();
+        file_errors[24].message = "m".repeat(MAX_ENTRY + 5);
         let kept = trimmed(ReportWidgetsParams {
             workspace_id: None,
             views: None,
             widgets: vec![widget],
+            file_errors,
         });
         let widget = &kept.widgets[0];
         assert_eq!(widget.text.chars().count(), MAX_TEXT + 1, "cut, with …");
@@ -845,6 +955,300 @@ mod tests {
             widget.jobs[0].tail,
             (5..15).map(|n| n.to_string()).collect::<Vec<_>>()
         );
+        assert_eq!(kept.file_errors.len(), MAX_ENTRIES);
+        assert_eq!(kept.file_errors[0].message, "error 5", "the last are kept");
+        assert_eq!(
+            kept.file_errors[MAX_ENTRIES - 1].message.chars().count(),
+            MAX_ENTRY + 1
+        );
+    }
+
+    fn file_error(kind: FileErrorKind, file: &str, message: &str) -> FileErrorReport {
+        FileErrorReport {
+            kind,
+            file: file.to_owned(),
+            message: message.to_owned(),
+        }
+    }
+
+    // spec: PRT-116, DMN-195
+    #[tokio::test]
+    async fn views_errors_lists_every_window_showing_the_workspace_with_its_file_errors() {
+        let h = harness().await;
+        assert_eq!(
+            h.services.view_errors(&h.workspace).await.unwrap(),
+            ViewErrors {
+                windows: Vec::new()
+            }
+        );
+        let broken = file_error(FileErrorKind::Init, ".omfp/init.ts", "boom");
+        h.report_files(1, None, Vec::new(), vec![broken.clone()]);
+        h.report(2, None, Vec::new());
+        // A window showing another workspace is not listed.
+        h.services.report_widgets(
+            3,
+            "desktop",
+            ReportWidgetsParams {
+                workspace_id: Some("01OTHER".to_owned()),
+                views: None,
+                widgets: Vec::new(),
+                file_errors: vec![broken.clone()],
+            },
+        );
+        assert_eq!(
+            h.services.view_errors(&h.workspace).await.unwrap(),
+            ViewErrors {
+                windows: vec![
+                    WindowFileErrors {
+                        client: "web".to_owned(),
+                        errors: vec![broken],
+                    },
+                    WindowFileErrors {
+                        client: "web".to_owned(),
+                        errors: Vec::new(),
+                    },
+                ],
+            }
+        );
+        h.services.forget_widget_reports(1);
+        assert_eq!(
+            h.services
+                .view_errors(&h.workspace)
+                .await
+                .unwrap()
+                .windows
+                .len(),
+            1,
+            "a closed window's errors go with it"
+        );
+        let error = h.services.view_errors("01NOPE").await.unwrap_err();
+        assert_eq!(error.code, omfp_protocol::ErrorCode::NotFound, "{error:?}");
+    }
+
+    // spec: DMN-196
+    #[tokio::test]
+    async fn omfp_views_errors_describes_each_windows_init_and_view_errors() {
+        let h = harness().await;
+        let describe = || async {
+            h.services
+                .describe_view_errors(&h.workspace, &|| false, Duration::ZERO)
+                .await
+                .unwrap()
+        };
+        let text = describe().await;
+        assert!(
+            text.starts_with("No omfp window shows this workspace now"),
+            "{text}"
+        );
+        h.report(1, None, Vec::new());
+        assert_eq!(
+            describe().await,
+            "1 window(s) show this workspace; none reports an init file or TSX view error.\n\
+             Window 1 (web): no init file or TSX view errors.\n"
+        );
+        h.report_files(
+            1,
+            None,
+            Vec::new(),
+            vec![
+                file_error(
+                    FileErrorKind::Init,
+                    "user",
+                    "TypeError: x\n    at init.ts:2:1",
+                ),
+                file_error(
+                    FileErrorKind::View,
+                    ".omfp/views/ops.tsx",
+                    "Row: bad layout",
+                ),
+            ],
+        );
+        h.report(2, None, Vec::new());
+        assert_eq!(
+            describe().await,
+            "2 window(s) show this workspace.\n\
+             Window 1 (web):\n\
+             - the user's init file (init): TypeError: x\n\
+             \x20     at init.ts:2:1\n\
+             - .omfp/views/ops.tsx (view): Row: bad layout\n\
+             Window 2 (web): no init file or TSX view errors.\n"
+        );
+        // Windows behind the views topic are waited for, then named.
+        h.services.views_log(&h.workspace).await.unwrap();
+        let text = h
+            .services
+            .describe_view_errors(&h.workspace, &|| false, Duration::from_millis(20))
+            .await
+            .unwrap();
+        assert!(
+            text.contains("Window 2 (web), after waiting 0 s, has not caught up"),
+            "{text}"
+        );
+        assert_eq!(
+            h.services
+                .describe_view_errors(&h.workspace, &|| true, Duration::from_secs(30))
+                .await,
+            Err("cancelled".to_owned())
+        );
+    }
+
+    // spec: DMN-197
+    #[tokio::test]
+    async fn the_check_compiles_the_workspace_init_file_and_lists_what_windows_report_for_it() {
+        let h = harness().await;
+        for name in ["init", ".omfp/init.ts"] {
+            let text = h.check_named(name, Duration::ZERO).await;
+            assert!(text.starts_with("No file .omfp/init.ts ("), "{text}");
+            assert!(
+                text.contains("No omfp window shows this workspace now"),
+                "{text}"
+            );
+        }
+        write(&h.folder, ".omfp/init.ts", "export const n: number = 1;\n");
+        let text = h.check_named("init", Duration::ZERO).await;
+        let version = crate::widgets::init::read_version(&h.folder.join(".omfp/init.ts")).unwrap();
+        assert!(text.starts_with("Init file .omfp/init.ts at "), "{text}");
+        assert!(text.contains(&format!("version {version})")), "{text}");
+        assert!(text.contains("Daemon compile: it compiles.\n"), "{text}");
+
+        write(&h.folder, ".omfp/init.ts", "\nexport const = 1;\n");
+        h.report_files(
+            1,
+            None,
+            Vec::new(),
+            vec![
+                file_error(FileErrorKind::Init, ".omfp/init.ts", "SyntaxError: boom"),
+                file_error(FileErrorKind::Init, "user", "not this one"),
+            ],
+        );
+        h.report(2, None, Vec::new());
+        let text = h.check_named("init", Duration::ZERO).await;
+        for needle in [
+            "Daemon compile: it fails; windows load a stand-in that shows this error instead:\n- .omfp/init.ts:2:",
+            "2 window(s) show this workspace:\nWindow 1 (web):\n- SyntaxError: boom\nWindow 2 (web): no error for \
+             .omfp/init.ts\n",
+        ] {
+            assert!(text.contains(needle), "{needle:?} missing: {text}");
+        }
+        assert!(!text.contains("not this one"), "{text}");
+        assert!(!text.contains("No window reports an error"), "{text}");
+
+        h.report(1, None, Vec::new());
+        let text = h.check_named("init", Duration::ZERO).await;
+        assert!(
+            text.ends_with("No window reports an error for it.\n"),
+            "{text}"
+        );
+    }
+
+    // spec: DMN-197
+    #[tokio::test]
+    async fn the_check_of_the_user_init_file_names_the_followed_file() {
+        let h = harness().await;
+        let text = h.check_named("user:init", Duration::ZERO).await;
+        assert!(
+            text.starts_with("This omfp daemon follows no user init file."),
+            "{text}"
+        );
+        let path = h.folder.join("config/init.ts");
+        *super::super::lock(&h.services.init_file) = Some(path.clone());
+        let text = h.check_named("user:init", Duration::ZERO).await;
+        assert!(
+            text.starts_with(&format!("No file {}: ", path.display())),
+            "{text}"
+        );
+        write(&h.folder, "config/init.ts", "export const = 1;\n");
+        h.report_files(
+            1,
+            None,
+            Vec::new(),
+            vec![file_error(FileErrorKind::Init, "user", "TypeError: x")],
+        );
+        let text = h.check_named("user:init", Duration::ZERO).await;
+        assert!(
+            text.starts_with(&format!(
+                "The user's init file {} (version ",
+                path.display()
+            )),
+            "{text}"
+        );
+        assert!(
+            text.contains(&format!("- {}:1:", path.display())),
+            "the error names the file: {text}"
+        );
+        assert!(text.contains("Window 1 (web):\n- TypeError: x\n"), "{text}");
+    }
+
+    // spec: DMN-197
+    #[tokio::test]
+    async fn the_check_of_a_tsx_view_compiles_it_and_leaves_the_layout_to_the_windows() {
+        let h = harness().await;
+        let text = h.check_named("views/ops.tsx", Duration::ZERO).await;
+        assert!(
+            text.starts_with("No TSX view file .omfp/views/ops.tsx in "),
+            "{text}"
+        );
+        write(
+            &h.folder,
+            ".omfp/views/ops.tsx",
+            "export default function Ops() {\n  return <p>;\n}\n",
+        );
+        h.report_files(
+            1,
+            None,
+            Vec::new(),
+            vec![file_error(
+                FileErrorKind::View,
+                ".omfp/views/ops.tsx",
+                "ops.tsx:2:10: Unexpected token",
+            )],
+        );
+        for name in [
+            "views/ops.tsx",
+            ".omfp/views/ops.tsx",
+            "./views/ops",
+            " views/ops.tsx ",
+        ] {
+            let text = h.check_named(name, Duration::ZERO).await;
+            for needle in [
+                "TSX view .omfp/views/ops.tsx (",
+                ".omfp/views/ version ",
+                "Daemon compile: it fails; windows load a stand-in that shows this error instead:\n- \
+                 .omfp/views/ops.tsx:",
+                "The daemon cannot check the layout",
+                "Window 1 (web):\n- ops.tsx:2:10: Unexpected token\n",
+            ] {
+                assert!(text.contains(needle), "{name}: {needle:?} missing: {text}");
+            }
+        }
+        let error = h
+            .services
+            .check_widget(&h.workspace, "nothing", &|| false, Duration::ZERO)
+            .await
+            .unwrap_err();
+        assert!(
+            error.contains("`init` or `user:init`") && error.contains("`views/<file>`"),
+            "the widget error names the other forms: {error}"
+        );
+    }
+
+    // spec: DMN-199
+    #[tokio::test]
+    async fn the_keymap_additions_are_the_daemons_keymap_and_the_workspaces_bindings() {
+        let h = harness().await;
+        let additions = h.services.keymap_additions(&h.workspace).await;
+        assert_eq!(additions.daemon, h.services.settings().keymap);
+        assert_eq!(additions.workspace, Some(Ok(Vec::new())), "no file");
+        write(&h.folder, ".omfp/keymap.json", "{ \"bindings\": [1] }");
+        let additions = h.services.keymap_additions(&h.workspace).await;
+        assert_eq!(
+            additions.workspace,
+            Some(Err(
+                "bindings[0]: expected an object with keys and command".to_owned()
+            ))
+        );
+        let unknown = h.services.keymap_additions("01NOPE").await;
+        assert!(matches!(unknown.workspace, Some(Err(_))), "{unknown:?}");
     }
 
     fn addition(reference: &str) -> Addition<'_> {

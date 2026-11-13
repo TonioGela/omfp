@@ -4,7 +4,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, cleanup, fireEvent, screen } from "@testing-library/react";
 import { breakpointOf, stripThreads } from "../../src/frame/responsive.ts";
 import { OmfpProvider, type WidgetComponent } from "../../src/sdk/index.ts";
-import type { LayoutEdit } from "../../src/view/edit.ts";
 import { type Area, chatCell, type LayoutNode, parseLayout } from "../../src/view/layout.ts";
 import { ViewRenderer } from "../../src/view/render.tsx";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
@@ -122,22 +121,15 @@ const registry: WidgetRegistry = new Map([
 
 const named = (label: string): LayoutNode => ["omfp:named", { label, title: label }];
 
-function show(layout: LayoutNode, options: { edits?: LayoutEdit[]; area?: Area; workspaceId?: string } = {}) {
+function show(layout: LayoutNode, options: { area?: Area; workspaceId?: string } = {}) {
   const resolved = resolveViews({ views: { v: { title: "V", layout } } }).views[0];
   if (resolved === undefined || isFileView(resolved)) {
     throw new Error("no view");
   }
   const base = testHost();
-  const { edits, area, workspaceId = "w1" } = options;
-  const onEdit =
-    edits === undefined
-      ? undefined
-      : (edit: LayoutEdit) => {
-          edits.push(edit);
-          return Promise.resolve(true);
-        };
+  const { area, workspaceId = "w1" } = options;
   const ui = (view = resolved) => (
-    <ViewRenderer view={view} registry={registry} workspaceId={workspaceId} onEdit={onEdit} area={area} />
+    <ViewRenderer view={view} registry={registry} workspaceId={workspaceId} area={area} />
   );
   return { ...renderWithHost(ui(), base), ui };
 }
@@ -161,7 +153,7 @@ describe("always-active splitters", () => {
   const LAYOUT: LayoutNode = ["row", { sizes: [3, 1] }, ["col", {}, "omfp:header", "omfp:chat"], named("side")];
 
   // spec: UI-206
-  test("out of edit mode a splitter resizes the cells for this window only, kept by workspace, view and path", () => {
+  test("a splitter resizes the cells for this window only, kept by workspace, view and path", () => {
     const { host } = show(LAYOUT);
     // None under the header (as tall as its content); the row's has the cells' share.
     expect(screen.getAllByTestId("splitter").map((element) => element.dataset.path)).toEqual(["0"]);
@@ -216,20 +208,6 @@ describe("always-active splitters", () => {
     }
     view.rerender(<OmfpProvider host={host}>{ui(three)}</OmfpProvider>);
     expect(grows("0")).toEqual(["1", "2", "1"]);
-  });
-
-  // spec: UI-103, UI-206
-  test("in edit mode a splitter writes the view's sizes and drops the window's", async () => {
-    const edits: LayoutEdit[] = [];
-    const { host } = show(LAYOUT, { edits });
-    act(() => host.window.set(PANE_SIZES, { "w1/v/0": [1, 1] }));
-    // Edit mode shows the view's defaults.
-    expect(grows("0")).toEqual(["3", "1"]);
-    await act(async () => {
-      fireEvent.keyDown(splitter("0"), { key: "ArrowLeft" });
-    });
-    expect(edits).toEqual([{ kind: "resize", path: "0", index: 1, delta: -0.05 }]);
-    expect(host.window.get(PANE_SIZES)).toEqual({});
   });
 });
 

@@ -1,6 +1,7 @@
 /**
  * The mode line (UI-098): the keymap mode (UI-095) the focused element puts the window in, shown at the bottom left
- * of the view area like vim's, and announced through the live region when a key changed it (never the mouse).
+ * of the view area like vim's, and announced through the live region when a key changed it (never the mouse); the
+ * window's views as small tabs when it has several (UI-301).
  */
 
 import { type NoticeTone as KitTone, ModeNotice, ModePill, ModeSegment, type VimMode } from "@omfp/kit";
@@ -69,21 +70,32 @@ export function useMode(): Mode {
   return mode;
 }
 
+/** The window's views as the mode line's tabs show them (UI-301). */
+export interface ModeLineViews {
+  readonly views: readonly { readonly id: string; readonly title: string }[];
+  /** The view the window shows. */
+  readonly current: string | undefined;
+  readonly onSelect: (id: string) => void;
+}
+
 /**
  * The bottom bar (UI-167): the mode pill — the keymap's mode, or vim's while a file editor has the focus (`vim`,
- * UI-112) — then the selected thread's title and state, and the newest notice at the right end (UI-192); in command
- * mode `children` (the `:` line or the file picker) replace the segments and the notice.
+ * UI-112) — then the selected thread's title and state, the window's views when it has several (UI-301), and the
+ * newest notice at the right end (UI-192); in command mode `children` (the `:` line or the file picker) replace the
+ * segments, the views and the notice.
  */
 export function ModeLine({
   mode,
   vim,
   bindings,
+  views,
   children,
 }: {
   mode: Mode;
   vim?: VimMode | undefined;
   /** The window's bindings, for the key chip of `notice.open`. */
   bindings: readonly Binding[];
+  views?: ModeLineViews | undefined;
   children?: ReactNode;
 }): ReactNode {
   const shown = vim === undefined ? mode : vim === "insert" || vim === "replace" ? "insert" : "normal";
@@ -98,8 +110,31 @@ export function ModeLine({
         {mode !== "cmdline" && <ThreadSegments />}
         {children}
       </div>
+      {mode !== "cmdline" && views !== undefined && views.views.length > 1 && <ViewTabs {...views} />}
       {mode !== "cmdline" && <NoticeSlot bindings={bindings} open={open} />}
     </div>
+  );
+}
+
+/** The views as small tabs, `Default · Review · Ops`: the current one highlighted, a click switches (UI-301). */
+function ViewTabs({ views, current, onSelect }: ModeLineViews): ReactNode {
+  return (
+    <nav className="omfp-modeline__views" aria-label={strings.shell.frame.viewTabs} data-testid="mode-views">
+      {views.map(({ id, title }) => (
+        <button
+          key={id}
+          type="button"
+          className="omfp-modeline__view"
+          aria-current={id === current || undefined}
+          data-current={id === current || undefined}
+          data-testid="mode-view"
+          data-view={id}
+          onClick={() => onSelect(id)}
+        >
+          {title}
+        </button>
+      ))}
+    </nav>
   );
 }
 

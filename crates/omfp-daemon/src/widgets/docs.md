@@ -49,8 +49,29 @@ the selected thread, checked by its omp, or those configured for the workspace: 
 reconnect = restart the thread, `thread.mcp_servers`, `thread.mcp_reconnect`), `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
 `HEAD`). Files opened by the user open as tabs after the children of the `tabs` container with `"id": "main"`, never
-written to `views.json`. Props every widget accepts: `instance` (a string naming the instance for `useStored` and `useJob`;
-default: the reference) and `title` (a tab's label; default: the built-in's name, else the reference).
+written to `views.json`: keep that slot (`["tabs", { "id": "main" }, "omfp:chat"]`) in every view, else files float in
+a panel. Props every widget accepts: `instance` and `title` (a tab's label; default: the built-in's name, else the
+reference). `instance` names the node's state: `useStored` and `useJob` keep their state per workspace, instance and
+key (default instance: the reference), so two nodes of the same widget with the same instance share it — give each
+its own `instance` when a widget appears twice (`["./widgets/tests", { "instance": "tests-api" }]`). It also names
+the node in `omfp_widget_check`'s report. Built-ins keep no stored state (`omfp:changes` twice, one per `repo`, works
+without it), but an `instance` per node costs nothing.
+
+## Views in the window
+
+- The window shows one view at a time. With several views the mode line (the bar at the bottom) shows them as small
+  tabs, `Default · Review · Ops`, the current one highlighted: a click switches. `:view <id>` switches too (`:view`
+  completes the ids), `g v` opens the `:` line on `view` to pick one, `] v` / `[ v` go to the next / previous view.
+  `omfp://docs/shell` describes the rest of the window (left column, mode line, `:` commands, keys).
+- The choice belongs to the window and survives reloads (kept in the browser's `localStorage`); while the current
+  workspace has no view of that id, the default view shows: `views.json`'s `default` (else its first id). Init files
+  keep that default when they use or transform views: a view `views.add` adds never becomes the default by itself,
+  only `views.withDefault(id)` changes it (see Views of init files).
+- Splitters between the cells of a `row` or `col` resize them for this window only (a double click goes back to the
+  layout's `sizes`); nothing the user does by hand rewrites `views.json` except `:widget add <reference>`, which adds
+  a widget (built-in, `./widgets/<name>`, `user:<name>`) to the current view as the last tab of its `tabs` with
+  `"id": "side"`, else at the end of its root container. It refuses views that exist only in code (an init file's
+  `views.add`, a TSX view) and names the file to edit. Agents change views with `omfp_ui_mount` and `views.set`.
 
 ## Mounts, panels and the library
 
@@ -79,7 +100,8 @@ An agent shows UI to the user without editing `views.json` by hand:
 `<workspace>/.omfp/keymap.json` binds keys to commands in the windows showing this workspace, over the default keys and
 the user's `[keymap]` config: entries apply in file order, an entry replaces the binding with the same mode and keys,
 and this file wins. omfp only reads it; while it is invalid, the window shows its error and keeps the last valid
-bindings. A binding runs a built-in command (`:help` lists the keys and commands) or one a widget registers with
+bindings. A binding runs a built-in command (`:help` lists the keys and commands in the window, `omfp://keymap` lists
+the default keys and the built-in commands with their titles and aliases for agents) or one a widget registers with
 `useCommand` (it runs while the widget is shown), so a widget can ship a command and the key that runs it:
 
 ```json
@@ -104,14 +126,17 @@ are passed to the command's `run(args)`; `"command": ""` removes a binding.
 An init file is the window's `init.el`: an ES module every window imports at startup and runs again whenever it changes.
 The user's `init.ts` runs first, then the current workspace's `.omfp/init.ts` (switching to a thread of another
 workspace swaps the latter). Both compile like widget files (TypeScript, JSX, the same imports; a single file: no
-relative imports). Do the work in the default export, which receives the init API; return a cleanup function if
-something must be undone. Before the file runs again, or when it goes away, the window calls that cleanup and removes
+relative imports). Do the work in the default export, `export default function init(omfp: InitApi)` (the types
+`InitApi`, `ViewsApi` and `Layout` come from `omfp/sdk`: `import type { InitApi } from "omfp/sdk"`; types are
+stripped, so a plain `.js`-style `init(omfp)` works as well); return a cleanup function if something must be undone. Before the file runs again, or when it goes away, the window calls that cleanup and removes
 everything the run registered through the API, so a run never needs to undo its own `command`, `bind`, `views.use`,
 `views.transform`, `panel` or `on`. A file that read `views.json` (`views.load`) or the repositories
 (`workspace.repos`) also runs again when they change.
 
 ```ts
-export default function init(omfp) {
+import type { InitApi } from "omfp/sdk";
+
+export default function init(omfp: InitApi) {
   omfp.command({
     id: "tests.run",
     title: "Run the tests",
@@ -136,7 +161,7 @@ export default function init(omfp) {
 | `file`, `workspaceId` | `"user"` or `"workspace"`; the workspace whose file this is (`undefined` for the user's). |
 | `command(command)` | Registers a `:` command / key binding target: `{ id, title, description?, aliases?, scope?, args?, enabled?, run(args) }` (`useCommand`'s shape; `registerCommand(host, command)` from `omfp/sdk` is the same outside an init file). |
 | `bind(binding \| bindings)` | `{ keys, command, args?, mode? }` (`mode` default `normal`, `command: ""` removes a binding), applied after the defaults, the user's `[keymap]` and `.omfp/keymap.json`: the user's init file, then the workspace's, win last. |
-| `views.load("views.json")` | The workspace's `views.json` as views (the default view while it is missing or invalid): see Views of init files. |
+| `views.load("views.json")` | The workspace's `views.json` as views (the default view while it is missing or invalid): see Views of init files. `"views.json"` is the only file it loads; any other argument throws. |
 | `views.use(views)` | Shows `views`, as they are at the call, in this window instead of `views.json`'s (the workspace's file wins over the user's). |
 | `views.transform(fn)` | `fn(views)` changes the views it gets (or returns other views): applied after `use`, the user's file's first, each in registration order; one that throws changes nothing. |
 | `workspace` | `{ id, repos }`: the current workspace and its repositories (`{ name, path, kind }`, `kind` as `omfp:workspace` shows it: `link`, `worktree`, `clone`, …). |
@@ -148,19 +173,32 @@ export default function init(omfp) {
 | `onCleanup(fn)` | Called before the file runs again or goes away. |
 | `host` | The window's SDK host (`commands`, `window` state, `notices`, `client`), for anything else. |
 
+Command ids are dotted, `<area>.<action>` like the built-ins (`thread.archive`, `view.switch`; `omfp://keymap` lists
+them): name a workspace's commands `ws.<action>` (`ws.ops`, `ws.deploy`) and the user's own `my.<action>` so they
+never clash. A command whose id equals a built-in's (or another widget's) replaces it while the file is loaded — keys
+bound to that id run yours — and the built-in comes back when the file goes away. `aliases` are the names typed after
+`:` (`:tests`); an alias another command already answers to keeps answering to that older command, so pick unique
+ones. `:describe-command <name>` shows which command a name reaches.
+
 A layout node is checked like `views.json`'s: an invalid one throws. Any failure — a compile error, a throw or rejected
 promise of the run, of a cleanup, of a transform, of a command or listener it registered — shows in a banner naming the
-file; the window keeps working without it, and the next save that runs cleanly removes the banner.
+file; the window keeps working without it, and the next save that runs cleanly removes the banner. Windows report these
+errors, and those of TSX views, to the daemon: `omfp_views_errors` (or `views.errors { workspaceId }`) lists what each
+window showing the workspace sees now. Before that, `omfp_widget_check { name: "init" }` (`user:init` for the user's
+file, `views/ops.tsx` for a TSX view; `omfp://widgets/check/init` reads the same) compiles the file as the windows
+import it and adds the windows' errors for it.
 
 ### Views of init files
 
 Without an init file, or one that never calls `views.use`, the window shows `views.json`'s views (that is the default
-init). Everything is window-local: only Edit layout and agents (`omfp_ui_mount`, `views.set`) write `views.json`, and
+init). Everything is window-local: only `:widget add` and agents (`omfp_ui_mount`, `views.set`) write `views.json`, and
 an init file that read it runs again with the new file.
 
 ```ts
 // ~/.config/omfp/init.ts: every workspace gets the MCP tab.
-export default function init(omfp) {
+import type { InitApi } from "omfp/sdk";
+
+export default function init(omfp: InitApi) {
   omfp.views.transform((views) => {
     views.update("default", (layout) => layout.addTab("side", "omfp:mcp"));
   });
@@ -169,25 +207,38 @@ export default function init(omfp) {
 
 ```ts
 // <workspace>/.omfp/init.ts
-export default function init(omfp) {
-  const views = omfp.views.load("views.json"); // views.json stays editable by Edit layout and agents
+import type { InitApi } from "omfp/sdk";
+
+export default function init(omfp: InitApi) {
+  const views = omfp.views.load("views.json"); // views.json stays writable by `:widget add` and agents
   const repos = omfp.workspace.repos;
-  views.add("review", { title: "Review", layout: ["row", {}, "omfp:chat", ...repos.map((r) => ["omfp:changes", { repo: r.name }])] });
+  views.add("review", {
+    title: "Review",
+    // The `main` slot keeps the chat and the files the user opens; one `omfp:changes` per repository, each its own
+    // `instance` and tab title.
+    layout: ["row", {},
+      ["tabs", { id: "main" }, "omfp:chat"],
+      ["tabs", {}, ...repos.map((r) => ["omfp:changes", { repo: r.name, instance: `changes-${r.name}`, title: r.name }])]],
+  });
   views.add("ops", { title: "Ops", view: "./views/ops.tsx" });
-  omfp.views.use(views);
+  omfp.views.use(views); // the user switches with the mode line's tabs, `:view review`, `g v`, `] v`
 }
 ```
+
+The default view stays `views.json`'s (`default`, else its first id): views `add` adds appear after `views.json`'s in
+the mode line's tabs and never become the default by themselves. `views.withDefault("review")` makes one the default:
+a window opens it unless the user chose another view (that choice is kept across reloads).
 
 Views and layouts change in place, and every change returns them, so calls follow one another or chain
 (`views.add(…).withDefault(…)`).
 
 | Views | What it does |
 | --- | --- |
-| `ids`, `default` | The view ids in switcher order; the default view's id. |
+| `ids`, `default` | The view ids in the order of the mode line's tabs; the default view's id. |
 | `get(id)` | `{ id, title, layout, view, origin }`: `layout` the view's `Layout`, whose edits change the view (`undefined` for a TSX view); `origin` `"views.json"` (also once init files changed its layout) or the init file that added the view. |
 | `add(id, { title?, layout \| view })` | Adds the view, or replaces the one with that id in place (it is then the file's); `layout` is a node or a `Layout`, `view` a TSX file `./views/<name>.tsx`. |
 | `update(id, fn)` | `fn(layout)` edits the view's `Layout`, or returns its new layout (a `Layout` or a node). |
-| `remove(id)`, `withDefault(id)` | Removes the view; makes another view the default. |
+| `remove(id)`, `withDefault(id)` | Removes the view (the default goes back to the first view when it was the default); makes another view the default. |
 
 | Layout | What it does |
 | --- | --- |
@@ -195,11 +246,9 @@ Views and layouts change in place, and every change returns them, so calls follo
 | `addTab(tabsId, widget)` | Adds `widget` as the last tab of the `tabs` with that `id` (throws when there is none). |
 | `removeWidget(reference)` | Removes every widget `reference` (containers left empty go too). |
 
-Edit layout writes `views.json`. On a view of `views.json` that init files only changed (the user's `addTab` above), it
-works as usual: hiding, moving or resizing a node of `views.json` writes the file, then the init files change the new
-file again. In edit mode the nodes an init file added carry an `init.ts` mark naming the file (hover it); they cannot be
-hidden or moved, nor be a Move target: edit that file. On a view an init file added (`views.add`), Edit layout is off
-and says which file to edit.
+`:widget add` writes `views.json`. On a view of `views.json` that init files only changed (the user's `addTab` above),
+it adds the widget to the view as `views.json` holds it, then the init files change the new file again. On a view an
+init file added (`views.add`) it writes nothing and names the file to edit.
 
 ## TSX views (experimental)
 
@@ -231,7 +280,8 @@ others; `Widget` is a widget (`use`: its reference, `props`: its props). They ar
 for this window (kept by workspace, view and path; a double click goes back to `sizes`), files open as tabs of
 `<Tabs id="main">` (without one, in a floating panel). The file holds one layout and only these components, nothing
 else. A compile error, a throw while rendering or an invalid layout shows a banner naming the file and the default
-view in its place until the next save works. Edit layout is off on a TSX view: edit the file.
+view in its place until the next save works (windows report it: `omfp_views_errors`). `:widget add` refuses a TSX
+view: edit the file.
 
 `:describe-key` then a key sequence shows what it runs in every mode, the command's title and description, and where
 it was bound (default keymap, `[keymap]`, `.omfp/keymap.json`, the user's or the workspace's init file);

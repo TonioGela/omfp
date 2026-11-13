@@ -56,6 +56,18 @@ impl Widgets {
                 .unwrap_or_else(|error| compile::stand_in(&error)),
         )
     }
+
+    /// The compile result of the init file at `path` as [`Self::serve_init`] compiles it (DMN-197); `None` when there
+    /// is no such file.
+    #[must_use]
+    pub fn check_init(&self, path: &Path) -> Option<Result<(), compile::CompileError>> {
+        if !path.is_file() {
+            return None;
+        }
+        let folder = path.parent()?;
+        let relative = Path::new(path.file_name()?);
+        Some(self.compile(folder, relative).map(drop))
+    }
 }
 
 #[cfg(test)]
@@ -124,5 +136,35 @@ mod tests {
         assert!(stand_in.contains("nothing"), "{stand_in}");
 
         assert_eq!(widgets.serve_init(dir.path()), None, "a folder");
+    }
+
+    // spec: DMN-197
+    #[test]
+    fn an_init_file_is_checked_as_it_is_served() {
+        let dir = tempfile::tempdir().unwrap();
+        let bundle = dir.path().join("bundle");
+        std::fs::create_dir_all(&bundle).unwrap();
+        std::fs::write(
+            bundle.join("widget-exports.json"),
+            r#"{ "omfp/sdk": ["registerCommand"] }"#,
+        )
+        .unwrap();
+        let widgets = Widgets::new(dir.path().join("library"), Some(&bundle));
+        let path = dir.path().join(FILE);
+        assert_eq!(widgets.check_init(&path), None, "no file");
+        std::fs::write(
+            &path,
+            "import { registerCommand } from \"omfp/sdk\";\nregisterCommand(\"a\", () => 1);\n",
+        )
+        .unwrap();
+        assert_eq!(widgets.check_init(&path), Some(Ok(())));
+        std::fs::write(&path, "\nimport { nothing } from \"omfp/sdk\";\n").unwrap();
+        let error = widgets.check_init(&path).unwrap().unwrap_err();
+        assert_eq!(
+            (error.file.as_str(), error.line, error.column),
+            ("init.ts", Some(2), Some(10))
+        );
+        assert!(error.message.contains("nothing"), "{error:?}");
+        assert_eq!(widgets.check_init(dir.path()), None, "a folder");
     }
 }

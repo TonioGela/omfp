@@ -36,8 +36,13 @@ export const COLOR_SCHEME = windowKey<ColorScheme>("colorScheme", "system", (sto
   stored === "light" || stored === "dark" || stored === "system" ? stored : undefined,
 );
 
-/** Id of the view this window chose (UI-101); `undefined`: the manifest's default. */
-export const ACTIVE_VIEW = windowKey<string | undefined>("activeView", undefined);
+/**
+ * Id of the view this window chose (UI-101, UI-302); `undefined`: the manifest's default. Kept in `localStorage`, so a
+ * reload (and the next window) opens the same view while the current workspace has it, else the default view.
+ */
+export const ACTIVE_VIEW = windowKey<string | undefined>("activeView", undefined, (stored) =>
+  typeof stored === "string" ? stored : undefined,
+);
 
 /** A thread being started in a workspace (UI-023): shown while no thread is selected; the daemon thread is created
  * when its first message is sent. One per window. */

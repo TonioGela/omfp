@@ -116,11 +116,7 @@ describe("init files in the window", () => {
     await settled(test);
     keys("g", "h");
     expect(log).toEqual(["hello workspace"]);
-    expect(
-      within(screen.getByTestId("view-switcher"))
-        .getAllByRole("option", { hidden: true })
-        .map((option) => option.textContent),
-    ).toContain("Solo");
+    expect(screen.getAllByTestId("mode-view").map((tab) => tab.textContent)).toContain("Solo");
 
     test.client.indexEvents({
       kind: "thread_upserted",

@@ -26,8 +26,8 @@ export interface Completion {
 
 /**
  * Completions for `text`: while the first word is typed, the enabled commands whose alias or id starts with it (each
- * command once, named by its first matching alias); after a space, the command's arguments starting with the last
- * word.
+ * command once, named by its first matching alias); after a space, the command's completions of the argument being
+ * typed (given the arguments before it) starting with the last word.
  */
 export function completions(text: string, commands: readonly Command[]): Completion[] {
   const enabled = unique(commands.filter((command) => command.enabled?.() ?? true));
@@ -54,7 +54,7 @@ export function completions(text: string, commands: readonly Command[]): Complet
     .filter((word) => word !== "");
   const typing = /\s$/.test(leading) ? "" : (words.pop() ?? "");
   const before = [name, ...words].join(" ");
-  return (command.args?.() ?? [])
+  return (command.args?.(words) ?? [])
     .filter((arg) => arg.startsWith(typing))
     .map((arg) => ({ value: `${before} ${arg}`, title: command.title, command: command.id }));
 }

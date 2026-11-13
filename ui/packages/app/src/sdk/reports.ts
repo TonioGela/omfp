@@ -1,12 +1,14 @@
 /**
  * Window reports (AGT-026, PRT-043): what this window shows of the workspace and user widgets of its view — import
  * state and errors, error boundary errors, console errors from the widget's module, the rendered text and its
- * `useJob` jobs — sent to the daemon with `widgets.report`, so the agent's `omfp_widget_check` sees them (DMN-063).
- * Each widget slot owns a {@link SlotReport}; the {@link WidgetReporter} batches changes (at most one report every
+ * `useJob` jobs — sent to the daemon with `widgets.report`, so the agent's `omfp_widget_check` sees them (DMN-063),
+ * and the errors of its init files and TSX view (`fileErrors`, UI-304), which agents read with `views.errors`. Each
+ * widget slot owns a {@link SlotReport}; the {@link WidgetReporter} batches changes (at most one report every
  * {@link REPORT_DELAY_MS}) and sends only what differs from the last report.
  */
 
 import type {
+  FileErrorReport,
   Position,
   ReportWidgetsParams,
   WidgetJobReport,
@@ -157,6 +159,7 @@ export class WidgetReporter {
   readonly #slots = new Set<SlotReport>();
   #workspaceId: string | null = null;
   #views: Position | null = null;
+  #fileErrors: readonly FileErrorReport[] = [];
   #scheduled = false;
   #last: string | undefined;
 
@@ -179,6 +182,14 @@ export class WidgetReporter {
     this.#workspaceId = workspace;
     this.#views = position;
     this.schedule();
+  }
+
+  /** The window's errors of init files and of its TSX view, as it shows them now (UI-304). */
+  setFileErrors(errors: readonly FileErrorReport[]): void {
+    if (JSON.stringify(errors) !== JSON.stringify(this.#fileErrors)) {
+      this.#fileErrors = errors;
+      this.schedule();
+    }
   }
 
   /** Makes `slot` part of every report until it is {@link release}d. */
@@ -230,6 +241,7 @@ export class WidgetReporter {
       workspaceId: this.#workspaceId,
       views: this.#views,
       widgets: this.#workspaceId === null ? [] : [...this.#slots].map((slot) => slot.report()),
+      fileErrors: [...this.#fileErrors],
     };
   }
 

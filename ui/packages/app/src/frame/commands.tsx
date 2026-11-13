@@ -2,8 +2,8 @@
  * The global commands of the frame (UI-095), shared by the keymap and the `:` line: a draft thread in the current
  * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030), a rescan of the current
  * workspace (DMN-023), colour scheme (UI-091, window-local), density and `:set` (daemon settings, UI-094, UI-097), the
- * view switch (UI-101) and `:view reset` (UI-107), layout editing (UI-103), copying a widget into the workspace
- * (UI-106) and saving a workspace widget to the user library (UI-233).
+ * view switch (UI-101), the next and previous view (UI-302) and `:view reset` (UI-107), adding a widget to the view
+ * (UI-300), copying a widget into the workspace (UI-106) and saving a workspace widget to the user library (UI-233).
  */
 
 import { pathReference } from "@omfp/kit";
@@ -27,7 +27,6 @@ import {
 import { strings } from "../strings/index.ts";
 import { DEFAULT_MANIFEST } from "../view/views.ts";
 import { displayTitle, isArchived, nextNeedingAttention, spawnerOf } from "../vm/threads.ts";
-import { LAYOUT_EDIT } from "./layout.tsx";
 import { DENSITIES, parseSet, SCHEMES, SET_KEYS } from "./set.ts";
 
 /** The path the focused element or its nearest ancestor carries for `g f` (`data-omfp-path`, UI-116). */
@@ -47,7 +46,21 @@ function focusedPath(element: Element | null): { path: string; options: OpenFile
   };
 }
 
-export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): ReactNode {
+export interface GlobalCommandsProps {
+  /** The views of the window, in the order the mode line lists them. */
+  readonly viewIds: readonly string[];
+  /** The view the window shows. */
+  readonly currentView: string | undefined;
+  /** What `:widget add` completes (UI-300). */
+  readonly widgets: readonly string[];
+  /** Adds a widget to the current view (UI-300); resolves to whether `views.json` was written. */
+  readonly addWidget: (reference: string) => Promise<boolean>;
+}
+
+/** `widget` actions, completed as the first argument of `:widget`. */
+const WIDGET_ACTIONS = ["add", "copy", "save", "save!"];
+
+export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: GlobalCommandsProps): ReactNode {
   const host = useHost();
   const actions = useThreadActions();
   const setSettings = useSetSettings();
@@ -255,22 +268,52 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
       }
     },
   });
+  // `] v` / `[ v` (UI-302): the next or previous view, round the list.
+  const stepView = (step: number) => () => {
+    const index = viewIds.indexOf(currentView ?? "");
+    const next = viewIds[(index + step + viewIds.length) % viewIds.length];
+    if (next !== undefined) {
+      host.window.set(ACTIVE_VIEW, next);
+    }
+  };
   useCommand({
-    id: "layout.edit",
-    title: titles.layout,
-    aliases: ["layout"],
-    enabled: () => currentWorkspaceId(host) !== undefined,
-    run: () => host.window.set(LAYOUT_EDIT, (editing) => !editing),
+    id: "view.next",
+    title: titles.nextView,
+    enabled: () => viewIds.length > 1,
+    run: stepView(1),
+  });
+  useCommand({
+    id: "view.prev",
+    title: titles.prevView,
+    enabled: () => viewIds.length > 1,
+    run: stepView(-1),
+  });
+  // `g v` (UI-302): the `:` line on `view `, whose completions are the views.
+  useCommand({
+    id: "view.pick",
+    title: titles.pickView,
+    run: () => {
+      host.commands.run("cmdline.open", ["view"]);
+    },
   });
   useCommand({
     id: "widget.copy",
     title: titles.widget,
     aliases: ["widget"],
-    args: () => ["copy", "save", "save!"],
+    // `:widget add ` completes the widgets it can add; the other actions take a reference or a name freely.
+    args: ([action, ...rest] = []) =>
+      action === undefined ? WIDGET_ACTIONS : action === "add" && rest.length === 0 ? widgets : [],
     run: async ([action, widget, name, ...rest]) => {
+      const text = strings.shell.widgetCopy;
+      if (action === "add" && widget !== undefined && name === undefined) {
+        if (await addWidget(widget)) {
+          host.announcer.announce(text.added(widget, currentView ?? ""));
+        }
+        return;
+      }
       const known = action === "copy" || action === "save" || action === "save!";
       if (!known || widget === undefined || rest.length > 0) {
-        reportError(host, strings.shell.widgetCopy.usage);
+        reportError(host, text.usage);
         return;
       }
       const workspaceId = currentWorkspaceId(host);
@@ -285,7 +328,7 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
             widget,
             ...(name === undefined ? {} : { name }),
           });
-          host.announcer.announce(strings.shell.widgetCopy.copied(copied.name));
+          host.announcer.announce(text.copied(copied.name));
         } else {
           const saved = await host.client.call("widgets.save", {
             workspaceId,
@@ -293,7 +336,7 @@ export function GlobalCommands({ viewIds }: { viewIds: readonly string[] }): Rea
             name: name ?? widget.replace(/^\.\/widgets\//, ""),
             replace: action === "save!",
           });
-          host.announcer.announce(strings.shell.widgetCopy.saved(saved.reference));
+          host.announcer.announce(text.saved(saved.reference));
         }
       } catch (error) {
         reportError(host, error);

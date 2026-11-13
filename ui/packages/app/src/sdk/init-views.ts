@@ -4,13 +4,12 @@
  * {@link Layout} edits (`addTab`, `removeWidget`); every change mutates the views or the layout and returns it, so
  * calls follow one another or chain. `omfp.views.use(views)` shows them in this window, and
  * `omfp.views.transform(fn)` changes whatever views the window ends up with. Each view remembers whether it is
- * `views.json`'s — with its layout after each file's changes, so Edit layout still writes it (UI-269) — or which init
- * file made it.
+ * `views.json`'s (even once init files changed its layout: `:widget add` still writes it, UI-300) or which init file
+ * added it.
  */
 
 import { strings } from "../strings/index.ts";
 import { type LayoutNode, type LayoutTree, parseLayout } from "../view/layout.ts";
-import { nodeOrigins } from "../view/origins.ts";
 import {
   DEFAULT_MANIFEST,
   isFileView,
@@ -49,12 +48,6 @@ export interface ViewEntry {
   readonly origin: ViewOrigin;
 }
 
-/** A view's layout after one file's changes. */
-interface Layer {
-  readonly file: InitFile;
-  readonly node: LayoutNode;
-}
-
 interface CommonEntry {
   readonly id: string;
   readonly title: string;
@@ -66,11 +59,9 @@ interface FileEntry extends CommonEntry {
   readonly file: string;
 }
 
-/** A view with a layout: `views.json`'s (or the one the file that added it gave), then each file's changes. */
+/** A view with a layout: `views.json`'s (or the one the file that added it gave), as the files changed it. */
 interface LayoutEntry extends CommonEntry {
-  readonly base: LayoutNode;
-  /** The layout after each file's changes, in order. */
-  readonly layers: Layer[];
+  layout: LayoutNode;
 }
 
 type Entry = FileEntry | LayoutEntry;
@@ -89,11 +80,6 @@ function treeOf(node: unknown): LayoutTree {
     throw invalid(parsed.error);
   }
   return parsed.value;
-}
-
-/** An entry's layout now: its last layer, else its first layout. */
-function layoutOf(entry: LayoutEntry): LayoutNode {
-  return entry.layers.at(-1)?.node ?? entry.base;
 }
 
 /** A layout node whose edits change it and return it (UI-267); one from {@link InitViews.get} changes its view too. */
@@ -205,7 +191,7 @@ export class InitViews {
         const { id, title } = listed;
         return isFileView(listed)
           ? { id, title, origin: "views.json", file: listed.file }
-          : { id, title, origin: "views.json", base: listed.layout, layers: [] };
+          : { id, title, origin: "views.json", layout: listed.layout };
       }),
       wanted,
       views.panels,
@@ -216,7 +202,7 @@ export class InitViews {
   /** A copy of `views` that `file` changes from now on: what `use` keeps, what each transform gets. */
   static copy(views: InitViews, file: InitFile = views.#file): InitViews {
     return new InitViews(
-      views.#entries.map((entry) => ("file" in entry ? entry : { ...entry, layers: [...entry.layers] })),
+      views.#entries.map((entry) => ({ ...entry })),
       views.#defaultId,
       views.#panels,
       file,
@@ -238,10 +224,7 @@ export class InitViews {
     return this.#panels;
   }
 
-  /**
-   * The views as the switcher lists them: a view a file added carries the file in `init`; a `views.json` view files
-   * changed carries where each node comes from in `origins` (UI-269).
-   */
+  /** The views as the window lists them: a view a file added carries the file in `init`. */
   get listed(): readonly ListedView[] {
     return this.#entries.map((entry): ListedView => {
       const { id, title, origin } = entry;
@@ -249,17 +232,7 @@ export class InitViews {
       if ("file" in entry) {
         return { id, title, file: entry.file, ...init };
       }
-      const layout = layoutOf(entry);
-      const changed =
-        origin !== "views.json" || entry.layers.length === 0
-          ? {}
-          : {
-              origins: nodeOrigins(
-                treeOf(entry.base),
-                entry.layers.map((layer) => ({ file: layer.file, tree: treeOf(layer.node) })),
-              ),
-            };
-      return { id, title, layout, tree: treeOf(layout), ...init, ...changed };
+      return { id, title, layout: entry.layout, tree: treeOf(entry.layout), ...init };
     });
   }
 
@@ -294,7 +267,7 @@ export class InitViews {
     const { title } = listed;
     const entry: Entry = isFileView(listed)
       ? { id, title, origin: this.#file, file: listed.file }
-      : { id, title, origin: this.#file, base: listed.layout, layers: [] };
+      : { id, title, origin: this.#file, layout: listed.layout };
     const index = this.#entries.findIndex((candidate) => candidate.id === id);
     if (index < 0) {
       this.#entries.push(entry);
@@ -351,22 +324,17 @@ export class InitViews {
 
   /** The layout of `entry`, whose edits change it. */
   #bound(entry: LayoutEntry): Layout {
-    const layout = new Layout(layoutOf(entry));
+    const layout = new Layout(entry.layout);
     owners.set(layout, (node) => this.#setLayout(entry, node));
     return layout;
   }
 
-  /** `node` as the layout of `entry` after this file's changes; throws when it is no layout or the view is gone. */
+  /** `node` as the layout of `entry`; throws when it is no layout or the view is gone. */
   #setLayout(entry: LayoutEntry, node: LayoutNode): void {
     if (!this.#entries.includes(entry)) {
       throw new Error(text.noView(entry.id));
     }
     treeOf(node);
-    const layer = { file: this.#file, node };
-    if (entry.layers.at(-1)?.file === this.#file) {
-      entry.layers[entry.layers.length - 1] = layer;
-    } else {
-      entry.layers.push(layer);
-    }
+    entry.layout = node;
   }
 }

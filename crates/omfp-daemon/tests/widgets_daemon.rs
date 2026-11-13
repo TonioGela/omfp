@@ -315,6 +315,47 @@ async fn a_new_workspace_has_the_default_views_and_a_window_reports_its_widgets(
     assert_eq!(error["code"], "bad_request");
 }
 
+// spec: PRT-115, PRT-116, DMN-195
+#[tokio::test(flavor = "multi_thread")]
+async fn a_windows_file_errors_are_kept_and_views_errors_lists_them() {
+    let daemon = Daemon::new().await;
+    let mut client = daemon.client().await;
+    let (id, _) = workspace(&mut client).await;
+    let mut reader = daemon.client().await;
+    assert_eq!(
+        reader
+            .ok("views.errors", json!({ "workspaceId": id }))
+            .await,
+        json!({ "windows": [] })
+    );
+    let error =
+        json!({ "kind": "view", "file": ".omfp/views/ops.tsx", "message": "ops.tsx:2:3: boom" });
+    let report = json!({ "workspaceId": id, "views": null, "widgets": [], "fileErrors": [error] });
+    assert_eq!(client.ok("widgets.report", report).await, json!({}));
+    let listed = reader
+        .ok("views.errors", json!({ "workspaceId": id }))
+        .await;
+    assert_eq!(
+        listed["windows"].as_array().map(Vec::len),
+        Some(1),
+        "{listed}"
+    );
+    assert_eq!(listed["windows"][0]["errors"], json!([error]));
+    // A report without `fileErrors` (an older window) has none.
+    let report = json!({ "workspaceId": id, "views": null, "widgets": [] });
+    assert_eq!(client.ok("widgets.report", report).await, json!({}));
+    let listed = reader
+        .ok("views.errors", json!({ "workspaceId": id }))
+        .await;
+    assert_eq!(listed["windows"][0]["errors"], json!([]), "{listed}");
+
+    let missing = reader
+        .call("views.errors", json!({ "workspaceId": "01NOPE" }))
+        .await
+        .unwrap_err();
+    assert_eq!(missing["code"], "not_found");
+}
+
 // spec: DMN-083, AGT-010
 #[tokio::test(flavor = "multi_thread")]
 async fn views_set_checks_writes_sorted_json_and_publishes_before_answering() {

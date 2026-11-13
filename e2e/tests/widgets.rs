@@ -1,5 +1,5 @@
 //! The widget journeys of M4 (06-testing.md, E2E-10..12): an agent-made widget following a daemon job, views from
-//! `views.json` with their error banner and switcher, and layout editing with the widget picker and a copied built-in.
+//! `views.json` with their error banner and the mode line's view tabs, and `:widget add` with a copied built-in.
 //! They also take the M4 screenshots (`omfp-m4-*.png` in `/tmp` or `OMFP_SCREENSHOT_DIR`). Run with `just test-e2e`.
 
 use std::path::Path;
@@ -223,10 +223,9 @@ async fn an_invalid_manifest_shows_the_default_view_and_two_views_switch() -> an
     journey.gone("[data-testid=view-error]").await?;
     journey.element("[data-testid=view][data-view=a]").await?;
 
-    // The frame's switcher shows the other view, and `:view` brings the first one back.
-    journey.click("[data-testid=view-switcher] button").await?;
+    // The mode line's view tabs show the other view, and `:view` brings the first one back.
     journey
-        .click("[data-testid=select-option][data-key=b]")
+        .click("[data-testid=mode-view][data-view=b]")
         .await?;
     journey.element("[data-testid=view][data-view=b]").await?;
     assert_eq!(
@@ -260,20 +259,6 @@ async fn written_layout(
         .await
 }
 
-/// Opens the Move menu of the widget at `from` and moves it to `place` (`before`, `after`, `end`) of the node at `to`.
-async fn move_widget(journey: &Journey, from: &str, place: &str, to: &str) -> anyhow::Result<()> {
-    journey
-        .click(&format!(
-            "[data-testid=widget-toolbar][data-path=\"{from}\"] [data-testid=widget-move]"
-        ))
-        .await?;
-    journey
-        .click(&format!(
-            "[data-testid=move-target][data-place={place}][data-path=\"{to}\"]"
-        ))
-        .await
-}
-
 fn references(layout: &Value) -> Vec<String> {
     match layout {
         Value::String(reference) => vec![reference.clone()],
@@ -290,10 +275,9 @@ fn references(layout: &Value) -> Vec<String> {
     }
 }
 
-// spec: E2E-12, UI-103, UI-104, UI-106, AGT-021, AGT-022, DMN-088
+// spec: E2E-12, UI-300, UI-106, AGT-021, AGT-022, DMN-088
 #[tokio::test(flavor = "multi_thread")]
-async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_copy()
--> anyhow::Result<()> {
+async fn the_user_adds_a_widget_and_replaces_a_built_in_with_a_copy() -> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
     journey.connected().await?;
     let thread = journey.create_thread("layout journey").await?;
@@ -306,16 +290,11 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
         "omfp:header omfp:chat omfp:workspace omfp:changes omfp:background"
     );
 
-    // Edit mode: move the workspace widget (the default view's `0.1.0`, first tab of the side tabs next to the
-    // changes) before the header (`0.0.0`).
-    journey.click("[data-testid=layout-edit]").await?;
-    journey
-        .element("[data-testid=widget-toolbar][data-path=\"0.1.0\"]")
-        .await?;
-    move_widget(&journey, "0.1.0", "before", "0.0.0").await?;
-    let layout = written_layout(&journey, &folder, "the moved workspace widget", |layout| {
+    // `:widget add` puts a widget in the view: the last tab of the side tabs, written to views.json.
+    journey.command("widget add omfp:todos").await?;
+    let layout = written_layout(&journey, &folder, "the added todos", |layout| {
         references(layout).join(" ")
-            == "omfp:workspace omfp:header omfp:chat omfp:changes omfp:background"
+            == "omfp:header omfp:chat omfp:workspace omfp:changes omfp:background omfp:todos"
     })
     .await?;
     assert_eq!(
@@ -323,41 +302,18 @@ async fn the_user_edits_the_layout_adds_a_widget_and_replaces_a_built_in_with_a_
         json!([
             "row",
             { "sizes": [3, 1] },
-            ["col", {}, "omfp:workspace", "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]],
-            ["tabs", { "id": "side" }, "omfp:changes", "omfp:background"]
+            ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]],
+            ["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "omfp:background", "omfp:todos"]
         ])
     );
-
-    // Hide the header (now `0.0.1`).
     journey
-        .element("[data-testid=widget-toolbar][data-path=\"0.0.1\"][data-widget=\"omfp:header\"]")
+        .until("the Todos tab", async |page| {
+            let tabs = page
+                .texts("[data-testid=view] [data-testid=view-tab]")
+                .await?;
+            Ok(tabs.iter().any(|tab| tab.trim() == "Todos").then_some(()))
+        })
         .await?;
-    journey
-        .click("[data-testid=widget-toolbar][data-path=\"0.0.1\"] [data-testid=widget-hide]")
-        .await?;
-    written_layout(&journey, &folder, "the hidden header", |layout| {
-        references(layout).join(" ") == "omfp:workspace omfp:chat omfp:changes omfp:background"
-    })
-    .await?;
-
-    // The picker adds it back at the end of the root container.
-    journey.click("[data-testid=widget-add]").await?;
-    journey.element("[data-testid=widget-picker]").await?;
-    journey
-        .element("[data-testid=widget-option][data-widget=\"omfp:header\"]")
-        .await?;
-    journey.screenshot("m4-widget-picker").await?;
-    journey
-        .click("[data-testid=widget-option][data-widget=\"omfp:header\"]")
-        .await?;
-    written_layout(&journey, &folder, "the added header", |layout| {
-        references(layout).join(" ")
-            == "omfp:workspace omfp:chat omfp:changes omfp:background omfp:header"
-    })
-    .await?;
-    journey.gone("[data-testid=widget-picker]").await?;
-    journey.click("[data-testid=layout-edit]").await?;
-    journey.gone("[data-testid=widget-toolbar]").await?;
 
     // A copy of the built-in workspace widget replaces it in this workspace; a change to the copy shows.
     journey.command("widget copy omfp:workspace").await?;

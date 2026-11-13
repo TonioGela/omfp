@@ -9,7 +9,7 @@ use serde_json::{Map, Value, json};
 
 use crate::agent_tools::catalog;
 use crate::widgets::layout::{Addition, Place};
-use crate::widgets::{self, BUILTIN_URL, CHECK_URL, DOCS_URL, SCHEMA_URL, SCHEME, keymap};
+use crate::widgets::{self, BUILTIN_URL, CHECK_URL, DOCS_URL, SCHEMA_URL, SCHEME, keymap, shell};
 
 /// Name of the tool that opens a file in omfp for the user (DMN-060).
 pub const OPEN_FILE: &str = "omfp_open_file";
@@ -25,6 +25,9 @@ pub const WIDGET_CHECK: &str = "omfp_widget_check";
 
 /// Name of the tool that adds a widget to a view (DMN-064).
 pub const VIEW_ADD: &str = "omfp_view_add";
+
+/// Name of the tool that lists the init file and TSX view errors windows report (DMN-196).
+pub const VIEWS_ERRORS: &str = "omfp_views_errors";
 
 /// Longest title `set_thread_title` accepts, in characters.
 pub const MAX_TITLE_CHARS: usize = 200;
@@ -49,10 +52,10 @@ pub type Notify = Arc<dyn Fn(&str, &str) -> Result<(), String> + Send + Sync>;
 /// Stores a title the agent set for its thread; the error goes back to the agent.
 pub type SetTitle = Arc<dyn Fn(&str) -> Result<(), String> + Send + Sync>;
 
-/// What the widget tools need from the daemon (DMN-063, DMN-064); the server implements it. Both run on an
-/// `omp-rpc` handler thread and may block it.
+/// What the widget tools need from the daemon (DMN-063, DMN-064, DMN-196, DMN-199); the server implements it. They
+/// run on an `omp-rpc` handler thread and may block it.
 pub trait WidgetHost: Send + Sync {
-    /// The `omfp_widget_check` answer for the widget `name` of workspace `workspace_id`.
+    /// The `omfp_widget_check` answer for `name` of workspace `workspace_id`: a widget, an init file or a TSX view.
     fn check_widget(
         &self,
         workspace_id: &str,
@@ -61,6 +64,14 @@ pub trait WidgetHost: Send + Sync {
     ) -> Result<String, String>;
     /// Adds a widget to a view of workspace `workspace_id`, writes `views.json` and says what it did.
     fn add_to_view(&self, workspace_id: &str, addition: &Addition<'_>) -> Result<String, String>;
+    /// The `omfp_views_errors` answer for workspace `workspace_id`.
+    fn views_errors(
+        &self,
+        workspace_id: &str,
+        is_cancelled: &dyn Fn() -> bool,
+    ) -> Result<String, String>;
+    /// What the daemon's config file and the `.omfp/keymap.json` of workspace `workspace_id` add to the default keys.
+    fn keymap_additions(&self, workspace_id: &str) -> shell::Additions;
 }
 
 /// Builds the host tools of a thread's agent from the agent tool registry (AGT-040, DMN-151); the server implements
@@ -90,7 +101,8 @@ pub fn thread_tools(
     ];
     if let Some(host) = widgets {
         tools.push(widget_check(workspace_id.to_owned(), Arc::clone(&host)));
-        tools.push(view_add(workspace_id.to_owned(), host));
+        tools.push(view_add(workspace_id.to_owned(), Arc::clone(&host)));
+        tools.push(views_errors(workspace_id.to_owned(), host));
     }
     tools.extend(agent_tools);
     tools
@@ -99,10 +111,10 @@ pub fn thread_tools(
         .collect()
 }
 
-/// The host URI schemes of every thread (DMN-062): `omfp://`, read-only — the method catalogue (AGT-042), the widget
-/// docs and schemas, the built-in widgets' sources from `builtin` (`<static-dir>/builtin-widgets/` when the daemon
-/// serves a bundle) and, with `widgets` (the thread's workspace id and the widget host), `omfp://widgets/check/<name>`
-/// (DMN-108).
+/// The host URI schemes of every thread (DMN-062): `omfp://`, read-only — the method catalogue (AGT-042), the docs and
+/// their index, the schemas, the built-in widgets' sources from `builtin` (`<static-dir>/builtin-widgets/` when the
+/// daemon serves a bundle) and, with `widgets` (the thread's workspace id and the widget host),
+/// `omfp://widgets/check/<name>` (DMN-108) and `omfp://keymap` with the workspace's bindings (DMN-199).
 pub fn host_uris(
     builtin: Option<PathBuf>,
     widgets: Option<(String, Arc<dyn WidgetHost>)>,
@@ -113,17 +125,22 @@ pub fn host_uris(
             .map_or(("", None), |(id, host)| (id.as_str(), Some(&**host)));
         catalog::read_uri(url)
             .or_else(|| widgets::read_check(url, || context.is_cancelled(), workspace_id, host))
+            .or_else(|| widgets::read_keymap(url, workspace_id, host))
             .unwrap_or_else(|| widgets::read_uri(url, builtin.as_deref()))
             .map_err(Into::into)
     })?
     .description(format!(
-        "omfp, the window the user works in: {} lists the protocol methods omfp_call accepts and {}/<name> gives \
-         one's params and result schemas; {DOCS_URL} documents widgets (SDK, kit, views); {SCHEMA_URL} is the JSON \
-         Schema of .omfp/views.json and {} of .omfp/keymap.json; {BUILTIN_URL} lists the built-in widgets and \
-         {BUILTIN_URL}/<name> shows one's source; {CHECK_URL}/<name> checks a widget (compile errors, what open \
-         windows render)",
+        "omfp, the window the user works in: {} indexes these docs; {} lists the protocol methods omfp_call accepts \
+         and {}/<name> gives one's params and result schemas; {DOCS_URL} documents widgets (SDK, kit, views, init \
+         files, TSX views); {} describes the window and {} its keys and commands; {SCHEMA_URL} is the JSON Schema of \
+         .omfp/views.json and {} of .omfp/keymap.json; {BUILTIN_URL} lists the built-in widgets and \
+         {BUILTIN_URL}/<name> shows one's source; {CHECK_URL}/<name> checks a widget, an init file (`init`, \
+         `user:init`) or a TSX view (`views/<file>`): compile errors, what open windows report",
+        shell::INDEX_URL,
         catalog::METHODS_URL,
         catalog::METHODS_URL,
+        shell::SHELL_URL,
+        shell::KEYMAP_URL,
         keymap::SCHEMA_URL
     ))
     .immutable(true);
@@ -134,7 +151,7 @@ fn schema(value: &Value) -> Map<String, Value> {
     value.as_object().cloned().unwrap_or_default()
 }
 
-/// `omfp_widget_check { name }` (DMN-063).
+/// `omfp_widget_check { name }` (DMN-063, DMN-197).
 #[must_use]
 pub fn widget_check(workspace_id: String, host: Arc<dyn WidgetHost>) -> HostTool {
     let parameters = schema(&json!({
@@ -143,7 +160,7 @@ pub fn widget_check(workspace_id: String, host: Arc<dyn WidgetHost>) -> HostTool
             "name": {
                 "type": "string",
                 "minLength": 1,
-                "description": "The widget: its folder name (`tests` for .omfp/widgets/tests/), `./widgets/<name>` or `user:<name>`."
+                "description": "A widget: its folder name (`tests` for .omfp/widgets/tests/), `./widgets/<name>` or `user:<name>`. An init file: `init` (or `.omfp/init.ts`, the workspace's) or `user:init` (the user's). A TSX view: `views/<file>` (or `.omfp/views/<file>`, e.g. `views/ops.tsx`)."
             }
         },
         "required": ["name"],
@@ -151,9 +168,11 @@ pub fn widget_check(workspace_id: String, host: Arc<dyn WidgetHost>) -> HostTool
     }));
     HostTool::new(
         WIDGET_CHECK,
-        "Checks a workspace or user widget without a browser: the daemon compiles its files, then reports what every \
-         open omfp window shows of it (render, import and console errors, the rendered text, its jobs) or that no \
-         window shows it. Use it after writing or changing a widget.",
+        "Checks a workspace or user widget, an init file (`init`, `user:init`) or a TSX view (`views/<file>`) without \
+         a browser: the daemon compiles it as it serves it, then reports what every open omfp window shows of it \
+         (for a widget: render, import and console errors, the rendered text, its jobs; for an init file or a TSX \
+         view: the runtime, render and layout errors the windows report) or that no window shows it. Use it after \
+         writing or changing one.",
         parameters,
         move |arguments, context| {
             run_widget_check(&arguments, || context.is_cancelled(), &workspace_id, &*host)
@@ -181,6 +200,44 @@ pub fn run_widget_check(
         name,
         &is_cancelled,
     )?))
+}
+
+/// `omfp_views_errors {}` (DMN-196): the init file and TSX view errors the windows showing the thread's workspace
+/// report.
+#[must_use]
+pub fn views_errors(workspace_id: String, host: Arc<dyn WidgetHost>) -> HostTool {
+    let parameters = schema(&json!({
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+    }));
+    HostTool::new(
+        VIEWS_ERRORS,
+        "Lists the errors the open omfp windows showing this workspace report for its init files (the workspace's \
+         .omfp/init.ts and the user's init file) and TSX views (.omfp/views/): compile errors, throws, render and \
+         layout errors, window by window, after they caught up with the latest change. Use it after changing an init \
+         file or a TSX view; omfp_widget_check { name: \"init\" } checks one file.",
+        parameters,
+        move |arguments, context| {
+            run_views_errors(&arguments, || context.is_cancelled(), &workspace_id, &*host)
+        },
+    )
+    .label("View errors")
+}
+
+/// The body of [`views_errors`], without the `omp-rpc` context (DMN-061).
+pub fn run_views_errors(
+    _arguments: &Map<String, Value>,
+    is_cancelled: impl Fn() -> bool,
+    workspace_id: &str,
+    host: &dyn WidgetHost,
+) -> Result<HostToolOutput, HostToolError> {
+    if is_cancelled() {
+        return Err("cancelled".into());
+    }
+    Ok(HostToolOutput::Text(
+        host.views_errors(workspace_id, &is_cancelled)?,
+    ))
 }
 
 /// `omfp_view_add { widget, props?, view?, where? }` (DMN-064).
@@ -718,6 +775,22 @@ mod tests {
             ));
             Ok("added".to_owned())
         }
+
+        fn views_errors(
+            &self,
+            workspace_id: &str,
+            _is_cancelled: &dyn Fn() -> bool,
+        ) -> Result<String, String> {
+            self.asked
+                .lock()
+                .unwrap()
+                .push(format!("errors {workspace_id}"));
+            Ok("1 window(s) show this workspace.".to_owned())
+        }
+
+        fn keymap_additions(&self, _workspace_id: &str) -> shell::Additions {
+            shell::Additions::default()
+        }
     }
 
     fn text(output: Result<HostToolOutput, HostToolError>) -> Result<String, String> {
@@ -728,7 +801,7 @@ mod tests {
         }
     }
 
-    // spec: DMN-060, DMN-063, DMN-064, DMN-106, DMN-125
+    // spec: DMN-060, DMN-063, DMN-064, DMN-106, DMN-125, DMN-196
     #[test]
     fn the_widget_tools_are_registered_and_reach_the_widget_host_of_the_threads_workspace() {
         let host = Arc::new(FakeWidgets::default());
@@ -746,7 +819,14 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            [OPEN_FILE, NOTIFY, SET_THREAD_TITLE, WIDGET_CHECK, VIEW_ADD]
+            [
+                OPEN_FILE,
+                NOTIFY,
+                SET_THREAD_TITLE,
+                WIDGET_CHECK,
+                VIEW_ADD,
+                VIEWS_ERRORS
+            ]
         );
         for tool in &tools {
             assert_eq!(
@@ -764,6 +844,18 @@ mod tests {
             tools[4].definition().parameters["properties"]["where"]["enum"],
             json!(["side-tab", "main-tab", "end"])
         );
+        assert_eq!(
+            tools[5].definition().parameters["properties"],
+            json!({}),
+            "no arguments: the thread's workspace"
+        );
+        let check_description = &tools[3].definition().description;
+        for form in ["`init`", "`user:init`", "`views/<file>`"] {
+            assert!(
+                check_description.contains(form),
+                "{form}: {check_description}"
+            );
+        }
 
         let check =
             |arguments: Value| text(run_widget_check(&args(arguments), || false, "01WS", &*host));
@@ -785,12 +877,17 @@ mod tests {
             Ok("added".to_owned())
         );
         assert_eq!(
+            text(run_views_errors(&Map::new(), || false, "01WS", &*host)),
+            Ok("1 window(s) show this workspace.".to_owned())
+        );
+        assert_eq!(
             *host.asked.lock().unwrap(),
             [
                 "check 01WS tests",
                 "check 01WS missing",
                 "add 01WS ./widgets/tests {} None SideTab",
                 "add 01WS user:clock {\"zone\":\"UTC\"} Some(\"dash\") End",
+                "errors 01WS",
             ]
         );
     }
@@ -839,6 +936,10 @@ mod tests {
                 "w",
                 &host
             )),
+            Err("cancelled".to_owned())
+        );
+        assert_eq!(
+            text(run_views_errors(&Map::new(), || true, "w", &host)),
             Err("cancelled".to_owned())
         );
         assert_eq!(*host.asked.lock().unwrap(), Vec::<String>::new());
@@ -890,7 +991,7 @@ mod tests {
         assert_eq!(failed.unwrap_err().to_string(), "thread 01X not found");
     }
 
-    // spec: DMN-062, AGT-042
+    // spec: DMN-062, AGT-042, DMN-198
     #[test]
     fn the_omfp_scheme_is_read_only_and_describes_the_method_catalogue() {
         let uris = host_uris(None, None).unwrap();
@@ -905,5 +1006,12 @@ mod tests {
                 .contains("omfp://protocol/methods lists the protocol methods omfp_call accepts"),
             "{description}"
         );
+        for part in [
+            "omfp://docs indexes these docs",
+            "omfp://docs/shell describes the window and omfp://keymap its keys and commands",
+            "an init file (`init`, `user:init`) or a TSX view (`views/<file>`)",
+        ] {
+            assert!(description.contains(part), "{part:?}: {description}");
+        }
     }
 }

@@ -3649,6 +3649,99 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "views.errors": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one workspace.",
+      "properties": {
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspaceId"
+      ],
+      "title": "WorkspaceRef",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "FileErrorKind": {
+          "description": "(Experimental) What kind of file a [`FileErrorReport`] is about (PRT-115).",
+          "oneOf": [
+            {
+              "const": "init",
+              "description": "An init file: the user's or the workspace's `.omfp/init.ts`.",
+              "type": "string"
+            },
+            {
+              "const": "view",
+              "description": "A TSX view file of the workspace's `.omfp/views/`.",
+              "type": "string"
+            }
+          ]
+        },
+        "FileErrorReport": {
+          "description": "(Experimental) One runtime error a window shows of an init file or a TSX view (PRT-115).",
+          "properties": {
+            "file": {
+              "description": "`user` for the user's init file, else the workspace-relative path (`.omfp/init.ts`, `.omfp/views/ops.tsx`).",
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/$defs/FileErrorKind"
+            },
+            "message": {
+              "description": "The error as the window shows it: a compile error with `file:line:column`, a throw, a render or layout error.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "file",
+            "message"
+          ],
+          "type": "object"
+        },
+        "WindowFileErrors": {
+          "description": "(Experimental) The init file and TSX view errors one window reports (PRT-116).",
+          "properties": {
+            "client": {
+              "description": "The `client` of the window's `system.hello`.",
+              "type": "string"
+            },
+            "errors": {
+              "items": {
+                "$ref": "#/$defs/FileErrorReport"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "client",
+            "errors"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "(Experimental) `views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose\nreport is about the workspace, by connection.",
+      "properties": {
+        "windows": {
+          "description": "One entry per window showing the workspace, those without errors included.",
+          "items": {
+            "$ref": "#/$defs/WindowFileErrors"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "windows"
+      ],
+      "title": "ViewErrors",
+      "type": "object"
+    }
+  },
   "views.mount": {
     "params": {
       "$defs": {
@@ -4034,6 +4127,43 @@ expression: method_schemas()
   "widgets.report": {
     "params": {
       "$defs": {
+        "FileErrorKind": {
+          "description": "(Experimental) What kind of file a [`FileErrorReport`] is about (PRT-115).",
+          "oneOf": [
+            {
+              "const": "init",
+              "description": "An init file: the user's or the workspace's `.omfp/init.ts`.",
+              "type": "string"
+            },
+            {
+              "const": "view",
+              "description": "A TSX view file of the workspace's `.omfp/views/`.",
+              "type": "string"
+            }
+          ]
+        },
+        "FileErrorReport": {
+          "description": "(Experimental) One runtime error a window shows of an init file or a TSX view (PRT-115).",
+          "properties": {
+            "file": {
+              "description": "`user` for the user's init file, else the workspace-relative path (`.omfp/init.ts`, `.omfp/views/ops.tsx`).",
+              "type": "string"
+            },
+            "kind": {
+              "$ref": "#/$defs/FileErrorKind"
+            },
+            "message": {
+              "description": "The error as the window shows it: a compile error with `file:line:column`, a throw, a render or layout error.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "file",
+            "message"
+          ],
+          "type": "object"
+        },
         "Position": {
           "description": "A position in a topic's event stream.",
           "properties": {
@@ -4202,6 +4332,14 @@ expression: method_schemas()
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "description": "`widgets.report` params (PRT-043, AGT-026): what this connection's window shows of a workspace's own widgets.",
       "properties": {
+        "fileErrors": {
+          "default": [],
+          "description": "(Experimental) The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.",
+          "items": {
+            "$ref": "#/$defs/FileErrorReport"
+          },
+          "type": "array"
+        },
         "views": {
           "anyOf": [
             {

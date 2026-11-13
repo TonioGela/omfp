@@ -1,14 +1,15 @@
 /**
  * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), the left column of
- * workspaces and threads (UI-100), the view of the current workspace with its switcher, error banner and layout
- * editing (UI-100..104, AGT-011), the keymap, `:` command line (UI-095) and help panel (UI-198), the safety net for
+ * workspaces and threads (UI-100), the view of the current workspace with its error banner (UI-100..102, AGT-011)
+ * and its view tabs in the mode line (UI-301), the keymap, `:` command line (UI-095) and help panel (UI-198), the
+ * runtime errors of init files and TSX views reported to the daemon (UI-304), the safety net for
  * pending interactions (AGT-015), floating panels (UI-230), notices and notifications (UI-096, UI-192), the live region
  * (UI-092), dialogs, the files the agent opens (DMN-060), and theme/density on `<html>` (UI-091, UI-094). Everything
  * else is a widget of the view.
  */
 
-import { Select, useWidthClass } from "@omfp/kit";
-import { type ViewsState, viewsTopic } from "@omfp/protocol";
+import { useWidthClass } from "@omfp/kit";
+import { type FileErrorReport, type ViewsState, viewsTopic } from "@omfp/protocol";
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef } from "react";
 import { createKeyHandler } from "../keymap/handler.ts";
 import { type Binding, DEFAULT_BINDINGS } from "../keymap/keymap.ts";
@@ -34,7 +35,6 @@ import { WidgetBoundary } from "../view/slot.tsx";
 import {
   BUILTIN_VIEW,
   isFileView,
-  type ListedView,
   type ResolvedView,
   resolveViews,
   type Views,
@@ -53,8 +53,8 @@ import { FloatingFile } from "./floating-file.tsx";
 import { FloatingWidgets, RevealedWidget } from "./floating-widgets.tsx";
 import { Help } from "./help.tsx";
 import { InitErrors, InitLoader, useInit } from "./init.tsx";
-import { AddWidget, LAYOUT_EDIT, LayoutEditToggle, useLayoutWriter } from "./layout.tsx";
-import { ModeLine, useMode } from "./mode-line.tsx";
+import { useAddWidget, widgetReferences } from "./layout.tsx";
+import { ModeLine, type ModeLineViews, useMode } from "./mode-line.tsx";
 import type { NotificationPort } from "./notifications.ts";
 import { Notifier } from "./notifier.tsx";
 import { breakpointOf, LEFT_OPEN, MOBILE_AREA } from "./responsive.ts";
@@ -117,10 +117,24 @@ export function Frame({
     listed === undefined || !isFileView(listed)
       ? listed
       : (file.view ?? (file.error === undefined ? undefined : BUILTIN_VIEW));
-  const locked = editLock(listed);
-  const [layoutEdit] = useWindowState(LAYOUT_EDIT);
-  const editing = layoutEdit && workspaceId !== undefined && locked === undefined;
-  const write = useLayoutWriter(workspaceId, state, listed?.id ?? views.defaultId, view);
+  const addWidget = useAddWidget(workspaceId, state, listed);
+  const fileError = listed !== undefined && isFileView(listed) ? file.error : undefined;
+  const fileErrors = useMemo(
+    (): FileErrorReport[] => [
+      ...init.errors.map(
+        ({ file: which, message }): FileErrorReport => ({
+          kind: "init",
+          file: which === "user" ? "user" : ".omfp/init.ts",
+          message,
+        }),
+      ),
+      ...(listed === undefined || !isFileView(listed) || fileError === undefined
+        ? []
+        : [{ kind: "view" as const, file: strings.init.viewFile.path(listed.file), message: fileError }]),
+    ],
+    [init.errors, listed, fileError],
+  );
+  useFileErrorReports(fileErrors);
   const settings = useSettings();
   // The defaults < the daemon's `[keymap]` entries < the current workspace's `.omfp/keymap.json` < the init files',
   // live (UI-097, UI-210, UI-262).
@@ -138,6 +152,14 @@ export function Frame({
   const [area] = useWindowState(MOBILE_AREA);
   const side = view !== undefined && chatCell(view.tree) !== undefined;
   const viewIds = views.views.map((candidate) => candidate.id);
+  const modeViews = useMemo(
+    (): ModeLineViews => ({
+      views: views.views.map(({ id, title }) => ({ id, title })),
+      current: listed?.id,
+      onSelect: setActive,
+    }),
+    [views.views, listed?.id, setActive],
+  );
   return (
     <div ref={appRef} className="omfp-app" data-testid="app" data-layout={breakpoint}>
       <ConnectionBanner />
@@ -148,7 +170,7 @@ export function Frame({
       )}
       <KeymapError views={state} />
       <InitErrors errors={init.errors} />
-      {listed !== undefined && isFileView(listed) && file.error !== undefined && (
+      {listed !== undefined && isFileView(listed) && fileError !== undefined && (
         <div
           className="omfp-banner"
           data-tone="error"
@@ -156,7 +178,7 @@ export function Frame({
           data-testid="view-file-error"
           data-file={listed.file}
         >
-          {strings.init.viewFile.banner(strings.init.viewFile.path(listed.file), file.error)}
+          {strings.init.viewFile.banner(strings.init.viewFile.path(listed.file), fileError)}
         </div>
       )}
       {settings.error !== null && settings.error !== undefined && (
@@ -178,30 +200,6 @@ export function Frame({
               <ThreadsWidget />
             </WidgetBoundary>
           </div>
-          <div className="omfp-frame__views" data-testid="view-controls">
-            <Select
-              label={strings.shell.frame.views}
-              hideLabel
-              data-testid="view-switcher"
-              items={views.views.map((candidate) => ({ id: candidate.id, label: candidate.title }))}
-              selectedKey={listed?.id ?? null}
-              onSelectionChange={(key) => {
-                if (key !== null) {
-                  setActive(String(key));
-                }
-              }}
-            />
-            <LayoutEditToggle editing={editing} enabled={workspaceId !== undefined} locked={locked} />
-            {editing && (
-              <AddWidget
-                registry={registry}
-                views={state}
-                onAdd={(reference) => {
-                  void write({ kind: "add", reference });
-                }}
-              />
-            )}
-          </div>
         </aside>
         {breakpoint === "wide" && <LeftSplitter aside={asideRef} />}
         <div className="omfp-frame__main">
@@ -211,7 +209,6 @@ export function Frame({
               registry={registry}
               workspaceId={workspaceId}
               views={state}
-              onEdit={editing ? write : undefined}
               area={breakpoint === "mobile" ? (side ? area : "chat") : undefined}
             />
           )}
@@ -226,7 +223,7 @@ export function Frame({
             views={state}
             registry={registry}
           />
-          <FrameModeLine appRef={appRef} bindings={bindings} />
+          <FrameModeLine appRef={appRef} bindings={bindings} views={modeViews} />
         </div>
       </main>
       {breakpoint === "mobile" && <Areas side={side} />}
@@ -238,7 +235,12 @@ export function Frame({
       <DeleteWorkspaceDialog />
       <Help bindings={bindings} now={now} />
       <Describe bindings={bindings} />
-      <GlobalCommands viewIds={viewIds} />
+      <GlobalCommands
+        viewIds={viewIds}
+        currentView={listed?.id}
+        widgets={widgetReferences(registry, state)}
+        addWidget={addWidget}
+      />
       <Notifier port={notifications} hasFocus={hasFocus} focusWindow={focusWindow} />
       <AgentFiles />
       <AgentNotices />
@@ -252,9 +254,11 @@ export function Frame({
 function FrameModeLine({
   appRef,
   bindings,
+  views,
 }: {
   appRef: RefObject<HTMLDivElement | null>;
   bindings: readonly Binding[];
+  views: ModeLineViews;
 }): ReactNode {
   const mode = useMode();
   const [editorMode] = useWindowState(EDITOR_MODE);
@@ -263,27 +267,11 @@ function FrameModeLine({
     appRef.current?.setAttribute("data-mode", mode);
   }, [appRef, mode]);
   return (
-    <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} bindings={bindings}>
+    <ModeLine mode={mode} vim={mode === "insert" ? editorMode : undefined} bindings={bindings} views={views}>
       <CommandLine bindings={bindings} />
       <FilePickerLine />
     </ModeLine>
   );
-}
-
-/**
- * Why Edit layout is off for `view` (UI-269): its layout is a TSX file, or an init file added it (writing `views.json`
- * would change nothing the window shows); `undefined` when it edits `views.json`, init transforms of a `views.json`
- * view included.
- */
-function editLock(view: ListedView | undefined): string | undefined {
-  const text = strings.init.viewFile;
-  if (view === undefined) {
-    return undefined;
-  }
-  if (isFileView(view)) {
-    return text.lockedFile(text.path(view.file));
-  }
-  return view.init === undefined ? undefined : text.lockedInit(strings.init.files[view.init]);
 }
 
 /** The views of the workspace's manifest; the default view without one, before it arrives, or with the daemon's
@@ -321,6 +309,15 @@ function useWindowReports(workspaceId: string | undefined): void {
       reports.resend();
     }
   }, [reports, hello]);
+}
+
+/**
+ * Tells the daemon the errors of the init files and of the TSX view this window shows (UI-304), with its widget
+ * reports (`widgets.report` `fileErrors`), so agents read them (`views.errors`).
+ */
+function useFileErrorReports(errors: readonly FileErrorReport[]): void {
+  const { reports } = useHost();
+  useEffect(() => reports.setFileErrors(errors), [reports, errors]);
 }
 
 /** One global key handler for the window (UI-095). */

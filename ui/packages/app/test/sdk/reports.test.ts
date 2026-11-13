@@ -88,6 +88,7 @@ describe("widget reports", () => {
             ],
           },
         ],
+        fileErrors: [],
       },
     ]);
 
@@ -119,12 +120,32 @@ describe("widget reports", () => {
     host.reports.add(new SlotReport(host.reports, IDENTITY));
     host.reports.show(undefined, undefined);
     timers.run();
-    expect(sent()).toEqual([{ workspaceId: null, views: null, widgets: [] }]);
+    expect(sent()).toEqual([{ workspaceId: null, views: null, widgets: [], fileErrors: [] }]);
 
     host.reports.resend();
     timers.run();
     expect(sent().length).toBe(2);
-    expect(sent()[1]).toEqual({ workspaceId: null, views: null, widgets: [] });
+    expect(sent()[1]).toEqual({ workspaceId: null, views: null, widgets: [], fileErrors: [] });
+  });
+
+  // spec: UI-304
+  test("the window's init file and TSX view errors ride along; an unchanged list sends nothing", () => {
+    const { host, timers, sent } = reporting();
+    host.reports.show(WS, undefined);
+    host.reports.setFileErrors([{ kind: "init", file: ".omfp/init.ts", message: "boom" }]);
+    timers.run();
+    expect(sent().map((report) => report.fileErrors)).toEqual([
+      [{ kind: "init", file: ".omfp/init.ts", message: "boom" }],
+    ]);
+    host.reports.setFileErrors([{ kind: "init", file: ".omfp/init.ts", message: "boom" }]);
+    timers.run();
+    expect(sent().length).toBe(1);
+    host.reports.setFileErrors([]);
+    timers.run();
+    expect(sent().map((report) => report.fileErrors)).toEqual([
+      [{ kind: "init", file: ".omfp/init.ts", message: "boom" }],
+      [],
+    ]);
   });
 
   // spec: AGT-026

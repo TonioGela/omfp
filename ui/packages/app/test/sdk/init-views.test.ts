@@ -81,17 +81,6 @@ describe("InitViews", () => {
       ["review", "workspace", false],
       ["ops", "workspace", true],
     ]);
-    // Its nodes know where they come from (UI-269): the MCP tab is the workspace file's.
-    const [work] = listed;
-    expect(work === undefined || isFileView(work) ? undefined : Object.fromEntries(work.origins?.nodes ?? [])).toEqual({
-      "0": { base: "0" },
-      "0.0": { base: "0.0" },
-      "0.0.0": { base: "0.0.0" },
-      "0.1": { base: "0.1" },
-      "0.1.0": { base: "0.1.0" },
-      "0.1.1": { init: "workspace" },
-    });
-
     // The layout `get` gives changes its view.
     views.get("review")?.layout?.removeWidget("omfp:chat");
     expect(views.get("review")?.layout?.node).toEqual(["row", {}, ["omfp:changes", { repo: "api" }]]);

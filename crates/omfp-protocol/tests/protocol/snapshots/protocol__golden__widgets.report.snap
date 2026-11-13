@@ -7,6 +7,13 @@ expression: golden
     "id": "c42",
     "method": "widgets.report",
     "params": {
+      "fileErrors": [
+        {
+          "file": ".omfp/init.ts",
+          "kind": "init",
+          "message": ".omfp/init.ts:3:7: Unexpected token"
+        }
+      ],
       "views": {
         "epoch": "01EPOCH",
         "seq": 4

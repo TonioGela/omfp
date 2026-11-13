@@ -1,5 +1,5 @@
 /**
- * Texts of the init files (UI-260..UI-263, UI-267), of TSX views (UI-268, UI-269) and of `:describe-key` /
+ * Texts of the init files (UI-260..UI-263, UI-267), of TSX views (UI-268) and of `:describe-key` /
  * `:describe-command` (UI-264, UI-265).
  */
 
@@ -27,7 +27,7 @@ export const init = {
     fileView: (id: string, file: string) => `view ${JSON.stringify(id)} is the TSX file ${file}: edit that file`,
     lastView: "cannot remove the last view",
   },
-  /** TSX views (UI-268) and why layout editing is off (UI-269). */
+  /** TSX views (UI-268). */
   viewFile: {
     /** `./views/ops.tsx` as the user finds it. */
     path: (file: string) => `.omfp/${file.replace(/^\.\//, "")}`,
@@ -39,17 +39,6 @@ export const init = {
     text: "text is not a layout node: a view nests only Row, Col, Tabs, Stack and Widget",
     outside: (name: string) => `${name} lays out a view: use it in a view file (.omfp/views/*.tsx), not in a widget`,
     noUse: 'a <Widget> needs use="<reference>"',
-    lockedFile: (path: string) =>
-      `This view is ${path}: edit that file to change its layout (splitter sizes still apply to this window).`,
-    lockedInit: (file: string) =>
-      `This view comes from ${file}: edit that file to change it (Edit layout writes only views.json's views).`,
-  },
-  /** Edit layout on a views.json view init files changed (UI-269). */
-  edit: {
-    /** The mark of a node an init file added. */
-    mark: "init.ts",
-    added: (file: string) => `Added by ${file}: edit that file to change or remove it`,
-    cells: "An init file changed these cells: resize them in that file",
   },
   invalid: (error: string) => `invalid layout: ${error}`,
   /** `:describe-key` and `:describe-command` (UI-264, UI-265). */

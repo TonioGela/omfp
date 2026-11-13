@@ -38,13 +38,15 @@
  * | `useLive()` | `[live, snapshot]`: this window's live voice session (start, end, mute, spectrum source, UI-180..UI-189) |
  * | `useNotify()` | `notify({ title, body, threadId? })`: a notice in this window's mode line, a system notification while the window has no focus (UI-194) |
  *
- * Init files (UI-260..UI-263, UI-267, experimental) export a function taking an {@link InitApi}: `command`, `bind`,
- * `notify`, `on`, `views` (`load`, `use`, `transform` over {@link InitViews} and {@link Layout}), `workspace`, `panel`,
- * `run`, `call`, `onCleanup` and the `host` itself; the window's {@link InitFiles} runs them. TSX views (UI-268) return
- * the layout components `Row`, `Col`, `Tabs`, `Stack` and `Widget`.
+ * Init files (UI-260..UI-263, UI-267, experimental) are `export default function init(omfp: InitApi)`: the
+ * {@link InitApi} gives `command`, `bind`, `notify`, `on`, `views` (a {@link ViewsApi}: `load`, `use`, `transform` over
+ * {@link InitViews} and {@link Layout}), `workspace`, `panel`, `run`, `call`, `onCleanup` and the `host` itself; the
+ * window's {@link InitFiles} runs them. TSX views (UI-268) return the layout components `Row`, `Col`, `Tabs`, `Stack`
+ * and `Widget`.
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
- * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW`, `DELETE_THREAD`, `DELETE_WORKSPACE`,
+ * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW` (persisted), `DELETE_THREAD`,
+ * `DELETE_WORKSPACE`,
  * `RENAMING_THREAD`, `FOCUS_COMPOSER`, `ERRORS`, `OPEN_FILES`, `FLOATING_FILES` and `floatingWidgetKey(workspaceId, panelId)`
  * (persisted), `FILE_PICKER`, `EDITOR_MODE`, `NOTICES`.
  * A widget is a {@link WidgetComponent} (`ComponentType<WidgetProps>`); its root carries `data-omfp-scope` to own
@@ -313,9 +315,9 @@ export {
   InitFiles,
   type InitRepo,
   type InitSnapshot,
-  type InitViewsApi,
   type InitWorkspace,
   type ThreadEventKind,
+  type ViewsApi,
 } from "./init.ts";
 export { InitViews, Layout, type ViewEntry, type ViewOrigin, type ViewSpec } from "./init-views.ts";
 export {

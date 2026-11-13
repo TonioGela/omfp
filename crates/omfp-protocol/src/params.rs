@@ -796,6 +796,48 @@ pub struct ReportWidgetsParams {
     pub views: Option<Position>,
     /// Every workspace and user widget instance of the view the window shows (built-ins are not reported).
     pub widgets: Vec<WidgetReport>,
+    /// (Experimental) The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.
+    #[serde(default)]
+    pub file_errors: Vec<FileErrorReport>,
+}
+
+/// (Experimental) What kind of file a [`FileErrorReport`] is about (PRT-115).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FileErrorKind {
+    /// An init file: the user's or the workspace's `.omfp/init.ts`.
+    Init,
+    /// A TSX view file of the workspace's `.omfp/views/`.
+    View,
+}
+
+/// (Experimental) One runtime error a window shows of an init file or a TSX view (PRT-115).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FileErrorReport {
+    pub kind: FileErrorKind,
+    /// `user` for the user's init file, else the workspace-relative path (`.omfp/init.ts`, `.omfp/views/ops.tsx`).
+    pub file: String,
+    /// The error as the window shows it: a compile error with `file:line:column`, a throw, a render or layout error.
+    pub message: String,
+}
+
+/// (Experimental) `views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose
+/// report is about the workspace, by connection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewErrors {
+    /// One entry per window showing the workspace, those without errors included.
+    pub windows: Vec<WindowFileErrors>,
+}
+
+/// (Experimental) The init file and TSX view errors one window reports (PRT-116).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowFileErrors {
+    /// The `client` of the window's `system.hello`.
+    pub client: String,
+    pub errors: Vec<FileErrorReport>,
 }
 
 /// One widget instance as a window shows it (PRT-043).

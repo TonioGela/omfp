@@ -261,6 +261,8 @@ methods! {
     JobsStart = "jobs.start" (params::StartJobParams) -> JobInfo;
     /// Kills a job's process group (DMN-081).
     JobsKill = "jobs.kill" (params::JobRef) -> params::Empty;
+    /// (Experimental) The init file and TSX view errors every window showing the workspace reports (PRT-116).
+    ViewsErrors = "views.errors" (params::WorkspaceRef) -> params::ViewErrors;
     /// Mounts a widget (a reference or inline code) into a view or as a floating panel; replaces an earlier mount of
     /// the same id (PRT-080, AGT-061).
     ViewsMount = "views.mount" (params::MountParams) -> params::Mounted;

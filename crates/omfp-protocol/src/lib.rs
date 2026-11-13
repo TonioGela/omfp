@@ -51,6 +51,7 @@ pub use params::{
     WidgetCopied, WidgetJobReport, WidgetReport, WidgetReportState, WorkspaceDiffParams,
     WorkspaceRef, WriteFileParams,
 };
+pub use params::{FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
 pub use params::{
     LibraryComponent, MountParams, MountPlace, MountUpdateParams, Mounted, SaveWidgetParams,
     UnmountParams, Unmounted, WidgetLibrary, WidgetSaved,

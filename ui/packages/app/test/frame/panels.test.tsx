@@ -308,7 +308,7 @@ describe("widget save", () => {
     await test.user.type(screen.getByTestId("command-line-input"), "widget save{Enter}");
     expect(test.host.window.get(ERRORS)).toEqual([
       "user:clock already exists",
-      "Usage: :widget copy <reference> [<name>] | :widget save[!] <widget> [<name>]",
+      "Usage: :widget add <reference> | :widget copy <reference> [<name>] | :widget save[!] <widget> [<name>]",
     ]);
   });
 });

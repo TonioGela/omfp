@@ -7,7 +7,6 @@
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
 import { type LayoutNode, type LayoutTree, type Parsed, parseLayout, type View } from "./layout.ts";
-import type { NodeOrigins } from "./origins.ts";
 
 /** Header over the `main` tabs with the conversation (the slot reserved for opened files), the workspace and changes
  * widgets as the `side` tabs on the right; the frame renders the threads column itself (UI-100). */
@@ -43,11 +42,6 @@ export interface ResolvedView {
   readonly init?: "user" | "workspace";
   /** The TSX file (`./views/<name>.tsx`) the layout was rendered from (UI-268); `undefined` for a written layout. */
   readonly file?: string;
-  /**
-   * A `views.json` view init files changed (UI-269): its layout in `views.json`, which Edit layout writes, and where
-   * each shown node comes from; `undefined` for a view as `views.json` has it and for one an init file made.
-   */
-  readonly origins?: NodeOrigins;
 }
 
 /** A view whose layout is a TSX file of `.omfp/views/` (AGT-074, UI-268): the window renders it to get its tree. */

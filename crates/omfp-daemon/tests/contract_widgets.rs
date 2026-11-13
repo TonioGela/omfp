@@ -283,7 +283,7 @@ fn delegation_script() -> Vec<Step> {
     ]
 }
 
-// spec: AGT-029, DMN-106, DMN-107, DMN-108, DMN-060, DMN-125
+// spec: AGT-029, DMN-106, DMN-107, DMN-108, DMN-060, DMN-125, DMN-196
 #[tokio::test(flavor = "multi_thread")]
 async fn the_main_agent_delegates_a_widget_to_the_widget_builder_which_checks_it_through_the_daemon()
  {
@@ -318,6 +318,7 @@ async fn the_main_agent_delegates_a_widget_to_the_widget_builder_which_checks_it
         "omfp_notify",
         "omfp_widget_check",
         "omfp_view_add",
+        "omfp_views_errors",
     ] {
         assert!(
             parent.contains(&tool.to_owned()),

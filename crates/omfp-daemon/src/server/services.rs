@@ -3,6 +3,7 @@
 //! index, the roots of the live threads in the workspace (DMN-029) and its views (`views`, DMN-082); watched
 //! workspaces are polled (`polls`).
 
+mod file_checks;
 mod mounts;
 mod polls;
 mod views;

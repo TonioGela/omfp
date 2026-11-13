@@ -133,7 +133,7 @@ export function useCommand(command: Command): void {
       ...(description === undefined ? {} : { description }),
       ...(scope === undefined ? {} : { scope }),
       ...(aliases === undefined ? {} : { aliases }),
-      args: () => latest.current.args?.() ?? [],
+      args: (before) => latest.current.args?.(before) ?? [],
       enabled: () => latest.current.enabled?.() ?? true,
       run: (args) => latest.current.run(args),
     });

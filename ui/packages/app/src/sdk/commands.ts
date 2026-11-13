@@ -22,8 +22,11 @@ export interface Command {
   readonly aliases?: readonly string[];
   /** Widget scope it belongs to; global when absent. */
   readonly scope?: string;
-  /** Completions of the first argument (`:theme ` → `light`, `dark`, `system`). */
-  readonly args?: () => readonly string[];
+  /**
+   * Completions of the argument being typed, given the arguments before it (`:theme ` → `light`, `dark`, `system`;
+   * `:widget add ` → the widgets).
+   */
+  readonly args?: (before: readonly string[]) => readonly string[];
   /** Hidden from the command line and not run when `false`. */
   readonly enabled?: () => boolean;
   run(args: readonly string[]): void | Promise<void>;

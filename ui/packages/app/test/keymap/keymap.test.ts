@@ -98,7 +98,7 @@ describe("keymap", () => {
     expect(keyLabel("Alt-a")).toBe("alt+a");
   });
 
-  // spec: UI-095, UI-020, UI-022, UI-023, UI-063
+  // spec: UI-095, UI-020, UI-022, UI-023, UI-063, UI-302
   test("the defaults are vim-style, with the command line and the Space leader", () => {
     const table = (command: string, mode: "normal" | "insert" = "normal") => keysFor(DEFAULT_BINDINGS, command, mode);
     expect(table("nav.next")).toEqual(["j"]);
@@ -118,6 +118,8 @@ describe("keymap", () => {
     expect(table("composer.interrupt", "insert")).toEqual(["Ctrl-c"]);
     expect(table("composer.interrupt")).toEqual(["Ctrl-c"]);
     expect(table("composer.restore")).toEqual(["u"]);
+    // The views of the window (UI-302).
+    expect([table("view.pick"), table("view.next"), table("view.prev")]).toEqual([["g v"], ["] v"], ["[ v"]]);
     // No single-key binding while typing.
     expect(DEFAULT_BINDINGS.filter((binding) => binding.mode === "insert").map((binding) => binding.keys)).toEqual([
       "Esc",
