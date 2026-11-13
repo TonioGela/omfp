@@ -3,7 +3,7 @@
 //! (inline code, `omfp_ui_mount`) showing both threads' live state with a button that prompts the orchestrator, and the
 //! activity log widget beside it. The browser checks the dashboard, the live states, the click reaching the
 //! orchestrator's next model request, the activity log, the "spawned by" filter and the cascade stop. Takes
-//! `omfp-m10-*.png` (in `/tmp` or `OMFP_SCREENSHOT_DIR`). Run with `just test-e2e`.
+//! `omfp-m10-*.png` (in the run's screenshot directory). Run with `just test-e2e`.
 
 use e2e::Journey;
 use fake_llm::{Matcher, Reply, Step, ToolCall};

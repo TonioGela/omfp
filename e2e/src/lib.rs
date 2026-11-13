@@ -803,15 +803,15 @@ impl Journey {
         Ok(value.as_str().unwrap_or_default().to_owned())
     }
 
-    /// Saves a screenshot of the window as `omfp-<name>.png` in `OMFP_SCREENSHOT_DIR` (default `/tmp`; the dev shell's
-    /// `TMPDIR` goes away with the shell) and returns its path.
-    pub async fn screenshot(&self, name: &str) -> anyhow::Result<PathBuf> {
-        let dir = std::env::var_os("OMFP_SCREENSHOT_DIR")
-            .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from);
+    /// Saves a screenshot of the window as `omfp-<name>.png` in [`screenshot_dir`], when there is one.
+    pub async fn screenshot(&self, name: &str) -> anyhow::Result<()> {
+        let Some(dir) = screenshot_dir() else {
+            return Ok(());
+        };
         let path = dir.join(format!("omfp-{name}.png"));
         self.driver.screenshot(&path).await?;
         eprintln!("screenshot: {}", path.display());
-        Ok(path)
+        Ok(())
     }
 
     /// Fails when the first element matching `css` scrolls sideways (`scrollWidth > clientWidth`), naming the
@@ -888,6 +888,13 @@ impl Journey {
         eprintln!("{name}: {:.1} s", self.started.elapsed().as_secs_f64());
         Ok(())
     }
+}
+
+/// Where journeys put their screenshots for a look by eye: `OMFP_SCREENSHOT_DIR`, a new directory per run under
+/// `just test-e2e`; without it they take none (nothing compares pixels).
+#[must_use]
+pub fn screenshot_dir() -> Option<PathBuf> {
+    std::env::var_os("OMFP_SCREENSHOT_DIR").map(PathBuf::from)
 }
 
 /// The system prompt of a recorded model request (its `system`/`developer` messages).

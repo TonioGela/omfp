@@ -1,7 +1,7 @@
 //! The responsive frame (UI-200..UI-209) in headless Chromium at 1400, 900 and 390 px: wide keeps the left column and
 //! the splitters; narrow collapses the column to a strip that opens over the content and keeps the chat header on one
-//! row; a phone shows one area at a time behind a bottom bar, without splitters. Screenshots land in `/tmp` as
-//! `omfp-responsive-<width>-<scheme>.png` (or `OMFP_SCREENSHOT_DIR`); nothing compares pixels.
+//! row; a phone shows one area at a time behind a bottom bar, without splitters. Screenshots land in the run's
+//! screenshot directory as `omfp-responsive-<width>-<scheme>.png`; nothing compares pixels.
 //!
 //! A touch phone (E2E-36) emulated over CDP (touch, `mobile` metrics: `pointer: coarse`, `hover: none`) at 412 × 915
 //! and sideways at 915 × 412, shots as `omfp-touch-*.png`.

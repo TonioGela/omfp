@@ -67,20 +67,8 @@ jobs:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop -c just check
 
-  test:
-    name: Rust tests
-    needs: dev-shell
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/dev-shell
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - run: nix develop -c just test
-
   test-ts:
-    name: TypeScript tests
+    name: TypeScript tests, view models' coverage gate
     needs: dev-shell
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -188,8 +176,9 @@ jobs:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix develop -c just mutants-gate
 
+  # The fast Rust tests (`just test`) run here once, instrumented.
   cov:
-    name: coverage gate
+    name: Rust tests, coverage gate
     needs: dev-shell
     runs-on: ubuntu-latest
     timeout-minutes: 60

@@ -1,6 +1,6 @@
 //! The UI mount journey of M10 (AGT-060..063, UI-230..232): a scripted agent mounts inline code into the workspace's
 //! view and as a floating panel, drives the mounted widget by updating its props while the user's state in it stays,
-//! and the user closes the panel. Takes `omfp-m10-mount.png` (in `/tmp` or `OMFP_SCREENSHOT_DIR`). Run with
+//! and the user closes the panel. Takes `omfp-m10-mount.png` (in the run's screenshot directory). Run with
 //! `just test-e2e`.
 
 use e2e::Journey;

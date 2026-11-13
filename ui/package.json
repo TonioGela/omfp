@@ -8,7 +8,9 @@
   ],
   "scripts": {
     "check": "tsc --noEmit -p .",
-    "test": "bun test packages/protocol packages/core packages/client && bun test --preload ./test/dom.ts packages/kit packages/app",
+    "test": "bun run test:plain && bun run test:dom",
+    "test:plain": "bun test packages/protocol packages/core packages/client",
+    "test:dom": "bun test --preload ./test/dom.ts packages/kit packages/app",
     "build": "bun run --cwd packages/app build"
   },
   "devDependencies": {

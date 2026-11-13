@@ -45,10 +45,10 @@ describe("check-workflow", () => {
   test("a job running a recipe `just ci` does not fails", () => {
     const problems = check(
       withWorkflow((workflow) => {
-        workflow.jobs.test?.steps?.push({ run: "nix develop -c just serve" });
+        workflow.jobs.check?.steps?.push({ run: "nix develop -c just serve" });
       }),
     );
-    expect(problems).toContain("job test runs `just serve`, which `just ci` does not");
+    expect(problems).toContain("job check runs `just serve`, which `just ci` does not");
   });
 
   // spec: TST-112

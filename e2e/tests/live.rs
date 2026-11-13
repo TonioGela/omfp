@@ -1,7 +1,8 @@
 //! Live voice (E2E-14, M6) in headless Chromium with a fake microphone, against a daemon on the fake launcher: its
 //! canned SDP answer is no real peer, so the peer never connects and the panel stays `connecting` (the states after
 //! `connected` are the component tests' job, UI-181..UI-184). The journey checks the UI states and the commands omp
-//! receives, not audio. Screenshots of the panel states land in `/tmp/omfp-live-*.png` (or `OMFP_SCREENSHOT_DIR`).
+//! receives, not audio. Screenshots of the panel states land in the run's screenshot directory
+//! (`omfp-live-*.png`).
 //! A second journey plays the desktop's path (UI-188): a page without WebRTC on the daemon's machine (`#local=1`)
 //! starts omp's own session (`live_start`).
 

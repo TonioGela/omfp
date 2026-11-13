@@ -2,7 +2,7 @@
 //! card and a queued follow-up in the light and dark schemes and in a custom matugen theme, the `:` command line, the
 //! left column's "+ workspace" field in path mode completing a folder, the Workspace widget (Link / Clone switch) with
 //! two linked repositories and its path field completing a folder, a pending approval and an `ask` question. The
-//! screenshots land in `/tmp` (or `OMFP_SCREENSHOT_DIR`); nothing compares pixels. Run with `just test-e2e`.
+//! screenshots land in the run's screenshot directory; nothing compares pixels. Run with `just test-e2e`.
 
 use std::path::Path;
 

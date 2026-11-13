@@ -3,10 +3,8 @@
 //! matugen fixture theme and the Dux Solarized preset (whose tertiary and secondary sit on the surface at 1.14:1 until
 //! the contrast guard, UI-196, moves them): every text role, status color and gradient stop the page measures reaches
 //! WCAG AA, the guard overrides nothing but in the Dux preset, and elsewhere the item focus (UI-132) stays visible: its
-//! bar at 3:1, its tint apart from the other states. Full-page shots land in `/tmp/omfp-kit-<theme>-<scheme>.png` (or
-//! `OMFP_SCREENSHOT_DIR`) for a look by eye; nothing compares them.
-
-use std::path::PathBuf;
+//! bar at 3:1, its tint apart from the other states. Full-page shots land in the run's screenshot directory
+//! (`e2e::screenshot_dir`) as `omfp-kit-<theme>-<scheme>.png` for a look by eye; nothing compares them.
 
 use anyhow::{Context, bail};
 use e2e::Journey;
@@ -34,12 +32,6 @@ const THEMES: [(&str, &str); 13] = [
 /// The one theme the contrast guard must correct; it leaves every other as it is.
 const GUARDED_THEME: &str = "dux-solarized";
 const SCHEMES: [&str; 2] = ["light", "dark"];
-
-fn shot_path(theme: &str, scheme: &str) -> PathBuf {
-    std::env::var_os("OMFP_SCREENSHOT_DIR")
-        .map_or_else(|| PathBuf::from("/tmp"), PathBuf::from)
-        .join(format!("omfp-kit-{theme}-{scheme}.png"))
-}
 
 /// Opens the gallery with `theme` (its query) and `scheme` and waits until it says it is ready (fonts loaded, contrast
 /// measured).
@@ -160,9 +152,11 @@ async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> 
                     .await?
                     == 4
             );
-            let path = shot_path(theme, scheme);
-            std::fs::write(&path, full_page(&journey).await?)?;
-            eprintln!("screenshot: {}", path.display());
+            if let Some(dir) = e2e::screenshot_dir() {
+                let path = dir.join(format!("omfp-kit-{theme}-{scheme}.png"));
+                std::fs::write(&path, full_page(&journey).await?)?;
+                eprintln!("screenshot: {}", path.display());
+            }
         }
     }
     journey.finish("kit gallery").await?;

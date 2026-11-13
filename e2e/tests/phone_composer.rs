@@ -1,8 +1,8 @@
 //! The composer on a phone (E2E-37, UI-421..UI-424) in headless Chromium emulating a 360 × 800 touch phone through
 //! Chrome's debugging protocol (`Emulation.*`: a mobile viewport, touch, so `(pointer: coarse)` matches). The on-screen
 //! keyboard is a viewport 480 px tall: with `interactive-widget=resizes-content` (UI-424) Chrome shrinks the layout
-//! viewport by the keyboard's height, as here. Screenshots land in `/tmp` as `omfp-phone-composer-<state>.png` (or
-//! `OMFP_SCREENSHOT_DIR`); nothing compares pixels.
+//! viewport by the keyboard's height, as here. Screenshots land in the run's screenshot directory as
+//! `omfp-phone-composer-<state>.png`; nothing compares pixels.
 
 use e2e::Journey;
 use fake_llm::{Reply, Step};

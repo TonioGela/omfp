@@ -1,6 +1,6 @@
 //! The widget journeys of M4 (06-testing.md, E2E-10..12): an agent-made widget following a daemon job, views from
 //! `views.json` with their error banner and the mode line's view tabs, and `:widget add` with a copied built-in.
-//! They also take the M4 screenshots (`omfp-m4-*.png` in `/tmp` or `OMFP_SCREENSHOT_DIR`). Run with `just test-e2e`.
+//! They also take the M4 screenshots (`omfp-m4-*.png` in the run's screenshot directory). Run with `just test-e2e`.
 
 use std::path::Path;
 

@@ -35,18 +35,18 @@ only be reachable from the human UI.
 
 ```sh
 nix develop                      # or: nix develop -c sh -c '<command>'
-just ci                          # check, test, test-ts, test-contract, test-e2e, test-desktop, package, mutants-gate, cov (CI: .github/workflows/ci.yml, same recipes)
+just ci                          # ci_recipes: check, test-ts, test-contract, test-e2e, test-desktop, package, mutants-gate, cov on one web bundle (CI: .github/workflows/ci.yml, same recipes)
 just mutants-gate                # TST-050: no surviving mutant in omfp-core, omfp-protocol (`just mutants` explores more crates)
-just cov                         # TST-050: line coverage gates (Rust pure crates ≥ 90%, daemon ≥ 75%, TS view models ≥ 90%) + HTML report
+just cov                         # TST-050: the fast Rust tests instrumented, coverage gates (pure crates ≥ 90%, daemon ≥ 75%) + HTML report
 just check                       # lint, check-versions, spec-trace, deny, check-workflow (actionlint + workflow vs `just ci`)
 just test                        # fast Rust tests (no omp process)
-just test-ts                     # `bun run test` in ui/ (reducer goldens, client, kit + app component tests; transport suite against a fake-launcher daemon)
+just test-ts                     # `bun run test` in ui/ (reducer goldens, client, kit + app component tests; transport suite against a fake-launcher daemon); TS view models' coverage ≥ 90%
 just test-contract               # contract tests against the pinned omp + fake LLM
 just record-fixtures             # re-record fixtures/ (review the diff!), then `just gen-states`
 just gen-states                  # golden reducer states fixtures/states/<ver>/ from the Rust reducer
 just gen-ts                      # ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas
 just gen-bun-nix                 # ui/bun.nix from ui/bun.lock (bun2nix), after every JS dependency change
-just test-e2e                    # L5 journeys: builds a private web bundle, headless Chromium + daemon + omp + fake LLM
+just test-e2e                    # L5 journeys: builds a private web bundle, headless Chromium + daemon + omp + fake LLM; shots in a new /tmp/omfp-shots-*
 just test-desktop                # `omfp --features desktop`: desktop unit tests + the Tauri window under xvfb-run (TST-033)
 just build-web                   # release bundle of the TypeScript UI into ui/packages/app/dist (`bun run build`)
 just serve [daemon args]         # try the app: release bundle + `omfp daemon` with your HOME, ~/.omp, default data dir

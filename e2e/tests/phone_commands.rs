@@ -1,7 +1,7 @@
 //! Commands on a phone (E2E-39, UI-460..UI-465) in headless Chromium emulating a 412 × 915 touch phone through
 //! Chrome's debugging protocol (`Emulation.*`: a mobile viewport, touch, so `(pointer: coarse)` matches): the area
 //! bar's Commands button opens the full-screen sheet, whose rows run commands or open the `:` line on their name.
-//! Screenshots land in `/tmp` as `omfp-phone-commands-<state>.png` (or `OMFP_SCREENSHOT_DIR`); nothing compares pixels.
+//! Screenshots land in the run's screenshot directory as `omfp-phone-commands-<state>.png`; nothing compares pixels.
 
 use e2e::Journey;
 use serde_json::{Value, json};

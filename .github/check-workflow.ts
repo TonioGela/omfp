@@ -45,15 +45,19 @@ export interface Workflow {
 export interface Action {
   runs: { steps: Step[] };
 }
-/** `just --dump --dump-format json`, the parts read here. */
+/** `just --dump --dump-format json`, the part read here: the recipes' names. */
 export interface Recipes {
-  recipes: Record<string, { dependencies: { recipe: string }[] }>;
+  recipes: Record<string, unknown>;
 }
-/** What the check reads: `ci.yml`, the dev-shell action, the justfile's recipes, `release.yml` and every workflow. */
+/**
+ * What the check reads: `ci.yml`, the dev-shell action, the justfile's recipes and the ones `just ci` runs (its
+ * `ci_recipes`), `release.yml` and every workflow.
+ */
 export interface Inputs {
   workflow: Workflow;
   setup: Action;
   recipes: Recipes["recipes"];
+  ci: string[];
   release: Workflow;
   workflows: Workflow[];
 }
@@ -83,7 +87,7 @@ function jobsByRecipe(workflow: Workflow): Map<string, string[]> {
 }
 
 /** TST-070 */
-function checkRecipes({ workflow, recipes }: Inputs, ranBy: Map<string, string[]>, problems: string[]) {
+function checkRecipes({ workflow, recipes, ci }: Inputs, ranBy: Map<string, string[]>, problems: string[]) {
   if (!workflow.on?.push?.branches?.includes("master") || !workflow.on || !("pull_request" in workflow.on)) {
     problems.push(`${WORKFLOW} must run on pushes to master and on pull requests`);
   }
@@ -102,7 +106,6 @@ function checkRecipes({ workflow, recipes }: Inputs, ranBy: Map<string, string[]
       }
     }
   }
-  const ci = recipes.ci?.dependencies.map((dependency) => dependency.recipe) ?? [];
   for (const recipe of ci) {
     const always = (ranBy.get(recipe) ?? []).filter((id) => workflow.jobs[id]?.if === undefined);
     if (always.length === 0) {
@@ -276,6 +279,7 @@ export async function read(just: string): Promise<Inputs> {
     workflow: await yaml<Workflow>(WORKFLOW),
     setup: await yaml<Action>(SETUP),
     recipes: ((await $`${just} --dump --dump-format json`.json()) as Recipes).recipes,
+    ci: (await $`${just} --evaluate ci_recipes`.text()).trim().split(/\s+/),
     release: await yaml<Workflow>(RELEASE),
     workflows: await Promise.all(paths.map((path) => yaml<Workflow>(path))),
   };

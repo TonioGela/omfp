@@ -6,7 +6,7 @@ default:
 
 # Fast Rust tests: unit and integration; no omp process (L0, L1, L2; the TypeScript tests, L4, are `test-ts`). `e2e`
 # builds on its own: thirtyfour turns on `serde_json/preserve_order`, which would change every crate's `Value` if
-# built together.
+# built together. `just ci` runs these tests once, instrumented, in `cov`.
 test:
     cargo nextest run --workspace --exclude e2e -E 'not binary(/^contract_/)'
 
@@ -14,8 +14,9 @@ test:
 test-contract:
     cargo nextest run --workspace --exclude e2e -E 'binary(/^contract_/)'
 
-# End-to-end journeys (L5): headless Chromium on the web bundle, a daemon with the pinned omp and the fake LLM
-test-e2e: (with-web-bundle "cargo nextest run -p e2e")
+# spec: TST-113 — end-to-end journeys (L5): headless Chromium on the web bundle, a daemon with the pinned omp and the
+# fake LLM; their screenshots for a look by eye go to a new directory of the run (or `OMFP_SCREENSHOT_DIR`)
+test-e2e: (with-web-bundle 'export OMFP_SCREENSHOT_DIR="${OMFP_SCREENSHOT_DIR:-$(mktemp -d /tmp/omfp-shots-XXXXXX)}"; echo "screenshots: $OMFP_SCREENSHOT_DIR"; cargo nextest run -p e2e')
 
 # spec: TST-033, TST-090, TST-091, ENV-040 — the desktop window (`--features desktop`): on Linux (WebKitGTK) under
 # `xvfb-run`, on macOS (WKWebView, the menu bar item; the darwin dev shell) on the logged-in user's screen; the smoke
@@ -24,8 +25,9 @@ test-e2e: (with-web-bundle "cargo nextest run -p e2e")
 test-desktop: (with-web-bundle "cargo nextest run -p omfp --features desktop --test-threads 1")
 
 # spec: TST-074 — `command` with a web bundle of its own in `OMFP_WEB_BUNDLE`: the one given (CI's `web` job builds it
-# once, TST-073), else a release bundle built into a temporary directory. Never `ui/packages/app/dist`: another `just
-# build-web` deletes and rebuilds it, and a test serving it meanwhile gets 404 pages.
+# once, TST-073; `just ci` once for its recipes, TST-113), else a release bundle built into a temporary directory.
+# Never `ui/packages/app/dist`: another `just build-web` deletes and rebuilds it, and a test serving it meanwhile gets
+# 404 pages.
 [private]
 with-web-bundle command:
     #!/usr/bin/env bash
@@ -56,8 +58,9 @@ gen-bun-nix:
 check-bun-nix:
     cd ui && bun2nix | nixfmt - | diff -u bun.nix - || { echo 'ui/bun.nix is stale: run `just gen-bun-nix`' >&2; exit 1; }
 
-# spec: TST-030 — TypeScript tests (`bun run test` in ui/: unit, view-model and component tests, L4), with the client's
-# transport suite against a daemon started here
+# spec: TST-030, TST-050 — TypeScript tests (`bun run test` in ui/: unit, view-model and component tests, L4), with the
+# client's transport suite against a daemon started here; the component tests run with coverage, ≥ 90% of the lines of
+# the view models (ui/packages/app/src/vm/), summary in target/bun-coverage/gate.txt
 test-ts: ui-install
     #!/usr/bin/env bash
     set -euo pipefail
@@ -65,8 +68,16 @@ test-ts: ui-install
     coproc daemon { exec cargo run -q -p omfp-daemon --example test_daemon -- "$data"; }
     trap 'kill "$daemon_PID" 2>/dev/null; wait "$daemon_PID" 2>/dev/null || true; rm -rf "$data"' EXIT
     read -r url token <&"${daemon[0]}"
+    out="$PWD/target/bun-coverage"
     cd ui
-    OMFP_TEST_DAEMON_URL="$url" OMFP_TEST_DAEMON_TOKEN="$token" bun run test
+    export OMFP_TEST_DAEMON_URL="$url" OMFP_TEST_DAEMON_TOKEN="$token"
+    bun run test:plain
+    bun run test:dom --coverage --coverage-reporter=lcov --coverage-dir="$out"
+    awk -F: '/^SF:/ { vm = index($2, "packages/app/src/vm/") > 0 } vm && /^LF:/ { n += $2 } vm && /^LH:/ { h += $2 }
+      END { p = h * 100 / n; printf "ui view models: %.2f%% of lines (min 90%%)%s\n", p, (p < 90 ? " FAIL" : "") }' \
+      "$out/lcov.info" > "$out/gate.txt"
+    cat "$out/gate.txt"
+    ! grep -q FAIL "$out/gate.txt"
 
 # Regenerate ui/packages/protocol/src/generated.ts from the daemon's JSON Schemas (`just test` fails when it is stale)
 gen-ts:
@@ -171,12 +182,12 @@ mutants *args:
 mutants-gate:
     cargo mutants --test-tool nextest -p omfp-core -p omfp-protocol --jobs 2 --output target
 
-# spec: TST-050 — line coverage of the fast tests (no omp): ≥ 90% for omfp-core and omfp-protocol, ≥ 75% for
-# omfp-daemon, ≥ 90% for the TypeScript view models (ui/packages/app/src/vm/); HTML report in target/llvm-cov/html
-cov: ui-install
+# spec: TST-050 — the fast Rust tests (`test`), instrumented, with line coverage gates: ≥ 90% for omfp-core and
+# omfp-protocol, ≥ 75% for omfp-daemon; HTML report in target/llvm-cov/html (the view models' gate is in `test-ts`)
+cov:
     #!/usr/bin/env bash
     set -euo pipefail
-    cargo llvm-cov nextest --no-report -p omfp-core -p omfp-protocol -p omfp-daemon -E 'not binary(/^contract_/)'
+    cargo llvm-cov nextest --no-report --workspace --exclude e2e -E 'not binary(/^contract_/)'
     cargo llvm-cov report --html
     cargo llvm-cov report --json --summary-only --output-path target/llvm-cov/summary.json
     jq -r --argjson min '{"omfp-core": 90, "omfp-protocol": 90, "omfp-daemon": 75}' '
@@ -185,13 +196,13 @@ cov: ui-install
       | group_by(.c)[] | {c: .[0].c, p: ((map(.h) | add) * 100 / (map(.n) | add))}
       | "\(.c): \(.p * 100 | floor / 100)% of lines (min \($min[.c])%)\(if .p < $min[.c] then " FAIL" else "" end)"
     ' target/llvm-cov/summary.json > target/llvm-cov/gate.txt
-    out="$PWD/target/bun-coverage"
-    (cd ui && bun test --preload ./test/dom.ts --coverage --coverage-reporter=lcov --coverage-dir="$out" packages/app)
-    awk -F: '/^SF:/ { vm = index($2, "packages/app/src/vm/") > 0 } vm && /^LF:/ { n += $2 } vm && /^LH:/ { h += $2 }
-      END { p = h * 100 / n; printf "ui view models: %.2f%% of lines (min 90%%)%s\n", p, (p < 90 ? " FAIL" : "") }' \
-      "$out/lcov.info" >> target/llvm-cov/gate.txt
     cat target/llvm-cov/gate.txt
     ! grep -q FAIL target/llvm-cov/gate.txt
 
-# Everything a change must pass (CI runs the same recipes as parallel jobs: .github/workflows/ci.yml)
-ci: check test test-ts test-contract test-e2e test-desktop package mutants-gate cov
+# The recipes `just ci` runs, in order; CI runs each as a job (.github/workflows/ci.yml, `just check-workflow`). The
+# fast Rust tests (`test`) run once, instrumented, in `cov`.
+ci_recipes := "check test-ts test-contract test-e2e test-desktop package mutants-gate cov"
+
+# spec: TST-113 — everything a change must pass: the recipes of `ci_recipes` in one run, with one web bundle for
+# test-e2e and test-desktop (TST-074)
+ci: (with-web-bundle quote(just_executable()) + " --justfile " + quote(justfile()) + " " + ci_recipes)

@@ -3,9 +3,9 @@
 //! over another nor past the row (UI-453); the side tab bar stays one row (UI-452); floating panels open below the
 //! view's top bars and do not hide each other's title bars (UI-454). The composer and the transcript (E2E-41) at 1100,
 //! 1280, 1440 and 1920 px: the composer's buttons on one row, the primary last at its bottom-right, idle and busy
-//! alike (UI-480, UI-481), and the transcript's column where the composer's is (UI-485). Screenshots land in `/tmp` as
-//! `omfp-desktop-<width>.png`, `omfp-desktop-<width>-panels.png` and `omfp-composer-<width>-<state>.png` (or
-//! `OMFP_SCREENSHOT_DIR`); nothing compares pixels.
+//! alike (UI-480, UI-481), and the transcript's column where the composer's is (UI-485). Screenshots land in the run's
+//! screenshot directory (`e2e::screenshot_dir`) as `omfp-desktop-<width>.png`, `omfp-desktop-<width>-panels.png` and
+//! `omfp-composer-<width>-<state>.png`; nothing compares pixels.
 
 use e2e::{Journey, row};
 use fake_llm::{Reply, Step};

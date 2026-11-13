@@ -1,8 +1,8 @@
 //! The files journeys of M5c (06-testing.md, E2E-13): a workspace file opened from a tool card, edited with vim keys and
 //! saved, reloaded when the agent rewrites it, a stale save shown as a conflict, and a changed file opened against
 //! `HEAD` from `omfp:changes`; bare file names opened directly or through the picker, and the open files as tabs of
-//! the floating panel in a view without `main`. They also take the M5c screenshots (`omfp-m5c-*.png` in `/tmp` or
-//! `OMFP_SCREENSHOT_DIR`). Run with `just test-e2e`.
+//! the floating panel in a view without `main`. They also take the M5c screenshots (`omfp-m5c-*.png` in the run's
+//! screenshot directory). Run with `just test-e2e`.
 
 use e2e::Journey;
 use fake_llm::{Reply, Step, ToolCall};
