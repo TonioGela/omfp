@@ -25,6 +25,7 @@ import {
   VIEW_CHOICES,
   type WidgetComponent,
 } from "../../src/sdk/index.ts";
+import { markTabEdges } from "../../src/view/render.tsx";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
 import { DEFAULT_MANIFEST } from "../../src/view/views.ts";
 import { thread, workspace } from "../support/fixtures.ts";
@@ -266,6 +267,34 @@ describe("frame", () => {
     } finally {
       scroll.mockRestore();
     }
+  });
+
+  // spec: UI-452
+  test("a tab list too wide for its bar scrolls sideways under the wheel and marks the edges with more tabs", () => {
+    const tabs = {
+      views: { work: { layout: ["row", {}, "omfp:chat", ["tabs", {}, "omfp:workspace", "omfp:background"]] } },
+    };
+    inWorkspace({ manifest: tabs }, { registry: new Map([...registry, ["omfp:background", stub("background")]]) });
+    const list = document.querySelector<HTMLElement>('.omfp-view__tabs:not([data-slot]) [role="tablist"]');
+    if (list === null) {
+      throw new Error("no tab list");
+    }
+    // happy-dom lays nothing out: a list 100 px wide over 300 px of tabs.
+    Object.defineProperty(list, "clientWidth", { value: 100 });
+    Object.defineProperty(list, "scrollWidth", { value: 300 });
+    const edges = () => [list.hasAttribute("data-more-start"), list.hasAttribute("data-more-end")];
+    markTabEdges(list);
+    expect(edges()).toEqual([false, true]);
+    const wheel = new WheelEvent("wheel", { deltaY: 120, cancelable: true });
+    act(() => {
+      list.dispatchEvent(wheel);
+    });
+    expect([list.scrollLeft, wheel.defaultPrevented]).toEqual([120, true]);
+    markTabEdges(list);
+    expect(edges()).toEqual([true, true]);
+    list.scrollLeft = 200;
+    markTabEdges(list);
+    expect(edges()).toEqual([true, false]);
   });
 
   // spec: UI-024, UI-100, UI-303

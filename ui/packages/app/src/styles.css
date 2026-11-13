@@ -522,7 +522,9 @@
 
   /* Tab bars of the `main` and `side` slots (UI-154): `bar-h` tall over a rule, the selected tab's gradient indicator
    * on the rule; the `main` bar ends with the close button of the selected file tab (UI-115). One row (UI-452): the
-   * tabs keep their width and the list scrolls sideways under a thin scrollbar, its selected tab scrolled into view. */
+   * tabs keep their width and the list scrolls sideways without a visible scrollbar, its edges with more tabs past
+   * them fading out (`data-more-start`/`data-more-end`, set by the view's tab bar), its selected tab scrolled into
+   * view. */
   .omfp-view__tabbar {
     flex: none;
     display: flex;
@@ -535,6 +537,8 @@
   }
 
   .omfp-view__tabbar > .omfp-tabs__list {
+    --tabs-fade-start: 0px;
+    --tabs-fade-end: 0px;
     flex: 0 1 auto;
     flex-wrap: nowrap;
     min-inline-size: 0;
@@ -542,7 +546,26 @@
     border-block-end: 0;
     overflow-x: auto;
     overflow-y: hidden;
-    scrollbar-width: thin;
+    scrollbar-width: none;
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      var(--omfp-on-surface) var(--tabs-fade-start),
+      var(--omfp-on-surface) calc(100% - var(--tabs-fade-end)),
+      transparent
+    );
+  }
+
+  .omfp-view__tabbar > .omfp-tabs__list::-webkit-scrollbar {
+    display: none;
+  }
+
+  .omfp-view__tabbar > .omfp-tabs__list[data-more-start] {
+    --tabs-fade-start: var(--omfp-s5);
+  }
+
+  .omfp-view__tabbar > .omfp-tabs__list[data-more-end] {
+    --tabs-fade-end: var(--omfp-s5);
   }
 
   .omfp-view__tabbar > .omfp-tabs__list > .omfp-tabs__tab {

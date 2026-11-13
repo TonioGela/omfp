@@ -183,12 +183,47 @@ function useRevealTab(tabs: readonly { child: LayoutTree; id: string }[], select
   }, [request, target]);
 }
 
+/** Marks the edges of a tab list scrolled sideways with more tabs past them (`data-more-start`, `data-more-end`). */
+export function markTabEdges(list: HTMLElement): void {
+  const start = list.scrollLeft > 1;
+  const end = list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
+  list.toggleAttribute("data-more-start", start);
+  list.toggleAttribute("data-more-end", end);
+}
+
 /**
- * The ref of a tab bar (one row that scrolls sideways, UI-452) that scrolls its selected tab into view whenever the
- * selection changes: a reveal (UI-274) may pick a tab scrolled out of the row.
+ * The ref of a tab bar: one row whose list scrolls sideways without a visible scrollbar (UI-452). The edges with more
+ * tabs past them fade, a vertical wheel over the list scrolls it sideways, and the selected tab scrolls into view
+ * whenever the selection changes (a reveal, UI-274, may pick a tab out of view).
  */
-function useSelectedTabInView(selected: string | undefined): RefObject<HTMLDivElement | null> {
+function useTabBar(selected: string | undefined): RefObject<HTMLDivElement | null> {
   const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const list = bar.current?.querySelector<HTMLElement>('[role="tablist"]');
+    if (list === null || list === undefined) {
+      return undefined;
+    }
+    const mark = () => markTabEdges(list);
+    const wheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaY) > Math.abs(event.deltaX) && list.scrollWidth > list.clientWidth) {
+        event.preventDefault();
+        list.scrollLeft += event.deltaY;
+      }
+    };
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(mark);
+    observer?.observe(list);
+    for (const tab of list.children) {
+      observer?.observe(tab);
+    }
+    list.addEventListener("scroll", mark, { passive: true });
+    list.addEventListener("wheel", wheel, { passive: false });
+    mark();
+    return () => {
+      observer?.disconnect();
+      list.removeEventListener("scroll", mark);
+      list.removeEventListener("wheel", wheel);
+    };
+  });
   useEffect(() => {
     if (selected !== undefined) {
       bar.current
@@ -216,7 +251,7 @@ function TabsNode({
   const [picked, setPicked] = useState<string | undefined>(undefined);
   useRevealTab(children, setPicked);
   const selected = children.find(({ id }) => id === picked)?.id ?? children[0]?.id;
-  const bar = useSelectedTabInView(selected);
+  const bar = useTabBar(selected);
   const [only] = children;
   if (only !== undefined && children.length === 1) {
     // One tab needs no tab bar (AGT-010): the default view's `main` slot holds the chat alone until files open.
@@ -274,7 +309,7 @@ function MainTabs({
   useRevealTab(own, files.select);
   const ids = [...own.map(({ id }) => id), ...openedTabIds(files)];
   const selected = files.active !== undefined && ids.includes(files.active) ? files.active : ids[0];
-  const bar = useSelectedTabInView(selected);
+  const bar = useTabBar(selected);
   const [only] = own;
   if (only !== undefined && ids.length === 1) {
     return (
