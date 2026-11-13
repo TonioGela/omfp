@@ -1526,13 +1526,14 @@
     color: var(--omfp-on-surface-variant);
   }
 
-  /* One repository in two lines: name, kind, git status, remove; then branch and origin. */
+  /* One repository (UI-453): name, kind, git status, remove; then branch and origin; then the "also in" warning.
+     Nothing is cut or drawn over another cell: a long name, status, branch or origin wraps, the name keeps 6rem. */
   .omfp-workspace__repo {
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(6rem, 1fr) auto auto auto;
     grid-template-areas:
       "name kind git remove"
-      "branch branch origin origin"
+      "where where where where"
       "shared shared shared shared";
     align-items: center;
     column-gap: var(--omfp-s2);
@@ -1547,6 +1548,8 @@
 
   .omfp-workspace__repo-name {
     grid-area: name;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
     font-size: var(--omfp-fs-sm);
     font-weight: var(--omfp-fw-strong);
     color: var(--omfp-primary);
@@ -1556,18 +1559,12 @@
     grid-area: kind;
   }
 
-  .omfp-workspace__branch {
-    grid-area: branch;
-  }
-
   .omfp-workspace__git {
     grid-area: git;
     justify-self: end;
     min-inline-size: 0;
-    max-inline-size: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    text-align: end;
     font-size: var(--omfp-fs-2xs);
     font-variant-numeric: tabular-nums;
     color: var(--omfp-on-surface-variant);
@@ -1578,48 +1575,60 @@
     color: var(--omfp-warn);
   }
 
-  .omfp-workspace__repo [data-testid="shared-repo"] {
-    grid-area: shared;
-    justify-self: start;
-  }
-
   .omfp-workspace__remove {
     grid-area: remove;
   }
 
-  .omfp-workspace__origin {
-    grid-area: origin;
-    justify-self: end;
+  /* The branch, then the origin at the end of the line, or on the next one when they do not fit side by side. */
+  .omfp-workspace__where {
+    grid-area: where;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--omfp-s1) var(--omfp-s2);
     min-inline-size: 0;
-    max-inline-size: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+  }
+
+  .omfp-workspace__where > .omfp-workspace__branch {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .omfp-workspace__origin {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    text-align: end;
     font-size: var(--omfp-fs-2xs);
     color: var(--omfp-on-surface-variant);
   }
 
-  /* In a narrow side area a repository wraps instead of cutting its status and origin (UI-203). */
+  /* The badge's names wrap inside the row instead of running past its edge. */
+  .omfp-workspace__repo [data-testid="shared-repo"] {
+    grid-area: shared;
+    justify-self: start;
+    block-size: auto;
+    min-block-size: calc(var(--omfp-fs-xs) * 1.9);
+    padding-block: 2px;
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* In a narrow side area the git status takes its own line (UI-203, UI-453). */
   @container (max-width: 22rem) {
     .omfp-workspace__repo {
-      grid-template-columns: auto minmax(0, 1fr) auto;
+      grid-template-columns: minmax(0, 1fr) auto auto;
       grid-template-areas:
         "name kind remove"
         "git git git"
-        "branch branch branch"
-        "origin origin origin"
+        "where where where"
         "shared shared shared";
     }
 
-    .omfp-workspace__kind {
+    .omfp-workspace__git {
       justify-self: start;
-    }
-
-    .omfp-workspace__git,
-    .omfp-workspace__origin {
-      justify-self: start;
-      white-space: normal;
-      overflow-wrap: anywhere;
+      text-align: start;
     }
   }
 

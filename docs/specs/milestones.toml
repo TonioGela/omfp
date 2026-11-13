@@ -917,6 +917,8 @@ requirements = [
   "UI-451",
   # QA fixes: one row of view tabs
   "UI-452",
+  # QA fixes: workspace repository rows that never overlap
+  "UI-453",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -928,6 +930,7 @@ requirements = [
   "E2E-31",
   "E2E-35",
   "E2E-39",
+  "E2E-38",
   # Touch phones: sizes at the root, sideways phones, no invisible or tiny targets, no key hints
   "UI-413",
   "UI-414",

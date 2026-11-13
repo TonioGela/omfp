@@ -227,19 +227,10 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
               >
                 {text.kinds[repo.kind].toLowerCase()}
               </KindMark>
-              <span className="omfp-workspace__branch" data-testid="repo-branch">
-                <Icon name="git-branch" />
-                {repo.branch}
-              </span>
               {repo.git !== undefined && (
                 <span className="omfp-workspace__git" data-testid="git-status">
                   {repo.git}
                 </span>
-              )}
-              {repo.alsoIn.length > 0 && (
-                <Badge tone="warning" data-testid="shared-repo" title={text.alsoInHint}>
-                  {text.alsoIn(repo.alsoIn.join(", "))}
-                </Badge>
               )}
               <IconButton
                 className="omfp-workspace__remove"
@@ -248,10 +239,21 @@ function Repos({ row }: { row: WorkspaceRow }): ReactNode {
                 data-testid="remove-repo"
                 onPress={() => (removalNeedsConfirmation(repo.kind) ? setConfirming(repo) : remove(repo.name))}
               />
-              {repo.origin !== undefined && (
-                <span className="omfp-workspace__origin" data-testid="repo-origin">
-                  {repo.origin}
+              <span className="omfp-workspace__where">
+                <span className="omfp-workspace__branch" data-testid="repo-branch">
+                  <Icon name="git-branch" />
+                  {repo.branch}
                 </span>
+                {repo.origin !== undefined && (
+                  <span className="omfp-workspace__origin" data-testid="repo-origin">
+                    {repo.origin}
+                  </span>
+                )}
+              </span>
+              {repo.alsoIn.length > 0 && (
+                <Badge tone="warning" data-testid="shared-repo" title={text.alsoInHint}>
+                  {text.alsoIn(repo.alsoIn.join(", "))}
+                </Badge>
               )}
             </li>
           ))}
