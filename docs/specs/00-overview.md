@@ -17,18 +17,19 @@ An application for working with many omp agents in parallel:
   session tree;
 - the same interface (a TypeScript web app, D-18) runs **in the browser** and **as a desktop app** (Tauri webview, M7),
   connected to the same daemon;
-- agents **build UI**: the window shows a workspace's views manifest of React widgets that agents write as files and
-  the user rearranges, reloaded live (M4, [08](08-agent-control.md#agent-made-ui-views-and-widgets-m4));
-- long term, **agents drive the interface**: they spawn threads, create workspaces and publish dashboards. This is the
-  last milestone, but every earlier choice must keep it possible ([08](08-agent-control.md)).
+- agents **build UI**: the window shows a workspace's views manifest of React widgets that agents write as files
+  (`views.json`, init files, TSX views; the user adds widgets with `:widget add`), reloaded live (M4, M14,
+  [08](08-agent-control.md#agent-made-ui-views-and-widgets-m4));
+- **agents drive the interface** (M10, [08](08-agent-control.md)): they spawn threads, create workspaces, mount widgets
+  and run the window's commands through the same protocol as the UI, also from outside omfp over MCP (M13).
 
 ## Non-goals (for now)
 
 - Rewriting the omp TUI: TUI-only features are out of scope; the terminal handoff once designed for them was removed (D-06).
 - An IDE (no LSP, debugger, refactoring): only quick edits, in the file viewer (`omfp:file`, M5c); real work stays in the user's editor ("open in editor").
 - Multi-user accounts and permissions. The daemon is personal (one OS user), protected by a token.
-- Agent control features (08) before the base is solid; only their constraints apply now.
-- Packaging and distribution (Nix derivations, installers): out of scope for this phase.
+- An app store or auto-updater: releases are the Nix flake (`nix profile install`) and the downloads without Nix of
+  M15 (tarball, Flatpak, `.dmg`); no Windows build.
 
 ## Domain model
 
@@ -87,8 +88,9 @@ flowchart LR
 crates/
   omfp-protocol/   UI↔daemon protocol types (serde), JSON Schemas. Compiles to wasm.
   omfp-core/       Domain model and pure reducer over omp events. Compiles to wasm. No I/O.
-  omfp-daemon/     Daemon library (tokio, axum, rusqlite, omp-rpc, portable-pty): `omfp_daemon::start`, `omfp_daemon::run`.
-  omfp/            The single `omfp` binary (D-15): `omfp daemon`, `omfp theme set`.
+  omfp-daemon/     Daemon library (tokio, axum, rusqlite, omp-rpc): `omfp_daemon::start`, `omfp_daemon::run`.
+  omfp/            The single `omfp` binary (D-15): `omfp daemon`, `omfp theme set`, `omfp mcp config`, and with the
+                   `desktop` feature `omfp desktop` (Tauri, M7, M11).
   fake-llm/       Scripted OpenAI-compatible server for tests (lib + bin).
   omfp-testkit/    Test helpers: temporary git repos, isolated omp agent dir, test daemon.
 e2e/              End-to-end tests (WebDriver) against the web build.
@@ -100,7 +102,7 @@ ui/packages/      The TypeScript UI (Bun workspace, 04-ui): protocol (generated 
 | --- | --- |
 | ARC-010 | `omfp-protocol` and `omfp-core` MUST compile for `wasm32-unknown-unknown` and MUST NOT use tokio, `std::process` or the filesystem. |
 | ARC-011 | `omfp-core` MUST reuse `omp_rpc::wire` types for omp events and messages instead of redefining them. The whole `omp-rpc` crate compiles for wasm (S-01), but `omfp-core` uses only its `wire` module; its process client is for the daemon. |
-| ARC-012 | System dependencies (git, omp, PTY, clock, ID generation) MUST sit behind traits ("ports") in `omfp-daemon`, so component tests can use fake implementations. |
+| ARC-012 | System dependencies (git, omp, clock, ID generation) MUST sit behind traits ("ports") in `omfp-daemon`, so component tests can use fake implementations. |
 
 ## Main flow: one prompt
 

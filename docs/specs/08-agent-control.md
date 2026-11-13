@@ -1,9 +1,9 @@
-# 08 — Agent control (direction)
+# 08 — Agent control
 
-**Status:** direction, except two binding parts: [Views and widgets (M4)](#views-and-widgets-m4) (milestone **M4**,
-delivered) and [Constraints that apply from day one](#constraints-that-apply-from-day-one). The rest (agent tools for
-every method, MCP, dashboards, the shared component library) is **M10** and stays a sketch to be turned into
-requirements when that milestone starts. No earlier choice may make this direction harder.
+**Status:** binding. [Views and widgets (M4)](#views-and-widgets-m4) was delivered in **M4**; the agent tools, the MCP
+server, mounts and the component library ([Agent tools (M10)](#agent-tools-m10) and the sections after it) in **M10**, the MCP servers omp
+loads in M13 and init files and TSX views in M14. The [Vision](#vision) explains the direction they follow, and the
+[Constraints that apply from day one](#constraints-that-apply-from-day-one) still bind every change.
 
 ## Vision
 
@@ -25,10 +25,10 @@ worktrees in the frontend and backend repositories, spawns one thread per PR, an
 thread with its live status, CI results, and buttons "rerun tests" and "open PR". The dashboard is saved, and the next
 feature reuses it.
 
-## Tool surface (draft)
+## Tool surface
 
-Generated from the protocol method table (AGT-001, AGT-007), so every method is available; names are provisional.
-Convenience tools on top:
+Every protocol method is reachable through `omfp_call`, whose catalogue `omfp://protocol/methods` is generated from the
+protocol method table (AGT-001, AGT-007). Convenience tools on top (the full list: [Agent tools (M10)](#agent-tools-m10)):
 
 | Tool | What it does |
 | --- | --- |
@@ -45,8 +45,8 @@ One tool registry in the daemon, several adapters:
 | Adapter | Reaches | Notes |
 | --- | --- | --- |
 | **RPC host tools** (`set_host_tools`) | every thread run by the daemon over RPC | Already used for the thread-only `omfp_open_file`, `omfp_notify`, `set_thread_title` (DMN-060, DMN-125) and every registry tool (DMN-151). omp may mount them as `xd://` devices (`tools.xdev`), invoked through `write`. |
-| **MCP server** (Streamable HTTP at `/mcp`, the daemon's token as bearer, AGT-050..054) | omp sessions outside omfp, other MCP-capable agents | Only needed for agents not run by the daemon (RPC threads get host tools); configured in the user's own `mcp.json` (`omfp mcp config` prints the entry), since the daemon writes nothing into workspaces (D-11). Per-thread tokens wait for threads in terminal mode (05, deferred). |
-| **Host URI scheme** `omfp://` (`set_host_uri_schemes`) | RPC threads | State for the agent's `read` tool: `omfp://threads`, `omfp://threads/<id>`, `omfp://ui/…`. |
+| **MCP server** (Streamable HTTP at `/mcp`, the daemon's token as bearer, AGT-050..054) | omp sessions outside omfp, other MCP-capable agents | Only needed for agents not run by the daemon (RPC threads get host tools); configured in the user's own `mcp.json` (`omfp mcp config` prints the entry), since the daemon writes nothing into workspaces (D-11). No per-thread tokens: the terminal they were meant for was removed (05). |
+| **Host URI scheme** `omfp://` (`set_host_uri_schemes`) | RPC threads | Read with the agent's `read` tool: `omfp://docs` (the index; `docs/widgets`, `docs/shell`), `omfp://protocol/methods`, `omfp://keymap`, `omfp://windows`, `omfp://widgets/…` and `omfp://schemas/…`. |
 | **SDK** | widgets | The same API from inside a widget, as React hooks (below). |
 
 ## Agent-made UI: views and widgets (M4)
@@ -57,11 +57,11 @@ binding rules are the table [Views and widgets (M4)](#views-and-widgets-m4) belo
 
 **Views manifest** — `<workspace>/.omfp/views.json` (every workspace is a folder the daemon made, D-11, DMN-020).
 Declarative, checked by the daemon, edited by the agent as a file (or with the `omfp_ui_mount` tool, AGT-061) and by the
-user from the UI (move, resize, hide, add, switch view), so both always edit the same thing. Every workspace has the
+user with `:widget add` and `:widget copy` (UI-300, UI-106), so both always edit the same thing. Every workspace has the
 file: the daemon writes the default view into it when it creates the workspace, and at startup for older ones
 (DMN-088), and never rewrites it — it is the user's and the agent's; `:view-reset` restores the current default. The
 default view is the header over the `tabs` slot `main` holding the conversation (opened files show as closable tabs
-next to it, UI-115), with the `tabs` slot `side` (workspace and changes widgets) on its right:
+next to it, UI-115), with the `tabs` slot `side` (workspace, changes and background widgets) on its right:
 
 ```jsonc
 {

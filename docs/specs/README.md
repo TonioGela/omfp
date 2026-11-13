@@ -19,7 +19,7 @@ Long term, the interface is meant to be **driven by the agents themselves** (spa
 | 05 | [Terminal (removed)](05-terminal.md) | Removed (D-06): the requirement IDs it once held |
 | 06 | [Testing strategy (TDD)](06-testing.md) | Process, layers, fake LLM, E2E, mutation testing |
 | 07 | [Roadmap](07-roadmap.md) | Milestones with acceptance criteria |
-| 08 | [Agent control (direction)](08-agent-control.md) | Agents spawning threads and drawing UI; constraints that apply from day one |
+| 08 | [Agent control](08-agent-control.md) | Agents spawning threads and drawing UI, their tools and the MCP server; constraints that apply from day one |
 | 09 | [Visual design: Crush](09-design.md) | Design principles, tokens, palette, fonts, motion, component specs, `/kit` gallery |
 
 ## Conventions
@@ -61,9 +61,10 @@ Long term, the interface is meant to be **driven by the agents themselves** (spa
 
 ## Open questions
 
-1. **Reusable agent-made UI** beyond the workspace view: dashboards and windows, sharing widgets across machines,
-   and whether pieces may run without a window (M10, [08](08-agent-control.md)). The views manifest, widget loading,
-   the SDK and the kit within a workspace were settled in M4 (D-19, AGT-010..025).
+1. **Reusable agent-made UI** beyond the workspace: sharing widgets across machines and whether pieces may run
+   without a window. Windows, mounts, the user's widget library and agent control over the protocol and MCP were
+   settled in M10 and M13 ([08](08-agent-control.md)); the views manifest, widget loading, the SDK and the kit within
+   a workspace in M4 (D-19, AGT-010..025).
 
-Resolved: desktop platforms — Linux only for now (Windows and macOS not planned); license — GPL-3.0-or-later
-(`LICENSE`).
+Resolved: desktop platforms — Linux (x86_64) and macOS on Apple silicon (M11, M15); Windows not planned; license —
+GPL-3.0-or-later (`LICENSE`).

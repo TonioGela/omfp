@@ -381,7 +381,7 @@ new is that a successful `fork` or `navigate_tree` makes the daemon read `get_st
 a `history` event, since omp announces no event for a branch change (DMN-111). The shared reducer, in Rust and the TS
 port, keeps the subagents' lifecycle and progress (PRT-055), the session's `goal` from `goal_updated` (PRT-056) and
 `todo_phases` from the last todo result that changed the list, recomputed on history (PRT-057). Three built-in widgets,
-not in the default view and added through the widget picker: `omfp:subagents` (UI-081) merges the reducer's roster with
+not in the default view and added through the widget picker (since M14 with `:widget add`, UI-300): `omfp:subagents` (UI-081) merges the reducer's roster with
 omp's running `thread.subagents` and reads a subagent's transcript incrementally with steer and cancel (merged into
 `omfp:background` by M14's QA fixes, UI-490..UI-493); `omfp:todos`
 (UI-082) shows the goal and one border box per phase; `omfp:tree` (UI-083) shows the session tree with go-here,
@@ -518,7 +518,8 @@ shows the final output and exit code (UI-270); the built-in `omfp:background` li
 with state, duration and last line, stops a job (a steer asking the agent: the RPC has no kill command) and cancels a
 subagent (UI-271..UI-273), in the default view after Workspace and Changes; the header's `N in background` badge
 reveals it (UI-274). Also in M12: the composer's keys swapped — `alt+enter` is a new line, `shift+enter` steers, and an
-auto-repeated Enter sends nothing (UI-060, UI-061).
+auto-repeated Enter sends nothing (UI-060, UI-061); M14 changed them again: Enter steers while the agent works and
+Shift-Enter queues (UI-061, UI-063).
 
 Result: the fixture `async_bash_tool_call` was recorded from the pinned omp and the fake LLM (an async `bash` whose job
 settles after the call's end, then omp delivers the job's result as a new turn), so the reducers, the cards and the
@@ -533,7 +534,8 @@ the workspace folder, so it loads the workspace's `.omp/mcp.json`, the user's `~
 it imports from other tools. The daemon lists them (DMN-190, `workspaces.mcp_servers`, PRT-110), has the thread's omp
 check each of its own (DMN-191, `thread.mcp_servers`, PRT-111) and reconnects by restarting the thread (DMN-192,
 `thread.mcp_reconnect`, PRT-112); the built-in `omfp:mcp` shows a border box per server with its state, tools, error and
-config file, Reconnect, Reload all and Check again (UI-290..UI-294), offered by the widget picker.
+config file, Reconnect, Reload all and Check again (UI-290..UI-294), offered by the widget picker (since M14 by
+`:widget add omfp:mcp`, UI-300).
 
 Spike (contract harness on the pinned omp, fake LLM, a Streamable HTTP stub server on loopback and a stdio command
 that does not exist): omp 18.18.6 has no RPC command or frame with its MCP state. `get_state.dumpTools` lists no MCP
@@ -670,7 +672,6 @@ E2E-07 are kept in [05](05-terminal.md) and [06](06-testing.md) as removed rows.
 ## Later (noted, not scheduled)
 
 - Helix-style modal editing in the composer (UI-095 keeps a keymap with modes, so it fits later).
-- Configurable fonts, keymap and density from a settings file (the tokens and the keymap are data from M3).
 - PR repositories (DMN-024 `pr`, spike S-08; moved out of M5): fetching a PR head into a worktree and tracking the PR.
   The agent can already do it with `gh pr checkout` or `git fetch origin pull/N/head`, and GitHub cannot be tested
   offline; the user decided to leave it to the agent (no UI).
