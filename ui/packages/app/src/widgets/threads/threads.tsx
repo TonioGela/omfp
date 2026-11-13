@@ -22,6 +22,7 @@ import {
   Popover,
   SearchField,
   StateMark,
+  useMediaQuery,
 } from "@omfp/kit";
 import { INDEX_TOPIC, type ThreadSummary, type Workspace } from "@omfp/protocol";
 import { type ReactNode, type RefObject, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -339,15 +340,19 @@ function useFocusAfterRemoval(
   }, [sections, root, newWorkspace]);
 }
 
-/** The one filter of the column (UI-022); `/` focuses it. */
+/** A screen without hover whose pointer is a finger: no key hints (UI-418). */
+const TOUCH_ONLY = "(hover: none) and (pointer: coarse)";
+
+/** The one filter of the column (UI-022); `/` focuses it (named in the placeholder, except on touch, UI-418). */
 function ThreadFilterField({ search }: { search: RefObject<HTMLInputElement | null> }): ReactNode {
   const [query, setQuery] = useWindowState(THREAD_QUERY);
+  const touch = useMediaQuery(TOUCH_ONLY);
   return (
     <div className="omfp-threads__filter">
       <SearchField
         label={text.filter}
         hideLabel
-        placeholder={text.filterPlaceholder}
+        placeholder={touch ? text.filter : text.filterPlaceholder}
         value={query}
         onChange={setQuery}
         inputRef={search}

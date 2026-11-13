@@ -20,6 +20,7 @@ import {
   StateBadge,
   TextField,
   type ThreadState,
+  useMediaQuery,
   useWidthClass,
 } from "omfp/kit";
 import {
@@ -62,6 +63,8 @@ const text = strings.shell.header;
 
 /** Below this width (in `rem`) the header is one row (UI-202). */
 const COMPACT_BELOW_REM = 48;
+/** A touch screen too short for two header rows: a phone held sideways (UI-419). */
+const SHORT_TOUCH_SCREEN = "(pointer: coarse) and (max-height: 500px)";
 
 export function HeaderWidget(_props: WidgetProps): ReactNode {
   const [selected] = useWindowState(SELECTED_THREAD);
@@ -111,8 +114,9 @@ function ThreadHeader({ summary }: { summary: ThreadSummary }): ReactNode {
   const [details, refreshSession] = useThreadDetails(summary.id, summary.process.state === "running");
   const view = headerView(summary, details, list);
   const header = useRef<HTMLElement>(null);
-  // Its own width decides, wherever the view puts it (UI-202).
-  const compact = useWidthClass(header, (width, rem) => width > 0 && width < COMPACT_BELOW_REM * rem);
+  // Its own width decides, wherever the view puts it (UI-202); a phone held sideways is always compact (UI-419).
+  const narrow = useWidthClass(header, (width, rem) => width > 0 && width < COMPACT_BELOW_REM * rem);
+  const compact = useMediaQuery(SHORT_TOUCH_SCREEN) || narrow;
   return (
     <header
       ref={header}

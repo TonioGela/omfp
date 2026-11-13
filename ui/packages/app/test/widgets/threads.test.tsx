@@ -144,6 +144,27 @@ describe("omfp:threads", () => {
     expect(screen.getByTestId("no-threads")).toBeDefined();
   });
 
+  // spec: UI-418
+  test("on a touch-only screen the filter's placeholder does not name its `/` key", () => {
+    const original = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({
+        media: query,
+        matches: query === "(hover: none) and (pointer: coarse)",
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }) as unknown as MediaQueryList;
+    try {
+      setup();
+      expect(screen.getByTestId("thread-filter").getAttribute("placeholder")).toBe("Filter threads");
+    } finally {
+      window.matchMedia = original;
+    }
+    cleanup();
+    setup();
+    expect(screen.getByTestId("thread-filter").getAttribute("placeholder")).toBe("Filter threads (/)");
+  });
+
   // spec: UI-022
   test("conversation matches come from threads.search once typing pauses, with their snippet", async () => {
     const { client, user } = setup();

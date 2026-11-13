@@ -78,6 +78,14 @@
     background: var(--omfp-kbd-bg);
   }
 
+  /* Touch-only screens (UI-418): the decorative key chips of buttons, fields, menu items and notices (`esc`, `tab`,
+     `ctrl+enter`) name keys the device has not; their labels already say what they do. */
+  @media (hover: none) and (pointer: coarse) {
+    .omfp-kbd[aria-hidden="true"] {
+      display: none;
+    }
+  }
+
   /* Button (UI-149) */
   .omfp-button {
     position: relative;
@@ -418,6 +426,15 @@
   .omfp-input-box[data-mono] .omfp-input {
     font-family: var(--omfp-font-code);
     font-size: var(--omfp-fs-xs);
+  }
+
+  /* Touch screens (UI-417): text inputs at 16 px or more, readable, and mobile browsers do not zoom on focus. */
+  @media (pointer: coarse) {
+    .omfp-input,
+    .omfp-input-box[data-mono] .omfp-input,
+    .omfp-cmd__input {
+      font-size: max(1rem, 16px);
+    }
   }
 
   .omfp-input-box:has(.omfp-textarea) {
@@ -994,6 +1011,14 @@
     inline-size: 1.25em;
     block-size: 1.25em;
     border-radius: var(--omfp-r-row);
+  }
+
+  /* Touch screens (UI-416): a thread row's delete `×` is a full touch target. */
+  @media (pointer: coarse) {
+    .omfp-thread .omfp-icon-button[data-size="sm"].omfp-row__delete {
+      inline-size: var(--omfp-touch);
+      block-size: var(--omfp-touch);
+    }
   }
 
   :where(.omfp-chip, .omfp-queue-chip, .omfp-thread) .omfp-icon-button .omfp-ic {

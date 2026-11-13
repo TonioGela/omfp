@@ -46,12 +46,13 @@ export interface StateBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   fresh?: boolean;
 }
 
-/** A thread or tool state as a bordered badge: glyph + word (UI-157). */
+/** A thread or tool state as a bordered badge: glyph + word (UI-157); the word in its own span, which a phone's chat
+ * header hides visually (UI-419). */
 export function StateBadge({ state, fresh = false, className, children, ...props }: StateBadgeProps) {
   return (
     <span {...props} className={cx("omfp-state-badge", className)} data-state={state} data-fresh={fresh || undefined}>
       <StateMark state={state} />
-      {children ?? state}
+      <span className="omfp-state-badge__word">{children ?? state}</span>
     </span>
   );
 }
