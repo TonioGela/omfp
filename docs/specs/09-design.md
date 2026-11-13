@@ -107,7 +107,7 @@ with no aliases. Tokens are declared in the `omfp-tokens` cascade layer; the kit
 | `--omfp-status-h` (mode line) | 1.625rem | 1.625rem | no |
 | `--omfp-gutter` (transcript side padding) | 2rem | 2rem | no |
 | `--omfp-measure` (transcript and composer width) | 50rem | 50rem | no |
-| `--omfp-touch` (minimum touch target on a phone, UI-205) | 44px | 44px | no |
+| `--omfp-touch` (minimum touch target on a phone and with a coarse pointer, UI-205, UI-413) | 44px | 44px | no |
 | `--omfp-areabar-h` (phone's bottom bar items) | max(touch, 3rem) | max(touch, 3rem) | no |
 | `--omfp-float-w` (floating widget panels, UI-230) | 24rem | 24rem | no |
 | `--omfp-tip-w` (tooltip maximum width) | 24rem | 24rem | no |

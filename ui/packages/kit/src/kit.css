@@ -585,6 +585,8 @@
   .omfp-popover {
     box-sizing: border-box;
     min-inline-size: var(--trigger-width);
+    /* Inside the window with React Aria's 12 px container padding on each side, on a phone too (UI-413). */
+    max-inline-size: calc(100vw - 24px);
     max-block-size: 60vh;
     overflow: auto;
     padding: var(--omfp-s1);
@@ -3020,7 +3022,8 @@
     flex-direction: column;
     gap: var(--omfp-s2);
     min-inline-size: 14rem;
-    max-inline-size: min(26rem, 92vw);
+    /* At most the popover's room inside the window: its padding and border, and this padding, taken off. */
+    max-inline-size: min(26rem, 100vw - 24px - 2 * (var(--omfp-s1) + var(--omfp-bw) + var(--omfp-s2)));
     padding: var(--omfp-s1) var(--omfp-s2) var(--omfp-s2);
     outline: none;
   }

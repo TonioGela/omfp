@@ -270,6 +270,21 @@
     --omfp-density: 1.3;
   }
 
+  /* Touch screens (UI-413): with a coarse primary pointer every control, row and bar is at least `--omfp-touch` tall,
+     on the root, so overlays portalled to `<body>` (popovers, dialogs, menus) and the token screen get it too. */
+  @media (pointer: coarse) {
+    :root,
+    [data-density] {
+      --omfp-row-h: max(var(--omfp-touch), calc(1.5rem * var(--omfp-density)));
+      --omfp-ctl-h: max(var(--omfp-touch), calc(1.75rem * var(--omfp-density)));
+      --omfp-ctl-h-sm: max(var(--omfp-touch), calc(1.4375rem * var(--omfp-density)));
+    }
+
+    :root {
+      --omfp-bar-h: max(var(--omfp-touch), 2.125rem);
+    }
+  }
+
   @media (prefers-color-scheme: dark) {
     :root:not([data-color-scheme="light"]) {
       color-scheme: dark;
