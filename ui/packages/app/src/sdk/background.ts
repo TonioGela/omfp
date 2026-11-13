@@ -117,8 +117,9 @@ export interface Background {
 }
 
 /**
- * The background jobs and subagents of thread `threadId` (UI-271): job durations are measured from when this window
- * first saw the job (omp's frames carry no times), subagents' from their progress; running rows tick every second.
+ * The background jobs and subagents of thread `threadId` (UI-271): job durations are measured on the window's
+ * monotonic clock from when this window first saw the job (omp's frames carry no times; the daemon's or the wall
+ * clock could disagree with it, UI-681), subagents' from their progress; running rows tick every second.
  */
 export function useBackground(threadId: string): Background {
   const state = useThread(threadId)?.state;
@@ -130,10 +131,13 @@ export function useBackground(threadId: string): Background {
   const reportError = useReportError();
   const times = useRef<JobTimes>(new Map());
   const finished = useRef<FinishTimes>(new Map());
-  const [now, setNow] = useState(() => Date.now());
+  // Only re-renders running rows: each render reads the clock once, for the jobs it sees and their durations, so a job
+  // seen since the last tick never runs for less than nothing (UI-680).
+  const [, setTicks] = useState(0);
   const [stopping, setStopping] = useState<ReadonlySet<string>>(new Set());
   const [memories, setMemories] = useWindowState(BACKGROUND_MEMORY);
-  times.current = observeJobs(times.current, tools, Date.now());
+  const now = performance.now();
+  times.current = observeJobs(times.current, tools, now);
   const rows = backgroundRows(tools, subagents, stopping, times.current, now);
   finished.current = observeFinished(finished.current, rows, Date.now());
   const memory = memories[threadId] ?? NO_MEMORY;
@@ -143,7 +147,7 @@ export function useBackground(threadId: string): Background {
     if (running === 0) {
       return undefined;
     }
-    const id = setInterval(() => setNow(Date.now()), TICK_MS);
+    const id = setInterval(() => setTicks((ticks) => ticks + 1), TICK_MS);
     return () => clearInterval(id);
   }, [running]);
   const stop = useCallback(

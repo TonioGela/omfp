@@ -1149,4 +1149,7 @@ requirements = [
   "UI-678",
   "UI-679",
   "E2E-67",
+  # Job durations never negative
+  "UI-680",
+  "UI-681",
 ]

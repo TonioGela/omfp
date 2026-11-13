@@ -772,6 +772,10 @@ handler cannot tell a frame from the page, so it lets other `http(s)` pages load
 the daemon's (opening the URL in the system's browser) as soon as its load starts. Not done: a daemon proxy
 (`/proxy/<port>/…`) for a remote daemon's `localhost`, the pages of sites that refuse framing (see Later).
 
+Durations are never negative: a background job that started less than a second ago showed `-181 ms`, because its row
+was computed against the last one-second tick while the job was dated by a later reading of the clock. Each render now
+reads the window's monotonic clock once for both, and every shown duration is clamped at 0 (UI-680, UI-681).
+
 ## Terminal (removed)
 
 Removed (D-06, PRT-135): the user does not rely on the TUI-only commands, so the terminal was never built; its

@@ -1,7 +1,7 @@
 /** L4: `omfp:background` over a fake client (UI-271..UI-273, UI-490..UI-492), fed the recorded async `bash` and
  * `task` fixtures. */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { ThreadEvent } from "@omfp/core";
 import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -56,6 +56,23 @@ describe("omfp:background", () => {
     expect(screen.getByTestId("background-state").textContent).toBe("running");
     // The call's own result is omp's notice to the model: no output yet.
     expect(screen.queryByTestId("background-last-line")).toBeNull();
+  });
+
+  // spec: UI-680, UI-681
+  test("a job seen a moment ago runs for no time yet, however the wall clock jumps", () => {
+    // Each wall-clock reading is 181 ms after the previous one (a clock that moves under the window, or readings taken
+    // at different moments): the durations run on the window's monotonic clock, from when it first saw the job.
+    let wall = 1_000_000;
+    const clock = spyOn(Date, "now").mockImplementation(() => {
+      wall += 181;
+      return wall;
+    });
+    try {
+      setup(running);
+      expect(screen.getByTestId("background-duration").textContent).toBe("0 ms");
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   // spec: UI-271

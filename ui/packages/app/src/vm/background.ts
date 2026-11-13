@@ -59,7 +59,8 @@ function subagentState(status: string): JobState {
   }
 }
 
-/** When this window first saw each job run and saw it end (job id → times): omp's job frames carry no times. */
+/** When this window first saw each job run and saw it end (job id → times), on its monotonic clock
+ * (`performance.now()`, UI-681): omp's job frames carry no times. */
 export type JobTimes = ReadonlyMap<string, { readonly start: number; readonly end: number | undefined }>;
 
 /** `times` with the jobs of `tools` seen at `now`: new jobs start, ended ones get their end; unchanged otherwise. */
@@ -106,7 +107,8 @@ export function backgroundRows(
         toolCallId: run.tool_call_id,
         label: command ?? job.job_id,
         state: job.state,
-        durationMs: seen === undefined ? undefined : (seen.end ?? now) - seen.start,
+        // Never below zero (UI-680), whatever reading `now` is.
+        durationMs: seen === undefined ? undefined : Math.max(0, (seen.end ?? now) - seen.start),
         lastLine: line === "" ? undefined : line,
         stopRequested: job.state === "running" && stopping.has(job.job_id),
         subagent: undefined,
@@ -120,7 +122,7 @@ export function backgroundRows(
       toolCallId: undefined,
       label: row.description ?? row.task,
       state: subagentState(row.status),
-      durationMs: row.durationMs,
+      durationMs: row.durationMs === undefined ? undefined : Math.max(0, row.durationMs),
       lastLine: row.activity,
       stopRequested: false,
       subagent: row,

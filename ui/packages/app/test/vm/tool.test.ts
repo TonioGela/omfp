@@ -107,6 +107,13 @@ describe("tool cards", () => {
     expect(formatDuration(40)).toBe("40 ms");
   });
 
+  // spec: UI-680
+  test("a negative duration shows as no time, never with a minus", () => {
+    expect(formatDuration(-181)).toBe("0 ms");
+    expect(formatDuration(-90_000)).toBe("0 ms");
+    expect(formatDuration(0)).toBe("0 ms");
+  });
+
   // spec: UI-472
   test("an omp run's result images are kept for the card; its text says [image] instead of the base64 JSON", () => {
     const run: ToolRun = {

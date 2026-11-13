@@ -209,8 +209,9 @@ function userContentText(content: readonly UserContent[]): string {
   return content.map((part) => (part.type === "text" ? (part.text ?? "") : strings.chat.tool.image)).join("\n");
 }
 
-/** `1.2 s`, `350 ms`, `2 min 5 s`. */
-export function formatDuration(ms: number): string {
+/** `1.2 s`, `350 ms`, `2 min 5 s`; never negative: a duration below zero (clocks that disagree, UI-680) is `0 ms`. */
+export function formatDuration(signed: number): string {
+  const ms = Math.max(0, signed);
   const { duration } = strings.chat;
   if (ms < 1000) {
     return duration.ms(ms);

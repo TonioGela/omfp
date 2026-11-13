@@ -107,6 +107,17 @@ describe("background work", () => {
     expect([finished?.state, finished?.durationMs, finished?.stopRequested]).toEqual(["completed", 5000, false]);
   });
 
+  // spec: UI-680
+  test("a duration is never negative: a clock reading older than the job's start counts as no time yet", () => {
+    const running = fixtureUntil("async_bash_tool_call", isFrame("tool_execution_update")).tools;
+    // The window saw the job at 1181; the rows are computed with 1000, an older reading (a stale tick, a skewed
+    // clock), and a subagent's progress reports a negative run time.
+    const seen = observeJobs(NO_TIMES, running, 1181);
+    const rows = backgroundRows(running, [subagent("A", "running", -40)], new Set(), seen, 1000);
+    expect(rows.map((row) => row.durationMs)).toEqual([0, 0]);
+    expect(backgroundRows(running, [], new Set(), seen, 1500)[0]?.durationMs).toBe(319);
+  });
+
   // spec: UI-274
   test("what runs: running jobs and subagents", () => {
     const running = fixtureUntil("async_bash_tool_call", isFrame("tool_execution_update")).tools;
