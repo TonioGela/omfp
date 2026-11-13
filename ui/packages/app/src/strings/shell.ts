@@ -578,8 +578,8 @@ export const shell = {
     },
     /** Keys a widget handles itself, outside the keymap. */
     keys: {
-      send: "Send the message (queued as a follow-up while the agent works)",
-      steer: "Steer the running turn with the message",
+      send: "Send the message (steers the running turn while the agent works)",
+      queue: "Queue the message as a follow-up while the agent works",
       newline: "New line",
       complete: "Complete the / command",
       pasteRaw: "Paste a large text as it is, not as a chip",

@@ -79,5 +79,3 @@ function QueueChipView({ threadId, chip }: { threadId: string; chip: QueueChip }
     </li>
   );
 }
-
-/** The key chip of a send mode's key (UI-148): `shift+enter` steers while the agent works, `enter` sends otherwise. */

@@ -103,7 +103,7 @@ export function Composers() {
               shot.png
             </Chip>
             <ComposerHint>
-              <Kbd>shift+enter</Kbd> steer
+              <Kbd>ctrl+enter</Kbd> queue
             </ComposerHint>
             <Button variant="primary" size="sm" icon={<Icon name="arrow-up" />} kbd="enter">
               Send

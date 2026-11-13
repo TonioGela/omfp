@@ -119,7 +119,7 @@ async fn busy_thread(journey: &Journey) -> anyhow::Result<String> {
     journey.fake.wait_for_gate(2).await;
     journey.status(&thread, "running").await?;
     journey.busy().await?;
-    journey.send("and a follow-up after that").await?;
+    journey.queue("and a follow-up after that").await?;
     journey
         .until("the queued follow-up", async |page| {
             let chips = page

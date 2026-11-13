@@ -110,7 +110,7 @@ export const chat = {
   composer: {
     label: "Message",
     placeholderIdle: "Message (/ for commands)",
-    placeholderBusy: "Queue a follow-up (shift+enter steers, ctrl+c interrupts)",
+    placeholderBusy: "Steer the agent (ctrl+enter queues, ctrl+c interrupts)",
     send: { prompt: "Send", "follow-up": "Queue follow-up", steer: "Steer now" },
     abort: "Abort",
     /** Composer bar hints after their key chips (UI-148, UI-172). */

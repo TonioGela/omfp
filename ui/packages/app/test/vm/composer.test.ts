@@ -13,6 +13,7 @@ import {
   isBusy,
   keyAction,
   type Modifiers,
+  queueKeys,
   restoreCleared,
   restoreDraft,
   restoredTexts,
@@ -36,16 +37,22 @@ const names = (draft: string) => slashSuggestions(draft, COMMANDS).map((suggesti
 
 describe("composer", () => {
   // spec: UI-061
-  test("busy threads queue follow-ups unless the modifier steers", () => {
+  test("busy threads steer unless the modifier (or ctrl+q) queues a follow-up", () => {
     const busy = fixtureUntil("follow_up_then_abort", isFrame("queue_update"));
     expect(isBusy(busy)).toBe(true);
     expect(isBusy(fixture("text_reply"))).toBe(false);
     const shift = { ...PLAIN, shift: true };
-    expect(keyAction("Enter", PLAIN, BUSY)).toEqual({ type: "send", mode: "follow-up" });
-    expect(keyAction("Enter", shift, BUSY)).toEqual({ type: "send", mode: "steer" });
-    expect(keyAction("Enter", { ...PLAIN, meta: true }, BUSY)).toEqual({ type: "send", mode: "steer" });
-    // Idle, the steer key sends like Enter.
-    expect(keyAction("Enter", shift, IDLE)).toEqual({ type: "send", mode: "prompt" });
+    const ctrl = { ...PLAIN, ctrl: true };
+    expect(keyAction("Enter", PLAIN, BUSY)).toEqual({ type: "send", mode: "steer" });
+    expect(keyAction("Enter", ctrl, BUSY)).toEqual({ type: "send", mode: "follow-up" });
+    expect(keyAction("Enter", { ...PLAIN, meta: true }, BUSY)).toEqual({ type: "send", mode: "follow-up" });
+    expect(keyAction("Enter", shift, BUSY)).toEqual({ type: "send", mode: "follow-up" });
+    expect(keyAction("q", ctrl, BUSY)).toEqual({ type: "send", mode: "follow-up" });
+    expect(keyAction("q", ctrl, { ...BUSY, repeat: true })).toEqual({ type: "ignore" });
+    // Idle, the queue keys send like Enter; ctrl+q is left to the keymap.
+    expect(keyAction("Enter", ctrl, IDLE)).toEqual({ type: "send", mode: "prompt" });
+    expect(keyAction("q", ctrl, IDLE)).toEqual({ type: "none" });
+    expect([queueKeys(false), queueKeys(true)]).toEqual(["Ctrl-Enter", "Meta-Enter"]);
     expect(behavior("follow-up")).toBe("followUp");
     expect(behavior("steer")).toBe("steer");
     expect(behavior("prompt")).toBeUndefined();
@@ -62,7 +69,7 @@ describe("composer", () => {
   });
 
   // spec: UI-061
-  test("an auto-repeated enter or steer key sends nothing", () => {
+  test("an auto-repeated enter or queue key sends nothing", () => {
     expect(keyAction("Enter", PLAIN, { ...IDLE, repeat: true })).toEqual({ type: "ignore" });
     expect(keyAction("Enter", { ...PLAIN, shift: true }, { ...BUSY, repeat: true })).toEqual({ type: "ignore" });
   });

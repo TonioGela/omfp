@@ -9,6 +9,7 @@
 import { type Binding, keyLabel, type Mode } from "../keymap/keymap.ts";
 import type { Command } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
+import { queueKeys } from "../vm/composer.ts";
 import { rawPasteKeys } from "../vm/paste.ts";
 import { unique } from "./cmdline.ts";
 
@@ -102,7 +103,10 @@ const keys = text.keys;
 /** Keys the composer handles itself (UI-060, UI-061). */
 const COMPOSER_KEYS: readonly HelpRow[] = [
   { keys: [keyLabel("Enter")], description: keys.send },
-  { keys: [keyLabel("Shift-Enter")], description: keys.steer },
+  {
+    keys: [keyLabel(queueKeys()), keyLabel("Shift-Enter"), keyLabel("Ctrl-q")],
+    description: keys.queue,
+  },
   { keys: [keyLabel("Alt-Enter")], description: keys.newline },
   { keys: [keyLabel("Tab")], description: keys.complete },
   { keys: [keyLabel(rawPasteKeys())], description: keys.pasteRaw },

@@ -396,13 +396,13 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
     journey.status(&thread, "running").await?;
     journey.busy().await?;
 
-    // Enter while busy queues a follow-up (UI-061), which can be removed (UI-062).
-    journey.send("later please").await?;
+    // Ctrl+Enter while busy queues a follow-up (UI-061), which can be removed (UI-062).
+    journey.queue("later please").await?;
     queued(&journey, "follow-up", "later please").await?;
     journey.click("[data-testid=queue-remove]").await?;
     journey.gone("[data-testid=queue-chip]").await?;
 
-    // Holding Shift in the composer switches the send button to steering; leaving the composer while it is held
+    // Holding Shift in the composer switches the send button to queueing; leaving the composer while it is held
     // does not leave it stuck there.
     let input = journey.element("[data-testid=composer-input]").await?;
     input.click().await?;
@@ -412,7 +412,7 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
         .key_down(Key::Shift)
         .perform()
         .await?;
-    send_mode(&journey, "steer").await?;
+    send_mode(&journey, "follow-up").await?;
     journey.click("[data-testid=transcript]").await?;
     journey
         .driver
@@ -420,9 +420,9 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
         .key_up(Key::Shift)
         .perform()
         .await?;
-    send_mode(&journey, "follow-up").await?;
+    send_mode(&journey, "steer").await?;
 
-    // Alt+Enter is a new line, Shift+Enter steers (the trailing line break is trimmed).
+    // Alt+Enter is a new line, Enter steers (the trailing line break is trimmed).
     input.click().await?;
     input.send_keys("steer me").await?;
     journey
@@ -434,14 +434,7 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
         .perform()
         .await?;
     assert_eq!(draft(&journey).await?, "steer me\n");
-    journey
-        .driver
-        .action_chain()
-        .key_down(Key::Shift)
-        .send_keys(Key::Enter)
-        .key_up(Key::Shift)
-        .perform()
-        .await?;
+    input.send_keys(Key::Enter).await?;
     queued(&journey, "steering", "steer me").await?;
     assert_eq!(draft(&journey).await?, "");
 
@@ -487,7 +480,7 @@ async fn a_removed_follow_up_and_an_abort_bring_the_steer_back_to_the_composer()
     journey.send("again").await?;
     journey.fake.wait_for_gate(1).await;
     journey.busy().await?;
-    journey.send("queued later").await?;
+    journey.queue("queued later").await?;
     queued(&journey, "follow-up", "queued later").await?;
     input.send_keys("half typed").await?;
     input.send_keys(Key::Control + "c").await?;

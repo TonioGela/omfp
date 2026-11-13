@@ -134,22 +134,27 @@ describe("composer", () => {
   });
 
   // spec: UI-061, UI-148, UI-172
-  test("while busy, sending queues a follow-up; the modifier steers; the button says which", async () => {
+  test("while busy, sending steers; ctrl+enter, shift+enter and ctrl+q queue a follow-up; the button says which", async () => {
     const { client } = renderThread(<ComposerWidget />, busyEvents());
     const send = screen.getByTestId("send");
-    expect([send.dataset.mode, send.textContent]).toEqual(["follow-up", "Queue follow-upenter"]);
-    expect(screen.getByTestId("send-alternative").dataset.mode).toBe("steer");
+    expect([send.dataset.mode, send.textContent]).toEqual(["steer", "Steer nowenter"]);
+    const alternative = screen.getByTestId("send-alternative");
+    expect([alternative.dataset.mode, alternative.textContent]).toEqual(["follow-up", "Queue follow-upctrl+enter"]);
     await userEvent.click(input());
-    await userEvent.keyboard("later{Enter}");
-    await userEvent.keyboard("{Shift>}");
-    expect(screen.getByTestId("send").dataset.mode).toBe("steer");
-    expect(screen.getByTestId("send").textContent).toBe("Steer nowshift+enter");
-    await userEvent.keyboard("{/Shift}now{Shift>}{Enter}{Enter>3/}{/Shift}");
-    expect(client.callsTo("thread.prompt").map((call) => call.params)).toEqual([
-      { threadId: THREAD, text: "later", behavior: "followUp" },
-      { threadId: THREAD, text: "now", behavior: "steer" },
-    ]);
+    await userEvent.keyboard("now{Enter}");
+    await userEvent.keyboard("{Control>}");
     expect(screen.getByTestId("send").dataset.mode).toBe("follow-up");
+    expect(screen.getByTestId("send").textContent).toBe("Queue follow-upctrl+enter");
+    await userEvent.keyboard("{/Control}later{Control>}{Enter}{Enter>3/}{/Control}");
+    await userEvent.keyboard("shifted{Shift>}{Enter}{/Shift}");
+    await userEvent.keyboard("chord{Control>}q{/Control}");
+    expect(client.callsTo("thread.prompt").map((call) => call.params)).toEqual([
+      { threadId: THREAD, text: "now", behavior: "steer" },
+      { threadId: THREAD, text: "later", behavior: "followUp" },
+      { threadId: THREAD, text: "shifted", behavior: "followUp" },
+      { threadId: THREAD, text: "chord", behavior: "followUp" },
+    ]);
+    expect(screen.getByTestId("send").dataset.mode).toBe("steer");
   });
 
   // spec: UI-172, UI-098
@@ -166,7 +171,7 @@ describe("composer", () => {
   // spec: UI-063, UI-092, UI-095, UI-148
   test("Esc while busy only leaves the composer, the agent keeps running; the Abort button restores the queue", async () => {
     const { client, host } = renderThread(<ChatWidget />, queuedEvents());
-    expect(input().getAttribute("placeholder")).toBe("Queue a follow-up (shift+enter steers, ctrl+c interrupts)");
+    expect(input().getAttribute("placeholder")).toBe("Steer the agent (ctrl+enter queues, ctrl+c interrupts)");
     expect(screen.getByTestId("composer").textContent).toContain("ctrl+c interrupt");
     await userEvent.click(input());
     await userEvent.keyboard("typing");

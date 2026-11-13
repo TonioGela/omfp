@@ -95,6 +95,8 @@ export {
   isBusy,
   keyAction,
   type Modifiers,
+  queueKeys,
+  queueModifier,
   restoreCleared,
   restoreDraft,
   restoredTexts,
@@ -103,7 +105,6 @@ export {
   type Suggestion,
   sendMode,
   slashSuggestions,
-  steerModifier,
 } from "../vm/composer.ts";
 export {
   closeOpenedTab,

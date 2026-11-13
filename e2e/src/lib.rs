@@ -634,6 +634,20 @@ impl Journey {
         Ok(())
     }
 
+    /// Queues `text` from the composer as a follow-up with Ctrl+Enter (UI-061); while idle it sends like Enter.
+    pub async fn queue(&self, text: &str) -> anyhow::Result<()> {
+        let input = self.element("[data-testid=composer-input]").await?;
+        input.send_keys(text).await?;
+        self.driver
+            .action_chain()
+            .key_down(Key::Control)
+            .send_keys(Key::Enter)
+            .key_up(Key::Control)
+            .perform()
+            .await?;
+        Ok(())
+    }
+
     /// Waits until the assistant's messages include one containing `needle`.
     pub async fn reply(&self, needle: &str) -> anyhow::Result<()> {
         self.until(&format!("a reply containing {needle:?}"), async |page| {

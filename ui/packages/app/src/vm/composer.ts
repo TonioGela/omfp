@@ -5,6 +5,7 @@
 
 import type { AvailableSlashCommand, ImageContent, ThreadState } from "@omfp/core";
 import type { PromptBehavior } from "@omfp/protocol";
+import { MAC } from "../keymap/keymap.ts";
 import type { Draft } from "../sdk/index.ts";
 import { isObject } from "../sdk/json.ts";
 import { expandDraft } from "./paste.ts";
@@ -33,12 +34,12 @@ export function canAbort(state: ThreadState): boolean {
 /** What the send action does: a new turn when idle; while busy queued until the turn ends, or steered into it. */
 export type SendMode = "prompt" | "follow-up" | "steer";
 
-/** Busy threads queue as follow-up unless the steer modifier (Shift, Ctrl or ⌘ with Enter) is held. */
-export function sendMode(busy: boolean, steerModifier: boolean): SendMode {
+/** Busy threads steer into the running turn unless the queue modifier (Ctrl, ⌘ or Shift with Enter) is held. */
+export function sendMode(busy: boolean, queueModifier: boolean): SendMode {
   if (!busy) {
     return "prompt";
   }
-  return steerModifier ? "steer" : "follow-up";
+  return queueModifier ? "follow-up" : "steer";
 }
 
 /** The `behavior` of `thread.prompt`. */
@@ -74,11 +75,21 @@ export interface Modifiers {
 }
 
 /**
- * The modifier that turns a busy send into a steer: Shift (Ctrl and ⌘ too). Alt with Enter is a new line, also on
- * macOS, where Option+Enter arrives as `Enter` with `altKey`.
+ * The modifier that turns a busy send into a queued follow-up: Ctrl or ⌘ (Shift too). Alt with Enter is a new line,
+ * also on macOS, where Option+Enter arrives as `Enter` with `altKey`.
  */
-export function steerModifier(modifiers: Modifiers): boolean {
+export function queueModifier(modifiers: Modifiers): boolean {
   return !modifiers.alt && (modifiers.shift || modifiers.ctrl || modifiers.meta);
+}
+
+/** The keys that queue a follow-up, as the chips show them: `⌘`+Enter on macOS, Ctrl+Enter elsewhere. */
+export function queueKeys(mac = MAC): string {
+  return mac ? "Meta-Enter" : "Ctrl-Enter";
+}
+
+/** Ctrl+Q: queue a follow-up, as in omp's TUI. */
+function isQueueChord(key: string, modifiers: Modifiers): boolean {
+  return key.toLowerCase() === "q" && modifiers.ctrl && !modifiers.alt && !modifiers.meta && !modifiers.shift;
 }
 
 /** What a key press in the composer does. */
@@ -112,12 +123,15 @@ export function keyAction(key: string, modifiers: Modifiers, context: KeyContext
       }
       return context.repeat === true
         ? { type: "ignore" }
-        : { type: "send", mode: sendMode(context.busy, steerModifier(modifiers)) };
+        : { type: "send", mode: sendMode(context.busy, queueModifier(modifiers)) };
     case "Escape":
       return { type: "leave" };
     case "Tab":
       return context.hasSuggestions && !modifiers.shift ? { type: "complete" } : { type: "none" };
     default:
+      if (context.busy && isQueueChord(key, modifiers)) {
+        return context.repeat === true ? { type: "ignore" } : { type: "send", mode: "follow-up" };
+      }
       return { type: "none" };
   }
 }

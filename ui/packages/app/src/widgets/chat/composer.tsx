@@ -42,6 +42,8 @@ import {
   keyAction,
   keyLabel,
   type Modifiers,
+  queueKeys,
+  queueModifier,
   rawPasteKeys,
   restoreCleared,
   restoreDraft,
@@ -52,7 +54,6 @@ import {
   type Suggestion,
   sendMode,
   slashSuggestions,
-  steerModifier,
   strings,
   useAnnounce,
   useCall,
@@ -231,7 +232,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
 }
 
 function sendKey(mode: SendMode): string {
-  return keyLabel(mode === "steer" ? "Shift-Enter" : "Enter");
+  return keyLabel(mode === "follow-up" ? queueKeys() : "Enter");
 }
 
 /**
@@ -325,7 +326,7 @@ export const Composer = memo(function Composer({
   const lastInterrupt = useRef<number | undefined>(undefined);
   /** "Ctrl-C again to abort" shows while a second press would abort. */
   const [interruptHint, setInterruptHint] = useState(false);
-  const [steer, setSteer] = useState(false);
+  const [queueHeld, setQueueHeld] = useState(false);
   /** Esc closed the suggestions; typing opens them again. */
   const [dismissed, setDismissed] = useState(false);
   /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
@@ -339,7 +340,7 @@ export const Composer = memo(function Composer({
       setFocusRequest(undefined);
     }
   }, [focusRequest, threadId, setFocusRequest]);
-  const mode = sendMode(busy, steer);
+  const mode = sendMode(busy, queueHeld);
   const other = alternative(mode);
   const commands = useThreadCommands(threadId, known);
   const suggestions = slashSuggestions(draft.text, commands);
@@ -465,7 +466,7 @@ export const Composer = memo(function Composer({
     }
     const modifiers = modifiersOf(event);
     pastes.onKeyDown(event, modifiers);
-    setSteer(steerModifier(modifiers));
+    setQueueHeld(queueModifier(modifiers));
     if (open && !(event.key === "Enter" && !inputRef.current.hasAttribute("aria-activedescendant"))) {
       if (event.key === "Tab" && !event.shiftKey) {
         event.preventDefault();
@@ -488,11 +489,11 @@ export const Composer = memo(function Composer({
       event.stopPropagation();
       return;
     }
-    if ((modifiers.ctrl || modifiers.alt || modifiers.meta) && event.key !== "Enter") {
+    const action = keyAction(event.key, modifiers, { busy, hasSuggestions: false, repeat: event.repeat });
+    if ((modifiers.ctrl || modifiers.alt || modifiers.meta) && event.key !== "Enter" && action.type !== "send") {
       return;
     }
     event.stopPropagation();
-    const action = keyAction(event.key, modifiers, { busy, hasSuggestions: false, repeat: event.repeat });
     if (action.type === "none") {
       return;
     }
@@ -532,7 +533,7 @@ export const Composer = memo(function Composer({
       onDragOver={(event) => event.preventDefault()}
       onDrop={onDrop}
       onKeyDownCapture={onKeyDownCapture}
-      onKeyUpCapture={(event) => setSteer(steerModifier(modifiersOf(event)))}
+      onKeyUpCapture={(event) => setQueueHeld(queueModifier(modifiersOf(event)))}
     >
       <KitComposer mode={insert ? "insert" : "normal"}>
         {draft.images.length > 0 && <Attachments draft={draft} setDraft={setDraft} />}
@@ -558,12 +559,12 @@ export const Composer = memo(function Composer({
             inputRef={inputRef}
             onFocus={() => setInsert(true)}
             onBlur={() => {
-              setSteer(false);
+              setQueueHeld(false);
               setInsert(false);
             }}
             inputProps={{
               ...testId("composer-input"),
-              "aria-keyshortcuts": `Enter Shift+Enter Alt+Enter Escape Tab ${ariaKeys(rawPasteKeys())}`,
+              "aria-keyshortcuts": `Enter Control+Enter Meta+Enter Shift+Enter Control+Q Alt+Enter Escape Tab ${ariaKeys(rawPasteKeys())}`,
               onPaste,
             }}
           />
