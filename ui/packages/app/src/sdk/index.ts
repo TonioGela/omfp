@@ -247,16 +247,23 @@ export {
 } from "../vm/tree.ts";
 export type { ThreadViewChoice, ViewChoices } from "../vm/view-choices.ts";
 export {
+  arrivalScroll,
+  halfPageScrollTop,
   INITIAL_PIN,
+  type ItemEdges,
+  type ItemExtent,
   isScrollUpKey,
   keyScrollTop,
+  type MoveCommand,
   mountScrollTop,
   movedUpByUser,
   type NavCommand,
   navTarget,
   type PinEvent,
   type PinState,
+  pagerScroll,
   pinReducer,
+  refocusAfterScroll,
 } from "../vm/virtual.ts";
 export {
   ADD_KINDS,

@@ -701,3 +701,222 @@ async fn scrolling_up_while_a_reply_streams_stays_where_the_user_scrolled_in_web
         .finish("scrolling while a reply streams (webkitgtk)")
         .await
 }
+
+/// Short questions and answers around one reply several windows tall.
+fn long_reply_history() -> Vec<AgentMessage> {
+    let long: String = (0..80)
+        .map(|index| {
+            format!("Long reply paragraph {index}: a line of text to read through by keyboard.")
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    [
+        json!({ "role": "user", "timestamp": 0, "content": [{ "type": "text", "text": "Short question?" }] }),
+        assistant(&json!([{ "type": "text", "text": "Short answer." }])),
+        json!({ "role": "user", "timestamp": 0, "content": [{ "type": "text", "text": "Long question?" }] }),
+        assistant(&json!([{ "type": "text", "text": format!("Long reply start.\n\n{long}\n\nLong reply end.") }])),
+        json!({ "role": "user", "timestamp": 0, "content": [{ "type": "text", "text": "After question?" }] }),
+        assistant(&json!([{ "type": "text", "text": "After answer." }])),
+    ]
+    .iter()
+    .map(message)
+    .collect()
+}
+
+/// The focused transcript item and the view, edges relative to the viewport's top.
+#[derive(Debug)]
+struct Focused {
+    /// The start of the item's text.
+    text: String,
+    scroll_top: f64,
+    view: f64,
+    top: f64,
+    bottom: f64,
+}
+
+async fn focused_item(journey: &Journey) -> anyhow::Result<Focused> {
+    let value = journey
+        .eval(
+            "const t = document.querySelector(arguments[0]);
+             const item = document.activeElement?.closest('[data-testid=transcript-item]');
+             const view = t.getBoundingClientRect().top;
+             const r = item ? item.getBoundingClientRect() : { top: view, bottom: view };
+             return [item ? item.textContent.slice(0, 200) : '', t.scrollTop, t.clientHeight, r.top - view,
+                     r.bottom - view];",
+            vec![json!(TRANSCRIPT)],
+        )
+        .await?;
+    let (text, scroll_top, view, top, bottom) = serde_json::from_value(value)?;
+    Ok(Focused {
+        text,
+        scroll_top,
+        view,
+        top,
+        bottom,
+    })
+}
+
+/// Presses `key` and returns the focused item once the press took effect (its scroll or focus change).
+async fn press_nav(journey: &Journey, key: &str) -> anyhow::Result<Focused> {
+    let before = focused_item(journey).await?;
+    journey.keys(key).await?;
+    journey
+        .until(&format!("`{key}` to scroll or move"), async |page| {
+            let after = focused_item(page).await?;
+            Ok(
+                (after.text != before.text || (after.scroll_top - before.scroll_top).abs() > 0.5)
+                    .then_some(after),
+            )
+        })
+        .await
+}
+
+/// Pages with `key` (`j` down, `k` up) through the focused long reply until the press that moves on, checking each
+/// step keeps the focus and scrolls at most 40 % of the viewport; returns the steps and the item it moved to.
+async fn page_through(
+    journey: &Journey,
+    key: &str,
+    mut item: Focused,
+) -> anyhow::Result<(usize, Focused)> {
+    let down = key == "j";
+    let mut steps = 0;
+    loop {
+        let edge_shows = if down {
+            item.bottom <= item.view + 1.0
+        } else {
+            item.top >= -1.0
+        };
+        let next = press_nav(journey, key).await?;
+        if edge_shows {
+            assert!(
+                !next.text.contains("Long reply start."),
+                "once its edge shows, {key} moves on"
+            );
+            return Ok((steps, next));
+        }
+        assert!(
+            next.text.contains("Long reply start."),
+            "the focus stays on the long reply while {key} pages: {}",
+            next.text
+        );
+        let step = (next.scroll_top - item.scroll_top) * if down { 1.0 } else { -1.0 };
+        assert!(
+            step > 0.0 && step <= 0.4 * item.view + 1.0,
+            "a step of at most 40 % of the viewport: {step}"
+        );
+        steps += 1;
+        assert!(steps < 100, "the long reply's edge never showed");
+        item = next;
+    }
+}
+
+// spec: E2E-31, UI-370, UI-371
+#[tokio::test(flavor = "multi_thread")]
+async fn a_long_reply_is_read_by_keyboard_before_the_focus_moves_on() -> anyhow::Result<()> {
+    let launcher = FakeLauncher::new();
+    launcher.push_run(FakeRun::fresh().with_history(long_reply_history()));
+    let journey = Journey::start_fake(launcher.clone()).await?;
+    let thread = create_thread(&journey).await?;
+    journey.click(&row(&thread)).await?;
+    journey.opened(&thread).await?;
+    journey
+        .until("the long reply", async |page| {
+            Ok(page
+                .text(TRANSCRIPT)
+                .await?
+                .contains("Long reply end.")
+                .then_some(()))
+        })
+        .await?;
+
+    // From the first item, `j` down to the long reply: its top shows, the focus on it.
+    journey
+        .eval(
+            "document.querySelector(arguments[0]).focus();",
+            vec![json!(TRANSCRIPT)],
+        )
+        .await?;
+    journey.keys("gg").await?;
+    let mut item = journey
+        .until("the first item focused", async |page| {
+            let item = focused_item(page).await?;
+            Ok((!item.text.is_empty() && item.scroll_top < 1.0).then_some(item))
+        })
+        .await?;
+    for _ in 0..10 {
+        if item.text.contains("Long reply start.") {
+            break;
+        }
+        item = press_nav(&journey, "j").await?;
+    }
+    assert!(
+        item.text.contains("Long reply start."),
+        "j reaches the long reply: {item:?}"
+    );
+    assert!(
+        item.top >= -1.0 && item.top < item.view,
+        "its top shows when it gets the focus: {item:?}"
+    );
+    assert!(
+        item.bottom - item.top > 2.0 * item.view,
+        "the reply is several windows tall: {item:?}"
+    );
+
+    // `j` pages through it until its end shows, then moves on.
+    let (steps, after) = page_through(&journey, "j", item).await?;
+    assert!(
+        steps >= 3,
+        "several steps through a reply several windows tall: {steps}"
+    );
+    assert!(
+        after.text.contains("After question?"),
+        "j moves on to the next message: {after:?}"
+    );
+
+    // `k`: back to the long reply, its end showing, then up through it to its top, then on to the question.
+    let back = press_nav(&journey, "k").await?;
+    assert!(
+        back.text.contains("Long reply start."),
+        "k focuses the long reply: {back:?}"
+    );
+    assert!(
+        back.bottom > 0.0 && back.bottom <= back.view + 1.0,
+        "its end shows: {back:?}"
+    );
+    let (_, before) = page_through(&journey, "k", back).await?;
+    assert!(
+        before.text.contains("Long question?"),
+        "k moves on to the question: {before:?}"
+    );
+
+    // `j` to the long reply again, then `Ctrl-d`: half a window down, the focus kept while the reply shows.
+    let long = press_nav(&journey, "j").await?;
+    assert!(
+        long.text.contains("Long reply start."),
+        "j focuses the long reply again: {long:?}"
+    );
+    journey
+        .driver
+        .action_chain()
+        .key_down(Key::Control)
+        .send_keys("d")
+        .key_up(Key::Control)
+        .perform()
+        .await?;
+    let half = journey
+        .until("Ctrl-d to scroll", async |page| {
+            let after = focused_item(page).await?;
+            Ok((after.scroll_top > long.scroll_top + 1.0).then_some(after))
+        })
+        .await?;
+    assert!(
+        (half.scroll_top - long.scroll_top - long.view / 2.0).abs() <= 1.0,
+        "half a window: {long:?} → {half:?}"
+    );
+    assert!(
+        half.text.contains("Long reply start."),
+        "the focus stays on the reply it shows: {half:?}"
+    );
+
+    journey.finish("reading a long reply by keyboard").await
+}

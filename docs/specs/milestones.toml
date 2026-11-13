@@ -830,6 +830,9 @@ requirements = [
   "UI-364",
   # Markdown tables
   "UI-369",
+  # Long messages by keyboard
+  "UI-370",
+  "UI-371",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -838,4 +841,5 @@ requirements = [
   "E2E-28",
   "E2E-29",
   "E2E-30",
+  "E2E-31",
 ]

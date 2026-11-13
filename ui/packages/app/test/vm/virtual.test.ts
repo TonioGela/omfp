@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  arrivalScroll,
+  halfPageScrollTop,
   INITIAL_PIN,
   isScrollUpKey,
   keyScrollTop,
@@ -7,7 +9,9 @@ import {
   movedUpByUser,
   navTarget,
   type PinState,
+  pagerScroll,
   pinReducer,
+  refocusAfterScroll,
 } from "../../src/vm/virtual.ts";
 
 const scroll = (scrollTop: number, scrollHeight: number, clientHeight: number, previousScrollTop?: number) =>
@@ -124,13 +128,48 @@ describe("keys", () => {
 
   // spec: UI-095
   test("navigation commands move between messages and stay in range", () => {
-    expect(navTarget("nav.next", undefined, 10, 3)).toBe(9);
-    expect(navTarget("nav.prev", 5, 10, 3)).toBe(4);
-    expect(navTarget("nav.next", 9, 10, 3)).toBe(9);
-    expect(navTarget("nav.top", 5, 10, 3)).toBe(0);
-    expect(navTarget("nav.bottom", 0, 10, 3)).toBe(9);
-    expect(navTarget("nav.halfDown", 8, 10, 3)).toBe(9);
-    expect(navTarget("nav.halfUp", 2, 10, 3)).toBe(0);
-    expect(navTarget("nav.next", undefined, 0, 3)).toBe(-1);
+    expect(navTarget("nav.next", undefined, 10)).toBe(9);
+    expect(navTarget("nav.prev", 5, 10)).toBe(4);
+    expect(navTarget("nav.next", 9, 10)).toBe(9);
+    expect(navTarget("nav.prev", 0, 10)).toBe(0);
+    expect(navTarget("nav.top", 5, 10)).toBe(0);
+    expect(navTarget("nav.bottom", 0, 10)).toBe(9);
+    expect(navTarget("nav.next", undefined, 0)).toBe(-1);
+  });
+
+  // spec: UI-370
+  test("j/k page through an item taller than the viewport, then move; an item that fits moves at once", () => {
+    // A 600 px viewport: steps of 240 px, the last one up to the edge plus 16 px.
+    expect(pagerScroll(1, { top: -100, bottom: 1500 }, 600)).toBe(240);
+    expect(pagerScroll(1, { top: -900, bottom: 700 }, 600)).toBe(116);
+    // An item that fits moves at once, even with its end out of view.
+    expect(pagerScroll(1, { top: 550, bottom: 650 }, 600)).toBeUndefined();
+    expect(pagerScroll(1, { top: -1000, bottom: 600 }, 600)).toBeUndefined();
+    expect(pagerScroll(1, { top: 100, bottom: 400 }, 600)).toBeUndefined();
+    // Out of view below: not paged (the move goes on as before).
+    expect(pagerScroll(1, { top: 700, bottom: 2000 }, 600)).toBeUndefined();
+    expect(pagerScroll(-1, { top: -1000, bottom: 500 }, 600)).toBe(-240);
+    expect(pagerScroll(-1, { top: -50, bottom: 1000 }, 600)).toBe(-66);
+    expect(pagerScroll(-1, { top: 0, bottom: 1000 }, 600)).toBeUndefined();
+    expect(pagerScroll(-1, { top: -2000, bottom: -100 }, 600)).toBeUndefined();
+    // Arriving on a tall item: its top going down, its end going up; nothing when that edge shows; items that fit
+    // scroll into view as before.
+    expect(arrivalScroll(1, { top: 500, bottom: 2000 }, 600)).toBe(0);
+    expect(arrivalScroll(1, { top: 650, bottom: 2000 }, 600)).toBe(650);
+    expect(arrivalScroll(-1, { top: -2000, bottom: 100 }, 600)).toBe(0);
+    expect(arrivalScroll(-1, { top: -2000, bottom: -40 }, 600)).toBe(-640);
+    expect(arrivalScroll(1, { top: 550, bottom: 700 }, 600)).toBeUndefined();
+  });
+
+  // spec: UI-371
+  test("half pages scroll within the content; the focus moves only when its item left the view", () => {
+    expect(halfPageScrollTop(1, 1000, 600, 5000)).toBe(1300);
+    expect(halfPageScrollTop(1, 4300, 600, 5000)).toBe(4400);
+    expect(halfPageScrollTop(-1, 200, 600, 5000)).toBe(0);
+    const items = [0, 1, 2, 3, 4].map((index) => ({ start: index * 400, end: index * 400 + 400 }));
+    expect(refocusAfterScroll(1, items, 700, 600)).toBeUndefined();
+    expect(refocusAfterScroll(1, items, 800, 600)).toBe(2);
+    expect(refocusAfterScroll(4, items, 0, 600)).toBe(0);
+    expect(refocusAfterScroll(undefined, items, 800, 600)).toBeUndefined();
   });
 });

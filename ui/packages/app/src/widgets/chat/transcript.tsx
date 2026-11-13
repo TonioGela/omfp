@@ -2,21 +2,29 @@
  * `omfp:transcript`: the selected thread's transcript, virtualized with `@tanstack/react-virtual` (UI-042): only the
  * items around the viewport are in the DOM, heights are measured as they render, and the view follows the bottom
  * while pinned. The transcript handles PageUp/PageDown/Home/End itself (WebKitGTK does not scroll a focused
- * container, S-11) and the transcript-scope `nav.*` commands (UI-095).
+ * container, S-11) and the transcript-scope `nav.*` commands (UI-095): `j`/`k` page through an item taller than the
+ * viewport before moving on (UI-370), `Ctrl-d`/`Ctrl-u` and PageDown/PageUp scroll and keep the focus while the
+ * focused item shows (UI-371). Every scroll is instant, so no motion setting changes them.
  */
 
 import type { ThreadState } from "@omfp/core";
 import {
+  arrivalScroll,
+  halfPageScrollTop,
+  type ItemEdges,
   isScrollUpKey,
   transcriptItems as items,
   keyScrollTop,
+  type MoveCommand,
   mountScrollTop,
   movedUpByUser,
   type NavCommand,
   navTarget,
   type PinEvent,
+  pagerScroll,
   pinReducer,
   type TranscriptRowContent as RowContent,
+  refocusAfterScroll,
   transcriptRowContent as rowContent,
   SCOPE_ATTRIBUTE,
   strings,
@@ -98,6 +106,7 @@ function useSettledAnnouncements(settled: boolean): void {
 export function Transcript({ threadId, state, footer }: { threadId: string; state: ThreadState; footer?: ReactNode }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const [pin, setPin] = useWindowState(pinKey(threadId));
   const pinned = useRef(pin.pinned);
   pinned.current = pin.pinned;
@@ -183,23 +192,110 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
     observer.observe(content);
     return () => observer.disconnect();
   }, [follow]);
-  // A navigation command moved the current item: focus it once rendered.
+  // A navigation command moved the current item: focus it, now if it is rendered, else once it is (a far move renders
+  // it after its scroll).
+  const focusPending = useRef(false);
   useEffect(() => {
-    if (current !== undefined) {
-      containerRef.current?.querySelector<HTMLElement>(`[data-index="${current}"]`)?.focus({ preventScroll: true });
+    if (!focusPending.current || current === undefined) {
+      return;
     }
-  }, [current]);
+    const element = containerRef.current?.querySelector<HTMLElement>(`[data-index="${current}"]`);
+    if (element !== null && element !== undefined) {
+      focusPending.current = false;
+      element.focus({ preventScroll: true });
+    }
+  });
+  const focusItem = (index: number) => {
+    const element = containerRef.current?.querySelector<HTMLElement>(`[data-index="${index}"]`);
+    focusPending.current = element === null || element === undefined;
+    element?.focus({ preventScroll: true });
+    setCurrent(index);
+  };
 
-  const navigate = (command: NavCommand) => {
-    const halfPage = Math.floor(virtualizer.getVirtualItems().length / 2);
-    const target = navTarget(command, current, rows.length, halfPage);
+  /** The rendered item `index`'s edges relative to the viewport's top; `undefined` when it is not in the DOM. */
+  const edges = (container: HTMLElement, index: number): ItemEdges | undefined => {
+    const element = container.querySelector(`[data-index="${index}"]`);
+    if (element === null) {
+      return undefined;
+    }
+    const view = container.getBoundingClientRect().top;
+    const rect = element.getBoundingClientRect();
+    return { top: rect.top - view, bottom: rect.bottom - view };
+  };
+
+  /** Scrolls to `top` for a user's command; a move up unpins (moving down, the scroll event pins at the bottom). */
+  const userScrollTo = (container: HTMLElement, top: number) => {
+    userScrolls();
+    if (top < container.scrollTop) {
+      dispatch({ type: "userScrollUp" });
+    }
+    container.scrollTop = top;
+  };
+
+  /** After a scroll by a paging key, focuses the item at the viewport's top if the focused one left it (UI-371). */
+  const refocus = (container: HTMLElement) => {
+    const list = listRef.current;
+    if (list === null) {
+      return;
+    }
+    // Item positions are the virtualizer's, from the list's top; the list sits below the content's padding.
+    const offset = list.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
+    const extents = virtualizer.measurementsCache.map((item) => ({
+      start: item.start + offset,
+      end: item.end + offset,
+    }));
+    const target = refocusAfterScroll(current, extents, container.scrollTop, container.clientHeight);
+    if (target !== undefined) {
+      focusItem(target);
+    }
+  };
+
+  const move = (command: MoveCommand, container: HTMLElement) => {
+    // Paging and arrival apply to `j`/`k` from a focused item; with none, the first press focuses the last as before.
+    const direction =
+      current === undefined ? undefined : command === "nav.next" ? 1 : command === "nav.prev" ? -1 : undefined;
+    const view = container.clientHeight;
+    const focused = direction === undefined || current === undefined ? undefined : edges(container, current);
+    // A focused item taller than the viewport pages before the move (UI-370).
+    const step = direction === undefined || focused === undefined ? undefined : pagerScroll(direction, focused, view);
+    if (step !== undefined) {
+      userScrollTo(container, container.scrollTop + step);
+      return;
+    }
+    const target = navTarget(command, current, rows.length);
     if (target < 0) {
       return;
     }
+    const arrival = direction === undefined ? undefined : edges(container, target);
+    const scroll =
+      direction === undefined || arrival === undefined ? undefined : arrivalScroll(direction, arrival, view);
     userScrolls();
-    dispatch(target === rows.length - 1 ? { type: "pin" } : { type: "userScrollUp" });
-    virtualizer.scrollToIndex(target, { align: "auto" });
-    setCurrent(target);
+    if (scroll === undefined) {
+      dispatch(target === rows.length - 1 ? { type: "pin" } : { type: "userScrollUp" });
+      virtualizer.scrollToIndex(target, { align: "auto" });
+    } else {
+      // Reading on into a long item: the view is not at the end, the growth of a streaming reply must not pull it.
+      dispatch({ type: "userScrollUp" });
+      container.scrollTop += scroll;
+    }
+    focusItem(target);
+  };
+
+  const navigate = (command: NavCommand) => {
+    const container = containerRef.current;
+    if (container === null) {
+      return;
+    }
+    if (command === "nav.halfDown" || command === "nav.halfUp") {
+      const direction = command === "nav.halfDown" ? 1 : -1;
+      userScrollTo(
+        container,
+        halfPageScrollTop(direction, container.scrollTop, container.clientHeight, container.scrollHeight),
+      );
+      refocus(container);
+      return;
+    }
+    move(command, container);
   };
   // The registrations get one stable function that runs the latest `navigate`, so a render does not render them.
   const latestNavigate = useRef(navigate);
@@ -225,6 +321,9 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
         dispatch({ type: "pin" });
       }
       container.scrollTop = top;
+      if (event.key === "PageUp" || event.key === "PageDown") {
+        refocus(container);
+      }
     }
   };
 
@@ -264,7 +363,11 @@ export function Transcript({ threadId, state, footer }: { threadId: string; stat
         <NavRegistration key={id} id={id} title={title} run={runNav} />
       ))}
       <div ref={contentRef} className="omfp-transcript__content">
-        <div className="omfp-transcript__list" style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        <div
+          ref={listRef}
+          className="omfp-transcript__list"
+          style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+        >
           {virtualizer.getVirtualItems().map((virtual) => {
             const row = rows[virtual.index];
             const content = row === undefined ? undefined : rowContent(state, row);

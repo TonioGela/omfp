@@ -71,7 +71,7 @@ help, `Space p` workspace, `Space f` files, `Space v` views); Escape cancels the
 
 | Keys | What they do |
 | --- | --- |
-| `j` / `k`, `g g` / `G`, `Ctrl-d` / `Ctrl-u` | Next / previous, first / last, half a page — threads in the left column, messages in the transcript. |
+| `j` / `k`, `g g` / `G`, `Ctrl-d` / `Ctrl-u` | Next / previous, first / last, half a page — threads in the left column, messages in the transcript. In the transcript `j` / `k` scroll a message taller than the window down to its end / up to its top before moving on, and `Ctrl-d` / `Ctrl-u` scroll half a window (`PageDown` / `PageUp` a whole one), the focus staying on its message while it shows. |
 | `/` | Filter threads. |
 | `i` | Focus the composer. |
 | `:`, `Space :`, `Space Space` | The `:` line. |

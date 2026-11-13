@@ -9,7 +9,7 @@ import { TranscriptWidget } from "../../../src/widgets/chat/index.ts";
 import { renderWithHost } from "../../support/host.tsx";
 import { fixtureEvents, isFrame } from "./fixtures.ts";
 import { renderThread, THREAD } from "./harness.tsx";
-import { fakeLayout } from "./layout.ts";
+import { fakeLayout, LIST_TOP, pagedLayout } from "./layout.ts";
 
 let restoreLayout: () => void = () => {};
 beforeEach(() => {
@@ -383,6 +383,140 @@ describe("transcript", () => {
     run("nav.bottom");
     expect(current()).toBe("4");
     expect(element.dataset.pinned).toBe("true");
+  });
+
+  /** The transcript with `count` messages laid out by {@link pagedLayout}, focused, and its commands and keys. */
+  function paged(count: number, heights: (index: number) => number) {
+    const restore = pagedLayout(heights);
+    const { host } = renderThread(<TranscriptWidget />, longHistory(count));
+    const element = transcript();
+    act(() => element.focus());
+    // Each command, then the scroll event the browser sends after it moved the view.
+    const run = (id: string) => {
+      act(() => void host.commands.run(id, [], scopesAt(document.activeElement)));
+      act(() => void fireEvent.scroll(element));
+    };
+    const press = (key: string) => {
+      fireEvent.keyDown(document.activeElement ?? element, { key });
+      act(() => void fireEvent.scroll(element));
+    };
+    const state = () => [document.activeElement?.getAttribute("data-index"), element.scrollTop];
+    return { element, run, press, state, restore };
+  }
+
+  // spec: UI-370
+  test("j/k page through a message taller than the viewport before moving on; Up shows the previous one's end", () => {
+    // A 600 px viewport; message 2 is 1500 px tall, the others 100.
+    const { element, run, state, restore } = paged(5, (index) => (index === 2 ? 1500 : 100));
+    try {
+      run("nav.top");
+      run("nav.next");
+      expect(state()).toEqual(["1", 0]);
+      // The long message's top is in view: focused without scrolling.
+      run("nav.next");
+      expect(state()).toEqual(["2", 0]);
+      // Steps of 40 % of the viewport, the focus kept; the last step stops 16 px past its end.
+      const steps = [];
+      for (let press = 0; press < 5; press++) {
+        run("nav.next");
+        steps.push(state());
+      }
+      const end = LIST_TOP + 1700 - 600 + 16;
+      expect(steps).toEqual([
+        ["2", 240],
+        ["2", 480],
+        ["2", 720],
+        ["2", 960],
+        ["2", end],
+      ]);
+      // Its end shows: the next press moves on, as for any message that fits.
+      run("nav.next");
+      expect(state()).toEqual(["3", 1200]);
+      expect(element.dataset.pinned).toBe("false");
+      // Up: message 3 shows whole, so the focus moves up at once, to the long message whose end shows.
+      run("nav.prev");
+      expect(state()).toEqual(["2", 1200]);
+      run("nav.prev");
+      expect(state()).toEqual(["2", 960]);
+      // Paging up until its top shows 16 px below the viewport's top, then on to message 1, scrolled into view.
+      const up = [];
+      for (let press = 0; press < 4; press++) {
+        run("nav.prev");
+        up.push(state()[1]);
+      }
+      expect(up).toEqual([720, 480, 240, LIST_TOP + 200 - 16]);
+      run("nav.prev");
+      expect(state()).toEqual(["1", 100]);
+    } finally {
+      restore();
+    }
+  });
+
+  // spec: UI-370
+  test("moving up from a message whose top is at the viewport's top shows the previous long message's end", () => {
+    const { run, state, restore } = paged(10, (index) => (index === 1 ? 1500 : 100));
+    try {
+      run("nav.top");
+      run("nav.next");
+      // Page down through message 1 to its end and move on to message 2, then put its top at the viewport's top.
+      for (let press = 0; press < 6; press++) {
+        run("nav.next");
+      }
+      expect(state()[0]).toBe("2");
+      const top = LIST_TOP + 1600;
+      act(() => {
+        transcript().scrollTop = top;
+        fireEvent.scroll(transcript());
+      });
+      // Message 1 ends at the viewport's top: Up scrolls it up to show its last 600 px.
+      run("nav.prev");
+      expect(state()).toEqual(["1", top - 600]);
+    } finally {
+      restore();
+    }
+  });
+
+  // spec: UI-370
+  test("messages that fit move one by one as before", () => {
+    const { run, state, restore } = paged(20, () => 100);
+    try {
+      run("nav.top");
+      expect(state()).toEqual(["0", 0]);
+      for (let press = 0; press < 6; press++) {
+        run("nav.next");
+      }
+      // Message 6 ends below the viewport: scrolled into view at the bottom, as `scrollToIndex` aligns it.
+      expect(state()).toEqual(["6", 100]);
+      run("nav.prev");
+      expect(state()).toEqual(["5", 100]);
+    } finally {
+      restore();
+    }
+  });
+
+  // spec: UI-371
+  test("Ctrl-d/Ctrl-u and PageDown/PageUp scroll and keep the focus until its message leaves the view", () => {
+    const { element, run, press, state, restore } = paged(20, () => 100);
+    try {
+      run("nav.top");
+      // Half a page down: message 0 left the view, so the focus goes to the message at its top.
+      run("nav.halfDown");
+      expect(state()).toEqual(["2", 300]);
+      run("nav.halfDown");
+      expect(state()).toEqual(["5", 600]);
+      // Up again: message 5 still shows, the focus stays.
+      run("nav.halfUp");
+      expect(state()).toEqual(["5", 300]);
+      expect(element.dataset.pinned).toBe("false");
+      press("PageUp");
+      expect(state()).toEqual(["5", 0]);
+      press("PageDown");
+      expect(state()).toEqual(["5", 568]);
+      press("PageDown");
+      expect(state()).toEqual(["11", 1136]);
+    } finally {
+      restore();
+    }
   });
 
   // spec: UI-092

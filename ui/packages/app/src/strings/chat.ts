@@ -174,12 +174,12 @@ export const chat = {
     gone: (message: string) => `\u201c${message}\u201d is no longer queued`,
   },
   nav: {
-    next: "Next message",
-    prev: "Previous message",
+    next: "Next message (a long one scrolls down to its end first)",
+    prev: "Previous message (a long one scrolls up to its top first)",
     top: "First message",
     bottom: "Last message",
-    halfDown: "Half a page down",
-    halfUp: "Half a page up",
+    halfDown: "Scroll half a page down",
+    halfUp: "Scroll half a page up",
   },
   interactions: {
     label: "Requests",

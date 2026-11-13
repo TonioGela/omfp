@@ -335,7 +335,7 @@
     },
     {
       "id": "nav.halfDown",
-      "title": "Half a page down",
+      "title": "Scroll half a page down",
       "aliases": [],
       "scope": "transcript"
     },
@@ -352,7 +352,7 @@
     },
     {
       "id": "nav.halfUp",
-      "title": "Half a page up",
+      "title": "Scroll half a page up",
       "aliases": [],
       "scope": "transcript"
     },
@@ -369,7 +369,7 @@
     },
     {
       "id": "nav.next",
-      "title": "Next message",
+      "title": "Next message (a long one scrolls down to its end first)",
       "aliases": [],
       "scope": "transcript"
     },
@@ -386,7 +386,7 @@
     },
     {
       "id": "nav.prev",
-      "title": "Previous message",
+      "title": "Previous message (a long one scrolls up to its top first)",
       "aliases": [],
       "scope": "transcript"
     },

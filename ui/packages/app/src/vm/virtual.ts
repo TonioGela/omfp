@@ -118,30 +118,112 @@ export function keyScrollTop(
 /** The transcript-scope navigation commands (UI-095). */
 export type NavCommand = "nav.next" | "nav.prev" | "nav.top" | "nav.bottom" | "nav.halfDown" | "nav.halfUp";
 
+/** The commands that move the current item; `nav.halfDown`/`nav.halfUp` scroll instead ({@link halfPageScrollTop}). */
+export type MoveCommand = Exclude<NavCommand, "nav.halfDown" | "nav.halfUp">;
+
 /**
- * The item index a navigation command moves to from `current` (`undefined`: nothing focused yet, start from the
- * bottom) among `count` items, `halfPage` items per half page.
+ * The item index a move command goes to from `current` (`undefined`: nothing focused yet, start from the bottom) among
+ * `count` items.
  */
-export function navTarget(command: NavCommand, current: number | undefined, count: number, halfPage: number): number {
+export function navTarget(command: MoveCommand, current: number | undefined, count: number): number {
   if (count === 0) {
     return -1;
   }
   const last = count - 1;
-  const from = current ?? last;
-  const step = Math.max(1, halfPage);
   const clamp = (index: number) => Math.min(last, Math.max(0, index));
   switch (command) {
     case "nav.next":
-      return current === undefined ? last : clamp(from + 1);
+      return current === undefined ? last : clamp(current + 1);
     case "nav.prev":
-      return current === undefined ? last : clamp(from - 1);
+      return current === undefined ? last : clamp(current - 1);
     case "nav.top":
       return 0;
     case "nav.bottom":
       return last;
-    case "nav.halfDown":
-      return clamp(from + step);
-    case "nav.halfUp":
-      return clamp(from - step);
   }
+}
+
+/** An item's edges relative to the top of the transcript's viewport, in px (negative: above it). */
+export interface ItemEdges {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/** A pager step (UI-370) is this share of the viewport's height. */
+const PAGER_STEP = 0.4;
+/** The last pager step over an item leaves this much room past its edge. */
+const PAGER_MARGIN_PX = 16;
+/** An edge this close to the viewport's edge counts as shown (rounded positions). */
+const EDGE_PX = 1;
+
+/**
+ * `nav.next` (`direction` 1) or `nav.prev` (-1) on the focused item at `item` in a viewport `viewHeight` tall (UI-370):
+ * for an item taller than the viewport, the scroll that shows more of it while its far edge is out of view and the
+ * item reaches into the viewport — a step of {@link PAGER_STEP} of the viewport, at most what remains plus
+ * {@link PAGER_MARGIN_PX} —; `undefined` once that edge shows, or for an item that fits: the command then moves to the
+ * next or previous item.
+ */
+export function pagerScroll(direction: 1 | -1, item: ItemEdges, viewHeight: number): number | undefined {
+  if (item.bottom - item.top <= viewHeight) {
+    return undefined;
+  }
+  const step = PAGER_STEP * viewHeight;
+  if (direction === 1) {
+    const hidden = item.bottom - viewHeight;
+    return hidden > EDGE_PX && item.top < viewHeight ? Math.min(step, hidden + PAGER_MARGIN_PX) : undefined;
+  }
+  const hidden = -item.top;
+  return hidden > EDGE_PX && item.bottom > 0 ? -Math.min(step, hidden + PAGER_MARGIN_PX) : undefined;
+}
+
+/**
+ * Where a move by `nav.next` (`direction` 1) or `nav.prev` (-1) brings the view for the item it moved to, at `item`
+ * (UI-370): an item taller than the viewport shows its top going down and its end going up, so reading goes on where
+ * the previous item ended; the scroll is 0 when that edge already shows. `undefined` for an item that fits: it is
+ * scrolled into view as any other.
+ */
+export function arrivalScroll(direction: 1 | -1, item: ItemEdges, viewHeight: number): number | undefined {
+  if (item.bottom - item.top <= viewHeight) {
+    return undefined;
+  }
+  if (direction === 1) {
+    return item.top >= 0 && item.top < viewHeight ? 0 : item.top;
+  }
+  return item.bottom > 0 && item.bottom <= viewHeight ? 0 : item.bottom - viewHeight;
+}
+
+/** The scroll position after `nav.halfDown` (`direction` 1) or `nav.halfUp` (-1): half a viewport, within the content
+ * (UI-371). */
+export function halfPageScrollTop(
+  direction: 1 | -1,
+  scrollTop: number,
+  clientHeight: number,
+  scrollHeight: number,
+): number {
+  const bottom = Math.max(0, scrollHeight - clientHeight);
+  return Math.min(bottom, Math.max(0, scrollTop + (direction * clientHeight) / 2));
+}
+
+/** An item's extent in the scroll content, in px. */
+export interface ItemExtent {
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * After a scroll by a paging key (UI-371), the item to focus instead of `current`: `undefined` while `current` still
+ * shows in the view `[viewTop, viewTop + viewHeight)`, else the first item reaching below the view's top.
+ */
+export function refocusAfterScroll(
+  current: number | undefined,
+  items: readonly ItemExtent[],
+  viewTop: number,
+  viewHeight: number,
+): number | undefined {
+  const item = current === undefined ? undefined : items[current];
+  if (item === undefined || (item.end > viewTop && item.start < viewTop + viewHeight)) {
+    return undefined;
+  }
+  const top = items.findIndex((extent) => extent.end > viewTop);
+  return top < 0 ? items.length - 1 : top;
 }

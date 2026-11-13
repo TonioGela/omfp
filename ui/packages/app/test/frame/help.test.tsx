@@ -104,7 +104,10 @@ describe("help panel", () => {
       ["spc a, ] a, alt+a", "", "Next thread needing attention"],
     ]);
     expect(rows("normal", "help.open")).toEqual([["?, spc h h", "", "Show every key and command (this help)"]]);
-    expect(rows("transcript", "nav.next")).toEqual([["j", "", "Next message"]]);
+    expect(rows("transcript", "nav.next")).toEqual([
+      ["j", "", "Next message (a long one scrolls down to its end first)"],
+    ]);
+    expect(rows("transcript", "nav.halfDown")).toEqual([["ctrl+d", "", "Scroll half a page down"]]);
     expect(rows("insert", "focus.leave")).toEqual([["esc", "", "Leave the composer"]]);
     expect(rows("commands", "theme.set")).toEqual([
       [":theme", "system | light | dark", "Colour scheme (system, light, dark)"],
