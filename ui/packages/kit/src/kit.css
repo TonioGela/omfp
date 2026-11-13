@@ -2487,8 +2487,9 @@
     caret-color: var(--omfp-tertiary);
   }
 
+  /* Wide enough for a command's name and description on a wide window (UI-486); 70 % of a narrow one. */
   .omfp-cmdmenu {
-    inline-size: min(30rem, 70%);
+    inline-size: min(48rem, 70%);
     min-inline-size: 0;
   }
 
@@ -2611,12 +2612,15 @@
     color: var(--omfp-on-surface-variant);
   }
 
+  /* A description wraps onto up to three lines before it is cut (UI-486), so its syntax hint stays readable. */
   .omfp-whichkey__description {
+    display: -webkit-box;
     min-inline-size: 0;
     margin: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
   }
 
   .omfp-whichkey__item[data-kind="prefix"] .omfp-whichkey__description {

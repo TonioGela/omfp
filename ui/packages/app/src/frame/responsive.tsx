@@ -9,7 +9,7 @@ import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, us
 import { DRAFT_THREAD, SELECTED_THREAD, useCommand, useThreads, useWindowState } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
 import type { Area } from "../view/layout.ts";
-import { LEFT_DEFAULT_REM, LEFT_WIDTH, resizeLeft } from "../view/sizes.ts";
+import { LEFT_WIDTH, resizeLeft } from "../view/sizes.ts";
 import { Resizer } from "../view/splitter.tsx";
 import { threadMarkState } from "../widgets/threads/marks.ts";
 import { CommandsSheet } from "./commands-sheet.tsx";
@@ -184,19 +184,20 @@ function frameRemOf(aside: HTMLElement | null): number {
   return shell === null || shell === undefined ? 0 : shell.getBoundingClientRect().width / remPx();
 }
 
-/** Sets the column's width (`undefined`: the default `--omfp-side-w` of the stylesheet). */
+/** Sets the column's width (`undefined`: the stylesheet's default, from `--omfp-side-w` up to 26rem, UI-486). */
 function showWidth(aside: HTMLElement | null, rem: number | undefined): void {
   aside?.style.setProperty("flex-basis", rem === undefined ? "" : `${rem}rem`);
 }
 
 /**
  * The splitter between the left column and the view (UI-207): drags, arrow keys (5 % of the frame) and double click
- * (back to `--omfp-side-w`) set this window's width of the column, which only it applies to the column: a drag moves
- * the column directly, without rendering the frame, and writes the width once released.
+ * (back to the default width) set this window's width of the column, which only it applies to the column: a drag moves
+ * the column directly, without rendering the frame, and writes the width once released. Without a width of its own
+ * the column moves from the width it shows.
  */
 export function LeftSplitter({ aside }: { aside: RefObject<HTMLElement | null> }): ReactNode {
   const [width, setWidth] = useWindowState(LEFT_WIDTH);
-  const current = width ?? LEFT_DEFAULT_REM;
+  const current = width ?? (aside.current?.getBoundingClientRect().width ?? 0) / remPx();
   const [frameRem, setFrameRem] = useState(0);
   useLayoutEffect(() => {
     const column = aside.current;

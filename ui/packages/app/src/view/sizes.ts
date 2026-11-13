@@ -59,13 +59,11 @@ export function withSizes(sizes: PaneSizes, key: string, next: readonly number[]
   return { ...sizes, [key]: next };
 }
 
-/** The left column's width in this window, in `rem`; `undefined`: the default `--omfp-side-w` (UI-207). */
+/** The left column's width in this window, in `rem`; `undefined`: the stylesheet's default (UI-207, UI-486). */
 export const LEFT_WIDTH = windowKey<number | undefined>("leftWidth", undefined, (stored) =>
   isWeight(stored) ? stored : undefined,
 );
 
-/** The default width of the left column (`--omfp-side-w`), in `rem`. */
-export const LEFT_DEFAULT_REM = 17;
 /** The narrowest left column, in `rem`. */
 export const LEFT_MIN_REM = 12;
 /** The widest left column, as a share of the frame. */

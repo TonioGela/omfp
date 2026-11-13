@@ -16,6 +16,7 @@ use omfp_protocol::{
 };
 use omfp_testkit::TempRepo;
 use serde_json::Value;
+use thirtyfour::prelude::Key;
 
 /// The repository name of the QA report that broke the rows.
 const LONG: &str = "infra-terraform-modules-shared-configuration";
@@ -288,6 +289,13 @@ async fn composer_at(
             number("end")
         ));
     }
+    if number("left").abs() > 0.5 || number("width").abs() > 0.5 {
+        wrong.push(format!(
+            "the transcript's column is off the composer's {at}: left {}, right {}",
+            number("left"),
+            number("width")
+        ));
+    }
     if value["cut"].as_array().is_some_and(|cut| !cut.is_empty()) {
         wrong.push(format!("key hints cut or covered {at}: {}", value["cut"]));
     }
@@ -336,7 +344,45 @@ async fn chip_reveals_workspace(journey: &Journey) -> anyhow::Result<()> {
         .await
 }
 
-// spec: E2E-41, UI-480, UI-481, UI-484
+/// The descriptions matching `css` that are cut (wider or taller than their box), by text.
+async fn cut(journey: &Journey, css: &str) -> anyhow::Result<Vec<Value>> {
+    let value = journey
+        .eval(
+            "return [...document.querySelectorAll(arguments[0])]
+               .filter((e) => e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1)
+               .map((e) => e.textContent);",
+            vec![Value::from(css)],
+        )
+        .await?;
+    Ok(value.as_array().cloned().unwrap_or_default())
+}
+
+/// At 1920 px nothing is cut where there is room (UI-486): the `:` menu's descriptions and the which-key panel's.
+async fn menus_not_cut(journey: &Journey) -> anyhow::Result<()> {
+    let blur = "if (document.activeElement) { document.activeElement.blur(); }";
+    journey.eval(blur, Vec::new()).await?;
+    journey.keys(":").await?;
+    journey.until_focused("command-line-input").await?;
+    let menu = cut(journey, ".omfp-cmdmenu__description").await?;
+    journey.screenshot("command-menu-1920").await?;
+    journey.keys(Key::Escape).await?;
+    journey.gone("[data-testid=command-line]").await?;
+    journey.eval(blur, Vec::new()).await?;
+    journey.keys(" ").await?;
+    journey
+        .element("[data-testid=which-key][data-keys=Space]")
+        .await?;
+    let which = cut(journey, ".omfp-whichkey__description").await?;
+    journey.screenshot("which-key-1920").await?;
+    journey.keys(Key::Escape).await?;
+    anyhow::ensure!(
+        menu.is_empty() && which.is_empty(),
+        "cut in the : menu {menu:?}, in which-key {which:?}"
+    );
+    Ok(())
+}
+
+// spec: E2E-41, UI-480, UI-481, UI-484, UI-485, UI-486
 #[tokio::test(flavor = "multi_thread")]
 async fn the_composer_keeps_its_primary_bottom_right_and_the_transcript_its_column()
 -> anyhow::Result<()> {
@@ -382,5 +428,6 @@ async fn the_composer_keeps_its_primary_bottom_right_and_the_transcript_its_colu
     journey.fake.release_gate(1);
     journey.status(&thread, "idle").await?;
     chip_reveals_workspace(&journey).await?;
+    menus_not_cut(&journey).await?;
     journey.finish("E2E-41").await
 }

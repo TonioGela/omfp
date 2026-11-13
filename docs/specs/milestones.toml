@@ -942,6 +942,9 @@ requirements = [
   "UI-483",
   # QA fixes: the header's workspace chip is a button that opens the workspace
   "UI-484",
+  # QA fixes: the transcript in the composer's column, no cuts where there is room
+  "UI-485",
+  "UI-486",
   # Journeys
   "E2E-22",
   "E2E-23",

@@ -89,9 +89,10 @@
     display: flex;
   }
 
-  /* The left column (UI-100): the frame's, outside any view. */
+  /* The left column (UI-100): the frame's, outside any view. By default a fifth of the window, between
+   * `--omfp-side-w` and 26rem, so thread titles get the room a wide window has (UI-486). */
   .omfp-frame__left {
-    flex: 0 0 var(--omfp-side-w);
+    flex: 0 0 clamp(var(--omfp-side-w), 20vw, 26rem);
     display: flex;
     flex-direction: column;
     min-block-size: 0;

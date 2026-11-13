@@ -83,7 +83,8 @@
     font-variant-numeric: tabular-nums;
     color: var(--omfp-on-surface-variant);
   }
-  /* The scroll container of the virtualized transcript (UI-042); items within the reading measure (UI-128). */
+  /* The scroll container of the virtualized transcript (UI-042); items within the reading measure (UI-128). Its
+   * scrollbar's gutter is always kept, as under the composer, so the two columns line up (UI-485). */
   .omfp-transcript {
     flex: 1 1 auto;
     min-block-size: 0;
@@ -92,6 +93,7 @@
     /* Pinning decides where the view goes (UI-042): no scroll anchoring moving it on layout. */
     overflow-anchor: none;
     padding-inline: var(--omfp-gutter);
+    scrollbar-gutter: stable;
   }
 
   .omfp-transcript__content {
@@ -675,10 +677,14 @@
     flex: 0 1 auto;
   }
 
-  /* Queue chips (UI-062, UI-172) and the composer (UI-060..064, UI-172). */
+  /* Queue chips (UI-062, UI-172) and the composer (UI-060..064, UI-172). The transcript's scrollbar gutter is kept
+   * here too (`overflow: hidden` makes it a scroll container that never scrolls), so the composer's column is the
+   * transcript's (UI-485). */
   .omfp-composer-area {
     flex: none;
+    overflow: hidden;
     padding: var(--omfp-s2) var(--omfp-gutter) var(--omfp-s3);
+    scrollbar-gutter: stable;
   }
 
   .omfp-composer-area > * {

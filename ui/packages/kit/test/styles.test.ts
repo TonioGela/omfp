@@ -161,6 +161,30 @@ describe("kit styles", () => {
     expect(description.declarations.get("text-overflow")).toBe("ellipsis");
   });
 
+  // spec: UI-486
+  test("room where there is room: the `:` menu up to 48rem, which-key descriptions on up to three lines, a wider left column", () => {
+    expect(findRule(kitRules, [LAYER], ".omfp-cmdmenu").declarations.get("inline-size")).toBe("min(48rem, 70%)");
+    const which = findRule(kitRules, [LAYER], ".omfp-whichkey__description");
+    expect([which.declarations.get("-webkit-line-clamp"), which.declarations.get("white-space")]).toEqual([
+      "3",
+      undefined,
+    ]);
+    const appRules = parseCss(readFileSync(join(APP_SRC, "styles.css"), "utf8"));
+    const left = findRule(appRules, ["@layer omfp-widgets"], ".omfp-frame__left");
+    expect(left.declarations.get("flex")).toBe("0 0 clamp(var(--omfp-side-w), 20vw, 26rem)");
+  });
+
+  // spec: UI-485
+  test("the transcript and the composer's area keep the same scrollbar gutter, so their columns line up", () => {
+    const chatRules = parseCss(readFileSync(join(APP_SRC, "widgets", "chat", "chat.css"), "utf8"));
+    const gutter = (selector: string) =>
+      findRule(chatRules, ["@layer omfp-widgets"], selector).declarations.get("scrollbar-gutter");
+    expect([gutter(".omfp-transcript"), gutter(".omfp-composer-area")]).toEqual(["stable", "stable"]);
+    expect(findRule(chatRules, ["@layer omfp-widgets"], ".omfp-composer-area").declarations.get("overflow")).toBe(
+      "hidden",
+    );
+  });
+
   // spec: UI-461, UI-462, UI-466
   test("the sheet covers the window, as tall as the visual viewport on a phone; its rows and close button are touch targets", () => {
     const overlay = findRule(kitRules, [LAYER], ".omfp-sheet-overlay");
