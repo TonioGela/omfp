@@ -8,6 +8,7 @@ import { createKeyHandler } from "../../../src/keymap/handler.ts";
 import { DEFAULT_BINDINGS } from "../../../src/keymap/keymap.ts";
 import { draftKey, FOCUS_COMPOSER, type OmfpHost, SELECTED_THREAD } from "../../../src/sdk/index.ts";
 import { ChatWidget, ComposerWidget } from "../../../src/widgets/chat/index.ts";
+import { PointerMedia } from "../../support/pointer.ts";
 import { eventsUntil, fixtureEvents, isFrame } from "./fixtures.ts";
 import { ManualClock, renderThread, THREAD } from "./harness.tsx";
 
@@ -370,6 +371,28 @@ describe("queue chips", () => {
     await act(async () => client.callsTo("thread.queue.promote")[0]?.resolve({ promoted: false }));
     expect(host.announcer.getSnapshot().message).toBe("\u201clater please\u201d is no longer queued");
     expect(screen.getByTestId("queue-chip").getAttribute("aria-busy")).toBe("false");
+  });
+});
+
+describe("touch screens", () => {
+  let pointer: PointerMedia | undefined;
+
+  afterEach(() => {
+    pointer?.restore();
+    pointer = undefined;
+  });
+
+  // spec: UI-422
+  test("the composer takes prose: autocorrect, capitals and the spell check are on, touch or not", () => {
+    for (const coarse of [false, true]) {
+      pointer = new PointerMedia(coarse);
+      renderThread(<ComposerWidget />, fixtureEvents("text_reply"));
+      expect(
+        ["autocorrect", "autocapitalize", "spellcheck", "autocomplete"].map((name) => input().getAttribute(name)),
+      ).toEqual(["on", "sentences", "true", "off"]);
+      cleanup();
+      pointer.restore();
+    }
   });
 });
 

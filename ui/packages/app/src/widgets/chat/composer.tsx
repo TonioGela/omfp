@@ -202,6 +202,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
           inputRef={inputRef}
           inputProps={{
             ...testId("composer-input"),
+            ...PROSE_INPUT,
             "aria-keyshortcuts": `Enter Alt+Enter Escape ${ariaKeys(rawPasteKeys())}`,
             onPaste: pastes.onPaste,
           }}
@@ -234,6 +235,12 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
 function sendKey(mode: SendMode): string {
   return keyLabel(mode === "follow-up" ? queueKeys() : "Enter");
 }
+
+/**
+ * The composer's text area takes prose (UI-422): autocorrect, capitals and the spell check on, which React Aria's
+ * `Autocomplete` would turn off as for a search field.
+ */
+const PROSE_INPUT = { autoCorrect: "on", autoCapitalize: "sentences", spellCheck: true } as const;
 
 /**
  * Alt+Enter (UI-060): a line break replaces the selection, the caret after it. The field's value and caret are set
@@ -564,6 +571,7 @@ export const Composer = memo(function Composer({
             }}
             inputProps={{
               ...testId("composer-input"),
+              ...PROSE_INPUT,
               "aria-keyshortcuts": `Enter Control+Enter Meta+Enter Shift+Enter Control+Q Alt+Enter Escape Tab ${ariaKeys(rawPasteKeys())}`,
               onPaste,
             }}
