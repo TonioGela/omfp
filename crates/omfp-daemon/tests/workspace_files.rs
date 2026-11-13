@@ -99,6 +99,7 @@ fn a_text_file_comes_with_its_hash_its_repository_and_its_head_text() {
             mime: None,
             repo: Some("app".into()),
             head: Some("fn a() {}\n".into()),
+            head_hash: None,
         }
     );
     std::fs::write(env.app_file("abc.txt"), "abc").unwrap();
@@ -222,6 +223,67 @@ fn binaries_carry_no_content_and_images_their_bytes_in_base64_with_their_mime_ty
     );
 }
 
+// spec: DMN-255
+#[test]
+fn an_image_comes_with_the_hash_of_its_bytes_at_head_and_read_head_gives_them() {
+    let env = env();
+    env.app
+        .commit_file("logo.png", "PNG at HEAD", "logo")
+        .unwrap();
+    std::fs::write(env.app_file("logo.png"), "PNG changed").unwrap();
+    std::fs::write(env.app_file("new.png"), "PNG new").unwrap();
+    std::fs::write(env.folder.join("loose.png"), "PNG loose").unwrap();
+    let big = vec![b'x'; IMAGE_CAP + 1];
+    env.app
+        .commit_file("big.png", std::str::from_utf8(&big).unwrap(), "big")
+        .unwrap();
+
+    let logo = env.read("app/logo.png");
+    let at_head = env.workspaces.read_head(&env.id, "app/logo.png").unwrap();
+    assert_eq!(
+        at_head,
+        Some((b"PNG at HEAD".to_vec(), PathBuf::from("app/logo.png")))
+    );
+    // The same hash as `hash` would be for those bytes.
+    std::fs::write(env.app_file("same.png"), "PNG at HEAD").unwrap();
+    let same_hash = env.read("app/same.png").hash;
+    assert_eq!(
+        (logo.head_hash.as_deref(), logo.head),
+        (Some(same_hash.as_str()), None)
+    );
+    assert_ne!(logo.head_hash.as_deref(), Some(logo.hash.as_str()));
+    // Whatever its size: no content over the cap, the hash still.
+    let big_file = env.read("app/big.png");
+    assert_eq!(
+        (big_file.content, big_file.head_hash.as_deref()),
+        (None, Some(big_file.hash.as_str()))
+    );
+    assert_eq!(env.read("app/new.png").head_hash, None, "not at HEAD");
+    assert_eq!(
+        env.workspaces.read_head(&env.id, "app/new.png").unwrap(),
+        None
+    );
+    assert_eq!(
+        env.read("loose.png").head_hash,
+        None,
+        "outside repositories"
+    );
+    assert_eq!(
+        env.workspaces.read_head(&env.id, "loose.png").unwrap(),
+        None
+    );
+    assert_eq!(
+        env.read("app/src/lib.rs").head_hash,
+        None,
+        "text has its head"
+    );
+    let unchanged = env
+        .workspaces
+        .read_file(&env.id, "app/logo.png", Some(&logo.hash))
+        .unwrap();
+    assert_eq!(unchanged.head_hash, None);
+}
+
 // spec: DMN-089
 #[test]
 fn long_text_is_cut_at_a_line_end_and_comes_without_head() {
@@ -257,6 +319,7 @@ fn a_known_hash_still_matching_is_unchanged_without_content_or_head() {
             unchanged: true,
             content: None,
             head: None,
+            head_hash: None,
             ..first.clone()
         }
     );

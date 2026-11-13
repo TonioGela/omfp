@@ -425,7 +425,7 @@ pub struct FileContent {
     pub size: u64,
     /// Hex SHA-1 of the file's bytes: the `expectedHash` of `workspaces.write_file`.
     pub hash: String,
-    /// The `knownHash` of the request still matches: no `content` and no `head`.
+    /// The `knownHash` of the request still matches: no `content`, no `head` and no `headHash`.
     #[serde(default)]
     pub unchanged: bool,
     /// `text`: the text (its first 2 MiB, cut at a line end, when `truncated`); `image`: the bytes in base64 (absent
@@ -445,6 +445,10 @@ pub struct FileContent {
     /// binary, truncated or `unchanged` files and outside repositories.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head: Option<String>,
+    /// For an image: the hex SHA-1 of its bytes at `HEAD` of that repository (DMN-255), whatever its size; absent for
+    /// an image `HEAD` does not have, for text and binary files, when `unchanged` and outside repositories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_hash: Option<String>,
 }
 
 /// The result of `workspaces.write_file` (DMN-090).

@@ -97,7 +97,7 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       server/services/polls.rs; the windows' reports, `windows.*` and the requests to windows:
                       server/services/windows.rs; the `views/<id>` topic: server/services/views.rs; `views.mount`…
                       and `widgets.save`/`library`: server/services/mounts.rs, their agent tools agent_tools/mounts.rs;
-                      the raw bytes of workspace files at `/files/<key>/…`: server/raw_files.rs, M16),
+                      the raw bytes of workspace files at `/files/<key>/…`, `?rev=HEAD` their bytes at `HEAD`: server/raw_files.rs, M16),
                       the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
                       token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue and the static docs as resources);
                       the logins to omp's providers (supervisor/login.rs: the short-lived login omp, one login at a
@@ -151,7 +151,8 @@ ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token 
                       composer), feedback.tsx (toasts, empty states), live.tsx (live voice: spectrum, voice meter,
                       live panel), sheet.tsx (the phone's full-screen sheet), editor/ (CodeMirror and its theme),
                       pdf.tsx and pdf/viewer.tsx (`PdfView`: pdf.js, loaded on first use; its worker and data files
-                      are copied to the bundle's /pdfjs/ by build.ts), zoom.ts (the viewers' zoom steps)
+                      are copied to the bundle's /pdfjs/ by build.ts), image.tsx (`ImageView`: zoom, pan, compare
+                      with HEAD), zoom.ts (the viewers' zoom steps and scroll anchoring)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs, live.ts:
                       the window's live voice session `LiveClient` and its browser `LiveMedia`, init.ts: the init files'

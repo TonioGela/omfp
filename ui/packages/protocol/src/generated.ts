@@ -290,6 +290,11 @@ export type FileContent = {
    * binary, truncated or `unchanged` files and outside repositories.
    */
   head?: string | null;
+  /**
+   * For an image: the hex SHA-1 of its bytes at `HEAD` of that repository (DMN-255), whatever its size; absent for
+   * an image `HEAD` does not have, for text and binary files, when `unchanged` and outside repositories.
+   */
+  headHash?: string | null;
   kind: FileKind;
   /** The MIME type of an image. */
   mime?: string | null;
@@ -301,7 +306,7 @@ export type FileContent = {
   size: number;
   /** The text was cut (DMN-089's cap). */
   truncated?: boolean;
-  /** The `knownHash` of the request still matches: no `content` and no `head`. */
+  /** The `knownHash` of the request still matches: no `content`, no `head` and no `headHash`. */
   unchanged?: boolean;
 };
 

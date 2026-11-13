@@ -13,10 +13,12 @@ use omfp_daemon::config::{Cli, Config};
 use omfp_daemon::git::FakeGit;
 use omfp_daemon::{DaemonHandle, Ports, start_with};
 use serde_json::json;
+use sha1::Digest as _;
 use tempfile::TempDir;
 
 struct Daemon {
     handle: DaemonHandle,
+    git: Arc<FakeGit>,
     _data: TempDir,
 }
 
@@ -50,9 +52,10 @@ impl Daemon {
             workspaces.display().to_string(),
         ];
         let config = Config::from_cli(Cli::try_parse_from(args).unwrap(), None, None).unwrap();
+        let git = Arc::new(FakeGit::new());
         let ports = Ports {
             launcher: Arc::new(FakeLauncher::new()),
-            git: Arc::new(FakeGit::new()),
+            git: Arc::clone(&git) as _,
             omp_program: "omp".into(),
             omp_version: omfp_core::OMP_VERSION.into(),
             omp_env: Vec::new(),
@@ -61,6 +64,7 @@ impl Daemon {
         let handle = start_with(config, ports).await.unwrap();
         Self {
             handle,
+            git,
             _data: data,
         }
     }
@@ -350,5 +354,68 @@ async fn files_have_their_type_and_never_run_in_the_daemons_origin() {
             Some("same-origin")
         );
         assert_eq!(reply.header("cache-control"), Some("private, no-cache"));
+    }
+}
+
+// spec: DMN-255
+#[tokio::test]
+async fn rev_head_serves_the_bytes_head_has_with_their_hash_as_validator() {
+    let daemon = Daemon::new().await;
+    let base = daemon.hello().await["fileBase"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (id, folder) = daemon.workspace().await;
+    let app = folder.join("app");
+    write(&app.join("logo.png"), b"working copy");
+    write(&app.join("gone.png"), b"deleted below");
+    write(&folder.join("notes.png"), b"outside every repository");
+    daemon.git.add_repo(&app, "main");
+    daemon.git.commit_file(&app, "logo.png", b"at HEAD");
+    daemon.git.commit_file(&app, "gone.png", b"only at HEAD");
+    std::fs::remove_file(app.join("gone.png")).unwrap();
+    let mut client =
+        Client::hello(daemon.handle.addr(), daemon.handle.token().expose(), "test").await;
+    client
+        .ok("workspaces.rescan", json!({ "workspaceId": id }))
+        .await;
+
+    let url = format!("{base}/{id}/app/logo.png");
+    let head = daemon.get(&format!("{url}?v=1&rev=HEAD"), &[]).await;
+    assert_eq!((head.status, head.body.as_slice()), (200, &b"at HEAD"[..]));
+    // Hex SHA-1 of the bytes, as the `headHash` of `workspaces.read_file`.
+    let etag = format!("\"{}\"", hex::encode(sha1::Sha1::digest(b"at HEAD")));
+    assert_eq!(head.header("etag"), Some(etag.as_str()));
+    for (name, value) in [
+        ("content-type", "image/png"),
+        ("accept-ranges", "none"),
+        ("cache-control", "private, no-cache"),
+        ("content-security-policy", "sandbox"),
+        ("x-content-type-options", "nosniff"),
+        ("cross-origin-resource-policy", "same-origin"),
+    ] {
+        assert_eq!(head.header(name), Some(value), "{name}");
+    }
+    let same = daemon
+        .get(&format!("{url}?rev=HEAD"), &[("If-None-Match", &etag)])
+        .await;
+    assert_eq!((same.status, same.body.len()), (304, 0));
+    assert_eq!(daemon.get(&url, &[]).await.body, b"working copy");
+    // A file deleted since is still at HEAD.
+    assert_eq!(
+        daemon
+            .get(&format!("{base}/{id}/app/gone.png?rev=HEAD"), &[])
+            .await
+            .body,
+        b"only at HEAD"
+    );
+
+    for refused in [
+        format!("{base}/{id}/app/new.png?rev=HEAD"),
+        format!("{base}/{id}/notes.png?rev=HEAD"),
+        format!("{base}/{id}/../secret.png?rev=HEAD"),
+        format!("/files/{}/{id}/app/logo.png?rev=HEAD", "0".repeat(32)),
+    ] {
+        assert_eq!(daemon.get(&refused, &[]).await.status, 404, "{refused}");
     }
 }

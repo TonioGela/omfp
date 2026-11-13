@@ -289,6 +289,7 @@ fn file_examples() -> Vec<(&'static str, Value)> {
                 mime: None,
                 repo: Some("shop-frontend".to_owned()),
                 head: Some("use std::fmt;\n".to_owned()),
+                head_hash: None,
             },
         ),
         example::<method::WorkspacesFindFile>(

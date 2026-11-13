@@ -17,6 +17,7 @@ use axum::body::Body;
 use axum::extract::{self, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
+use sha1::{Digest, Sha1};
 use subtle::ConstantTimeEq;
 
 use super::AppState;
@@ -40,10 +41,11 @@ struct Opened {
 }
 
 /// `GET <fileBase>/<workspaceId>/<path>` (DMN-250): the query string is ignored, so a client may add one to load a
-/// changed file again.
+/// changed file again, except `rev=HEAD`, which asks for the file's bytes at `HEAD` (DMN-255).
 pub(super) async fn serve(
     State(state): State<Arc<AppState>>,
     extract::Path(rest): extract::Path<String>,
+    extract::RawQuery(query): extract::RawQuery,
     headers: HeaderMap,
 ) -> Response {
     let Some((key, rest)) = rest.split_once('/') else {
@@ -58,6 +60,14 @@ pub(super) async fn serve(
     };
     let workspaces = Arc::clone(&state.services.workspaces);
     let (workspace, path) = (workspace.to_owned(), path.to_owned());
+    if query.is_some_and(|query| query.split('&').any(|pair| pair == "rev=HEAD")) {
+        let read =
+            tokio::task::spawn_blocking(move || workspaces.read_head(&workspace, &path)).await;
+        return match read {
+            Ok(Ok(Some((bytes, relative)))) => respond_head(bytes, &relative, &headers),
+            _ => not_found(),
+        };
+    }
     let opened = tokio::task::spawn_blocking(move || {
         let (mut file, relative) = workspaces.open_file(&workspace, &path).ok()?;
         let metadata = file.metadata().ok()?;
@@ -77,6 +87,42 @@ pub(super) async fn serve(
     match opened {
         Ok(Some(opened)) => respond(opened, &headers),
         _ => not_found(),
+    }
+}
+
+/// The bytes of a file at `HEAD` (DMN-255), whole: typed like the file (DMN-251), with the hex SHA-1 of the bytes as
+/// a strong validator (`304` when the client's copy has it) and the headers of every file (DMN-254); no ranges.
+fn respond_head(bytes: Vec<u8>, relative: &Path, headers: &HeaderMap) -> Response {
+    let tag = format!("\"{}\"", hex::encode(Sha1::digest(&bytes)));
+    let current = header_text(headers, header::IF_NONE_MATCH)
+        .is_some_and(|value| value.split(',').any(|named| named.trim() == tag));
+    let content_type = content_type(relative, &bytes[..bytes.len().min(SNIFF)]);
+    let mut response = if current {
+        StatusCode::NOT_MODIFIED.into_response()
+    } else {
+        ([(header::CONTENT_TYPE, content_type)], bytes).into_response()
+    };
+    let out = response.headers_mut();
+    insert(out, header::ETAG, &tag);
+    out.insert(header::ACCEPT_RANGES, HeaderValue::from_static("none"));
+    shared_headers(out);
+    response
+}
+
+/// The headers of every file response (DMN-254).
+fn shared_headers(out: &mut HeaderMap) {
+    for (name, value) in [
+        // Revalidated on every use, with the validators the response carries.
+        (header::CACHE_CONTROL, "private, no-cache"),
+        (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        // A workspace's HTML or SVG opened at its URL runs nothing in the daemon's origin (DMN-254).
+        (header::CONTENT_SECURITY_POLICY, "sandbox"),
+        (
+            header::HeaderName::from_static("cross-origin-resource-policy"),
+            "same-origin",
+        ),
+    ] {
+        out.insert(name, HeaderValue::from_static(value));
     }
 }
 
@@ -131,20 +177,8 @@ fn respond(opened: Opened, headers: &HeaderMap) -> Response {
     if let Some(date) = &last_modified {
         insert(out, header::LAST_MODIFIED, date);
     }
-    for (name, value) in [
-        (header::ACCEPT_RANGES, "bytes"),
-        // Revalidated on every use, with the validators above.
-        (header::CACHE_CONTROL, "private, no-cache"),
-        (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
-        // A workspace's HTML or SVG opened at its URL runs nothing in the daemon's origin (DMN-254).
-        (header::CONTENT_SECURITY_POLICY, "sandbox"),
-        (
-            header::HeaderName::from_static("cross-origin-resource-policy"),
-            "same-origin",
-        ),
-    ] {
-        out.insert(name, HeaderValue::from_static(value));
-    }
+    out.insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    shared_headers(out);
     response
 }
 

@@ -373,6 +373,72 @@ describe("omfp:file", () => {
     await screen.findByTestId("file-editor");
     expect(screen.queryAllByTestId("pdf-view").length).toBe(0);
   });
+
+  // spec: UI-548
+  test("an image over the daemon's cap loads from its raw bytes into the viewer, again when it changes", async () => {
+    const big: FileContent = {
+      ...text(""),
+      path: "art/big photo.png",
+      kind: "image",
+      mime: "image/png",
+      content: null,
+      size: 9 * 1024 * 1024,
+      hash: "b1",
+      head: null,
+    };
+    const { setDisk, poll } = setup({ path: "art/big photo.png" }, big);
+    const image = await screen.findByTestId("image-after");
+    expect(image.getAttribute("src")).toBe("/files/test/w1/art/big%20photo.png?v=b1");
+    expect(screen.getByTestId("file-image").getAttribute("aria-label")).toBe("Image art/big photo.png");
+    expect(screen.getByTestId("file-path").textContent).toBe("art/big photo.png");
+    expect(screen.queryAllByTestId("file-binary").length).toBe(0);
+    setDisk({ ...big, hash: "b2" });
+    poll.run();
+    await waitFor(() =>
+      expect(screen.getByTestId("image-after").getAttribute("src")).toBe("/files/test/w1/art/big%20photo.png?v=b2"),
+    );
+  });
+
+  // spec: UI-553
+  test("an image that differs from HEAD compares with it side by side or under a slider", async () => {
+    const logo: FileContent = {
+      ...text(""),
+      path: "fe/logo.png",
+      kind: "image",
+      mime: "image/png",
+      content: "aGk=",
+      hash: "now",
+      head: null,
+      headHash: "then",
+    };
+    const { user } = setup({ path: "fe/logo.png" }, logo);
+    const diff = await screen.findByTestId("file-diff");
+    expect([diff.textContent, diff.getAttribute("aria-pressed")]).toEqual(["Diff", "false"]);
+    expect(screen.getAllByTestId("image-viewport").length).toBe(1);
+    await user.click(diff);
+    expect(screen.getByTestId("file-image").dataset.compare).toBe("split");
+    expect(screen.getByTestId("image-before").getAttribute("src")).toBe("/files/test/w1/fe/logo.png?rev=HEAD&v=then");
+    expect(screen.getByTestId("image-before").getAttribute("alt")).toBe("fe/logo.png at HEAD");
+    expect(screen.getByTestId("image-after").getAttribute("src")).toBe("data:image/png;base64,aGk=");
+    const layout = screen.getByTestId("file-layout");
+    expect(layout.textContent).toBe("Slider");
+    await user.click(layout);
+    expect([screen.getByTestId("file-image").dataset.compare, layout.textContent]).toEqual(["slider", "Side by side"]);
+    await user.click(diff);
+    expect(screen.getByTestId("file-image").dataset.compare).toBe("none");
+    cleanup();
+
+    // `diff` opens it compared; an image as at HEAD, or not at HEAD, has nothing to compare.
+    setup({ path: "fe/logo.png", diff: true }, logo);
+    expect((await screen.findByTestId("file-image")).dataset.compare).toBe("split");
+    cleanup();
+    for (const headHash of ["now", null]) {
+      setup({ path: "fe/logo.png" }, { ...logo, headHash });
+      await screen.findByTestId("file-image");
+      expect(screen.queryAllByTestId("file-diff").length).toBe(0);
+      cleanup();
+    }
+  });
 });
 
 describe("a path that does not exist", () => {

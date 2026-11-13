@@ -277,6 +277,23 @@ impl Workspaces {
         Ok((file, relative))
     }
 
+    /// The bytes of the file `path` of workspace `id` at `HEAD` of the repository holding it (DMN-255), with its path
+    /// relative to the workspace folder: resolved as [`Self::read_file`] does, though the file need not exist any
+    /// more; `None` for a file `HEAD` does not have or outside every repository.
+    pub fn read_head(&self, id: &str, path: &str) -> Result<Option<(Vec<u8>, PathBuf)>> {
+        let (_, relative, repos) = self.locate(id, path)?;
+        let Some((repo, inside)) = holder(&repos, &relative) else {
+            return Ok(None);
+        };
+        let Some(inside) = inside.to_str() else {
+            return Ok(None);
+        };
+        Ok(self
+            .git
+            .show_head(&repo.path, inside)?
+            .map(|bytes| (bytes, relative)))
+    }
+
     /// The file `path` of workspace `id` (DMN-089). A relative path the folder does not hold is looked up in each
     /// repository, in scan order. With `known_hash` equal to the file's hash the result is `unchanged`, without its
     /// content or `HEAD` text.
@@ -307,17 +324,20 @@ impl Workspaces {
             FileKind::Binary => (None, false),
         };
         let holder = holder(&repos, &relative);
-        let head = match &holder {
-            Some((repo, inside)) if kind == FileKind::Text && !unchanged && !truncated => {
-                match inside.to_str() {
-                    Some(inside) => self
-                        .git
-                        .show_head(&repo.path, inside)?
-                        .and_then(|bytes| String::from_utf8(bytes).ok()),
-                    None => None,
-                }
-            }
-            _ => None,
+        let at_head = |repo: &Discovered, inside: &Path| match inside.to_str() {
+            Some(inside) => self.git.show_head(&repo.path, inside),
+            None => Ok(None),
+        };
+        let (head, head_hash) = match &holder {
+            Some((repo, inside)) if !unchanged => match kind {
+                FileKind::Text if !truncated => (
+                    at_head(repo, inside)?.and_then(|bytes| String::from_utf8(bytes).ok()),
+                    None,
+                ),
+                FileKind::Image => (None, at_head(repo, inside)?.map(|bytes| hash(&bytes))),
+                _ => (None, None),
+            },
+            _ => (None, None),
         };
         Ok(FileContent {
             path: text(&relative),
@@ -330,6 +350,7 @@ impl Workspaces {
             mime: mime.map(str::to_owned),
             repo: holder.map(|(repo, _)| repo.name.clone()),
             head,
+            head_hash,
         })
     }
 

@@ -272,6 +272,9 @@ pub struct Journey {
     daemon: Option<DaemonHandle>,
     pub driver: WebDriver,
     _chromedriver: ChromeDriver,
+    /// The daemon's git of a [`Journey::start_fake`] journey (repositories and their `HEAD` set by the test);
+    /// `None` with the real omp, whose daemon runs git itself.
+    pub git: Option<Arc<FakeGit>>,
     started: Instant,
 }
 
@@ -321,7 +324,8 @@ impl Journey {
         let proxy = DenyProxy::start().await?;
         let env = OmpEnv::new(&fake.base_url(), Some(&proxy))?;
         let data = tempfile::tempdir()?;
-        let daemon = start_daemon(&env, data.path(), &bundle, launcher).await?;
+        let git = launcher.as_ref().map(|_| Arc::new(FakeGit::new()));
+        let daemon = start_daemon(&env, data.path(), &bundle, launcher, git.clone()).await?;
         let profile = tempfile::tempdir()?;
         let chromedriver = ChromeDriver::start()?;
         let driver = WebDriver::new(&chromedriver.url, chrome(profile.path())?).await?;
@@ -335,6 +339,7 @@ impl Journey {
             daemon: Some(daemon),
             driver,
             _chromedriver: chromedriver,
+            git,
             started,
         })
     }
@@ -939,6 +944,7 @@ async fn start_daemon(
     data: &Path,
     bundle: &Path,
     launcher: Option<FakeLauncher>,
+    git: Option<Arc<FakeGit>>,
 ) -> anyhow::Result<DaemonHandle> {
     let omp = omp_bin();
     let path = |path: &Path| path.to_string_lossy().into_owned();
@@ -962,7 +968,7 @@ async fn start_daemon(
     let ports = if let Some(launcher) = launcher {
         Ports {
             launcher: Arc::new(launcher),
-            git: Arc::new(FakeGit::new()),
+            git: git.unwrap_or_else(|| Arc::new(FakeGit::new())),
             omp_program: config.omp_bin.clone().unwrap_or_default(),
             omp_version: omfp_core::OMP_VERSION.to_owned(),
             omp_env: Vec::new(),

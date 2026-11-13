@@ -138,9 +138,10 @@
     inline-size: var(--omfp-ctl-h-sm);
   }
 
-  /* A toggled icon button (the mic while a live session runs, UI-180), or a viewer's Fit toggle (UI-544). */
+  /* A toggled icon button (the mic while a live session runs, UI-180), or a viewer's Fit toggle (UI-544, UI-549). */
   .omfp-icon-button[aria-pressed="true"],
-  .omfp-pdf__bar .omfp-button[aria-pressed="true"] {
+  .omfp-pdf__bar .omfp-button[aria-pressed="true"],
+  .omfp-image__bar .omfp-button[aria-pressed="true"] {
     color: var(--omfp-primary);
     border-color: color-mix(in oklab, var(--omfp-primary) 45%, transparent);
     background: color-mix(in oklab, var(--omfp-primary) 12%, transparent);
@@ -3897,6 +3898,115 @@
 
   .omfp-pdf .textLayer br::selection {
     background: transparent;
+  }
+
+  /* Images (UI-549..UI-555): a toolbar over one viewport, or two side by side; script places the image at its scale
+     on a stage as large as the view or the zoomed image. Dragging pans, so touch gestures are the viewer's. */
+  .omfp-image {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--omfp-s2);
+    min-block-size: 0;
+  }
+
+  .omfp-image__bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s1);
+  }
+
+  .omfp-image__zoom {
+    min-inline-size: 5ch;
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-sm);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-image__slider {
+    inline-size: min(14rem, 40%);
+    margin-inline-start: auto;
+  }
+
+  .omfp-image__panes {
+    display: grid;
+    flex: 1 1 0;
+    grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+    gap: var(--omfp-s2);
+    min-block-size: 0;
+  }
+
+  .omfp-image__panes[data-compare="split"] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .omfp-image__pane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--omfp-s1);
+    min-block-size: 0;
+  }
+
+  .omfp-image__captions {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-sm);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-image__viewport {
+    position: relative;
+    flex: 1 1 0;
+    min-block-size: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    touch-action: none;
+    border: var(--omfp-bw) solid var(--omfp-rule);
+    border-radius: var(--omfp-r-card);
+    background: var(--omfp-code-bg);
+    cursor: grab;
+  }
+
+  .omfp-image__viewport[data-dragging] {
+    cursor: grabbing;
+  }
+
+  /* At least as large as the view, so a smaller image is centred by layout, never by a stale measure. */
+  .omfp-image__stage {
+    display: grid;
+    place-items: center;
+    inline-size: max-content;
+    min-inline-size: 100%;
+    min-block-size: 100%;
+  }
+
+  .omfp-image__box {
+    position: relative;
+  }
+
+  .omfp-image__img {
+    position: absolute;
+    max-inline-size: none;
+    user-select: none;
+  }
+
+  .omfp-image__divider {
+    position: absolute;
+    inset-block: 0;
+    inline-size: 2px;
+    margin-inline-start: -1px;
+    background: var(--omfp-primary);
+    pointer-events: none;
+  }
+
+  .omfp-image__notice {
+    margin: 0;
+    padding: var(--omfp-s3);
+    color: var(--omfp-error);
   }
 
   /* A file path that opens the file (UI-116): inline, like the text around it, underlined on hover and focus. */

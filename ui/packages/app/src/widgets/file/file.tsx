@@ -2,8 +2,9 @@
  * `omfp:file { path, line?, diff? }` (UI-110..114): a workspace file in CodeMirror, read-only until `i` or Edit, then
  * edited with vim bindings and saved with `:w` / Ctrl-S against the hash the text was based on; a refused save shows
  * the file on disk against the user's text and writes nothing until the user decides. `diff` shows the whole file
- * against `HEAD`, unified or side by side. The text follows the file on disk while it has no unsaved change. Video and
- * audio files play in the browser's player (media.tsx, UI-541); PDF documents show in the kit's viewer (pdf.tsx, UI-547).
+ * against `HEAD`, unified or side by side. The text follows the file on disk while it has no unsaved change. Images
+ * zoom, pan and compare with `HEAD` (image.tsx, UI-548..UI-555); video and audio files play in the browser's player
+ * (media.tsx, UI-541); PDF documents show in the kit's viewer (pdf.tsx, UI-547).
  */
 
 import type { FileContent } from "@omfp/protocol";
@@ -30,6 +31,7 @@ import {
   type WidgetProps,
 } from "omfp/sdk";
 import { type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { ImageFile } from "./image.tsx";
 import { extension, MediaFile, mediaKind } from "./media.tsx";
 import { PdfFile } from "./pdf.tsx";
 
@@ -113,6 +115,8 @@ function FileView({ path, line, jump, diff }: FileViewProps): ReactNode {
           reload={file.reload}
           root={root}
         />
+      ) : file.file.kind === "image" ? (
+        <ImageFile file={file.file} diff={diff} />
       ) : (
         <OtherFile file={file.file} />
       )}
@@ -120,15 +124,8 @@ function FileView({ path, line, jump, diff }: FileViewProps): ReactNode {
   );
 }
 
-/** An image, a video or audio file in a player, or a binary file named with its size. */
+/** A video or audio file in a player, or another binary file named with its size. */
 function OtherFile({ file }: { file: FileContent }): ReactNode {
-  if (file.kind === "image" && typeof file.content === "string") {
-    return (
-      <div className="omfp-file__image" data-testid="file-image">
-        <img src={`data:${file.mime ?? "image/png"};base64,${file.content}`} alt={file.path} />
-      </div>
-    );
-  }
   const media = file.kind === "binary" ? mediaKind(file.path) : undefined;
   if (media !== undefined) {
     return <MediaFile file={file} kind={media} />;
@@ -136,7 +133,7 @@ function OtherFile({ file }: { file: FileContent }): ReactNode {
   return (
     <EmptyState
       icon="file"
-      title={file.kind === "image" ? text.imageTooLarge(text.size(file.size)) : text.binary(text.size(file.size))}
+      title={text.binary(text.size(file.size))}
       className="omfp-file__empty"
       data-testid="file-binary"
     />

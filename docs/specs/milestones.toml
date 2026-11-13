@@ -1055,4 +1055,15 @@ requirements = [
   "UI-546",
   "UI-547",
   "E2E-52",
+  # Images in `omfp:file`: any size, zoom and pan, compared with `HEAD`
+  "DMN-255",
+  "UI-548",
+  "UI-549",
+  "UI-550",
+  "UI-551",
+  "UI-552",
+  "UI-553",
+  "UI-554",
+  "UI-555",
+  "E2E-53",
 ]
