@@ -16,7 +16,10 @@ use std::time::Duration;
 use omfp_core::{
     LiveOwner, NotifyRequest, OpenFileRequest, ProcessState, SessionInfo, ThreadEvent, ThreadState,
 };
-use omp_rpc::{GetMessagesResult, LiveLevelsEvent, PromptCommand, RpcAgentEvent, RpcNotification};
+use omp_rpc::{
+    FollowUpCommand, GetMessagesResult, LiveLevelsEvent, PromptCommand, RpcAgentEvent,
+    RpcNotification, SteerCommand,
+};
 use serde_json::Value;
 use tokio::sync::{broadcast, mpsc, watch};
 use tokio::task::JoinHandle;
@@ -49,6 +52,15 @@ pub const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 
 /// Lines of `omp.log` reported with a crash (DMN-035).
 const STDERR_TAIL_LINES: usize = 20;
+
+/// A message for omp's queues while the agent works (`thread.steer`, `thread.follow_up`, DMN-226).
+#[derive(Debug, Clone)]
+pub enum QueuedMessage {
+    /// Delivered after the current tool calls, before the next model call.
+    Steer(SteerCommand),
+    /// Delivered once the agent finished.
+    FollowUp(FollowUpCommand),
+}
 
 /// An omp command that moves the session's leaf: the transcript is read again once it succeeded (DMN-111).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -764,20 +776,50 @@ impl Supervisor {
     /// message names it (DMN-073): a placeholder at once, a generated title later.
     pub async fn prompt(&self, id: &str, command: PromptCommand) -> Result<PromptAdmission> {
         let actor = self.actor(id).await?;
-        let process = self.ensure_running(&actor).await?;
-        self.roots_before_prompt(&actor).await;
-        actor.touch();
         let message = command.message.clone();
-        let sending = actor.prompting.read().await;
-        let admission = blocking(move || process.prompt(command)).await;
-        drop(sending);
-        let admission = admission??;
-        actor.touch();
+        let admission = self
+            .deliver(&actor, move |process| process.prompt(command))
+            .await?;
         if admission.agent_invoked {
             *lock(&actor.last_prompt) = Some(admission.prompt_id.clone());
             self.name_from_first_message(&actor, message).await;
         }
         Ok(admission)
+    }
+
+    /// Puts a message in omp's steering or follow-up queue (`thread.steer`, `thread.follow_up`) with a prompt's
+    /// bookkeeping (DMN-226): omp started when needed, a pending root sync first, and the thread's first message
+    /// names it.
+    pub async fn queue(&self, id: &str, message: QueuedMessage) -> Result<()> {
+        let actor = self.actor(id).await?;
+        let (text, call) = match message {
+            QueuedMessage::Steer(command) => (command.message.clone(), OmpCall::Steer(command)),
+            QueuedMessage::FollowUp(command) => {
+                (command.message.clone(), OmpCall::FollowUp(command))
+            }
+        };
+        self.deliver(&actor, move |process| process.call(call))
+            .await?;
+        self.name_from_first_message(&actor, text).await;
+        Ok(())
+    }
+
+    /// What every message of the user goes through (DMN-226): omp started when needed (DMN-070), a root change made
+    /// before it reaches omp first (DMN-029), and the send holds `prompting` so a reload never cuts it (DMN-203).
+    async fn deliver<T: Send + 'static>(
+        &self,
+        actor: &Arc<Actor>,
+        send: impl FnOnce(&dyn AgentProcess) -> Result<T, omp_rpc::Error> + Send + 'static,
+    ) -> Result<T> {
+        let process = self.ensure_running(actor).await?;
+        self.roots_before_prompt(actor).await;
+        actor.touch();
+        let sending = actor.prompting.read().await;
+        let sent = blocking(move || send(process.as_ref())).await;
+        drop(sending);
+        let sent = sent??;
+        actor.touch();
+        Ok(sent)
     }
 
     /// A root change made before the prompt reaches omp first (DMN-029): a sync still pending runs now if the session

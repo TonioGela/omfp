@@ -1059,6 +1059,92 @@ async fn without_title_generation_the_placeholder_stays() {
     assert_eq!(h.launcher.title_requests(), Vec::new());
 }
 
+fn steer(text: &str) -> QueuedMessage {
+    QueuedMessage::Steer(SteerCommand {
+        message: text.into(),
+        images: None,
+    })
+}
+
+// spec: DMN-226, DMN-073
+#[tokio::test]
+async fn steer_and_follow_up_reach_omp_and_name_an_untitled_thread_like_a_prompt() {
+    let h = harness(|config| config.title_generation = false);
+    let (id, _) = h.untitled_thread();
+
+    h.supervisor
+        .queue(
+            &id,
+            QueuedMessage::FollowUp(FollowUpCommand {
+                message: "fix the build".into(),
+                images: None,
+            }),
+        )
+        .await
+        .unwrap();
+    h.supervisor
+        .queue(&id, steer("and the tests"))
+        .await
+        .unwrap();
+
+    assert_eq!(
+        h.title(&id),
+        ("fix the build".into(), TitleSource::Placeholder)
+    );
+    let sent: Vec<&str> = h
+        .launcher
+        .process(0)
+        .calls()
+        .iter()
+        .filter_map(|call| match call {
+            FakeCall::Call(call @ (OmpCall::Steer(_) | OmpCall::FollowUp(_))) => Some(call.name()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sent, ["follow_up", "steer"]);
+}
+
+// spec: DMN-226, DMN-029
+#[tokio::test]
+async fn a_steer_waits_for_the_root_sync_in_flight() {
+    let h = harness(|_| {});
+    let id = h.thread();
+    let (ws, folder) = workspace_of(&h, &id);
+    h.supervisor.start(&id).await.unwrap();
+    let link = folder.join("app");
+    std::os::unix::fs::symlink(h.external_repo("app"), &link).unwrap();
+    h.workspaces.rescan(&ws).unwrap();
+    let gate = h.launcher.gate("prompt");
+
+    let sync = tokio::spawn({
+        let (supervisor, id) = (h.supervisor.clone(), id.clone());
+        async move { supervisor.sync_roots(&id).await }
+    });
+    gate.arrived(1).await;
+    let steered = tokio::spawn({
+        let (supervisor, id) = (h.supervisor.clone(), id.clone());
+        async move { supervisor.queue(&id, steer("look at app too")).await }
+    });
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    let steers = || {
+        h.launcher
+            .process(0)
+            .calls()
+            .iter()
+            .filter(|call| matches!(call, FakeCall::Call(OmpCall::Steer(_))))
+            .count()
+    };
+    assert_eq!(steers(), 0, "the steer waits for /add-dir");
+    gate.open();
+    sync.await.unwrap().unwrap();
+    steered.await.unwrap().unwrap();
+
+    assert_eq!(steers(), 1);
+    assert_eq!(h.local_commands(), [format!("/add-dir {}", link.display())]);
+}
+
 // spec: DMN-060, DMN-073
 #[tokio::test]
 async fn set_thread_title_stores_a_set_title_and_names_the_session() {

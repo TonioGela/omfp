@@ -24,6 +24,7 @@ use crate::server::convert::{internal, supervisor_error, thread_error, workspace
 use crate::server::prompts;
 use crate::server::services::{Services, blocking};
 use crate::store::TitleSource;
+use crate::supervisor::QueuedMessage;
 use crate::threads::NewThread;
 use crate::titles;
 
@@ -229,6 +230,24 @@ pub(super) async fn threads(services: &Services, principal: &Principal, call: Ca
     }
 }
 
+/// `thread.steer` and `thread.follow_up`: the prompt's bookkeeping (DMN-226), and the text enters the prompt history
+/// once omp admitted it, as a prompt's does (DMN-218).
+async fn queue(
+    services: &Services,
+    principal: &Principal,
+    thread_id: &str,
+    text: &str,
+    message: QueuedMessage,
+) -> Reply {
+    services
+        .supervisor
+        .queue(thread_id, message)
+        .await
+        .map_err(supervisor_error)?;
+    prompts::record(services, principal, thread_id, None, text).await;
+    empty()
+}
+
 /// Methods acting on a thread's agent; every omp command starts omp when needed (DMN-070).
 #[allow(clippy::too_many_lines)] // One arm per method.
 pub(super) async fn thread(services: &Services, principal: &Principal, call: Call) -> Reply {
@@ -266,20 +285,32 @@ pub(super) async fn thread(services: &Services, principal: &Principal, call: Cal
             })
         }
         Call::ThreadSteer(params) => {
-            let command = SteerCommand {
-                message: params.text,
+            let message = QueuedMessage::Steer(SteerCommand {
+                message: params.text.clone(),
                 images: images(params.images),
-            };
-            forward(params.thread_id, OmpCall::Steer(command)).await?;
-            empty()
+            });
+            queue(
+                services,
+                principal,
+                &params.thread_id,
+                &params.text,
+                message,
+            )
+            .await
         }
         Call::ThreadFollowUp(params) => {
-            let command = FollowUpCommand {
-                message: params.text,
+            let message = QueuedMessage::FollowUp(FollowUpCommand {
+                message: params.text.clone(),
                 images: images(params.images),
-            };
-            forward(params.thread_id, OmpCall::FollowUp(command)).await?;
-            empty()
+            });
+            queue(
+                services,
+                principal,
+                &params.thread_id,
+                &params.text,
+                message,
+            )
+            .await
         }
         Call::ThreadAbort(params) => forward(params.thread_id, OmpCall::AbortAndRestoreQueue).await,
         Call::ThreadQueueRemove(params) => {

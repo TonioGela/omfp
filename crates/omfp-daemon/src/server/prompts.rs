@@ -87,7 +87,7 @@ pub(crate) async fn history(
 
 #[cfg(test)]
 mod tests {
-    use omfp_protocol::{Call, PromptParams};
+    use omfp_protocol::{Call, MessageParams, PromptBehavior, PromptParams};
     use omp_rpc::PromptCommand;
     use tempfile::TempDir;
 
@@ -226,6 +226,61 @@ mod tests {
             )
             .await,
             Vec::<String>::new()
+        );
+    }
+
+    // spec: DMN-218, DMN-226
+    #[tokio::test(flavor = "multi_thread")]
+    async fn steered_and_queued_messages_enter_the_history_like_prompts() {
+        let dir = tempfile::tempdir().unwrap();
+        let services = services(&dir).await;
+        let ws = services
+            .workspaces
+            .create(NewWorkspace::new())
+            .unwrap()
+            .workspace
+            .id;
+        let thread = services
+            .threads
+            .create(NewThread::new("t", &ws))
+            .unwrap()
+            .id;
+        let owner = Principal::Owner {
+            client: "omfp/web".into(),
+        };
+        let message = |text: &str| MessageParams {
+            thread_id: thread.clone(),
+            text: text.to_owned(),
+            images: Vec::new(),
+        };
+
+        dispatch(&services, &owner, Call::ThreadSteer(message("steer it")))
+            .await
+            .unwrap();
+        dispatch(
+            &services,
+            &owner,
+            Call::ThreadFollowUp(message("then this")),
+        )
+        .await
+        .unwrap();
+        dispatch(
+            &services,
+            &owner,
+            // The composer's steer and queue (UI-061): `thread.prompt` with a behavior.
+            Call::ThreadPrompt(PromptParams {
+                thread_id: thread.clone(),
+                text: "the composer's steer".into(),
+                images: Vec::new(),
+                behavior: Some(PromptBehavior::Steer),
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            texts(&services, PromptHistoryParams::default()).await,
+            ["the composer's steer", "then this", "steer it"]
         );
     }
 }
