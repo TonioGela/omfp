@@ -1,4 +1,4 @@
-//! (Experimental, branch idea/init) The docs of the window itself for agents (DMN-198, DMN-199): the index of the
+//! The docs of the window itself for agents (DMN-198, DMN-199): the index of the
 //! `omfp://` docs, the shell reference `omfp://docs/shell` and `omfp://keymap`, the default bindings and commands of
 //! the app (`keymap-defaults.json`, generated from the UI) with what this daemon and workspace add.
 

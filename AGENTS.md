@@ -12,7 +12,7 @@ only be reachable from the human UI.
 ## Read first
 
 - `docs/specs/README.md` — index, conventions, decision log (D-01…D-19), open questions.
-- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M5, M2b, M5b and M5c done; M5d Crush, M6 live voice, M6b widget builder and M7 desktop done; next: M8 subagents);
+- `docs/specs/07-roadmap.md` — milestones and spike results (M0–M14 done, with M2b, M5b, M5c, M5d and M6b; Terminal deferred);
   `docs/specs/milestones.toml` — requirement IDs per milestone (enforced by `cargo xtask spec-trace`).
 - The spec for the area you touch (`00`…`08`).
 
@@ -130,21 +130,19 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs, live.ts:
                       the window's live voice session `LiveClient` and its browser `LiveMedia`, init.ts: the init files'
                       runs and their API, init-views.ts: the views they build, layout.tsx: the layout components of
-                      TSX views, experimental), vm
+                      TSX views), vm
                       (view models), widgets (built-ins, each folder copyable: value imports only from react,
                       omfp/sdk, omfp/kit; widgets/file is `omfp:file`, the CodeMirror viewer/editor), frame (left
                       column, mode line with the view tabs, the `:` line and file picker, `:widget add` (layout.tsx),
                       floating file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
                       state), toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
                       bar, the left column's splitter; init.tsx: loading the init files and their banner;
-                      describe.ts(x): `:describe-key` / `:describe-command`; which-key.tsx: the which-key panel,
-                      experimental), view (layout tree, `:widget add`'s
+                      describe.ts(x): `:describe-key` / `:describe-command`; which-key.tsx: the which-key panel), view (layout tree, `:widget add`'s
                       manifest edit (edit.ts), reference resolution, widget slot,
-                      the `main` slot's file tabs; file-view.tsx: TSX views, experimental; sizes.ts and splitter.tsx:
+                      the `main` slot's file tabs; file-view.tsx: TSX views; sizes.ts and splitter.tsx:
                       the window's splitter sizes), gallery
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
-                      logo sheet), keymap (which-key.ts: the which-key panel's model and the leader groups,
-                      experimental), theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
+                      logo sheet), keymap (which-key.ts: the which-key panel's model and the leader groups), theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
                       map, widget-exports.json, builtin-widgets/, the favicon from docs/brand)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)

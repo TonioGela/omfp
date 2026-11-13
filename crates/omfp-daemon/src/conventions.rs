@@ -85,7 +85,7 @@ pub fn widgets_note(path: &Path, user_library: &Path) -> String {
          The user's omfp window shows this workspace through React widgets that you can write and arrange too.\n\
          - Views: {display}/.omfp/views.json (schema omfp://schemas/views.json), the user's and yours to change. Keep the \
          `[\"tabs\", {{\"id\":\"main\"}}, …\"omfp:chat\"]` slot in every view you change: the user's files open as its tabs. \
-         (Experimental) A view may instead be a TSX file, `{{ \"view\": \"./views/<name>.tsx\" }}` for \
+         A view may instead be a TSX file, `{{ \"view\": \"./views/<name>.tsx\" }}` for \
          {display}/.omfp/views/<name>.tsx (see omfp://docs/widgets); it takes no mounts: edit the file.\n\
          {facts}\n\
          - After writing a widget call omfp_widget_check {{ name }} (compile errors, what open windows render; it also \

@@ -17,10 +17,10 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
 - A workspace widget named like a built-in (`.omfp/widgets/chat/` for `omfp:chat`) replaces the built-in in that
   workspace. The built-ins' sources can be copied as a starting point (`:widget copy omfp:workspace` in the window).
 - `<workspace>/.omfp/keymap.json` — this workspace's key bindings (schema: `omfp://schemas/keymap.json`, see Keys).
-- `<workspace>/.omfp/views/<name>.tsx` — a TSX view (experimental, see TSX views), named in `views.json` as
+- `<workspace>/.omfp/views/<name>.tsx` — a TSX view (see TSX views), named in `views.json` as
   `{ "title": "Ops", "view": "./views/ops.tsx" }` instead of a `layout`.
 - `<workspace>/.omfp/init.ts` and the user's `init.ts` (`$XDG_CONFIG_HOME/omfp/init.ts`, else `~/.config/omfp/init.ts`,
-  next to `theme.css`) — init files run by every window (experimental, see Init files).
+  next to `theme.css`) — init files run by every window (see Init files).
 
 ```json
 {
@@ -47,7 +47,7 @@ line; stop a job, cancel a subagent), `omfp:subagents` (the selected thread's su
 (`{ threadId? }`: the activity log of what agents did through omfp, `activity.list`), `omfp:mcp` (the MCP servers of
 the selected thread, checked by its omp, or those configured for the workspace: state, tools, error, config file;
 reconnect = restart the thread, `thread.mcp_servers`, `thread.mcp_reconnect`; Reauthorize on an `http`/`sse` server
-sends the prompt `/mcp reauth <name>` (`thread.prompt`; its output and the URL omp opens show in the chat; experimental);
+sends the prompt `/mcp reauth <name>` (`thread.prompt`; its output and the URL omp opens show in the chat);
 while the thread's summary has `mcpReloadPending`, "Reload to load MCP tools" = `thread.mcp_reconnect { threadId }`),
 `omfp:file`
 (`{ path, line?, diff? }`: a file, viewed, edited with vim bindings, diffed against
@@ -128,7 +128,7 @@ While a started sequence waits for its next key (`g`, `Space`, `Space h`), the w
 panel after 300 ms: every key that completes it with the title of the command it runs now, or the group of the longer
 bindings it starts (`h → help…`). It is built from the bindings in force, so the bindings of this file, of init files
 and the titles of widget commands show there as soon as they apply; give a command a short `title`. Escape cancels the
-sequence. `Space` alone opens it at once: the leader menu. The leader map (experimental, branch idea/init):
+sequence. `Space` alone opens it at once: the leader menu. The leader map:
 
 | Keys | Command |
 | --- | --- |
@@ -144,7 +144,7 @@ sequence. `Space` alone opens it at once: the leader menu. The leader map (exper
 Bind your own under a free letter (`Space T` above, or groups like `Space o a`, `Space o b`); a binding of a group's own
 keys (`Space h`) replaces the group.
 
-## Init files (experimental)
+## Init files
 
 An init file is the window's `init.el`: an ES module every window imports at startup and runs again whenever it changes.
 The user's `init.ts` runs first, then the current workspace's `.omfp/init.ts` (switching to a thread of another
@@ -273,7 +273,7 @@ Views and layouts change in place, and every change returns them, so calls follo
 it adds the widget to the view as `views.json` holds it, then the init files change the new file again. On a view an
 init file added (`views.add`) it writes nothing and names the file to edit.
 
-## TSX views (experimental)
+## TSX views
 
 A view can be a TSX file of `<workspace>/.omfp/views/`, compiled like widget files (the same imports; relative imports
 of other files of `.omfp/views/`) and reloaded on every save: `{ "title": "Ops", "view": "./views/ops.tsx" }` in

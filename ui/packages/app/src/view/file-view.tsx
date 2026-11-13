@@ -1,5 +1,5 @@
 /**
- * TSX views in the window (UI-268, experimental, branch idea/init): the view file `./views/<name>.tsx` of the current
+ * TSX views in the window (UI-268): the view file `./views/<name>.tsx` of the current
  * workspace is imported from the daemon (`<widgetBase>/views/<workspaceId>/<viewFiles>/<name>.tsx`, DMN-186, a new
  * version on every save of `.omfp/views/`), its default export rendered out of sight with the SDK's layout components
  * reporting the layout they stand for, and that layout rendered like a manifest view. A compile error, a failed

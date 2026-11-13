@@ -2,7 +2,7 @@
 //! thread's running omp with `/mcp test` (DMN-191), and the reconnect, a restart of the idle process (DMN-192).
 //!
 //! omp loads MCP servers only at startup, so the daemon reloads a thread's omp by itself when the servers it would
-//! load change (experimental, branch idea/init): the configs' [`omp_mcp::fingerprint`] changed (DMN-201) or omp said a
+//! load change: the configs' [`omp_mcp::fingerprint`] changed (DMN-201) or omp said a
 //! server needs a new connection (`✓ Reauthorized`, `Added MCP server`, DMN-202). The restart waits for the turn to
 //! settle (DMN-203); background work (omp jobs, subagents, a pending dialog, a live session) holds it back and marks
 //! the thread `mcp_reload_pending` until it ends or the user reconnects (DMN-204).

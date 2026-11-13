@@ -1,4 +1,4 @@
-//! (Experimental, branch idea/init) The init files and TSX views as agents see them: the errors windows report for
+//! The init files and TSX views as agents see them: the errors windows report for
 //! them (`widgets.report`'s `fileErrors`, DMN-195), `views.errors` (PRT-116), `omfp_views_errors` (DMN-196) and the
 //! `omfp_widget_check` of an init file or a TSX view (DMN-197).
 

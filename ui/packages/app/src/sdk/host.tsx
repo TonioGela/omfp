@@ -150,7 +150,7 @@ export interface OmfpHost {
   readonly live: LiveClient;
   /** Notices to the user: the mode line or a system notification (UI-192, UI-194). */
   readonly notices: Notices;
-  /** The user's and the current workspace's init files (UI-260..UI-263, experimental). */
+  /** The user's and the current workspace's init files (UI-260..UI-263). */
   readonly init: InitFiles;
 }
 

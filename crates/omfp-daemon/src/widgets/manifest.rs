@@ -1,6 +1,6 @@
 //! The views manifest, `<workspace>/.omfp/views.json` (AGT-010, AGT-011): checked with the rules and messages the app
 //! shares (`fixtures/views/cases.json`), read with its own messages for an unreadable file or invalid JSON, and
-//! written with sorted keys (DMN-083). (Experimental) A view is a layout or a TSX view file, `./views/<name>.tsx`
+//! written with sorted keys (DMN-083). A view is a layout or a TSX view file, `./views/<name>.tsx`
 //! (AGT-074).
 
 use std::path::Path;
@@ -12,16 +12,16 @@ use super::folders::is_widget_name;
 /// Layout containers (AGT-010).
 pub const CONTAINERS: [&str; 4] = ["row", "col", "tabs", "stack"];
 
-/// (Experimental) The extensions of a TSX view file (AGT-074).
+/// The extensions of a TSX view file (AGT-074).
 pub const VIEW_FILE_EXTENSIONS: [&str; 4] = ["tsx", "ts", "jsx", "js"];
 
-/// (Experimental) The view file of the view object `view` (its `view` string, AGT-074); `None` for a layout view.
+/// The view file of the view object `view` (its `view` string, AGT-074); `None` for a layout view.
 #[must_use]
 pub fn view_file(view: &Value) -> Option<&str> {
     view.get("view")?.as_str()
 }
 
-/// (Experimental) Whether `file` names a TSX view file: `./views/<name>.<ext>`, `<name>` a widget name and `<ext>`
+/// Whether `file` names a TSX view file: `./views/<name>.<ext>`, `<name>` a widget name and `<ext>`
 /// one of [`VIEW_FILE_EXTENSIONS`] (AGT-074).
 #[must_use]
 pub fn is_view_file(file: &str) -> bool {

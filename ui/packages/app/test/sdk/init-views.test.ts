@@ -1,4 +1,4 @@
-/** L1: the views init files build (UI-267, experimental): `InitViews`, `Layout`, `use`, `transform`, re-runs. */
+/** L1: the views init files build (UI-267): `InitViews`, `Layout`, `use`, `transform`, re-runs. */
 
 import { describe, expect, test } from "bun:test";
 import { type InitApi, type InitContext, type InitSnapshot, InitViews, Layout } from "../../src/sdk/index.ts";

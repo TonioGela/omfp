@@ -1,5 +1,5 @@
 /**
- * Init files (UI-260..UI-263, UI-267, experimental, branch idea/init): the user's `init.ts` (next to `theme.css`,
+ * Init files (UI-260..UI-263, UI-267): the user's `init.ts` (next to `theme.css`,
  * served by the daemon) and the current workspace's `.omfp/init.ts`, ES modules compiled like widgets. Their default
  * export is called with an {@link InitApi} (the user's file first, then the workspace's); what it registers through
  * the API — commands, key bindings, the views it uses and their transforms, floating panels, thread event listeners,

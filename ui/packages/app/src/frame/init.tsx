@@ -1,5 +1,5 @@
 /**
- * The init files in the window (UI-260..UI-263, experimental, branch idea/init): imports the user's `init.ts` (its
+ * The init files in the window (UI-260..UI-263): imports the user's `init.ts` (its
  * version on the `index` topic) and the current workspace's `.omfp/init.ts` (on its `views/<id>` topic) from the
  * daemon's widget base, again when a version or the current workspace changes; gives them the current workspace, its
  * `views.json` and repositories (UI-267); hands thread changes to their listeners; and shows the banner of a file that

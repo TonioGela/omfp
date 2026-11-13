@@ -1,4 +1,4 @@
-//! (Experimental, branch idea/init) Init files (DMN-185): `$XDG_CONFIG_HOME/omfp/init.ts` (else
+//! Init files (DMN-185): `$XDG_CONFIG_HOME/omfp/init.ts` (else
 //! `~/.config/omfp/init.ts`, the user's) and `<workspace>/.omfp/init.ts` (the workspace's) are ES modules every window
 //! imports. The daemon versions them by content, publishes the versions on the `index` and `views/<id>` topics, and
 //! serves them compiled like widget files at `<widgetBase>/init/<scope>/<version>/init.ts` (PRT-095).

@@ -1,4 +1,4 @@
-/** L4: views init files make and TSX views in the window (UI-267, UI-268, UI-300, UI-304, experimental). */
+/** L4: views init files make and TSX views in the window (UI-267, UI-268, UI-300, UI-304). */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CallMethod } from "@omfp/client";

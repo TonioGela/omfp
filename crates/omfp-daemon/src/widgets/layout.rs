@@ -156,7 +156,7 @@ pub fn add(manifest: Option<&Value>, addition: &Addition<'_>) -> Result<(Value, 
         .and_then(Value::as_object_mut)
         .ok_or("views.json has no views")?;
     let said = if let Some(view) = views.get_mut(&view_id) {
-        // (Experimental) A TSX view has no layout to add to (AGT-074).
+        // A TSX view has no layout to add to (AGT-074).
         if let Some(file) = manifest::view_file(view) {
             return Err(format!(
                 "view {view_id:?} is a TSX view ({file}): edit that file, or mount into another view"

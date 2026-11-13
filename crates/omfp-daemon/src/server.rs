@@ -86,10 +86,10 @@ async fn theme_css(State(state): State<Arc<AppState>>) -> Response {
 /// (`<source>` = its id) or of the user library (`user`), compiled when it is TypeScript or JSX. A wrong key, an
 /// unknown source, folder or file, or a path leaving the folder is `404`; nothing is cached.
 ///
-/// (Experimental) `GET /widgets/<key>/init/<scope>/<version>/init.ts` (DMN-185, PRT-095): the user's init file
+/// `GET /widgets/<key>/init/<scope>/<version>/init.ts` (DMN-185, PRT-095): the user's init file
 /// (`<scope>` = `user`) or a workspace's `.omfp/init.ts` (`<scope>` = its id), compiled; the version only busts caches.
 ///
-/// (Experimental) `GET /widgets/<key>/views/<workspaceId>/<version>/<path>` (DMN-186, PRT-096): the file `<path>` of
+/// `GET /widgets/<key>/views/<workspaceId>/<version>/<path>` (DMN-186, PRT-096): the file `<path>` of
 /// the workspace's `.omfp/views/` (subfolders too, so relative imports resolve to siblings by URL), compiled when it is
 /// TypeScript or JSX, the stand-in module when it does not compile; `<version>` (`viewFiles`) only busts caches.
 async fn widget_file(

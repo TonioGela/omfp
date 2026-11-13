@@ -796,12 +796,12 @@ pub struct ReportWidgetsParams {
     pub views: Option<Position>,
     /// Every workspace and user widget instance of the view the window shows (built-ins are not reported).
     pub widgets: Vec<WidgetReport>,
-    /// (Experimental) The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.
+    /// The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.
     #[serde(default)]
     pub file_errors: Vec<FileErrorReport>,
 }
 
-/// (Experimental) What kind of file a [`FileErrorReport`] is about (PRT-115).
+/// What kind of file a [`FileErrorReport`] is about (PRT-115).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FileErrorKind {
@@ -811,7 +811,7 @@ pub enum FileErrorKind {
     View,
 }
 
-/// (Experimental) One runtime error a window shows of an init file or a TSX view (PRT-115).
+/// One runtime error a window shows of an init file or a TSX view (PRT-115).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FileErrorReport {
@@ -822,7 +822,7 @@ pub struct FileErrorReport {
     pub message: String,
 }
 
-/// (Experimental) `views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose
+/// `views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose
 /// report is about the workspace, by connection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -831,7 +831,7 @@ pub struct ViewErrors {
     pub windows: Vec<WindowFileErrors>,
 }
 
-/// (Experimental) The init file and TSX view errors one window reports (PRT-116).
+/// The init file and TSX view errors one window reports (PRT-116).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowFileErrors {

@@ -216,14 +216,14 @@ export type FileDiff = {
   truncated: boolean;
 };
 
-/** (Experimental) What kind of file a [`FileErrorReport`] is about (PRT-115). */
+/** What kind of file a [`FileErrorReport`] is about (PRT-115). */
 export type FileErrorKind =
   /** An init file: the user's or the workspace's `.omfp/init.ts`. */
   | "init"
   /** A TSX view file of the workspace's `.omfp/views/`. */
   | "view";
 
-/** (Experimental) One runtime error a window shows of an init file or a TSX view (PRT-115). */
+/** One runtime error a window shows of an init file or a TSX view (PRT-115). */
 export type FileErrorReport = {
   /** `user` for the user's init file, else the workspace-relative path (`.omfp/init.ts`, `.omfp/views/ops.tsx`). */
   file: string;
@@ -364,7 +364,7 @@ export type IndexEvent =
     kind: "settings_changed";
     settings: Settings;
   }
-  /** (Experimental) The user's init file appeared, changed or went away (PRT-095): replaces `init`. */
+  /** The user's init file appeared, changed or went away (PRT-095): replaces `init`. */
   | {
     init?: string | null;
     kind: "init_changed";
@@ -373,7 +373,7 @@ export type IndexEvent =
 /** State of the `index` topic. */
 export type IndexSnapshot = {
   /**
-   * (Experimental) The version of the user's init file (`~/.config/omfp/init.ts`, PRT-095): a hash of its bytes;
+   * The version of the user's init file (`~/.config/omfp/init.ts`, PRT-095): a hash of its bytes;
    * `null` without one.
    */
   init?: string | null;
@@ -859,7 +859,7 @@ export type RepoSuggestions = {
 
 /** `widgets.report` params (PRT-043, AGT-026): what this connection's window shows of a workspace's own widgets. */
 export type ReportWidgetsParams = {
-  /** (Experimental) The runtime errors the window shows of init files and TSX views (PRT-115); absent means none. */
+  /** The runtime errors the window shows of init files and TSX views (PRT-115); absent means none. */
   fileErrors?: FileErrorReport[];
   /** The position of `views/<workspaceId>` the window rendered; `null` before that topic arrived. */
   views?: Position | null;
@@ -1207,7 +1207,7 @@ export type UpdateWorkspaceParams = {
 };
 
 /**
- * (Experimental) `views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose
+ * `views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose
  * report is about the workspace, by connection.
  */
 export type ViewErrors = {
@@ -1237,13 +1237,13 @@ export type ViewsEvent =
     keymap: WorkspaceBinding[];
     kind: "views_keymap";
   }
-  /** (Experimental) The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`. */
+  /** The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`. */
   | {
     init?: string | null;
     kind: "views_init";
   }
   /**
-   * (Experimental) A file of the workspace's `.omfp/views/` (TSX views) appeared, changed or went away, or the
+   * A file of the workspace's `.omfp/views/` (TSX views) appeared, changed or went away, or the
    * folder did (PRT-096): replaces `viewFiles`.
    */
   | {
@@ -1263,7 +1263,7 @@ export type ViewsState = {
   /** Why the file is refused (`<JSON path>: <reason>`, or why it cannot be read); `null` when valid or absent. */
   error?: string | null;
   /**
-   * (Experimental) The version of the workspace's `.omfp/init.ts` (PRT-095): a hash of its bytes; `null` without
+   * The version of the workspace's `.omfp/init.ts` (PRT-095): a hash of its bytes; `null` without
    * one.
    */
   init?: string | null;
@@ -1282,7 +1282,7 @@ export type ViewsState = {
   /** What widgets stored with `useStored` (DMN-086): instance → key → value. */
   stored: Record<string, Record<string, unknown>>;
   /**
-   * (Experimental) The version of `.omfp/views/` (TSX views, PRT-096): a hash of its files' paths, sizes and
+   * The version of `.omfp/views/` (TSX views, PRT-096): a hash of its files' paths, sizes and
    * modification times (`folders::version`); `null` without the folder.
    */
   viewFiles?: string | null;
@@ -1364,7 +1364,7 @@ export type WidgetSource =
   /** `<data-dir>/widgets/<name>/`, referenced as `user:<name>`. */
   | "user";
 
-/** (Experimental) The init file and TSX view errors one window reports (PRT-116). */
+/** The init file and TSX view errors one window reports (PRT-116). */
 export type WindowFileErrors = {
   /** The `client` of the window's `system.hello`. */
   client: string;

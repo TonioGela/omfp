@@ -1,5 +1,5 @@
 /**
- * The layout components of TSX views (UI-268, experimental, branch idea/init): a view file's default export returns
+ * The layout components of TSX views (UI-268): a view file's default export returns
  * one `Row`, `Col`, `Tabs`, `Stack` or `Widget` element nesting the others, which the window turns into the same
  * layout node `views.json` holds (`<Row sizes={[3, 1]}>` is `["row", { "sizes": [3, 1] }, …]`, `<Widget use="omfp:chat"
  * props={{ … }} />` is `["omfp:chat", { … }]`) and renders like any view. The view component is a React component:

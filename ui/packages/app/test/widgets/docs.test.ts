@@ -78,6 +78,21 @@ describe("views and init files for agents", () => {
     expect(missing).toEqual([]);
   });
 
+  // spec: AGT-073
+  test("the widget docs teach init files: the API, the binding order, thread events, errors and describe", () => {
+    for (const fact of [
+      "## Init files",
+      "| `command(command)` |",
+      "the user's init file, then the workspace's, win last",
+      '`on(event, listener)` | `"attention"`',
+      "shows in a banner naming the",
+      "`:describe-key`",
+      "`:describe-command <name>`",
+    ]) {
+      expect(DOCS.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+  });
+
   // spec: AGT-079
   test("omfp/sdk gives init files their types and the Layout class", () => {
     // Compiles only while the types are what the docs show: `omfp.views` is the `ViewsApi`.

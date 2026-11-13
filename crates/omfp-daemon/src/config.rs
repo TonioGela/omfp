@@ -87,7 +87,7 @@ pub struct Config {
     /// The theme file to follow (DMN-075); `None` follows none. [`Config::from_cli`] takes `--theme-file` or the
     /// config file's `theme_file`; `omfp daemon` ([`crate::run`]) adds the default location.
     pub theme_file: Option<PathBuf>,
-    /// (Experimental) The user's init file to follow and serve (DMN-185); `None` follows none. [`Config::from_cli`]
+    /// The user's init file to follow and serve (DMN-185); `None` follows none. [`Config::from_cli`]
     /// leaves it `None`; `omfp daemon` ([`crate::run`]) sets the default location.
     pub init_file: Option<PathBuf>,
     /// Generate thread titles after the first message (DMN-073).

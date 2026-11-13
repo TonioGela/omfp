@@ -1,4 +1,4 @@
-/** L4: the which-key panel and the Space leader menu in the window (UI-320..UI-326, experimental). */
+/** L4: the which-key panel and the Space leader menu in the window (UI-320..UI-326). */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CallMethod } from "@omfp/client";

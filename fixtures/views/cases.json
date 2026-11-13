@@ -154,7 +154,7 @@
       "error": "panels.clock: a widget name is empty"
     },
     {
-      "name": "a TSX view (AGT-074, experimental)",
+      "name": "a TSX view (AGT-074)",
       "manifest": {
         "default": "ops",
         "views": {

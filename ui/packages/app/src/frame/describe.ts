@@ -1,5 +1,5 @@
 /**
- * What `:describe-key` and `:describe-command` show (UI-264, UI-265, experimental): Emacs-style self-documentation of
+ * What `:describe-key` and `:describe-command` show (UI-264, UI-265): Emacs-style self-documentation of
  * the effective keymap and the command registry. A key sequence shows each binding of exactly those keys (every mode):
  * the command, its title and description, its arguments, which layer bound it (default, `[keymap]`, the workspace's
  * keymap, an init file) and who registered the command. A command shows its names, scope, who registered it and every

@@ -15,6 +15,8 @@ flowchart LR
   M5 & M6 & M7 & M8 --> M9[M9 Hardening] --> M10[M10 Agent control]
   M9 --> M11[M11 macOS desktop]
   M8 --> M12[M12 Background work]
+  M10 --> M13[M13 MCP servers]
+  M10 & M13 --> M14[M14 Init files, TSX views and keys]
 ```
 
 ## Spikes
@@ -553,6 +555,38 @@ once more: hence `omfp:mcp` is not in the default view. Tested on the fake launc
 against the pinned omp with the stub server (L3, `tests/contract_mcp_servers.rs`: connected with 2 tools, the missing
 command failed with omp's `ENOENT`, a user-scope server checked, an imported one left configured, and a reconnect that
 re-initializes the stub).
+
+## M14 — Init files, TSX views, keys and fixes (done)
+
+Scope: let the user and agents shape the window in code. `init.ts` files, the user's (`$XDG_CONFIG_HOME/omfp/init.ts`,
+next to the theme) and the workspace's (`.omfp/init.ts`), run in every window (DMN-185, PRT-095, UI-260): through
+`InitApi` (AGT-079) they register commands and bindings (UI-261, UI-262), build views with the views API (`views.load`,
+transforms, the workspace's repos, UI-267), follow thread events (UI-266), and their errors never break the window
+(UI-263); `:describe-key` and `:describe-command` say where a key or command comes from (UI-264, UI-265). A view may be
+a TSX file, `./views/<name>.tsx` (AGT-074, DMN-186, PRT-096, UI-268). Edit layout is removed (UI-303): `:widget add`
+adds a widget to the view (UI-300), the mode line shows the view tabs and `g v`, `] v` and `[ v` switch views (UI-301, UI-302).
+Agents learn the window from `omfp://docs` and `omfp://docs/shell` (DMN-198), `omfp://keymap` (DMN-199, UI-305), check
+init files and TSX views with `omfp_widget_check` (DMN-197) and read the windows' runtime errors with `views.errors` and
+`omfp_views_errors` (UI-304, PRT-115, PRT-116, DMN-195, DMN-196, AGT-073, AGT-075, AGT-076, AGT-078). A which-key panel
+shows the keys after a waiting prefix, and `Space` opens the leader menu at once (UI-320..UI-326). Fixes: recent threads
+stay subscribed (UI-335, TST-100), the `:` menu scrolls to its highlighted option (UI-336), the composer's text starts at
+its chips (UI-337), thinking reads as light secondary text (UI-338), a workspace's path is its name's tooltip (UI-339),
+the thread header shows one workspace chip (UI-340), Changes marks the workspace's own repository (UI-341). MCP
+follow-ups: local command output shows as a card (PRT-120, UI-345, TST-105), URLs omp opens show as toasts and in the
+card (UI-346, UI-347), `omfp:mcp` offers Reauthorize (UI-348), and the daemon restarts a free thread by itself to load
+new or reauthorized MCP tools (DMN-200..DMN-204, PRT-121, UI-349, AGT-080).
+
+Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
+error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and
+recover from errors (E2E-23); `Space` shows the leader menu and its groups run their commands (E2E-26); an `open_url`
+from omp shows a toast with the URL and `/dirs` shows a command-output card (E2E-27).
+
+Result: done. Init files and TSX views are ES modules the daemon compiles and serves per version, so a save re-runs them
+in every window without a reload; the views API works on the manifest the window would show, so init files compose with
+`views.json` instead of replacing it. With Edit layout gone, views are changed by files (`views.json`, `init.ts`, TSX
+views) or `:widget add`, which agents and users share. omp 18.18.6 applies a reauthorized credential only on the next
+connection and `/mcp reload` reconnects nothing, so the daemon restarts the thread (same session) once no background
+job, subagent, dialog or turn holds it back.
 
 ## Terminal (deferred)
 

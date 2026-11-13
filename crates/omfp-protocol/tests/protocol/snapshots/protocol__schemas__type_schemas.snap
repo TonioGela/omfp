@@ -685,7 +685,7 @@ expression: type_schemas()
         "type": "object"
       },
       {
-        "description": "(Experimental) The user's init file appeared, changed or went away (PRT-095): replaces `init`.",
+        "description": "The user's init file appeared, changed or went away (PRT-095): replaces `init`.",
         "properties": {
           "init": {
             "type": [
@@ -1211,7 +1211,7 @@ expression: type_schemas()
     "properties": {
       "init": {
         "default": null,
-        "description": "(Experimental) The version of the user's init file (`~/.config/omfp/init.ts`, PRT-095): a hash of its bytes;\n`null` without one.",
+        "description": "The version of the user's init file (`~/.config/omfp/init.ts`, PRT-095): a hash of its bytes;\n`null` without one.",
         "type": [
           "string",
           "null"
@@ -1760,7 +1760,7 @@ expression: type_schemas()
         "type": "object"
       },
       {
-        "description": "(Experimental) The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`.",
+        "description": "The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`.",
         "properties": {
           "init": {
             "type": [
@@ -1779,7 +1779,7 @@ expression: type_schemas()
         "type": "object"
       },
       {
-        "description": "(Experimental) A file of the workspace's `.omfp/views/` (TSX views) appeared, changed or went away, or the\nfolder did (PRT-096): replaces `viewFiles`.",
+        "description": "A file of the workspace's `.omfp/views/` (TSX views) appeared, changed or went away, or the\nfolder did (PRT-096): replaces `viewFiles`.",
         "properties": {
           "kind": {
             "const": "views_files",
@@ -1921,7 +1921,7 @@ expression: type_schemas()
       },
       "init": {
         "default": null,
-        "description": "(Experimental) The version of the workspace's `.omfp/init.ts` (PRT-095): a hash of its bytes; `null` without\none.",
+        "description": "The version of the workspace's `.omfp/init.ts` (PRT-095): a hash of its bytes; `null` without\none.",
         "type": [
           "string",
           "null"
@@ -1956,7 +1956,7 @@ expression: type_schemas()
       },
       "viewFiles": {
         "default": null,
-        "description": "(Experimental) The version of `.omfp/views/` (TSX views, PRT-096): a hash of its files' paths, sizes and\nmodification times (`folders::version`); `null` without the folder.",
+        "description": "The version of `.omfp/views/` (TSX views, PRT-096): a hash of its files' paths, sizes and\nmodification times (`folders::version`); `null` without the folder.",
         "type": [
           "string",
           "null"

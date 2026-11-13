@@ -1,4 +1,4 @@
-/** L1/L4: the which-key model and the key handler's waiting sequences (UI-320..UI-326, experimental). */
+/** L1/L4: the which-key model and the key handler's waiting sequences (UI-320..UI-326). */
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { createKeyHandler } from "../../src/keymap/handler.ts";

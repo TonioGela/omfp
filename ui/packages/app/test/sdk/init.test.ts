@@ -1,4 +1,4 @@
-/** L1: init files' runs (UI-260..UI-263, UI-266, experimental) over a fake importer. */
+/** L1: init files' runs (UI-260..UI-263, UI-266) over a fake importer. */
 
 import { describe, expect, test } from "bun:test";
 import type { ThreadSummary } from "@omfp/protocol";

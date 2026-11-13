@@ -3679,7 +3679,7 @@ expression: method_schemas()
     "result": {
       "$defs": {
         "FileErrorKind": {
-          "description": "(Experimental) What kind of file a [`FileErrorReport`] is about (PRT-115).",
+          "description": "What kind of file a [`FileErrorReport`] is about (PRT-115).",
           "oneOf": [
             {
               "const": "init",
@@ -3694,7 +3694,7 @@ expression: method_schemas()
           ]
         },
         "FileErrorReport": {
-          "description": "(Experimental) One runtime error a window shows of an init file or a TSX view (PRT-115).",
+          "description": "One runtime error a window shows of an init file or a TSX view (PRT-115).",
           "properties": {
             "file": {
               "description": "`user` for the user's init file, else the workspace-relative path (`.omfp/init.ts`, `.omfp/views/ops.tsx`).",
@@ -3716,7 +3716,7 @@ expression: method_schemas()
           "type": "object"
         },
         "WindowFileErrors": {
-          "description": "(Experimental) The init file and TSX view errors one window reports (PRT-116).",
+          "description": "The init file and TSX view errors one window reports (PRT-116).",
           "properties": {
             "client": {
               "description": "The `client` of the window's `system.hello`.",
@@ -3737,7 +3737,7 @@ expression: method_schemas()
         }
       },
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "(Experimental) `views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose\nreport is about the workspace, by connection.",
+      "description": "`views.errors` result (PRT-116): the latest init file and TSX view errors of every window whose\nreport is about the workspace, by connection.",
       "properties": {
         "windows": {
           "description": "One entry per window showing the workspace, those without errors included.",
@@ -4140,7 +4140,7 @@ expression: method_schemas()
     "params": {
       "$defs": {
         "FileErrorKind": {
-          "description": "(Experimental) What kind of file a [`FileErrorReport`] is about (PRT-115).",
+          "description": "What kind of file a [`FileErrorReport`] is about (PRT-115).",
           "oneOf": [
             {
               "const": "init",
@@ -4155,7 +4155,7 @@ expression: method_schemas()
           ]
         },
         "FileErrorReport": {
-          "description": "(Experimental) One runtime error a window shows of an init file or a TSX view (PRT-115).",
+          "description": "One runtime error a window shows of an init file or a TSX view (PRT-115).",
           "properties": {
             "file": {
               "description": "`user` for the user's init file, else the workspace-relative path (`.omfp/init.ts`, `.omfp/views/ops.tsx`).",
@@ -4346,7 +4346,7 @@ expression: method_schemas()
       "properties": {
         "fileErrors": {
           "default": [],
-          "description": "(Experimental) The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.",
+          "description": "The runtime errors the window shows of init files and TSX views (PRT-115); absent means none.",
           "items": {
             "$ref": "#/$defs/FileErrorReport"
           },

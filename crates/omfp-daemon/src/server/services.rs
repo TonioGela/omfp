@@ -393,7 +393,7 @@ impl Services {
         }
     }
 
-    /// (Experimental) Reads the user's init file now (startup) and then follows its changes, publishing its version
+    /// Reads the user's init file now (startup) and then follows its changes, publishing its version
     /// as `init_changed` on the `index` topic (DMN-185).
     pub async fn watch_init_file(&self, path: PathBuf) -> Result<JoinHandle<()>, ErrorBody> {
         *lock(&self.init_file) = Some(path.clone());

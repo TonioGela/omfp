@@ -1,4 +1,4 @@
-//! The init file journeys (06-testing.md, experimental, branch idea/init). E2E-22: a workspace's `.omfp/init.ts` adds
+//! The init file journeys (06-testing.md). E2E-22: a workspace's `.omfp/init.ts` adds
 //! a command, a key binding and a view to the window, a syntax error in it shows a banner while the window keeps
 //! working, and `:describe-key` says where the binding comes from. E2E-23: an init file adds a view computed from the
 //! workspace's repositories and a TSX view, whose splitters resize for the window and whose syntax error shows the

@@ -63,7 +63,7 @@ export type ConnectionStatus =
 /** The `index` topic: workspaces and thread summaries keyed by id, in id order (ids are ULIDs, so this
  * is creation order), the user's theme (DMN-075; `{ css: null }` until the daemon sends one) and the UI settings of
  * the daemon's config file (DMN-009, UI-097; `{ ui: {}, keymap: [], error: null }` until the daemon sends them), and
- * (experimental) the version of the user's init file (PRT-095; `null` without one). */
+ * the version of the user's init file (PRT-095; `null` without one). */
 export interface Index {
   readonly workspaces: ReadonlyMap<string, Workspace>;
   readonly threads: ReadonlyMap<string, ThreadSummary>;

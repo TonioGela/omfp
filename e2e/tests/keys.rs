@@ -1,4 +1,4 @@
-//! The which-key journey (06-testing.md, experimental, branch idea/init). E2E-26: `Space` opens the leader menu at
+//! The which-key journey (06-testing.md). E2E-26: `Space` opens the leader menu at
 //! once, it follows the sequence and the key picked runs its command; a prefix shows its panel after the delay and
 //! Escape cancels it; `Space Space` opens the command line. Run with `just test-e2e`.
 

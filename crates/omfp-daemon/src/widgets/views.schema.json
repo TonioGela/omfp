@@ -22,14 +22,14 @@
   "$defs": {
     "view": {
       "type": "object",
-      "description": "A layout (`layout`) or, experimental, a TSX view file (`view`, AGT-074); not both.",
+      "description": "A layout (`layout`) or a TSX view file (`view`, AGT-074); not both.",
       "properties": {
         "title": { "type": "string", "description": "Shown in the view switcher; default: the id." },
         "layout": { "$ref": "#/$defs/node" },
         "view": {
           "type": "string",
           "pattern": "^\\./views/[A-Za-z0-9_-][A-Za-z0-9_.-]*\\.(tsx|ts|jsx|js)$",
-          "description": "(Experimental) `./views/<name>.tsx` (also .ts, .jsx, .js): <workspace>/.omfp/views/<name>.tsx, an ES module whose default export is a React component returning the omfp/sdk layout components (Row, Col, Tabs, Stack, Widget) that lay out the view. It is compiled and imports like a widget file; relative imports reach the other files of .omfp/views/. A TSX view takes no mounts: edit the file instead."
+          "description": "`./views/<name>.tsx` (also .ts, .jsx, .js): <workspace>/.omfp/views/<name>.tsx, an ES module whose default export is a React component returning the omfp/sdk layout components (Row, Col, Tabs, Stack, Widget) that lay out the view. It is compiled and imports like a widget file; relative imports reach the other files of .omfp/views/. A TSX view takes no mounts: edit the file instead."
         }
       },
       "oneOf": [

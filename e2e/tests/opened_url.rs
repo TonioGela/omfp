@@ -1,4 +1,4 @@
-//! URLs omp opens and the output of local commands (E2E-27, experimental, branch idea/init), against a daemon on the
+//! URLs omp opens and the output of local commands (E2E-27), against a daemon on the
 //! fake launcher: an `open_url` request of the thread's omp toasts in the window with Open and Copy (UI-346) and shows
 //! as a card with the URL and the loopback note (UI-345, UI-347); a `/dirs`-like local command's output is a
 //! command-output card (UI-345).

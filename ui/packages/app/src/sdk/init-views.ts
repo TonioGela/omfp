@@ -1,5 +1,5 @@
 /**
- * The views init files build (UI-267, experimental, branch idea/init): `omfp.views.load("views.json")` gives the
+ * The views init files build (UI-267): `omfp.views.load("views.json")` gives the
  * workspace's manifest as {@link InitViews} (`add`, `update`, `remove`, `get`, `withDefault`), whose layouts
  * {@link Layout} edits (`addTab`, `removeWidget`); every change mutates the views or the layout and returns it, so
  * calls follow one another or chain. `omfp.views.use(views)` shows them in this window, and

@@ -1,5 +1,5 @@
 /**
- * `:describe-key` and `:describe-command <name>` (UI-264, UI-265, experimental): a modal like the help panel. For
+ * `:describe-key` and `:describe-command <name>` (UI-264, UI-265): a modal like the help panel. For
  * `:describe-key` it first takes the keys to describe (they run nothing: inside a dialog no binding applies), then shows
  * what they run; Escape or a click outside closes it and the focus goes back where it was.
  */

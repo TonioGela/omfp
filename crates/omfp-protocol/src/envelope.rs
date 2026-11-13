@@ -398,7 +398,7 @@ pub enum IndexEvent {
     SettingsChanged {
         settings: Settings,
     },
-    /// (Experimental) The user's init file appeared, changed or went away (PRT-095): replaces `init`.
+    /// The user's init file appeared, changed or went away (PRT-095): replaces `init`.
     InitChanged {
         init: Option<String>,
     },
@@ -429,9 +429,9 @@ pub enum ViewsEvent {
         keymap: Vec<WorkspaceBinding>,
         error: Option<String>,
     },
-    /// (Experimental) The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`.
+    /// The workspace's `.omfp/init.ts` appeared, changed or went away (PRT-095): replaces `init`.
     ViewsInit { init: Option<String> },
-    /// (Experimental) A file of the workspace's `.omfp/views/` (TSX views) appeared, changed or went away, or the
+    /// A file of the workspace's `.omfp/views/` (TSX views) appeared, changed or went away, or the
     /// folder did (PRT-096): replaces `viewFiles`.
     ViewsFiles {
         #[serde(rename = "viewFiles")]

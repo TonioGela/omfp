@@ -64,13 +64,13 @@ pub fn workspace_widgets(workspace: &Path) -> PathBuf {
     workspace.join(OMFP_DIR).join("widgets")
 }
 
-/// (Experimental) `<workspace>/.omfp/views/`, the files of the TSX views (`"view": "./views/<name>.tsx"`, AGT-074).
+/// `<workspace>/.omfp/views/`, the files of the TSX views (`"view": "./views/<name>.tsx"`, AGT-074).
 #[must_use]
 pub fn views_folder(workspace: &Path) -> PathBuf {
     workspace.join(OMFP_DIR).join("views")
 }
 
-/// (Experimental) The version of the workspace's [`views_folder`] (DMN-186, PRT-096): [`folders::version`] of it;
+/// The version of the workspace's [`views_folder`] (DMN-186, PRT-096): [`folders::version`] of it;
 /// `None` when it is not a folder.
 #[must_use]
 pub fn view_files_version(workspace: &Path) -> Option<String> {
@@ -433,7 +433,7 @@ impl Widgets {
         self.served(&folder, file)
     }
 
-    /// (Experimental) The file at `path` of a workspace's views folder `folder` ([`views_folder`], DMN-186), compiled
+    /// The file at `path` of a workspace's views folder `folder` ([`views_folder`], DMN-186), compiled
     /// when it is TypeScript or JSX, else as it is; a file that does not compile is the stand-in module naming it
     /// relative to `folder`. `None` (404) when the folder or the file does not exist or `path` leaves the folder.
     #[must_use]
@@ -446,7 +446,7 @@ impl Widgets {
         self.served(&folder, file)
     }
 
-    /// (Experimental) The file at `path` of a workspace's views folder `folder` resolved as [`Self::serve_view`]
+    /// The file at `path` of a workspace's views folder `folder` resolved as [`Self::serve_view`]
     /// resolves it (DMN-197): its path relative to `folder` and, when it is TypeScript or JSX, its compile error;
     /// `None` when the folder or the file does not exist or `path` leaves the folder.
     #[must_use]
