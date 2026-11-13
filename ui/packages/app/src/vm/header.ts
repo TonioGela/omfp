@@ -4,6 +4,7 @@
  */
 
 import type { ThreadState } from "@omfp/core";
+import { compactNumber } from "@omfp/kit";
 import type { ThreadSummary, Workspace } from "@omfp/protocol";
 import { isObject } from "../sdk/json.ts";
 import { strings } from "../strings/index.ts";
@@ -116,7 +117,7 @@ export function headerView(
     context:
       usage === undefined
         ? undefined
-        : strings.shell.header.context(Math.round(usage.percent), formatTokens(usage.contextWindow)),
+        : strings.shell.header.context(Math.round(usage.percent), compactNumber(usage.contextWindow)),
     usage:
       usage === undefined
         ? undefined
@@ -182,14 +183,6 @@ export function costLabel(state: ThreadState | undefined): string | undefined {
 /** `$0.0123` below a dollar, `$1.23` above. */
 export function formatCost(cost: number): string {
   return cost < 1 ? `$${cost.toFixed(4)}` : `$${cost.toFixed(2)}`;
-}
-
-/** `200k`, `1.2M`, `950`. */
-export function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${Math.floor(tokens / 1_000_000)}.${Math.floor((tokens % 1_000_000) / 100_000)}M`;
-  }
-  return tokens >= 1000 ? `${Math.floor(tokens / 1000)}k` : String(tokens);
 }
 
 /** The model choice `provider/id` split in two (the id may contain slashes). */

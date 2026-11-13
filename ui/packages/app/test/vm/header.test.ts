@@ -8,7 +8,6 @@ import {
   decodeSession,
   decodeThinkingLevels,
   formatCost,
-  formatTokens,
   headerView,
   NO_DETAILS,
   sessionCost,
@@ -146,8 +145,6 @@ describe("header", () => {
     expect(splitModel("openrouter/anthropic/opus")).toEqual({ provider: "openrouter", modelId: "anthropic/opus" });
     expect(splitModel("opus")).toBeUndefined();
     expect(splitModel("/opus")).toBeUndefined();
-    expect(formatTokens(1_250_000)).toBe("1.2M");
-    expect(formatTokens(950)).toBe("950");
   });
 
   // spec: UI-030
