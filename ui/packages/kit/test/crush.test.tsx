@@ -300,19 +300,19 @@ describe("marks", () => {
     expect(screen.getAllByRole("meter")).toHaveLength(2);
   });
 
-  // spec: UI-165, UI-145
-  test("diff stats show their final numbers at once unless motion is full", () => {
+  // spec: UI-165, UI-145, UI-446
+  test("diff stats show their final numbers at once unless motion is full, a space apart", () => {
     document.documentElement.dataset.motion = "reduced";
     render(<DiffStat added={42} removed={7} data-testid="stat" />);
-    expect(screen.getByTestId("stat").textContent).toBe("+42−7");
+    expect(screen.getByTestId("stat").textContent).toBe("+42 −7");
   });
 
   // spec: UI-165, UI-146
   test("at motion full diff stats count up from 0", async () => {
     document.documentElement.dataset.motion = "full";
     render(<DiffStat added={42} removed={7} data-testid="stat" />);
-    expect(screen.getByTestId("stat").textContent).toBe("+0−0");
-    await waitFor(() => expect(screen.getByTestId("stat").textContent).toBe("+42−7"), { timeout: 2000 });
+    expect(screen.getByTestId("stat").textContent).toBe("+0 −0");
+    await waitFor(() => expect(screen.getByTestId("stat").textContent).toBe("+42 −7"), { timeout: 2000 });
   });
 
   // spec: UI-145

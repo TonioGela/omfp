@@ -133,13 +133,13 @@ export interface DiffStatProps extends Omit<HTMLAttributes<HTMLSpanElement>, "ch
   removed: number;
 }
 
-/** `+n −m` in ok and error, counting up when first shown at motion `full` (UI-165). */
+/** `+n −m` in ok and error, counting up when first shown at motion `full` (UI-165); the space reads in its text. */
 export function DiffStat({ added, removed, className, ...props }: DiffStatProps) {
   const shownAdded = useCountUp(added);
   const shownRemoved = useCountUp(removed);
   return (
     <span {...props} className={cx("omfp-diffstat", className)}>
-      <span className="omfp-diffstat__add">+{shownAdded}</span>
+      <span className="omfp-diffstat__add">+{shownAdded}</span>{" "}
       <span className="omfp-diffstat__del">−{shownRemoved}</span>
     </span>
   );

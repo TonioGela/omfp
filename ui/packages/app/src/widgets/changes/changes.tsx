@@ -8,7 +8,7 @@
  */
 
 import type { FileContent, FileDiff } from "@omfp/protocol";
-import { Badge, CodeDiff, Diff, Disclosure, EmptyState, Icon, IconButton, languageOfPath, useCountUp } from "omfp/kit";
+import { Badge, CodeDiff, Diff, DiffStat, Disclosure, EmptyState, Icon, IconButton, languageOfPath } from "omfp/kit";
 import {
   type ChangedFile,
   type ChangesRepo,
@@ -258,23 +258,17 @@ function FileChanges({ workspaceId, repo, filePath, file, runs }: FileChangesPro
             {file.path}
           </span>
           {file.from !== undefined && <span className="omfp-changes__meta">{text.renamedFrom(file.from)}</span>}
-          <Counts additions={file.additions} deletions={file.deletions} />
+          <DiffStat
+            added={file.additions}
+            removed={file.deletions}
+            className="omfp-changes__counts"
+            data-testid="changes-counts"
+          />
         </>
       }
     >
       {expanded && <FileDiffView workspaceId={workspaceId} repo={repo} filePath={filePath} file={file} runs={runs} />}
     </Disclosure>
-  );
-}
-
-/** `+n −m` in ok and error, counting up from 0 when first shown at motion `full` (UI-146, UI-165). */
-function Counts({ additions, deletions }: { additions: number; deletions: number }): ReactNode {
-  const added = useCountUp(additions);
-  const removed = useCountUp(deletions);
-  return (
-    <span className="omfp-changes__counts omfp-diffstat" data-testid="changes-counts">
-      <span className="omfp-diffstat__add">+{added}</span> <span className="omfp-diffstat__del">−{removed}</span>
-    </span>
   );
 }
 

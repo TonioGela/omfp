@@ -262,6 +262,15 @@ include the common states of UI-133 where they apply; the rows list what is spec
 | UI-208 | **Splitter, strip and area bar** (UI-201, UI-204, UI-206). *Splitter*: a 1 px `rule` hairline (it replaces the rule between the two cells) inside a grab area of `s1` on each side, `col-resize`/`row-resize` cursor; on hover, focus and while dragged a 3 px gradient bar fades in over the hairline (along its length: vertical for a vertical splitter); no focus outline, the bar is the focus state. *Strip*: `ctl-h` + 2 × `s2` wide on `side-bg` with the column's right rule; the brand's mark `[π]` (UI-221, 0.8 × `ctl-h` wide), the toggle (`panel-left`, `primary` while open), then under a rule the threads' state marks in `ctl-h` squares (radius `r-row`; hover `--omfp-hover`, selected `--omfp-sel-bg`, the item focus of UI-132). *Area bar*: on `side-bg` under a `rule`, equal buttons at least 44 px tall, icon (`ic`) over the label (`fs-2xs`), `on-surface-variant`; the shown area is `primary` weight 700 with a 2 px gradient bar on its top edge; the actions after the areas (*Commands*, UI-460) look alike and are never shown pressed; the focus ring of UI-132 inside the button; padded by the safe-area inset at the bottom. States: splitter default, hover/focus, dragging; strip closed, open, with marks, selected mark, focused mark; area bar each shown area, with its action. |
 | UI-466 | **Commands sheet** (UI-461, kit `Sheet`, `SheetSection`, `SheetRow`). The whole window on `surface`, padded by the safe-area insets: a head at least `touch` tall over a `rule` with the title (`fs-md`, weight 700) and an `x` icon button `touch` square; the search field padded `s2 s3`; group headings capitalised, `fs-xs` weight 700 `on-surface-variant`, padded `s3 s3 s1`; rows at least `touch` tall, padded `s1 s3`, of two lines without indent: the label (`fs-sm`, `on-surface`, wrapping), then the `:` name (`fs-2xs`, `on-surface-variant`), a trailing `chevron-right` (`ic`) on a row leading to more; hover and press `--omfp-hover`, the inset focus ring of UI-132; the list scrolls on its own. States: rows, a focused row, a hovered row, rows with more, no match. |
 
+### One definition per component
+
+The app and its built-in widgets render these components through the kit, so `/kit` (UI-173) shows what users see.
+
+| ID | Requirement |
+| --- | --- |
+| UI-440 | The app and the built-in widgets MUST render the mode line, thread rows, workspace sections, the chat header, queue chips, diff stats and todo lists with the kit's components, never with markup of their own carrying the kit's classes; a need the kit lacks is a prop of the kit component. The gallery (UI-173) shows each with the props the app passes. |
+| UI-446 | **Diff stat** (`DiffStat`, UI-165): `+n −m` with a space between the two counts in its text, so it reads as two numbers; the changes widget's file rows (UI-080) show it. |
+
 ### Live voice
 
 The live panel (UI-182) sits above the queue chips and the composer: a border box (UI-187) titled "Live voice" on its
