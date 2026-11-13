@@ -762,6 +762,33 @@ impl Journey {
         Ok(())
     }
 
+    /// Fails unless every composer box (`.omfp-compose`) under `css` starts its text where its bar's chips start
+    /// (UI-337): the content edges of the text area and of the bar, half a pixel apart at most. Returns how many
+    /// composers it checked.
+    pub async fn composer_aligned(&self, css: &str) -> anyhow::Result<usize> {
+        let value = self
+            .eval(
+                "const start = (e) => e.getBoundingClientRect().left + e.clientLeft
+                   + parseFloat(getComputedStyle(e).paddingLeft);
+                 return [...document.querySelectorAll(arguments[0])].map((box) => [
+                   box.getBoundingClientRect().left,
+                   start(box.querySelector('textarea')),
+                   start(box.querySelector('.omfp-compose__bar')),
+                 ]);",
+                vec![json!(format!("{css} .omfp-compose"))],
+            )
+            .await?;
+        let composers: Vec<(f64, f64, f64)> = serde_json::from_value(value)?;
+        for (edge, text, chips) in &composers {
+            if (text - chips).abs() > 0.5 {
+                bail!(
+                    "a composer under {css} (box at x {edge}) starts its text at x {text} and its bar's chips at x {chips}"
+                );
+            }
+        }
+        Ok(composers.len())
+    }
+
     /// Stops the browser and the daemon, then checks that the page showed no error, nothing reached the network and
     /// the model got only scripted requests. Prints how long the journey took.
     pub async fn finish(mut self, name: &str) -> anyhow::Result<()> {

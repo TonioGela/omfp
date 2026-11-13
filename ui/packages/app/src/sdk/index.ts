@@ -301,6 +301,7 @@ export {
   type HostOptions,
   type OmfpHost,
   OmfpProvider,
+  RECENT_THREADS,
   type SdkClient,
   TopicRefs,
   useHost,

@@ -5,12 +5,12 @@
  */
 
 import type { CallMethod } from "@omfp/client";
-import type { ParamsOf, ResultOf, Topic, TransientFrame } from "@omfp/protocol";
+import { INDEX_TOPIC, type ParamsOf, parseTopic, type ResultOf, type Topic, type TransientFrame } from "@omfp/protocol";
 import { createContext, type ReactNode, useContext } from "react";
 import { strings } from "../strings/index.ts";
 import { CommandRegistry } from "./commands.ts";
 import { type FilePoll, intervalPoll } from "./files.ts";
-import { type FrameScheduler, FrameStore, type ModelSource } from "./frame-store.ts";
+import { type FrameScheduler, FrameStore, type ModelSource, type Snapshot } from "./frame-store.ts";
 import { InitFiles } from "./init.ts";
 import { browserLiveMedia, LiveClient, type LiveMedia } from "./live.ts";
 import { browserImporter, type Importer, WidgetModules } from "./modules.ts";
@@ -21,19 +21,28 @@ import { type KeyValueStorage, WindowStore } from "./window-store.ts";
 /** What the SDK needs from `@omfp/client`'s `Client` (tests pass a fake over a real `Model`). */
 export interface SdkClient extends ModelSource {
   call<M extends CallMethod>(method: M, params: ParamsOf<M>): Promise<ResultOf<M>>;
+  /** Follows `topic`; a no-op while it is followed, unless its subscription failed (then it is retried). */
   subscribe(topic: Topic): void;
   unsubscribe(topic: Topic): void;
   /** Transient frames of followed topics (PRT-054) until the returned function is called. */
   onTransient(listener: (frame: TransientFrame) => void): () => void;
 }
 
-/** Topics followed while at least one widget needs them. */
+/** How many threads stay followed after no widget shows them any more (UI-335). */
+export const RECENT_THREADS = 5;
+
+/** Topics followed while at least one widget needs them. A `thread/<id>` topic stays followed after its last release,
+ * among the {@link RECENT_THREADS} most recently released ones, so showing that thread again needs no new snapshot: its
+ * state is already in the model and kept live (UI-335). A kept thread gone from the index (deleted) is released. */
 export class TopicRefs {
   readonly #client: SdkClient;
   readonly #counts = new Map<Topic, number>();
+  /** Released thread topics still followed, oldest first. */
+  readonly #recent = new Set<Topic>();
 
-  constructor(client: SdkClient) {
+  constructor(client: SdkClient, frames: FrameStore) {
     this.#client = client;
+    frames.subscribe(() => this.#prune(frames.getSnapshot()));
   }
 
   /** Follows `topic` until the returned function is called (as many times as it was retained). */
@@ -41,6 +50,8 @@ export class TopicRefs {
     const count = this.#counts.get(topic) ?? 0;
     this.#counts.set(topic, count + 1);
     if (count === 0) {
+      this.#recent.delete(topic);
+      // A no-op for a kept topic, unless its subscription failed: then it is retried.
       this.#client.subscribe(topic);
     }
     let released = false;
@@ -52,11 +63,45 @@ export class TopicRefs {
       const left = (this.#counts.get(topic) ?? 1) - 1;
       if (left === 0) {
         this.#counts.delete(topic);
-        this.#client.unsubscribe(topic);
+        this.#keep(topic);
       } else {
         this.#counts.set(topic, left);
       }
     };
+  }
+
+  /** Keeps a released thread topic followed (the oldest kept one goes over the bound); unsubscribes anything else. */
+  #keep(topic: Topic): void {
+    if (parseTopic(topic)?.kind !== "thread") {
+      this.#client.unsubscribe(topic);
+      return;
+    }
+    this.#recent.add(topic);
+    for (const oldest of this.#recent) {
+      if (this.#recent.size <= RECENT_THREADS) {
+        break;
+      }
+      this.#recent.delete(oldest);
+      this.#client.unsubscribe(oldest);
+    }
+  }
+
+  /** Releases the kept threads the live index no longer lists. */
+  #prune(snapshot: Snapshot): void {
+    if (this.#recent.size === 0 || !snapshot.dirty.index) {
+      return;
+    }
+    const index = snapshot.topics.find((state) => state.topic === INDEX_TOPIC);
+    if (index?.sync.kind !== "live") {
+      return;
+    }
+    for (const topic of this.#recent) {
+      const parsed = parseTopic(topic);
+      if (parsed?.kind === "thread" && !snapshot.index.threads.has(parsed.id)) {
+        this.#recent.delete(topic);
+        this.#client.unsubscribe(topic);
+      }
+    }
   }
 }
 
@@ -131,7 +176,7 @@ export interface HostOptions {
 /** A host over `client`; call `host.frames.start()` to follow the model. */
 export function createHost(client: SdkClient, options: HostOptions = {}): OmfpHost {
   const frames = new FrameStore(client, options.schedule);
-  const topics = new TopicRefs(client);
+  const topics = new TopicRefs(client, frames);
   const window = new WindowStore(options.storage);
   const importer = options.importer ?? browserImporter;
   const host: OmfpHost = {

@@ -82,7 +82,7 @@ async fn contrast_failures(journey: &Journey) -> anyhow::Result<Vec<String>> {
     Ok(serde_json::from_value(value)?)
 }
 
-// spec: UI-173, UI-174, UI-124, UI-135, UI-140, UI-145, UI-196
+// spec: UI-173, UI-174, UI-124, UI-135, UI-140, UI-145, UI-196, UI-337, UI-338
 #[tokio::test(flavor = "multi_thread")]
 async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> {
     let journey = Journey::start(Vec::new()).await?;
@@ -104,6 +104,13 @@ async fn the_kit_gallery_text_reaches_aa_in_every_theme() -> anyhow::Result<()> 
                     "{theme} {scheme}: contrast guard overrides {guarded:?}"
                 ));
             }
+            // The gallery's four composers start their text where their bars' chips start.
+            anyhow::ensure!(
+                journey
+                    .composer_aligned("[data-testid=kit-gallery]")
+                    .await?
+                    == 4
+            );
             let path = shot_path(theme, scheme);
             std::fs::write(&path, full_page(&journey).await?)?;
             eprintln!("screenshot: {}", path.display());

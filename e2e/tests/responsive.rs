@@ -66,6 +66,8 @@ async fn wide(journey: &Journey) -> anyhow::Result<()> {
     .await?;
     anyhow::ensure!(top < 40.0, "the header's top row wraps: {top} px tall");
     journey.fits("[data-testid=thread-header]").await?;
+    // The composer's text and caret start at its bar's first chip (UI-337).
+    anyhow::ensure!(journey.composer_aligned("[data-testid=composer]").await? == 1);
     shots(journey, 1400).await
 }
 
@@ -165,7 +167,7 @@ async fn phone(journey: &Journey) -> anyhow::Result<()> {
     journey.gone("[data-testid=left-column][data-open]").await
 }
 
-// spec: UI-200, UI-201, UI-202, UI-203, UI-204, UI-205, UI-206, UI-207, UI-209
+// spec: UI-200, UI-201, UI-202, UI-203, UI-204, UI-205, UI-206, UI-207, UI-209, UI-337
 #[tokio::test(flavor = "multi_thread")]
 async fn the_frame_adapts_to_its_width() -> anyhow::Result<()> {
     let journey = Journey::start(vec![Step::reply(Reply::text(

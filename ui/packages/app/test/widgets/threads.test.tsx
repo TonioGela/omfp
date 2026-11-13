@@ -79,6 +79,18 @@ describe("omfp:threads", () => {
     }
   });
 
+  // spec: UI-339
+  test("a section header shows the workspace's name; its path only as the name's tooltip and description", () => {
+    setup();
+    const name = within(section("w2")).getByTestId("workspace-section-name");
+    expect(name.textContent).toBe("scratch");
+    expect([name.getAttribute("title"), name.getAttribute("aria-description")]).toEqual([
+      "/home/me/scratch",
+      "/home/me/scratch",
+    ]);
+    expect(section("w2").textContent).not.toContain("/home/me/scratch");
+  });
+
   // spec: UI-020
   test("selecting a row highlights it and its workspace and marks it seen; a change elsewhere marks the other unread", async () => {
     const { client, flush, user } = setup();

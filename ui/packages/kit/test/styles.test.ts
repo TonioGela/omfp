@@ -205,6 +205,22 @@ describe("kit styles", () => {
     expect(misplaced).toEqual([]);
   });
 
+  // spec: UI-338, UI-171
+  test("thinking text is light secondary text: upright UI family at fs-sm, regular, muted, with its rule and indent", () => {
+    expect(Object.fromEntries(findRule(kitRules, [LAYER], ".omfp-reasoning__text").declarations)).toEqual({
+      margin: "var(--omfp-s1) 0 0 var(--omfp-s4)",
+      "padding-inline-start": "var(--omfp-s3)",
+      "border-inline-start": "2px solid var(--omfp-rule)",
+      "font-family": "var(--omfp-font-ui)",
+      "font-size": "var(--omfp-fs-sm)",
+      "font-style": "normal",
+      "font-weight": "400",
+      "line-height": "1.55",
+      color: "var(--omfp-on-surface-variant)",
+    });
+    expect(kitRules.filter((rule) => rule.selector.includes("omfp-reasoning__label")).length).toBe(0);
+  });
+
   // spec: UI-138
   test("diff lines tint with ok and error; syntax strings are ok, numbers warn, comments muted italic", () => {
     expect(Object.fromEntries(findRule(kitRules, [LAYER], '.omfp-diff__line[data-kind="add"]').declarations)).toEqual({

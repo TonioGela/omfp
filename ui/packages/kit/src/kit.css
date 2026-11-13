@@ -2712,23 +2712,17 @@
   }
 
   .omfp-wsection__name {
-    flex: none;
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: var(--omfp-fw-strong);
     color: var(--omfp-on-surface);
   }
 
   .omfp-wsection__name.omfp-grad-text {
     color: transparent;
-  }
-
-  .omfp-wsection__path {
-    flex: 1;
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: var(--omfp-fs-2xs);
-    opacity: 0.8;
   }
 
   .omfp-wsection__count {
@@ -3158,21 +3152,21 @@
     color: var(--omfp-tertiary);
   }
 
-  .omfp-reasoning__label {
-    font-style: italic;
-  }
-
   .omfp-reasoning__meta {
     font-size: var(--omfp-fs-2xs);
     opacity: 0.8;
   }
 
+  /* Reasoning reads as secondary text (UI-338): upright, the UI family at fs-sm, regular weight, muted. */
   .omfp-reasoning__text {
     margin: var(--omfp-s1) 0 0 var(--omfp-s4);
     padding-inline-start: var(--omfp-s3);
     border-inline-start: 2px solid var(--omfp-rule);
-    font-size: calc(var(--omfp-fs-prose) * 0.92);
-    font-style: italic;
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-sm);
+    font-style: normal;
+    font-weight: 400;
+    line-height: 1.55;
     color: var(--omfp-on-surface-variant);
   }
 
@@ -3198,11 +3192,12 @@
     cursor: not-allowed;
   }
 
+  /* Its text and caret start where the bar's first chip does (the bar's inline padding, UI-337). */
   .omfp-compose__input {
     display: block;
     box-sizing: border-box;
     inline-size: 100%;
-    padding: var(--omfp-s3) var(--omfp-s3) var(--omfp-s1);
+    padding: var(--omfp-s3) var(--omfp-s2) var(--omfp-s1);
     border: 0;
     resize: none;
     background: none;

@@ -27,8 +27,8 @@
     frames: [],
     /** Long tasks (`{start, duration}`) while recording. */
     longTasks: [],
-    /** WebSocket message handling: count, total and longest ms. */
-    messages: { count: 0, total: 0, max: 0 },
+    /** WebSocket message handling: count, total and longest ms, and the text received (UTF-16 code units). */
+    messages: { count: 0, total: 0, max: 0, bytes: 0 },
     /** Per `keydown`: ms from the event's timestamp to the task after the next frame (input to paint). */
     keys: [],
     /** Event timing entries of keyboard and input events (`{name, duration, delay, processing}`), Chromium only. */
@@ -41,7 +41,7 @@
       this.commitSizes = [];
       this.frames = [];
       this.longTasks = [];
-      this.messages = { count: 0, total: 0, max: 0 };
+      this.messages = { count: 0, total: 0, max: 0, bytes: 0 };
       this.keys = [];
       this.events = [];
       this.recording = true;
@@ -194,6 +194,7 @@
                   perf.messages.count += 1;
                   perf.messages.total += spent;
                   perf.messages.max = Math.max(perf.messages.max, spent);
+                  perf.messages.bytes += typeof event.data === "string" ? event.data.length : event.data.byteLength;
                 }
               }
             }

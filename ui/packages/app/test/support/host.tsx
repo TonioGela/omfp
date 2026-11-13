@@ -74,9 +74,12 @@ export class FakeClient implements SdkClient {
     return promise;
   }
 
+  /** Like the session: a subscribe request (recorded in {@link FakeClient.subscribed}) only for a topic not followed
+   * yet, or whose subscription failed. */
   subscribe(topic: Topic): void {
-    this.subscribed.push(topic);
-    this.model.track(topic);
+    if (this.model.track(topic)) {
+      this.subscribed.push(topic);
+    }
     this.notify();
   }
 

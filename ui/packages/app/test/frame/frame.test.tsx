@@ -1,6 +1,6 @@
 /** L4: the frame (banner, views, keymap, `:` line, theme, live region, notifications, dialogs) over a fake client. */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { CallMethod } from "@omfp/client";
 import type { Settings, ThreadSummary, ViewsState } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -246,6 +246,25 @@ describe("frame", () => {
     client.indexEvents({ kind: "settings_changed", settings: { ui: { density: "normal" }, keymap: [], error: null } });
     flush();
     expect(document.documentElement.dataset.density).toBe("normal");
+  });
+
+  // spec: UI-336
+  test("the arrows scroll the highlighted option of the `:` menu into view", async () => {
+    const { user } = setup();
+    const scrolled: Array<string | null> = [];
+    const scroll = spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element, options) {
+      expect(options).toEqual({ block: "nearest" });
+      scrolled.push(this.getAttribute("data-value"));
+    });
+    try {
+      press(":");
+      await user.type(screen.getByTestId("command-line-input"), "theme ");
+      expect(scrolled).toEqual([]);
+      await user.keyboard("{ArrowDown}{ArrowDown}{ArrowUp}{ArrowUp}");
+      expect(scrolled).toEqual(["theme system", "theme light", "theme system", "theme dark"]);
+    } finally {
+      scroll.mockRestore();
+    }
   });
 
   // spec: UI-095, UI-026

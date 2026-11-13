@@ -347,4 +347,18 @@ describe("transcript", () => {
     act(() => host.window.set(SELECTED_THREAD, THREAD));
     expect(screen.getByTestId("thread-loading").dataset.threadId).toBe(THREAD);
   });
+
+  // spec: UI-335
+  test("switching back to a recently shown thread renders its transcript at once, without a new subscribe", () => {
+    const { client, flush, host } = renderThread(<TranscriptWidget />, longHistory(3));
+    act(() => host.window.set(SELECTED_THREAD, "01U"));
+    client.thread("01U", longHistory(1));
+    flush();
+    expect(screen.getAllByTestId("message").length).toBe(1);
+
+    act(() => host.window.set(SELECTED_THREAD, THREAD));
+    expect(transcript().dataset.threadId).toBe(THREAD);
+    expect(screen.getAllByTestId("message").length).toBe(3);
+    expect(client.subscribed.filter((topic) => topic === `thread/${THREAD}`).length).toBe(1);
+  });
 });

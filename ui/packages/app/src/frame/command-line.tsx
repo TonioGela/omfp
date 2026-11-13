@@ -65,6 +65,12 @@ function CommandLineInput({
   useEffect(() => commands.subscribe(changed), [commands]);
   const options = completions(value, commands.list());
   const highlighted = active === undefined ? undefined : options[active];
+  // The arrows move the highlight past the menu's visible rows: keep the highlighted option in view (UI-336).
+  useEffect(() => {
+    if (active !== undefined) {
+      document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
+    }
+  }, [active, listId]);
   const run = (line: string) => {
     const parsed = parseCommandLine(line);
     if (parsed === undefined) {

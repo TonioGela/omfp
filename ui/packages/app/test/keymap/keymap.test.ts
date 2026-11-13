@@ -119,7 +119,11 @@ describe("keymap", () => {
     expect(table("composer.interrupt")).toEqual(["Ctrl-c"]);
     expect(table("composer.restore")).toEqual(["u"]);
     // The views of the window (UI-302).
-    expect([table("view.pick"), table("view.next"), table("view.prev")]).toEqual([["g v"], ["] v"], ["[ v"]]);
+    expect([table("view.pick"), table("view.next"), table("view.prev")]).toEqual([
+      ["g v", "Space v v"],
+      ["] v", "Space v n"],
+      ["[ v", "Space v p"],
+    ]);
     // No single-key binding while typing.
     expect(DEFAULT_BINDINGS.filter((binding) => binding.mode === "insert").map((binding) => binding.keys)).toEqual([
       "Esc",

@@ -431,17 +431,17 @@ function WorkspaceSection({
           <RenameWorkspace workspace={workspace} close={closeRename} />
         ) : (
           <>
+            {/* The path only on hover and for assistive technology (UI-339); `omfp:workspace` shows it. */}
             <h2
               id={headingId}
               className={cx("omfp-wsection__name omfp-ws__name", current && "omfp-grad-text")}
               data-testid="workspace-section-name"
+              title={workspace.path}
+              aria-description={workspace.path}
             >
               {workspace.name}
               {current && <span className="omfp-visually-hidden"> ({text.current})</span>}
             </h2>
-            <span className="omfp-wsection__path" title={workspace.path}>
-              {workspace.path}
-            </span>
           </>
         )}
         <span className="omfp-wsection__count omfp-ws__count">{section.threadIds.length}</span>

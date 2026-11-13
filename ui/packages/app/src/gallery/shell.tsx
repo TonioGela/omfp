@@ -224,7 +224,7 @@ export function HelpPanels() {
 
 export function LeftColumn() {
   return (
-    <Section title="Left column" note="UI-169 · UI-170">
+    <Section title="Left column" note="UI-169 · UI-170 · UI-339">
       <div className="omfp-gallery__side">
         <Brand host="devbox" />
         <WorkspaceSection name="omfp" path="~/.local/share/omfp/ws/omfp" count={9} expanded current>

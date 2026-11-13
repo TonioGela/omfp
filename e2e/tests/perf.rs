@@ -344,8 +344,8 @@ struct Recording {
     frames: Vec<f64>,
     /// Durations of the long tasks (ms).
     long_tasks: Vec<f64>,
-    /// WebSocket messages handled: count, total and longest ms.
-    messages: (u64, f64, f64),
+    /// WebSocket messages handled: count, total and longest ms, and the text received (UTF-16 code units).
+    messages: (u64, f64, f64, u64),
     /// Per key press: ms from the key to the task after the next frame.
     keys: Vec<f64>,
     /// Keyboard and input events of 16 ms or more (Chromium's event timing): name and duration.
@@ -381,6 +381,7 @@ impl Recording {
                 count(messages, "count"),
                 number(messages, "total"),
                 number(messages, "max"),
+                count(messages, "bytes"),
             ),
             keys: list("keys").iter().filter_map(Value::as_f64).collect(),
             slow_events: list("events")
@@ -606,7 +607,7 @@ fn report(name: &str, recording: &Recording, events: u64) {
         );
     }
     if events > 0 {
-        let (handled, total, max) = recording.messages;
+        let (handled, total, max, _) = recording.messages;
         eprintln!(
             "  events: {events}, commits/event {:.2}; ws messages {handled} mean {:.3} ms max {max:.2} ms",
             float(recording.commits) / float(events),
@@ -781,6 +782,25 @@ async fn stream_timed(
     Ok(recording)
 }
 
+/// [`open_timed`] while recording: prints the time to the DOM and to paint, the WebSocket messages handled (the
+/// thread's snapshot when it was not followed) and the long tasks.
+async fn switch_timed(journey: &Journey, name: &str, id: &str, shown: &str) -> anyhow::Result<()> {
+    start_recording(&journey.driver, false).await?;
+    let (in_dom, painted) = open_timed(journey, id, shown).await?;
+    let recording = stop_recording(&journey.driver).await?;
+    let (handled, total, max, bytes) = recording.messages;
+    let long: f64 = recording.long_tasks.iter().sum();
+    eprintln!(
+        "{name}: in the DOM after {in_dom:.0} ms, painted after {painted:.0} ms; ws messages {handled} \
+         ({:.0} kB, handled in {total:.0} ms, longest {max:.0} ms); long tasks {} (total {long:.0} ms); commits {}",
+        float(bytes) / 1000.0,
+        recording.long_tasks.len(),
+        recording.commits,
+    );
+    Ok(())
+}
+
+// spec: TST-100
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "benchmark: prints timings, asserts nothing"]
 async fn benchmark_transcript() -> anyhow::Result<()> {
@@ -824,10 +844,16 @@ async fn benchmark_transcript() -> anyhow::Result<()> {
     scroll_to_bottom(&journey).await?;
 
     let empty = format!("{TRANSCRIPT}[data-thread-id=\"{other}\"]");
-    let (in_dom, painted) = open_timed(&journey, &other, &empty).await?;
-    eprintln!("switch away: items in the DOM after {in_dom:.0} ms, painted after {painted:.0} ms");
-    let (in_dom, painted) = open_timed(&journey, &long, &items_of(&long)).await?;
-    eprintln!("switch back: items in the DOM after {in_dom:.0} ms, painted after {painted:.0} ms");
+    for round in 1..=3 {
+        switch_timed(&journey, &format!("switch away {round}"), &other, &empty).await?;
+        switch_timed(
+            &journey,
+            &format!("switch back {round}"),
+            &long,
+            &items_of(&long),
+        )
+        .await?;
+    }
 
     let process = launcher.process(0);
     let count = usize::try_from(rate * seconds)?;

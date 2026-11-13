@@ -28,7 +28,7 @@ import { Line, MODELS, Section } from "./parts.tsx";
 export function Transcript() {
   const [open, setOpen] = useState(true);
   return (
-    <Section title="Transcript" note="UI-171 · UI-147" wide>
+    <Section title="Transcript" note="UI-171 · UI-147 · UI-338" wide>
       <ChatHeader title="Redesign kit tokens">
         <Select
           label="Model"
@@ -46,7 +46,10 @@ export function Transcript() {
         </Message>
         <Thinking label="Thinking" meta="4s" expanded={false} />
         <Thinking label="Thinking" meta="12s" expanded={open} onExpandedChange={setOpen}>
-          The tokens live in two places; the kit's ad-hoc ones go away without aliases.
+          The tokens live in two places; the kit's ad-hoc ones go away without aliases. The buttons read their colors
+          from the kit's own names, so the rename touches every rule that draws one: the primary gradient, the danger
+          tone and the focus ring. A reader of the transcript skims this reasoning, so it stays light and secondary
+          beside the reply below, which carries the answer.
         </Thinking>
         <Message author="assistant" name="omp">
           <Markdown text={"Done: the tokens now live in **one namespace**, `--omfp-*`."} />

@@ -33,6 +33,7 @@ describe("which-key model", () => {
   // spec: UI-320
   test("the keys completing a prefix, by group, in binding order; only the prefix's mode", () => {
     expect(flat(whichKeySections(DEFAULT_BINDINGS, { keys: "g", mode: "normal" }, titleOf))).toEqual([
+      ["views", "v", "view.pick"],
       ["files", "f", "file.open"],
       ["navigation", "g", "nav.top"],
       ["navigation", "n", "notice.open"],

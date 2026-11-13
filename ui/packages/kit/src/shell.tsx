@@ -4,7 +4,7 @@
  * They are presentational: the app wires keys, focus and data; forced state classes (`is-hover`, `is-focus`) render
  * hover and focus statically (UI-173).
  */
-import type { HTMLAttributes, ReactNode } from "react";
+import { type HTMLAttributes, type ReactNode, useId } from "react";
 import {
   Button as AriaButton,
   type ButtonProps as AriaButtonProps,
@@ -209,7 +209,8 @@ export function Brand({ host, className, ...props }: BrandProps) {
 
 export interface WorkspaceSectionProps extends Omit<HTMLAttributes<HTMLElement>, "title"> {
   name: ReactNode;
-  path?: ReactNode;
+  /** The workspace folder: not shown, the name's tooltip and the head's accessible description (UI-339). */
+  path?: string;
   count?: ReactNode;
   expanded: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -223,7 +224,7 @@ export interface WorkspaceSectionProps extends Omit<HTMLAttributes<HTMLElement>,
   children?: ReactNode;
 }
 
-/** A workspace in the left column (UI-170): a `▾`/`▸` head with name, path and count, then its rows. */
+/** A workspace in the left column (UI-170): a `▾`/`▸` head with name (its path on hover) and count, then its rows. */
 export function WorkspaceSection({
   name,
   path,
@@ -237,6 +238,7 @@ export function WorkspaceSection({
   children,
   ...props
 }: WorkspaceSectionProps) {
+  const pathId = useId();
   return (
     <section
       {...props}
@@ -247,16 +249,23 @@ export function WorkspaceSection({
       <AriaButton
         className={cx("omfp-wsection__head", headClassName)}
         aria-expanded={expanded}
+        {...(path === undefined ? {} : { "aria-describedby": pathId })}
         onPress={() => onExpandedChange?.(!expanded)}
         data-testid={headTestId}
       >
         <span className="omfp-wsection__glyph" aria-hidden="true">
           {expanded ? "▾" : "▸"}
         </span>
-        <span className={cx("omfp-wsection__name", current && "omfp-grad-text")}>{name}</span>
-        {path !== undefined && <span className="omfp-wsection__path">{path}</span>}
+        <span className={cx("omfp-wsection__name", current && "omfp-grad-text")} title={path}>
+          {name}
+        </span>
         {count !== undefined && <span className="omfp-wsection__count">{count}</span>}
       </AriaButton>
+      {path !== undefined && (
+        <span id={pathId} hidden>
+          {path}
+        </span>
+      )}
       {expanded && <div className="omfp-wsection__rows">{children}</div>}
     </section>
   );

@@ -151,6 +151,51 @@
       "command": "cmdline.open"
     },
     {
+      "mode": "normal",
+      "keys": "Space Space",
+      "command": "cmdline.open"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space h h",
+      "command": "help.open"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space h k",
+      "command": "help.describeKey"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space p n",
+      "command": "workspace.new"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space p r",
+      "command": "workspace.rescan"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space f o",
+      "command": "file.open"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space v v",
+      "command": "view.pick"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space v n",
+      "command": "view.next"
+    },
+    {
+      "mode": "normal",
+      "keys": "Space v p",
+      "command": "view.prev"
+    },
+    {
       "mode": "insert",
       "keys": "Esc",
       "command": "focus.leave"

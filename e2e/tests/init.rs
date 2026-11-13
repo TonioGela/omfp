@@ -197,6 +197,10 @@ async fn an_init_file_adds_a_computed_view_and_a_tsx_view_that_resizes_and_survi
         refused.contains("the workspace's .omfp/init.ts"),
         "{refused}"
     );
+    journey
+        .click("[data-testid=error] [data-testid=toast-dismiss]")
+        .await?;
+    journey.gone("[data-testid=error]").await?;
 
     // The TSX view, picked with `g v`: laid out like a manifest view, files open in its `main` tabs, its splitters
     // resize.

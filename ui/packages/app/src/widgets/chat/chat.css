@@ -668,9 +668,11 @@
     block-size: calc(var(--omfp-ctl-h-sm) - var(--omfp-s1));
   }
 
-  /* The kit's text area inside the composer box: no box of its own, prose input (UI-172). */
+  /* The kit's text area inside the composer box: no box of its own, prose input (UI-172), its text and caret starting
+   * where the bar's first chip does (UI-337): the box's padding is the text area's alone. */
   .omfp-compose__field .omfp-input-box,
   .omfp-compose__field .omfp-input-box:focus-within {
+    padding: 0;
     border: 0;
     outline: none;
     box-shadow: none;
@@ -679,7 +681,7 @@
   }
 
   .omfp-compose__field .omfp-textarea {
-    padding: var(--omfp-s3) var(--omfp-s3) var(--omfp-s1);
+    padding: var(--omfp-s3) var(--omfp-s2) var(--omfp-s1);
     font-family: var(--omfp-font-prose);
     font-size: var(--omfp-fs-prose);
     line-height: var(--omfp-lh-prose);
@@ -705,7 +707,7 @@
     flex-wrap: wrap;
     gap: var(--omfp-s2);
     margin: 0;
-    padding: var(--omfp-s2) var(--omfp-s3) 0;
+    padding: var(--omfp-s2) var(--omfp-s2) 0;
     list-style: none;
   }
 

@@ -1,12 +1,14 @@
 /** L4: the SDK hooks over a fake client. */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import type { ThreadEvent } from "@omfp/core";
 import type { ThreadSummary } from "@omfp/protocol";
 import { threadTopic } from "@omfp/protocol";
 import { act, cleanup, screen } from "@testing-library/react";
 import { useState } from "react";
 import {
   CommandRegistry,
+  RECENT_THREADS,
   SCOPE_ATTRIBUTE,
   useCommand,
   useRunCommand,
@@ -33,6 +35,23 @@ function TwoProbes() {
       <button type="button" data-testid="drop" onClick={() => setBoth(false)} />
     </>
   );
+}
+
+const SHOWN = windowKey<string | undefined>("test/shown", undefined);
+
+/** Shows one thread at a time, like the chat follows the selected thread. */
+function ShownThread() {
+  const [id] = useWindowState(SHOWN);
+  return id === undefined ? null : <ThreadProbe id={id} />;
+}
+
+/** A history of `count` user messages. */
+function history(count: number): ThreadEvent {
+  return {
+    kind: "history",
+    session: { session_id: "s", resumed: true },
+    messages: Array.from({ length: count }, (_, index) => ({ role: "user" as const, content: `message ${index}` })),
+  };
 }
 
 function ThreadCount() {
@@ -96,7 +115,7 @@ function summary(id: string): ThreadSummary {
 }
 
 describe("hooks", () => {
-  // spec: UI-010
+  // spec: UI-010, UI-335
   test("useThread follows thread/<id> while any widget shows it and renders the reducer state", () => {
     const topic = threadTopic("01T");
     const { client, flush, view } = renderWithHost(<TwoProbes />, testHost());
@@ -109,7 +128,63 @@ describe("hooks", () => {
     act(() => screen.getByTestId("drop").click());
     expect(client.unsubscribed).toEqual([]);
     view.unmount();
-    expect(client.unsubscribed).toEqual([topic]);
+    // Kept among the recent threads.
+    expect(client.unsubscribed).toEqual([]);
+    expect(client.model.thread("01T")?.state.transcript.length).toBe(0);
+  });
+
+  // spec: UI-335
+  test("a thread shown again among the recent ones needs no subscribe and renders its live state at once", () => {
+    const { client, host, flush } = renderWithHost(<ShownThread />, testHost());
+    act(() => host.window.set(SHOWN, "01A"));
+    client.thread("01A", [history(1)]);
+    flush();
+    expect(screen.getByTestId("probe-01A").textContent).toBe("1");
+
+    act(() => host.window.set(SHOWN, "01B"));
+    client.thread("01B", [history(2)]);
+    flush();
+    expect(screen.getByTestId("probe-01B").textContent).toBe("2");
+    // The hidden thread stays followed: its events still apply.
+    client.threadEvents("01A", history(3));
+    flush();
+
+    act(() => host.window.set(SHOWN, "01A"));
+    // From the kept state, before any frame or snapshot.
+    expect(screen.getByTestId("probe-01A").textContent).toBe("3");
+    expect(client.subscribed).toEqual([threadTopic("01A"), threadTopic("01B")]);
+    expect(client.unsubscribed).toEqual([]);
+  });
+
+  // spec: UI-335
+  test("the recent threads are bounded: the least recently shown is released first", () => {
+    const { client, host } = renderWithHost(<ShownThread />, testHost());
+    const ids = Array.from({ length: RECENT_THREADS + 2 }, (_, index) => `01T${index}`);
+    for (const id of ids) {
+      act(() => host.window.set(SHOWN, id));
+    }
+    // The last one is shown, the others hidden: one too many is kept.
+    expect(client.unsubscribed).toEqual([threadTopic("01T0")]);
+
+    // Shown again, 01T2 is the most recent once hidden; 01T0 needs a new subscribe and 01T1 goes.
+    act(() => host.window.set(SHOWN, "01T2"));
+    act(() => host.window.set(SHOWN, "01T0"));
+    expect(client.subscribed).toEqual([...ids, "01T0"].map(threadTopic));
+    expect(client.unsubscribed).toEqual([threadTopic("01T0"), threadTopic("01T1")]);
+  });
+
+  // spec: UI-335
+  test("a recent thread deleted from the index is released", () => {
+    const { client, host, flush } = renderWithHost(<ShownThread />, testHost());
+    client.index({ threads: [summary("01A"), summary("01B")] });
+    act(() => host.window.set(SHOWN, "01A"));
+    act(() => host.window.set(SHOWN, "01B"));
+    flush();
+    expect(client.unsubscribed).toEqual([]);
+
+    client.indexEvents({ kind: "thread_removed", threadId: "01A" });
+    flush();
+    expect(client.unsubscribed).toEqual([threadTopic("01A")]);
   });
 
   // spec: UI-012

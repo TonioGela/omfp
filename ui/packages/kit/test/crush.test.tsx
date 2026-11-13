@@ -625,12 +625,14 @@ describe("shell", () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  // spec: UI-170
-  test("a workspace head toggles its rows with ▾ and ▸", async () => {
+  // spec: UI-170, UI-339
+  test("a workspace head toggles its rows with ▾ and ▸; its path is the name's tooltip and its description", async () => {
     const user = userEvent.setup();
     render(<ToggledSection />);
     const head = screen.getByTestId("workspace-head");
-    expect(head.textContent).toBe("▾omfp~/ws/omfp3");
+    expect(head.textContent).toBe("▾omfp3");
+    expect(head.querySelector(".omfp-wsection__name")?.getAttribute("title")).toBe("~/ws/omfp");
+    expect(document.getElementById(head.getAttribute("aria-describedby") ?? "")?.textContent).toBe("~/ws/omfp");
     await user.click(head);
     expect(head.getAttribute("aria-expanded")).toBe("false");
     expect(head.textContent?.startsWith("▸")).toBe(true);

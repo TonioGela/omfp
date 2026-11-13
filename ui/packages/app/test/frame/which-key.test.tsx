@@ -126,12 +126,13 @@ describe("which-key panel", () => {
     expect(shown?.closest('[data-testid="mode-bar"]') !== null).toBe(true);
     // No workspace is current and no notice waits: their commands do not answer now (UI-323).
     expect(entries()).toEqual([
+      ["views", "v", "command", "Pick a view (opens :view with the views to complete)"],
       ["files", "f", "command", "Open a file (:open <path>[:<line>]), or the focused path (g f) (not available now)"],
       ["navigation", "g", "command", "First thread"],
       ["navigation", "n", "command", "Open the newest notice (not available now)"],
       ["other", "h", "command", "Say hello"],
     ]);
-    expect(test.host.announcer.getSnapshot().message).toBe("g: 4 keys, Escape cancels");
+    expect(test.host.announcer.getSnapshot().message).toBe("g: 5 keys, Escape cancels");
     // The panel never takes the focus: the next key completes the sequence and closes it.
     expect(document.activeElement === document.body).toBe(true);
     keys("h");
@@ -160,6 +161,7 @@ describe("which-key panel", () => {
     keys("g");
     test.runTimers();
     expect(entries()).toEqual([
+      ["views", "v", "command", "Pick a view (opens :view with the views to complete)"],
       ["navigation", "g", "command", "First thread"],
       ["navigation", "n", "command", "Open the newest notice (not available now)"],
       ["other", "p", "command", "Ping the demo"],

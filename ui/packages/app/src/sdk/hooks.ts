@@ -66,7 +66,8 @@ export function useTopic(topic: Topic | undefined): TopicState | undefined {
   );
 }
 
-/** One thread's reducer state (UI-010), following `thread/<id>` while mounted; `undefined` until its snapshot. */
+/** One thread's reducer state (UI-010), following `thread/<id>` while mounted (and a while after, among the recent
+ * threads, UI-335); `undefined` until its snapshot. */
 export function useThread(threadId: string | undefined): ThreadView | undefined {
   useTopic(threadId === undefined ? undefined : threadTopic(threadId));
   return useSnapshot((snapshot) => (threadId === undefined ? undefined : snapshot.threads.get(threadId)));
