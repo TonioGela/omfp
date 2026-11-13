@@ -358,12 +358,12 @@ async fn set_theme(target: &Target, css: Option<String>) -> anyhow::Result<()> {
     connection.close().await
 }
 
-/// The page state the smoke check polls: the shell is connected and shows a view (as e2e's `connected()`), and the
-/// color scheme the page sees.
+/// The page state the smoke check polls: the shell is connected and shows its main area — a view, or the first run's
+/// welcome when omp can use no model (UI-500) — and the color scheme the page sees.
 const PROBE: &str = r#"(() => {
   const q = (s) => document.querySelector(s);
   return {
-    ready: !!q("[data-testid=view]") && !q("[data-testid=connection-banner]"),
+    ready: !!q("[data-testid=view], [data-testid=welcome]") && !q("[data-testid=connection-banner]"),
     scheme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
     href: location.href,
     rtcPeerConnection: typeof RTCPeerConnection,
