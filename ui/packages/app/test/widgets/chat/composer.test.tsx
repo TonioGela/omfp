@@ -426,6 +426,29 @@ describe("touch screens", () => {
       pointer.restore();
     }
   });
+
+  // spec: UI-423
+  test("one row without key hints: Abort as an icon, short send labels; a mouse brings the desktop bar back", () => {
+    pointer = new PointerMedia(true);
+    renderThread(<ComposerWidget />, queuedEvents());
+    const composer = screen.getByTestId("composer");
+    const send = screen.getByTestId("send");
+    const alternative = screen.getByTestId("send-alternative");
+    const abort = screen.getByTestId("abort");
+    expect(composer.dataset.touch).toBe("true");
+    expect(composer.querySelectorAll(".omfp-compose__hint, .omfp-kbd").length).toBe(0);
+    expect(input().placeholder).toBe("Steer the agent, or queue a follow-up");
+    expect([abort.getAttribute("aria-label"), abort.textContent]).toEqual(["Abort", ""]);
+    expect([send.textContent, alternative.textContent]).toEqual(["Steer", "Queue"]);
+    act(() => pointer?.set(false));
+    expect(composer.dataset.touch).toBeUndefined();
+    expect(composer.querySelectorAll(".omfp-compose__hint").length).toBe(3);
+    expect(input().placeholder).toBe("Steer the agent (ctrl+enter queues, ctrl+c interrupts)");
+    expect([screen.getByTestId("abort").textContent, screen.getByTestId("send").textContent]).toEqual([
+      "Abort",
+      "Steer nowenter",
+    ]);
+  });
 });
 
 describe("focus requests", () => {

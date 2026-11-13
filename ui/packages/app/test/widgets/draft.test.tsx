@@ -8,6 +8,7 @@ import { ChatWidget } from "../../src/widgets/chat/index.ts";
 import { HeaderWidget } from "../../src/widgets/header/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { renderWithHost } from "../support/host.tsx";
+import { PointerMedia } from "../support/pointer.ts";
 
 afterEach(cleanup);
 
@@ -102,5 +103,26 @@ describe("draft thread", () => {
     expect(client.callsTo("threads.create").map((call) => call.params)).toEqual([
       { workspace: { id: "w1" }, prompt: `look: ${long}` },
     ]);
+  });
+
+  // spec: UI-421, UI-422, UI-423, UI-023
+  test("on a touch screen the draft's Enter makes a new line and Send creates the thread", async () => {
+    const pointer = new PointerMedia(true);
+    try {
+      const { client, user } = setup();
+      const input = screen.getByTestId("composer-input");
+      expect(
+        ["autocorrect", "autocapitalize", "spellcheck", "enterkeyhint"].map((name) => input.getAttribute(name)),
+      ).toEqual(["on", "sentences", "true", "enter"]);
+      expect(screen.getByTestId("composer").querySelectorAll(".omfp-compose__hint, .omfp-kbd").length).toBe(0);
+      await user.type(input, "fix{Enter}the checkout");
+      expect(client.callsTo("threads.create")).toHaveLength(0);
+      await user.click(screen.getByTestId("send"));
+      expect(client.callsTo("threads.create").map((call) => call.params)).toEqual([
+        { workspace: { id: "w1" }, prompt: "fix\nthe checkout" },
+      ]);
+    } finally {
+      pointer.restore();
+    }
   });
 });

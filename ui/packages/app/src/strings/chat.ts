@@ -111,7 +111,11 @@ export const chat = {
     label: "Message",
     placeholderIdle: "Message (/ for commands)",
     placeholderBusy: "Steer the agent (ctrl+enter queues, ctrl+c interrupts)",
+    /** A touch screen has none of those keys (UI-423). */
+    placeholderBusyTouch: "Steer the agent, or queue a follow-up",
     send: { prompt: "Send", "follow-up": "Queue follow-up", steer: "Steer now" },
+    /** The send buttons' short labels on a touch screen, all on one row (UI-423). */
+    sendTouch: { prompt: "Send", "follow-up": "Queue", steer: "Steer" },
     abort: "Abort",
     /** Composer bar hints after their key chips (UI-148, UI-172). */
     hint: { newline: "newline", leave: "normal", interrupt: "interrupt" },

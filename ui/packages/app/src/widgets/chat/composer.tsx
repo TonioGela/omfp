@@ -14,6 +14,7 @@ import {
   ComposerBar,
   ComposerHint,
   Icon,
+  IconButton,
   Kbd,
   Composer as KitComposer,
   Menu,
@@ -181,6 +182,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
       className="omfp-composer"
       data-testid="composer"
       data-draft="true"
+      data-touch={touch || undefined}
       data-workspace-id={draft.workspaceId}
       {...{ [SCOPE_ATTRIBUTE]: "composer" }}
       onSubmit={(event) => {
@@ -211,18 +213,13 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
           }}
         />
         <ComposerBar>
-          <ComposerHint>
-            <Kbd>{keyLabel("Alt-Enter")}</Kbd> {text.hint.newline}
-          </ComposerHint>
-          <ComposerHint>
-            <Kbd>{keyLabel("Esc")}</Kbd> {text.hint.leave}
-          </ComposerHint>
+          {touch ? <span className="omfp-composer__spacer" /> : <KeyHints abortable={false} interruptHint={false} />}
           <Button
             type="submit"
             variant="primary"
             size="sm"
             icon={<Icon name="arrow-up" />}
-            kbd={keyLabel("Enter")}
+            kbd={touch ? undefined : keyLabel("Enter")}
             data-testid="send"
             data-mode="draft"
             isDisabled={sending}
@@ -251,6 +248,30 @@ function proseInput(touch: boolean) {
     spellCheck: true,
     enterKeyHint: touch ? "enter" : "send",
   } as const;
+}
+
+/** The key hints of the composer's bar (UI-148, UI-172); a touch screen has no such keys and shows none (UI-423). */
+function KeyHints({ abortable, interruptHint }: { abortable: boolean; interruptHint: boolean }) {
+  return (
+    <>
+      <ComposerHint>
+        <Kbd>{keyLabel("Alt-Enter")}</Kbd> {text.hint.newline}
+      </ComposerHint>
+      <ComposerHint>
+        <Kbd>{keyLabel("Esc")}</Kbd> {text.hint.leave}
+      </ComposerHint>
+      {abortable &&
+        (interruptHint ? (
+          <ComposerHint className="omfp-composer__interrupt" role="status" data-testid="interrupt-hint">
+            <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.interruptHint}
+          </ComposerHint>
+        ) : (
+          <ComposerHint>
+            <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.hint.interrupt}
+          </ComposerHint>
+        ))}
+    </>
+  );
 }
 
 /**
@@ -544,6 +565,7 @@ export const Composer = memo(function Composer({
       className="omfp-composer"
       data-testid="composer"
       data-busy={busy}
+      data-touch={touch || undefined}
       {...{ [SCOPE_ATTRIBUTE]: "composer" }}
       onSubmit={(event) => {
         event.preventDefault();
@@ -574,7 +596,7 @@ export const Composer = memo(function Composer({
             label={text.label}
             hideLabel
             rows={2}
-            placeholder={busy ? text.placeholderBusy : text.placeholderIdle}
+            placeholder={busy ? (touch ? text.placeholderBusyTouch : text.placeholderBusy) : text.placeholderIdle}
             inputRef={inputRef}
             onFocus={() => setInsert(true)}
             onBlur={() => {
@@ -622,6 +644,7 @@ export const Composer = memo(function Composer({
         <ComposerActions
           threadId={threadId}
           abortable={abortable}
+          touch={touch}
           interruptHint={interruptHint}
           mode={mode}
           other={other}
@@ -633,10 +656,14 @@ export const Composer = memo(function Composer({
   );
 });
 
-/** The hints and buttons under the input; memoized with stable callbacks, so typing does not render them (UI-197). */
+/**
+ * The hints and buttons under the input; memoized with stable callbacks, so typing does not render them (UI-197). On
+ * a touch screen one row without key hints: the mic and Abort as icons, then the short-labelled send buttons (UI-423).
+ */
 const ComposerActions = memo(function ComposerActions({
   threadId,
   abortable,
+  touch,
   interruptHint,
   mode,
   other,
@@ -645,46 +672,42 @@ const ComposerActions = memo(function ComposerActions({
 }: {
   threadId: string;
   abortable: boolean;
+  touch: boolean;
   interruptHint: boolean;
   mode: SendMode;
   other: SendMode | undefined;
   onAbort: () => void;
   onSend: (mode: SendMode) => void;
 }) {
+  const labels = touch ? text.sendTouch : text.send;
   return (
     <ComposerBar>
-      <ComposerHint>
-        <Kbd>{keyLabel("Alt-Enter")}</Kbd> {text.hint.newline}
-      </ComposerHint>
-      <ComposerHint>
-        <Kbd>{keyLabel("Esc")}</Kbd> {text.hint.leave}
-      </ComposerHint>
-      {abortable &&
-        (interruptHint ? (
-          <ComposerHint className="omfp-composer__interrupt" role="status" data-testid="interrupt-hint">
-            <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.interruptHint}
-          </ComposerHint>
-        ) : (
-          <ComposerHint>
-            <Kbd>{keyLabel("Ctrl-c")}</Kbd> {text.hint.interrupt}
-          </ComposerHint>
-        ))}
+      {!touch && <KeyHints abortable={abortable} interruptHint={interruptHint} />}
       <span className="omfp-composer__spacer" />
       <ThreadMicButton threadId={threadId} />
-      {abortable && (
-        <Button variant="danger" size="sm" icon={<Icon name="square" />} data-testid="abort" onPress={onAbort}>
-          {text.abort}
-        </Button>
-      )}
+      {abortable &&
+        (touch ? (
+          <IconButton
+            variant="danger"
+            label={text.abort}
+            icon={<Icon name="square" />}
+            data-testid="abort"
+            onPress={onAbort}
+          />
+        ) : (
+          <Button variant="danger" size="sm" icon={<Icon name="square" />} data-testid="abort" onPress={onAbort}>
+            {text.abort}
+          </Button>
+        ))}
       {other !== undefined && (
         <Button
           size="sm"
-          kbd={sendKey(other)}
+          kbd={touch ? undefined : sendKey(other)}
           data-testid="send-alternative"
           data-mode={other}
           onPress={() => onSend(other)}
         >
-          {text.send[other]}
+          {labels[other]}
         </Button>
       )}
       <Button
@@ -692,11 +715,11 @@ const ComposerActions = memo(function ComposerActions({
         variant="primary"
         size="sm"
         icon={<Icon name="arrow-up" />}
-        kbd={sendKey(mode)}
+        kbd={touch ? undefined : sendKey(mode)}
         data-testid="send"
         data-mode={mode}
       >
-        {text.send[mode]}
+        {labels[mode]}
       </Button>
     </ComposerBar>
   );
