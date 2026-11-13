@@ -2085,21 +2085,46 @@
     color: var(--omfp-on-surface-variant);
   }
 
-  .omfp-todo__item[data-status="done"] {
+  /* omp's statuses (UI-447): completed, in_progress, blocked, abandoned; pending keeps the muted mark. */
+  .omfp-todo__item[data-status="completed"] {
     color: var(--omfp-on-surface-variant);
   }
 
-  .omfp-todo__item[data-status="done"] .omfp-todo__mark {
+  .omfp-todo__item[data-status="completed"] .omfp-todo__mark {
     color: var(--omfp-ok);
   }
 
-  .omfp-todo__item[data-status="done"] .omfp-todo__text {
+  .omfp-todo__item[data-status="completed"] .omfp-todo__text {
     text-decoration: line-through;
     text-decoration-color: color-mix(in oklab, currentColor 45%, transparent);
   }
 
-  .omfp-todo__item[data-status="active"] {
+  .omfp-todo__item[data-status="in_progress"] {
     color: var(--omfp-primary);
+  }
+
+  .omfp-todo__item[data-status="in_progress"] .omfp-todo__mark {
+    color: var(--omfp-primary);
+  }
+
+  .omfp-todo__item[data-status="blocked"] .omfp-todo__mark {
+    color: var(--omfp-warn);
+  }
+
+  .omfp-todo__item[data-status="abandoned"] {
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-todo__item[data-status="abandoned"] .omfp-todo__text {
+    text-decoration: line-through;
+  }
+
+  /* What a blocked task waits on, on its own line under the task. */
+  .omfp-todo__blocker {
+    display: block;
+    font-size: var(--omfp-fs-2xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--omfp-warn);
   }
 
   /* Approval and ask cards (UI-164): a dashed warn border box (UI-187), `◆` before the title on the border, the step

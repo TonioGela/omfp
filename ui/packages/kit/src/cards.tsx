@@ -164,24 +164,38 @@ export function ToolCard({
 
 export interface TodoItem {
   readonly text: ReactNode;
-  readonly status: "done" | "active" | "pending";
+  /** omp's status: `pending`, `in_progress`, `completed`, `blocked`, `abandoned`, or another it may add. */
+  readonly status: string;
+  /** The status in words, for assistive technology (visually hidden). */
+  readonly statusLabel?: string;
+  /** What a blocked task waits on, under its text. */
+  readonly blocker?: ReactNode;
 }
 
 export interface TodoListProps extends Omit<HTMLAttributes<HTMLUListElement>, "children"> {
   items: readonly TodoItem[];
+  /** `data-testid` of each item. */
+  itemTestId?: string;
 }
 
-/** A tool card's todo list: a `●` per item, done in ok and struck through, active in primary (UI-163). */
-export function TodoList({ items, className, ...props }: TodoListProps) {
+/**
+ * A todo list (UI-163, UI-447): a `●` per task in omp's statuses, completed in ok and struck through, in progress in
+ * primary, blocked with a warn mark and its blocker, abandoned muted and struck through.
+ */
+export function TodoList({ items, itemTestId, className, ...props }: TodoListProps) {
   return (
     <ul {...props} className={cx("omfp-todo", className)}>
       {items.map((item, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: a todo list is shown as given
-        <li key={index} className="omfp-todo__item" data-status={item.status}>
+        <li key={index} className="omfp-todo__item" data-status={item.status} data-testid={itemTestId}>
           <span className="omfp-todo__mark" aria-hidden="true">
             ●
           </span>
-          <span className="omfp-todo__text">{item.text}</span>
+          <span className="omfp-todo__text">
+            {item.text}
+            {item.blocker !== undefined && <span className="omfp-todo__blocker">{item.blocker}</span>}
+          </span>
+          {item.statusLabel !== undefined && <span className="omfp-visually-hidden">{item.statusLabel}</span>}
         </li>
       ))}
     </ul>

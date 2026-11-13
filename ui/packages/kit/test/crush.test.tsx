@@ -41,6 +41,7 @@ import {
   Thinking,
   ThreadRow,
   Toast,
+  TodoList,
   ToolCard,
   WorkspaceSection,
 } from "../src/index.ts";
@@ -440,6 +441,32 @@ describe("ToolCard", () => {
     expect(screen.getByTestId("tool-head") === head).toBe(true);
     await user.click(head);
     expect(tool.classList.contains("omfp-bbox")).toBe(false);
+  });
+});
+
+describe("TodoList", () => {
+  // spec: UI-447, UI-163
+  test("items carry omp's status, its word for screen readers and a blocked task's blocker", () => {
+    render(
+      <TodoList
+        itemTestId="task"
+        items={[
+          { text: "Read the code", status: "completed", statusLabel: "done" },
+          { text: "Fix the bug", status: "in_progress", statusLabel: "in progress" },
+          { text: "Ship it", status: "blocked", statusLabel: "blocked", blocker: "blocked: review" },
+        ]}
+      />,
+    );
+    expect(
+      screen.getAllByTestId("task").map((task) => [task.dataset.status, task.textContent, task.childElementCount]),
+    ).toEqual([
+      ["completed", "●Read the codedone", 3],
+      ["in_progress", "●Fix the bugin progress", 3],
+      ["blocked", "●Ship itblocked: reviewblocked", 3],
+    ]);
+    const [, , blocked] = screen.getAllByTestId("task");
+    expect(blocked?.querySelector(".omfp-todo__text .omfp-todo__blocker")?.textContent).toBe("blocked: review");
+    expect(blocked?.querySelector(".omfp-visually-hidden")?.textContent).toBe("blocked");
   });
 });
 

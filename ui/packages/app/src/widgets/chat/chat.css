@@ -320,27 +320,9 @@
     overflow-wrap: anywhere;
   }
 
-  /* The app's todo statuses on the kit's list (UI-163). */
+  /* The kit's todo list (UI-163, UI-447) sits flush in the card's section. */
   .omfp-tool-card__todo {
     padding: 0;
-  }
-
-  .omfp-todo__item[data-status="completed"] {
-    color: var(--omfp-on-surface-variant);
-  }
-
-  .omfp-todo__item[data-status="completed"] .omfp-todo__mark {
-    color: var(--omfp-ok);
-  }
-
-  .omfp-todo__item[data-status="completed"] .omfp-todo__text {
-    text-decoration: line-through;
-    text-decoration-color: color-mix(in oklab, currentColor 45%, transparent);
-  }
-
-  .omfp-todo__item[data-status="in_progress"],
-  .omfp-todo__item[data-status="in_progress"] .omfp-todo__mark {
-    color: var(--omfp-primary);
   }
 
   .omfp-tool-card__answers {

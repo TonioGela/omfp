@@ -111,12 +111,19 @@ export function ToolCards() {
       <ToolCard status="done" name="write" arg="docs/notes.md" meta="3 lines · focus" expanded headClassName="is-focus">
         <Code block code={"# Notes\n\n- the title sits on the border"} language="markdown" />
       </ToolCard>
-      <ToolCard status="done" name="todo" arg="3 items" expanded>
+      <ToolCard status="done" name="todo" arg="5 items" expanded>
         <TodoList
           items={[
-            { text: "Tokens in one namespace", status: "done" },
-            { text: "Restyle the kit", status: "active" },
-            { text: "Screenshot test", status: "pending" },
+            { text: "Tokens in one namespace", status: "completed", statusLabel: "done" },
+            { text: "Restyle the kit", status: "in_progress", statusLabel: "in progress" },
+            { text: "Screenshot test", status: "pending", statusLabel: "pending" },
+            {
+              text: "Release notes",
+              status: "blocked",
+              statusLabel: "blocked",
+              blocker: "blocked: the screenshot test",
+            },
+            { text: "Old palette", status: "abandoned", statusLabel: "abandoned" },
           ]}
         />
       </ToolCard>

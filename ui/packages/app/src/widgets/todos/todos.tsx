@@ -1,10 +1,10 @@
 /**
  * `omfp:todos` (UI-082): the selected thread's todo list, phase by phase, from its state (`todo_phases`), under the
  * session's goal when it has one (`goal`). Each phase is a box titled on its border with its progress at the end
- * (UI-187); a task is a `●` like the todo tool card's list (UI-163), blocked tasks say on what.
+ * (UI-187) holding the kit's todo list, the todo tool card's (UI-163, UI-447): blocked tasks say on what.
  */
 
-import { BorderBox, EmptyState } from "omfp/kit";
+import { BorderBox, EmptyState, TodoList } from "omfp/kit";
 import { SELECTED_THREAD, strings, todosView, useThread, useWindowState, type WidgetProps } from "omfp/sdk";
 import { type ReactNode, useMemo } from "react";
 
@@ -46,22 +46,15 @@ export function TodosWidget(_props: WidgetProps): ReactNode {
             className="omfp-todos__phase"
             data-testid="todos-phase"
           >
-            <ul className="omfp-todo">
-              {phase.tasks.map((task) => (
-                <li key={task.content} className="omfp-todo__item" data-testid="todos-task" data-status={task.status}>
-                  <span className="omfp-todo__mark" aria-hidden="true">
-                    ●
-                  </span>
-                  <span className="omfp-todo__text">
-                    {task.content}
-                    {task.blocker !== undefined && (
-                      <span className="omfp-todos__blocker">{text.blocked(task.blocker)}</span>
-                    )}
-                  </span>
-                  <span className="omfp-visually-hidden">{task.statusLabel}</span>
-                </li>
-              ))}
-            </ul>
+            <TodoList
+              itemTestId="todos-task"
+              items={phase.tasks.map((task) => ({
+                text: task.content,
+                status: task.status,
+                statusLabel: task.statusLabel,
+                ...(task.blocker === undefined ? {} : { blocker: text.blocked(task.blocker) }),
+              }))}
+            />
           </BorderBox>
         ))
       )}

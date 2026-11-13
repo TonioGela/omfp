@@ -3,7 +3,7 @@
  * show omp's error first (UI-052); code is highlighted when its language is known (UI-090).
  */
 
-import { Badge, BoxRule, Button, Code, Diff, PathLink } from "omfp/kit";
+import { Badge, BoxRule, Button, Code, Diff, PathLink, TodoList } from "omfp/kit";
 import {
   ansiRuns,
   type OpenFileOptions,
@@ -273,7 +273,7 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
       return (
         <div className="omfp-tool-card__section">
           <ToolError card={card} />
-          <TodoList phases={view.phases} />
+          <TodoPhases phases={view.phases} />
         </div>
       );
     case "web_search":
@@ -342,22 +342,20 @@ export function ToolBody({ card }: { card: ToolCard }): ReactNode {
   }
 }
 
-/** A todo list (UI-163): a `●` per task, done in ok and struck through, the active one in primary. */
-function TodoList({ phases }: { phases: readonly TodoPhase[] }): ReactNode {
+/** A todo tool's phases (UI-163): the kit's todo list per phase, named when there are several. */
+function TodoPhases({ phases }: { phases: readonly TodoPhase[] }): ReactNode {
   return phases.map((phase) => (
     <section key={phase.name} className="omfp-tool-card__phase" aria-label={phase.name}>
       {phases.length > 1 && <h3>{phase.name}</h3>}
-      <ul className="omfp-todo omfp-tool-card__todo">
-        {phase.tasks.map((task) => (
-          <li key={task.content} className="omfp-todo__item" data-testid="todo-task" data-status={task.status}>
-            <span className="omfp-todo__mark" aria-hidden="true">
-              ●
-            </span>
-            <span className="omfp-todo__text">{task.content}</span>
-            <span className="omfp-visually-hidden">{text.todoStatus[task.status] ?? task.status}</span>
-          </li>
-        ))}
-      </ul>
+      <TodoList
+        className="omfp-tool-card__todo"
+        itemTestId="todo-task"
+        items={phase.tasks.map((task) => ({
+          text: task.content,
+          status: task.status,
+          statusLabel: text.todoStatus[task.status] ?? task.status,
+        }))}
+      />
     </section>
   ));
 }

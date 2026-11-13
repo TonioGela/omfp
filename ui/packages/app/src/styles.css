@@ -1082,41 +1082,22 @@
     min-inline-size: 10rem;
   }
 
-  /* omfp:todos (UI-082): the goal, then a border box per phase (UI-187) with omp's statuses on the todo list of the
-   * tool card (UI-163); blocked in warn, abandoned struck through and muted. */
+  /* omfp:todos (UI-082): the goal, then a border box per phase (UI-187) holding the kit's todo list (UI-447). */
   .omfp-todos__objective {
     margin: 0;
     font-family: var(--omfp-font-prose);
     font-size: var(--omfp-fs-sm);
   }
 
-  .omfp-todos__meta,
-  .omfp-todos__blocker {
+  .omfp-todos__meta {
     margin: 0;
     font-size: var(--omfp-fs-2xs);
     font-variant-numeric: tabular-nums;
     color: var(--omfp-on-surface-variant);
   }
 
-  .omfp-todos__blocker {
-    display: block;
-    color: var(--omfp-warn);
-  }
-
   .omfp-todos__goal[data-status="active"] .omfp-bbox__end {
     color: var(--omfp-primary);
-  }
-
-  .omfp-todos .omfp-todo__item[data-status="blocked"] .omfp-todo__mark {
-    color: var(--omfp-warn);
-  }
-
-  .omfp-todos .omfp-todo__item[data-status="abandoned"] {
-    color: var(--omfp-on-surface-variant);
-  }
-
-  .omfp-todos .omfp-todo__item[data-status="abandoned"] .omfp-todo__text {
-    text-decoration: line-through;
   }
 
   /* omfp:tree (UI-083): one row per conversation entry, indented per branch (`--depth`), the branch the transcript

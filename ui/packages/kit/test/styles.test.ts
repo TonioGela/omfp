@@ -310,6 +310,23 @@ describe("kit styles", () => {
     );
   });
 
+  // spec: UI-447, UI-163
+  test("todo lists style omp's statuses, in kit.css alone", () => {
+    const rule = (status: string, part = "") =>
+      Object.fromEntries(findRule(kitRules, [LAYER], `.omfp-todo__item[data-status="${status}"]${part}`).declarations);
+    expect(rule("completed", " .omfp-todo__mark")).toEqual({ color: "var(--omfp-ok)" });
+    expect(rule("in_progress")).toEqual({ color: "var(--omfp-primary)" });
+    expect(rule("in_progress", " .omfp-todo__mark")).toEqual({ color: "var(--omfp-primary)" });
+    expect(rule("blocked", " .omfp-todo__mark")).toEqual({ color: "var(--omfp-warn)" });
+    expect(rule("abandoned", " .omfp-todo__text")).toEqual({ "text-decoration": "line-through" });
+    const todo = /\.omfp-todo(?:__|(?![\w-]))/;
+    const elsewhere = [
+      ...kitRules.filter((each) => /data-status="(?:done|active)"/.test(each.selector)),
+      ...cssFiles(APP_SRC).flatMap((path) => parseCss(readFileSync(path, "utf8"))),
+    ].filter((each) => todo.test(each.selector));
+    expect(elsewhere.map((each) => each.selector)).toEqual([]);
+  });
+
   // spec: UI-147, UI-146
   test("the stream caret, a StreamCaret or trailing streamed Markdown, is defined once and blinks at motion full only", () => {
     const TRAIL = [
