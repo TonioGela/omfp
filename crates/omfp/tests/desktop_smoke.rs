@@ -177,6 +177,123 @@ fn the_macos_window_has_webrtc_the_microphone_and_notifications() {
     assert_eq!(id.len(), 16);
 }
 
+/// The page a web frame shows in [`a_web_frame_loads_another_origin_and_the_window_stays_on_the_daemon`]: it tells the
+/// window it loaded, then tries to navigate the window away (its sandbox forbids it, UI-672).
+const FRAMED_PAGE: &str = r#"<!doctype html><title>Framed</title><h1>Framed page</h1>
+<script>
+  parent.postMessage("framed page loaded", "*");
+  try { top.location.href = "/escaped"; } catch {}
+</script>
+"#;
+
+/// Serves [`FRAMED_PAGE`] on a loopback port until the test ends; returns its base URL and the request lines seen.
+fn serve_framed_page() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+    use std::io::{BufRead as _, BufReader, Write as _};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen = std::sync::Arc::clone(&requests);
+    std::thread::spawn(move || {
+        for mut stream in listener.incoming().flatten() {
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            if reader.read_line(&mut line).is_err() {
+                continue;
+            }
+            // The rest of the head.
+            let mut header = String::new();
+            while reader.read_line(&mut header).is_ok_and(|read| read > 2) {
+                header.clear();
+            }
+            seen.lock().unwrap().push(line.trim_end().to_owned());
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\
+                 Connection: close\r\n\r\n{FRAMED_PAGE}",
+                FRAMED_PAGE.len()
+            );
+        }
+    });
+    (base, requests)
+}
+
+// spec: TST-033, UI-677, UI-670, UI-672
+#[test]
+fn a_web_frame_loads_another_origin_and_the_window_stays_on_the_daemon() {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    let workspaces = dir.path().join("workspaces");
+    let (base, requests) = serve_framed_page();
+    // The user's init file makes the default view `omfp:web` on the page (there is no workspace, so no panel) and
+    // records the page's message.
+    let config = dir.path().join(".config/omfp");
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(
+        config.join("init.ts"),
+        format!(
+            r#"export default function init(omfp) {{
+  const loaded = (event) => {{
+    if (event.data === "framed page loaded") document.body.dataset.framedPage = event.origin;
+  }};
+  window.addEventListener("message", loaded);
+  omfp.views.transform((views) =>
+    views.update("default", () => ["row", {{}}, ["omfp:web", {{ url: "{base}/page", title: "Framed" }}]]),
+  );
+  return () => window.removeEventListener("message", loaded);
+}}
+"#
+        ),
+    )
+    .unwrap();
+    // The background daemon (`OMFP_SMOKE=local`) follows the user's init file, the in-process one does not.
+    let _daemon = BackgroundDaemon(&data);
+    let output = desktop_with(
+        dir.path(),
+        &[
+            ("OMFP_SMOKE", "local"),
+            (
+                "OMFP_SMOKE_WAIT",
+                &format!("body[data-framed-page=\"{base}\"]"),
+            ),
+            // A model omp can use, so the window shows its view, not the first run's welcome (UI-500); nothing calls
+            // the model.
+            ("ANTHROPIC_API_KEY", "sk-ant-omfp-test"),
+        ],
+        &[
+            "--data-dir",
+            data.to_str().unwrap(),
+            "--",
+            "--static-dir",
+            web_bundle().to_str().unwrap(),
+            "--workspaces-root",
+            workspaces.to_str().unwrap(),
+            // A random port: the default one may be the user's daemon.
+            "--bind",
+            "127.0.0.1:0",
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let state: serde_json::Value = stdout
+        .lines()
+        .find_map(|line| line.strip_prefix("OMFP_SMOKE_READY "))
+        .map(|json| serde_json::from_str(json).unwrap())
+        .unwrap();
+    // The window is still on the daemon's page; the frame loaded the page and nothing else.
+    let href = state["href"].as_str().unwrap();
+    assert!(
+        href.starts_with("http://127.0.0.1:") && !href.starts_with(&base),
+        "{state}"
+    );
+    let pages: Vec<String> = requests
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|line| !line.contains("/favicon.ico"))
+        .cloned()
+        .collect();
+    assert_eq!(pages, ["GET /page HTTP/1.1"], "{state}");
+}
+
 /// Stops the background daemon of a test, also when the test fails.
 struct Daemon(i32);
 
@@ -184,6 +301,17 @@ impl Drop for Daemon {
     fn drop(&mut self) {
         if let Some(pid) = Pid::from_raw(self.0) {
             let _ = kill_process(pid, Signal::TERM);
+        }
+    }
+}
+
+/// Stops the background daemon of the data directory, if one runs, when the test ends (also when it fails).
+struct BackgroundDaemon<'a>(&'a Path);
+
+impl Drop for BackgroundDaemon<'_> {
+    fn drop(&mut self) {
+        if let Ok(Some(info)) = omfp_daemon::discover(self.0) {
+            drop(Daemon(i32::try_from(info.pid).unwrap_or(0)));
         }
     }
 }

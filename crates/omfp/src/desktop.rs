@@ -384,19 +384,21 @@ async fn set_theme(target: &Target, css: Option<String>) -> anyhow::Result<()> {
     connection.close().await
 }
 
-/// The page state the smoke check polls: the shell is connected and shows its main area — a view, or the first run's
-/// welcome when omp can use no model (UI-500) — and the color scheme the page sees.
-const PROBE: &str = r#"(() => {
+/// The page state the smoke check polls, a function of `wait` (a CSS selector or `null`): the shell is connected and
+/// shows its main area — a view, or the first run's welcome when omp can use no model (UI-500) —, whether `wait` matches
+/// an element, and the color scheme the page sees.
+const PROBE: &str = r#"((wait) => {
   const q = (s) => document.querySelector(s);
   return {
     ready: !!q("[data-testid=view], [data-testid=welcome]") && !q("[data-testid=connection-banner]"),
+    waited: wait === null || !!q(wait),
     scheme: matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light",
     href: location.href,
     rtcPeerConnection: typeof RTCPeerConnection,
     notification: typeof Notification === "function" ? Notification.permission : "undefined",
     mediaDevices: typeof navigator.mediaDevices,
   };
-})()"#;
+})"#;
 
 /// Opens the window and runs the event loop until it closes. `new_window` is the command line of one more window
 /// (macOS's File menu, UI-282).
@@ -488,7 +490,11 @@ fn open_window(
     #[cfg(target_os = "linux")]
     let _color_scheme = portal::follow_color_scheme(&window);
     if smoke.is_some() {
-        smoke_check(window, std::env::var("OMFP_SMOKE_SCHEME").ok());
+        smoke_check(
+            window,
+            std::env::var("OMFP_SMOKE_SCHEME").ok(),
+            std::env::var("OMFP_SMOKE_WAIT").ok(),
+        );
     }
     Ok(app.run_return(|_, _| {}))
 }
@@ -591,16 +597,18 @@ pub fn new_window_command(args: &Args, data_dir: &Path) -> Vec<OsString> {
 }
 
 /// Polls [`PROBE`] every 100 ms; once the shell is ready (and the page's color scheme is `scheme`, when given:
-/// `OMFP_SMOKE_SCHEME`) prints `OMFP_SMOKE_READY <state>` and closes the window like the user would (exit 0), else
-/// exits 1 after [`SMOKE_DEADLINE`] with the last state.
-fn smoke_check(window: WebviewWindow, scheme: Option<String>) {
+/// `OMFP_SMOKE_SCHEME`; and an element matches the CSS selector `wait`, when given: `OMFP_SMOKE_WAIT`) prints
+/// `OMFP_SMOKE_READY <state>` and closes the window like the user would (exit 0), else exits 1 after
+/// [`SMOKE_DEADLINE`] with the last state.
+fn smoke_check(window: WebviewWindow, scheme: Option<String>, wait: Option<String>) {
+    let probe = format!("{PROBE}({})", serde_json::Value::from(wait));
     std::thread::spawn(move || {
         let deadline = Instant::now() + SMOKE_DEADLINE;
         let mut last = String::new();
         while Instant::now() < deadline {
             let (sender, receiver) = mpsc::channel();
             if window
-                .eval_with_callback(PROBE, move |json| {
+                .eval_with_callback(&probe, move |json| {
                     let _ = sender.send(json);
                 })
                 .is_err()
@@ -610,6 +618,7 @@ fn smoke_check(window: WebviewWindow, scheme: Option<String>) {
             if let Ok(json) = receiver.recv_timeout(Duration::from_secs(2)) {
                 let ready = serde_json::from_str::<serde_json::Value>(&json).is_ok_and(|state| {
                     state["ready"] == true
+                        && state["waited"] == true
                         && scheme
                             .as_ref()
                             .is_none_or(|scheme| state["scheme"] == **scheme)
