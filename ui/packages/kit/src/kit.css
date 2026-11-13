@@ -3041,6 +3041,148 @@
     background: var(--omfp-grad);
   }
 
+  /* The full-screen sheet of a phone (UI-461, UI-462): the whole window — the visual viewport on a touch screen
+   * (`--vvh`, UI-205) — on the surface: the title and the close button on top, the search under them, then sections
+   * of touch-sized rows that scroll on their own. */
+  .omfp-sheet-overlay {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline: 0;
+    z-index: 100;
+    display: flex;
+    block-size: var(--vvh, 100%);
+    animation: omfp-fade var(--omfp-dur-2) var(--omfp-ease);
+  }
+
+  .omfp-sheet-modal,
+  .omfp-sheet {
+    flex: 1;
+    display: flex;
+    min-inline-size: 0;
+    min-block-size: 0;
+    outline: none;
+  }
+
+  .omfp-sheet__frame {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-inline-size: 0;
+    min-block-size: 0;
+    padding-block: env(safe-area-inset-top, 0) env(safe-area-inset-bottom, 0);
+    color: var(--omfp-on-surface);
+    background: var(--omfp-surface);
+  }
+
+  .omfp-sheet__head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s2);
+    min-block-size: var(--omfp-touch);
+    padding-inline: var(--omfp-s3) var(--omfp-s1);
+    border-block-end: var(--omfp-bw) solid var(--omfp-rule);
+  }
+
+  .omfp-sheet__title {
+    flex: 1;
+    margin: 0;
+    font-size: var(--omfp-fs-md);
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-sheet__close.omfp-icon-button {
+    min-inline-size: var(--omfp-touch);
+    min-block-size: var(--omfp-touch);
+  }
+
+  .omfp-sheet__search {
+    flex: none;
+    padding: var(--omfp-s2) var(--omfp-s3);
+  }
+
+  .omfp-sheet__list {
+    flex: 1;
+    min-block-size: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding-block-end: var(--omfp-s3);
+    outline: none;
+  }
+
+  .omfp-sheet__heading {
+    margin: 0;
+    padding: var(--omfp-s3) var(--omfp-s3) var(--omfp-s1);
+    font-size: var(--omfp-fs-2xs);
+    font-weight: var(--omfp-fw-strong);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-sheet__row {
+    display: flex;
+    align-items: center;
+    gap: var(--omfp-s2);
+    inline-size: 100%;
+    min-block-size: var(--omfp-touch);
+    padding: var(--omfp-s1) var(--omfp-s3);
+    border: 0;
+    background: transparent;
+    color: var(--omfp-on-surface);
+    font-family: var(--omfp-font-ui);
+    font-size: var(--omfp-fs-sm);
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .omfp-sheet__row:is([data-hovered], [data-pressed]) {
+    background: var(--omfp-hover);
+  }
+
+  .omfp-sheet__text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-inline-size: 0;
+  }
+
+  .omfp-sheet__line {
+    display: flex;
+    align-items: baseline;
+    gap: var(--omfp-s2);
+    min-inline-size: 0;
+  }
+
+  .omfp-sheet__name {
+    flex: none;
+    color: var(--omfp-primary);
+  }
+
+  .omfp-sheet__label {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .omfp-sheet__description {
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-sheet__more {
+    flex: none;
+    inline-size: var(--omfp-ic);
+    block-size: var(--omfp-ic);
+    color: var(--omfp-on-surface-variant);
+  }
+
+  .omfp-sheet__empty {
+    margin: 0;
+    padding: var(--omfp-s3);
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
   /* A dialog in a popover (UI-202): `╭─ title` in `primary` over its rows. */
   .omfp-popdialog__dialog {
     display: flex;

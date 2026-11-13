@@ -161,6 +161,33 @@ describe("kit styles", () => {
     expect(description.declarations.get("text-overflow")).toBe("ellipsis");
   });
 
+  // spec: UI-461, UI-462, UI-466
+  test("the sheet covers the window, as tall as the visual viewport on a phone; its rows and close button are touch targets", () => {
+    const overlay = findRule(kitRules, [LAYER], ".omfp-sheet-overlay");
+    expect(
+      ["position", "inset-block-start", "inset-inline", "block-size"].map((name) => overlay.declarations.get(name)),
+    ).toEqual(["fixed", "0", "0", "var(--vvh, 100%)"]);
+    expect(findRule(kitRules, [LAYER], ".omfp-sheet__row").declarations.get("min-block-size")).toBe(
+      "var(--omfp-touch)",
+    );
+    const close = findRule(kitRules, [LAYER], ".omfp-sheet__close.omfp-icon-button");
+    expect([close.declarations.get("min-inline-size"), close.declarations.get("min-block-size")]).toEqual([
+      "var(--omfp-touch)",
+      "var(--omfp-touch)",
+    ]);
+  });
+
+  // spec: UI-465
+  test("on a touch phone the mode line has no mode pill; a narrow window with a mouse keeps it", () => {
+    const appRules = parseCss(readFileSync(join(APP_SRC, "styles.css"), "utf8"));
+    const hidden = findRule(
+      appRules,
+      ["@layer omfp-widgets", "@media (pointer: coarse)"],
+      '.omfp-app[data-layout="mobile"] .omfp-mode-pill',
+    );
+    expect(Object.fromEntries(hidden.declarations)).toEqual({ display: "none" });
+  });
+
   // spec: UI-118
   test("CodeMirror scrolls in a layout root sized by its container; omfp:changes' text-sized diff opts out", () => {
     const view = findRule(kitRules, [LAYER], ".omfp-code-editor__view, .omfp-code-diff__view");

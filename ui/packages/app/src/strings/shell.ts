@@ -620,4 +620,13 @@ export const shell = {
     },
     editorNote: "While the file editor has the focus, vim's own keys apply; the app keymap leaves them alone.",
   },
+  /** The phone's commands sheet (UI-460..UI-464). */
+  commandsSheet: {
+    /** The area bar's button and the sheet's title. */
+    title: "Commands",
+    close: "Close",
+    search: "Search commands",
+    placeholder: "Search",
+    noMatch: "No command matches",
+  },
 } as const;

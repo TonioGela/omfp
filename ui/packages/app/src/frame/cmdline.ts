@@ -25,17 +25,24 @@ export interface Completion {
 }
 
 /**
- * Completions for `text`: while the first word is typed, the enabled commands global or of one of `scopes` (the ones
- * the line runs in, UI-407) whose alias or id starts with it (each command once, named by its first matching alias);
- * after a space, the command's completions of the argument being typed (given the arguments before it) starting with
- * the last word.
+ * The commands the line can run with the focus in `scopes` (UI-407): the enabled ones, global or of one of `scopes`,
+ * each id once.
  */
-export function completions(text: string, commands: readonly Command[], scopes: readonly string[] = []): Completion[] {
-  const enabled = unique(
+export function available(commands: readonly Command[], scopes: readonly string[]): Command[] {
+  return unique(
     commands.filter(
       (command) => (command.scope === undefined || scopes.includes(command.scope)) && (command.enabled?.() ?? true),
     ),
   );
+}
+
+/**
+ * Completions for `text`: while the first word is typed, the {@link available} commands whose alias or id starts with
+ * it (each command once, named by its first matching alias); after a space, the command's completions of the argument
+ * being typed (given the arguments before it) starting with the last word.
+ */
+export function completions(text: string, commands: readonly Command[], scopes: readonly string[] = []): Completion[] {
+  const enabled = available(commands, scopes);
   const leading = text.trimStart();
   const space = leading.search(/\s/);
   if (space < 0) {

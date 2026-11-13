@@ -894,6 +894,14 @@ requirements = [
   "DMN-227",
   "DMN-228",
   "PRT-134",
+  # QA fixes: commands on a phone (the area bar's Commands button and its sheet), no mode pill on touch
+  "UI-460",
+  "UI-461",
+  "UI-462",
+  "UI-463",
+  "UI-464",
+  "UI-465",
+  "UI-466",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -904,6 +912,7 @@ requirements = [
   "E2E-30",
   "E2E-31",
   "E2E-35",
+  "E2E-39",
   # Touch phones: sizes at the root, sideways phones, no invisible or tiny targets, no key hints
   "UI-413",
   "UI-414",

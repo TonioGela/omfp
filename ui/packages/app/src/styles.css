@@ -2001,4 +2001,11 @@
       min-block-size: var(--omfp-touch);
     }
   }
+
+  /* A touch phone (UI-465): the keymap's mode means nothing without a keyboard, so the mode line drops its pill. */
+  @media (pointer: coarse) {
+    .omfp-app[data-layout="mobile"] .omfp-mode-pill {
+      display: none;
+    }
+  }
 }

@@ -88,4 +88,36 @@ describe("AreaBar", () => {
     await userEvent.setup().click(buttons[0] ?? document.body);
     expect(onSelect.mock.calls).toEqual([["threads"]]);
   });
+
+  // spec: UI-460, UI-208
+  test("actions follow the areas: not toggles, they open a dialog and leave the focus where it was", async () => {
+    const onSelect = mock((_id: string) => {});
+    const onPress = mock(() => {});
+    render(
+      <>
+        <input data-testid="field" />
+        <AreaBar
+          label="Areas"
+          items={[{ id: "chat", label: "Chat", icon: "message-square" }]}
+          actions={[{ id: "commands", label: "Commands", icon: "command", onPress }]}
+          selected="chat"
+          onSelect={onSelect}
+        />
+      </>,
+    );
+    const action = screen.getByTestId("area-action");
+    expect([
+      action.textContent,
+      action.dataset.action,
+      action.getAttribute("aria-pressed"),
+      action.getAttribute("aria-haspopup"),
+      action.className,
+    ]).toEqual(["Commands", "commands", null, "dialog", "omfp-areabar__item"]);
+    expect(screen.getAllByTestId("area-button").length).toBe(1);
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId("field"));
+    await user.click(action);
+    expect([onPress.mock.calls.length, onSelect.mock.calls.length]).toEqual([1, 0]);
+    expect(document.activeElement?.getAttribute("data-testid")).toBe("field");
+  });
 });

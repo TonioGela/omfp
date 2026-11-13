@@ -181,8 +181,17 @@ export {
   pathReference,
 } from "./paths.tsx";
 export {
+  Sheet,
+  type SheetProps,
+  SheetRow,
+  type SheetRowProps,
+  SheetSection,
+  type SheetSectionProps,
+} from "./sheet.tsx";
+export {
   ActionRow,
   type ActionRowProps,
+  type AreaAction,
   AreaBar,
   type AreaBarProps,
   type AreaItem,

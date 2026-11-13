@@ -300,6 +300,14 @@
     inline-size: 22rem;
   }
 
+  /* A phone-sized box for the inline commands sheet (UI-461). */
+  .omfp-gallery__phone {
+    display: flex;
+    inline-size: 22rem;
+    block-size: 26rem;
+    border: var(--omfp-bw) solid var(--omfp-rule);
+  }
+
   .omfp-gallery__transcript {
     display: flex;
     flex-direction: column;

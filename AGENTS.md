@@ -139,7 +139,7 @@ ui/packages/kit       @omfp/kit: React Aria Components wrappers styled by token 
                       shell.tsx (mode line, command line and menu, brand, workspace sections, left
                       column rows), cards.tsx (tool, approval and ask cards), transcript.tsx (chat header, messages,
                       composer), feedback.tsx (toasts, empty states), live.tsx (live voice: spectrum, voice meter,
-                      live panel), editor/ (CodeMirror and its theme)
+                      live panel), sheet.tsx (the phone's full-screen sheet), editor/ (CodeMirror and its theme)
 ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: host, frame store, hooks, commands,
                       widget hooks useStored/useJob/useToolRun, files: useFile/useOpenFile and the file tabs, live.ts:
                       the window's live voice session `LiveClient` and its browser `LiveMedia`, init.ts: the init files'
@@ -150,7 +150,8 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       column, mode line with the view tabs, the `:` line and file picker, `:widget add` (layout.tsx),
                       floating file panel and floating widget panels (floating-box.ts: their shared move/resize/minimise
                       state), toasts, dialogs; responsive.ts(x): breakpoints, the strip, drawer and phone area
-                      bar, the left column's splitter; init.tsx: loading the init files and their banner;
+                      bar, the left column's splitter; commands-sheet.ts(x): the phone's commands sheet (UI-460);
+                      init.tsx: loading the init files and their banner;
                       describe.ts(x): `:describe-key` / `:describe-command`; which-key.tsx: the which-key panel;
                       window-state.ts: the window state agents read; window-requests.tsx: the daemon's requests,
                       commands run and out-of-sight widget checks), view (layout tree, `:widget add`'s

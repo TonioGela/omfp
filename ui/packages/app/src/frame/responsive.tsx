@@ -12,6 +12,7 @@ import type { Area } from "../view/layout.ts";
 import { LEFT_DEFAULT_REM, LEFT_WIDTH, resizeLeft } from "../view/sizes.ts";
 import { Resizer } from "../view/splitter.tsx";
 import { threadMarkState } from "../widgets/threads/marks.ts";
+import { CommandsSheet } from "./commands-sheet.tsx";
 import {
   type Breakpoint,
   breakpointOf,
@@ -138,27 +139,42 @@ const AREA_ITEMS: readonly AreaItem[] = [
   { id: "side", label: text.side, icon: "panel-right" },
 ];
 
-/** The phone's bottom bar (UI-204): Threads · Chat · Side (Side only when the view has a side area). */
+/**
+ * The phone's bottom bar (UI-204): Threads · Chat · Side (Side only when the view has a side area), then Commands,
+ * which opens the commands sheet (UI-460).
+ */
 export function Areas({ side }: { side: boolean }): ReactNode {
   const [open, setOpen] = useWindowState(LEFT_OPEN);
   const [area, setArea] = useWindowState(MOBILE_AREA);
+  const [commands, setCommands] = useState(false);
   const items = side ? AREA_ITEMS : AREA_ITEMS.filter((item) => item.id !== "side");
   return (
-    <AreaBar
-      {...{ [DRAWER_CONTROL]: "" }}
-      label={text.areas}
-      data-testid="area-bar"
-      items={items}
-      selected={open ? "threads" : side ? area : "chat"}
-      onSelect={(id) => {
-        if (id === "threads") {
-          setOpen(true);
-        } else {
-          setOpen(false);
-          setArea(id as Area);
-        }
-      }}
-    />
+    <>
+      <AreaBar
+        {...{ [DRAWER_CONTROL]: "" }}
+        label={text.areas}
+        data-testid="area-bar"
+        items={items}
+        actions={[
+          {
+            id: "commands",
+            label: strings.shell.commandsSheet.title,
+            icon: "command",
+            onPress: () => setCommands(true),
+          },
+        ]}
+        selected={open ? "threads" : side ? area : "chat"}
+        onSelect={(id) => {
+          if (id === "threads") {
+            setOpen(true);
+          } else {
+            setOpen(false);
+            setArea(id as Area);
+          }
+        }}
+      />
+      {commands && <CommandsSheet onClose={() => setCommands(false)} />}
+    </>
   );
 }
 

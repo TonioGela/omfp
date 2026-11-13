@@ -623,19 +623,26 @@ export interface AreaItem {
   icon: IconName;
 }
 
+/** A button of the bottom bar that is not an area: it opens a dialog over them (the phone's Commands, UI-460). */
+export interface AreaAction extends AreaItem {
+  onPress: () => void;
+}
+
 export interface AreaBarProps extends Omit<HTMLAttributes<HTMLElement>, "onSelect"> {
   /** Accessible name of the bar. */
   label: string;
   items: readonly AreaItem[];
   selected: string;
   onSelect: (id: string) => void;
+  /** Buttons after the areas; pressing one leaves the focus where it was. */
+  actions?: readonly AreaAction[];
 }
 
 /**
  * The phone layout's bottom bar (UI-204, UI-208): one 44 px button per area (Threads · Chat · Side), icon over label;
- * the shown area in `primary` with the gradient bar on its top edge.
+ * the shown area in `primary` with the gradient bar on its top edge; then the actions, alike but never pressed.
  */
-export function AreaBar({ label, items, selected, onSelect, className, ...props }: AreaBarProps) {
+export function AreaBar({ label, items, selected, onSelect, actions = [], className, ...props }: AreaBarProps) {
   return (
     <nav {...props} aria-label={label} className={cx("omfp-areabar", className)}>
       {items.map((item) => (
@@ -649,6 +656,21 @@ export function AreaBar({ label, items, selected, onSelect, className, ...props 
         >
           <Icon name={item.icon} />
           <span>{item.label}</span>
+        </AriaButton>
+      ))}
+      {actions.map((action) => (
+        <AriaButton
+          key={action.id}
+          className="omfp-areabar__item"
+          aria-haspopup="dialog"
+          data-testid="area-action"
+          data-action={action.id}
+          // The dialog acts in the scopes of what had the focus (UI-407), as the `:` line does.
+          preventFocusOnPress
+          onPress={action.onPress}
+        >
+          <Icon name={action.icon} />
+          <span>{action.label}</span>
         </AriaButton>
       ))}
     </nav>
