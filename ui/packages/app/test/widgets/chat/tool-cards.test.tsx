@@ -399,11 +399,11 @@ describe("task card", () => {
     expect(byTestId(element, "subagent-output").textContent).toBe("src/lib.rs defines 2 functions: add and greet.");
   });
 
-  // spec: UI-050, UI-051, UI-052
+  // spec: UI-050, UI-051, UI-052, UI-406
   test("error: an unknown agent", () => {
     const element = show(card("task_tool_call", "call_task_2"));
     expect(byTestId(element, "tool-error").textContent).toContain('Unknown agent "no-such-agent"');
-    expect(byTestId(element, "subagent").dataset.status).toBe("pending");
+    expect(byTestId(element, "subagent").dataset.status).toBe("failed");
   });
 });
 

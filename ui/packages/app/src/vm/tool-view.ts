@@ -26,7 +26,10 @@ export interface SubagentRun {
   /** The agent kind (`task`, `scout`, …). */
   readonly agent: string;
   readonly task: string;
-  /** `pending` until omp reports it, then omp's status (`running`, `completed`, `failed`, `aborted`, …). */
+  /**
+   * `pending` until omp reports it, then omp's status (`running`, `completed`, `failed`, `aborted`, …); `failed` when the
+   * call ended without its result.
+   */
   readonly status: string;
   /** What it does now (its current tool's intent), else what it did last. */
   readonly activity: string | undefined;
@@ -236,7 +239,8 @@ function plural(count: number, one: string, many: string): string {
  * The specialized view of a call of tool `name`. `args` are its arguments (or `undefined` while the model writes them),
  * `output` the result once it ended or the latest partial result while it runs, `succeeded` whether it ended without
  * an error (a `bash` that did so without an exit code in its details exited 0; an aborted one has none), `job` the
- * background job the call became (a `bash` then shows the job's output and exit code, a completed job exited 0).
+ * background job the call became (a `bash` then shows the job's output and exit code, a completed job exited 0),
+ * `ended` whether the call ended (succeeded or failed).
  */
 export function toolView(
   name: string,
@@ -244,6 +248,7 @@ export function toolView(
   output: ToolOutput | undefined,
   succeeded: boolean,
   job: BackgroundJob | null = null,
+  ended = false,
 ): ToolView {
   const input = isRecord(args) ? args : {};
   const details = output?.details ?? {};
@@ -379,16 +384,20 @@ export function toolView(
       };
     }
     case "task":
-      return { kind: "task", context: str(input.context), agents: subagents(input, details) };
+      return { kind: "task", context: str(input.context), agents: subagents(input, details, ended) };
     default:
       return { kind: "generic" };
   }
 }
 
-/** The subagents of a `task` call: what it asked for, with omp's progress while it runs and the results once done. */
+/**
+ * The subagents of a `task` call: what it asked for, with omp's progress while it runs and the results once done. One
+ * without a result once the call `ended` never ran to the end: `failed`, not `pending` (UI-406).
+ */
 function subagents(
   input: Readonly<Record<string, unknown>>,
   details: Readonly<Record<string, unknown>>,
+  ended: boolean,
 ): SubagentRun[] {
   const progress = records(details.progress);
   const results = records(details.results);
@@ -396,7 +405,7 @@ function subagents(
     const name = str(task.name) ?? String(index + 1);
     const result = results.find((entry) => entry.id === name);
     const live = progress.find((entry) => entry.id === name);
-    const status = result !== undefined ? resultStatus(result) : (str(live?.status) ?? "pending");
+    const status = result !== undefined ? resultStatus(result) : ended ? "failed" : (str(live?.status) ?? "pending");
     const recentOutput = list(live?.recentOutput).flatMap((line) => (typeof line === "string" ? [line] : []));
     return {
       name,

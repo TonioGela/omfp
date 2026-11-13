@@ -331,12 +331,12 @@ describe("task card", () => {
     expect([agent?.status, agent?.output]).toEqual(["completed", "src/lib.rs defines 2 functions: add and greet."]);
   });
 
-  // spec: UI-050, UI-051, UI-052
-  test("error: an unknown agent fails before it starts", () => {
+  // spec: UI-050, UI-051, UI-052, UI-406
+  test("error: an unknown agent fails before it starts, and is not left pending", () => {
     const failed = card("task_tool_call", "call_task_2");
     expect(failed.status).toBe("failed");
     expect(failed.result).toContain('Unknown agent "no-such-agent"');
-    expect(view(failed, "task").agents).toMatchObject([{ name: "Ghost", agent: "no-such-agent", status: "pending" }]);
+    expect(view(failed, "task").agents).toMatchObject([{ name: "Ghost", agent: "no-such-agent", status: "failed" }]);
   });
 });
 
