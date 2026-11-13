@@ -8,16 +8,19 @@ import userEvent from "@testing-library/user-event";
 import { Frame, type FrameProps } from "../../src/frame/frame.tsx";
 import type { NotificationPort } from "../../src/frame/notifications.ts";
 import {
-  ACTIVE_VIEW,
+  chooseView,
   DRAFT_THREAD,
   ERRORS,
   FOCUS_COMPOSER,
+  type KeyValueStorage,
   NOTICES,
   type Notice,
+  type OmfpHost,
   REVEAL_WIDGET,
   SELECTED_THREAD,
   useCommand,
   useNotify,
+  VIEW_CHOICES,
   type WidgetComponent,
 } from "../../src/sdk/index.ts";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
@@ -64,7 +67,7 @@ const Notifying: WidgetComponent = () => {
 
 const threads: ThreadSummary[] = [thread("t1", "checkout", "w1"), thread("t2", "flaky", "w1")];
 
-function setup(props: FrameProps = {}, connect = true) {
+function setup(props: FrameProps = {}, connect = true, options: { storage?: KeyValueStorage } = {}) {
   // Module widgets (workspace overrides) stay loading: these tests are about the frame.
   const timers = new ManualTimers();
   const noticeTimers = new ManualTimers();
@@ -72,6 +75,7 @@ function setup(props: FrameProps = {}, connect = true) {
     importer: () => new Promise<unknown>(() => {}),
     reportTimers: timers,
     noticeTimers,
+    ...options,
   });
   for (const method of [
     "threads.archive",
@@ -145,12 +149,26 @@ function shownWidgets(): (string | undefined)[] {
 }
 
 /** Selects `t1` (workspace `w1`) and answers its views topic with `state`. */
-function inWorkspace(state: Partial<ViewsState> = {}, props: FrameProps = {}) {
-  const test = setup(props);
+function inWorkspace(
+  state: Partial<ViewsState> = {},
+  props: FrameProps = {},
+  options: { storage?: KeyValueStorage } = {},
+) {
+  const test = setup(props, true, options);
   act(() => test.host.window.set(SELECTED_THREAD, "t1"));
   test.client.views("w1", state);
   test.flush();
   return test;
+}
+
+/** Selects `threadId`. */
+function select(test: { host: OmfpHost; flush: () => void }, threadId: string | undefined): void {
+  act(() => test.host.window.set(SELECTED_THREAD, threadId));
+  test.flush();
+}
+
+function shownView(): string | undefined {
+  return screen.getByTestId("view").dataset.view;
 }
 
 const MANIFEST = {
@@ -754,14 +772,14 @@ describe("views of the current workspace", () => {
   });
 
   // spec: UI-101, UI-301
-  test("the mode line's view tabs list views by title in id order; a click switches, window-local; so does `:view <id>`", async () => {
+  test("the mode line's view tabs list views by title in id order; a click switches the thread's view; so does `:view <id>`", async () => {
     const { client, flush, host, user } = inWorkspace({ manifest: MANIFEST });
     const tabs = () => screen.getAllByTestId("mode-view");
     expect(tabs().map((tab) => tab.textContent)).toEqual(["Lean", "Review", "Work"]);
     expect(tabs().map((tab) => tab.getAttribute("aria-current"))).toEqual([null, null, "true"]);
     expect(screen.getByTestId("mode-views").getAttribute("aria-label")).toBe("Views");
     await user.click(tabs()[1] ?? document.body);
-    expect(host.window.get(ACTIVE_VIEW)).toBe("review");
+    expect(host.window.get(VIEW_CHOICES).threads).toEqual([{ threadId: "t1", viewId: "review" }]);
     expect(screen.getByTestId("view").dataset.view).toBe("review");
     expect(tabs().map((tab) => tab.dataset.current ?? "")).toEqual(["", "true", ""]);
     press(":");
@@ -806,21 +824,139 @@ describe("views of the current workspace", () => {
     ]);
     await user.type(input, "le{Enter}");
     expect(shown()).toBe("lean");
-    expect(host.window.get(ACTIVE_VIEW)).toBe("lean");
+    expect(host.window.get(VIEW_CHOICES)).toEqual({
+      threads: [{ threadId: "t1", viewId: "lean" }],
+      workspaces: { w1: "lean" },
+    });
   });
 
-  // spec: UI-302
-  test("the chosen view is kept in localStorage: a reload opens it while the workspace has it", () => {
+  // spec: UI-302, UI-367
+  test("the views chosen per thread are kept in localStorage: a reload shows each thread with its view", () => {
     const stored = new Map<string, string>();
     const storage = {
       getItem: (key: string) => stored.get(key) ?? null,
       setItem: (key: string, value: string) => stored.set(key, value),
     };
-    const first = testHost(undefined, { storage });
-    act(() => first.host.window.set(ACTIVE_VIEW, "review"));
-    expect(stored.get("omfp.activeView")).toBe('"review"');
-    const reloaded = testHost(undefined, { storage });
-    expect(reloaded.host.window.get(ACTIVE_VIEW)).toBe("review");
+    const first = inWorkspace({ manifest: MANIFEST }, {}, { storage });
+    act(() => first.host.commands.run("view.switch", ["review"]));
+    select(first, "t2");
+    act(() => first.host.commands.run("view.switch", ["lean"]));
+    expect(JSON.parse(stored.get("omfp.viewChoices") ?? "null")).toEqual({
+      threads: [
+        { threadId: "t1", viewId: "review" },
+        { threadId: "t2", viewId: "lean" },
+      ],
+      workspaces: { w1: "lean" },
+    });
+    cleanup();
+
+    const reloaded = inWorkspace({ manifest: MANIFEST }, {}, { storage });
+    expect(shownView()).toBe("review");
+    select(reloaded, "t2");
+    expect(shownView()).toBe("lean");
+  });
+
+  // spec: UI-367
+  test("each thread keeps its view; a thread shown for the first time takes its workspace's last; workspaces keep their own", async () => {
+    const test = inWorkspace({ manifest: MANIFEST });
+    const { client, flush, host, user } = test;
+    client.indexEvents(
+      { kind: "thread_upserted", thread: thread("t3", "fresh", "w1") },
+      { kind: "thread_upserted", thread: thread("t4", "other", "w2") },
+    );
+    flush();
+    expect(shownView()).toBe("work");
+    // The tab switches the selected thread's view.
+    await user.click(screen.getAllByTestId("mode-view")[1] ?? document.body);
+    expect(shownView()).toBe("review");
+    // Another thread of the workspace, never shown: the workspace's last view; `:view` switches it alone.
+    select(test, "t2");
+    expect(shownView()).toBe("review");
+    press(":");
+    await user.type(screen.getByTestId("command-line-input"), "view lean{Enter}");
+    expect(shownView()).toBe("lean");
+    select(test, "t1");
+    expect(shownView()).toBe("review");
+    select(test, "t2");
+    expect(shownView()).toBe("lean");
+    // A new thread takes the view last chosen in its workspace and keeps it when other threads switch.
+    select(test, "t3");
+    expect(shownView()).toBe("lean");
+    select(test, "t1");
+    press("]");
+    press("v");
+    expect(shownView()).toBe("work");
+    select(test, "t3");
+    expect(shownView()).toBe("lean");
+    // Another workspace starts on its default view and keeps its own choice; its draft thread shows it too.
+    select(test, "t4");
+    client.views("w2", { manifest: MANIFEST });
+    flush();
+    expect(shownView()).toBe("work");
+    act(() => host.commands.run("view.switch", ["review"]));
+    expect(shownView()).toBe("review");
+    act(() => {
+      host.window.set(SELECTED_THREAD, undefined);
+      host.window.set(DRAFT_THREAD, { workspaceId: "w2" });
+    });
+    flush();
+    expect(shownView()).toBe("review");
+    // The draft's switch is its workspace's last view, which the next new thread there takes.
+    press("[");
+    press("v");
+    expect(shownView()).toBe("lean");
+    select(test, "t4");
+    expect(shownView()).toBe("review");
+    client.indexEvents({ kind: "thread_upserted", thread: thread("t5", "next", "w2") });
+    flush();
+    select(test, "t5");
+    expect(shownView()).toBe("lean");
+    select(test, "t1");
+    client.views("w1", { manifest: MANIFEST });
+    flush();
+    expect(shownView()).toBe("work");
+    expect(host.window.get(VIEW_CHOICES).workspaces).toEqual({ w1: "work", w2: "lean" });
+  });
+
+  // spec: UI-367
+  test("a thread whose view is gone shows its workspace's last view, else the default, and gets it back", () => {
+    const test = inWorkspace({ manifest: MANIFEST });
+    const { client, flush, host } = test;
+    act(() => host.commands.run("view.switch", ["review"]));
+    select(test, "t2");
+    act(() => host.commands.run("view.switch", ["lean"]));
+    select(test, "t1");
+    const manifest = (views: Partial<typeof MANIFEST.views>) => {
+      client.viewsEvents("w1", { kind: "views_manifest", manifest: { ...MANIFEST, views }, error: null });
+      flush();
+    };
+    manifest({ work: MANIFEST.views.work, lean: MANIFEST.views.lean });
+    expect(shownView()).toBe("lean");
+    manifest({ work: MANIFEST.views.work });
+    expect(shownView()).toBe("work");
+    manifest(MANIFEST.views);
+    expect(shownView()).toBe("review");
+    select(test, "t2");
+    expect(shownView()).toBe("lean");
+  });
+
+  // spec: UI-367
+  test("the views of threads and workspaces the index no longer lists are dropped", () => {
+    const test = inWorkspace({ manifest: MANIFEST });
+    const { client, flush, host } = test;
+    act(() => host.commands.run("view.switch", ["review"]));
+    select(test, "t2");
+    act(() => host.commands.run("view.switch", ["lean"]));
+    select(test, undefined);
+    client.indexEvents({ kind: "thread_removed", threadId: "t1" });
+    flush();
+    expect(host.window.get(VIEW_CHOICES)).toEqual({
+      threads: [{ threadId: "t2", viewId: "lean" }],
+      workspaces: { w1: "lean" },
+    });
+    client.indexEvents({ kind: "thread_removed", threadId: "t2" }, { kind: "workspace_removed", workspaceId: "w1" });
+    flush();
+    expect(host.window.get(VIEW_CHOICES)).toEqual({ threads: [], workspaces: {} });
   });
 
   // spec: UI-102, AGT-011
@@ -840,9 +976,9 @@ describe("views of the current workspace", () => {
   test("a view without built-in chat or interactions gets the safety net; a workspace override does not count", () => {
     const { client, flush, host } = inWorkspace({ manifest: MANIFEST });
     expect(screen.queryByTestId("safety-net")).toBeNull();
-    act(() => host.window.set(ACTIVE_VIEW, "lean"));
+    act(() => chooseView(host, "lean"));
     expect(screen.getByTestId("safety-net")).toBeDefined();
-    act(() => host.window.set(ACTIVE_VIEW, "work"));
+    act(() => chooseView(host, "work"));
     expect(screen.queryByTestId("safety-net")).toBeNull();
     client.viewsEvents("w1", {
       kind: "views_widgets",

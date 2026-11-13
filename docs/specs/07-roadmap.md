@@ -572,7 +572,8 @@ shows the keys after a waiting prefix, and `Space` opens the leader menu at once
 stay subscribed (UI-335, TST-100), the `:` menu scrolls to its highlighted option (UI-336), the composer's text starts at
 its chips (UI-337), thinking reads as light secondary text (UI-338), a workspace's path is its name's tooltip (UI-339),
 the thread header shows one workspace chip (UI-340), Changes marks the workspace's own repository (UI-341), groups the
-clean repositories in one collapsed row (UI-342) and keeps each repository's head on one line (UI-343). MCP
+clean repositories in one collapsed row (UI-342) and keeps each repository's head on one line (UI-343), and the view
+is remembered per thread (UI-367). MCP
 follow-ups: local command output shows as a card (PRT-120, UI-345, TST-105), URLs omp opens show as toasts and in the
 card (UI-346, UI-347), `omfp:mcp` offers Reauthorize (UI-348), and the daemon restarts a free thread by itself to load
 new or reauthorized MCP tools (DMN-200..DMN-204, PRT-121, UI-349, AGT-080). Agent feedback: `approvalMode` takes

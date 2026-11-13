@@ -28,6 +28,7 @@
  * | `useReportError()` | puts a failure in the frame's error list (`ERRORS`) |
  * | `useUrlActions()` | `open(url)` in a new tab, `copy(url)` to the clipboard: the URLs omp opened (UI-346) |
  * | `useCurrentWorkspaceId()` | the workspace this window works in: the selected thread's, else the draft thread's |
+ * | `useActiveView(viewIds)` / `chooseView(host, viewId)` | the view this window shows for the selected thread (its own, else its workspace's last chosen, else the default: `undefined`) / switches it, for the thread and its workspace (UI-367) |
  * | `usePathSources()` | `suggest`/`complete` for the kit's `PathField`, on the daemon's machine |
  * | `useHost()` | the host itself (registry, window store), for frame-level code |
  * | `useSettings()` | the daemon's UI settings (`ui.density`, `ui.fontSize`, `ui.motion`, `ui.notifications`, `ui.fonts`, `keymap`, `error`), live (UI-097) |
@@ -46,7 +47,8 @@
  * and `Widget`.
  *
  * Shared window keys: `SELECTED_THREAD`, `draftKey(id)`, `DRAFT_THREAD` and `DRAFT_MESSAGE` (the draft thread),
- * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `ACTIVE_VIEW` (persisted), `DELETE_THREAD`,
+ * `COLOR_SCHEME` (persisted, applied to `<html>` by the frame), `VIEW_CHOICES` (persisted: the views chosen per thread
+ * and per workspace, UI-367), `DELETE_THREAD`,
  * `DELETE_WORKSPACE`,
  * `RENAMING_THREAD`, `FOCUS_COMPOSER`, `ERRORS`, `OPEN_FILES`, `FLOATING_FILES` and `floatingWidgetKey(workspaceId, panelId)`
  * (persisted), `FILE_PICKER`, `EDITOR_MODE`, `NOTICES`.
@@ -243,6 +245,7 @@ export {
   treeView,
   withEditorText,
 } from "../vm/tree.ts";
+export type { ThreadViewChoice, ViewChoices } from "../vm/view-choices.ts";
 export {
   INITIAL_PIN,
   isScrollUpKey,
@@ -278,6 +281,7 @@ export {
   useThreadActions,
   useUrlActions,
 } from "./actions.ts";
+export { chooseView, useActiveView, useViewChoicesUpkeep } from "./active-view.ts";
 export { type Background, useBackground, useRunningInBackground, useSubagentRows } from "./background.ts";
 export { type Command, CommandRegistry, SCOPE_ATTRIBUTE, scopesAt } from "./commands.ts";
 export {
@@ -361,7 +365,6 @@ export {
 } from "./init.ts";
 export { InitViews, Layout, type ViewEntry, type ViewOrigin, type ViewSpec } from "./init-views.ts";
 export {
-  ACTIVE_VIEW,
   COLOR_SCHEME,
   type ColorScheme,
   DELETE_THREAD,
@@ -381,6 +384,7 @@ export {
   REVEAL_WIDGET,
   type RevealRequest,
   SELECTED_THREAD,
+  VIEW_CHOICES,
 } from "./keys.ts";
 export {
   Col,

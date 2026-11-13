@@ -9,8 +9,8 @@
 import { pathReference } from "@omfp/kit";
 import type { ReactNode } from "react";
 import {
-  ACTIVE_VIEW,
   COLOR_SCHEME,
+  chooseView,
   currentWorkspaceId,
   FOCUS_COMPOSER,
   type OpenFileOptions,
@@ -262,7 +262,7 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
           reportError(host, error);
         }
       } else if (view !== undefined && viewIds.includes(view)) {
-        host.window.set(ACTIVE_VIEW, view);
+        chooseView(host, view);
       } else if (view !== undefined) {
         reportError(host, strings.shell.layout.noView(view));
       }
@@ -273,7 +273,7 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
     const index = viewIds.indexOf(currentView ?? "");
     const next = viewIds[(index + step + viewIds.length) % viewIds.length];
     if (next !== undefined) {
-      host.window.set(ACTIVE_VIEW, next);
+      chooseView(host, next);
     }
   };
   useCommand({

@@ -24,8 +24,9 @@ The bar at the bottom of the view area, like vim's:
   open), or vim's own mode while a file editor has the focus;
 - the selected thread's title and state;
 - the **view tabs**, when the current workspace has several views: `Default · Review · Ops` by title, the current
-  one highlighted; a click switches. The choice belongs to the window and survives reloads; a workspace without that
-  view shows its default view;
+  one highlighted; a click switches the selected thread's view. Each thread keeps its view in this window across
+  reloads; a thread shown for the first time (or a new thread being started) gets the view last chosen in its
+  workspace, else the default view, as does a thread whose view the workspace no longer has;
 - at the right end the newest **notice** (`◆ title body`, `+n` when more wait): a thread that needs the user, failed
   or finished while the user looked elsewhere, or what a widget or agent notified (`omfp_notify`). `g n` or a click
   opens its thread; it goes after 8 s.

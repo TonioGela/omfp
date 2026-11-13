@@ -66,10 +66,14 @@ without it), but an `instance` per node costs nothing.
   tabs, `Default · Review · Ops`, the current one highlighted: a click switches. `:view <id>` switches too (`:view`
   completes the ids), `g v` opens the `:` line on `view` to pick one, `] v` / `[ v` go to the next / previous view.
   `omfp://docs/shell` describes the rest of the window (left column, mode line, `:` commands, keys).
-- The choice belongs to the window and survives reloads (kept in the browser's `localStorage`); while the current
-  workspace has no view of that id, the default view shows: `views.json`'s `default` (else its first id). Init files
-  keep that default when they use or transform views: a view `views.add` adds never becomes the default by itself,
-  only `views.withDefault(id)` changes it (see Views of init files).
+- The window remembers the view per thread and survives reloads (kept in the browser's `localStorage`): selecting a
+  thread shows the view last used with it; a thread never shown before (and a new thread being started) gets the view
+  last chosen in its workspace in this window, else the default view: `views.json`'s `default` (else its first id).
+  While the workspace has no view of the remembered id, the workspace's last chosen view shows, else the default; the
+  choice comes back with the view. Every switch (tab, `:view`, keys, an init file's `omfp.run("view.switch", [id])`)
+  is the selected thread's and its workspace's last chosen. Init files keep the default when they use or transform
+  views: a view `views.add` adds never becomes the default by itself, only `views.withDefault(id)` changes it (see
+  Views of init files).
 - Splitters between the cells of a `row` or `col` resize them for this window only (a double click goes back to the
   layout's `sizes`); nothing the user does by hand rewrites `views.json` except `:widget add <reference>`, which adds
   a widget (built-in, `./widgets/<name>`, `user:<name>`) to the current view as the last tab of its `tabs` with
@@ -382,6 +386,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useConnection()` | The connection status. |
 | `useWindowState(key)` | Window-local state; `SELECTED_THREAD` is the thread this window shows. |
 | `useCurrentWorkspaceId()` | The workspace this window works in: the selected thread's, else the draft thread's. |
+| `useActiveView(viewIds)`, `chooseView(host, viewId)` | The id among the current workspace's view ids this window shows for the selected thread (its own, else its workspace's last chosen; `undefined`: the default view), and switching it (`host` from `useHost()`), as `:view <id>` does. |
 | `useThreadActions()` | `select`, `rename`, `archive`, `stop`, `restart`, … for threads. |
 | `useCommand(command)` | Registers a `:` command or key binding target while mounted (`description` shows in `:describe-command`). |
 | `useAnnounce()` | `announce(message)` for screen readers. |

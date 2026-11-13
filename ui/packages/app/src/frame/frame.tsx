@@ -16,14 +16,16 @@ import { type Binding, DEFAULT_BINDINGS } from "../keymap/keymap.ts";
 import { globalKeyTimers, type KeyTimers, WhichKeyState } from "../keymap/which-key.ts";
 import { KeymapError, useBindings } from "../keymap/workspace.tsx";
 import {
-  ACTIVE_VIEW,
+  chooseView,
   EDITOR_MODE,
   type ReportTimers,
   SELECTED_THREAD,
+  useActiveView,
   useCurrentWorkspaceId,
   useHost,
   useSettings,
   useSnapshot,
+  useViewChoicesUpkeep,
   useViews,
   useWindowState,
 } from "../sdk/index.ts";
@@ -120,7 +122,10 @@ export function Frame({
     const used = init.views !== undefined && init.views.manifest === manifest ? init.views.views : undefined;
     return withInitPanels(used === undefined ? own : { ...used, error: own.error }, init.panels);
   }, [manifest, manifestError, init]);
-  const [active, setActive] = useWindowState(ACTIVE_VIEW);
+  // The selected thread's view, else its workspace's last chosen, else the default (UI-367).
+  useViewChoicesUpkeep();
+  const viewIds = views.views.map((candidate) => candidate.id);
+  const active = useActiveView(viewIds);
   const listed =
     views.views.find((candidate) => candidate.id === active) ??
     views.views.find((candidate) => candidate.id === views.defaultId);
@@ -168,14 +173,14 @@ export function Frame({
   const [leftOpen] = useWindowState(LEFT_OPEN);
   const [area] = useWindowState(MOBILE_AREA);
   const side = view !== undefined && chatCell(view.tree) !== undefined;
-  const viewIds = views.views.map((candidate) => candidate.id);
+  const host = useHost();
   const modeViews = useMemo(
     (): ModeLineViews => ({
       views: views.views.map(({ id, title }) => ({ id, title })),
       current: listed?.id,
-      onSelect: setActive,
+      onSelect: (id) => chooseView(host, id),
     }),
-    [views.views, listed?.id, setActive],
+    [views.views, listed?.id, host],
   );
   return (
     <div ref={appRef} className="omfp-app" data-testid="app" data-layout={breakpoint}>

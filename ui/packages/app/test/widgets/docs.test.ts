@@ -69,7 +69,7 @@ describe("views and init files for agents", () => {
       "`:view <id>`",
       "`g v`",
       "`] v` / `[ v`",
-      "survives reloads",
+      "remembers the view per thread and survives reloads",
       "`views.withDefault(id)`",
       "`:widget add <reference>`",
       '`"views.json"` is the only file it loads',

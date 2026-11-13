@@ -1,6 +1,7 @@
 /** Window state slots shared by several widgets and the frame. Widget-private slots live next to their widget. */
 
 import type { ImageContent } from "@omfp/core";
+import { decodeViewChoices, NO_VIEW_CHOICES, type ViewChoices } from "../vm/view-choices.ts";
 import { type WindowKey, windowKey } from "./window-store.ts";
 
 /** The thread this window shows; `undefined` for none. */
@@ -45,12 +46,12 @@ export const COLOR_SCHEME = windowKey<ColorScheme>("colorScheme", "system", (sto
 );
 
 /**
- * Id of the view this window chose (UI-101, UI-302); `undefined`: the manifest's default. Kept in `localStorage`, so a
- * reload (and the next window) opens the same view while the current workspace has it, else the default view.
+ * The views this window chose (UI-302, UI-367): per thread the view last shown with it, per workspace the view last
+ * chosen in it. Kept in `localStorage`, so a reload (and the next window) shows each thread with its view; read it with
+ * `useActiveView`, change it with `chooseView`. The window-wide choice of earlier versions (`omfp.activeView`) is not
+ * carried over.
  */
-export const ACTIVE_VIEW = windowKey<string | undefined>("activeView", undefined, (stored) =>
-  typeof stored === "string" ? stored : undefined,
-);
+export const VIEW_CHOICES = windowKey<ViewChoices>("viewChoices", NO_VIEW_CHOICES, decodeViewChoices);
 
 /** A thread being started in a workspace (UI-023): shown while no thread is selected; the daemon thread is created
  * when its first message is sent. One per window. */

@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { Frame } from "../../src/frame/frame.tsx";
 import {
-  ACTIVE_VIEW,
+  chooseView,
   ERRORS,
   type KeyValueStorage,
   SELECTED_THREAD,
@@ -153,7 +153,7 @@ describe("floating panels", () => {
       expect(within(panel("clock")).getAllByTestId(`floating-widget-${part}`).length).toBe(1);
     }
     // Over whatever view is shown.
-    act(() => test.host.window.set(ACTIVE_VIEW, "other"));
+    act(() => chooseView(test.host, "other"));
     expect(screen.getByTestId("view").dataset.view).toBe("other");
     expect(panels().map((element) => element.dataset.panel)).toEqual(["board", "clock"]);
   });

@@ -8,8 +8,8 @@ import userEvent from "@testing-library/user-event";
 import { Frame } from "../../src/frame/frame.tsx";
 import { initUrl } from "../../src/frame/init.tsx";
 import {
-  ACTIVE_VIEW,
   Col,
+  chooseView,
   ERRORS,
   type InitApi,
   openFile,
@@ -134,7 +134,7 @@ async function settle(test: TestHost): Promise<void> {
 }
 
 function show(test: TestHost, id: string): void {
-  act(() => test.host.window.set(ACTIVE_VIEW, id));
+  act(() => chooseView(test.host, id));
 }
 
 /** The view as rendered: each laid-out element's path, kind and slot, then the widgets' text. */
