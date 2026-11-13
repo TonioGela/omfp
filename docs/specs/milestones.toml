@@ -788,6 +788,12 @@ requirements = [
   "DMN-213",
   "DMN-214",
   "AGT-085",
+  # Jobs: where they run, one job per key
+  "AGT-086",
+  "AGT-087",
+  "DMN-215",
+  "UI-355",
+  "UI-356",
   # Journeys
   "E2E-22",
   "E2E-23",

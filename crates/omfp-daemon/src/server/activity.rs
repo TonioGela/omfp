@@ -316,6 +316,7 @@ mod tests {
                     Call::JobsStart(StartJobParams {
                         workspace_id: ws,
                         command: "while true; do sleep 0.01; done".to_owned(),
+                        replaces: None,
                     }),
                 )
                 .await

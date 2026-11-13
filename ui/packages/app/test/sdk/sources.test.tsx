@@ -4,7 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { JsonValue, ThreadEvent } from "@omfp/core";
 import { type JobInfo, type JobLine, type JobState, jobTopic, viewsTopic } from "@omfp/protocol";
 import { act, cleanup, screen } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import {
   SELECTED_THREAD,
   SlotReport,
@@ -301,6 +301,141 @@ describe("useJob", () => {
     ]);
     cleanup();
     expect(slot?.report().jobs).toEqual([]);
+  });
+});
+
+/** A search widget: one job slot, `search`, whose command follows the query. */
+function SearchProbe() {
+  const [query, setQuery] = useState("a");
+  const job = useJob(`grep -r ${query}`, { key: "search" });
+  return (
+    <>
+      <span data-testid="job">{[job.status, job.runs, job.lines.join("|")].join(" ")}</span>
+      <button type="button" data-testid="query" onClick={() => setQuery((current) => `${current}b`)} />
+      <button type="button" data-testid="restart" onClick={job.restart} />
+    </>
+  );
+}
+
+const SEARCH = "jobkey:search";
+
+function renderSearch(stored: Record<string, unknown>, slot?: (test: TestHost) => SlotReport): TestHost {
+  const test = testHost();
+  const report = slot?.(test);
+  renderWithHost(inScope(<SlotReportScope value={report}>{<SearchProbe />}</SlotReportScope>), test);
+  test.client.views(WS, { stored: { tests: stored } });
+  test.flush();
+  return test;
+}
+
+function searchState(id: string, command: string, lines: JobLine[]): JobState {
+  return { job: { ...info(id), command }, lines, dropped: 0 };
+}
+
+describe("useJob with a key", () => {
+  // spec: AGT-086, UI-355
+  test("the first run is stored under the key with its command, without replacing anything", async () => {
+    const { client, flush } = renderSearch({});
+    const start = only(client.callsTo("jobs.start"));
+    expect(start.params).toEqual({ workspaceId: WS, command: "grep -r a" });
+    await act(async () => start.resolve(info("01A")));
+    expect(only(client.callsTo("widgets.state_set")).params).toEqual({
+      workspaceId: WS,
+      instance: "tests",
+      key: SEARCH,
+      value: { id: "01A", runs: 1, command: "grep -r a" },
+    });
+    flush();
+  });
+
+  // spec: AGT-086, UI-355
+  test("a new command under the key replaces the stored job: pending without the old lines, one stored slot", async () => {
+    const { client, flush } = renderSearch({ [SEARCH]: { id: "01A", runs: 1, command: "grep -r a" } });
+    client.job(searchState("01A", "grep -r a", [out("hit a")]));
+    flush();
+    expect(text("job")).toBe("running 1 hit a");
+    expect(client.callsTo("jobs.start")).toEqual([]);
+
+    act(() => screen.getByTestId("query").click());
+    const start = only(client.callsTo("jobs.start"));
+    expect(start.params).toEqual({ workspaceId: WS, command: "grep -r ab", replaces: "01A" });
+    expect(text("job")).toBe("pending 1 ");
+    expect(client.callsTo("jobs.kill")).toEqual([]);
+    await act(async () => start.resolve(info("01B")));
+    const stored = { id: "01B", runs: 2, command: "grep -r ab" };
+    expect(only(client.callsTo("widgets.state_set")).params).toEqual({
+      workspaceId: WS,
+      instance: "tests",
+      key: SEARCH,
+      value: stored,
+    });
+    client.viewsEvents(WS, { kind: "widget_stored", instance: "tests", key: SEARCH, value: stored });
+    flush();
+    expect(client.subscribed).toContain(jobTopic("01B"));
+    expect(client.unsubscribed).toContain(jobTopic("01A"));
+    client.job(searchState("01B", "grep -r ab", [out("hit ab")]));
+    flush();
+    expect(text("job")).toBe("running 2 hit ab");
+    expect(client.callsTo("jobs.start").length).toBe(1);
+  });
+
+  // spec: UI-355
+  test("a command changing again while its replacement starts runs the newest once the first is stored", async () => {
+    const { client, flush } = renderSearch({ [SEARCH]: { id: "01A", runs: 1, command: "grep -r a" } });
+    act(() => screen.getByTestId("query").click());
+    act(() => screen.getByTestId("query").click());
+    const first = only(client.callsTo("jobs.start"));
+    expect(first.params).toEqual({ workspaceId: WS, command: "grep -r ab", replaces: "01A" });
+    await act(async () => first.resolve(info("01B")));
+    client.viewsEvents(WS, {
+      kind: "widget_stored",
+      instance: "tests",
+      key: SEARCH,
+      value: { id: "01B", runs: 2, command: "grep -r ab" },
+    });
+    flush();
+    const starts = client.callsTo("jobs.start");
+    expect(starts.length).toBe(2);
+    expect(starts[1]?.params).toEqual({ workspaceId: WS, command: "grep -r abb", replaces: "01B" });
+  });
+
+  // spec: AGT-086, UI-355
+  test("restart under a key replaces the running job in one jobs.start, without jobs.kill", () => {
+    const { client, flush } = renderSearch({ [SEARCH]: { id: "01A", runs: 1, command: "grep -r a" } });
+    client.job(searchState("01A", "grep -r a", []));
+    flush();
+    act(() => screen.getByTestId("restart").click());
+    expect(client.callsTo("jobs.kill")).toEqual([]);
+    expect(only(client.callsTo("jobs.start")).params).toEqual({
+      workspaceId: WS,
+      command: "grep -r a",
+      replaces: "01A",
+    });
+    expect(text("job")).toBe("pending 1 ");
+  });
+
+  // spec: UI-356, AGT-026
+  test("the slot report holds one job per key, with the current command", () => {
+    let slot: SlotReport | undefined;
+    const test = renderSearch({ [SEARCH]: { id: "01A", runs: 1, command: "grep -r a" } }, ({ host }) => {
+      slot = new SlotReport(host.reports, {
+        reference: "./widgets/tests",
+        instance: "tests",
+        source: "workspace",
+        name: "tests",
+        modulePath: "/widgets/test/01W/tests/",
+      });
+      return slot;
+    });
+    test.client.job(searchState("01A", "grep -r a", [out("hit a")]));
+    test.flush();
+    expect(slot?.report().jobs.map((job) => [job.command, job.status, job.tail.join("|")])).toEqual([
+      ["grep -r a", "running", "hit a"],
+    ]);
+    act(() => screen.getByTestId("query").click());
+    expect(slot?.report().jobs.map((job) => [job.command, job.status, job.tail.join("|")])).toEqual([
+      ["grep -r ab", "pending", ""],
+    ]);
   });
 });
 

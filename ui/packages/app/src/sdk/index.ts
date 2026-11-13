@@ -15,7 +15,7 @@
  * | `useViews(id)` | the workspace's views manifest, widget folders and stored values, following `views/<id>` |
  * | `useWidget()` | the widget instance being rendered: `{ instance, reference, workspaceId }` |
  * | `useStored(key, initial)` | `[value, set, loaded]`: JSON kept by the daemon per workspace, instance and key (AGT-018) |
- * | `useJob(command)` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, restart, kill }`: one daemon job per instance and command (AGT-019) |
+ * | `useJob(command, { key? })` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, restart, kill }`: one daemon job per instance and command, or per key (AGT-019, AGT-086) |
  * | `useToolRun(id \| { match, threadId? })` | a tool run of a thread with its live output (AGT-020) |
  * | `useSlotReport()` | the report of the module widget slot being rendered (`widgets.report`, AGT-026); `undefined` in built-ins |
  * | `useTopic(topic)` | any topic's subscription state, followed while mounted |
@@ -423,6 +423,7 @@ export {
 } from "./settings.ts";
 export {
   type Job,
+  type JobOptions,
   type JobRunStatus,
   type StoredUpdate,
   type ToolRunInfo,

@@ -578,7 +578,10 @@ card (UI-346, UI-347), `omfp:mcp` offers Reauthorize (UI-348), and the daemon re
 new or reauthorized MCP tools (DMN-200..DMN-204, PRT-121, UI-349, AGT-080). Agent feedback: `approvalMode` takes
 omp's values only, `threads.create` leaves nothing behind when the new thread's omp cannot start, and start errors carry
 omp's stderr tail (DMN-210..DMN-212, TST-106); `thread.session` answers a thread's session id, file, model, state and
-usage without omp's whole state and without starting omp (PRT-125, PRT-126, DMN-213, DMN-214, AGT-085).
+usage without omp's whole state and without starting omp (PRT-125, PRT-126, DMN-213, DMN-214, AGT-085). Jobs: the
+widget docs and agent notes say what a `useJob` command runs in (shell, folder, the daemon's environment, limits,
+retention; AGT-087), and `useJob(command, { key })` keeps one job per key, the daemon replacing the previous one
+(AGT-086, DMN-215, UI-355, UI-356).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and

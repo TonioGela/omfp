@@ -203,6 +203,7 @@ async fn jobs(services: &Services, principal: &Principal, call: Call) -> Reply {
                 &workspace.path,
                 &params.command,
                 started_by.as_deref(),
+                params.replaces.as_deref(),
             )?)
         }
         Call::JobsKill(params) => {

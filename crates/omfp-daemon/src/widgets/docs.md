@@ -347,7 +347,7 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | --- | --- |
 | `useWidget()` | `{ instance, reference, workspaceId }` of the calling widget. |
 | `useStored(key, initial)` | `[value, set, loaded]`: JSON state the daemon keeps per workspace, widget instance and key, shared live by every window and kept across reloads and restarts. `set(value)` or `set((previous) => next)`; `set(null)` deletes the key. `loaded` is `false` while the state has not arrived yet (`value` is then `initial`). |
-| `useJob(command)` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, state, restart, kill }` for `sh -c <command>` run by the daemon in the workspace folder. `status` is `"pending"` (no job yet, or a start or restart on its way), `"running"`, `"succeeded"` (exit code 0) or `"failed"` (another code, or a signal). The first mount starts the job; reloads, other windows and moving the widget follow the same job (stored as `job:<command>`: `{ id, runs }`). `lines` are stdout and stderr interleaved, `stdout` and `stderr` each one's lines; `runs` counts the jobs started (a restart adds one), `startedAt`/`endedAt` (ms) date the current one; `restart()` kills a running job and starts a new one; `state` is the raw `job/<id>` state. `omfp_widget_check` shows each job's status and last lines. |
+| `useJob(command, { key? })` | `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, endedAt, state, restart, kill }` for `sh -c <command>` run by the daemon in the workspace folder (environment, limits and retention: see Jobs below). `status` is `"pending"` (no job yet, or a start or restart on its way), `"running"`, `"succeeded"` (exit code 0) or `"failed"` (another code, or a signal). The first mount starts the job; reloads, other windows and moving the widget follow the same job (stored as `job:<command>`: `{ id, runs }`). `lines` are stdout and stderr interleaved, `stdout` and `stderr` each one's lines; `runs` counts the jobs started (a restart adds one), `startedAt`/`endedAt` (ms) date the current one; `restart()` kills a running job and starts a new one; `state` is the raw `job/<id>` state. Without `key` every distinct command is its own job and its own stored key, so a command built from input (a search per query) leaves one job behind per query: pass `key` (``useJob(`rg -n ${query}`, { key: "search" })``) to keep one job slot (stored as `jobkey:<key>`: `{ id, runs, command }`): a new command under the key replaces the previous job (stopped if it still runs, its output gone; `pending` with no lines until the new one is known), and `restart()` replaces it the same way. `omfp_widget_check` shows each job's status and last lines. |
 | `useToolRun(toolCallId)` | A tool run of the selected thread, or `useToolRun({ match: /nextest/, threadId? })` for the latest run whose command matches: `{ toolCallId, toolName, status, output, lines, isError }` or `undefined`. While a `bash` command runs, `output` is the latest tail omp streams. |
 | `useCall()` | `call(method, params)`: any daemon protocol method, e.g. `call("thread.prompt", { threadId, text })`; `call("thread.session", { threadId })` gives a thread's session id, session file, model, cwd, roots and cost without starting omp. |
 | `useTopic(topic)` | Follows a topic (`index`, `thread/<id>`, `workspace/<id>`, `views/<id>`, `job/<id>`) while mounted; returns its subscription state. The 5 threads most recently unmounted stay followed, so showing one again is immediate. |
@@ -372,6 +372,33 @@ export default function Tests({ command = "make test" }: { command?: string }) {
 | `useMissingFile(path, missing, { line?, diff? })` | For a widget showing a file: while `missing`, looks for the file `path` names (`workspaces.find_file`); one match opens in its place, several open the window's picker. Gives `"finding"`, `"opened"`, `"choosing"` or `"none"`. |
 | `Row`, `Col`, `Tabs`, `Stack`, `Widget` | The layout components of TSX views (see TSX views); they render only in a view file of `.omfp/views/`. |
 | `SELECTED_THREAD` | Window key of the selected thread id (`useWindowState(SELECTED_THREAD)`). |
+
+### Jobs
+
+What a `useJob` command (a `jobs.start` job, followed on `job/<id>`) runs in:
+
+- **Shell**: `sh -c <command>`, non-interactive and not a login shell, so no `~/.profile`, `~/.bashrc`, aliases or shell
+  functions; `sh` is the first one on the daemon's `PATH` (bash in POSIX mode on NixOS, `/bin/sh` on macOS). Use
+  `bash -c '…'` explicitly for bash syntax.
+- **Working directory**: the workspace folder, whose entries are the repositories — not a repository: write
+  `cd <repo> && …` (or `git -C <repo> …`).
+- **Environment**: the daemon's, unchanged — whatever started the daemon decides `PATH` and the variables: a terminal
+  (`omfp daemon`, `just serve`) passes its shell's, `omfp desktop` launched from the desktop starts the daemon with the
+  graphical session's (often a shorter `PATH` than your terminal's), a systemd user service with the user manager's
+  (`systemctl --user show-environment`). The Nix install adds the pinned `omp` in front of `PATH` and `git` at its end.
+  No dev shell applies (no `nix develop`, no direnv): write it out, `nix develop -c cargo test`, `direnv exec . make`.
+- **Input**: stdin is `/dev/null` and there is no terminal: a prompt reads end-of-file, and tools that check for a
+  terminal print without colour or progress bars.
+- **Time**: no timeout; a job runs until it exits or is killed (`kill()`, `jobs.kill`: SIGTERM to its process group,
+  SIGKILL 2 s later; removing the workspace; stopping the daemon; a cascade stop of the agent thread that started it).
+  What a job detaches (`setsid`, its own process group) is out of reach.
+- **Output**: stdout and stderr are read as lines (invalid UTF-8 replaced, a line longer than 64 KiB cut into pieces);
+  the job keeps its newest lines up to 1 MiB of text and counts the older ones in `state.dropped`.
+- **Retention**: jobs live in the daemon's memory only. A workspace keeps its 32 most recently finished jobs; an older
+  one is forgotten (its `job/<id>` is then `not_found`). A daemon restart forgets them all, so `useJob` starts the
+  command again the next time the widget mounts. A job replaced under a `key` is forgotten at once. What `useJob`
+  stores (`job:<command>`, `jobkey:<key>`) stays in the workspace's widget state until the widget sets it to `null` or
+  the workspace is removed.
 
 The SDK also exports the view models and strings the built-in widgets use; read a copied built-in to see them.
 

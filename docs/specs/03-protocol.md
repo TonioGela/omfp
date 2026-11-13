@@ -155,7 +155,7 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `widgets.state_set` | `workspaceId`, `instance`, `key`, `value` (JSON; `null` deletes) | `{}`; `widget_stored` on `views/<id>` (DMN-086) |
 | `widgets.report` | `workspaceId`, `views` (the `{ epoch, seq }` of `views/<workspaceId>` the window rendered, `null` before it arrived), `widgets` (per instance: `reference`, `instance`, `source`, `name`, `version`, `state`, `errors`, `console`, `text`, `jobs`), `fileErrors?` (`[{ kind, file, message }]`, PRT-115) | `{}`; replaces this connection's report (PRT-043, AGT-026) |
 | `views.errors` | `workspaceId` | `ViewErrors { windows: [{ client, errors: [{ kind, file, message }] }] }`: the init file and TSX view errors of every window showing the workspace (PRT-116) |
-| `jobs.start` | `workspaceId`, `command` | the job: `{ id, workspaceId, command, startedAt, status }` (DMN-080) |
+| `jobs.start` | `workspaceId`, `command`, `replaces?` | the job: `{ id, workspaceId, command, startedAt, status }` (DMN-080); `replaces` is a job it takes the place of (DMN-215) |
 | `jobs.kill` | `jobId` | `{}` (DMN-081) |
 | `activity.list` | `threadId?`, `before?`, `after?`, `limit?` | `{ entries: [{ seq, at, threadId, client, method, params, error }], more }`: the activity log, newest first (PRT-086) |
 | `workspaces.mcp_servers` | `workspaceId` | `McpServers`: the MCP servers configured for the workspace, unchecked (PRT-110) |

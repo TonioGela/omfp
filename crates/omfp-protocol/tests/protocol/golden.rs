@@ -850,6 +850,7 @@ fn widget_examples() -> Vec<(&'static str, Value)> {
             StartJobParams {
                 workspace_id: WORKSPACE_ID.to_owned(),
                 command: "cargo nextest run".to_owned(),
+                replaces: Some("01JOBOLD".to_owned()),
             },
             &JobInfo {
                 id: "01JOB".to_owned(),

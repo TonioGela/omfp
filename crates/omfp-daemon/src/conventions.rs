@@ -51,7 +51,10 @@ fn widget_facts(root: &str, user_library: &Path) -> String {
          - User library: {library}/<name>/, used as `user:<name>` in every workspace.\n\
          - Built-in widgets' sources: omfp://widgets/builtin and omfp://widgets/builtin/<name> (never search the disk).\n\
          - Imports: only react, react/jsx-runtime, react-dom, omfp/sdk, omfp/kit and files of the widget's folder. A \
-         saved widget reloads at once; errors show in its place."
+         saved widget reloads at once; errors show in its place.\n\
+         - useJob(command) runs `sh -c <command>` in the workspace folder (not a repository) with the daemon's \
+         environment: no login shell, no dev shell (write `nix develop -c …` yourself), no timeout. For a command built \
+         from input, pass `useJob(command, {{ key }})` so every run replaces the last. Details: omfp://docs/widgets (Jobs)."
     )
 }
 
@@ -306,7 +309,7 @@ mod tests {
             example.lines().count() <= 11,
             "a ten-line example: {example}"
         );
-        assert!(text.lines().count() <= 28, "short: {text}");
+        assert!(text.lines().count() <= 29, "short: {text}");
         assert!(!text.ends_with('\n'));
     }
 
@@ -437,6 +440,25 @@ mod tests {
             !body.contains("omfp_widget_check") && !body.contains("omfp_view_add"),
             "no host tools in a subagent"
         );
+    }
+
+    // spec: AGT-087
+    #[test]
+    fn the_widgets_note_and_the_builder_say_how_jobs_run_and_when_to_key_them() {
+        let library = Path::new("/data/omfp/widgets");
+        for text in [
+            widgets_note(Path::new("/ws"), library),
+            widget_builder_definition(library),
+        ] {
+            for rule in [
+                "useJob(command) runs `sh -c <command>` in the workspace folder (not a repository)",
+                "the daemon's environment: no login shell, no dev shell (write `nix develop -c …` yourself), no timeout",
+                "`useJob(command, { key })` so every run replaces the last",
+                "omfp://docs/widgets (Jobs)",
+            ] {
+                assert!(text.contains(rule), "{rule:?} missing: {text}");
+            }
+        }
     }
 
     // spec: AGT-029, DMN-107

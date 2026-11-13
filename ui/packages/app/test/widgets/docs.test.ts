@@ -103,3 +103,29 @@ describe("views and init files for agents", () => {
     expect(DOCS.includes('import type { InitApi } from "omfp/sdk"')).toBe(true);
   });
 });
+
+describe("jobs for agents", () => {
+  // spec: AGT-087
+  test("the widget docs say where and how a job runs, its limits, its retention and the job key", () => {
+    for (const fact of [
+      "| `useJob(command, { key? })` |",
+      "stored as `jobkey:<key>`: `{ id, runs, command }`",
+      "### Jobs",
+      "`sh -c <command>`, non-interactive and not a login shell",
+      "**Working directory**: the workspace folder",
+      "**Environment**: the daemon's, unchanged",
+      "`systemctl --user show-environment`",
+      "No dev shell applies",
+      "`nix develop -c cargo test`",
+      "stdin is `/dev/null`",
+      "no timeout",
+      "64 KiB",
+      "1 MiB",
+      "its 32 most recently finished jobs",
+      "A daemon restart forgets them all",
+      "A job replaced under a `key` is forgotten at once",
+    ]) {
+      expect(DOCS.includes(fact) ? fact : `missing: ${fact}`).toBe(fact);
+    }
+  });
+});

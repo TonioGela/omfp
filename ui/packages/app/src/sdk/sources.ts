@@ -70,7 +70,8 @@ export interface Job {
   readonly exitCode: number | null;
   /** The signal that ended the job, else `null`. */
   readonly signal: number | null;
-  /** How many jobs this instance started for the command (a restart adds one); 0 before the first. */
+  /** How many jobs this instance started for the command, or under the key (a restart or a new command adds one);
+   * 0 before the first. */
   readonly runs: number;
   /** When the current job started (ms since the epoch), `null` until it is known. */
   readonly startedAt: number | null;
@@ -84,10 +85,18 @@ export interface Job {
   kill(): void;
 }
 
-/** What {@link useJob} stores under `job:<command>`. */
+/** Options of {@link useJob}. */
+export interface JobOptions {
+  /** The job slot: every command run under one key replaces the previous one's job (killed if it still runs, then
+   * forgotten, DMN-215), so a widget running a command per query keeps one job. Default: the command itself. */
+  readonly key?: string;
+}
+
+/** What {@link useJob} stores under `job:<command>` (no key) or `jobkey:<key>`; `command` only under a key. */
 interface StoredJob {
   readonly id: string;
   readonly runs: number;
+  readonly command: string | undefined;
 }
 
 /** The stored value as a {@link StoredJob}; anything else is no job. */
@@ -95,8 +104,10 @@ function storedJob(value: unknown): StoredJob | null {
   if (typeof value !== "object" || value === null) {
     return null;
   }
-  const { id, runs } = value as { id?: unknown; runs?: unknown };
-  return typeof id === "string" ? { id, runs: typeof runs === "number" ? runs : 1 } : null;
+  const { id, runs, command } = value as { id?: unknown; runs?: unknown; command?: unknown };
+  return typeof id === "string"
+    ? { id, runs: typeof runs === "number" ? runs : 1, command: typeof command === "string" ? command : undefined }
+    : null;
 }
 
 const NO_LINES: readonly string[] = [];
@@ -118,17 +129,25 @@ function statusOf(state: JobState | undefined): JobRunStatus {
  * longer knows the stored job, a job is started; otherwise the stored job is followed (`job/<id>`), running or
  * finished, so reloads, other windows and moving the widget never start a second one. The job is part of the widget
  * slot's report (AGT-026).
+ *
+ * With `options.key` (AGT-086) the slot is the key, stored under `jobkey:<key>` as `{ id, runs, command }`: when the
+ * command changes, the hook starts the new one with `replaces` set to the stored job, which the daemon kills if it
+ * still runs and forgets (DMN-215); until the new job is known it is `pending` with no lines.
  */
-export function useJob(command: string): Job {
+export function useJob(command: string, options: JobOptions = {}): Job {
+  const { key } = options;
   const host = useHost();
   const { workspaceId } = useWidget();
-  const key = `job:${command}`;
-  const [value, setStored, loaded] = useStored<unknown>(key, null);
+  const storeKey = key === undefined ? `job:${command}` : `jobkey:${key}`;
+  const [value, setStored, loaded] = useStored<unknown>(storeKey, null);
   const stored = storedJob(value);
   const jobId = stored?.id ?? null;
   const runs = stored?.runs ?? 0;
-  const topic = useTopic(jobId === null ? undefined : jobTopic(jobId));
-  const state = useSnapshot((snapshot) => (jobId === null ? undefined : snapshot.jobs.get(jobId)));
+  // Under a key, a stored job of another command is only replaced, never shown.
+  const stale = key !== undefined && stored !== null && stored.command !== command;
+  const shownId = stale ? null : jobId;
+  const topic = useTopic(shownId === null ? undefined : jobTopic(shownId));
+  const state = useSnapshot((snapshot) => (shownId === null ? undefined : snapshot.jobs.get(shownId)));
   // The stored id (or `null`) a start was made for: no second start until the stored id changes.
   const startedFor = useRef<string | null | undefined>(undefined);
   // The same, to render `pending` while the start is on its way.
@@ -141,27 +160,36 @@ export function useJob(command: string): Job {
       }
       startedFor.current = replacing;
       setStarting(replacing);
+      const params =
+        key === undefined || replacing === null
+          ? { workspaceId, command }
+          : { workspaceId, command, replaces: replacing };
       host.client
-        .call("jobs.start", { workspaceId, command })
-        .then((job) => setStored({ id: job.id, runs: runsBefore + 1 }))
+        .call("jobs.start", params)
+        .then((job) =>
+          setStored(
+            key === undefined ? { id: job.id, runs: runsBefore + 1 } : { id: job.id, runs: runsBefore + 1, command },
+          ),
+        )
         .catch((error: unknown) => {
           setStarting(undefined);
           reportError(host, error);
         });
     },
-    [host, workspaceId, command, setStored],
+    [host, workspaceId, command, key, setStored],
   );
 
   const gone = topic?.sync.kind === "failed" && topic.sync.error.code === "not_found";
   useEffect(() => {
-    if (loaded && (jobId === null || gone) && startedFor.current !== jobId) {
+    if (loaded && (jobId === null || gone || stale) && startedFor.current !== jobId) {
       start(jobId, runs);
     }
-  }, [loaded, jobId, gone, runs, start]);
+  }, [loaded, jobId, gone, stale, runs, start]);
 
   const running = state?.job.status.state === "running";
   const restart = useCallback(() => {
-    if (jobId !== null && running) {
+    // Under a key the daemon kills the replaced job itself.
+    if (jobId !== null && running && key === undefined) {
       setStarting(jobId);
       host.client
         .call("jobs.kill", { jobId })
@@ -173,7 +201,7 @@ export function useJob(command: string): Job {
     } else {
       start(jobId, runs);
     }
-  }, [host, jobId, running, runs, start]);
+  }, [host, jobId, running, key, runs, start]);
   const kill = useCallback(() => {
     if (jobId !== null) {
       host.client.call("jobs.kill", { jobId }).catch((error: unknown) => reportError(host, error));
@@ -205,7 +233,7 @@ export function useJob(command: string): Job {
   const slot = useSlotReport();
   const tail = useMemo(() => output.lines.slice(-JOB_TAIL), [output.lines]);
   useEffect(() => {
-    slot?.setJob(command, {
+    slot?.setJob(storeKey, {
       command,
       status: job.status,
       exitCode: job.exitCode,
@@ -214,8 +242,8 @@ export function useJob(command: string): Job {
       startedAt: job.startedAt,
       tail,
     });
-  }, [slot, command, job.status, job.exitCode, job.signal, job.runs, job.startedAt, tail]);
-  useEffect(() => () => slot?.setJob(command, undefined), [slot, command]);
+  }, [slot, storeKey, command, job.status, job.exitCode, job.signal, job.runs, job.startedAt, tail]);
+  useEffect(() => () => slot?.setJob(storeKey, undefined), [slot, storeKey]);
 
   return { ...job, ...output, state, restart, kill };
 }

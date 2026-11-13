@@ -46,6 +46,8 @@ pub enum JobError {
     EmptyCommand,
     #[error("the daemon is shutting down")]
     ShuttingDown,
+    #[error("job {0} belongs to another workspace")]
+    OtherWorkspace(String),
     #[error("cannot start the job: {0}")]
     Spawn(#[from] std::io::Error),
 }
@@ -54,7 +56,7 @@ impl From<JobError> for ErrorBody {
     fn from(error: JobError) -> Self {
         let code = match &error {
             JobError::NotFound(_) => ErrorCode::NotFound,
-            JobError::EmptyCommand => ErrorCode::BadRequest,
+            JobError::EmptyCommand | JobError::OtherWorkspace(_) => ErrorCode::BadRequest,
             JobError::ShuttingDown | JobError::Spawn(_) => ErrorCode::Internal,
         };
         ErrorBody::new(code, error.to_string())
@@ -300,6 +302,17 @@ struct Registry {
     closed: bool,
 }
 
+impl Registry {
+    /// Removes the job `id`, running or finished, and returns it.
+    fn forget(&mut self, id: &str) -> Option<Entry> {
+        let entry = self.jobs.remove(id)?;
+        if let Some(finished) = self.finished.get_mut(&entry.workspace_id) {
+            finished.retain(|kept| kept != id);
+        }
+        Some(entry)
+    }
+}
+
 /// Every job of the daemon. Cheap to clone.
 #[derive(Debug, Clone, Default)]
 pub struct Jobs {
@@ -313,13 +326,15 @@ impl Jobs {
 
     /// Runs `sh -c <command>` in `folder` for the workspace (DMN-080): the daemon's environment, stdin from
     /// `/dev/null`, a new process group. `started_by` is the thread whose agent asked, if one did: a cascade stop
-    /// kills its jobs (DMN-162). Must run inside a Tokio runtime.
+    /// kills its jobs (DMN-162). `replaces` is a job of the same workspace this one takes the place of (DMN-215): it is
+    /// killed if it still runs and forgotten at once; an unknown id is ignored. Must run inside a Tokio runtime.
     pub fn start(
         &self,
         workspace_id: &str,
         folder: &Path,
         command: &str,
         started_by: Option<&str>,
+        replaces: Option<&str>,
     ) -> Result<JobInfo, JobError> {
         if command.trim().is_empty() {
             return Err(JobError::EmptyCommand);
@@ -327,6 +342,14 @@ impl Jobs {
         let mut registry = self.lock();
         if registry.closed {
             return Err(JobError::ShuttingDown);
+        }
+        if let Some(old) = replaces
+            && registry
+                .jobs
+                .get(old)
+                .is_some_and(|entry| entry.workspace_id != workspace_id)
+        {
+            return Err(JobError::OtherWorkspace(old.to_owned()));
         }
         let mut child = Command::new("sh")
             .arg("-c")
@@ -373,6 +396,11 @@ impl Jobs {
                 control: Arc::clone(&control),
             },
         );
+        if let Some(old) = replaces.and_then(|old| registry.forget(old))
+            && let Some(escalation) = old.control.terminate()
+        {
+            tokio::spawn(escalation);
+        }
         drop(registry);
         tokio::spawn(
             self.clone()
@@ -719,13 +747,14 @@ mod tests {
                 dir.path(),
                 &format!("while [ ! -e '{}' ]; do sleep 0.01; done", gate.display()),
                 None,
+                None,
             )
             .unwrap();
-        let other = jobs.start("w2", dir.path(), "true", None).unwrap();
+        let other = jobs.start("w2", dir.path(), "true", None, None).unwrap();
         finished(&jobs.log(&other.id).unwrap()).await;
         let mut ids = Vec::new();
         for _ in 0..=FINISHED_KEPT {
-            let job = jobs.start("w1", dir.path(), "true", None).unwrap();
+            let job = jobs.start("w1", dir.path(), "true", None, None).unwrap();
             finished(&jobs.log(&job.id).unwrap()).await;
             ids.push(job.id);
         }
@@ -746,7 +775,7 @@ mod tests {
         let jobs = Jobs::default();
         jobs.shutdown().await;
         assert!(matches!(
-            jobs.start("w1", dir.path(), "true", None),
+            jobs.start("w1", dir.path(), "true", None, None),
             Err(JobError::ShuttingDown)
         ));
     }
@@ -759,12 +788,12 @@ mod tests {
         let wait = format!("while [ ! -e '{}' ]; do sleep 0.01; done", gate.display());
         let jobs = Jobs::default();
         let child = jobs
-            .start("w1", dir.path(), &wait, Some("01JCHILD"))
+            .start("w1", dir.path(), &wait, Some("01JCHILD"), None)
             .unwrap();
         let other = jobs
-            .start("w1", dir.path(), &wait, Some("01JOTHER"))
+            .start("w1", dir.path(), &wait, Some("01JOTHER"), None)
             .unwrap();
-        let user = jobs.start("w1", dir.path(), &wait, None).unwrap();
+        let user = jobs.start("w1", dir.path(), &wait, None, None).unwrap();
 
         jobs.kill_started_by(&["01JROOT".to_owned(), "01JCHILD".to_owned()]);
 
@@ -804,7 +833,7 @@ mod tests {
         let jobs = Jobs::default();
         // The shell exits at once; the background `sleep` keeps the group and the outputs, so the job keeps running.
         let job = jobs
-            .start("w1", dir.path(), "sleep 60 & exit 0", None)
+            .start("w1", dir.path(), "sleep 60 & exit 0", None, None)
             .unwrap();
         let control = Arc::clone(&jobs.lock().jobs[&job.id].control);
         let mut exited = control.exited.subscribe();
@@ -824,7 +853,7 @@ mod tests {
     async fn killing_a_finished_job_with_an_empty_group_signals_nothing() {
         let dir = tempfile::tempdir().unwrap();
         let jobs = Jobs::default();
-        let job = jobs.start("w1", dir.path(), "exit 0", None).unwrap();
+        let job = jobs.start("w1", dir.path(), "exit 0", None, None).unwrap();
         let control = Arc::clone(&jobs.lock().jobs[&job.id].control);
         finished(&jobs.log(&job.id).unwrap()).await;
         assert!(*control.exited.borrow());
@@ -833,5 +862,70 @@ mod tests {
         assert!(control.terminate().is_none());
         jobs.kill(&job.id).unwrap();
         jobs.kill_workspace("w1").await;
+    }
+
+    // spec: DMN-215
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_job_replacing_another_kills_it_if_running_and_forgets_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let jobs = Jobs::default();
+        let first = jobs
+            .start("w1", dir.path(), "sleep 60", None, None)
+            .unwrap();
+        let first_log = jobs.log(&first.id).unwrap();
+
+        let second = jobs
+            .start("w1", dir.path(), "exit 0", None, Some(&first.id))
+            .unwrap();
+
+        assert!(matches!(jobs.log(&first.id), Err(JobError::NotFound(_))));
+        let killed = finished(&first_log).await;
+        assert!(
+            matches!(
+                killed.job.status,
+                JobStatus::Exited {
+                    signal: Some(15),
+                    ..
+                }
+            ),
+            "{:?}",
+            killed.job.status
+        );
+        finished(&jobs.log(&second.id).unwrap()).await;
+
+        // A finished job is forgotten too, and leaves its place among the kept finished jobs.
+        let third = jobs
+            .start("w1", dir.path(), "exit 0", None, Some(&second.id))
+            .unwrap();
+        assert!(matches!(jobs.log(&second.id), Err(JobError::NotFound(_))));
+        finished(&jobs.log(&third.id).unwrap()).await;
+        assert_eq!(
+            jobs.lock().finished["w1"].iter().collect::<Vec<_>>(),
+            [&third.id]
+        );
+    }
+
+    // spec: DMN-215
+    #[tokio::test(flavor = "multi_thread")]
+    async fn an_unknown_replaced_job_is_ignored_and_another_workspaces_job_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let jobs = Jobs::default();
+        let other = jobs.start("w2", dir.path(), "exit 0", None, None).unwrap();
+
+        let job = jobs
+            .start("w1", dir.path(), "exit 0", None, Some("01JGONE"))
+            .unwrap();
+        let refused = jobs.start("w1", dir.path(), "exit 0", None, Some(&other.id));
+
+        assert!(
+            matches!(&refused, Err(JobError::OtherWorkspace(id)) if *id == other.id),
+            "{refused:?}"
+        );
+        assert_eq!(
+            ErrorBody::from(refused.unwrap_err()).code,
+            ErrorCode::BadRequest
+        );
+        finished(&jobs.log(&other.id).unwrap()).await;
+        finished(&jobs.log(&job.id).unwrap()).await;
     }
 }

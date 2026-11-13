@@ -921,13 +921,17 @@ pub struct WidgetJobReport {
     pub tail: Vec<String>,
 }
 
-/// `jobs.start` params (DMN-080).
+/// `jobs.start` params (DMN-080, DMN-215).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StartJobParams {
     pub workspace_id: String,
     /// Run as `sh -c <command>` in the workspace folder.
     pub command: String,
+    /// A job of the same workspace the new one takes the place of: killed if it still runs, then forgotten (its
+    /// topic is `not_found` for new subscribers); an unknown id is ignored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replaces: Option<String>,
 }
 
 /// Params naming one job.

@@ -140,7 +140,7 @@ user, with no restrictions (full access, D-17):
 | Need | SDK | Daemon side |
 | --- | --- | --- |
 | Follow a command the agent runs with its `bash` tool | `useToolRun(toolCallId)` or `useToolRun({ match: /nextest/ })` (latest matching run in the thread) | omp's `tool_execution_update` frames in the thread topic; omp 18.18.6 streams the bash output's latest tail while the command runs (contract test, AGT-020) |
-| Run its own command | `useJob(command)` → `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, kill, restart }` | **jobs** (DMN-080, DMN-081): `jobs.start { workspaceId, command }`, topic `job/<id>`, `jobs.kill` |
+| Run its own command | `useJob(command, { key? })` → `{ status, lines, stdout, stderr, exitCode, signal, runs, startedAt, kill, restart }` | **jobs** (DMN-080, DMN-081, DMN-215): `jobs.start { workspaceId, command, replaces? }`, topic `job/<id>`, `jobs.kill` |
 | Share state with the agent | `useStored(key, initial)` | per-instance state in the daemon (DMN-086) |
 
 **Loading** — the daemon serves workspace and user widgets over HTTP as ES modules, transpiling TypeScript/JSX with
@@ -267,6 +267,13 @@ by X", a cascade stop for everything a thread spawned, and an activity log of ag
 | AGT-079 | **Typed init files**: `omfp/sdk` MUST export the types `InitApi` (what `export default function init(omfp: InitApi)` receives), `ViewsApi` (`omfp.views`) and the `Layout` class, and `omfp://docs/widgets` MUST show init files written against them (`import type { InitApi } from "omfp/sdk"`). |
 | AGT-080 | **New MCP tools without a restart**: the control note (AGT-045) MUST tell the agent that MCP servers added (`/mcp add`, a config file) or reauthorized (`/mcp reauth`) give it their tools from its next turn, because omfp reloads its omp once it is idle (DMN-201..204), so it never asks the user to restart. |
 | AGT-085 | **Light session facts**: the control note (AGT-045) MUST point the agent to `thread.session { threadId }` (PRT-125) for a thread's session id, session file, model, state or cost, saying that it is small and never starts omp while `thread.state` is omp's whole state (tool definitions, system prompt). |
+
+### Jobs
+
+| ID | Requirement |
+| --- | --- |
+| AGT-086 | **`useJob(command, { key })`**: with a `key`, the job slot is the key, not the command: the hook stores `{ id, runs, command }` under `jobkey:<key>` (without a key `job:<command>`, AGT-019, unchanged). When the stored command differs from `command`, the hook starts `command` with `jobs.start { replaces: <stored id> }` (DMN-215), counted as a run, and shows `pending` with no lines until the new job is stored; `restart()` replaces the job the same way, without `jobs.kill`. So a widget running a command per input (a search per query) keeps one stored key and one daemon job. |
+| AGT-087 | **Where a job runs, for agents**: `omfp://docs/widgets` MUST document `useJob`'s `key` and, in its Jobs section, what a job runs in: `sh -c` (not a login shell), cwd the workspace folder (not a repository), the daemon's environment unchanged (so whatever started the daemon decides `PATH`: a terminal, the desktop session, a systemd user service; the Nix install's `PATH` additions), no dev shell (`nix develop -c …` explicitly), stdin `/dev/null` without a terminal, no timeout and what kills a job, the output limits (64 KiB lines, the newest 1 MiB kept) and the retention (memory only, 32 finished jobs per workspace, a restart forgets all, a replaced job at once, the stored keys kept). The widgets note and the `widget-builder` agent (AGT-024, AGT-029) MUST say it in one line: the shell, the folder, the daemon's environment without login or dev shell, no timeout, `key` for commands built from input, and where to read more. |
 
 ## Constraints that apply from day one
 

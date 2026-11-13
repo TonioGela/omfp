@@ -287,11 +287,18 @@ expression: method_schemas()
   "jobs.start": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
-      "description": "`jobs.start` params (DMN-080).",
+      "description": "`jobs.start` params (DMN-080, DMN-215).",
       "properties": {
         "command": {
           "description": "Run as `sh -c <command>` in the workspace folder.",
           "type": "string"
+        },
+        "replaces": {
+          "description": "A job of the same workspace the new one takes the place of: killed if it still runs, then forgotten (its\ntopic is `not_found` for new subscribers); an unknown id is ignored.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "workspaceId": {
           "type": "string"

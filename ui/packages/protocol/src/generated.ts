@@ -1004,10 +1004,15 @@ export type Settings = {
   ui: UiSettings;
 };
 
-/** `jobs.start` params (DMN-080). */
+/** `jobs.start` params (DMN-080, DMN-215). */
 export type StartJobParams = {
   /** Run as `sh -c <command>` in the workspace folder. */
   command: string;
+  /**
+   * A job of the same workspace the new one takes the place of: killed if it still runs, then forgotten (its
+   * topic is `not_found` for new subscribers); an unknown id is ignored.
+   */
+  replaces?: string | null;
   workspaceId: string;
 };
 
