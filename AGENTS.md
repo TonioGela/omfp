@@ -91,6 +91,7 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue as resources);
                       the MCP servers omp loads for a workspace (omp_mcp.rs: the config files omp reads, the `/mcp test`
                       reply; supervisor/mcp.rs: checks by the thread's omp, reconnect by restart, M13);
+                      `thread.session`, a thread's session facts without omp's whole state (server/dispatch/session.rs);
                       `omfp_daemon::{start, run, discover}` back `omfp daemon` and `omfp desktop`;
                       examples/test_daemon.rs: the fake-launcher daemon the TS transport suite runs against
 crates/omfp           the `omfp` binary (D-15): `daemon`, `theme set` (remote.rs: protocol client of the CLI),
@@ -180,6 +181,8 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, and `omfp_core::OMP_VERSION`. To upg
 - `--approval-mode` takes `always-ask`, `always-ask-cached`, `write` or `yolo` only; on any other value (or any
   invalid flag value) omp prints a usage error to stderr and exits, which omp-rpc reports as `server closed`: the
   daemon validates the value at the protocol (DMN-210) and returns omp's stderr tail with start errors (DMN-212).
+- `get_state` carries the tool definitions and the system prompt (about 35 KB); `get_session_stats` is the small read of
+  a session's cost, tokens and context use (`thread.session`'s `usage`).
 - Tools offered by default: read, bash, edit, ask, eval, glob, grep, task, wait, todo, web_search, write (`find`,
   `ast_grep` and `ast_edit` exist but are off by default — `find.enabled`, `astGrep.enabled`, `astEdit.enabled` —; no
   `fetch` tool: `read` fetches URLs). `edit` takes hashline input whose `[path#TAG]` needs a prior `read`.

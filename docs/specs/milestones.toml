@@ -782,6 +782,12 @@ requirements = [
   "DMN-211",
   "DMN-212",
   "TST-106",
+  # thread.session (agent feedback)
+  "PRT-125",
+  "PRT-126",
+  "DMN-213",
+  "DMN-214",
+  "AGT-085",
   # Journeys
   "E2E-22",
   "E2E-23",

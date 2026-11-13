@@ -396,6 +396,9 @@ pub(super) async fn thread(services: &Services, principal: &Principal, call: Cal
             forward(params.thread_id, OmpCall::Bash(command)).await
         }
         Call::ThreadState(params) => forward(params.thread_id, OmpCall::State).await,
+        Call::ThreadSession(params) => {
+            ok(&super::session::thread_session(services, &params.thread_id).await?)
+        }
         Call::ThreadRestart(params) => {
             supervisor
                 .restart(&params.thread_id)

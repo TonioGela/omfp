@@ -1476,6 +1476,105 @@ async fn a_later_start_failure_keeps_the_thread_failed_with_omps_stderr_until_a_
     assert_eq!(daemon.launcher.launches().len(), 1);
 }
 
+// spec: PRT-125, PRT-126, DMN-213, DMN-214
+#[tokio::test(flavor = "multi_thread")]
+async fn thread_session_answers_the_sessions_small_facts_without_starting_omp() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let created = client
+        .ok(
+            "threads.create",
+            json!({ "title": "facts", "model": "fake/scripted", "thinkingLevel": "high", "approvalMode": "write" }),
+        )
+        .await;
+    let thread = created["id"].as_str().unwrap().to_owned();
+    let workspaces = client.ok("workspaces.list", json!({})).await;
+    let cwd = workspaces["workspaces"][0]["path"].clone();
+    let session_dir = std::path::absolute(
+        daemon
+            .dir
+            .path()
+            .join("threads")
+            .join(&thread)
+            .join("sessions"),
+    )
+    .unwrap();
+    let facts = |extra: Value| {
+        let mut facts = json!({
+            "threadId": thread, "workspaceId": created["workspaceId"], "cwd": cwd, "roots": [],
+            "sessionDir": session_dir, "model": "fake/scripted", "thinkingLevel": "high", "approvalMode": "write",
+            "needsAttention": false,
+        });
+        facts
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        facts
+    };
+
+    // Before the first start: no session yet, and asking does not start omp.
+    let session = client
+        .ok("thread.session", json!({ "threadId": thread }))
+        .await;
+    assert_eq!(
+        session,
+        facts(json!({ "process": { "state": "stopped" }, "settled": true }))
+    );
+    assert_eq!(daemon.launcher.launches().len(), 0);
+
+    // While omp runs: its usage (omp `get_session_stats`) and the transcript the daemon holds.
+    daemon.launcher.reply(
+        "get_session_stats",
+        FakeReply::Ok(json!({
+            "sessionId": "s", "userMessages": 1, "assistantMessages": 1, "toolCalls": 0, "toolResults": 0,
+            "totalMessages": 2, "premiumRequests": 0, "cost": 0.25,
+            "tokens": { "input": 1200, "output": 300, "cacheRead": 800, "cacheWrite": 100, "total": 2400, "reasoning": 0 },
+            "contextUsage": { "tokens": 2000, "contextWindow": 200_000, "percent": 1.0 }
+        })),
+    );
+    client
+        .ok(
+            "thread.prompt",
+            json!({ "threadId": thread, "text": "hello" }),
+        )
+        .await;
+    let session = client
+        .ok("thread.session", json!({ "threadId": thread }))
+        .await;
+    let session_id = session["sessionId"]
+        .as_str()
+        .expect("the session id")
+        .to_owned();
+    assert_eq!(
+        session,
+        facts(json!({
+            "sessionId": session_id, "process": { "state": "running" }, "settled": true, "messageCount": 0,
+            "usage": {
+                "cost": 0.25,
+                "tokens": { "input": 1200, "output": 300, "cacheRead": 800, "cacheWrite": 100, "total": 2400 },
+                "context": { "tokens": 2000, "contextWindow": 200_000, "percent": 1.0 }
+            }
+        }))
+    );
+
+    // Stopped: no usage; the session file is found in the session directory by the session id.
+    let file = session_dir.join(format!("2026-11-13T10-00-00-000Z_{session_id}.jsonl"));
+    std::fs::write(&file, "").unwrap();
+    client
+        .ok("thread.stop", json!({ "threadId": thread }))
+        .await;
+    let session = client
+        .ok("thread.session", json!({ "threadId": thread }))
+        .await;
+    assert_eq!(
+        session,
+        facts(json!({
+            "sessionId": session_id, "sessionFile": file, "process": { "state": "stopped" }, "settled": true,
+            "messageCount": 0
+        }))
+    );
+}
+
 // spec: DMN-029
 #[tokio::test(flavor = "multi_thread")]
 async fn a_repository_linked_while_omp_starts_is_a_root_before_the_next_prompt() {

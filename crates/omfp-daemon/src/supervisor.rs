@@ -800,6 +800,15 @@ impl Supervisor {
         Ok(result)
     }
 
+    /// Forwards a read-only omp command only when the thread's omp runs, `None` otherwise: it never starts omp and is
+    /// no activity of the thread (DMN-214).
+    pub async fn call_if_running(&self, id: &str, call: OmpCall) -> Result<Option<Value>> {
+        let Some(process) = self.lookup(id).and_then(|actor| actor.process()) else {
+            return Ok(None);
+        };
+        Ok(Some(blocking(move || process.call(call)).await??))
+    }
+
     /// A fork moves the process to a new session file, whose id is stored (DMN-072); a fork or a navigation changes
     /// the branch the transcript shows, which omp announces with no event: the daemon reads the session and its
     /// messages again and records them as a `history` event (DMN-111).

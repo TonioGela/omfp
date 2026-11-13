@@ -13,7 +13,7 @@ use crate::dto::{
     DiffPage, FileCandidates, FileContent, FileWritten, GitStatus, JobInfo, Settings, Theme,
     ThreadSummary, Workspace,
 };
-use crate::{activity, lists, mcp, params};
+use crate::{activity, lists, mcp, params, session};
 use omfp_core::wire;
 
 /// A protocol method: its wire name and the types of its params and result.
@@ -216,8 +216,10 @@ methods! {
     ThreadBash = "thread.bash" (params::BashParams) -> wire::BashResult as Value;
     /// Git status of every repository of the thread's workspace.
     ThreadGit = "thread.git" (params::ThreadRef) -> params::ThreadGit;
-    /// Session state (omp `get_state`).
+    /// omp's full session state (`get_state`, with tool definitions and system prompt: tens of KB); starts omp.
     ThreadState = "thread.state" (params::ThreadRef) -> wire::SessionState as Value;
+    /// The small facts of the thread's omp session (id, file, model, state, usage) without starting omp (PRT-125).
+    ThreadSession = "thread.session" (params::ThreadRef) -> session::ThreadSession;
     /// Restarts the omp process.
     ThreadRestart = "thread.restart" (params::ThreadRef) -> params::Empty;
     /// Stops the omp process; with `cascade`, those of every thread it spawned too (PRT-085, AGT-071).

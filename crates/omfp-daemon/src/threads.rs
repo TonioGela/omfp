@@ -4,7 +4,7 @@
 //!
 //! Calls are blocking; the server layer runs them on blocking tasks.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::paths::DataDir;
@@ -173,5 +173,51 @@ impl Threads {
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.into()),
             _ => Ok(()),
         }
+    }
+}
+
+/// The file of omp session `session_id` in a thread's session directory: omp names it `<timestamp>_<id>.jsonl`, so
+/// the newest such name when there are several; `None` while omp has not written it (DMN-213).
+#[must_use]
+pub fn session_file(session_dir: &Path, session_id: &str) -> Option<PathBuf> {
+    let suffix = format!("_{session_id}.jsonl");
+    std::fs::read_dir(session_dir)
+        .ok()?
+        .filter_map(std::result::Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.ends_with(&suffix))
+        })
+        .max()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // spec: DMN-213
+    #[test]
+    fn the_session_file_is_the_newest_file_named_after_the_session() {
+        let dir = tempfile::tempdir().unwrap();
+        for name in [
+            "2026-11-01T10-00-00-000Z_s1.jsonl",
+            "2026-11-02T10-00-00-000Z_s1.jsonl",
+            "2026-11-03T10-00-00-000Z_s2.jsonl",
+            "2026-11-04T10-00-00-000Z_s1.txt",
+        ] {
+            std::fs::write(dir.path().join(name), "").unwrap();
+        }
+        std::fs::create_dir(dir.path().join("2026-11-05T10-00-00-000Z_s1.jsonl")).unwrap();
+
+        assert_eq!(
+            session_file(dir.path(), "s1"),
+            Some(dir.path().join("2026-11-02T10-00-00-000Z_s1.jsonl"))
+        );
+        assert_eq!(session_file(dir.path(), "s3"), None);
+        assert_eq!(session_file(&dir.path().join("missing"), "s1"), None);
     }
 }

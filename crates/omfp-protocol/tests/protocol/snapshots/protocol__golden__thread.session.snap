@@ -1,0 +1,54 @@
+---
+source: crates/omfp-protocol/tests/protocol/golden.rs
+expression: golden
+---
+{
+  "request": {
+    "id": "c42",
+    "method": "thread.session",
+    "params": {
+      "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D"
+    },
+    "type": "request"
+  },
+  "response": {
+    "id": "c42",
+    "ok": true,
+    "result": {
+      "approvalMode": "yolo",
+      "cwd": "/home/ada/omfp/workspaces/checkout-v2",
+      "messageCount": 14,
+      "model": "anthropic/claude-sonnet-4-5",
+      "needsAttention": false,
+      "process": {
+        "state": "running"
+      },
+      "roots": [
+        "/home/ada/omfp/workspaces/checkout-v2/shop"
+      ],
+      "sessionDir": "/home/ada/.local/share/omfp/threads/01JD8X3Q4T9V2W6Y5Z7A1B3C4D/sessions",
+      "sessionFile": "/home/ada/.local/share/omfp/threads/01JD8X3Q4T9V2W6Y5Z7A1B3C4D/sessions/2026-11-13T09-12-44-120Z_0f8e2c4a-5b1d-4e7f-9a3c-2d6b8e1f4a7c.jsonl",
+      "sessionId": "0f8e2c4a-5b1d-4e7f-9a3c-2d6b8e1f4a7c",
+      "settled": false,
+      "thinkingLevel": "high",
+      "threadId": "01JD8X3Q4T9V2W6Y5Z7A1B3C4D",
+      "usage": {
+        "context": {
+          "contextWindow": 200000,
+          "percent": 30.625,
+          "tokens": 61250
+        },
+        "cost": 0.4213,
+        "tokens": {
+          "cacheRead": 210400,
+          "cacheWrite": 12800,
+          "input": 48210,
+          "output": 6532,
+          "total": 277942
+        }
+      },
+      "workspaceId": "01JD8X3Q4T9V2W6Y5Z7A1B3C5E"
+    },
+    "type": "response"
+  }
+}

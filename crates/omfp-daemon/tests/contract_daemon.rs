@@ -655,3 +655,61 @@ async fn the_first_message_names_the_thread_through_an_omp_print_mode_run() {
     daemon.handle.shutdown().await.unwrap();
     harness.assert_no_stray_network();
 }
+
+// spec: PRT-125, PRT-126, DMN-213, DMN-214
+#[tokio::test(flavor = "multi_thread")]
+async fn thread_session_matches_omps_state_in_a_fraction_of_its_size() {
+    let harness = Harness::new(vec![Step::reply(Reply::text("Small facts."))]).await;
+    let daemon = Daemon::start(&harness).await;
+    let mut client = daemon.client("session-facts").await;
+    let thread = client
+        .ok(
+            "threads.create",
+            json!({ "title": "facts", "model": model() }),
+        )
+        .await;
+    let thread = thread["id"].as_str().unwrap().to_owned();
+    let mut view = Follower::snapshot(&mut client, &thread, None).await;
+    let id = prompt(&mut client, &thread, "hello").await;
+    view.until(&mut client, settled_after(&id)).await;
+
+    let state = client
+        .ok("thread.state", json!({ "threadId": thread }))
+        .await;
+    let session = client
+        .ok("thread.session", json!({ "threadId": thread }))
+        .await;
+    assert_eq!(session["sessionId"], state["sessionId"]);
+    assert_eq!(session["sessionFile"], state["sessionFile"]);
+    assert!(
+        std::path::Path::new(session["sessionFile"].as_str().unwrap()).is_file(),
+        "{session}"
+    );
+    assert_eq!(session["model"], model());
+    assert_eq!(session["process"], json!({ "state": "running" }));
+    assert_eq!(session["settled"], true);
+    assert_eq!(session["messageCount"], state["messageCount"]);
+    let usage = &session["usage"];
+    assert!(usage["cost"].is_number(), "{session}");
+    assert!(usage["tokens"]["total"].as_i64().unwrap() > 0, "{session}");
+    let (small, full) = (session.to_string().len(), state.to_string().len());
+    assert!(small * 10 < full, "{small} bytes against {full}");
+
+    // Stopped: omp's usage is gone, the rest stays and nothing restarts omp.
+    client
+        .ok("thread.stop", json!({ "threadId": thread }))
+        .await;
+    let stopped = client
+        .ok("thread.session", json!({ "threadId": thread }))
+        .await;
+    assert_eq!(stopped["sessionFile"], state["sessionFile"]);
+    assert_eq!(stopped["process"], json!({ "state": "stopped" }));
+    assert_eq!(stopped.get("usage"), None);
+    let index = client.ok("threads.list", json!({})).await;
+    assert_eq!(
+        index["threads"][0]["process"],
+        json!({ "state": "stopped" })
+    );
+    daemon.handle.shutdown().await.unwrap();
+    harness.assert_no_stray_network();
+}

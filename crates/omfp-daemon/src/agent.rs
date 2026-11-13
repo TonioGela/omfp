@@ -14,12 +14,13 @@ use omp_rpc::{
     CompactCommand, Event, ExtensionUiResponse, FollowUpCommand, ForkCommand,
     GetAvailableCommandsCommand, GetAvailableCommandsResult, GetAvailableModelsCommand,
     GetAvailableModelsResult, GetAvailableThinkingLevelsCommand, GetAvailableThinkingLevelsResult,
-    GetMessagesCommand, GetMessagesResult, GetStateCommand, GetSubagentMessagesCommand,
-    GetSubagentsCommand, GetSubagentsResult, GetTreeCommand, GoalCommand, HostTool, HostUri,
-    LiveConnectCommand, LiveMuteCommand, LiveMuteResult, LiveStartCommand, LiveStartResult,
-    LiveStopCommand, NavigateTreeCommand, PromoteQueuedMessageCommand, PromptCommand,
-    RemoveQueuedMessageCommand, RpcInbound, SetLabelCommand, SetModelCommand,
-    SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand, SteerSubagentCommand,
+    GetMessagesCommand, GetMessagesResult, GetSessionStatsCommand, GetStateCommand,
+    GetSubagentMessagesCommand, GetSubagentsCommand, GetSubagentsResult, GetTreeCommand,
+    GoalCommand, HostTool, HostUri, LiveConnectCommand, LiveMuteCommand, LiveMuteResult,
+    LiveStartCommand, LiveStartResult, LiveStopCommand, NavigateTreeCommand,
+    PromoteQueuedMessageCommand, PromptCommand, RemoveQueuedMessageCommand, RpcInbound,
+    SetLabelCommand, SetModelCommand, SetSessionNameCommand, SetThinkingLevelCommand, SteerCommand,
+    SteerSubagentCommand,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -59,6 +60,8 @@ pub enum OmpCall {
     Btw(BtwCommand),
     Bash(BashCommand),
     State,
+    /// The session's cost, tokens and context use (`get_session_stats`, DMN-214).
+    SessionStats,
     /// The transcript of the session's current branch (`get_messages`), reloaded after a fork or a navigation
     /// (DMN-111).
     Messages,
@@ -102,6 +105,7 @@ impl OmpCall {
             Self::Btw(_) => "btw",
             Self::Bash(_) => "bash",
             Self::State => "get_state",
+            Self::SessionStats => "get_session_stats",
             Self::Messages => "get_messages",
             Self::SetSessionName(_) => "set_session_name",
             Self::LiveConnect(_) => "live_connect",
@@ -343,6 +347,7 @@ impl AgentProcess for OmpAgent {
             OmpCall::Btw(command) => self.run_as(command, |record| BtwResult { record }),
             OmpCall::Bash(command) => self.run(command),
             OmpCall::State => self.run(&GetStateCommand {}),
+            OmpCall::SessionStats => self.run(&GetSessionStatsCommand {}),
             OmpCall::Messages => self.run_as(&GetMessagesCommand {}, |messages| {
                 GetMessagesResult { messages }
             }),

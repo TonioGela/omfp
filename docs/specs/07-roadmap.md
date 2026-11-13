@@ -577,7 +577,8 @@ follow-ups: local command output shows as a card (PRT-120, UI-345, TST-105), URL
 card (UI-346, UI-347), `omfp:mcp` offers Reauthorize (UI-348), and the daemon restarts a free thread by itself to load
 new or reauthorized MCP tools (DMN-200..DMN-204, PRT-121, UI-349, AGT-080). Agent feedback: `approvalMode` takes
 omp's values only, `threads.create` leaves nothing behind when the new thread's omp cannot start, and start errors carry
-omp's stderr tail (DMN-210..DMN-212, TST-106).
+omp's stderr tail (DMN-210..DMN-212, TST-106); `thread.session` answers a thread's session id, file, model, state and
+usage without omp's whole state and without starting omp (PRT-125, PRT-126, DMN-213, DMN-214, AGT-085).
 
 Acceptance: a workspace `init.ts` written after the window opened adds a view, a command and its binding, and a syntax
 error shows the banner until the fix (E2E-22); `init.ts` views computed from the repositories and a TSX view render and

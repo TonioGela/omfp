@@ -13,6 +13,7 @@ mod mcp;
 pub mod method;
 mod params;
 mod schema;
+mod session;
 mod topic;
 
 pub use activity::{
@@ -57,6 +58,7 @@ pub use params::{
     UnmountParams, Unmounted, WidgetLibrary, WidgetSaved,
 };
 pub use schema::type_schemas;
+pub use session::{ContextUsage, SessionTokens, SessionUsage, ThreadSession};
 pub use topic::{Topic, TopicParseError};
 
 /// Protocol version announced in `system.hello` (PRT-004).

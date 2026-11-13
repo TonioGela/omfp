@@ -82,6 +82,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "thread.subagent_messages"
         | "thread.git"
         | "thread.state"
+        | "thread.session"
         | "theme.get"
         | "settings.get"
         | "widgets.library"

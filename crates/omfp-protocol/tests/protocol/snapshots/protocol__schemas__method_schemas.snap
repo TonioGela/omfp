@@ -2599,6 +2599,244 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "thread.session": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "Params naming one thread.",
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "title": "ThreadRef",
+      "type": "object"
+    },
+    "result": {
+      "$defs": {
+        "ApprovalMode": {
+          "description": "omp's `--approval-mode` (`tools.approvalMode`): which tool calls omp asks the user to approve (DMN-074, DMN-210).\nomp 18.18.6 exits at startup on any other value.",
+          "oneOf": [
+            {
+              "const": "always-ask",
+              "description": "Runs read tools; asks before write and exec tools.",
+              "type": "string"
+            },
+            {
+              "const": "always-ask-cached",
+              "description": "Like `always-ask`, but a file read or write can be approved for a file or folder, for the session or for\ngood.",
+              "type": "string"
+            },
+            {
+              "const": "write",
+              "description": "Runs read and write tools; asks before exec tools.",
+              "type": "string"
+            },
+            {
+              "const": "yolo",
+              "description": "Runs every tool without asking (the default).",
+              "type": "string"
+            }
+          ]
+        },
+        "ContextUsage": {
+          "description": "The context window's use by the session's current branch.",
+          "properties": {
+            "contextWindow": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "percent": {
+              "description": "`tokens` as a percentage of `contextWindow`.",
+              "format": "double",
+              "type": "number"
+            },
+            "tokens": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "tokens",
+            "contextWindow",
+            "percent"
+          ],
+          "type": "object"
+        },
+        "SessionTokens": {
+          "description": "Tokens of a session's model calls so far.",
+          "properties": {
+            "cacheRead": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "cacheWrite": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "input": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "output": {
+              "format": "int64",
+              "type": "integer"
+            },
+            "total": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "input",
+            "output",
+            "cacheRead",
+            "cacheWrite",
+            "total"
+          ],
+          "type": "object"
+        },
+        "SessionUsage": {
+          "description": "A session's cost and tokens (omp `get_session_stats`, DMN-214).",
+          "properties": {
+            "context": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ContextUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "How full the model's context window is; absent when omp cannot tell."
+            },
+            "cost": {
+              "description": "Cost of the session's model calls so far, in US dollars.",
+              "format": "double",
+              "type": "number"
+            },
+            "tokens": {
+              "$ref": "#/$defs/SessionTokens"
+            }
+          },
+          "required": [
+            "cost",
+            "tokens"
+          ],
+          "type": "object"
+        }
+      },
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`thread.session` result: what the daemon knows of a thread's omp session; it never starts omp (PRT-125). Absent\nfields are unknown: `sessionId` before the thread's first start, `sessionFile` until omp wrote it, `messageCount`\nuntil omp loaded the session in this daemon run, `usage` while omp does not run (PRT-126).",
+      "properties": {
+        "approvalMode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ApprovalMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "omp's `--approval-mode` (DMN-074, DMN-210)."
+        },
+        "cwd": {
+          "description": "omp's working directory: the workspace folder (ARC-008).",
+          "type": "string"
+        },
+        "messageCount": {
+          "description": "Messages of the session's current branch (the transcript the thread topic shows); absent until omp loaded\nthe session in this daemon run.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "`provider/id` the thread was created or last set with (`thread.set_model`); absent: omp's default model.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "needsAttention": {
+          "description": "Interactive requests are waiting for an answer.",
+          "type": "boolean"
+        },
+        "process": {
+          "description": "`omfp_core::ProcessState`, as on the thread summary."
+        },
+        "roots": {
+          "description": "The repository roots the thread's omp session has (`--add-dir` at its last start, `/add-dir` and\n`/remove-dir` since, DMN-029); `[]` before its first start.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sessionDir": {
+          "description": "The thread's private omp session directory (`--session-dir`, ARC-020).",
+          "type": "string"
+        },
+        "sessionFile": {
+          "description": "The session's `.jsonl` file: as omp reported it when it loaded the session, else the file of `sessionId` in\n`sessionDir` (DMN-213); absent while omp has not written it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sessionId": {
+          "description": "omp's session id; absent before the thread's first start.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "settled": {
+          "description": "Idle with nothing queued or pending (omp's `session_settled`); `false` while the agent works.",
+          "type": "boolean"
+        },
+        "thinkingLevel": {
+          "description": "omp's thinking level the thread was created or last set with (`thread.set_thinking`); absent: omp's default.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SessionUsage"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the session used so far, from the thread's running omp (DMN-214); absent while omp does not run."
+        },
+        "workspaceId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId",
+        "workspaceId",
+        "cwd",
+        "roots",
+        "sessionDir",
+        "process",
+        "settled",
+        "needsAttention"
+      ],
+      "title": "ThreadSession",
+      "type": "object"
+    }
+  },
   "thread.set_model": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

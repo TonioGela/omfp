@@ -156,8 +156,8 @@ pub fn write_widget_builder(data: &DataDir) -> std::io::Result<bool> {
 }
 
 /// The control note (AGT-045): the thread's own id, `omfp_call` over every protocol method and its catalogue,
-/// `omfp_thread_wait`, the UI mount and component tools (AGT-061..065), and that new MCP tools arrive without a
-/// restart (AGT-080).
+/// `thread.session` for a thread's session facts (AGT-085), `omfp_thread_wait`, the UI mount and component tools
+/// (AGT-061..065), and that new MCP tools arrive without a restart (AGT-080).
 #[must_use]
 pub fn control_note(thread_id: &str) -> String {
     use crate::agent_tools::mounts::{
@@ -168,7 +168,9 @@ pub fn control_note(thread_id: &str) -> String {
          \n\
          You can drive omfp as the user's windows do, through every protocol method; your thread id is {thread_id}.\n\
          - {call} {{ method, params }} calls one, e.g. threads.list, threads.create {{ workspace, title, prompt }}, \
-         thread.prompt; {methods} lists them all, {methods}/<name> gives one's params and result schemas.\n\
+         thread.prompt; {methods} lists them all, {methods}/<name> gives one's params and result schemas. For a \
+         thread's session id, session file, model, state or cost call thread.session {{ threadId }}: it is small and \
+         never starts omp, while thread.state is omp's whole state (tool definitions, system prompt).\n\
          - {wait} {{ threadId, promptId? }} waits until another thread is done or needs the user and answers its \
          last reply: use it instead of polling.\n\
          - Show UI to the user with {UI_MOUNT} {{ id, code | widget, props?, view?, panel? }} (a view, a new \
@@ -368,6 +370,19 @@ mod tests {
             "/mcp reauth",
             "from your next turn",
             "never ask the user to restart",
+        ] {
+            assert!(text.contains(rule), "{rule:?} missing: {text}");
+        }
+    }
+
+    // spec: AGT-085
+    #[test]
+    fn the_control_note_points_to_thread_session_for_a_threads_session_facts() {
+        let text = control_note("01THREAD");
+        for rule in [
+            "session id, session file, model, state or cost call thread.session { threadId }",
+            "never starts omp",
+            "thread.state is omp's whole state",
         ] {
             assert!(text.contains(rule), "{rule:?} missing: {text}");
         }

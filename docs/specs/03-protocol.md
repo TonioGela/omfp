@@ -136,6 +136,8 @@ previous settings stay). A thread summary carries `title` (`""` until the first 
 | `thread.subagents` / `.subagent_messages` / `.subagent_steer` / `.subagent_cancel` | `threadId`, `subagentId`, … | `{ subagents }` / transcript page / `{}` |
 | `thread.goal` / `thread.btw` / `thread.bash` | per 02 | `{ goal, state }` / `{ record }` / bash result |
 | `thread.git` | `threadId` | `{ workspaceId, repos }`: the status of every repository of the thread's workspace (convenience over `workspaces.status`) |
+| `thread.session` | `threadId` | `ThreadSession`: the small facts of the thread's omp session (ids, files, model, state, usage), never starting omp (PRT-125, PRT-126) |
+| `thread.state` | `threadId` | omp's whole `get_state` (with its tool definitions and system prompt: tens of KB); starts omp (DMN-070) |
 | `thread.restart` | `threadId` | `{}` |
 | `thread.stop` | `threadId`, `cascade?` (default `false`: also the threads it spawned, AGT-071) | `{ threadIds }`: the threads whose omp process is now stopped (PRT-085) |
 | `thread.live_connect` | `threadId`, `sdpOffer` (the browser peer's SDP offer: one sendrecv Opus track plus an `oai-events` data channel) | `{ sdpAnswer, voice }` once omp signaled the call (DMN-100); `conflict` while the thread has a live session (DMN-101) |
@@ -209,6 +211,16 @@ record (`get_available_models` → `{ models }`, not `[ModelInfo]`).
 | PRT-114 | A server's `state` MUST be `configured` (enabled, not checked), `connected` (omp connected and listed its `tools`), `failed` (omp's `error`) or `disabled` (`enabled: false`, unless the user config's `enabledServers` names it, or named in its `disabledServers`): what omp's `/mcp test` saw, not its live connection, which omp 18.18.6 does not expose (M13 spike). |
 | PRT-120 | The thread state's `notices` (UI-043) MUST also hold the output of local slash commands, `{ type: "command_output", data: { text } }` (a user's `/…` prompt answered without a model turn, and background ones like `/mcp reauth` arriving later), and the URLs omp asks the client to open, `{ type: "open_url", data: { id, url, launchUrl?, instructions? } }` (besides `presentation.open_url`); unlike other notices they survive a `history` event, placed at most after its last message. |
 | PRT-121 | `ThreadSummary` carries `mcpReloadPending?: boolean` (absent when `false`): the thread's omp should restart to load new or reauthorized MCP tools but background work holds the restart back (DMN-204); `thread.mcp_reconnect { threadId }` (PRT-112) loads them. |
+
+## Thread session
+
+An agent that wants a thread's session id or state should not have to read omp's whole `get_state` (about 35 KB with
+the tool definitions and the system prompt).
+
+| ID | Requirement |
+| --- | --- |
+| PRT-125 | `thread.session { threadId }` (permission `Read`) MUST answer `ThreadSession { threadId, workspaceId, cwd, roots, sessionDir, sessionId?, sessionFile?, model?, thinkingLevel?, approvalMode?, process, settled, needsAttention, messageCount?, usage? }` from what the daemon holds, without starting omp (DMN-213): `cwd` is the workspace folder, `roots` the repository roots the thread's session has (`[]` before its first start), `model` (`provider/id`) and `thinkingLevel` the ones the thread was created or last set with (absent: omp's default), `process`, `settled` and `needsAttention` as on `ThreadSummary`. An unknown thread is `not_found`. |
+| PRT-126 | Fields that need omp are absent when it cannot give them: `sessionId` before the thread's first start; `sessionFile` until omp wrote the session's file; `messageCount` (the messages of the session's current branch, the transcript of the `thread/<id>` topic) until omp loaded the session in this daemon run; `usage { cost, tokens { input, output, cacheRead, cacheWrite, total }, context? { tokens, contextWindow, percent } }` while the thread's omp does not run (DMN-214). |
 
 ## Views and jobs (M4)
 

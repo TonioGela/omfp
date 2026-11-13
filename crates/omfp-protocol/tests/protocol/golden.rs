@@ -1,6 +1,7 @@
 //! Golden JSON of every protocol method: one example request and its response per method, as insta snapshots, so
 //! every change to the wire format shows up in review.
 
+use omfp_core::ProcessState;
 use omfp_core::wire::{AskAnswer, GoalOp, ImageContent, QueuedMessageQueue, ThinkingLevel};
 use omfp_protocol::{
     ActivityEntry, ActivityPage, ListActivityParams, StopThreadParams, ThreadsStopped,
@@ -25,6 +26,7 @@ use omfp_protocol::{
     WidgetReportState, WidgetSource, WorkspaceDiffParams, WorkspaceRef, WriteFileParams,
     decode_request, method,
 };
+use omfp_protocol::{ContextUsage, SessionTokens, SessionUsage, ThreadSession};
 use omfp_protocol::{CreatedBy, ListThreadsParams, Provenance, ThreadList, WorkspaceList};
 use omfp_protocol::{FileErrorKind, FileErrorReport, ViewErrors, WindowFileErrors};
 use omfp_protocol::{
@@ -583,6 +585,44 @@ fn live_examples() -> Vec<(&'static str, Value)> {
     ]
 }
 
+/// A running thread's session facts (`thread.session`, PRT-125).
+fn thread_session() -> ThreadSession {
+    ThreadSession {
+        thread_id: THREAD_ID.to_owned(),
+        workspace_id: WORKSPACE_ID.to_owned(),
+        cwd: "/home/ada/omfp/workspaces/checkout-v2".to_owned(),
+        roots: vec!["/home/ada/omfp/workspaces/checkout-v2/shop".to_owned()],
+        session_dir: format!("/home/ada/.local/share/omfp/threads/{THREAD_ID}/sessions"),
+        session_id: Some("0f8e2c4a-5b1d-4e7f-9a3c-2d6b8e1f4a7c".to_owned()),
+        session_file: Some(format!(
+            "/home/ada/.local/share/omfp/threads/{THREAD_ID}/sessions/\
+             2026-11-13T09-12-44-120Z_0f8e2c4a-5b1d-4e7f-9a3c-2d6b8e1f4a7c.jsonl"
+        )),
+        model: Some("anthropic/claude-sonnet-4-5".to_owned()),
+        thinking_level: Some("high".to_owned()),
+        approval_mode: Some(ApprovalMode::Yolo),
+        process: ProcessState::Running,
+        settled: false,
+        needs_attention: false,
+        message_count: Some(14),
+        usage: Some(SessionUsage {
+            cost: 0.4213,
+            tokens: SessionTokens {
+                input: 48_210,
+                output: 6_532,
+                cache_read: 210_400,
+                cache_write: 12_800,
+                total: 277_942,
+            },
+            context: Some(ContextUsage {
+                tokens: 61_250,
+                context_window: 200_000,
+                percent: 30.625,
+            }),
+        }),
+    }
+}
+
 fn tool_examples() -> Vec<(&'static str, Value)> {
     vec![
         example::<method::ThreadGoal>(
@@ -654,6 +694,7 @@ fn tool_examples() -> Vec<(&'static str, Value)> {
                 json!({ "sessionId": "0f8e2c4a-5b1d-4e7f-9a3c-2d6b8e1f4a7c", "model": model_info() }),
             ),
         ),
+        example::<method::ThreadSession>(thread_ref(), &thread_session()),
         example::<method::ThreadRestart>(thread_ref(), &Empty {}),
         example::<method::ThreadStop>(
             StopThreadParams {

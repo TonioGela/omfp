@@ -91,6 +91,14 @@ export type CompletePathParams = {
   path: string;
 };
 
+/** The context window's use by the session's current branch. */
+export type ContextUsage = {
+  contextWindow: number;
+  /** `tokens` as a percentage of `contextWindow`. */
+  percent: number;
+  tokens: number;
+};
+
 /** `widgets.copy` params (DMN-087). */
 export type CopyWidgetParams = {
   /** Folder name in `.omfp/widgets/`; default: the widget's own name. */
@@ -931,6 +939,24 @@ export type SeenRepository = {
   path: string;
 };
 
+/** Tokens of a session's model calls so far. */
+export type SessionTokens = {
+  cacheRead: number;
+  cacheWrite: number;
+  input: number;
+  output: number;
+  total: number;
+};
+
+/** A session's cost and tokens (omp `get_session_stats`, DMN-214). */
+export type SessionUsage = {
+  /** How full the model's context window is; absent when omp cannot tell. */
+  context?: ContextUsage | null;
+  /** Cost of the session's model calls so far, in US dollars. */
+  cost: number;
+  tokens: SessionTokens;
+};
+
 /** `thread.set_model` params. */
 export type SetModelParams = {
   modelId: string;
@@ -1106,6 +1132,51 @@ export type ThreadSearchResult = {
 /** `threads.search` result: most recently updated threads first, at most 200. */
 export type ThreadSearchResults = {
   results: ThreadSearchResult[];
+};
+
+/**
+ * `thread.session` result: what the daemon knows of a thread's omp session; it never starts omp (PRT-125). Absent
+ * fields are unknown: `sessionId` before the thread's first start, `sessionFile` until omp wrote it, `messageCount`
+ * until omp loaded the session in this daemon run, `usage` while omp does not run (PRT-126).
+ */
+export type ThreadSession = {
+  /** omp's `--approval-mode` (DMN-074, DMN-210). */
+  approvalMode?: ApprovalMode | null;
+  /** omp's working directory: the workspace folder (ARC-008). */
+  cwd: string;
+  /**
+   * Messages of the session's current branch (the transcript the thread topic shows); absent until omp loaded
+   * the session in this daemon run.
+   */
+  messageCount?: number | null;
+  /** `provider/id` the thread was created or last set with (`thread.set_model`); absent: omp's default model. */
+  model?: string | null;
+  /** Interactive requests are waiting for an answer. */
+  needsAttention: boolean;
+  /** `omfp_core::ProcessState`, as on the thread summary. */
+  process: unknown;
+  /**
+   * The repository roots the thread's omp session has (`--add-dir` at its last start, `/add-dir` and
+   * `/remove-dir` since, DMN-029); `[]` before its first start.
+   */
+  roots: string[];
+  /** The thread's private omp session directory (`--session-dir`, ARC-020). */
+  sessionDir: string;
+  /**
+   * The session's `.jsonl` file: as omp reported it when it loaded the session, else the file of `sessionId` in
+   * `sessionDir` (DMN-213); absent while omp has not written it.
+   */
+  sessionFile?: string | null;
+  /** omp's session id; absent before the thread's first start. */
+  sessionId?: string | null;
+  /** Idle with nothing queued or pending (omp's `session_settled`); `false` while the agent works. */
+  settled: boolean;
+  /** omp's thinking level the thread was created or last set with (`thread.set_thinking`); absent: omp's default. */
+  thinkingLevel?: string | null;
+  threadId: string;
+  /** What the session used so far, from the thread's running omp (DMN-214); absent while omp does not run. */
+  usage?: SessionUsage | null;
+  workspaceId: string;
 };
 
 /** What the thread list shows about a thread. */
@@ -1551,6 +1622,7 @@ export interface Methods {
   "thread.bash": { params: BashParams; result: unknown };
   "thread.git": { params: ThreadRef; result: ThreadGit };
   "thread.state": { params: ThreadRef; result: unknown };
+  "thread.session": { params: ThreadRef; result: ThreadSession };
   "thread.restart": { params: ThreadRef; result: Empty };
   "thread.stop": { params: StopThreadParams; result: ThreadsStopped };
   "thread.live_connect": { params: LiveConnectParams; result: LiveConnected };
@@ -1639,6 +1711,7 @@ export const METHODS: readonly MethodName[] = [
   "thread.bash",
   "thread.git",
   "thread.state",
+  "thread.session",
   "thread.restart",
   "thread.stop",
   "thread.live_connect",

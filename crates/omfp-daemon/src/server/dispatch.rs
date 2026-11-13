@@ -18,6 +18,7 @@ use super::services::{Services, blocking};
 use crate::store::Provenance;
 use crate::{fs_complete, search};
 
+mod session;
 mod threads;
 mod workspaces;
 
