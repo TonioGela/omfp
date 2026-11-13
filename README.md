@@ -43,8 +43,13 @@ oh-my-pi, and you need git.
 - **macOS (Apple silicon, macOS 14+)**: open `omfp-<version>-macos-arm64.dmg` and drag omfp to Applications. Unless a
   release says it is notarized, macOS refuses to open it the first time: open it once, then allow it in System
   Settings → Privacy & Security → Open Anyway (or run `xattr -dr com.apple.quarantine /Applications/omfp.app`).
-- **Linux (x86_64, glibc 2.34+)**: unpack `omfp-<version>-linux-x86_64.tar.gz` and run `./omfp daemon`, then open the
-  URL it prints. This one has no desktop window yet, only the browser UI; the window needs Nix for now.
+- **Linux desktop (x86_64, Flatpak)**: `flatpak install --user omfp-<version>-linux-x86_64.flatpak`, then start omfp
+  from your app menu or with `flatpak run io.github.aciceri.omfp desktop`. The window lives in the sandbox, but
+  oh-my-pi, git and the commands of jobs run on your machine on purpose (they need your tools and repositories), so
+  the app has full access to your account. Keep workspaces and repositories in your home directory. On NixOS the
+  bundled oh-my-pi cannot run: set `omp_bin` in `~/.config/omfp/config.toml`, or use Nix.
+- **Linux server (x86_64, glibc 2.34+)**: unpack `omfp-<version>-linux-x86_64.tar.gz` and run `./omfp daemon`, then
+  open the URL it prints (the browser UI, no desktop window).
 
 To check a download, compare `shasum -a 256 <file>` (macOS) or `sha256sum <file>` (Linux) with its line in the
 release's `SHA256SUMS`.

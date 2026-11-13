@@ -610,17 +610,20 @@ job, subagent, dialog or turn holds it back.
 ## M15 — Downloads without Nix
 
 Scope: release packages for people who do not use Nix ([01 — Release packages](01-dev-environment.md#release-packages),
-ENV-060..ENV-063): a headless tarball for x86_64 Linux and `omfp.app` for arm64 Macs as a `.dmg` and a `.zip`, each
-with the pinned omp's official release build and the web bundle, built by scripts in the dev shell (`just
-package-linux`, `just package-macos`) and attached with `SHA256SUMS` to a draft GitHub release by
-`.github/workflows/release.yml` on a `v*` tag. The app is signed ad-hoc unless the Apple Developer secrets are set; then
-it is signed with a Developer ID under the hardened runtime, notarized and stapled.
+ENV-060..ENV-065): a headless tarball and a desktop Flatpak for x86_64 Linux and `omfp.app` for arm64 Macs as a `.dmg`
+and a `.zip`, each with the pinned omp's official release build and the web bundle, built by scripts in the dev shell
+(`just package-linux`, `just package-flatpak`, `just package-macos`) and attached with `SHA256SUMS` to a draft GitHub
+release by `.github/workflows/release.yml` on a `v*` tag. The app is signed ad-hoc unless the Apple Developer secrets
+are set; then it is signed with a Developer ID under the hardened runtime, notarized and stapled. In the Flatpak, omp,
+git and the shells of jobs run on the host (`flatpak-spawn --host`).
 
 Acceptance: `just package-linux` gives a tarball whose `omfp daemon` starts and serves the UI with its bundled omp on a
 plain glibc 2.34+ system (checked on an Ubuntu 22.04 root file system, outside Nix); `just package-macos` gives an app
 with no `/nix/store` reference in any Mach-O whose `omfp daemon` serves the UI from `Contents/Resources/web` with
-`Contents/MacOS/omp`; the release workflow passes `just check-workflow`; a first tag drafts a release with both packages
-(waits for GitHub Actions); by hand once: the downloaded `.dmg` opens a window after Gatekeeper's prompt.
+`Contents/MacOS/omp`; `just package-flatpak` gives a bundle that installs into a Flatpak installation of its own and
+whose window renders the shell (`OMFP_SMOKE`) under `xvfb-run` with omp run on the host; the release workflow passes
+`just check-workflow`; a first tag drafts a release with the three packages (waits for GitHub Actions); by hand once:
+the downloaded `.dmg` opens a window after Gatekeeper's prompt.
 
 Design: omp's own releases publish Bun single-file executables for every platform (`omp-<os>-<arch>`, with
 `SHA256SUMS.txt`), the same version the flake builds from source, so the packages download the pinned one and check it
@@ -629,8 +632,12 @@ against glibc 2.34's symbols: built against Nix's glibc it needed GLIBC_2.34 and
 (`pidfd_spawnp`), GLIBC_2.39, which an older loader reports at every start. The macOS binary needs only nixpkgs'
 libiconv relinked to the system's. The app bundle has no wrapper: `Contents/MacOS/omfp` run without arguments opens
 `omfp desktop`, and the daemon also looks for the web bundle in `Contents/Resources` (non-code in `Contents/MacOS` breaks
-code signing). Not done: a Linux desktop package (a `.deb` linking the distribution's WebKitGTK 4.1, or an AppImage
-bundling it), Intel Macs, arm64 Linux.
+code signing). Linux desktop: a Flatpak rather than a `.deb` (WebKitGTK 4.1 differs across distributions) or an
+AppImage (which would bundle it): the GNOME runtime brings WebKitGTK 4.1 and the dev shell's glibc version, so the
+binary built in the dev shell runs there with the runtime's loader. omp has to reach the user's tools, so the sandbox
+keeps only the window and the daemon, and the daemon starts omp, git and jobs through the development portal; the
+bundled omp runs from the app's deployment on the host (`app-path`), so it is always the pinned one. Not done: Flathub,
+Intel Macs, arm64 Linux.
 
 ## Terminal (deferred)
 

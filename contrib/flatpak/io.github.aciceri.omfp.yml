@@ -1,0 +1,49 @@
+# ENV-065: the Linux desktop package, a Flatpak with the window, the daemon, the web bundle and the pinned omp. `just
+# package-flatpak` (contrib/release/package-flatpak.sh) stages this directory with `files/` (the desktop build of
+# `omfp`, the pinned omp's release build, the web bundle, the icon) and builds it with flatpak-builder. omp, git and
+# the shells of jobs run on the host through `flatpak-spawn --host` (ENV-064).
+id: io.github.aciceri.omfp
+runtime: org.gnome.Platform
+# WebKitGTK 4.1 (Tauri 2), glibc 2.44: the dev shell's glibc, which the desktop build links against.
+runtime-version: "51"
+sdk: org.gnome.Sdk
+command: omfp
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # The microphone of live voice.
+  - --socket=pulseaudio
+  # Workspaces (~/.omfp), omp's configuration (~/.omp), omfp's data and configuration (~/.local/share/omfp,
+  # ~/.config/omfp) and the repositories the user links into workspaces, at the same paths as on the host.
+  - --filesystem=home
+  # `flatpak-spawn --host`: omp, git and jobs run on the host.
+  - --talk-name=org.freedesktop.Flatpak
+  - --talk-name=org.freedesktop.Notifications
+  # The tray icon of `omfp daemon --tray` (DMN-128): it owns `org.kde.StatusNotifierItem-<pid>-1`, whose pid (in the
+  # sandbox's namespace) is not known in advance, and Flatpak's wildcards end at a dot.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.*
+modules:
+  - name: omfp
+    buildsystem: simple
+    no-autogen: true
+    # The binaries come stripped (omfp) or must stay whole (omp: a Bun executable carries its code in the file).
+    build-options:
+      strip: false
+      no-debuginfo: true
+    build-commands:
+      # The binary finds omp and web/ next to itself (DMN-006, DMN-008); /app/bin/omfp sets the data and config
+      # directories first.
+      - install -Dm755 files/omfp /app/lib/omfp/omfp
+      - install -Dm755 files/omp /app/lib/omfp/omp
+      - cp -r files/web /app/lib/omfp/web
+      - install -Dm755 omfp.sh /app/bin/omfp
+      - install -Dm644 files/icon.png /app/share/icons/hicolor/512x512/apps/io.github.aciceri.omfp.png
+      - install -Dm644 io.github.aciceri.omfp.desktop /app/share/applications/io.github.aciceri.omfp.desktop
+      - install -Dm644 io.github.aciceri.omfp.metainfo.xml /app/share/metainfo/io.github.aciceri.omfp.metainfo.xml
+    sources:
+      - type: dir
+        path: .

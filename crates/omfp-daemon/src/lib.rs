@@ -10,6 +10,7 @@ pub mod config_file;
 pub mod conventions;
 mod daemon;
 pub mod event_log;
+pub mod flatpak;
 pub mod fs_complete;
 pub mod git;
 pub mod host_tools;

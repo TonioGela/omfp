@@ -17,7 +17,7 @@ nix develop          # or: direnv allow (.envrc contains `use flake`)
 | E2E / smoke (Linux) | `chromium`, `chromedriver`, `xvfb-run` |
 | Desktop (Linux, M7) | `pkg-config`, `webkitgtk_4_1` (WebKitGTK 2.54, ABI 4.1; GTK3, GLib, cairo come through its `.pc` files), `libsoup_3`, `glib-networking` (TLS for `omfp desktop --connect https://…`), `dbus` (the private session bus of the color-scheme tests, UI-195). No Tauri CLI and no libxdo/appindicator: `cargo build -p omfp --features desktop` is enough (S-04) |
 | Utilities | `just`, `git`, `jq`, `websocat`, `nixfmt`, `actionlint`, `curl` (the release packages download omp, ENV-061) |
-| Release packages (Linux) | `cargo-zigbuild` and `zig` (`just package-linux` links against glibc 2.34's symbols, ENV-062) |
+| Release packages (Linux) | `cargo-zigbuild` and `zig` (`just package-linux` links against glibc 2.34's symbols, ENV-062); `flatpak`, `flatpak-builder` and `appstream` (`just package-flatpak`, ENV-065) |
 
 Environment set by the shell: `RUST_SRC_PATH`, `OMFP_BUN_CACHE` (the Bun install cache of `ui/`'s dependencies, built by
 Nix from `ui/bun.nix`); on Linux also `CHROME_BIN`, `OMFP_E2E_FONTCONFIG_FILE` (a fontconfig file with DejaVu, the only
@@ -91,18 +91,32 @@ For people without Nix (M15): downloads that carry everything `omfp` needs but g
 shell (`contrib/release/`) and attached to a GitHub release by `.github/workflows/release.yml`.
 
 ```sh
-just package-linux [out]   # out/omfp-<version>-linux-x86_64.tar.gz (x86_64 Linux)
-just package-macos [out]   # out/omfp-<version>-macos-arm64.dmg and .zip (arm64 Mac); `out` defaults to dist/
+just package-linux [out]     # out/omfp-<version>-linux-x86_64.tar.gz (x86_64 Linux, headless)
+just package-flatpak [out]   # out/omfp-<version>-linux-x86_64.flatpak (x86_64 Linux, the desktop window)
+just package-macos [out]     # out/omfp-<version>-macos-arm64.dmg and .zip (arm64 Mac); `out` defaults to dist/
 ```
 
 | Download | Content |
 | --- | --- |
 | `omfp-<version>-linux-x86_64.tar.gz` | `omfp-<version>-linux-x86_64/`: `omfp` (daemon only, no desktop window), `omp`, `web/`, `LICENSE`, `README.txt`; runs on glibc ≥ 2.34 (Ubuntu 22.04, Debian 12, RHEL 9) |
+| `omfp-<version>-linux-x86_64.flatpak` | the Flatpak `io.github.aciceri.omfp` on GNOME 51 (window, tray, daemon): `/app/bin/omfp` (a script setting the data and config directories), `/app/lib/omfp/{omfp,omp,web/}`, the desktop entry, icon and AppStream metadata; installing it fetches the runtime from Flathub |
 | `omfp-<version>-macos-arm64.dmg`, `.zip` | `omfp.app` (window and menu bar item): `Contents/MacOS/omfp`, `Contents/MacOS/omp`, `Contents/Resources/web/`, `Contents/Resources/omfp.icns`, `Contents/Info.plist`; macOS 14 or newer |
 | `SHA256SUMS` | the SHA-256 of every download |
 
-The Linux desktop window is not packaged yet: a `.deb` or AppImage would have to link WebKitGTK 4.1 against the
-distribution's (or bundle it), and neither is built and tested yet; on Linux the window comes with Nix (ENV-030).
+The Flatpak (`contrib/flatpak/`) is distributed from the GitHub release, not Flathub: `flatpak install --user
+omfp-<version>-linux-x86_64.flatpak`, then `flatpak run io.github.aciceri.omfp desktop` (or the desktop entry). omp acts
+on the user's machine — git, shells, build tools, the `nix` of a repository's dev shell — which a sandbox cannot offer,
+so the sandbox holds the window and the daemon while omp, git and the shells of jobs run **on the host** through
+`flatpak-spawn --host` (ENV-064): the permission `--talk-name=org.freedesktop.Flatpak` gives the app the host's
+privileges, deliberately. The other permissions: Wayland or X11, the GPU, PulseAudio (the microphone), the network,
+the notification and tray (`org.kde.*` names) buses, and the home directory, where workspaces (`~/.omfp`), omp's
+configuration (`~/.omp`) and the repositories linked into workspaces live at the same paths on both sides; the data
+and config directories are the host's (`~/.local/share/omfp`, `~/.config/omfp`, DMN-170, DMN-009), not `~/.var/app`,
+so the host's `omfp` commands find the Flatpak's daemon. Workspaces and repositories outside the home directory are
+out of reach. The bundled omp is a generic glibc binary, which runs on most distributions but not on NixOS (no
+`/lib64/ld-linux-x86-64.so.2`): there set `omp_bin` (DMN-009) to an omp of the pinned version, or use the Nix package.
+A job's processes left behind after its shell exited are not killed on the host (DMN-081): the daemon sees
+`flatpak-spawn`, not the host's process group.
 
 Signing on macOS: without secrets the app is signed ad-hoc, which Gatekeeper refuses on first open for a download (the
 user allows it in System Settings → Privacy & Security → Open Anyway, or removes the quarantine with `xattr -dr
@@ -123,17 +137,19 @@ Entitlements under the hardened runtime: `contrib/release/omfp.entitlements` (th
 `contrib/release/omp.entitlements` (what Bun documents for its single-file executables: JIT, unsigned executable
 memory, no library validation for the native addons it extracts).
 
-Releasing: set the workspace version in `Cargo.toml`, commit, push a tag `v<version>`; the workflow builds both
+Releasing: set the workspace version in `Cargo.toml`, commit, push a tag `v<version>`; the workflow builds the three
 packages, then drafts the release with `SHA256SUMS` and notes from the Conventional Commits since the previous tag
 (`contrib/release/notes.sh`); check the draft and publish it. Run by hand (Actions → Release → Run workflow) it builds
 the packages as the run's artifacts only.
 
 | ID | Requirement |
 | --- | --- |
-| ENV-060 | (M15) `.github/workflows/release.yml` MUST build the packages on a pushed tag `v*` and on `workflow_dispatch`, each in the dev shell with one recipe (`just package-linux` on `ubuntu-latest`, `just package-macos` on `macos-15`), and on a tag only attach them with `SHA256SUMS` to a draft release (`gh release create --draft --verify-tag`); the workflow reads the contents, and only the release job, which runs on tags only, writes them (`just check-workflow`). On a tag the packages MUST fail unless it is `v` + the workspace version, so the binary's `--version`, the Info.plist and the release agree. |
+| ENV-060 | (M15) `.github/workflows/release.yml` MUST build the packages on a pushed tag `v*` and on `workflow_dispatch`, each in the dev shell with one recipe (`just package-linux` and `just package-flatpak` on `ubuntu-latest`, the latter after allowing unprivileged user namespaces for bubblewrap, `just package-macos` on `macos-15`), and on a tag only attach them with `SHA256SUMS` to a draft release (`gh release create --draft --verify-tag`); the workflow reads the contents, and only the release job, which runs on tags only, writes them (`just check-workflow`). On a tag the packages MUST fail unless it is `v` + the workspace version, so the binary's `--version`, the Info.plist and the release agree. |
 | ENV-061 | (M15) The packages MUST bundle the pinned omp's official release build (`omp-linux-x64`, `omp-darwin-arm64` from `github.com/can1357/oh-my-pi/releases/download/<tag>/`, a Bun single-file executable), checked against the SHA-256 pinned in `contrib/release/omp.sha256`, whose tag `cargo xtask check-versions` checks against the pinned omp (ENV-010). It goes next to `omfp`, where the daemon finds it first (DMN-006). |
 | ENV-062 | (M15) `just package-linux` MUST build `omfp` without the `desktop` feature with `cargo zigbuild` for `x86_64-unknown-linux-gnu.2.34`: interpreter `/lib64/ld-linux-x86-64.so.2`, no RUNPATH, no glibc symbol version newer than 2.34 (weak ones included), only libc, libm, libgcc_s and the loader as libraries, std's paths remapped (no `/nix/store` string); the archive is reproducible (sorted, no owners, the commit's time). |
 | ENV-063 | (M15) `just package-macos` MUST build `omfp.app` without a `/nix/store` reference in any Mach-O (`otool -L`, `otool -l`: nixpkgs' libiconv is relinked to the system's), the web bundle in `Contents/Resources/web` (DMN-008), the Info.plist of ENV-041 with the version, and sign it: ad-hoc, or with a Developer ID, the hardened runtime and the entitlements above, then notarized and stapled (the app first, then the disk image) when the Apple ID secrets are set. Run without arguments, an app bundle's `omfp` (`<name>.app/Contents/MacOS/omfp`) opens `omfp desktop`. |
+| ENV-064 | (M15) In a Flatpak sandbox (`/.flatpak-info` exists) the daemon MUST start every process that acts for the user on the host through `flatpak-spawn --host --watch-bus [--directory=<cwd>] [--env=K=V \| --unset-env=K]… -- <program> <args>…` (`omfp_daemon::flatpak::on_host`): omp (threads, `omp --version`, the session lease check, title generation), git and the shells of jobs. A program under `/app` is named by its host path, the `app-path` of `/.flatpak-info`, so the bundled omp runs from the app's deployment; other paths are the same on both sides. Outside a sandbox commands run unchanged. |
+| ENV-065 | (M15) `just package-flatpak` MUST build `omfp-<version>-linux-x86_64.flatpak` from `contrib/flatpak/io.github.aciceri.omfp.yml` with flatpak-builder on `org.gnome.Platform`/`Sdk` 51 (WebKitGTK 4.1, glibc 2.44) in a Flatpak installation of its own (`target/flatpak/user`, never the user's): the desktop build of `omfp` linked in the dev shell, then given the runtime's loader and no RUNPATH, the pinned omp unstripped (ENV-061), the web bundle, the permissions above, the data and config directories of the host (`/app/bin/omfp` sets `XDG_DATA_HOME` and `XDG_CONFIG_HOME` from `HOST_XDG_*` or `~/.local/share`, `~/.config`), a bundle whose runtime comes from Flathub; it MUST install the bundle there and run its `omfp --version` in the sandbox. |
 
 ## Continuous integration
 

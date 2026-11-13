@@ -88,16 +88,16 @@ impl LaunchSpec {
         std::fs::create_dir_all(&self.session_dir)?;
         let stderr = crate::paths::open_private_log(&self.stderr_log)?;
         let mut command = Command::new(&self.program);
-        command
-            .args(self.args())
-            .current_dir(&self.cwd)
-            .stderr(Stdio::from(stderr));
+        command.args(self.args()).current_dir(&self.cwd);
         for (key, value) in &self.env {
             match value {
                 Some(value) => command.env(key, value),
                 None => command.env_remove(key),
             };
         }
+        // On the host when the daemon runs in Flatpak (ENV-064).
+        let mut command = crate::flatpak::on_host(command);
+        command.stderr(Stdio::from(stderr));
         Ok(command)
     }
 }

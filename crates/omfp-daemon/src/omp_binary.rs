@@ -100,13 +100,16 @@ pub fn accept(
 /// Runs `program --version` and returns the version it prints.
 pub fn version(program: &Path) -> Result<String, VersionError> {
     let name = program.display().to_string();
-    let output = Command::new(program)
-        .arg("--version")
-        .output()
-        .map_err(|error| VersionError::Unrunnable {
-            program: name.clone(),
-            message: error.to_string(),
-        })?;
+    let mut command = Command::new(program);
+    command.arg("--version");
+    // On the host when the daemon runs in Flatpak (ENV-064).
+    let output =
+        crate::flatpak::on_host(command)
+            .output()
+            .map_err(|error| VersionError::Unrunnable {
+                program: name.clone(),
+                message: error.to_string(),
+            })?;
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     parse_version(&stdout).ok_or(VersionError::Unparsable {
         program: name,

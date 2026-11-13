@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.aciceri.omfp</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>omfp</name>
+  <summary>Many oh-my-pi coding agents at once, from the browser or the desktop</summary>
+  <description>
+    <p>
+      A browser and desktop app for the oh-my-pi coding agent: many conversations with the agent at once, each with
+      its own oh-my-pi running in the background, in workspaces that stay. The agent can build the panels around the
+      chat itself.
+    </p>
+    <p>
+      oh-my-pi runs on your machine, outside the sandbox, so it can use your git, shells and build tools.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.aciceri.omfp.desktop</launchable>
+  <url type="homepage">https://github.com/aciceri/omfp</url>
+  <developer id="io.github.aciceri">
+    <name>Andrea Ciceri</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+</component>

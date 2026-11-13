@@ -143,7 +143,8 @@ impl GitCli {
             .env("LC_ALL", "C")
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_OPTIONAL_LOCKS", "0");
-        command
+        // On the host when the daemon runs in Flatpak (ENV-064).
+        crate::flatpak::on_host(command)
     }
 
     fn output<S: AsRef<OsStr>>(&self, dir: &Path, args: &[S]) -> Result<Output> {

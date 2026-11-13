@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=omfp
+Comment=Web and desktop GUI for the omp coding agent
+Exec=omfp desktop
+Icon=io.github.aciceri.omfp
+Categories=Development;
+Terminal=false

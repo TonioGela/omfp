@@ -17,8 +17,8 @@
  * - TST-076: the `dev-shell` job runs no recipe and every other Linux job needs it; CARGO_HOME lives on the Nix volume.
  * - TST-092: one job on a macOS runner runs `just test-desktop` and `just package` on pushes to master only.
  * - ENV-060: `release.yml` runs on `v*` tags and by hand; its jobs build the packages in the dev shell (`just
- *   package-linux` on Linux, `just package-macos` on macOS); only its job that runs on tags alone may write the
- *   repository's contents, the workflow reads them.
+ *   package-linux` and `just package-flatpak` on Linux, `just package-macos` on macOS); only its job that runs on tags
+ *   alone may write the repository's contents, the workflow reads them.
  */
 import { $ } from "bun";
 
@@ -200,7 +200,11 @@ if (
 
 // ENV-060
 const RELEASE = ".github/workflows/release.yml";
-const RELEASE_RECIPES: Record<string, RegExp> = { "package-linux": /^ubuntu-/, "package-macos": /^macos-\d+$/ };
+const RELEASE_RECIPES: Record<string, RegExp> = {
+  "package-linux": /^ubuntu-/,
+  "package-flatpak": /^ubuntu-/,
+  "package-macos": /^macos-\d+$/,
+};
 const release = Bun.YAML.parse(await Bun.file(RELEASE).text()) as Workflow;
 if (!release.on?.push?.tags?.includes("v*") || !release.on || !("workflow_dispatch" in release.on)) {
   problems.push(`${RELEASE} must run on pushed v* tags and by hand (workflow_dispatch)`);

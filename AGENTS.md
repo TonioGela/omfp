@@ -51,6 +51,7 @@ nix build .#omfp                 # the install: omfp with the desktop window, th
                                  # .#omfp-headless without WebKit
 just desktop [desktop args]      # try the desktop app: one more window on your local daemon (started in the background)
 just package-linux [out]         # release download without Nix: headless x86_64 tarball (omfp, omp, web/) in dist/
+just package-flatpak [out]       # release download without Nix: the Linux desktop Flatpak (omp runs on the host) in dist/
 just package-macos [out]         # release download without Nix (arm64 Mac): omfp.app as .dmg and .zip in dist/
 just brand                       # regenerate the logo: docs/brand SVGs, kit outlines, favicon, desktop icon
 cargo xtask spec-trace           # requirement → citing tests; fails on broken traceability
@@ -161,9 +162,12 @@ fixtures/states/<ver>/   ThreadState JSONL, one line per fixture event: the Rust
 fixtures/views/         cases.json: views manifests with their expected errors, checked by the daemon and the app
 docs/brand/             the logo (UI-220): generate.py (`just brand`, from the bundled Commit Mono Bold), wordmark,
                         mark and icon SVGs, the 32 px favicon PNG, README screenshots
-contrib/release/        release packages without Nix (M15, ENV-060..063): package-linux.sh, package-macos.sh (lib.sh
-                        shared), omp.sha256 (the pinned omp release assets), the macOS entitlements, notes.sh (release
-                        notes); run by .github/workflows/release.yml on `v*` tags
+contrib/release/        release packages without Nix (M15, ENV-060..065): package-linux.sh, package-flatpak.sh,
+                        package-macos.sh (lib.sh shared), omp.sha256 (the pinned omp release assets), the macOS
+                        entitlements, notes.sh (release notes); run by .github/workflows/release.yml on `v*` tags
+contrib/flatpak/        the Flatpak manifest (io.github.aciceri.omfp.yml), its launcher script, desktop entry and
+                        AppStream metadata; in the sandbox the daemon runs omp, git and jobs on the host
+                        (crates/omfp-daemon/src/flatpak.rs, ENV-064)
 ```
 
 ## Version pinning

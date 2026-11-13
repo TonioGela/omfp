@@ -236,9 +236,14 @@
               pkgs.glib-networking
               # A private session bus with a stub settings portal for the desktop tests (UI-195)
               pkgs.dbus
-              # The Linux release package (`just package-linux`, ENV-062): linked against an older glibc's symbols
+              # The Linux release packages: `just package-linux` links against an older glibc's symbols (ENV-062),
+              # `just package-flatpak` builds the Flatpak (ENV-065)
               pkgs.cargo-zigbuild
               pkgs.zig
+              pkgs.flatpak
+              pkgs.flatpak-builder
+              # flatpak-builder composes the AppStream metadata with appstreamcli
+              pkgs.appstream
             ];
 
             env = {

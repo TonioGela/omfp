@@ -351,10 +351,10 @@ impl Jobs {
         {
             return Err(JobError::OtherWorkspace(old.to_owned()));
         }
-        let mut child = Command::new("sh")
-            .arg("-c")
-            .arg(command)
-            .current_dir(folder)
+        // The user's shell, on the host when the daemon runs in Flatpak (ENV-064).
+        let mut shell = std::process::Command::new("sh");
+        shell.arg("-c").arg(command).current_dir(folder);
+        let mut child = Command::from(crate::flatpak::on_host(shell))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())

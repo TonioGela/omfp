@@ -156,6 +156,11 @@ package-linux out="dist":
 package-macos out="dist":
     contrib/release/package-macos.sh {{ quote(out) }}
 
+# spec: ENV-061, ENV-064, ENV-065 — the Linux desktop download without Nix (ENV-060): the Flatpak with the window, the
+# daemon, the web bundle and the pinned omp (run on the host), as `omfp-<version>-linux-x86_64.flatpak` in `out`
+package-flatpak out="dist":
+    contrib/release/package-flatpak.sh {{ quote(out) }}
+
 # Static checks: formatting and lints, version pins, traceability, wasm, dependencies, the CI workflow
 check: lint check-versions spec-trace check-wasm deny check-workflow
 

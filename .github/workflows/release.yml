@@ -1,7 +1,8 @@
 # ENV-060: the downloads without Nix (docs/specs/01-dev-environment.md, "Release packages"). A pushed tag `v<version>`
-# (the workspace version) builds them in the dev shell (`just package-linux`, `just package-macos`) and attaches them,
-# with their SHA256SUMS and notes from the tag's Conventional Commits, to a draft GitHub release; publishing it stays a
-# human step. Run by hand (workflow_dispatch) it is a dry run: the packages are the run's artifacts, no release.
+# (the workspace version) builds them in the dev shell (`just package-linux`, `just package-flatpak`, `just
+# package-macos`) and attaches them, with their SHA256SUMS and notes from the tag's Conventional Commits, to a draft
+# GitHub release; publishing it stays a human step. Run by hand (workflow_dispatch) it is a dry run: the packages are
+# the run's artifacts, no release.
 name: Release
 
 on:
@@ -38,6 +39,29 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  flatpak:
+    name: Linux x86_64 (Flatpak)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/dev-shell
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      # flatpak-builder and `flatpak run` sandbox with bubblewrap, which needs the unprivileged user namespaces
+      # Ubuntu's AppArmor restricts by default.
+      - name: Allow unprivileged user namespaces
+        run: |
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - run: nix develop -c just package-flatpak
+      - uses: actions/upload-artifact@v7
+        with:
+          name: omfp-linux-x86_64-flatpak
+          path: dist/
+          if-no-files-found: error
+
   macos:
     name: macOS arm64 (omfp.app)
     runs-on: macos-15
@@ -64,7 +88,7 @@ jobs:
   release:
     name: draft release
     if: github.ref_type == 'tag'
-    needs: [linux, macos]
+    needs: [linux, flatpak, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

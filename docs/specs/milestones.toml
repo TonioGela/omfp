@@ -854,4 +854,7 @@ requirements = [
   "ENV-061",
   "ENV-062",
   "ENV-063",
+  # The Linux desktop Flatpak and its host processes
+  "ENV-064",
+  "ENV-065",
 ]

@@ -213,7 +213,7 @@ impl AgentLauncher for OmpLauncher {
                 None => command.env_remove(key),
             };
         }
-        let output = command.output()?;
+        let output = crate::flatpak::on_host(command).output()?;
         if !output.status.success() {
             return Err(StartError::LeaseCheck(
                 String::from_utf8_lossy(&output.stderr).trim().to_owned(),
