@@ -10,7 +10,8 @@ lists, reloads a widget as soon as one of its files changes, and shows any error
   `["row", { "sizes": [3, 1] }, ["col", {}, "omfp:header", ["tabs", { "id": "main" }, "omfp:chat"]], ["tabs", { "id": "side" }, "omfp:workspace", "omfp:changes", "omfp:background"]]`.
   A workspace that has its own `views.json` keeps it as it is (omfp never rewrites it): a widget the default view
   gained later, such as `omfp:background`, comes in with `:widget add omfp:background` there, or an agent's
-  `omfp_ui_mount`.
+  `omfp_ui_mount`. `:view-reset` replaces the whole file with the default view (after a confirmation), losing every
+  view and mount the workspace added.
 - `<workspace>/.omfp/widgets/<name>/index.tsx` (or `index.ts`, `index.jsx`, `index.js`) — a workspace widget,
   referenced as `./widgets/<name>`. Its default export is a React component; its props are the layout node's props.
   Other files of the folder are imported with relative paths (`./chart.tsx` or `./chart`).

@@ -19,6 +19,7 @@ import {
   type OmfpHost,
   REVEAL_WIDGET,
   SELECTED_THREAD,
+  SUCCESSES,
   useCommand,
   useNotify,
   VIEW_CHOICES,
@@ -857,7 +858,7 @@ describe("views of the current workspace", () => {
     expect(host.window.get(ERRORS)).toEqual(["No view gone"]);
   });
 
-  // spec: UI-302
+  // spec: UI-302, UI-431
   test("`] v` and `[ v` go to the next and previous view, round the list; `g v` opens `:view ` with the views", async () => {
     const { host, user } = inWorkspace({ manifest: MANIFEST });
     const shown = () => screen.getByTestId("view").dataset.view;
@@ -879,7 +880,6 @@ describe("views of the current workspace", () => {
       "view lean",
       "view review",
       "view work",
-      "view reset",
     ]);
     await user.type(input, "le{Enter}");
     expect(shown()).toBe("lean");
@@ -887,6 +887,22 @@ describe("views of the current workspace", () => {
       threads: [{ threadId: "t1", viewId: "lean" }],
       workspaces: { w1: "lean" },
     });
+  });
+
+  // spec: UI-431
+  test("`g v`, ArrowUp, Enter never resets views.json: it switches to the last view; with one view `g v` does nothing", async () => {
+    const { client, host, user } = inWorkspace({ manifest: MANIFEST });
+    press("g");
+    press("v");
+    await user.keyboard("{ArrowUp}{Enter}");
+    expect(screen.getByTestId("view").dataset.view).toBe("work");
+    expect(client.callsTo("views.set")).toEqual([]);
+    expect(screen.queryAllByTestId("view-reset-dialog")).toEqual([]);
+    cleanup();
+    const single = inWorkspace({ manifest: { default: "work", views: { work: MANIFEST.views.work } } });
+    expect(single.host.commands.run("view.pick")).toBe(false);
+    expect(screen.queryAllByTestId("command-line-input")).toEqual([]);
+    expect(host.window.get(ERRORS)).toEqual([]);
   });
 
   // spec: UI-302, UI-367
@@ -1227,27 +1243,40 @@ describe("widget copy", () => {
     ]);
   });
 
-  // spec: UI-107, DMN-088
-  test("`:view reset` writes the default manifest over the workspace's views.json, valid or not", async () => {
+  // spec: UI-107, UI-430, DMN-088
+  test("`:view-reset` asks first; only Reset writes the default manifest over views.json, with a success toast", async () => {
     const { client, host, user } = setup();
     press(":");
-    await user.type(screen.getByTestId("command-line-input"), "view reset{Enter}");
+    await user.type(screen.getByTestId("command-line-input"), "view-reset{Enter}");
     expect(host.window.get(ERRORS)).toEqual(["No current workspace"]);
     act(() => host.window.set(ERRORS, []));
     act(() => host.window.set(SELECTED_THREAD, "t1"));
     client.views("w1", { manifest: null, error: "views: expected an object of views" });
     client.answers.set("views.set", () => ({}));
     press(":");
-    await user.type(screen.getByTestId("command-line-input"), "view reset{Enter}");
+    await user.type(screen.getByTestId("command-line-input"), "view-reset{Enter}");
+    expect(screen.getByTestId("view-reset-dialog").textContent).toContain("Reset .omfp/views.json?");
+    await user.click(screen.getByTestId("cancel-view-reset"));
+    expect(screen.queryAllByTestId("view-reset-dialog")).toEqual([]);
+    expect(client.callsTo("views.set")).toEqual([]);
+    act(() => {
+      host.commands.run("view.reset");
+    });
+    await user.click(screen.getByTestId("confirm-view-reset"));
     expect(client.callsTo("views.set").map((call) => call.params)).toEqual([
       { workspaceId: "w1", manifest: DEFAULT_MANIFEST },
     ]);
     await waitFor(() =>
       expect(screen.getByTestId("live-region").textContent).toBe(".omfp/views.json reset to the default view"),
     );
+    expect(host.window.get(SUCCESSES).map((success) => success.text)).toEqual([
+      ".omfp/views.json reset to the default view",
+    ]);
     client.answers.delete("views.set");
-    press(":");
-    await user.type(screen.getByTestId("command-line-input"), "view reset{Enter}");
+    act(() => {
+      host.commands.run("view.reset");
+    });
+    await user.click(screen.getByTestId("confirm-view-reset"));
     const [, failing] = client.callsTo("views.set");
     await act(async () => failing?.reject(new Error("disk full")));
     expect(host.window.get(ERRORS)).toEqual(["disk full"]);

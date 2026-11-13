@@ -24,7 +24,7 @@ export const DEFAULT_VIEW: View = {
 /**
  * The default manifest (AGT-010): the daemon writes the same one into every workspace (DMN-088,
  * `crates/omfp-daemon/src/widgets/default-views.json`, checked equal by a test); the window falls back to it while
- * `views.json` is missing or invalid, and `:view reset` writes it (UI-107).
+ * `views.json` is missing or invalid, and `:view-reset` writes it (UI-107).
  */
 export const DEFAULT_MANIFEST = {
   $schema: "omfp://schemas/views.json",

@@ -475,6 +475,14 @@ export const shell = {
     noWorkspace: "No current workspace",
     reset: ".omfp/views.json reset to the default view",
   },
+  /** `:view-reset` asks first (UI-430): it replaces every view, mount and added widget of the workspace. */
+  resetViews: {
+    title: "Reset .omfp/views.json?",
+    message:
+      "The workspace's views.json is replaced by the default view: its other views, mounted widgets and panels are lost in every window. To get a newer built-in, :widget add omfp:<name> is enough.",
+    confirm: "Reset",
+    cancel: "Cancel",
+  },
   widgetCopy: {
     usage: "Usage: :widget add <reference> | :widget copy <reference> [<name>] | :widget save[!] <widget> [<name>]",
     added: (reference: string, view: string) => `Added ${reference} to view ${view}`,
@@ -544,7 +552,8 @@ export const shell = {
     search: "Filter threads",
     deleteFocused: "Delete the focused thread or workspace…",
     toggleSection: "Collapse or expand the focused workspace",
-    view: "Switch view (:view <id>), or :view reset to restore the default views.json",
+    view: "Switch view (:view <id>)",
+    resetViews: "Replace the workspace's views.json with the default view, after a confirmation",
     nextView: "Next view",
     prevView: "Previous view",
     pickView: "Pick a view (opens :view with the views to complete)",

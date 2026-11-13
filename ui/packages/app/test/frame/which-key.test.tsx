@@ -110,7 +110,7 @@ function entries(): string[][] {
 }
 
 describe("which-key panel", () => {
-  // spec: UI-320, UI-321, UI-323
+  // spec: UI-320, UI-321, UI-323, UI-431
   test("a prefix shows the keys completing it after the delay, in a labelled region, announced", async () => {
     const test = await setup();
     document.body.focus();
@@ -126,7 +126,7 @@ describe("which-key panel", () => {
     expect(shown?.closest('[data-testid="mode-bar"]') !== null).toBe(true);
     // No workspace is current and no notice waits: their commands do not answer now (UI-323).
     expect(entries()).toEqual([
-      ["views", "v", "command", "Pick a view (opens :view with the views to complete)"],
+      ["views", "v", "command", "Pick a view (opens :view with the views to complete) (not available now)"],
       ["files", "f", "command", "Open a file (:open <path>[:<line>]), or the focused path (g f) (not available now)"],
       ["navigation", "g", "command", "First thread"],
       ["navigation", "n", "command", "Open the newest notice (not available now)"],
@@ -150,7 +150,7 @@ describe("which-key panel", () => {
     expect(log).toEqual(["hello"]);
   });
 
-  // spec: UI-320, UI-262
+  // spec: UI-320, UI-262, UI-431
   test("it lists the live bindings: init files', `[keymap]` entries with a widget's command, removed defaults gone", async () => {
     const test = await setup();
     test.keymap([
@@ -161,7 +161,7 @@ describe("which-key panel", () => {
     keys("g");
     test.runTimers();
     expect(entries()).toEqual([
-      ["views", "v", "command", "Pick a view (opens :view with the views to complete)"],
+      ["views", "v", "command", "Pick a view (opens :view with the views to complete) (not available now)"],
       ["navigation", "g", "command", "First thread"],
       ["navigation", "n", "command", "Open the newest notice (not available now)"],
       ["other", "p", "command", "Ping the demo"],

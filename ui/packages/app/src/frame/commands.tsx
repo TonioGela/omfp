@@ -2,7 +2,7 @@
  * The global commands of the frame (UI-095), shared by the keymap and the `:` line: a draft thread in the current
  * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030), a rescan of the current
  * workspace (DMN-023), colour scheme (UI-091, window-local), density and `:set` (daemon settings, UI-094, UI-097), the
- * view switch (UI-101), the next and previous view (UI-302) and `:view reset` (UI-107), adding a widget to the view
+ * view switch (UI-101), the next and previous view (UI-302) and `:view-reset` (UI-107, UI-430), adding a widget to the view
  * (UI-300), copying a widget into the workspace (UI-106) and saving a workspace widget to the user library (UI-233).
  */
 
@@ -16,6 +16,7 @@ import {
   type OpenFileOptions,
   openFile,
   RENAMING_THREAD,
+  RESET_VIEWS,
   reportError,
   SELECTED_THREAD,
   useCommand,
@@ -25,7 +26,6 @@ import {
   useWindowState,
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
-import { DEFAULT_MANIFEST } from "../view/views.ts";
 import { displayTitle, isArchived, nextNeedingAttention, spawnerOf } from "../vm/threads.ts";
 import { DENSITIES, parseSet, SCHEMES, SET_KEYS } from "./set.ts";
 
@@ -246,22 +246,9 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
     id: "view.switch",
     title: titles.view,
     aliases: ["view"],
-    args: () => [...viewIds, "reset"],
-    run: async ([view]) => {
-      if (view === "reset") {
-        // UI-107: the current default manifest replaces the workspace's views.json, valid or not.
-        const workspaceId = currentWorkspaceId(host);
-        if (workspaceId === undefined) {
-          reportError(host, strings.shell.layout.noWorkspace);
-          return;
-        }
-        try {
-          await host.client.call("views.set", { workspaceId, manifest: DEFAULT_MANIFEST });
-          host.announcer.announce(strings.shell.layout.reset);
-        } catch (error) {
-          reportError(host, error);
-        }
-      } else if (view !== undefined && viewIds.includes(view)) {
+    args: () => viewIds,
+    run: ([view]) => {
+      if (view !== undefined && viewIds.includes(view)) {
         chooseView(host, view);
       } else if (view !== undefined) {
         reportError(host, strings.shell.layout.noView(view));
@@ -288,10 +275,25 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
     enabled: () => viewIds.length > 1,
     run: stepView(-1),
   });
-  // `g v` (UI-302): the `:` line on `view `, whose completions are the views.
+  // UI-430: the reset of views.json is its own command and asks first (`ResetViewsDialog`).
+  useCommand({
+    id: "view.reset",
+    title: titles.resetViews,
+    aliases: ["view-reset"],
+    run: () => {
+      const workspaceId = currentWorkspaceId(host);
+      if (workspaceId === undefined) {
+        reportError(host, strings.shell.layout.noWorkspace);
+      } else {
+        host.window.set(RESET_VIEWS, workspaceId);
+      }
+    },
+  });
+  // `g v` (UI-302, UI-431): the `:` line on `view `, whose completions are the views; offered with several views.
   useCommand({
     id: "view.pick",
     title: titles.pickView,
+    enabled: () => viewIds.length > 1,
     run: () => {
       host.commands.run("cmdline.open", ["view"]);
     },

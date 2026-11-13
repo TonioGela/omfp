@@ -59,7 +59,8 @@ focus was before the line opened. The built-in ones (`omfp://keymap` has them al
 | `:open <path>[:<line>]` | Open a file of the workspace in a tab next to the chat. |
 | `:rescan` | Rescan the current workspace's repositories. |
 | `:login [<provider>]`, `:logout <provider>` | Log omp in to a provider (without one, pick it); remove omp's stored credentials of one. See "Logging in". |
-| `:view <id>`, `:view reset` | Switch view; write the default `views.json` again (replacing the file). |
+| `:view <id>` | Switch view. |
+| `:view-reset` | Write the default `views.json` again (replacing the file, every view and mount), after a confirmation. |
 | `:widget add <reference>` | Add a widget to the current view (last side tab, else the end) and write `views.json`; refused on views that exist only in an init file or a TSX file. |
 | `:widget copy <reference> [<name>]` | Copy a built-in or user widget into `.omfp/widgets/<name>/`. |
 | `:widget save[!] <widget> [<name>]` | Save a workspace widget to the user library (`!` replaces). |

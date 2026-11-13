@@ -72,7 +72,7 @@ fn current(store: &Store, id: &str) -> Result<(std::path::PathBuf, Option<Value>
     let (manifest, error) = Widgets::manifest(&path);
     if let Some(error) = error {
         return Err(bad_request(format!(
-            ".omfp/views.json is invalid ({error}); fix it first (or ask the user to run `:view reset`)"
+            ".omfp/views.json is invalid ({error}); fix it first (or ask the user to run `:view-reset`)"
         )));
     }
     Ok((path, manifest))

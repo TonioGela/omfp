@@ -360,6 +360,7 @@ export {
   type OpenSubagentRequest,
   type Paste,
   RENAMING_THREAD,
+  RESET_VIEWS,
   REVEAL_WIDGET,
   type RevealRequest,
   SELECTED_THREAD,

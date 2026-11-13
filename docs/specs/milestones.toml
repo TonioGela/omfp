@@ -885,6 +885,9 @@ requirements = [
   "UI-423",
   "UI-424",
   "E2E-37",
+  # QA fixes: the view reset asks first
+  "UI-430",
+  "UI-431",
   # Journeys
   "E2E-22",
   "E2E-23",

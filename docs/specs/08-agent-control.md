@@ -59,7 +59,7 @@ binding rules are the table [Views and widgets (M4)](#views-and-widgets-m4) belo
 Declarative, checked by the daemon, edited by the agent as a file (or with the `omfp_ui_mount` tool, AGT-061) and by the
 user from the UI (move, resize, hide, add, switch view), so both always edit the same thing. Every workspace has the
 file: the daemon writes the default view into it when it creates the workspace, and at startup for older ones
-(DMN-088), and never rewrites it — it is the user's and the agent's; `:view reset` restores the current default. The
+(DMN-088), and never rewrites it — it is the user's and the agent's; `:view-reset` restores the current default. The
 default view is the header over the `tabs` slot `main` holding the conversation (opened files show as closable tabs
 next to it, UI-115), with the `tabs` slot `side` (workspace and changes widgets) on its right:
 

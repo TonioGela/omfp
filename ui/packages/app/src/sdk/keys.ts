@@ -70,6 +70,9 @@ export const DELETE_WORKSPACE = windowKey<string | undefined>("deleteWorkspace",
 /** The thread whose delete confirmation is open (UI-026). */
 export const DELETE_THREAD = windowKey<string | undefined>("deleteThread", undefined);
 
+/** The workspace whose `views.json` reset confirmation is open (UI-430). */
+export const RESET_VIEWS = windowKey<string | undefined>("resetViews", undefined);
+
 /** The thread whose title is being edited in place (UI-030). */
 export const RENAMING_THREAD = windowKey<string | undefined>("renamingThread", undefined);
 

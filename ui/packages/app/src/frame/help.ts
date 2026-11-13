@@ -80,6 +80,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   "view.next": commandTitles.nextView,
   "view.prev": commandTitles.prevView,
   "view.pick": commandTitles.pickView,
+  "view.reset": commandTitles.resetViews,
   widget: commandTitles.widget,
 };
 

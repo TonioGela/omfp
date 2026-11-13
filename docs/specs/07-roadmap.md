@@ -230,7 +230,7 @@ Scope (the user's second round of changes after M5): a mode line in the frame (U
 widgets without a browser — window reports (AGT-026) behind the host tools `omfp_widget_check` (DMN-063) and
 `omfp_view_add` (DMN-064; later replaced by `omfp_ui_mount`, DMN-064 removed), built-in widget sources and docs as `omfp://` URIs named in the prompt note (DMN-062,
 AGT-024); `useJob` with a status, separate stdout and stderr and its runs (AGT-019); `views.json` always present in a
-workspace, written at creation and at startup, `:view reset` (DMN-088, UI-107; DMN-030 narrowed to repositories); the
+workspace, written at creation and at startup, `:view-reset` (DMN-088, UI-107; DMN-030 narrowed to repositories); the
 `write` card shows the first lines of the content (UI-053).
 
 Acceptance: E2E-10's scripted agent checks its widget with `omfp_widget_check` and adds it with `omfp_view_add` (later `omfp_ui_mount`);
@@ -523,7 +523,7 @@ Result: the fixture `async_bash_tool_call` was recorded from the pinned omp and 
 settles after the call's end, then omp delivers the job's result as a new turn), so the reducers, the cards and the
 widget are tested on real frames; E2E-21 runs the same through the window. omp's job frames carry no times, so a job's
 duration is measured from when the window first saw it; the call's own result is omp's notice to the model, not job
-output. Workspaces with a `views.json` of their own keep it: `:view reset` or an agent's mount adds the new tab.
+output. Workspaces with a `views.json` of their own keep it: `:widget add omfp:background` or an agent's mount adds the new tab.
 
 ## M13 — MCP servers (done)
 

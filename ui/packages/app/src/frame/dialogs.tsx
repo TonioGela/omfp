@@ -1,4 +1,7 @@
-/** The frame's dialogs: the thread and workspace delete confirmations (UI-026, UI-020) and the token screen (UI-002). */
+/**
+ * The frame's dialogs: the thread and workspace delete confirmations (UI-026, UI-020), the `views.json` reset
+ * confirmation (UI-430) and the token screen (UI-002).
+ */
 
 import { Button, Checkbox, ConfirmDialog, Dialog, TextField } from "@omfp/kit";
 import type { ThreadSummary, Workspace } from "@omfp/protocol";
@@ -7,7 +10,10 @@ import { keyLabel } from "../keymap/keymap.ts";
 import {
   DELETE_THREAD,
   DELETE_WORKSPACE,
+  RESET_VIEWS,
   removeWorkspace,
+  reportError,
+  reportSuccess,
   useHost,
   useThreadActions,
   useThreadSummary,
@@ -16,6 +22,7 @@ import {
   useWorkspaces,
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
+import { DEFAULT_MANIFEST } from "../view/views.ts";
 import { displayTitle } from "../vm/threads.ts";
 
 /** Deleting removes the thread's history, never its workspace; Cancel has the focus when it opens. */
@@ -45,6 +52,49 @@ export function DeleteThreadDialog(): ReactNode {
       testId="delete-thread-dialog"
       confirmTestId="confirm-delete-thread"
       cancelTestId="cancel-delete-thread"
+      cancelKbd={keyLabel("Escape")}
+    />
+  );
+}
+
+/**
+ * `:view-reset` (UI-107, UI-430): the current default manifest replaces the workspace's views.json, valid or not, only
+ * once confirmed; the result is announced and shown as a success toast, failures go to the error list.
+ */
+export function ResetViewsDialog(): ReactNode {
+  const host = useHost();
+  const [workspaceId, setWorkspaceId] = useWindowState(RESET_VIEWS);
+  const text = strings.shell.resetViews;
+  const reset = async (id: string) => {
+    try {
+      await host.client.call("views.set", { workspaceId: id, manifest: DEFAULT_MANIFEST });
+      host.announcer.announce(strings.shell.layout.reset);
+      reportSuccess(host, strings.shell.layout.reset);
+    } catch (error) {
+      reportError(host, error);
+    }
+  };
+  return (
+    <ConfirmDialog
+      isOpen={workspaceId !== undefined}
+      onOpenChange={(open) => {
+        if (!open) {
+          setWorkspaceId(undefined);
+        }
+      }}
+      title={text.title}
+      message={text.message}
+      confirmLabel={text.confirm}
+      cancelLabel={text.cancel}
+      tone="danger"
+      onConfirm={() => {
+        if (workspaceId !== undefined) {
+          void reset(workspaceId);
+        }
+      }}
+      testId="view-reset-dialog"
+      confirmTestId="confirm-view-reset"
+      cancelTestId="cancel-view-reset"
       cancelKbd={keyLabel("Escape")}
     />
   );
