@@ -58,6 +58,38 @@ oh-my-pi, and you need git.
 To check a download, compare `shasum -a 256 <file>` (macOS) or `sha256sum <file>` (Linux) with its line in the
 release's `SHA256SUMS`.
 
+## Settings
+
+omfp reads `$XDG_CONFIG_HOME/omfp/config.toml`, else `~/.config/omfp/config.toml` (also on macOS and in the Flatpak;
+`omfp daemon --config <file>` picks another). The file is optional; unknown keys are errors.
+
+```toml
+[daemon]                       # the `omfp daemon` options, snake case; a command-line flag wins over the file
+bind = "127.0.0.1:7420"
+# data_dir, workspaces_root (default ~/.omfp), omp_bin, static_dir, theme_file: paths, `~` allowed
+# allow_omp_mismatch = true    # run with an omp that is not the pinned release (the UI warns)
+# idle_timeout_minutes = 15, max_processes = 8, event_buffer = 2000
+# allowed_origins = ["https://omfp.example.ts.net"]   # the UI's URL behind a tunnel or reverse proxy
+# title_generation = false     # no generated thread titles
+
+[ui]                           # also set from the window: `:set font_size=15`, `:density compact`
+density = "normal"             # compact | normal
+font_size = 17                 # px, 10–28
+motion = "full"                # full | reduced | none
+notifications = "background"   # background | always | never
+
+[ui.fonts]                     # prose, ui, code: CSS font families
+prose = "Literata, serif"
+
+[keymap]                       # normal mode; [keymap.insert] and [keymap.cmdline] for the others
+"Space t" = "theme.set"        # a command id (`:describe-key`, `?` lists them)
+"g g" = ""                     # removes a default binding
+```
+
+`[ui]` and `[keymap]` apply live; a change to `[daemon]` needs a daemon restart. The theme is the CSS file
+`~/.config/omfp/theme.css` next to it, followed live (the matugen template in `contrib/matugen` makes one);
+`omfp theme set <file>` pushes a theme to a running daemon instead.
+
 <sub>This README is for humans. The slop lives in [docs/overview.md](docs/overview.md); anything else, ask your agent
 how omfp works.\*</sub>
 

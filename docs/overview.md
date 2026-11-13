@@ -11,7 +11,8 @@ build widgets for the UI itself, and you can talk to it with live voice.
 - Transcript with streaming Markdown, thinking blocks and tool cards for `bash`, `read`, `edit`/`write`, `grep`,
   `glob`, `todo`, `web_search`, `task` and more; approvals and `ask` forms answered in place; queued follow-ups and
   steering.
-- Views as layout trees in `.omfp/views.json`, editable from the UI or by the agent; widgets are React components the
+- Views as layout trees in `.omfp/views.json` (or TSX views and init files), written by the agent, with `:widget add`
+  in the window; widgets are React components the
   agent writes and checks without a browser (`omfp/sdk`), next to built-ins for changes and diffs, files (CodeMirror
   with vim keys), subagents, todos and the session tree.
 - Live voice through omp's live session, with a transcript and mute.
@@ -61,7 +62,7 @@ of nix-darwin it shows up in `/Applications/Nix Apps`, in `home.packages` of hom
 `~/Applications/Home Manager Apps`, so Spotlight and Launchpad find it. The app is ad-hoc signed: macOS asks for the
 microphone again after each update. The daemon keeps its data in `~/.local/share/omfp` on Linux and
 `~/Library/Application Support/omfp` on macOS (`XDG_DATA_HOME` wins on both); the config and theme files are in
-`~/.config/omfp`.
+`~/.config/omfp` (the keys: [Settings](../README.md#settings) in the README).
 
 ## Status
 
