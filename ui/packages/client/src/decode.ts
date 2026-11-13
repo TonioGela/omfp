@@ -103,6 +103,7 @@ const INDEX_EVENTS: Record<IndexEvent["kind"], (event: Record<string, unknown>) 
   theme_changed: (event) => isTheme(event.theme),
   settings_changed: (event) => isSettings(event.settings),
   init_changed: (event) => isOptionalString(event.init),
+  models_changed: (event) => isSeq(event.models),
 };
 
 /** The theme when the daemon sends none (DMN-075): the built-in themes only. */
@@ -427,7 +428,8 @@ export function decodeSubscribeResult(value: unknown): Decoded<SubscribeResult> 
 }
 
 /** Decodes the state of an `index` snapshot; a missing `theme` is {@link NO_THEME}, missing `settings`
- * {@link NO_SETTINGS}, a missing `init` (the user's init file version, PRT-095) `null`. */
+ * {@link NO_SETTINGS}, a missing `init` (the user's init file version, PRT-095) and a missing `models` (the count of
+ * usable models, PRT-141) `null`. */
 export function decodeIndexSnapshot(value: unknown): Decoded<IndexSnapshot> {
   if (
     !isObject(value) ||
@@ -447,8 +449,12 @@ export function decodeIndexSnapshot(value: unknown): Decoded<IndexSnapshot> {
     return invalid("expected `init` to be a string or `null`");
   }
   const init = typeof value.init === "string" ? value.init : null;
+  if (!(value.models === undefined || value.models === null || isSeq(value.models))) {
+    return invalid("expected `models` to be a count or `null`");
+  }
+  const models = typeof value.models === "number" ? value.models : null;
   // Every list holds objects with a string `id`, the key the model files them under.
-  return { ok: true, value: { ...(value as IndexSnapshot), theme, settings, init } };
+  return { ok: true, value: { ...(value as IndexSnapshot), theme, settings, init, models } };
 }
 
 const THREAD_STATE_FIELDS: Record<keyof ThreadState, (field: unknown) => boolean> = {

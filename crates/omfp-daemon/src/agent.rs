@@ -190,6 +190,9 @@ pub trait AgentLauncher: Send + Sync {
     fn session_lease(&self, spec: &LaunchSpec, session_id: &str) -> Result<Lease, StartError>;
     /// Generates a thread title from its first message with one omp print-mode run (DMN-073).
     fn generate_title(&self, request: &TitleRequest) -> Result<String, TitleError>;
+    /// How many models omp started for `spec` can use (DMN-235): the length of its `get_available_models`, the models
+    /// of the providers it holds a credential for and of keyless ones; the omp stops before this returns.
+    fn usable_models(&self, spec: &LaunchSpec) -> Result<u32, StartError>;
 }
 
 /// The real launcher: `omp --mode rpc-ui` through `omp-rpc`.
@@ -251,6 +254,23 @@ impl AgentLauncher for OmpLauncher {
             )));
         }
         clean_title(&String::from_utf8_lossy(&output.stdout)).ok_or(TitleError::Empty)
+    }
+
+    fn usable_models(&self, spec: &LaunchSpec) -> Result<u32, StartError> {
+        let launched = self.launch(spec, Vec::new(), Vec::new())?;
+        let listed = launched
+            .process
+            .call(OmpCall::AvailableModels)
+            .and_then(|value| {
+                serde_json::from_value::<GetAvailableModelsResult>(value)
+                    .map_err(omp_rpc::Error::Json)
+            });
+        launched.process.kill();
+        let listed = listed.map_err(|error| StartError::Setup {
+            step: "get_available_models",
+            error,
+        })?;
+        Ok(u32::try_from(listed.models.len()).unwrap_or(u32::MAX))
     }
 }
 

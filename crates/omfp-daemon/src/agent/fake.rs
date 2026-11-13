@@ -219,6 +219,10 @@ struct Script {
     outputs: HashMap<String, Vec<String>>,
     /// The stderr of the next launches that fail as omp exiting at startup does (DMN-211).
     failures: VecDeque<String>,
+    /// What every later check of the usable models answers (DMN-235); `None`: one model, as a configured omp has.
+    models: Option<u32>,
+    /// The specs of every check of the usable models so far, oldest first.
+    model_checks: Vec<LaunchSpec>,
 }
 
 /// The fake launcher. Without queued runs, every launch plays [`FakeRun::fresh`].
@@ -329,10 +333,21 @@ impl FakeLauncher {
         );
     }
 
-    /// Fails the next launch as omp exiting at startup does (`omp did not become ready: server closed`), after
-    /// writing `stderr` to its stderr log.
+    /// Fails the next launch (or check of the usable models, which starts an omp too) as omp exiting at startup does
+    /// (`omp did not become ready: server closed`), after writing `stderr` to its stderr log.
     pub fn fail_next_launch(&self, stderr: &str) {
         lock(&self.script).failures.push_back(stderr.to_owned());
+    }
+
+    /// Answers every later check of the usable models (DMN-235) with `count`; by default the fake's omp has one model.
+    pub fn set_usable_models(&self, count: u32) {
+        lock(&self.script).models = Some(count);
+    }
+
+    /// The spec of every check of the usable models so far, oldest first; a check is no launch.
+    #[must_use]
+    pub fn model_checks(&self) -> Vec<LaunchSpec> {
+        lock(&self.script).model_checks.clone()
     }
 }
 
@@ -413,6 +428,17 @@ impl AgentLauncher for FakeLauncher {
             Some(Err(message)) => Err(TitleError::Failed(message)),
             None => Err(TitleError::Failed("no title scripted".into())),
         }
+    }
+
+    /// Fails like [`AgentLauncher::launch`] when a failure is queued; else the scripted count.
+    fn usable_models(&self, spec: &LaunchSpec) -> Result<u32, StartError> {
+        let mut script = lock(&self.script);
+        if let Some(stderr) = script.failures.pop_front() {
+            std::fs::write(&spec.stderr_log, stderr)?;
+            return Err(StartError::Connect(omp_rpc::Error::Closed));
+        }
+        script.model_checks.push(spec.clone());
+        Ok(script.models.unwrap_or(1))
     }
 }
 

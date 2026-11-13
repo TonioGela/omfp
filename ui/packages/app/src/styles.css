@@ -148,6 +148,43 @@
     min-inline-size: 0;
   }
 
+  /* The first run's welcome in place of the view (UI-500): centred, one primary action. */
+  .omfp-welcome {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--omfp-s3);
+    min-block-size: 0;
+    padding: var(--omfp-s6) var(--omfp-s4);
+    overflow: auto;
+    text-align: center;
+  }
+
+  .omfp-welcome__mark {
+    block-size: 2.5rem;
+    inline-size: auto;
+    margin-block-end: var(--omfp-s2);
+  }
+
+  .omfp-welcome__title {
+    margin: 0;
+    font-size: var(--omfp-fs-xl);
+    font-weight: var(--omfp-fw-strong);
+  }
+
+  .omfp-welcome__why,
+  .omfp-welcome__keys {
+    margin: 0;
+    max-inline-size: 36rem;
+  }
+
+  .omfp-welcome__keys {
+    font-size: var(--omfp-fs-xs);
+    color: var(--omfp-on-surface-variant);
+  }
+
   /* The mode line (UI-167): kit `omfp-modeline`; the `:` line and the file picker sit in its segments (UI-168). */
   .omfp-frame__mode {
     flex: 0 0 auto;

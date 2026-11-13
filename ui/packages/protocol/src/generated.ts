@@ -83,6 +83,15 @@ export type AuthProviders = {
   providers: AuthProvider[];
 };
 
+/** `auth.status` result (PRT-140): whether omp has a model it can use, as the daemon last checked it (DMN-235). */
+export type AuthStatus = {
+  /**
+   * How many models omp can use: of a provider it holds a credential for (a login, a key from the environment or
+   * omp's config) or of a keyless one. `0` on a fresh install, where every thread start fails until a login.
+   */
+  models: number;
+};
+
 /** `thread.bash` params. */
 export type BashParams = {
   command: string;
@@ -434,6 +443,14 @@ export type IndexEvent =
   | {
     init?: string | null;
     kind: "init_changed";
+  }
+  /**
+   * The daemon checked how many models omp can use and found another count (PRT-141, DMN-235..DMN-237):
+   * replaces `models`.
+   */
+  | {
+    kind: "models_changed";
+    models: number;
   };
 
 /** State of the `index` topic. */
@@ -443,6 +460,11 @@ export type IndexSnapshot = {
    * `null` without one.
    */
   init?: string | null;
+  /**
+   * How many models omp can use (PRT-141, `auth.status`); `null` until the daemon checked, which the first
+   * `auth.status` does (DMN-235).
+   */
+  models?: number | null;
   settings: Settings;
   theme: Theme;
   threads: ThreadSummary[];
@@ -1933,6 +1955,7 @@ export interface Methods {
   "workspaces.mcp_servers": { params: WorkspaceRef; result: McpServers };
   "thread.mcp_servers": { params: ThreadRef; result: McpServers };
   "thread.mcp_reconnect": { params: McpReconnectParams; result: McpServers };
+  "auth.status": { params: Empty; result: AuthStatus };
   "auth.providers": { params: Empty; result: AuthProviders };
   "auth.login": { params: ProviderRef; result: LoggedIn };
   "auth.login_cancel": { params: Empty; result: LoginCancelled };
@@ -2028,6 +2051,7 @@ export const METHODS: readonly MethodName[] = [
   "workspaces.mcp_servers",
   "thread.mcp_servers",
   "thread.mcp_reconnect",
+  "auth.status",
   "auth.providers",
   "auth.login",
   "auth.login_cancel",

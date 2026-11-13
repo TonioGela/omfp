@@ -725,6 +725,25 @@ expression: type_schemas()
           "kind"
         ],
         "type": "object"
+      },
+      {
+        "description": "The daemon checked how many models omp can use and found another count (PRT-141, DMN-235..DMN-237):\nreplaces `models`.",
+        "properties": {
+          "kind": {
+            "const": "models_changed",
+            "type": "string"
+          },
+          "models": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "models"
+        ],
+        "type": "object"
       }
     ],
     "title": "IndexEvent"
@@ -1260,6 +1279,16 @@ expression: type_schemas()
         "description": "The version of the user's init file (`~/.config/omfp/init.ts`, PRT-095): a hash of its bytes;\n`null` without one.",
         "type": [
           "string",
+          "null"
+        ]
+      },
+      "models": {
+        "default": null,
+        "description": "How many models omp can use (PRT-141, `auth.status`); `null` until the daemon checked, which the first\n`auth.status` does (DMN-235).",
+        "format": "uint32",
+        "minimum": 0,
+        "type": [
+          "integer",
           "null"
         ]
       },

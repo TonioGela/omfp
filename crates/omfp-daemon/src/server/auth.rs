@@ -92,6 +92,7 @@ pub fn permission(method: &str) -> Option<Permission> {
         | "windows.state"
         | "workspaces.mcp_servers"
         | "thread.mcp_servers"
+        | "auth.status"
         | "auth.providers" => Read,
         "workspaces.create"
         | "workspaces.update"
@@ -449,9 +450,10 @@ mod tests {
         assert_eq!(permission("windows.answer"), Some(Permission::Connect));
     }
 
-    // spec: PRT-129, PRT-130, PRT-132, PRT-133
+    // spec: PRT-129, PRT-130, PRT-132, PRT-133, PRT-140
     #[test]
-    fn listing_providers_reads_and_logging_in_or_out_drives() {
+    fn listing_providers_or_the_usable_models_reads_and_logging_in_or_out_drives() {
+        assert_eq!(permission("auth.status"), Some(Permission::Read));
         assert_eq!(permission("auth.providers"), Some(Permission::Read));
         for method in ["auth.login", "auth.login_cancel", "auth.logout"] {
             assert_eq!(permission(method), Some(Permission::Drive), "{method}");

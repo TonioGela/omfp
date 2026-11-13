@@ -323,6 +323,37 @@ fn init_events_replace_the_init_versions_and_older_states_have_none() {
     assert_eq!(index.init, None);
 }
 
+// spec: PRT-141
+#[test]
+fn models_events_replace_the_usable_model_count_and_older_states_have_none() {
+    let changed = event(
+        Topic::Index,
+        TopicEvent::Index(IndexEvent::ModelsChanged { models: 0 }),
+    );
+    assert_eq!(
+        round_trip(&changed)["event"],
+        json!({ "kind": "models_changed", "models": 0 })
+    );
+    // A snapshot without the field (an older daemon, or none checked yet) reads as unknown.
+    let index: omfp_protocol::IndexSnapshot = serde_json::from_value(json!({
+        "workspaces": [],
+        "threads": [],
+        "theme": theme(),
+        "settings": settings()
+    }))
+    .unwrap();
+    assert_eq!(index.models, None);
+    let checked: omfp_protocol::IndexSnapshot = serde_json::from_value(json!({
+        "workspaces": [],
+        "threads": [],
+        "theme": theme(),
+        "settings": settings(),
+        "models": 3
+    }))
+    .unwrap();
+    assert_eq!(checked.models, Some(3));
+}
+
 // spec: PRT-096
 #[test]
 fn views_files_events_replace_the_view_files_version_and_older_states_have_none() {

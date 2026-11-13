@@ -2493,3 +2493,126 @@ async fn logout_removes_every_stored_credential_of_the_provider() {
     assert_eq!(removed, [3, 7]);
     assert!(process.is_closed());
 }
+
+/// The count of the next `models_changed` event on the `index` topic (PRT-141).
+async fn models_changed(client: &mut Client) -> Value {
+    loop {
+        let frame = client.event("index").await;
+        if frame["event"]["kind"] == "models_changed" {
+            return frame["event"]["models"].clone();
+        }
+    }
+}
+
+// spec: PRT-140, PRT-141, DMN-235
+#[tokio::test(flavor = "multi_thread")]
+async fn the_usable_models_are_checked_once_by_a_login_omp_and_published_on_the_index() {
+    let daemon = daemon(&[]).await;
+    daemon.launcher.set_usable_models(0);
+    let mut client = daemon.client("test").await;
+    let index = client.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(index["state"]["models"], Value::Null, "nobody asked yet");
+
+    let status = client.ok("auth.status", json!({})).await;
+
+    assert_eq!(status, json!({ "models": 0 }));
+    assert_eq!(models_changed(&mut client).await, 0);
+    assert_eq!(
+        client.ok("auth.status", json!({})).await,
+        json!({ "models": 0 })
+    );
+    let checks = daemon.launcher.model_checks();
+    assert_eq!(checks.len(), 1, "the count is kept");
+    assert_eq!(
+        checks[0].model.as_deref(),
+        Some(omfp_daemon::supervisor::LOGIN_MODEL)
+    );
+    assert_eq!(checks[0].cwd, daemon.dir.path().join("login").join("work"));
+    assert_eq!(daemon.launcher.launches().len(), 0, "a check is no launch");
+    let mut late = daemon.client("late").await;
+    let index = late.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(index["state"]["models"], 0);
+}
+
+// spec: DMN-235
+#[tokio::test(flavor = "multi_thread")]
+async fn a_check_that_cannot_start_omp_fails_with_its_stderr_and_the_next_one_checks_again() {
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .fail_next_launch("Model \"anthropic/claude-sonnet-4-5\" not found");
+    daemon.launcher.fail_next_launch("fatal: out of memory");
+    let mut client = daemon.client("test").await;
+
+    let error = client.call("auth.status", json!({})).await.unwrap_err();
+
+    assert_eq!(error["code"], "thread_failed", "{error}");
+    assert_eq!(error["details"]["stderrTail"], "fatal: out of memory");
+    assert_eq!(daemon.launcher.model_checks().len(), 0);
+    assert_eq!(
+        client.ok("auth.status", json!({})).await,
+        json!({ "models": 1 })
+    );
+}
+
+// spec: DMN-236
+#[tokio::test(flavor = "multi_thread")]
+async fn a_login_or_a_logout_checks_the_usable_models_again_once_someone_asked() {
+    let daemon = daemon(&[]).await;
+    daemon
+        .launcher
+        .reply("get_login_providers", login_providers());
+    daemon.launcher.set_usable_models(0);
+    let mut window = daemon.client("test").await;
+    window.ok("subscribe", json!({ "topic": "index" })).await;
+    let anthropic = json!({ "providerId": "anthropic" });
+    window.ok("auth.login", anthropic.clone()).await;
+    assert_eq!(daemon.launcher.model_checks().len(), 0, "nobody asked yet");
+
+    assert_eq!(
+        window.ok("auth.status", json!({})).await,
+        json!({ "models": 0 })
+    );
+    assert_eq!(models_changed(&mut window).await, 0);
+    daemon.launcher.set_usable_models(4);
+    window.ok("auth.login", anthropic.clone()).await;
+    assert_eq!(models_changed(&mut window).await, 4);
+    daemon.launcher.set_usable_models(0);
+    window.ok("auth.logout", anthropic).await;
+    assert_eq!(models_changed(&mut window).await, 0);
+    assert_eq!(daemon.launcher.model_checks().len(), 3);
+}
+
+// spec: DMN-237
+#[tokio::test(flavor = "multi_thread")]
+async fn a_thread_start_contradicting_the_usable_models_checks_them_again() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    client.ok("subscribe", json!({ "topic": "index" })).await;
+    assert_eq!(
+        client.ok("auth.status", json!({})).await,
+        json!({ "models": 1 })
+    );
+    assert_eq!(models_changed(&mut client).await, 1);
+    let thread = create_thread(&mut client).await;
+
+    // The credential went away behind the daemon's back: omp refuses to start.
+    daemon.launcher.set_usable_models(0);
+    daemon.launcher.fail_next_launch(
+        "No default model selected. Use /login, set an API key environment variable, …",
+    );
+    let error = client
+        .call("thread.state", json!({ "threadId": thread }))
+        .await
+        .unwrap_err();
+    assert_eq!(error["code"], "thread_failed", "{error}");
+    assert_eq!(models_changed(&mut client).await, 0);
+
+    // A key came back: the thread starts without a model of its own.
+    daemon.launcher.set_usable_models(2);
+    client
+        .ok("thread.state", json!({ "threadId": thread }))
+        .await;
+    assert_eq!(models_changed(&mut client).await, 2);
+    assert_eq!(daemon.launcher.model_checks().len(), 3);
+}

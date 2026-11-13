@@ -15,8 +15,8 @@ use omp_rpc::Event;
 use tracing::{info, warn};
 
 use super::{Result, STDERR_TAIL_LINES, Supervisor, SupervisorError, blocking, lock, stderr_tail};
-use crate::agent::AgentProcess;
-use crate::omp::LaunchSpec;
+use crate::agent::{AgentLauncher, AgentProcess};
+use crate::omp::{LaunchSpec, StartError};
 
 /// The `--model` of the login omp: any model of omp's bundled catalog lets it start without a credential; it never
 /// prompts, so the model is never called.
@@ -63,27 +63,44 @@ impl Supervisor {
     /// Starts the login omp (DMN-219): with [`LOGIN_MODEL`], else once more without it (a setup that disables that
     /// provider has a model of its own). A failure carries the last lines of its stderr, as a thread's start does.
     pub async fn auth_omp(&self) -> Result<AuthOmp> {
+        self.on_login_omp(|launcher, spec| {
+            launcher
+                .launch(spec, Vec::new(), Vec::new())
+                .map(|launched| AuthOmp {
+                    process: launched.process,
+                    events: launched.events,
+                })
+        })
+        .await
+    }
+
+    /// Runs `start` — something that starts an omp — on the login omp's spec, with [`LOGIN_MODEL`] and else without
+    /// it, as [`Supervisor::auth_omp`] does; also the check of the usable models (DMN-235).
+    pub(super) async fn on_login_omp<T: Send + 'static>(
+        &self,
+        start: impl Fn(&dyn AgentLauncher, &LaunchSpec) -> std::result::Result<T, StartError>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Result<T> {
         if self.inner.shutting_down.load(Ordering::SeqCst) {
             return Err(SupervisorError::ShuttingDown);
         }
+        let start = Arc::new(start);
         let mut failure = None;
         for model in [Some(LOGIN_MODEL), None] {
             let spec = self.auth_spec(model);
             let launcher = Arc::clone(&self.inner.launcher);
             let log = spec.stderr_log.clone();
+            let start = Arc::clone(&start);
             let started = blocking(move || {
                 if let Some(parent) = spec.stderr_log.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
-                launcher.launch(&spec, Vec::new(), Vec::new())
+                start(launcher.as_ref(), &spec)
             });
             match started.await? {
-                Ok(launched) => {
-                    return Ok(AuthOmp {
-                        process: launched.process,
-                        events: launched.events,
-                    });
-                }
+                Ok(started) => return Ok(started),
                 Err(error) => {
                     warn!(?model, %error, "the login omp did not start");
                     let tail = blocking(move || stderr_tail(&log, STDERR_TAIL_LINES))

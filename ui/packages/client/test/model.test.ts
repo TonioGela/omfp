@@ -457,6 +457,35 @@ describe("model", () => {
     expect(decodeServerFrame(indexEvent({})).ok).toBe(false);
   });
 
+  // spec: PRT-141
+  test("the usable models: the index follows the count; snapshots without one leave it unknown", () => {
+    const model = new Model();
+    expect(model.index.models).toBeNull();
+    model.track(INDEX_TOPIC);
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i1", 1, indexState())).ok).toBe(true);
+    expect(model.index.models).toBeNull();
+    model.takeDirty();
+    expect(model.applyEvent(indexFrame("i1", 2, { kind: "models_changed", models: 0 }))).toBe("applied");
+    expect(model.index.models).toBe(0);
+    expect(model.takeDirty().index).toBe(true);
+    expect(model.applyEvent(indexFrame("i1", 3, { kind: "models_changed", models: 3 }))).toBe("applied");
+    expect(model.index.models).toBe(3);
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i2", 1, { ...indexState(), models: 2 })).ok).toBe(true);
+    expect(model.index.models).toBe(2);
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i3", 1, { ...indexState(), models: -1 })).ok).toBe(false);
+    expect(model.applySubscribed(INDEX_TOPIC, snapshot("i4", 1, { ...indexState(), models: "2" })).ok).toBe(false);
+    const changed = (models: unknown) => ({
+      type: "event",
+      topic: INDEX_TOPIC,
+      epoch: "i1",
+      seq: 4,
+      event: { kind: "models_changed", models },
+    });
+    expect(decodeServerFrame(changed(1)).ok).toBe(true);
+    expect(decodeServerFrame(changed(null)).ok).toBe(false);
+    expect(decodeServerFrame(changed(1.5)).ok).toBe(false);
+  });
+
   // spec: PRT-096
   test("the view files version follows the views topic; snapshots without one have none", () => {
     const model = new Model();

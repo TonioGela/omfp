@@ -296,6 +296,8 @@ methods! {
     ThreadMcpServers = "thread.mcp_servers" (params::ThreadRef) -> mcp::McpServers;
     /// Reconnects a thread's MCP servers by restarting its idle omp process, then checks them again (PRT-112).
     ThreadMcpReconnect = "thread.mcp_reconnect" (mcp::McpReconnectParams) -> mcp::McpServers;
+    /// How many models omp can use; checked by a short-lived omp the first time, then kept current (PRT-140).
+    AuthStatus = "auth.status" (params::Empty) -> auth::AuthStatus;
     /// The providers omp can log in to with OAuth and whether it holds a credential for each, from a short-lived omp
     /// (PRT-129).
     AuthProviders = "auth.providers" (params::Empty) -> auth::AuthProviders;

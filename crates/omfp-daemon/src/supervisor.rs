@@ -41,6 +41,7 @@ mod dialogs;
 mod live;
 mod login;
 mod mcp;
+mod models;
 mod naming;
 mod restart;
 
@@ -438,6 +439,8 @@ struct Inner {
     /// The running `auth.login` and the numbers telling logins apart (DMN-222).
     login: Mutex<Option<login::Running>>,
     logins: AtomicU64,
+    /// What the daemon knows of the models omp can use (DMN-235..DMN-237).
+    models: models::UsableModels,
 }
 
 /// The agent supervisor. Cheap to clone.
@@ -534,6 +537,7 @@ impl Supervisor {
                 agent_host: Mutex::new(None),
                 shutting_down: AtomicBool::new(false),
                 login: Mutex::new(None),
+                models: models::UsableModels::default(),
                 logins: AtomicU64::new(0),
             }),
         }
@@ -1273,6 +1277,7 @@ impl Supervisor {
         });
         self.spawn_pump(Arc::clone(actor), launched.events, generation, ended_tx);
         info!(thread = %actor.id, "omp started");
+        self.started_with(&spec);
         // The flags added today's roots; the session still has the ones it saved before (S-10).
         recorded.extend(add_dirs.iter().cloned());
         if let Err(error) = self
@@ -1327,8 +1332,10 @@ impl Supervisor {
         })
     }
 
-    /// Fails the thread whose omp could not start and returns the error carrying omp's stderr tail (DMN-212).
+    /// Fails the thread whose omp could not start and returns the error carrying omp's stderr tail (DMN-212); omp's
+    /// refusal without a usable model may contradict the known count of usable models (DMN-237).
     fn failed_start(&self, actor: &Actor, message: String, stderr_tail: String) -> SupervisorError {
+        self.failed_with(&stderr_tail);
         self.fail(actor, message.clone(), stderr_tail.clone());
         SupervisorError::Start {
             message,

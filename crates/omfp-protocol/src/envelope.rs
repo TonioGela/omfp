@@ -402,6 +402,11 @@ pub enum IndexEvent {
     InitChanged {
         init: Option<String>,
     },
+    /// The daemon checked how many models omp can use and found another count (PRT-141, DMN-235..DMN-237):
+    /// replaces `models`.
+    ModelsChanged {
+        models: u32,
+    },
 }
 
 /// Change on a `workspace/<id>` topic, whose state is the git status of each repository of the workspace.

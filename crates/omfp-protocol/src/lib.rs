@@ -22,7 +22,9 @@ pub use activity::{
     ActivityEntry, ActivityPage, ListActivityParams, PromptHistory, PromptHistoryEntry,
     PromptHistoryParams, StopThreadParams, ThreadsStopped,
 };
-pub use auth::{AuthProvider, AuthProviders, LoggedIn, LoggedOut, LoginCancelled, ProviderRef};
+pub use auth::{
+    AuthProvider, AuthProviders, AuthStatus, LoggedIn, LoggedOut, LoginCancelled, ProviderRef,
+};
 pub use dto::{
     CreatedBy, Density, DiffPage, FileCandidate, FileCandidates, FileChange, FileContent, FileDiff,
     FileKind, FileMatch, FileStatus, FileWritten, FontSettings, GitStatus, IndexSnapshot, JobInfo,

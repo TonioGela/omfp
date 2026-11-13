@@ -32,7 +32,7 @@ use omfp_protocol::{
     WindowView,
 };
 use omfp_protocol::{
-    AuthProvider, AuthProviders, LoggedIn, LoggedOut, LoginCancelled, ProviderRef,
+    AuthProvider, AuthProviders, AuthStatus, LoggedIn, LoggedOut, LoginCancelled, ProviderRef,
 };
 use omfp_protocol::{ContextUsage, SessionTokens, SessionUsage, ThreadSession};
 use omfp_protocol::{
@@ -1229,6 +1229,7 @@ fn auth_examples() -> Vec<(&'static str, Value)> {
         provider_id: "anthropic".to_owned(),
     };
     vec![
+        example::<method::AuthStatus>(Empty {}, &AuthStatus { models: 0 }),
         example::<method::AuthProviders>(
             Empty {},
             &AuthProviders {
@@ -1628,6 +1629,7 @@ fn index_snapshot_lists_workspaces_threads_the_theme_and_settings() {
         theme: theme(),
         settings: settings(),
         init: None,
+        models: Some(12),
     };
     let text = serde_json::to_string(&snapshot).unwrap();
     assert_eq!(

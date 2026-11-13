@@ -1,9 +1,18 @@
-//! Params and results of logging omp in to a provider (PRT-129..PRT-133): `auth.providers`, `auth.login`,
-//! `auth.login_cancel` and `auth.logout`. The flow of a login reaches a window as `login_*` window requests
-//! ([`crate::WindowRequest`]).
+//! Params and results of logging omp in to a provider (PRT-129..PRT-133, PRT-140): `auth.status`, `auth.providers`,
+//! `auth.login`, `auth.login_cancel` and `auth.logout`. The flow of a login reaches a window as `login_*` window
+//! requests ([`crate::WindowRequest`]).
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+/// `auth.status` result (PRT-140): whether omp has a model it can use, as the daemon last checked it (DMN-235).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AuthStatus {
+    /// How many models omp can use: of a provider it holds a credential for (a login, a key from the environment or
+    /// omp's config) or of a keyless one. `0` on a fresh install, where every thread start fails until a login.
+    pub models: u32,
+}
 
 /// `auth.providers` result (PRT-129): the providers omp can log in to with OAuth, in omp's order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

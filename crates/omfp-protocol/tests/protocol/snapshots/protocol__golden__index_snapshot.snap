@@ -134,5 +134,6 @@ expression: snapshot
     ],
     "error": null
   },
-  "init": null
+  "init": null,
+  "models": 12
 }

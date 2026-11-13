@@ -1,8 +1,8 @@
 //! Logging in to a provider against the pinned omp (L3): a fresh install — an isolated omp without any model or
-//! credential — where every thread start fails, `auth.providers` from the daemon's login omp, the start of omp's
-//! Anthropic OAuth login up to the URL the window must open, its cancel, and a logout with nothing stored
-//! (DMN-219..DMN-223). The OAuth providers cannot finish offline: completing a login is the fake launcher's
-//! (`tests/server.rs`).
+//! credential — where every thread start fails and `auth.status` counts no usable model while a configured omp counts
+//! some, `auth.providers` from the daemon's login omp, the start of omp's Anthropic OAuth login up to the URL the
+//! window must open, its cancel, and a logout with nothing stored (DMN-219..DMN-223, DMN-235). The OAuth providers
+//! cannot finish offline: completing a login is the fake launcher's (`tests/server.rs`).
 
 mod client;
 mod common;
@@ -21,6 +21,11 @@ async fn fresh_install(harness: &Harness) -> (DaemonHandle, TempDir) {
     for file in ["models.yml", "config.yml"] {
         std::fs::remove_file(harness.env.agent_dir().join(file)).unwrap();
     }
+    daemon_on(harness).await
+}
+
+/// A daemon on the real omp of `harness`'s environment.
+async fn daemon_on(harness: &Harness) -> (DaemonHandle, TempDir) {
     let data = tempfile::tempdir().unwrap();
     let omp = omp_bin();
     let workspaces = data.path().join("workspaces");
@@ -53,7 +58,7 @@ async fn window_request(client: &mut Client) -> Value {
     }
 }
 
-// spec: DMN-219, PRT-129
+// spec: DMN-219, PRT-129, DMN-235
 #[tokio::test(flavor = "multi_thread")]
 async fn on_a_fresh_install_threads_cannot_start_and_the_login_omp_lists_the_providers() {
     let harness = Harness::new(Vec::new()).await;
@@ -86,6 +91,12 @@ async fn on_a_fresh_install_threads_cannot_start_and_the_login_omp_lists_the_pro
         "{anthropic}"
     );
 
+    // The same refusal, without starting a thread: the window's cue to propose a login.
+    assert_eq!(
+        client.ok("auth.status", json!({})).await,
+        json!({ "models": 0 })
+    );
+
     let logout = client
         .ok("auth.logout", json!({ "providerId": "anthropic" }))
         .await;
@@ -93,6 +104,20 @@ async fn on_a_fresh_install_threads_cannot_start_and_the_login_omp_lists_the_pro
         logout,
         json!({ "providerId": "anthropic", "removed": 0, "remainingSource": null })
     );
+    daemon.shutdown().await.unwrap();
+    harness.assert_no_stray_network();
+}
+
+// spec: DMN-235
+#[tokio::test(flavor = "multi_thread")]
+async fn a_configured_omp_counts_its_usable_models() {
+    let harness = Harness::new(Vec::new()).await;
+    let (daemon, _data) = daemon_on(&harness).await;
+    let mut client = Client::hello(daemon.addr(), daemon.token().expose(), "test").await;
+
+    let status = client.ok("auth.status", json!({})).await;
+
+    assert!(status["models"].as_u64().unwrap() > 0, "{status}");
     daemon.shutdown().await.unwrap();
     harness.assert_no_stray_network();
 }

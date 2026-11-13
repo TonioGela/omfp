@@ -1,6 +1,7 @@
 /**
  * The thin frame around the view (docs/specs/08-agent-control.md): connection banner (UI-003), the left column of
  * workspaces and threads (UI-100), the view of the current workspace with its error banner (UI-100..102, AGT-011)
+ * or, while omp has no usable model, the first run's welcome (UI-500)
  * and its view tabs in the mode line (UI-301), the keymap, `:` command line (UI-095), which-key panel (UI-320) and
  * help panel (UI-198), the runtime errors of init files and TSX views reported to the daemon (UI-304), the window's
  * state for agents and their requests to it (UI-350..UI-353), the safety net for pending interactions (AGT-015),
@@ -76,6 +77,7 @@ import {
   useVisualViewport,
 } from "./responsive.tsx";
 import { ConnectionBanner, StatusLiveRegion, Toasts } from "./status.tsx";
+import { useWelcome, Welcome } from "./welcome.tsx";
 import { WhichKey } from "./which-key.tsx";
 import { WindowRequests } from "./window-requests.tsx";
 import { useWindowFocus, useWindowStateReport } from "./window-state.ts";
@@ -178,6 +180,7 @@ export function Frame({
   const [whichKey] = useState(() => new WhichKeyState());
   useKeymap(bindings, now, keyTimers, whichKey);
   const [selectedThread] = useWindowState(SELECTED_THREAD);
+  const welcome = useWelcome(selectedThread);
   const focused = useWindowFocus(hasFocus);
   useWindowStateReport({ workspaceId, threadId: selectedThread, focused, views, listed, shown: view, bindings });
   useAppearance();
@@ -244,7 +247,7 @@ export function Frame({
         {breakpoint === "wide" && <LeftSplitter aside={asideRef} />}
         <div className="omfp-frame__main">
           {keeping.views.map((entry) => {
-            const shown = view !== undefined && entry.id === listed?.id;
+            const shown = !welcome && view !== undefined && entry.id === listed?.id;
             return (
               <Activity key={entry.key} mode={shown ? "visible" : "hidden"}>
                 <ViewRenderer
@@ -258,6 +261,7 @@ export function Frame({
               </Activity>
             );
           })}
+          {welcome && <Welcome />}
           {view !== undefined && !hasMainSlot(view.tree) && (
             <FloatingFile workspaceId={workspaceId} views={state} registry={registry} />
           )}

@@ -950,6 +950,17 @@ requirements = [
   "UI-491",
   "UI-492",
   "UI-493",
+  # QA fixes: the first run proposes a login only when omp can use no model
+  "UI-500",
+  "UI-501",
+  "UI-502",
+  "UI-503",
+  "UI-504",
+  "DMN-235",
+  "DMN-236",
+  "DMN-237",
+  "PRT-140",
+  "PRT-141",
   # Journeys
   "E2E-22",
   "E2E-23",
@@ -965,6 +976,7 @@ requirements = [
   "E2E-40",
   "E2E-41",
   "E2E-42",
+  "E2E-43",
   # Touch phones: sizes at the root, sideways phones, no invisible or tiny targets, no key hints
   "UI-413",
   "UI-414",

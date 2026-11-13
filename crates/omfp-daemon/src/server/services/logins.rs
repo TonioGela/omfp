@@ -1,14 +1,15 @@
-//! `auth.*` (PRT-129..PRT-133, DMN-219..DMN-224): omp's OAuth logins, run by the short-lived login omp of the
-//! supervisor (`supervisor/login.rs`). A login's flow — the URL to open, progress, a code to paste — reaches one window
-//! as `login_*` window requests (PRT-131); the window answers the code with `windows.answer`.
+//! `auth.*` (PRT-129..PRT-133, PRT-140, DMN-219..DMN-224, DMN-235, DMN-236): omp's OAuth logins, run by the
+//! short-lived login omp of the supervisor (`supervisor/login.rs`), and the count of models omp can use
+//! (`supervisor/models.rs`). A login's flow — the URL to open, progress, a code to paste — reaches one window as
+//! `login_*` window requests (PRT-131); the window answers the code with `windows.answer`.
 
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use omfp_protocol::{
-    AuthProvider, AuthProviders, ErrorBody, ErrorCode, LoggedIn, LoggedOut, WindowAnswer,
-    WindowRequest,
+    AuthProvider, AuthProviders, AuthStatus, ErrorBody, ErrorCode, LoggedIn, LoggedOut,
+    WindowAnswer, WindowRequest,
 };
 use omp_rpc::{
     CancelUiResponse, Event, ExtensionUiRequest, ExtensionUiResponse, GetLoginProvidersResult,
@@ -193,6 +194,16 @@ fn cancel(id: String) -> ExtensionUiResponse {
 }
 
 impl Services {
+    /// `auth.status` (PRT-140, DMN-235): how many models omp can use, checked by a login omp the first time.
+    pub async fn auth_status(&self) -> Result<AuthStatus, ErrorBody> {
+        let models = self
+            .supervisor
+            .usable_models()
+            .await
+            .map_err(supervisor_error)?;
+        Ok(AuthStatus { models })
+    }
+
     /// `auth.providers` (PRT-129, DMN-219): omp's OAuth providers, from a login omp started for the question.
     pub async fn auth_providers(&self) -> Result<AuthProviders, ErrorBody> {
         let omp = self.supervisor.auth_omp().await.map_err(supervisor_error)?;
@@ -203,7 +214,7 @@ impl Services {
 
     /// `auth.login` (PRT-130, DMN-220..DMN-224): runs omp's login of `provider_id` on a login omp, its flow shown by
     /// the window of connection `caller` (an agent's goes to the most recently focused window); once omp stored the
-    /// credential, the running threads restart when free.
+    /// credential, the running threads restart when free and the usable models are checked again (DMN-236).
     pub async fn auth_login(
         &self,
         caller: Option<u64>,
@@ -255,6 +266,7 @@ impl Services {
         match result? {
             Ok(_) => {
                 self.supervisor.restart_after_login();
+                self.supervisor.recheck_usable_models();
                 Ok(LoggedIn {
                     provider_id: provider.id,
                     name: provider.name,
@@ -269,11 +281,14 @@ impl Services {
     }
 
     /// `auth.logout` (PRT-133, DMN-223): removes every credential omp stored for `provider_id`, one `logout` per
-    /// account `get_logout_accounts` lists.
+    /// account `get_logout_accounts` lists; then the usable models are checked again (DMN-236).
     pub async fn auth_logout(&self, provider_id: String) -> Result<LoggedOut, ErrorBody> {
         let omp = self.supervisor.auth_omp().await.map_err(supervisor_error)?;
         let result = logout(&omp.process, provider_id).await;
         close(omp.process).await;
+        if result.is_ok() {
+            self.supervisor.recheck_usable_models();
+        }
         result
     }
 }

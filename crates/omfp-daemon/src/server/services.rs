@@ -83,6 +83,7 @@ fn apply_index(state: &mut IndexSnapshot, event: &IndexEvent) {
         IndexEvent::ThemeChanged { theme } => state.theme.clone_from(theme),
         IndexEvent::SettingsChanged { settings } => state.settings.clone_from(settings),
         IndexEvent::InitChanged { init } => state.init.clone_from(init),
+        IndexEvent::ModelsChanged { models } => state.models = Some(*models),
     }
 }
 
@@ -168,6 +169,7 @@ impl Services {
                     theme: Theme::default(),
                     settings: Settings::default(),
                     init: None,
+                    models: None,
                 },
                 apply_index,
                 INDEX_CAPACITY,
@@ -289,6 +291,27 @@ impl Services {
                 changes.recv().await
             {
                 services.refresh_index_quietly().await;
+            }
+        })
+    }
+
+    /// Publishes the count of usable models on the `index` topic whenever the supervisor's changes (DMN-235..DMN-237).
+    pub fn spawn_model_updates(&self) -> JoinHandle<()> {
+        let mut models = self.supervisor.subscribe_usable_models();
+        let services = self.clone();
+        tokio::spawn(async move {
+            loop {
+                let known = *models.borrow_and_update();
+                if let Some(models) = known {
+                    // Held like a refresh, so the event never interleaves with a refresh's.
+                    let _serial = services.refresh.lock().await;
+                    if services.index.with_state(|index| index.models != known) {
+                        services.index.push(IndexEvent::ModelsChanged { models });
+                    }
+                }
+                if models.changed().await.is_err() {
+                    break;
+                }
             }
         })
     }
@@ -682,6 +705,7 @@ fn load_index(
         },
         settings,
         init: previous.init.clone(),
+        models: previous.models,
     })
 }
 

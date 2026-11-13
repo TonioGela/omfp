@@ -374,6 +374,7 @@ pub async fn start_with(config: Config, ports: Ports) -> anyhow::Result<DaemonHa
     let mut background = vec![
         supervisor.spawn_reaper(),
         services.spawn_index_updates(),
+        services.spawn_model_updates(),
         services.spawn_rescans(),
         services.spawn_polls(),
         follow_threads,

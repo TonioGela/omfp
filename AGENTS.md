@@ -96,7 +96,8 @@ crates/omfp-daemon    daemon library: omp adapter (omp.rs), agent port + FakeLau
                       the MCP server at `/mcp` (server/mcp.rs: Streamable HTTP, dual-era 2026-07-28 + legacy sessions,
                       token and origin checks; server/mcp/methods.rs: the registry as tools, the catalogue and the static docs as resources);
                       the logins to omp's providers (supervisor/login.rs: the short-lived login omp, one login at a
-                      time, the reload of running threads after a login; server/services/logins.rs: `auth.*` and the
+                      time, the reload of running threads after a login; supervisor/models.rs: the count of usable
+                      models of `auth.status`; server/services/logins.rs: `auth.*` and the
                       `login_*` window requests of a login's flow);
                       the MCP servers omp loads for a workspace (omp_mcp.rs: the config files omp reads, the `/mcp test`
                       reply; supervisor/mcp.rs: checks by the thread's omp, reconnect by restart, M13; supervisor/restart.rs:
@@ -229,9 +230,10 @@ tag, the `omp-rpc` git tag in `Cargo.toml`, `omfp_core::OMP_VERSION` and the rel
   login omp does so (DMN-219). OAuth works over RPC: `get_login_providers`, `login { providerId }` (its flow arrives as
   `open_url`, `notify` and, for paste-code providers, `input` UI requests; secret prompts are refused; callback
   listeners take fixed loopback ports, so one login at a time), `get_logout_accounts` and `logout { providerId,
-  credentialId }`. A running omp lists a new login's models only after a restart (DMN-224). A `prompt` failing omp's
-  preflight (`No API key found for <provider>. … Use /login, …`) is answered twice with the same id (success, then the
-  error) and ends with a `prompt_result` of status `error`.
+  credentialId }`. A running omp lists a new login's models only after a restart (DMN-224). `get_available_models`
+  lists only the models omp can use (a credential, or a keyless provider): the daemon's `auth.status` count (DMN-235).
+  A `prompt` failing omp's preflight (`No API key found for <provider>. … Use /login, …`) is answered twice with the
+  same id (success, then the error) and ends with a `prompt_result` of status `error`.
 - Our harness docs (`omp://…`) may describe a different omp version than the pinned one: verify against the source at
   `~/.cargo/git/checkouts/oh-my-pi-*/<rev>/` (docs in `docs/`, Rust client in `sdk/rust/omp-rpc/`).
 

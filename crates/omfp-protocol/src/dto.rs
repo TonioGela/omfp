@@ -297,6 +297,10 @@ pub struct IndexSnapshot {
     /// `null` without one.
     #[serde(default)]
     pub init: Option<String>,
+    /// How many models omp can use (PRT-141, `auth.status`); `null` until the daemon checked, which the first
+    /// `auth.status` does (DMN-235).
+    #[serde(default)]
+    pub models: Option<u32>,
 }
 
 /// Git status of one repository of a workspace (the `workspace/<id>` topic, DMN-026).

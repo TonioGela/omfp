@@ -56,7 +56,7 @@ fn type_schemas_are_titled_by_their_key() {
     let index_event = &schemas["IndexEvent"];
     assert_eq!(
         index_event["oneOf"].as_array().map(Vec::len),
-        Some(7),
+        Some(8),
         "one schema per index event kind"
     );
 }

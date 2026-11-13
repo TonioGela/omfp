@@ -275,6 +275,31 @@ expression: method_schemas()
       "type": "object"
     }
   },
+  "auth.status": {
+    "params": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "No params, or the `{}` result.",
+      "title": "Empty",
+      "type": "object"
+    },
+    "result": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "description": "`auth.status` result (PRT-140): whether omp has a model it can use, as the daemon last checked it (DMN-235).",
+      "properties": {
+        "models": {
+          "description": "How many models omp can use: of a provider it holds a credential for (a login, a key from the environment or\nomp's config) or of a keyless one. `0` on a fresh install, where every thread start fails until a login.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "models"
+      ],
+      "title": "AuthStatus",
+      "type": "object"
+    }
+  },
   "fs.complete": {
     "params": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",

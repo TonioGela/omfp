@@ -110,9 +110,11 @@ layer wins over the ones before it).
 
 ## Logging in
 
-omp needs a model it can use: a provider it is logged in to, or an API key. A fresh install has neither, and every
-thread then fails to start with omp's `No default model selected. Use /login, …` (`/login` is omp's own command; in
-omfp it is `:login`). omp keeps its credentials on the daemon's host, shared by every thread and window.
+omp needs a model it can use: a provider it is logged in to, or an API key. A fresh install has neither: the window
+then welcomes you in place of the view (until a thread is selected) with **Log in to a provider**, and a thread would
+fail to start with omp's `No default model selected. Use /login, …` (`/login` is omp's own command; in omfp it is
+`:login`). omp keeps its credentials on the daemon's host, shared by every thread and window; once a login (or a
+logout) changes what omp can use, every window follows (`auth.status`).
 
 - `:login` opens the provider picker: the providers omp can log in to (asking omp takes a few seconds), each with its
   id and `logged in` on those omp already holds a credential for; those it cannot log in to here are greyed out.
