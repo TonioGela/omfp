@@ -99,7 +99,11 @@ export const shell = {
     thinkingPlaceholder: "Thinking…",
     contextUsage: "Context window usage",
     context: (percent: number, window: string) => `${percent}% of ${window}`,
-    sessionCost: "Session cost",
+    /** The session's own cost, then its subagents' when they spent (UI-690), as omp's status line shows them. */
+    cost: (session: string, subagents: string | undefined) =>
+      subagents === undefined ? session : `${session} (+${subagents})`,
+    costDescription: (session: string, subagents: string | undefined) =>
+      subagents === undefined ? `Cost: session ${session}` : `Cost: session ${session}, subagents ${subagents}`,
     /** Ends the thread's omp process (UI-524); the composer's Abort stops only the turn. */
     stop: "Stop process",
     restart: "Restart",

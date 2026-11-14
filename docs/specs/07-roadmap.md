@@ -776,6 +776,13 @@ Durations are never negative: a background job that started less than a second a
 was computed against the last one-second tick while the job was dated by a later reading of the clock. Each render now
 reads the window's monotonic clock once for both, and every shown duration is clamped at 0 (UI-680, UI-681).
 
+The header's cost counts the subagents, as omp's status line does: `$0.3800 (+$1.27)`, the session's own cost and its
+subagents' in parentheses, both named in its tooltip (UI-690). The session's own adds to its assistant messages what
+omp spent outside the transcript (titles, judgments), which only `get_session_stats` reports: `thread.session` is read
+on mount and whenever the thread settles while omp runs, so a window reloaded while the thread's omp is stopped misses
+that part until it runs again (UI-691). The subagents' is the larger of their completed `task` results and their
+progress frames, which carry what each one spent so far, running ones included (UI-692).
+
 ## Terminal (removed)
 
 Removed (D-06, PRT-135): the user does not rely on the TUI-only commands, so the terminal was never built; its

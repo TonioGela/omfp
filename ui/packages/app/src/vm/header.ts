@@ -1,6 +1,7 @@
 /**
  * The thread header (UI-030): title (placeholder until named, DMN-073), the workspace chip (UI-340), model and
- * thinking options, context usage, session cost, and process state with its action; archive state (UI-026).
+ * thinking options, context usage, the cost with its subagents' (UI-690), and process state with its action; archive
+ * state (UI-026).
  */
 
 import type { ThreadState } from "@omfp/core";
@@ -86,8 +87,8 @@ export interface HeaderView {
   readonly noModels: boolean;
 }
 
-/** The header of a thread; the session cost comes from {@link costLabel}, so the header does not depend on the
- * reducer state, which changes with every streamed delta. */
+/** The header of a thread; the cost comes from {@link threadCost} and {@link costLabel}, so the header does not depend
+ * on the reducer state, which changes with every streamed delta. */
 export function headerView(
   summary: ThreadSummary,
   details: ThreadDetails,
@@ -151,33 +152,90 @@ function modelOption(model: ModelInfo): ModelOption {
   return { value: modelValue(model), label: `${model.name} (${model.provider})` };
 }
 
-/** Totals computed per transcript array: the header renders on every event, the transcript changes per message. */
-const COSTS = new WeakMap<ThreadState["transcript"], number>();
+/** What a thread spent, split as omp's status line splits it (UI-690): the session's own model calls, its subagents'. */
+export interface ThreadCost {
+  /** The session's model calls (UI-691): its assistant messages, plus the calls omp makes outside the transcript. */
+  readonly session: number;
+  /** Its subagents' (UI-692). */
+  readonly subagents: number;
+}
 
-/** Total cost reported by the assistant messages of the transcript (`usage.cost.total`). */
-export function sessionCost(state: ThreadState): number {
-  const known = COSTS.get(state.transcript);
+/** The costs a transcript reports: its assistant messages', and its completed `task` results'. */
+interface TranscriptCosts {
+  readonly assistant: number;
+  readonly tasks: number;
+}
+
+/** Totals computed per transcript array: the header renders on every event, the transcript changes per message. */
+const COSTS = new WeakMap<ThreadState["transcript"], TranscriptCosts>();
+
+/** `usage.cost.total` of a message's usage or a `task` result's details; 0 when it is not a number. */
+function usageCost(usage: unknown): number {
+  const total = record(record(usage)?.cost)?.total;
+  return typeof total === "number" ? total : 0;
+}
+
+/** What the assistant messages and the `task` results of a transcript cost, as omp's `get_session_stats` counts them:
+ * a `task` result carries its subagents' usage in `details.usage`. */
+function transcriptCosts(transcript: ThreadState["transcript"]): TranscriptCosts {
+  const known = COSTS.get(transcript);
   if (known !== undefined) {
     return known;
   }
-  let total = 0;
-  for (const { message } of state.transcript) {
-    if (message.role !== "assistant") {
-      continue;
-    }
-    const cost = record(record(message.usage)?.cost)?.total;
-    if (typeof cost === "number") {
-      total += cost;
+  let assistant = 0;
+  let tasks = 0;
+  for (const { message } of transcript) {
+    if (message.role === "assistant") {
+      assistant += usageCost(message.usage);
+    } else if (message.role === "toolResult" && message.toolName === "task") {
+      tasks += usageCost(record(message.details)?.usage);
     }
   }
-  COSTS.set(state.transcript, total);
+  const costs = { assistant, tasks };
+  COSTS.set(transcript, costs);
+  return costs;
+}
+
+/** What the subagents' latest progress reports spent so far (`progress.cost`), running ones included. */
+function progressCost(subagents: ThreadState["subagents"]): number {
+  let total = 0;
+  for (const subagent of Object.values(subagents)) {
+    const cost = subagent.progress?.progress.cost;
+    total += typeof cost === "number" ? cost : 0;
+  }
   return total;
 }
 
-/** The session cost to show (`$0.0123`), `undefined` while nothing was spent. */
-export function costLabel(state: ThreadState | undefined): string | undefined {
-  const cost = state === undefined ? 0 : sessionCost(state);
-  return cost > 0 ? formatCost(cost) : undefined;
+/**
+ * What thread `state` spent (UI-690..UI-692): the session's own cost is its assistant messages' plus `untracked`
+ * ({@link untrackedCost}); its subagents' is what their `task` results report or, when more, what their progress
+ * reports — running subagents included —, as omp's status line takes the larger of the two.
+ */
+export function threadCost(state: ThreadState, untracked = 0): ThreadCost {
+  const { assistant, tasks } = transcriptCosts(state.transcript);
+  return { session: assistant + untracked, subagents: Math.max(tasks, progressCost(state.subagents)) };
+}
+
+/**
+ * What omp spent outside the transcript (its `model_usage` entries: titles, judgments…, UI-691): `sessionCost`, the
+ * cost `thread.session` reports, less what the transcript of `state` accounts for; never below 0.
+ */
+export function untrackedCost(sessionCost: number, state: ThreadState): number {
+  const { assistant, tasks } = transcriptCosts(state.transcript);
+  return Math.max(0, sessionCost - assistant - tasks);
+}
+
+/** The cost to show (UI-690): `$0.3800 (+$1.27)` and its description; `undefined` while nothing was spent. */
+export function costLabel(cost: ThreadCost | undefined): { text: string; description: string } | undefined {
+  if (cost === undefined || (cost.session <= 0 && cost.subagents <= 0)) {
+    return undefined;
+  }
+  const session = formatCost(cost.session);
+  const subagents = cost.subagents > 0 ? formatCost(cost.subagents) : undefined;
+  return {
+    text: strings.shell.header.cost(session, subagents),
+    description: strings.shell.header.costDescription(session, subagents),
+  };
 }
 
 /** `$0.0123` below a dollar, `$1.23` above. */

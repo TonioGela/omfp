@@ -18,7 +18,7 @@ import { HeaderWidget } from "../../src/widgets/header/index.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
 import { type FakeClient, renderWithHost, testHost } from "../support/host.tsx";
 import { installResizeObserver, resize } from "../support/resize.ts";
-import { fixtureEvents, isFrame } from "./chat/fixtures.ts";
+import { fixtureEvents, isFrame, priced } from "./chat/fixtures.ts";
 
 afterEach(cleanup);
 
@@ -86,6 +86,40 @@ describe("omfp:header", () => {
     test.client.threadEvents("t1", ...events.slice(ended));
     test.flush();
     expect(screen.queryByTestId("background-badge")).toBeNull();
+  });
+
+  // spec: UI-690, UI-691, UI-692
+  test("the cost: the session's own, then its subagents' while they run and once done; the same in the compact ⋯", async () => {
+    const restore = installResizeObserver();
+    try {
+      const test = setup();
+      // omp's `get_session_stats` also counts its calls outside the transcript (titles, judgments).
+      test.client.answers.set("thread.session", () => ({ usage: { cost: 2 } }));
+      const events = priced(fixtureEvents("task_tool_call"), { assistant: 0.125, task: 1.25, progress: 0.5 });
+      const started = events.findIndex(isFrame("subagent_lifecycle"));
+      const ended = events.findIndex((event, index) => index > started && isFrame("subagent_lifecycle")(event));
+      test.client.thread("t1", events.slice(0, started));
+      test.flush();
+      const cost = () => screen.getByTestId("session-cost");
+      const label = () => [cost().textContent, cost().getAttribute("aria-label"), cost().getAttribute("title")];
+      expect(label()).toEqual(["$0.1250", "Cost: session $0.1250", "Cost: session $0.1250"]);
+      test.client.threadEvents("t1", ...events.slice(started, ended));
+      test.flush();
+      const running = "Cost: session $0.1250, subagents $0.5000";
+      expect(label()).toEqual(["$0.1250 (+$0.5000)", running, running]);
+      // Read once the thread settles.
+      expect(test.client.callsTo("thread.session").length).toBe(0);
+      test.client.threadEvents("t1", ...events.slice(ended));
+      test.flush();
+      const done = "Cost: session $0.7500, subagents $1.25";
+      await waitFor(() => expect(label()).toEqual(["$0.7500 (+$1.25)", done, done]));
+      resize(screen.getByTestId("thread-header"), 600);
+      await test.user.click(screen.getByTestId("header-more"));
+      const more = await screen.findByTestId("header-more-dialog");
+      await waitFor(() => expect(within(more).getByTestId("session-cost").textContent).toBe("$0.7500 (+$1.25)"));
+    } finally {
+      restore();
+    }
   });
 
   // spec: UI-340

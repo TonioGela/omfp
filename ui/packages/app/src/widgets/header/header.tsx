@@ -53,8 +53,8 @@ import {
   useHost,
   useReportError,
   useRunningInBackground,
-  useThread,
   useThreadActions,
+  useThreadCost,
   useThreadSummary,
   useThreads,
   useWindowState,
@@ -559,13 +559,19 @@ function Usage({ threadId, view }: { threadId: string; view: HeaderView }): Reac
   );
 }
 
-/** The session cost (UI-030); follows the thread while mounted. */
+/** The cost (UI-690): the session's own, then its subagents' in parentheses; follows the thread while mounted. */
 function SessionCost({ threadId }: { threadId: string }): ReactNode {
-  const cost = costLabel(useThread(threadId)?.state);
+  const cost = costLabel(useThreadCost(threadId));
   return (
     cost !== undefined && (
-      <span className="omfp-thread-header__cost" data-testid="session-cost" title={text.sessionCost}>
-        {cost}
+      <span
+        className="omfp-thread-header__cost"
+        data-testid="session-cost"
+        role="img"
+        title={cost.description}
+        aria-label={cost.description}
+      >
+        {cost.text}
       </span>
     )
   );

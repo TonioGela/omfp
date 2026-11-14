@@ -1,7 +1,7 @@
 /** L1: the thread header's view-model (port of the Dioxus `vm/header.rs` tests). */
 
 import { describe, expect, test } from "bun:test";
-import { emptyThreadState, type ThreadState } from "@omfp/core";
+import { emptyThreadState, replay, type ThreadState } from "@omfp/core";
 import {
   costLabel,
   decodeModels,
@@ -10,11 +10,13 @@ import {
   formatCost,
   headerView,
   NO_DETAILS,
-  sessionCost,
   splitModel,
   type ThreadDetails,
+  threadCost,
+  untrackedCost,
 } from "../../src/vm/header.ts";
 import { repo, thread, workspace } from "../support/fixtures.ts";
+import { fixture, fixtureEvents, isFrame, priced } from "../widgets/chat/fixtures.ts";
 
 const opus = {
   id: "opus",
@@ -131,13 +133,55 @@ describe("header", () => {
     expect(headerView(thread("t", "x", "w"), details(), []).noModels).toBe(false);
   });
 
-  // spec: UI-030
-  test("cost sums the assistant usage of the transcript", () => {
-    expect(sessionCost(withCosts())).toBe(0);
-    expect(formatCost(sessionCost(withCosts(0.0125, 0.0125)))).toBe("$0.0250");
+  // spec: UI-030, UI-691
+  test("the session's own cost sums the assistant usage of the transcript", () => {
+    expect(threadCost(withCosts())).toEqual({ session: 0, subagents: 0 });
+    expect(formatCost(threadCost(withCosts(0.0125, 0.0125)).session)).toBe("$0.0250");
     expect(formatCost(12.5)).toBe("$12.50");
-    expect(costLabel(withCosts(0.5))).toBe("$0.5000");
-    expect([costLabel(withCosts()), costLabel(undefined)]).toEqual([undefined, undefined]);
+    // Only `task` results carry a subagent's spend.
+    const bash = withCosts(0.5);
+    bash.transcript.push({
+      message_id: null,
+      message: { role: "toolResult", toolName: "bash", details: { usage: { cost: { total: 3 } } } },
+    });
+    expect(threadCost(bash)).toEqual({ session: 0.5, subagents: 0 });
+  });
+
+  // spec: UI-692
+  test("subagents cost what their task results report, or more while their progress says so", () => {
+    const events = fixtureEvents("task_tool_call");
+    const started = events.findIndex(isFrame("subagent_lifecycle"));
+    const ended = events.findIndex((event, index) => index > started && isFrame("subagent_lifecycle")(event));
+    const prices = { assistant: 0.125, task: 1.25, progress: 0.5 };
+    // While the subagent runs, its progress is all there is.
+    expect(threadCost(replay(priced(events.slice(0, ended), prices)))).toEqual({ session: 0.125, subagents: 0.5 });
+    // Three assistant messages; one of the two task results ran a subagent.
+    expect(threadCost(replay(priced(events, prices)))).toEqual({ session: 0.375, subagents: 1.25 });
+    expect(threadCost(replay(priced(events, { ...prices, progress: 2 })))).toEqual({ session: 0.375, subagents: 2 });
+    expect(threadCost(fixture("task_tool_call"))).toEqual({ session: 0, subagents: 0 });
+  });
+
+  // spec: UI-691
+  test("the session's own cost adds what omp spent outside the transcript, never below zero", () => {
+    const state = replay(priced(fixtureEvents("task_tool_call"), { assistant: 0.125, task: 1.25, progress: 0 }));
+    // `thread.session` counts the transcript's assistant messages and task results, plus calls like titles.
+    expect(untrackedCost(2, state)).toBe(0.375);
+    expect(untrackedCost(1, state)).toBe(0);
+    expect(threadCost(state, untrackedCost(2, state))).toEqual({ session: 0.75, subagents: 1.25 });
+  });
+
+  // spec: UI-690
+  test("the cost label: the session's own cost, then the subagents' in parentheses, both in its description", () => {
+    expect(costLabel({ session: 0.5, subagents: 0 })).toEqual({
+      text: "$0.5000",
+      description: "Cost: session $0.5000",
+    });
+    expect(costLabel({ session: 0.38, subagents: 1.27 })).toEqual({
+      text: "$0.3800 (+$1.27)",
+      description: "Cost: session $0.3800, subagents $1.27",
+    });
+    expect(costLabel({ session: 0, subagents: 1.27 })?.text).toBe("$0.0000 (+$1.27)");
+    expect([costLabel({ session: 0, subagents: 0 }), costLabel(undefined)]).toEqual([undefined, undefined]);
   });
 
   // spec: UI-030

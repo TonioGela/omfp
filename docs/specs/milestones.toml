@@ -1152,4 +1152,8 @@ requirements = [
   # Job durations never negative
   "UI-680",
   "UI-681",
+  # The header's cost with the subagents'
+  "UI-690",
+  "UI-691",
+  "UI-692",
 ]

@@ -96,3 +96,38 @@ export function summary(id: string, settled = true): ThreadSummary {
     position: 0,
   };
 }
+
+/** What {@link priced} makes a fixture's model calls cost: the fake model has no price, so the recorded ones cost 0. */
+export interface Prices {
+  /** Each assistant message (`usage.cost.total`). */
+  readonly assistant: number;
+  /** Each `task` result (`details.usage.cost.total`). */
+  readonly task: number;
+  /** What each subagent progress reports spent so far (`progress.cost`). */
+  readonly progress: number;
+}
+
+/** `events` with the model calls they record costing {@link Prices}. */
+export function priced(events: readonly ThreadEvent[], prices: Prices): ThreadEvent[] {
+  return events.map((event) => price(event, prices, false) as ThreadEvent);
+}
+
+function price(value: unknown, prices: Prices, inDetails: boolean): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => price(item, prices, inDetails));
+  }
+  if (!isObject(value)) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => {
+      if (key === "usage" && isObject(item) && isObject(item.cost)) {
+        return [key, { ...item, cost: { ...item.cost, total: inDetails ? prices.task : prices.assistant } }];
+      }
+      if (key === "cost" && typeof item === "number") {
+        return [key, prices.progress];
+      }
+      return [key, price(item, prices, inDetails || key === "details")];
+    }),
+  );
+}
