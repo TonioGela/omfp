@@ -55,3 +55,28 @@ fn type_schemas_are_titled_by_their_key() {
         "one schema per index event kind"
     );
 }
+
+// spec: AGT-007
+#[test]
+fn hand_written_schemas_reach_the_method_schemas() {
+    let schemas = method_schemas();
+    let respond = &schemas["interaction.respond"]["params"];
+    let variants = respond["$defs"]["InteractionResponse"]["oneOf"]
+        .as_array()
+        .expect("one schema per response kind");
+    assert_eq!(variants.len(), 4);
+    assert_eq!(
+        variants[2]["properties"]["cancelled"],
+        json!({ "const": true }),
+        "the constant inline"
+    );
+    let subscribe = &schemas["subscribe"]["params"];
+    assert_eq!(
+        subscribe["properties"]["topic"],
+        json!({ "$ref": "#/$defs/Topic" })
+    );
+    assert_eq!(
+        subscribe["$defs"]["Topic"]["pattern"],
+        json!("^(index|(thread|workspace|views|job)/[A-Za-z0-9_-]+)$")
+    );
+}
