@@ -20,6 +20,7 @@ expression: golden
       "hash": "3f786850e387550fdab836ed7e6dc881de23001b",
       "head": "use std::fmt;\n",
       "kind": "text",
+      "outside": false,
       "path": "shop-frontend/src/checkout.rs",
       "repo": "shop-frontend",
       "size": 31,

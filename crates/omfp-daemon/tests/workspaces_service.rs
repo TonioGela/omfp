@@ -1202,7 +1202,7 @@ fn find_env() -> (Env, String, PathBuf) {
     (env, ws.id, ws.path)
 }
 
-// spec: DMN-092
+// spec: DMN-092, DMN-312
 #[test]
 fn bare_and_partial_names_find_files_of_the_repositories_and_the_folder() {
     let (env, id, _) = find_env();
@@ -1251,6 +1251,8 @@ fn bare_and_partial_names_find_files_of_the_repositories_and_the_folder() {
         matches!(outside, Err(WorkspaceError::OutsideFolder(_))),
         "{outside:?}"
     );
+    // An absolute path outside the folder names no file of the workspace, even one named like them.
+    assert_eq!(found(&env, &id, "/elsewhere/src/theme.ts", &[]), []);
 }
 
 // spec: DMN-092

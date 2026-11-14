@@ -100,6 +100,7 @@ fn a_text_file_comes_with_its_hash_its_repository_and_its_head_text() {
             repo: Some("app".into()),
             head: Some("fn a() {}\n".into()),
             head_hash: None,
+            outside: false,
         }
     );
     std::fs::write(env.app_file("abc.txt"), "abc").unwrap();
@@ -332,20 +333,13 @@ fn a_known_hash_still_matching_is_unchanged_without_content_or_head() {
     assert_eq!(changed.content.as_deref(), Some("changed\n"));
 }
 
-// spec: DMN-089, DMN-090
+// spec: DMN-089, DMN-090, DMN-312, DMN-313
 #[test]
-fn paths_leaving_the_workspace_folder_are_refused() {
+fn relative_paths_leaving_the_workspace_folder_are_refused_and_no_write_leaves_it() {
     let env = env();
     let outside = env.dir.path().join("secret.txt");
     std::fs::write(&outside, "secret").unwrap();
-    let escapes = [
-        "../secret.txt".to_owned(),
-        "app/../../secret.txt".to_owned(),
-        "a/../../x".to_owned(),
-        outside.to_str().unwrap().to_owned(),
-        format!("{}/../secret.txt", env.folder.display()),
-    ];
-    for path in &escapes {
+    for path in ["../secret.txt", "app/../../secret.txt", "a/../../x"] {
         assert!(
             matches!(env.read_error(path), WorkspaceError::OutsideFolder(_)),
             "{path}"
@@ -358,11 +352,161 @@ fn paths_leaving_the_workspace_folder_are_refused() {
             "{path}"
         );
     }
+    // Absolute paths outside the folder are read (DMN-310), never written.
+    let absolute = [
+        outside.to_str().unwrap().to_owned(),
+        format!("{}/../../secret.txt", env.folder.display()),
+    ];
+    for path in &absolute {
+        let hash = env.read(path).hash;
+        let refused = env.write(path, "x", Some(&hash));
+        assert!(
+            matches!(&refused, Err(WorkspaceError::ReadOnly(_))),
+            "{path}: {refused:?}"
+        );
+        assert!(
+            refused
+                .unwrap_err()
+                .to_string()
+                .ends_with("is outside the workspace folder: it can be read, not written"),
+            "{path}"
+        );
+    }
+    let new_file = env.dir.path().join("new.txt");
+    assert!(matches!(
+        env.write(new_file.to_str().unwrap(), "x", None),
+        Err(WorkspaceError::ReadOnly(_))
+    ));
+    assert!(!new_file.exists());
     assert_eq!(std::fs::read_to_string(&outside).unwrap(), "secret");
     // Inside, `..` and absolute paths are fine, and a linked repository is followed.
     let absolute = env.folder.join("app/src/../src/lib.rs");
     assert_eq!(env.read(absolute.to_str().unwrap()).path, "app/src/lib.rs");
     assert_eq!(env.read("app/./src/../README.md").path, "app/README.md");
+}
+
+// spec: DMN-310
+#[test]
+fn an_absolute_path_outside_the_folder_is_read_as_it_is() {
+    let env = env();
+    let notes = env.dir.path().join("notes/todo.md");
+    std::fs::create_dir_all(notes.parent().unwrap()).unwrap();
+    std::fs::write(&notes, "abc").unwrap();
+    let absolute = notes.to_str().unwrap().to_owned();
+
+    // `..` is resolved; nothing is looked up in the workspace's repositories.
+    let dotted = format!(
+        "{}/../notes/./todo.md",
+        env.dir.path().join("notes").display()
+    );
+    for path in [&absolute, &dotted] {
+        assert_eq!(
+            env.read(path),
+            FileContent {
+                path: absolute.clone(),
+                kind: FileKind::Text,
+                size: 3,
+                hash: ABC.into(),
+                unchanged: false,
+                content: Some("abc".into()),
+                truncated: false,
+                mime: None,
+                repo: None,
+                head: None,
+                head_hash: None,
+                outside: true,
+            },
+            "{path}"
+        );
+    }
+    let again = env
+        .workspaces
+        .read_file(&env.id, &absolute, Some(ABC))
+        .unwrap();
+    assert!(again.unchanged && again.outside && again.content.is_none());
+
+    let missing = env.dir.path().join("notes/missing.md");
+    assert!(matches!(
+        env.read_error(missing.to_str().unwrap()),
+        WorkspaceError::NoSuchFile(_)
+    ));
+    assert!(matches!(
+        env.read_error(env.dir.path().join("notes").to_str().unwrap()),
+        WorkspaceError::IsADirectory(_)
+    ));
+    let (_, shown) = env.workspaces.open_file(&env.id, &absolute).unwrap();
+    assert_eq!(shown, notes);
+    assert_eq!(env.workspaces.read_head(&env.id, &absolute).unwrap(), None);
+}
+
+// spec: DMN-311
+#[test]
+fn an_outside_file_in_a_git_working_tree_comes_with_its_head_from_that_repository() {
+    let env = env();
+    let other = TempRepo::new().unwrap();
+    other
+        .commit_file("docs/guide.md", "one\n", "guide")
+        .unwrap();
+    other
+        .commit_file("logo.png", "png at head", "logo")
+        .unwrap();
+    std::fs::write(other.path().join("docs/guide.md"), "two\n").unwrap();
+    std::fs::write(other.path().join("docs/new.md"), "new\n").unwrap();
+    let name = other
+        .path()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let at = |path: &str| other.path().join(path).to_str().unwrap().to_owned();
+
+    let guide = env.read(&at("docs/guide.md"));
+    assert_eq!(
+        (guide.outside, guide.repo.as_deref(), guide.head.as_deref()),
+        (true, Some(name.as_str()), Some("one\n"))
+    );
+    assert_eq!(guide.path, at("docs/guide.md"));
+    let untracked = env.read(&at("docs/new.md"));
+    assert_eq!(
+        (untracked.repo.as_deref(), untracked.head),
+        (Some(name.as_str()), None)
+    );
+    let logo = env.read(&at("logo.png"));
+    assert_eq!(logo.head_hash.as_deref(), Some(logo.hash.as_str()));
+    assert_eq!(
+        env.workspaces
+            .read_head(&env.id, &at("docs/guide.md"))
+            .unwrap(),
+        Some((b"one\n".to_vec(), other.path().join("docs/guide.md")))
+    );
+    // An unchanged file is not looked up in git again.
+    let again = env
+        .workspaces
+        .read_file(&env.id, &at("docs/guide.md"), Some(&guide.hash))
+        .unwrap();
+    assert_eq!((again.unchanged, again.repo), (true, None));
+}
+
+// spec: DMN-315
+#[test]
+fn a_file_the_user_may_not_read_is_a_bad_request() {
+    let env = env();
+    let locked = env.dir.path().join("locked.txt");
+    std::fs::write(&locked, "private").unwrap();
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+    if std::fs::File::open(&locked).is_ok() {
+        // A superuser reads anything: nothing to check.
+        return;
+    }
+    let error = env.read_error(locked.to_str().unwrap());
+    assert!(matches!(&error, WorkspaceError::Unreadable(_)), "{error:?}");
+    assert!(
+        error
+            .to_string()
+            .ends_with("cannot be read: permission denied"),
+        "{error}"
+    );
 }
 
 // spec: DMN-089

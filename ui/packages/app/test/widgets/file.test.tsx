@@ -308,6 +308,68 @@ describe("omfp:file", () => {
     expect((await screen.findByTestId("file-missing")).textContent).toBe("gone.rs does not exist.");
   });
 
+  // spec: UI-700
+  test("a file outside the workspace folder shows read-only with a note, without Edit", async () => {
+    const path = "/tmp/elsewhere/notes.txt";
+    const test = setup({ path }, text("# Elsewhere\n", { path, repo: null, head: null, outside: true }));
+    expect(test.client.callsTo("workspaces.read_file").map((call) => call.params)).toEqual([
+      { workspaceId: "w1", path },
+    ]);
+    expect(await editorText()).toBe("# Elsewhere\n");
+    expect(screen.getByTestId("file").dataset.outside).toBe("true");
+    expect(screen.getByTestId("file-path").textContent).toBe(path);
+    expect(screen.getByTestId("file-outside").textContent).toBe(
+      "Outside the workspace: this file can be read here, not edited.",
+    );
+    expect(screen.queryAllByTestId("file-edit").length).toBe(0);
+    expect(screen.getByTestId("file-editor").dataset.readOnly).toBe("true");
+    cleanup();
+    // A file of the workspace has neither.
+    setup();
+    await editorText();
+    expect(screen.queryAllByTestId("file-outside").length).toBe(0);
+    expect(screen.getByTestId("file").dataset.outside).toBeUndefined();
+  });
+
+  // spec: UI-704
+  test("an outside file in a git working tree shows its repository and compares with its HEAD", async () => {
+    const path = "/tmp/elsewhere/notes.txt";
+    setup(
+      { path, diff: true },
+      text("# Elsewhere\nmore\n", { path, repo: "elsewhere", head: "# Elsewhere\n", outside: true }),
+    );
+    expect(within(await screen.findByTestId("file-bar")).getByText("elsewhere")).toBeDefined();
+    const diff = await screen.findByTestId("file-head-diff");
+    await waitFor(() => expect(diff.querySelector(".cm-changedLine")?.textContent).toBe("more"));
+    expect(screen.queryAllByTestId("file-head-note").length).toBe(0);
+    cleanup();
+    setup({ path, diff: true }, text("x\n", { path, repo: null, head: null, outside: true }));
+    expect((await screen.findByTestId("file-head-note")).textContent).toContain("Not in a repository");
+  });
+
+  // spec: UI-705
+  test("a missing absolute path outside the workspace says so: no file of the workspace stands for it", async () => {
+    const path = "/tmp/elsewhere/gone.md";
+    const base = testHost(new FakeClient(), { filePoll: new ManualPoll().poll });
+    base.host.window.set(SELECTED_THREAD, "t1");
+    // The daemon finds nothing for an absolute path outside the folder (DMN-312).
+    base.client.answers.set("workspaces.find_file", () => ({ candidates: [], truncated: false }));
+    const test = renderWithHost(<FileWidget path={path} />, base);
+    test.client.connected();
+    test.client.index({ workspaces: [workspace("w1")], threads: [thread("t1", "one", "w1")] });
+    test.flush();
+    act(() =>
+      test.client
+        .callsTo("workspaces.read_file")[0]
+        ?.reject(new CallError({ kind: "daemon", error: { code: "not_found", message: "no such file" } })),
+    );
+    expect((await screen.findByTestId("file-missing")).textContent).toBe(`${path} does not exist.`);
+    expect(test.client.callsTo("workspaces.find_file").map((call) => call.params)).toEqual([
+      { workspaceId: "w1", query: path, threadId: "t1" },
+    ]);
+    expect(test.host.window.get(FILE_PICKER)).toBeUndefined();
+  });
+
   // spec: UI-541, UI-542
   test("video and audio files play from their raw bytes, again when they change, and say when they cannot", async () => {
     const clip: FileContent = {

@@ -410,6 +410,8 @@ export const shell = {
     unsaved: "Unsaved changes: save with :w, or drop them with :q!",
     changedOnDisk: "The file changed on disk since you started editing; saving will show both versions.",
     truncated: (size: string) => `Only the beginning of this ${size} file is shown; it cannot be edited here.`,
+    /** A file read by its absolute path outside the workspace folder (UI-700): never edited. */
+    outside: "Outside the workspace: this file can be read here, not edited.",
     binary: (size: string) => `Binary file (${size}), not shown.`,
     imageLabel: (path: string) => `Image ${path}`,
     headImage: (path: string) => `${path} at HEAD`,

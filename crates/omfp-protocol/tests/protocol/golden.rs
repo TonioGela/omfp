@@ -291,6 +291,7 @@ fn file_examples() -> Vec<(&'static str, Value)> {
                 repo: Some("shop-frontend".to_owned()),
                 head: Some("use std::fmt;\n".to_owned()),
                 head_hash: None,
+                outside: false,
             },
         ),
         example::<method::WorkspacesFindFile>(
@@ -1976,5 +1977,28 @@ fn workspaces_and_thread_summaries_carry_their_place_in_the_column() {
             .unwrap()
             .position,
         3
+    );
+}
+
+// spec: PRT-195
+#[test]
+fn a_file_outside_the_workspace_says_so_and_an_older_daemon_s_file_is_inside() {
+    let file = json!({
+        "path": "/home/me/notes.md",
+        "kind": "text",
+        "size": 3,
+        "hash": "a9993e364706816aba3e25717850c26c9cd0d89d",
+        "content": "abc",
+        "outside": true
+    });
+    let outside: FileContent = serde_json::from_value(file.clone()).unwrap();
+    assert!(outside.outside);
+    assert_eq!(serde_json::to_value(&outside).unwrap()["outside"], true);
+    let mut older = file;
+    older.as_object_mut().unwrap().remove("outside");
+    assert!(
+        !serde_json::from_value::<FileContent>(older)
+            .unwrap()
+            .outside
     );
 }

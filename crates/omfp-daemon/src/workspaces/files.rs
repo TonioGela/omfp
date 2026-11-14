@@ -1,8 +1,10 @@
 //! Files of a workspace (DMN-089, DMN-090): reading one with its hash and its text at `HEAD`, writing one unless it
 //! changed on disk since it was read.
 //!
-//! Paths are relative to the workspace folder or absolute; `..` is resolved without following links and nothing may
-//! leave the folder, while links inside it (linked repositories) are followed: they are the workspace's.
+//! Paths are relative to the workspace folder or absolute; `..` is resolved without following links. A relative path
+//! may not leave the folder, while links inside it (linked repositories) are followed: they are the workspace's. An
+//! absolute path outside the folder is read as it is, read-only (DMN-310): the daemon's agents already read anything
+//! the user may (D-17), and writes stay in the folder (DMN-313).
 
 use std::fs::File;
 use std::io::Read;
@@ -73,44 +75,81 @@ fn normalize(path: &Path) -> Option<PathBuf> {
     Some(normalized)
 }
 
-/// The file `path` of the workspace `folder`, relative to it (DMN-089): `bad_request` when it leaves the folder or is
+/// Where a requested path points (DMN-089, DMN-310).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Resolved {
+    /// A file of the workspace folder, relative to it.
+    Inside(PathBuf),
+    /// An absolute path outside the workspace folder, `..` resolved: read-only (DMN-310).
+    Outside(PathBuf),
+}
+
+/// The file `path` of the workspace `folder` (DMN-089, DMN-310): relative to the folder when inside it (an absolute
+/// path inside it too), else an absolute path as it is; `bad_request` when a relative path leaves the folder, or for
 /// the folder itself.
-pub(super) fn resolve(folder: &Path, path: &str) -> Result<PathBuf> {
+pub(super) fn resolve(folder: &Path, path: &str) -> Result<Resolved> {
     let outside = || WorkspaceError::OutsideFolder(path.to_owned());
     let requested = Path::new(path);
     let normalized = normalize(requested).ok_or_else(outside)?;
     let relative = if requested.is_absolute() {
         let canonical = std::fs::canonicalize(folder).ok();
-        [Some(folder), canonical.as_deref()]
+        let inside = [Some(folder), canonical.as_deref()]
             .into_iter()
             .flatten()
-            .find_map(|folder| normalized.strip_prefix(folder).ok())
-            .ok_or_else(outside)?
-            .to_owned()
+            .find_map(|folder| normalized.strip_prefix(folder).ok());
+        match inside {
+            Some(relative) => relative.to_owned(),
+            None => return Ok(Resolved::Outside(normalized)),
+        }
     } else {
         normalized
     };
     if relative.as_os_str().is_empty() {
         return Err(WorkspaceError::IsADirectory(path.to_owned()));
     }
-    Ok(relative)
+    Ok(Resolved::Inside(relative))
+}
+
+/// The repository holding a file, where its `HEAD` version is read (DMN-089, DMN-311).
+struct Holder {
+    /// A folder of the repository's working tree that `inside` is relative to.
+    dir: PathBuf,
+    /// The name the result gives the repository.
+    name: String,
+    /// The file's path relative to `dir`.
+    inside: PathBuf,
 }
 
 /// The repository holding `relative` (a path in the workspace folder) and the path inside it: the repository whose
 /// entry is its first component, else the folder's own repository.
-fn holder<'a>(repos: &'a [Discovered], relative: &Path) -> Option<(&'a Discovered, PathBuf)> {
+fn holder(repos: &[Discovered], relative: &Path) -> Option<Holder> {
+    let held = |repo: &Discovered, inside: &Path| Holder {
+        dir: repo.path.clone(),
+        name: repo.name.clone(),
+        inside: inside.to_owned(),
+    };
     let mut components = relative.components();
     let first = components.next()?.as_os_str();
     repos
         .iter()
         .find(|repo| !repo.is_root && first == repo.name.as_str())
-        .map(|repo| (repo, components.as_path().to_owned()))
+        .map(|repo| held(repo, components.as_path()))
         .or_else(|| {
             repos
                 .iter()
                 .find(|repo| repo.is_root)
-                .map(|repo| (repo, relative.to_owned()))
+                .map(|repo| held(repo, relative))
         })
+}
+
+/// Where a requested file is.
+struct Located {
+    /// The file on disk.
+    full: PathBuf,
+    /// The path the results name: relative to the workspace folder, or absolute outside it (DMN-310).
+    shown: PathBuf,
+    /// The workspace's repositories the last scan found; `None` for a file outside the folder.
+    repos: Option<Vec<Discovered>>,
 }
 
 fn text(path: &Path) -> String {
@@ -206,11 +245,14 @@ fn missing(error: &std::io::Error) -> bool {
     )
 }
 
-/// Opens an existing file for reading: `not_found` when missing, `bad_request` for a directory.
+/// Opens an existing file for reading: `not_found` when missing, `bad_request` for a directory or a file the daemon's
+/// user may not read (DMN-315).
 fn open(full: &Path, path: &str) -> Result<File> {
     let file = File::open(full).map_err(|error| {
         if missing(&error) {
             WorkspaceError::NoSuchFile(path.to_owned())
+        } else if error.kind() == std::io::ErrorKind::PermissionDenied {
+            WorkspaceError::Unreadable(path.to_owned())
         } else {
             error.into()
         }
@@ -249,12 +291,20 @@ fn new_file_target(full: &Path, path: &str) -> Result<PathBuf> {
 }
 
 impl Workspaces {
-    /// Where the file `path` of workspace `id` is (DMN-089): the workspace's folder, the path relative to it and the
-    /// repositories the last scan found. A relative path the folder does not hold is looked up in each repository, in
-    /// scan order.
-    fn locate(&self, id: &str, path: &str) -> Result<(PathBuf, PathBuf, Vec<Discovered>)> {
+    /// Where the file `path` of workspace `id` is (DMN-089, DMN-310). A relative path the folder does not hold is
+    /// looked up in each repository, in scan order; an absolute path outside the folder is taken as it is.
+    fn locate(&self, id: &str, path: &str) -> Result<Located> {
         let ws = self.get(id)?;
-        let mut relative = resolve(&ws.path, path)?;
+        let mut relative = match resolve(&ws.path, path)? {
+            Resolved::Inside(relative) => relative,
+            Resolved::Outside(absolute) => {
+                return Ok(Located {
+                    full: absolute.clone(),
+                    shown: absolute,
+                    repos: None,
+                });
+            }
+        };
         let repos = self.discovered(id)?;
         if Path::new(path).is_relative() && std::fs::metadata(ws.path.join(&relative)).is_err() {
             let found = repos
@@ -266,41 +316,63 @@ impl Workspaces {
                 relative = found;
             }
         }
-        Ok((ws.path, relative, repos))
+        Ok(Located {
+            full: ws.path.join(&relative),
+            shown: relative,
+            repos: Some(repos),
+        })
     }
 
-    /// The file `path` of workspace `id`, opened for reading its raw bytes (DMN-250), with its path relative to the
-    /// workspace folder: resolved, refused and looked up in the repositories as [`Self::read_file`] does.
+    /// The repository holding a located file: a repository of the workspace (DMN-089) or, outside the folder, the
+    /// git working tree holding it (DMN-311); `None` outside every repository.
+    fn holder_of(&self, located: &Located) -> Option<Holder> {
+        if let Some(repos) = &located.repos {
+            return holder(repos, &located.shown);
+        }
+        let dir = located.full.parent()?;
+        // A folder that is missing, or that git cannot tell about, is outside every repository.
+        let top = self.git.toplevel(dir).ok()??;
+        Some(Holder {
+            dir: dir.to_owned(),
+            name: top.file_name()?.to_string_lossy().into_owned(),
+            inside: PathBuf::from(located.full.file_name()?),
+        })
+    }
+
+    /// The bytes of a held file at `HEAD` of its repository; `None` when `HEAD` does not have them.
+    fn at_head(&self, holder: &Holder) -> Result<Option<Vec<u8>>> {
+        match holder.inside.to_str() {
+            Some(inside) => Ok(self.git.show_head(&holder.dir, inside)?),
+            None => Ok(None),
+        }
+    }
+
+    /// The file `path` of workspace `id`, opened for reading its raw bytes (DMN-250, DMN-314), with the path
+    /// [`Self::read_file`] names: resolved, refused and looked up in the repositories as it does.
     pub fn open_file(&self, id: &str, path: &str) -> Result<(File, PathBuf)> {
-        let (folder, relative, _) = self.locate(id, path)?;
-        let file = open(&folder.join(&relative), path)?;
-        Ok((file, relative))
+        let located = self.locate(id, path)?;
+        let file = open(&located.full, path)?;
+        Ok((file, located.shown))
     }
 
-    /// The bytes of the file `path` of workspace `id` at `HEAD` of the repository holding it (DMN-255), with its path
-    /// relative to the workspace folder: resolved as [`Self::read_file`] does, though the file need not exist any
-    /// more; `None` for a file `HEAD` does not have or outside every repository.
+    /// The bytes of the file `path` of workspace `id` at `HEAD` of the repository holding it (DMN-255, DMN-311), with
+    /// the path [`Self::read_file`] names: resolved as it does, though the file need not exist any more; `None` for a
+    /// file `HEAD` does not have or outside every repository.
     pub fn read_head(&self, id: &str, path: &str) -> Result<Option<(Vec<u8>, PathBuf)>> {
-        let (_, relative, repos) = self.locate(id, path)?;
-        let Some((repo, inside)) = holder(&repos, &relative) else {
+        let located = self.locate(id, path)?;
+        let Some(holder) = self.holder_of(&located) else {
             return Ok(None);
         };
-        let Some(inside) = inside.to_str() else {
-            return Ok(None);
-        };
-        Ok(self
-            .git
-            .show_head(&repo.path, inside)?
-            .map(|bytes| (bytes, relative)))
+        Ok(self.at_head(&holder)?.map(|bytes| (bytes, located.shown)))
     }
 
-    /// The file `path` of workspace `id` (DMN-089). A relative path the folder does not hold is looked up in each
-    /// repository, in scan order. With `known_hash` equal to the file's hash the result is `unchanged`, without its
-    /// content or `HEAD` text.
+    /// The file `path` of workspace `id` (DMN-089), or, for an absolute path outside its folder, that file, read-only
+    /// (DMN-310). A relative path the folder does not hold is looked up in each repository, in scan order. With
+    /// `known_hash` equal to the file's hash the result is `unchanged`, without its content or `HEAD` text.
     pub fn read_file(&self, id: &str, path: &str, known_hash: Option<&str>) -> Result<FileContent> {
-        let (folder, relative, repos) = self.locate(id, path)?;
-        let mut file = open(&folder.join(&relative), path)?;
-        let mime = image_mime(&relative);
+        let located = self.locate(id, path)?;
+        let mut file = open(&located.full, path)?;
+        let mime = image_mime(&located.shown);
         let keep = if mime.is_some() { IMAGE_CAP } else { TEXT_CAP };
         let scanned = scan(&mut file, keep)?;
         let kind = if mime.is_some() {
@@ -323,24 +395,27 @@ impl Workspaces {
             ),
             FileKind::Binary => (None, false),
         };
-        let holder = holder(&repos, &relative);
-        let at_head = |repo: &Discovered, inside: &Path| match inside.to_str() {
-            Some(inside) => self.git.show_head(&repo.path, inside),
-            None => Ok(None),
+        let outside = located.repos.is_none();
+        // Outside the folder, finding the repository runs git: an unchanged file, polled, skips it.
+        let holder = if outside && unchanged {
+            None
+        } else {
+            self.holder_of(&located)
         };
         let (head, head_hash) = match &holder {
-            Some((repo, inside)) if !unchanged => match kind {
+            Some(holder) if !unchanged => match kind {
                 FileKind::Text if !truncated => (
-                    at_head(repo, inside)?.and_then(|bytes| String::from_utf8(bytes).ok()),
+                    self.at_head(holder)?
+                        .and_then(|bytes| String::from_utf8(bytes).ok()),
                     None,
                 ),
-                FileKind::Image => (None, at_head(repo, inside)?.map(|bytes| hash(&bytes))),
+                FileKind::Image => (None, self.at_head(holder)?.map(|bytes| hash(&bytes))),
                 _ => (None, None),
             },
             _ => (None, None),
         };
         Ok(FileContent {
-            path: text(&relative),
+            path: text(&located.shown),
             kind,
             size: scanned.size,
             hash: scanned.hash,
@@ -348,15 +423,17 @@ impl Workspaces {
             content,
             truncated,
             mime: mime.map(str::to_owned),
-            repo: holder.map(|(repo, _)| repo.name.clone()),
+            repo: holder.map(|holder| holder.name),
             head,
             head_hash,
+            outside,
         })
     }
 
     /// Writes `content` to the file `path` of workspace `id` (DMN-090) only when it still has `expected_hash` or,
     /// without one, when it does not exist; otherwise `conflict` and nothing is written. The write is atomic, keeps
-    /// the file's permissions, goes through links and creates no folder.
+    /// the file's permissions, goes through links and creates no folder. A path outside the workspace folder is
+    /// refused, absolute or not: files there are read-only (DMN-313).
     pub fn write_file(
         &self,
         id: &str,
@@ -365,7 +442,10 @@ impl Workspaces {
         expected_hash: Option<&str>,
     ) -> Result<FileWritten> {
         let ws = self.get(id)?;
-        let relative = resolve(&ws.path, path)?;
+        let relative = match resolve(&ws.path, path)? {
+            Resolved::Inside(relative) => relative,
+            Resolved::Outside(_) => return Err(WorkspaceError::ReadOnly(path.to_owned())),
+        };
         let full = ws.path.join(&relative);
         let (target, permissions) = match std::fs::canonicalize(&full) {
             Ok(target) => {
@@ -410,19 +490,31 @@ impl Workspaces {
 mod tests {
     use super::*;
 
-    // spec: DMN-089
+    // spec: DMN-089, DMN-310, DMN-312
     #[test]
-    fn dot_dot_is_resolved_lexically_and_may_not_leave_the_folder() {
+    fn dot_dot_is_resolved_lexically_and_only_absolute_paths_may_leave_the_folder() {
         let folder = Path::new("/w/ws");
-        assert_eq!(resolve(folder, "a/./b/../c").unwrap(), Path::new("a/c"));
-        assert_eq!(resolve(folder, "/w/ws/a/../b").unwrap(), Path::new("b"));
-        for outside in ["../x", "a/../../x", "/w/other/x", "/w/ws/../x", "/w/wsx/y"] {
+        let inside = |relative: &str| Resolved::Inside(PathBuf::from(relative));
+        assert_eq!(resolve(folder, "a/./b/../c").unwrap(), inside("a/c"));
+        assert_eq!(resolve(folder, "/w/ws/a/../b").unwrap(), inside("b"));
+        for relative in ["../x", "a/../../x", "..", "/.."] {
             assert!(
                 matches!(
-                    resolve(folder, outside),
+                    resolve(folder, relative),
                     Err(WorkspaceError::OutsideFolder(_))
                 ),
-                "{outside}"
+                "{relative}"
+            );
+        }
+        for (absolute, resolved) in [
+            ("/w/other/x", "/w/other/x"),
+            ("/w/ws/../x", "/w/x"),
+            ("/w/wsx/./y", "/w/wsx/y"),
+        ] {
+            assert_eq!(
+                resolve(folder, absolute).unwrap(),
+                Resolved::Outside(PathBuf::from(resolved)),
+                "{absolute}"
             );
         }
         assert!(matches!(

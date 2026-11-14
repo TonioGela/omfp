@@ -198,7 +198,7 @@ pub fn open_file(open: OpenFile) -> HostTool {
         "properties": {
             "path": {
                 "type": "string",
-                "description": "File to open: relative to the workspace folder (or one of its repositories), absolute inside it, or a bare or partial name the user's window looks up."
+                "description": "File to open: relative to the workspace folder (or one of its repositories), absolute (a file outside the workspace folder opens read-only), or a bare or partial name the user's window looks up."
             },
             "line": { "type": "integer", "minimum": 1, "description": "Line to scroll to." }
         },

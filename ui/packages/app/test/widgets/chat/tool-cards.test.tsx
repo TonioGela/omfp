@@ -541,4 +541,21 @@ describe("opening files from cards", () => {
     await userEvent.click(within(byTestId(grep, "tool-file")).getByTestId("path-link"));
     expect(opened()).toEqual([{ path: "src/lib.rs", line: undefined, diff: undefined }]);
   });
+
+  // spec: UI-702
+  test("an absolute path outside the workspace folder (an agent's worktree elsewhere) opens as given", async () => {
+    const path = "/tmp/elsewhere/README.md";
+    const read = toolCard(
+      "c1",
+      { type: "toolCall", id: "c1", name: "read", arguments: { path } },
+      undefined,
+      { role: "toolResult", toolCallId: "c1", toolName: "read", content: [{ type: "text", text: "# Elsewhere" }] },
+      undefined,
+    );
+    const element = show(read);
+    expect(element.dataset.omfpPath).toBe(path);
+    expect(byTestId(element, "tool-path-open").textContent).toContain(path);
+    await userEvent.click(byTestId(element, "tool-path-open"));
+    expect(opened()?.map((tab) => tab.path)).toEqual([path]);
+  });
 });

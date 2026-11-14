@@ -95,7 +95,8 @@ export function openFile(host: OmfpHost, path: string, options: OpenFileOptions 
   }));
 }
 
-/** `openFile(path, { line?, diff? })` for this window (AGT-027). */
+/** `openFile(path, { line?, diff? })` for this window (AGT-027); an absolute path outside the workspace folder opens
+ * too, read-only (UI-700, UI-701). */
 export function useOpenFile(): (path: string, options?: OpenFileOptions) => void {
   const host = useHost();
   return useMemo(() => (path: string, options?: OpenFileOptions) => openFile(host, path, options), [host]);
@@ -286,7 +287,8 @@ function startOf(results: ResultCache, key: string): Loaded {
 }
 
 /**
- * A file of the current workspace (`workspaces.read_file`, DMN-089). With `follow` (the default) it is checked again
+ * A file of the current workspace (`workspaces.read_file`, DMN-089), or, by an absolute path, a file outside its folder,
+ * read-only (`file.outside`, DMN-310). With `follow` (the default) it is checked again
  * by the host's poll (`knownHash`, so an unchanged file costs no transfer) and read again whenever the workspace's git
  * status changes (`workspace/<id>`), which also refreshes its `HEAD` text. Until the first read answers, the window's
  * last copy read by the same widget instance shows, `refreshing` (UI-392).
@@ -437,7 +439,8 @@ function useFileBase(): string | undefined {
 
 /**
  * The URL of the raw bytes of a file of the current workspace (UI-540, DMN-250), for `<video>`, `<audio>`, `<img>` or
- * `fetch`: `path` as `useFile` takes it, served with its type, byte ranges and cache validators. `undefined` without
+ * `fetch`: `path` as `useFile` takes it (an absolute path outside the workspace folder too, DMN-314), served with its
+ * type, byte ranges and cache validators. `undefined` without
  * a current workspace or before the first `system.hello`. The URL carries a secret of this daemon's run instead of
  * the token, so it works where no header can be set; keep it inside the window.
  */

@@ -437,6 +437,18 @@ describe("opening paths", () => {
       jump: 1,
     });
   });
+
+  // spec: UI-701
+  test("`:open` with an absolute path outside the workspace folder opens it as typed", async () => {
+    const test = setup();
+    press(":");
+    await test.user.keyboard("open /tmp/elsewhere/README.md:3{Enter}");
+    expect(shownFile()).toEqual({
+      path: "/tmp/elsewhere/README.md",
+      line: 3,
+      jump: 1,
+    });
+  });
 });
 
 describe("files the agent opens", () => {

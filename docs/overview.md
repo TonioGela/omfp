@@ -14,7 +14,8 @@ build widgets for the UI itself, and you can talk to it with live voice.
 - Views as layout trees in `.omfp/views.json` (or TSX views and init files), written by the agent, with `:widget add`
   in the window; widgets are React components the
   agent writes and checks without a browser (`omfp/sdk`), next to built-ins for changes and diffs, files (CodeMirror
-  with vim keys), subagents, todos and the session tree.
+  with vim keys; a file outside the workspace folder, such as an agent's worktree elsewhere, opens by its absolute path,
+  read-only), subagents, todos and the session tree.
 - Live voice through omp's live session, with a transcript and mute.
 - Keyboard first: vim-style modes, a `:` command line, `?` help, per-workspace key bindings an agent can add.
 - Desktop app (Tauri: WebKitGTK on Linux, WKWebView on macOS) sharing a background daemon with the browser, with a tray

@@ -4,8 +4,9 @@
 //! `<fileBase>` is `/files/<key>`, the key a random 128-bit secret made at startup and given only to authenticated
 //! clients in `system.hello` (PRT-150), like the widget key (DMN-084) but distinct from it: a URL that leaks (a page
 //! source, a log) opens the workspace files until the daemon restarts, never the protocol. The path is resolved as
-//! `workspaces.read_file` resolves it (DMN-089); every failure — a wrong key, an unknown workspace, a path leaving the
-//! folder, a missing file, a folder — is the same `404`.
+//! `workspaces.read_file` resolves it (DMN-089), an absolute path outside the folder included (DMN-314); every
+//! failure — a wrong key, an unknown workspace, a relative path leaving the folder, a missing file, a folder — is the
+//! same `404`.
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};

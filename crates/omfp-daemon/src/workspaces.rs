@@ -47,6 +47,12 @@ pub enum WorkspaceError {
     HasThreads(String),
     #[error("{0:?} is outside the workspace folder")]
     OutsideFolder(String),
+    /// An absolute path outside the workspace folder given to a write: such files are read-only (DMN-313).
+    #[error("{0:?} is outside the workspace folder: it can be read, not written")]
+    ReadOnly(String),
+    /// A file the daemon's user may not read (DMN-315).
+    #[error("{0:?} cannot be read: permission denied")]
+    Unreadable(String),
     #[error("{0:?} is a directory")]
     IsADirectory(String),
     #[error("no file {0:?} in the workspace")]

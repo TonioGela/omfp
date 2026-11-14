@@ -5,7 +5,8 @@
  * against `HEAD`, unified or side by side. The text follows the file on disk while it has no unsaved change. Images
  * zoom, pan and compare with `HEAD` (image.tsx, UI-548..UI-555); video and audio files play in the browser's player
  * (media.tsx, UI-541); PDF documents show in the kit's viewer (pdf.tsx, UI-547). A file with a viewer (`viewers.tsx`:
- * Markdown, UI-560) shows it while read-only, with a toggle to its source.
+ * Markdown, UI-560) shows it while read-only, with a toggle to its source. A file outside the workspace folder, opened
+ * by its absolute path, is only read (UI-700).
  */
 
 import type { FileContent } from "@omfp/protocol";
@@ -81,6 +82,7 @@ function FileView({ path, line, jump, diff }: FileViewProps): ReactNode {
       data-testid="file"
       data-path={path}
       data-status={file.status}
+      data-outside={file.file?.outside === true ? "true" : undefined}
       aria-label={text.label(path)}
       tabIndex={-1}
     >
@@ -173,7 +175,8 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
   // The user's text a refused save held (the conflict view's right side).
   const [mine, setMine] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
-  const editable = file.truncated !== true;
+  // A cut file, or one outside the workspace folder (the daemon refuses to write it, DMN-313), is only read (UI-700).
+  const editable = file.truncated !== true && file.outside !== true;
   // A file with a viewer shows it while read-only, until the toggle shows the source (UI-560).
   const viewer = viewerOf(file.path);
   const [preview, setPreview] = useState(true);
@@ -307,6 +310,11 @@ function TextFile({ file, content, line, jump, diff, save, reload, root }: TextF
         </span>
       </div>
       {file.truncated === true && <p className="omfp-file__notice">{text.truncated(text.size(file.size))}</p>}
+      {file.outside === true && (
+        <p className="omfp-file__notice" data-testid="file-outside">
+          {text.outside}
+        </p>
+      )}
       {mode === "edit" && dirty && file.hash !== base.hash && (
         <p className="omfp-file__notice" data-tone="warning" data-testid="file-changed">
           {text.changedOnDisk}

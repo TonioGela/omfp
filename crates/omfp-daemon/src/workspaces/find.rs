@@ -10,7 +10,7 @@ use omfp_core::ThreadState;
 use omfp_protocol::{FileCandidate, FileCandidates, FileMatch};
 use serde_json::Value;
 
-use super::files::resolve;
+use super::files::{Resolved, resolve};
 use super::{Discovered, Result, Workspaces};
 
 /// At most this many candidates are returned.
@@ -245,7 +245,8 @@ fn mentioned_in(
 impl Workspaces {
     /// The files of workspace `id` that `query` names (DMN-092), best first: the exact path (relative to the folder
     /// or to a repository), then paths ending with the query, then files with its name; among equal matches, files
-    /// in `mentioned` (paths a thread's tool cards name) first, then shorter paths. At most [`MAX_CANDIDATES`].
+    /// in `mentioned` (paths a thread's tool cards name) first, then shorter paths. At most [`MAX_CANDIDATES`]. An
+    /// absolute path outside the folder names no file of the workspace (DMN-312).
     pub fn find_file(
         &self,
         id: &str,
@@ -253,7 +254,15 @@ impl Workspaces {
         mentioned: &BTreeSet<String>,
     ) -> Result<FileCandidates> {
         let ws = self.get(id)?;
-        let query = relative_text(&resolve(&ws.path, query.trim())?);
+        let query = match resolve(&ws.path, query.trim())? {
+            Resolved::Inside(relative) => relative_text(&relative),
+            Resolved::Outside(_) => {
+                return Ok(FileCandidates {
+                    candidates: Vec::new(),
+                    truncated: false,
+                });
+            }
+        };
         let repos = self.discovered(id)?;
         let mut listed = Vec::new();
         for repo in &repos {

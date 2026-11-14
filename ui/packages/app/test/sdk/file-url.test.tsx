@@ -18,11 +18,12 @@ function url(): string | null {
 }
 
 describe("useFileUrl", () => {
-  // spec: UI-540
+  // spec: UI-540, UI-703, PRT-197
   test("is the file base of hello, the current workspace and the path with each segment encoded", () => {
     expect(fileUrl("/files/k", "w 1", "docs/a b#1.mp4")).toBe("/files/k/w%201/docs/a%20b%231.mp4");
-    // An absolute path keeps its leading slash; the daemon refuses one outside the workspace folder.
+    // An absolute path keeps its leading slash, inside the workspace folder or outside it (DMN-314).
     expect(fileUrl("/files/k", "w1", "/home/me/ws/clip.webm")).toBe("/files/k/w1//home/me/ws/clip.webm");
+    expect(fileUrl("/files/k", "w1", "/tmp/elsewhere/a b.pdf")).toBe("/files/k/w1//tmp/elsewhere/a%20b.pdf");
   });
 
   // spec: UI-540

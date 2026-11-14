@@ -445,7 +445,8 @@ pub enum FileKind {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FileContent {
-    /// Relative to the workspace folder, `..` resolved (symbolic links kept as they are).
+    /// Relative to the workspace folder, `..` resolved (symbolic links kept as they are); for a file `outside` the
+    /// folder, the absolute path, `..` resolved.
     pub path: String,
     pub kind: FileKind,
     /// Size in bytes.
@@ -465,7 +466,8 @@ pub struct FileContent {
     /// The MIME type of an image.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mime: Option<String>,
-    /// The name of the workspace repository holding the file; absent outside every repository.
+    /// The name of the workspace repository holding the file; for a file `outside` the folder, the name of the folder
+    /// of the git working tree holding it (DMN-311); absent outside every repository.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub repo: Option<String>,
     /// The file's text at `HEAD` of that repository; absent for a file `HEAD` does not have (new, untracked), for
@@ -476,6 +478,10 @@ pub struct FileContent {
     /// an image `HEAD` does not have, for text and binary files, when `unchanged` and outside repositories.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_hash: Option<String>,
+    /// The file is outside the workspace folder, read by its absolute path (DMN-310, PRT-195): read-only,
+    /// `workspaces.write_file` refuses it (DMN-313).
+    #[serde(default)]
+    pub outside: bool,
 }
 
 /// The result of `workspaces.write_file` (DMN-090).

@@ -59,6 +59,8 @@ pub(crate) fn workspace_error(error: WorkspaceError) -> ErrorBody {
         | WorkspaceError::InvalidName(_)
         | WorkspaceError::IsRoot(_)
         | WorkspaceError::OutsideFolder(_)
+        | WorkspaceError::ReadOnly(_)
+        | WorkspaceError::Unreadable(_)
         | WorkspaceError::IsADirectory(_)
         | WorkspaceError::Git(GitError::NotARepository(_)) => ErrorCode::BadRequest,
         WorkspaceError::NoSuchRepo { .. }

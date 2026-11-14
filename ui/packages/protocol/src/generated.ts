@@ -298,9 +298,20 @@ export type FileContent = {
   kind: FileKind;
   /** The MIME type of an image. */
   mime?: string | null;
-  /** Relative to the workspace folder, `..` resolved (symbolic links kept as they are). */
+  /**
+   * The file is outside the workspace folder, read by its absolute path (DMN-310, PRT-195): read-only,
+   * `workspaces.write_file` refuses it (DMN-313).
+   */
+  outside?: boolean;
+  /**
+   * Relative to the workspace folder, `..` resolved (symbolic links kept as they are); for a file `outside` the
+   * folder, the absolute path, `..` resolved.
+   */
   path: string;
-  /** The name of the workspace repository holding the file; absent outside every repository. */
+  /**
+   * The name of the workspace repository holding the file; for a file `outside` the folder, the name of the folder
+   * of the git working tree holding it (DMN-311); absent outside every repository.
+   */
   repo?: string | null;
   /** Size in bytes. */
   size: number;

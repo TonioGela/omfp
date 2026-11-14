@@ -783,6 +783,15 @@ on mount and whenever the thread settles while omp runs, so a window reloaded wh
 that part until it runs again (UI-691). The subagents' is the larger of their completed `task` results and their
 progress frames, which carry what each one spent so far, running ones included (UI-692).
 
+Files outside the workspace folder open read-only ([02 — Files outside the workspace
+folder](02-daemon.md#files-outside-the-workspace-folder-m17), DMN-310..DMN-315, PRT-195..PRT-197,
+[04](04-ui.md#files-outside-the-workspace-folder-m17), UI-700..UI-705, E2E-70): an agent working in a git worktree
+outside its workspace names its files by absolute paths, and clicking one in a tool card said it was outside the
+workspace folder. `workspaces.read_file` and the raw file route now read any absolute path the user's account may read
+(`outside: true`, with `HEAD` from the git working tree holding it); `workspaces.write_file` still refuses it, and a
+relative path still may not leave the folder. Design: reading reveals nothing an agent of the same token-protected
+daemon could not read (D-17); writes stay where the workspace's rescans, git status and conflict checks see them.
+
 ## Terminal (removed)
 
 Removed (D-06, PRT-135): the user does not rely on the TUI-only commands, so the terminal was never built; its

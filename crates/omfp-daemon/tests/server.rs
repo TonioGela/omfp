@@ -973,6 +973,54 @@ async fn a_written_file_republishes_the_workspace_status_and_a_stale_write_is_a_
     assert_eq!(no_folder["code"], "not_found", "{no_folder}");
 }
 
+// spec: DMN-310, DMN-313, PRT-195, PRT-196
+#[tokio::test(flavor = "multi_thread")]
+async fn an_absolute_path_outside_the_workspace_is_read_but_never_written() {
+    let daemon = daemon(&[]).await;
+    let mut client = daemon.client("test").await;
+    let workspace = client.ok("workspaces.create", json!({})).await;
+    let id = workspace["id"].as_str().unwrap().to_owned();
+    let elsewhere = tempfile::tempdir().unwrap();
+    let readme = elsewhere.path().join("README.md");
+    std::fs::write(&readme, "# Elsewhere\n").unwrap();
+    let path = readme.to_str().unwrap();
+
+    let read = client
+        .ok(
+            "workspaces.read_file",
+            json!({ "workspaceId": id, "path": path }),
+        )
+        .await;
+    assert_eq!(read["path"], path);
+    assert_eq!(read["content"], "# Elsewhere\n");
+    assert_eq!(read["outside"], true);
+    assert_eq!(read.get("repo"), None);
+
+    let refused = client
+        .call(
+            "workspaces.write_file",
+            json!({ "workspaceId": id, "path": path, "content": "x", "expectedHash": read["hash"] }),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(refused["code"], "bad_request", "{refused}");
+    assert!(
+        refused["message"]
+            .as_str()
+            .unwrap()
+            .contains("it can be read, not written"),
+        "{refused}"
+    );
+    assert_eq!(std::fs::read_to_string(&readme).unwrap(), "# Elsewhere\n");
+    let found = client
+        .ok(
+            "workspaces.find_file",
+            json!({ "workspaceId": id, "query": path }),
+        )
+        .await;
+    assert_eq!(found["candidates"], json!([]));
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn the_index_follows_thread_process_changes() {
     let daemon = daemon(&[]).await;

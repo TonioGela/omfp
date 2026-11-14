@@ -184,9 +184,9 @@ async fn files_are_served_only_under_the_file_key_of_hello() {
     }
 }
 
-// spec: DMN-250
+// spec: DMN-250, DMN-312, DMN-314, PRT-197
 #[tokio::test]
-async fn paths_resolve_as_read_file_does_and_never_leave_the_workspace() {
+async fn paths_resolve_as_read_file_does_and_only_absolute_ones_leave_the_workspace() {
     let daemon = Daemon::new().await;
     let base = daemon.hello().await["fileBase"]
         .as_str()
@@ -212,19 +212,75 @@ async fn paths_resolve_as_read_file_does_and_never_leave_the_workspace() {
     let absolute = format!("{base}/{id}/{}", folder.join("dir/inside.txt").display());
     assert_eq!(daemon.get(&absolute, &[]).await.body, b"inside");
 
+    // An absolute path outside the folder is served as it is, typed and with the headers of every file (DMN-314).
     let outside_absolute = outside.path().join("secret.txt");
+    let served = daemon
+        .get(&format!("{base}/{id}/{}", outside_absolute.display()), &[])
+        .await;
+    assert_eq!(
+        (served.status, served.body.as_slice()),
+        (200, &b"secret"[..])
+    );
+    assert_eq!(
+        served.header("content-type"),
+        Some("text/plain; charset=utf-8")
+    );
+    assert_eq!(served.header("content-security-policy"), Some("sandbox"));
+    let dotted = format!("{base}/{id}/{}/%2e%2e/secret.txt", folder.display());
+    assert_eq!(daemon.get(&dotted, &[]).await.body, b"secret");
+
     for refused in [
         format!("{base}/{id}/../secret.txt"),
         format!("{base}/{id}/%2e%2e/secret.txt"),
         format!("{base}/{id}/dir/..%2f..%2fsecret.txt"),
-        format!("{base}/{id}/{}", outside_absolute.display()),
+        format!(
+            "{base}/{id}/{}",
+            outside.path().join("missing.txt").display()
+        ),
+        format!("{base}/{id}/{}", outside.path().display()),
         format!("{base}/{id}/missing.txt"),
         format!("{base}/{id}/dir"),
         format!("{base}/{id}/"),
-        format!("{base}/no-such-workspace/dir/inside.txt"),
+        format!("{base}/no-such-workspace/{}", outside_absolute.display()),
+        format!(
+            "/files/{}/{id}/{}",
+            "0".repeat(32),
+            outside_absolute.display()
+        ),
     ] {
         assert_eq!(daemon.get(&refused, &[]).await.status, 404, "{refused}");
     }
+}
+
+// spec: DMN-311, DMN-314
+#[tokio::test]
+async fn rev_head_serves_an_outside_file_at_head_of_the_working_tree_holding_it() {
+    let daemon = Daemon::new().await;
+    let base = daemon.hello().await["fileBase"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let (id, _) = daemon.workspace().await;
+    let outside = tempfile::tempdir().unwrap();
+    let other = outside.path().join("other");
+    write(&other.join("img/logo.png"), b"working copy");
+    write(
+        &outside.path().join("loose.png"),
+        b"outside every repository",
+    );
+    daemon.git.add_repo(&other, "main");
+    daemon.git.commit_file(&other, "img/logo.png", b"at HEAD");
+
+    let url = format!("{base}/{id}/{}", other.join("img/logo.png").display());
+    assert_eq!(daemon.get(&url, &[]).await.body, b"working copy");
+    let head = daemon.get(&format!("{url}?rev=HEAD"), &[]).await;
+    assert_eq!((head.status, head.body.as_slice()), (200, &b"at HEAD"[..]));
+    assert_eq!(head.header("content-type"), Some("image/png"));
+    let loose = format!(
+        "{base}/{id}/{}?rev=HEAD",
+        outside.path().join("loose.png").display()
+    );
+    assert_eq!(daemon.get(&loose, &[]).await.status, 404);
 }
 
 // spec: DMN-252
