@@ -1,6 +1,6 @@
 # ENV-060: the downloads without Nix (docs/specs/01-dev-environment.md, "Release packages"). A pushed tag `v<version>`
 # (the workspace version) builds them in the dev shell (`just package-linux`, `just package-flatpak`, `just
-# package-macos`) and attaches them, with their SHA256SUMS and notes from the tag's Conventional Commits, to a draft
+# package-macos`) and attaches them, with their SHA256SUMS and notes from CHANGELOG.md, to a draft
 # GitHub release; publishing it stays a human step. Run by hand (workflow_dispatch) it is a dry run: the packages are
 # the run's artifacts, no release.
 name: Release
@@ -95,9 +95,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
-        with:
-          # The notes need the commits since the previous tag.
-          fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
           path: dist

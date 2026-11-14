@@ -643,6 +643,10 @@ release by `.github/workflows/release.yml` on a `v*` tag. The app is signed ad-h
 are set; then it is signed with a Developer ID under the hardened runtime, notarized and stapled. In the Flatpak, omp,
 git and the shells of jobs run on the host (`flatpak-spawn --host`).
 
+Release notes come from the tagged version's dated section of `CHANGELOG.md`, maintained under `Unreleased` until
+release preparation. The draft step refuses missing or empty notes; it no longer derives user-facing notes from
+Conventional Commits or needs the repository's full history.
+
 Acceptance: `just package-linux` gives a tarball whose `omfp daemon` starts and serves the UI with its bundled omp on a
 plain glibc 2.34+ system (checked on an Ubuntu 22.04 root file system, outside Nix); `just package-macos` gives an app
 with no `/nix/store` reference in any Mach-O whose `omfp daemon` serves the UI from `Contents/Resources/web` with

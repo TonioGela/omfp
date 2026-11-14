@@ -25,7 +25,7 @@ conversations with the agent at once, each with its own oh-my-pi running in the 
   throw away.
 - **Emacs philosophy at heart.** You change the tool from inside it, while it runs. No rebuilds.
 
-Early and changing fast.
+Early and changing fast. [Changelog](CHANGELOG.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/brand/screenshot-dark.png">

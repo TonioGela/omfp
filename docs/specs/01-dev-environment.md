@@ -137,14 +137,26 @@ Entitlements under the hardened runtime: `contrib/release/omfp.entitlements` (th
 `contrib/release/omp.entitlements` (what Bun documents for its single-file executables: JIT, unsigned executable
 memory, no library validation for the native addons it extracts).
 
-Releasing: set the workspace version in `Cargo.toml`, commit, push a tag `v<version>`; the workflow builds the three
-packages, then drafts the release with `SHA256SUMS` and notes from the Conventional Commits since the previous tag
-(`contrib/release/notes.sh`); check the draft and publish it. Run by hand (Actions → Release → Run workflow) it builds
-the packages as the run's artifacts only.
+Release notes live in [`CHANGELOG.md`](../../CHANGELOG.md), not the commit log. Add significant user-facing changes
+under `Unreleased`, in English, grouped into Added, Changed, Fixed, Removed or Security as needed. Describe effects
+and migrations rather than internal refactoring or test changes; the initial release also lists its platform limits.
+
+Releasing:
+
+1. Set the workspace version in `Cargo.toml` and update the lockfile.
+2. Move the `Unreleased` entries under `## <version> — YYYY-MM-DD`, using the release date, and leave a fresh
+   `## Unreleased` section above it.
+3. Preview the notes with `contrib/release/notes.sh v<version>` and commit the release preparation.
+4. Push a signed tag `v<version>`. The workflow builds the three packages, then drafts the release with `SHA256SUMS`
+   and exactly that version's changelog body; a missing, undated or empty section fails instead of creating a draft.
+5. Check the draft and publish it.
+
+Run by hand (Actions → Release → Run workflow), the workflow builds the packages as the run's artifacts only;
+it does not require a released changelog section or create a release.
 
 | ID | Requirement |
 | --- | --- |
-| ENV-060 | (M15) `.github/workflows/release.yml` MUST build the packages on a pushed tag `v*` and on `workflow_dispatch`, each in the dev shell with one recipe (`just package-linux` and `just package-flatpak` on `ubuntu-latest`, the latter after allowing unprivileged user namespaces for bubblewrap, `just package-macos` on `macos-15`), and on a tag only attach them with `SHA256SUMS` to a draft release (`gh release create --draft --verify-tag`); the workflow reads the contents, and only the release job, which runs on tags only, writes them (`just check-workflow`). On a tag the packages MUST fail unless it is `v` + the workspace version, so the binary's `--version`, the Info.plist and the release agree. |
+| ENV-060 | (M15) `.github/workflows/release.yml` MUST build the packages on a pushed tag `v*` and on `workflow_dispatch`, each in the dev shell with one recipe (`just package-linux` and `just package-flatpak` on `ubuntu-latest`, the latter after allowing unprivileged user namespaces for bubblewrap, `just package-macos` on `macos-15`), and on a tag only attach them with `SHA256SUMS` to a draft release (`gh release create --draft --verify-tag`); the workflow reads the contents, and only the release job, which runs on tags only, writes them (`just check-workflow`). On a tag the packages MUST fail unless it is `v` + the workspace version, so the binary's `--version`, the Info.plist and the release agree. Release notes MUST be the body of the exact version's `## <version> — YYYY-MM-DD` section in the checked-out `CHANGELOG.md`, excluding `Unreleased` and other versions; a missing, undated or empty section MUST fail before creating the draft (`contrib/release/notes.sh`, tested by `just check-workflow`). |
 | ENV-061 | (M15) The packages MUST bundle the pinned omp's official release build (`omp-linux-x64`, `omp-darwin-arm64` from `github.com/can1357/oh-my-pi/releases/download/<tag>/`, a Bun single-file executable), checked against the SHA-256 pinned in `contrib/release/omp.sha256`, whose tag `cargo xtask check-versions` checks against the pinned omp (ENV-010). It goes next to `omfp`, where the daemon finds it first (DMN-006). |
 | ENV-062 | (M15) `just package-linux` MUST build `omfp` without the `desktop` feature with `cargo zigbuild` for `x86_64-unknown-linux-gnu.2.34`: interpreter `/lib64/ld-linux-x86-64.so.2`, no RUNPATH, no glibc symbol version newer than 2.34 (weak ones included), only libc, libm, libgcc_s and the loader as libraries, std's paths remapped (no `/nix/store` string); the archive is reproducible (sorted, no owners, the commit's time). |
 | ENV-063 | (M15) `just package-macos` MUST build `omfp.app` without a `/nix/store` reference in any Mach-O (`otool -L`, `otool -l`: nixpkgs' libiconv is relinked to the system's), the web bundle in `Contents/Resources/web` (DMN-008), the Info.plist of ENV-041 with the version, and sign it: ad-hoc, or with a Developer ID, the hardened runtime and the entitlements above, then notarized and stapled (the app first, then the disk image) when the Apple ID secrets are set. Run without arguments, an app bundle's `omfp` (`<name>.app/Contents/MacOS/omfp`) opens `omfp desktop`. |
