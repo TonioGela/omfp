@@ -55,6 +55,9 @@ such a client creates show its name as their origin, and its actions appear in t
 
 ## Install
 
+**With Nix** (Linux, macOS on Apple silicon): `nix profile install github:aciceri/omfp` (or `nix run
+github:aciceri/omfp -- desktop`). It brings the right oh-my-pi with it.
+
 `nix build .#omfp` (or the flake's `packages.<system>.omfp` in your configuration) builds `bin/omfp` with the desktop
 window, the web UI and the pinned omp, on `x86_64-linux`, `aarch64-linux` and `aarch64-darwin`; `.#omfp-headless` is
 the daemon alone, for servers. On macOS the package also holds `Applications/omfp.app`: in `environment.systemPackages`
@@ -62,7 +65,63 @@ of nix-darwin it shows up in `/Applications/Nix Apps`, in `home.packages` of hom
 `~/Applications/Home Manager Apps`, so Spotlight and Launchpad find it. The app is ad-hoc signed: macOS asks for the
 microphone again after each update. The daemon keeps its data in `~/.local/share/omfp` on Linux and
 `~/Library/Application Support/omfp` on macOS (`XDG_DATA_HOME` wins on both); the config and theme files are in
-`~/.config/omfp` (the keys: [Settings](../README.md#settings) in the README).
+`~/.config/omfp` (see [Settings](#settings)).
+
+**Without Nix**: download from the [releases](https://github.com/aciceri/omfp/releases); each one comes with its own
+oh-my-pi, and you need git.
+
+- **macOS (Apple silicon, macOS 14+)**: open `omfp-<version>-macos-arm64.dmg` and drag omfp to Applications. Unless a
+  release says it is notarized, macOS refuses to open it the first time: open it once, then allow it in System
+  Settings → Privacy & Security → Open Anyway (or run `xattr -dr com.apple.quarantine /Applications/omfp.app`).
+- **Linux desktop (x86_64, Flatpak)**: `flatpak install --user omfp-<version>-linux-x86_64.flatpak`, then start omfp
+  from your app menu or with `flatpak run io.github.aciceri.omfp desktop`. The window lives in the sandbox, but
+  oh-my-pi, git and the commands of jobs run on your machine on purpose (they need your tools and repositories), so
+  the app has full access to your account. Keep workspaces and repositories in your home directory. On NixOS the
+  bundled oh-my-pi cannot run: set `omp_bin` in `~/.config/omfp/config.toml`, or use Nix.
+- **Linux server (x86_64, glibc 2.34+)**: unpack `omfp-<version>-linux-x86_64.tar.gz` and run `./omfp daemon`, then
+  open the URL it prints (the browser UI, no desktop window).
+
+To check a download, compare `shasum -a 256 <file>` (macOS) or `sha256sum <file>` (Linux) with its line in the
+release's `SHA256SUMS`.
+
+## First run
+
+A fresh oh-my-pi is logged in nowhere, so no thread can start yet: the window welcomes you with **Log in to a
+provider** (or type `:login`); pick your plan and finish in the browser, and oh-my-pi keeps the login for every thread.
+To use API keys instead, see [Logging in](../crates/omfp-daemon/src/widgets/shell.md#logging-in).
+
+## Settings
+
+omfp reads `$XDG_CONFIG_HOME/omfp/config.toml`, else `~/.config/omfp/config.toml` (also on macOS and in the Flatpak;
+`omfp daemon --config <file>` picks another). The file is optional; unknown keys are errors.
+
+```toml
+[daemon]                       # the `omfp daemon` options, snake case; a command-line flag wins over the file
+bind = "127.0.0.1:7420"
+# data_dir, workspaces_root (default ~/.omfp), omp_bin, static_dir, theme_file: paths, `~` allowed
+# allow_omp_mismatch = true    # run with an omp that is not the pinned release (the UI warns)
+# idle_timeout_minutes = 15, max_processes = 8, event_buffer = 2000
+# allowed_origins = ["https://omfp.example.ts.net"]   # the UI's URL behind a tunnel or reverse proxy
+# title_generation = false     # no generated thread titles
+
+[ui]                           # also set from the window: `:set font_size=15`, `:density compact`
+density = "normal"             # compact | normal
+font_size = 17                 # px, 10–28
+motion = "full"                # full | reduced | none
+notifications = "background"   # background | always | never
+theme = "synth"                # synth | catppuccin | gruvbox | tokyo-night | nord | solarized | rose-pine | accent
+
+[ui.fonts]                     # prose, ui, code: CSS font families
+prose = "Literata, serif"
+
+[keymap]                       # normal mode; [keymap.insert] and [keymap.cmdline] for the others
+"Space t" = "window.theme"     # a command id (`:describe-key`, `?` lists them)
+"g g" = ""                     # removes a default binding
+```
+
+`[ui]` and `[keymap]` apply live; a change to `[daemon]` needs a daemon restart. A user theme is the CSS file
+`~/.config/omfp/theme.css` next to it, followed live and above the built-in themes (the matugen template in
+`contrib/matugen` makes one); `omfp theme set <file>` pushes a theme to a running daemon instead.
 
 ## Status
 
