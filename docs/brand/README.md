@@ -11,16 +11,17 @@
 | `mark.svg` | Mark `[π]`, brackets in `currentColor` at 62 % |
 | `mark-light.svg`, `mark-dark.svg` | Mark with fixed bracket colours |
 | `icon.svg`, `icon-32.png` | `π` alone, for 16–32 px (the web favicon) |
+| `app-icon-192.png` | The desktop icon's mark at 192 px, for the web app manifest (UI-425) |
 | `screenshot-light.png`, `screenshot-dark.png` | The app, for the repository README |
 
 The UI draws the same outlines inline (`ui/packages/kit/src/logo.tsx`) with the theme's gradient instead of the fixed
-one. The desktop icon is `crates/omfp/icons/icon.png`.
+one. The desktop icon is `crates/omfp/icons/icon.png`; the web app manifest uses it as its 512 px icon.
 
 ## Regenerate
 
 `generate.py` reads the bundled `ui/packages/kit/fonts/commit-mono-latin-700-normal.woff2` with fontTools and writes
 the SVGs here, the kit's `logo-paths.ts` and the desktop icon's `icon.html`; `just brand` runs it and then renders
-`icon-32.png` and `icon.png` with headless Chromium. From the repository root:
+`icon-32.png`, `app-icon-192.png` and `icon.png` with headless Chromium. From the repository root:
 
 ```sh
 nix develop -c just brand

@@ -5,9 +5,11 @@
  * (`react`, `react/jsx-runtime`, `react-dom`, `omfp/sdk`, `omfp/kit`, AGT-012), so the app and every widget share
  * one React and one SDK instance. React is CommonJS: its entries re-export its named exports, listed at build time.
  * Besides the bundle, `dist/` gets:
- * - `index.html` (index-html.ts): the favicon, the import map, the bundle's CSS, then the user theme (`/theme.css`,
- *   UI-091, so its tokens win), and the app entry;
+ * - `index.html` (index-html.ts): the favicon, the web app manifest, the import map, the bundle's CSS, then the user
+ *   theme (`/theme.css`, UI-091, so its tokens win), and the app entry;
  * - the favicon files, `icon.svg` and `icon-32.png`, from docs/brand (UI-222);
+ * - `manifest.webmanifest` and its icons `app-icon-192.png` (docs/brand) and `app-icon-512.png` (the desktop icon), so
+ *   a phone's browser installs the app standalone (UI-425);
  * - `widget-exports.json`: every export name of each import-map module, which the daemon checks widget imports against
  *   (DMN-085);
  * - `builtin-widgets/<name>/`: the source of each built-in widget as a copyable widget folder (AGT-021, DMN-087);
@@ -19,7 +21,7 @@ import { copyFile, mkdir, readdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { BUILTINS } from "./builtins.ts";
-import { FAVICONS, indexHtml } from "./index-html.ts";
+import { APP_ICONS, FAVICONS, indexHtml, MANIFEST_NAME, webManifest } from "./index-html.ts";
 
 const require = createRequire(import.meta.url);
 const root = import.meta.dir;
@@ -127,9 +129,10 @@ const styles = result.outputs
   .filter((output) => output.path.endsWith(".css"))
   .map((output) => `/${basename(output.path)}`);
 await Bun.write(join(outdir, "index.html"), indexHtml({ importMap, styles, main: entryUrl("main") }));
-for (const { source, name } of FAVICONS) {
+for (const { source, name } of [...FAVICONS, ...APP_ICONS]) {
   await copyFile(join(root, "../../..", source), join(outdir, name));
 }
+await Bun.write(join(outdir, MANIFEST_NAME), `${JSON.stringify(webManifest(), null, 2)}\n`);
 await Bun.write(join(outdir, "widget-exports.json"), `${JSON.stringify(exportsBySpecifier, null, 2)}\n`);
 
 const fonts = join(root, "../kit/fonts");

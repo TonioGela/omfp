@@ -116,12 +116,15 @@ desktop *args: build-web
 
 # The logo (UI-220, UI-222) from the bundled Commit Mono Bold (docs/brand/generate.py, fontTools from nixpkgs):
 # docs/brand/*.svg, the kit's outlines and the desktop icon's HTML, then the PNG images rendered headlessly: the desktop
-# icon (512 px RGBA, which Tauri needs) and the web bundle's 32 px favicon fallback
+# icon (512 px RGBA, which Tauri needs), the same mark at 192 px for the web app manifest (UI-425) and the web
+# bundle's 32 px favicon fallback
 brand:
     nix shell --impure --expr 'with import <nixpkgs> {}; python3.withPackages (p: [p.fonttools p.brotli])' \
         -c python3 docs/brand/generate.py
     "${CHROME_BIN:?run inside the dev shell (nix develop)}" --headless=new --hide-scrollbars --window-size=512,512 \
         --default-background-color=00000000 --screenshot=crates/omfp/icons/icon.png crates/omfp/icons/icon.html
+    "$CHROME_BIN" --headless=new --hide-scrollbars --window-size=192,192 --default-background-color=00000000 \
+        --screenshot=docs/brand/app-icon-192.png crates/omfp/icons/icon.html
     "$CHROME_BIN" --headless=new --hide-scrollbars --window-size=32,32 --default-background-color=00000000 \
         --screenshot=docs/brand/icon-32.png docs/brand/icon.svg
 

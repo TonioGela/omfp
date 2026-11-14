@@ -250,6 +250,7 @@ fn content_type(path: &Path) -> &'static str {
         Some("css") => "text/css; charset=utf-8",
         Some("wasm") => "application/wasm",
         Some("json") => "application/json",
+        Some("webmanifest") => "application/manifest+json",
         Some("svg") => "image/svg+xml",
         Some("png") => "image/png",
         Some("ico") => "image/x-icon",
@@ -284,6 +285,15 @@ mod tests {
         assert_eq!(
             content_type(Path::new("commit-mono-OFL.txt")),
             "text/plain; charset=utf-8"
+        );
+    }
+
+    // spec: UI-425
+    #[test]
+    fn the_web_app_manifest_is_served_as_a_manifest() {
+        assert_eq!(
+            content_type(Path::new("manifest.webmanifest")),
+            "application/manifest+json"
         );
     }
 }

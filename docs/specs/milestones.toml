@@ -1173,4 +1173,6 @@ requirements = [
   "UI-704",
   "UI-705",
   "E2E-70",
+  # The web app manifest: installed standalone from a phone's browser
+  "UI-425",
 ]

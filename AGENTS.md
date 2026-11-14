@@ -177,7 +177,7 @@ ui/packages/app       @omfp/app: the web app; src/sdk (widget SDK `omfp/sdk`: ho
                       (the `/kit` page, UI-173: params, contrast measuring, the matugen-forest fixture theme, the
                       logo sheet), keymap (which-key.ts: the which-key panel's model and the leader groups), theme, strings; build.ts → dist/ (`just build-web`: index-html.ts, import
                       map, widget-exports.json, builtin-widgets/ from the BUILTINS table of builtins.ts, the favicon from docs/brand,
-                      pdfjs/ from pdfjs-dist)
+                      manifest.webmanifest with its app icons (UI-425), pdfjs/ from pdfjs-dist)
 ui/test/dom.ts        happy-dom preload for the kit and app component tests
 fixtures/omp/<ver>/      raw omp stdout frames (M0 smoke)
 fixtures/threads/<ver>/  ThreadEvent JSONL recorded by daemon contract scenarios (reducer inputs)

@@ -12,13 +12,16 @@ stdenvNoCC.mkDerivation {
   pname = "omfp-web";
   inherit version bunDeps;
 
-  # build.ts reads the favicons from docs/brand (index-html.ts); everything else lives in ui/.
+  # build.ts reads the favicons and the 192 px app icon from docs/brand, the 512 px one from the desktop icon
+  # (index-html.ts); everything else lives in ui/.
   src = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
       ../ui
       ../docs/brand/icon-32.png
       ../docs/brand/icon.svg
+      ../docs/brand/app-icon-192.png
+      ../crates/omfp/icons/icon.png
     ];
   };
 

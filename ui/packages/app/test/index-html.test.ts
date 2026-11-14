@@ -1,7 +1,10 @@
-/** L1: the bundle's `index.html` (build.ts): import map, styles, the user theme last, and the favicon (UI-222). */
+/**
+ * L1: the bundle's `index.html` (build.ts): import map, styles, the user theme last, the favicon (UI-222) and the web
+ * app manifest (UI-425).
+ */
 
 import { describe, expect, test } from "bun:test";
-import { indexHtml } from "../index-html.ts";
+import { indexHtml, webManifest } from "../index-html.ts";
 
 const html = indexHtml({
   importMap: { imports: { react: "/react-1.js" } },
@@ -25,6 +28,17 @@ describe("index.html", () => {
     ).toEqual([
       ["/icon-32.png", "image/png", "32x32"],
       ["/icon.svg", "image/svg+xml", "any"],
+    ]);
+  });
+
+  // spec: UI-425
+  test("links a web app manifest that installs the app standalone, with its 192 and 512 px icons", () => {
+    expect(head.querySelector("link[rel=manifest]")?.getAttribute("href")).toBe("/manifest.webmanifest");
+    const manifest = webManifest();
+    expect([manifest.id, manifest.start_url, manifest.scope, manifest.display]).toEqual(["/", "/", "/", "standalone"]);
+    expect(manifest.icons.map((icon) => [icon.src, icon.type, icon.sizes])).toEqual([
+      ["/app-icon-192.png", "image/png", "192x192"],
+      ["/app-icon-512.png", "image/png", "512x512"],
     ]);
   });
 
