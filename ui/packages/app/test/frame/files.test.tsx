@@ -6,6 +6,7 @@ import type { ViewsState } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Frame } from "../../src/frame/frame.tsx";
+import { AgentFiles } from "../../src/frame/agent-files.tsx";
 import {
   EDITOR_MODE,
   FILE_PICKER,
@@ -481,6 +482,30 @@ describe("files the agent opens", () => {
     test.flush();
     expect(tabs()).toEqual(["Chat", "README.md"]);
     expect(shownFile()).toEqual({ path: "fe/README.md", jump: 1 });
+  });
+
+  // spec: UI-116, DMN-060
+  test("an agent request switches back to its thread before opening the file", () => {
+    const test = renderWithHost(<AgentFiles />);
+    test.client.connected();
+    test.client.index({
+      workspaces: [workspace("w1"), workspace("w2")],
+      threads: [thread("t1", "one", "w1"), thread("t2", "two", "w2")],
+    });
+    act(() => test.host.window.set(SELECTED_THREAD, "t2"));
+    test.client.thread("t1", []);
+    test.client.threadEvents("t1", {
+      kind: "open_file",
+      id: "o1",
+      connection: 1,
+      path: "fe/src/lib.rs",
+      line: 12,
+    });
+    test.flush();
+
+    expect(test.host.window.get(SELECTED_THREAD)).toBe("t1");
+    expect(test.host.window.get(OPEN_FILES).w1?.tabs.map((tab) => tab.path)).toEqual(["fe/src/lib.rs"]);
+    expect(test.host.window.get(OPEN_FILES).w2).toBeUndefined();
   });
 });
 
