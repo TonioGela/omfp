@@ -98,6 +98,7 @@ async fn a_pdf_file_shows_its_pages_in_the_viewer() -> anyhow::Result<()> {
     std::fs::write(folder.join("docs/guide.pdf"), document)?;
 
     journey.command("open docs/guide.pdf").await?;
+    journey.element(VIEW).await?;
     let url = journey
         .attr(VIEW, "data-url")
         .await?
