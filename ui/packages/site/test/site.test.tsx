@@ -41,9 +41,9 @@ describe("project website", () => {
   });
 
   test("the generated page loads Cloudflare Web Analytics without blocking rendering", () => {
-    document.documentElement.innerHTML = indexHtml({ script: "site.js", styles: [] });
+    const generated = new DOMParser().parseFromString(indexHtml({ script: "site.js", styles: [] }), "text/html");
 
-    const beacon = document.querySelector<HTMLScriptElement>(
+    const beacon = generated.querySelector<HTMLScriptElement>(
       'script[src="https://static.cloudflareinsights.com/beacon.min.js"]',
     );
     expect(beacon?.type).toBe("module");
