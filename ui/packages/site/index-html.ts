@@ -19,6 +19,7 @@ export function indexHtml({ script, styles }: { script: string; styles: readonly
     "<body>",
     '<div id="root"></div>',
     `<script type="module" src="./${script}"></script>`,
+    '<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon=\'{"token":"858ce277aa6745cbad85e070f37125ae"}\'></script>',
     "</body>",
     "</html>",
     "",

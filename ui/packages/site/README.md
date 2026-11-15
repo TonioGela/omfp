@@ -25,3 +25,7 @@ OMFP_SITE_VIDEO_URL=https://github.com/aciceri/omfp/releases/download/film-v1/om
 The film section is omitted when the variable is empty, so a missing asset never produces a broken player. GitHub Pages reads the same value from the repository variable `OMFP_SITE_VIDEO_URL`. The README's film link and screenshot open `https://aciceri.github.io/omfp/#film`; the website is the canonical presentation while the `film-v1` release asset is the canonical file.
 
 The soundtrack credit and license links from `contrib/promo/README.md` must also be present in the release or video-platform description.
+
+## Analytics
+
+The generated page loads Cloudflare Web Analytics for aggregate, cookie-free traffic metrics. The public beacon token is part of `index-html.ts`; Cloudflare reports visits in the `omfp.dev` Web Analytics dashboard.

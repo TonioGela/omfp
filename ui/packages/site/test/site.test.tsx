@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { indexHtml } from "../index-html.ts";
 import { Site } from "../src/site.tsx";
 
 afterEach(() => {
@@ -37,5 +38,15 @@ describe("project website", () => {
     expect(video?.muted).toBe(true);
     expect(video?.loop).toBe(true);
     expect(video?.controls).toBe(true);
+  });
+
+  test("the generated page loads Cloudflare Web Analytics without blocking rendering", () => {
+    document.documentElement.innerHTML = indexHtml({ script: "site.js", styles: [] });
+
+    const beacon = document.querySelector<HTMLScriptElement>(
+      'script[src="https://static.cloudflareinsights.com/beacon.min.js"]',
+    );
+    expect(beacon?.type).toBe("module");
+    expect(beacon?.dataset.cfBeacon).toBe('{"token":"858ce277aa6745cbad85e070f37125ae"}');
   });
 });
