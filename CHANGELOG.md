@@ -7,14 +7,7 @@ The version's section is also the source of the GitHub release notes.
 
 ## Unreleased
 
-Initial release, planned as 0.1.0.
-
-### Changed
-
-- Thread Delete controls now remove the conversation immediately, without confirmation. The workspace is kept;
-  Archive remains the non-destructive alternative.
-- Middle-click a thread in the left list to delete it without selecting it first or starting browser autoscroll.
-  Deleting the selected thread clears the selection and its draft, as before.
+## 0.1.0 — 2026-11-15
 
 ### Added
 
@@ -36,29 +29,14 @@ Initial release, planned as 0.1.0.
   (glibc 2.34+), a Linux x86_64 desktop Flatpak, and macOS Apple silicon DMG and ZIP packages (macOS 14+).
 - A project website built from the same Crush component kit as the app, published independently through GitHub Pages.
 
-### Fixed
-
-- Linux Tauri development builds and the Nix desktop package now include the GStreamer demuxers and codecs needed
-  for common video, including H.264, instead of leaving unsupported media capable of stalling its WebKit window.
-
 ### Changed
 
+- Thread Delete controls now remove the conversation immediately, without confirmation. The workspace is kept;
+  Archive remains the non-destructive alternative.
+- Middle-click a thread in the left list to delete it without selecting it first or starting browser autoscroll.
+  Deleting the selected thread clears the selection and its draft, as before.
 - `threads.create` requires an explicit `workspace`: use `{ "id": "…" }` for an existing workspace or
   `{ "new": {} }` to create one. Clients that omitted it must add one of these choices.
-
-### Fixed
-
-- Linux Tauri development builds and the Nix desktop package now include the GStreamer demuxers and codecs needed
-  for common video, including H.264, instead of leaving unsupported media capable of stalling its WebKit window.
-
-### Fixed
-
-- Select a model before the first message, including in a draft that has not created a daemon thread yet. The first
-  prompt uses that model, and failed creation keeps the choice for retry. Existing threads cannot send while a model
-  change is still being applied.
-
-### Changed
-
 - Automatically generated thread titles now follow sustained conversation changes, using bounded recent context
   with project continuity. Updates are conversation-driven and rate-limited; brief digressions, cosmetic variants
   and generation failures keep the previous title. Explicit user/API/agent titles are never overwritten.
@@ -67,20 +45,11 @@ Initial release, planned as 0.1.0.
   Credentials, user settings, models, agents and MCP configuration no longer use standalone `~/.omp/agent`.
   Existing users must log in again with `:login` and configure the new `agent/` directory explicitly: nothing is
   imported or copied automatically and there is no sharing mode. Existing threads, history and project config stay.
-
-### Changed
-
 - Informational MCP mount/unmount notices are hidden in transcripts by default. Use `:set show_xdev_notices=true`
   to reveal retained notices live, or `false` to hide them again; events, warnings/errors, startup inventory records
   and MCP tools remain unchanged.
-
-### Fixed
-
 - Keep the detached sidebar's logo, workspace field and thread filter visible while its thread list scrolls on
   phones and narrow windows.
-
-### Changed
-
 - `/` searches the current conversation; `Space /` opens a fuzzy thread picker with live previews. Enter confirms,
   Escape restores the original thread. `Space t` focuses threads in wide windows and toggles the narrow drawer.
 - `Space v` is the fuzzy view picker, with visible `1`–`9` shortcuts and arrows/Enter. Use `[ v` / `] v` to cycle;
@@ -90,6 +59,14 @@ Initial release, planned as 0.1.0.
 - `Space f` opens a fuzzy file picker across all workspace repositories and the workspace folder, showing each
   file's repository and containing folder. Filtering happens before the result limit, so later repositories remain
   searchable. `g f` and `Space f o` are removed; use `:open` for an explicit or focused path.
+
+### Fixed
+
+- Linux Tauri development builds and the Nix desktop package now include the GStreamer demuxers and codecs needed
+  for common video, including H.264, instead of leaving unsupported media capable of stalling its WebKit window.
+- Select a model before the first message, including in a draft that has not created a daemon thread yet. The first
+  prompt uses that model, and failed creation keeps the choice for retry. Existing threads cannot send while a model
+  change is still being applied.
 
 ### Release limitations
 
