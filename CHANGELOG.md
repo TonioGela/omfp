@@ -61,6 +61,12 @@ Initial release, planned as 0.1.0.
   Existing users must log in again with `:login` and configure the new `agent/` directory explicitly: nothing is
   imported or copied automatically and there is no sharing mode. Existing threads, history and project config stay.
 
+### Changed
+
+- Informational MCP mount/unmount notices are hidden in transcripts by default. Use `:set show_xdev_notices=true`
+  to reveal retained notices live, or `false` to hide them again; events, warnings/errors, startup inventory records
+  and MCP tools remain unchanged.
+
 ### Release limitations
 
 - macOS downloads are signed ad-hoc and are not notarized unless the release explicitly says otherwise. On first
