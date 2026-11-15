@@ -29,6 +29,11 @@ Initial release, planned as 0.1.0.
   (glibc 2.34+), a Linux x86_64 desktop Flatpak, and macOS Apple silicon DMG and ZIP packages (macOS 14+).
 - A project website built from the same Crush component kit as the app, published independently through GitHub Pages.
 
+### Fixed
+
+- Linux Tauri development builds and the Nix desktop package now include the GStreamer demuxers and codecs needed
+  for common video, including H.264, instead of leaving unsupported media capable of stalling its WebKit window.
+
 ### Release limitations
 
 - macOS downloads are signed ad-hoc and are not notarized unless the release explicitly says otherwise. On first
