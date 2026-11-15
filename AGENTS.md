@@ -21,6 +21,7 @@ only be reachable from the human UI.
 ## Ground rules
 
 - Everything in **English**: code, comments, docs, commit messages.
+- Do not edit the repository-root `README.md`; it is maintained manually by the owner.
 - **TDD**: tests first. Every test covering a requirement has `// spec: ID[, ID…]` right above it (parsed by
   `cargo xtask spec-trace`; never put the marker plus an ID inside a string literal). Deterministic and isolated tests
   only (TST-003): no sleeps (wait on conditions with timeouts), temporary directories only (never the user's), port 0,
