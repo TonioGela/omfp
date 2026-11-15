@@ -74,6 +74,11 @@ Initial release, planned as 0.1.0.
   to reveal retained notices live, or `false` to hide them again; events, warnings/errors, startup inventory records
   and MCP tools remain unchanged.
 
+### Fixed
+
+- Keep the detached sidebar's logo, workspace field and thread filter visible while its thread list scrolls on
+  phones and narrow windows.
+
 ### Release limitations
 
 - macOS downloads are signed ad-hoc and are not notarized unless the release explicitly says otherwise. On first
