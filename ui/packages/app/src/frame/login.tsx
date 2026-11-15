@@ -21,6 +21,7 @@ import {
   reportError,
   reportSuccess,
   requestLogin,
+  urlHost,
   useAnnounce,
   useHost,
   useSnapshot,
@@ -169,7 +170,12 @@ export function Login(): ReactNode {
   const [request, setRequest] = useWindowState(LOGIN);
   const [providers] = useWindowState(AUTH_PROVIDERS);
   const [run] = useWindowState(LOGIN_RUN);
+  const [openedUrls] = useWindowState(OPENED_URLS);
   const indexed = useIndexLogin();
+  const page =
+    run === undefined
+      ? (indexed?.url ?? undefined)
+      : openedUrls.find((opened) => opened.key.startsWith(urlKey(run.id)))?.url;
   const [picking, setPicking] = useState(false);
   const [input, setInput] = useState<InputRequest | undefined>(undefined);
 
@@ -308,6 +314,7 @@ export function Login(): ReactNode {
         {input !== undefined && (
           <LoginInputForm
             key={input.requestId}
+            page={page}
             input={input}
             onSubmit={(value) => answer(input.requestId, value)}
             onCancel={() => answer(input.requestId, null)}
@@ -341,6 +348,7 @@ function ProviderPicker({
       }}
       isDismissable
       title={text.pickerTitle}
+      className="omfp-login__picker"
       data-testid="login-picker"
     >
       <div className="omfp-dialog__message">
@@ -397,13 +405,16 @@ function ProviderPicker({
 /** The paste dialog's form (UI-384): omp's message labels the field; Enter submits, Escape or Cancel cancels. */
 function LoginInputForm({
   input,
+  page,
   onSubmit,
   onCancel,
 }: {
   input: InputRequest;
+  page: string | undefined;
   onSubmit: (value: string) => void;
   onCancel: () => void;
 }): ReactNode {
+  const urls = useUrlActions();
   const [value, setValue] = useState("");
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -425,6 +436,17 @@ function LoginInputForm({
         {...(input.placeholder === undefined ? {} : { placeholder: input.placeholder })}
         inputProps={{ "data-testid": "login-input" }}
       />
+      {page !== undefined && (
+        <div className="omfp-login__page" data-testid="login-page">
+          <span>{text.url(input.name, urlHost(page))}</span>
+          <Button type="button" variant="quiet" onPress={() => urls.open(page)} data-testid="login-page-open">
+            {strings.chat.notice.openUrlAction}
+          </Button>
+          <Button type="button" variant="quiet" onPress={() => urls.copy(page)} data-testid="login-page-copy">
+            {strings.chat.notice.copyUrlAction}
+          </Button>
+        </div>
+      )}
       <div className="omfp-dialog__actions">
         <Button variant="quiet" onPress={onCancel} kbd={keyLabel("Escape")} data-testid="login-input-cancel">
           {text.cancel}

@@ -156,9 +156,10 @@ use, every window follows (`auth.status`).
 - `:login` opens the provider picker: the providers omp can log in to (asking omp takes a few seconds), each with its
   id and `logged in` on those omp already holds a credential for; those it cannot log in to here are greyed out.
   `:login <provider>` (e.g. `:login anthropic`; Tab completes the ids) skips the picker.
-- The login opens the provider's page in a new tab of this browser, and a toast offers it again (Open, Copy) with
-  omp's instructions, in case the browser blocked the tab. While it runs, a toast `Logging in to <name>… finish in
-  your browser` shows omp's progress and Cancel (it gives up after 10 minutes; closing the window cancels it too).
+- The login tries to open the provider's page in a new tab of this browser. If the browser blocks the tab, the toast
+  offers Open and Copy; while a code-entry dialog has focus, use Open or Copy **inside that dialog** instead. While
+  the login runs, a toast `Logging in to <name>… finish in your browser` shows omp's progress and Cancel (it gives up
+  after 10 minutes; closing the window cancels it too).
 - Providers whose page shows a code to paste (or whose redirect lands on an address this browser cannot reach, such
   as `localhost` of a daemon on another machine) ask for it: a dialog takes the code or the redirect URL; Enter sends
   it, Escape cancels the login.

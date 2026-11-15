@@ -247,6 +247,35 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
+  /* Keep the provider list within the viewport; the dialog title and Cancel stay outside its scroll area. */
+  .omfp-login__picker {
+    box-sizing: border-box;
+    max-block-size: min(32rem, calc(100dvh - 2 * var(--omfp-s4)));
+  }
+
+  .omfp-login__picker .omfp-dialog__body,
+  .omfp-login__picker .omfp-dialog__message,
+  .omfp-login__picker .omfp-listbox {
+    min-block-size: 0;
+  }
+
+  .omfp-login__picker .omfp-dialog__body {
+    flex: 1;
+  }
+
+  .omfp-login__picker .omfp-dialog__message {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .omfp-login__page {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--omfp-s2);
+    margin-block-start: var(--omfp-s3);
+    font-size: var(--omfp-fs-sm);
+  }
 
   .omfp-login__loading {
     display: flex;

@@ -167,9 +167,22 @@ describe("logging in", () => {
       expect([toast.dataset.url, toast.dataset.login]).toEqual([url, "true"]);
       expect(toast.textContent).toContain("Log in to Anthropic (Claude Pro/Max) at claude.ai");
       expect(within(toast).getByTestId("login-instructions").textContent).toBe("Paste the code the page shows");
+      // Popup blockers can reject the asynchronous open. The focused paste dialog must offer the same URL:
+      // the toast behind its modal overlay cannot be clicked.
+      request(test, "i1", {
+        kind: "login_input",
+        ...ANTHROPIC,
+        message: "Paste the authorization code",
+        placeholder: null,
+      });
+      const dialog = screen.getByTestId("login-input-dialog");
+      expect(within(dialog).getByTestId("login-page").textContent).toContain("claude.ai");
+      await test.user.click(within(dialog).getByTestId("login-page-open"));
+      await test.user.click(within(dialog).getByTestId("login-page-copy"));
+      expect([opened.length, copied]).toEqual([2, [url]]);
       await test.user.click(within(toast).getByTestId("opened-url-open"));
       await test.user.click(within(toast).getByTestId("opened-url-copy"));
-      expect([opened.length, copied]).toEqual([2, [url]]);
+      expect([opened.length, copied]).toEqual([3, [url, url]]);
       // A login_url is a notice: never answered.
       expect(answers(test)).toEqual([]);
 

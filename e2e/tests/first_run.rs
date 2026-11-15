@@ -25,11 +25,18 @@ async fn without_a_usable_model_the_window_welcomes_with_the_login_and_shows_the
 -> anyhow::Result<()> {
     let launcher = FakeLauncher::new();
     launcher.set_usable_models(0);
+    let mut providers = vec![json!({
+        "id": "anthropic", "name": "Anthropic (Claude Pro/Max)", "available": true, "authenticated": false
+    })];
+    providers.extend((0..48).map(|i| {
+        json!({
+            "id": format!("provider-{i}"), "name": format!("Provider {i}"),
+            "available": true, "authenticated": false
+        })
+    }));
     launcher.reply(
         "get_login_providers",
-        FakeReply::Ok(json!({ "providers": [
-            { "id": "anthropic", "name": "Anthropic (Claude Pro/Max)", "available": true, "authenticated": false }
-        ]})),
+        FakeReply::Ok(json!({ "providers": providers })),
     );
     let journey = Journey::start_fake(launcher.clone()).await?;
     journey.element(WELCOME).await?;
@@ -53,8 +60,31 @@ async fn without_a_usable_model_the_window_welcomes_with_the_login_and_shows_the
     journey.screenshot("first-run-welcome").await?;
 
     // The login through the picker; afterwards omp can use models.
+    journey.driver.set_window_rect(0, 0, 1280, 800).await?;
     launcher.set_usable_models(3);
     journey.click("[data-testid=welcome-login]").await?;
+    journey.element("[data-testid=login-provider]").await?;
+    let geometry = journey
+        .eval(
+            "const dialog = document.querySelector('[data-testid=login-picker]');
+             const list = dialog.querySelector('[data-testid=login-providers]');
+             const cancel = dialog.querySelector('[data-testid=login-picker-cancel]');
+             const box = dialog.getBoundingClientRect(), action = cancel.getBoundingClientRect();
+             return [box.top, box.bottom, action.bottom, list.scrollHeight > list.clientHeight, innerHeight];",
+            Vec::new(),
+        )
+        .await?;
+    let [top, bottom, action, scrolling, height] =
+        geometry.as_array().expect("dialog geometry").as_slice()
+    else {
+        unreachable!("dialog geometry")
+    };
+    let height = height.as_f64().expect("viewport height");
+    assert!(top.as_f64().unwrap_or(-1.0) >= 0.0, "{geometry}");
+    assert!(bottom.as_f64().unwrap_or(f64::MAX) <= height, "{geometry}");
+    assert!(action.as_f64().unwrap_or(f64::MAX) <= height, "{geometry}");
+    assert_eq!(scrolling, &json!(true), "{geometry}");
+    journey.screenshot("first-run-picker").await?;
     journey
         .click("[data-testid=login-picker] [data-testid=login-provider]")
         .await?;
