@@ -34,6 +34,11 @@ Initial release, planned as 0.1.0.
 - Linux Tauri development builds and the Nix desktop package now include the GStreamer demuxers and codecs needed
   for common video, including H.264, instead of leaving unsupported media capable of stalling its WebKit window.
 
+### Changed
+
+- `threads.create` requires an explicit `workspace`: use `{ "id": "…" }` for an existing workspace or
+  `{ "new": {} }` to create one. Clients that omitted it must add one of these choices.
+
 ### Release limitations
 
 - macOS downloads are signed ad-hoc and are not notarized unless the release explicitly says otherwise. On first
