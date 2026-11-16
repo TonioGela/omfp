@@ -1198,6 +1198,8 @@ requirements = [
   # The terminal widget's default `$SHELL` and its `shell` prop (#96)
   "TRM-107",
   "E2E-71",
+  # Readline line-editing keys in the composer (#103)
+  "UI-760",
 ]
 
 [M18]
