@@ -178,7 +178,7 @@ Its jobs run in parallel on `ubuntu-latest`, each `nix develop -c just <recipe>`
 | `check` | `just check`: lints, version pins, spec-trace, `cargo deny`, the workflow itself (`actionlint`) |
 | `test`, `test-ts`, `test-contract` | `just test`, `just test-ts`, `just test-contract` (the pinned omp of the dev shell, the fake LLM) |
 | `test-e2e`, `test-desktop` | after `web`, on its artifact (`OMFP_WEB_BUNDLE`): `just test-e2e` (headless Chromium), `just test-desktop` (`xvfb-run`) |
-| `macos` | pushes to `master`, runs by hand and pull requests labeled `ci/macos` only (adding the label runs `ci.yml` by hand on the branch: `ci-macos-label.yml`), `macos-15`, after `web`: `just test-desktop` (WKWebView, the menu bar item) and `just package` (the darwin packages and `omfp.app`); advisory, not in `required` (TST-092, ENV-042) |
+| `macos` | pushes to `master`, runs by hand and pull requests labeled `ci/macos` only (adding the label runs `ci.yml` by hand on the branch: `ci-macos-label.yml`; that run reports the job as the commit status `macOS (ci/macos)` of the pull request's head), `macos-15`, after `web`: `just test-desktop` (WKWebView, the menu bar item) and `just package` (the darwin packages and `omfp.app`); advisory, not in `required` (TST-092, ENV-042) |
 | `package` | `just package`: `nix build .#omfp .#omfp-headless` (ENV-030..ENV-033) |
 | `mutants`, `cov` | `just mutants-gate`, `just cov`: the mutation and coverage gates of TST-050 |
 | `required` | no recipe or dev shell: after every blocking Linux job, fails unless all succeeded; branch protection requires its stable `required CI` status while `mutants` remains non-blocking (TST-118) |
@@ -229,9 +229,9 @@ exact omp version its client was built for.
 
 | Item | Where | Current |
 | --- | --- | --- |
-| omp binary | `flake.nix` → `inputs.oh-my-pi.url = "github:can1357/oh-my-pi/v18.18.6"` (locked rev `9058ab9d229663e229e2867824ba6df6f21e9e59`) | 18.18.6 |
-| `omp-rpc` crate | workspace `Cargo.toml` → `omp-rpc = { git = "https://github.com/can1357/oh-my-pi", tag = "v18.18.6" }` | 18.18.6 |
-| Expected version in code | `omfp_core::OMP_VERSION` (DMN-001, contract tests) | `18.18.6` |
+| omp binary | `flake.nix` → `inputs.oh-my-pi.url = "github:can1357/oh-my-pi/v18.22.0"` (locked rev `3e8cff3b7ce19a805c11a26a6dd1703066435851`) | 18.22.0 |
+| `omp-rpc` crate | workspace `Cargo.toml` → `omp-rpc = { git = "https://github.com/can1357/oh-my-pi", tag = "v18.22.0" }` | 18.22.0 |
+| Expected version in code | `omfp_core::OMP_VERSION` (DMN-001, contract tests) | `18.22.0` |
 | Rust | `rust-toolchain.toml` | 1.99.1 |
 
 | ID | Requirement |
