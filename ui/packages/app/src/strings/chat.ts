@@ -105,6 +105,7 @@ export const chat = {
     compactionFailed: (error: string) => `Compaction failed: ${error}`,
     compactionAborted: "Compaction aborted",
     compactionSkipped: "Compaction skipped",
+    compactionSkippedBecause: (reason: string) => `Compaction skipped: ${reason}`,
     compacted: "Context compacted",
     retrying: (attempt: number, max: number, seconds: number, error: string) =>
       `Retrying (${attempt}/${max}) in ${seconds.toFixed(1)} s: ${error}`,
@@ -208,7 +209,8 @@ export const chat = {
         login: "Log in to a provider (:login)",
         logout: "Log out of a provider (:logout)",
         model: "Pick the thread's model in the header (:model)",
-        compact: "Compact the conversation, focused on what follows; soft, remote and snapcompact run in omp",
+        compact:
+          "Compact the conversation (:compact), focused on what follows; first soft, remote or snapcompact for that method",
         fork: "Fork this conversation into a new thread",
         copy: "Copy the conversation as Markdown (:copy)",
         export: "Export the conversation as a Markdown file (:export); with a path, omp writes HTML on its host",

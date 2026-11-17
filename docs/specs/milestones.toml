@@ -1241,6 +1241,12 @@ requirements = [
   "UI-978",
   "UI-979",
   "UI-980",
+  # Manual compaction from the window (#138)
+  "UI-910",
+  "UI-911",
+  "UI-912",
+  "UI-913",
+  "DMN-910",
 ]
 
 [M18]

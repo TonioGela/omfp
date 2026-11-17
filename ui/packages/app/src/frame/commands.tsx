@@ -1,7 +1,8 @@
 /**
  * The global commands of the frame (UI-095), shared by the keymap and the `:` line: a draft thread in the current
  * workspace and thread actions on the selected thread (UI-021, UI-023, UI-026, UI-030; copying and exporting its
- * conversation, UI-790, UI-791), a rescan of the current workspace (DMN-023), colour scheme (UI-091, window-local),
+ * conversation, UI-790, UI-791; compacting its context, UI-910), a rescan of the current workspace (DMN-023), colour
+ * scheme (UI-091, window-local),
  * density and `:set` (daemon settings, UI-094, UI-097), the
  * view switch (UI-101), the next and previous view (UI-302) and `:view-reset` (UI-107, UI-430), adding a widget to the view
  * (UI-300), copying a widget into the workspace (UI-106), saving a workspace widget to the user library (UI-233) and
@@ -32,6 +33,7 @@ import {
   useWindowState,
 } from "../sdk/index.ts";
 import { strings } from "../strings/index.ts";
+import { COMPACT_MODES, parseCompact } from "../vm/compaction.ts";
 import { displayTitle, isArchived, nextNeedingAttention, spawnerOf } from "../vm/threads.ts";
 import { DENSITIES, parseSet, parseTheme, SET_KEYS, themeArgs } from "./set.ts";
 
@@ -278,6 +280,20 @@ export function GlobalCommands({ viewIds, currentView, widgets, addWidget }: Glo
     aliases: ["export"],
     enabled: () => summary() !== undefined,
     run: onSelected(conversation.export),
+  });
+  // `:compact [mode] [focus]`, read as omp's `/compact` reads it; `/compact` runs it too (UI-910, UI-913, UI-976).
+  useCommand({
+    id: "thread.compact",
+    title: titles.compact,
+    description: titles.compactDescription,
+    aliases: ["compact"],
+    enabled: live,
+    args: (before) => (before.length === 0 ? [...COMPACT_MODES] : []),
+    run: (args) =>
+      onSelected((threadId) => {
+        const { mode, focus } = parseCompact(args.join(" "));
+        return actions.compact(threadId, focus, mode);
+      })(),
   });
   useCommand({
     id: "thread.nextAttention",
