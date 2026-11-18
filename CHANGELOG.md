@@ -22,6 +22,14 @@ The version's section is also the source of the GitHub release notes.
   the agent's `thread.prompt` for that thread is still being sent (two tool calls in the same turn): it waits for the
   new prompt instead. Its description now also says to call it once `thread.prompt` answered.
 
+### Fixed
+
+- The header's context meter refreshes when a turn ends and after every compaction, manual or automatic, instead of
+  only when the thread is selected again (#168).
+- `:compact <mode>` (and `/compact soft`, …) on a thread that is already compacted shows one
+  `Compaction skipped: <reason>` row instead of a second `Compaction failed: <reason>` one, and its toast, which only
+  says the compaction started, no longer carries a success mark (#169).
+
 ## 0.3.0 — 2026-11-17
 
 ### Added
