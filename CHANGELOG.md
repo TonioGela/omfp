@@ -19,6 +19,12 @@ The version's section is also the source of the GitHub release notes.
 - Selecting a thread low in a long list of workspaces no longer scrolls the whole window up, leaving an empty band at
   the bottom: only the left column scrolls (#167).
 
+### Fixed
+
+- `omfp:browser` no longer presents a tab's address as current after the agent clicked, went back or ran code in
+  the page: oh-my-pi reports an address only when a tab is opened or sent somewhere with `goto`, so the box now says
+  "It may have left this address since" with the call that may have moved it, until a later call reports one.
+
 ## 0.3.0 — 2026-11-17
 
 ### Added
