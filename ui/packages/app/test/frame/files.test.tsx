@@ -7,7 +7,9 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { AgentFiles } from "../../src/frame/agent-files.tsx";
 import { Frame } from "../../src/frame/frame.tsx";
+import { closeOpened } from "../../src/sdk/files.ts";
 import {
+  chooseFile,
   EDITOR_MODE,
   FILE_PICKER,
   type KeyValueStorage,
@@ -18,7 +20,7 @@ import {
   type WidgetComponent,
 } from "../../src/sdk/index.ts";
 import type { WidgetRegistry } from "../../src/view/resolve.ts";
-import { fileTabId } from "../../src/vm/files.ts";
+import { decodeOpenFiles, fileTabId } from "../../src/vm/files.ts";
 import { chosenTab, decodeTabChoices, NO_TAB_CHOICES } from "../../src/vm/tab-choices.ts";
 import { FileWidget } from "../../src/widgets/file/index.ts";
 import { thread, workspace } from "../support/fixtures.ts";
@@ -84,8 +86,7 @@ function storedTab(storage: MemoryStorage, viewId: string): string | undefined {
   return chosenTab(choices, { kind: "thread", threadId: "t1" }, viewId, "main");
 }
 
-function setup(views?: Partial<ViewsState>) {
-  const storage = new MemoryStorage();
+function setup(views?: Partial<ViewsState>, storage = new MemoryStorage()) {
   const base = testHost(undefined, {
     importer: () => new Promise<unknown>(() => {}),
     reportTimers: new ManualTimers(),
@@ -156,6 +157,100 @@ describe("file tabs in the main slot", () => {
     await test.user.click(closeOf("fe/README.md"));
     expect(tabs()).toEqual([]);
     expect(screen.getByTestId("stub-input")).toBeDefined();
+  });
+
+  // spec: UI-119, UI-115, UI-700
+  test("a workspace file opens in one tab by its absolute and its workspace-relative path; a file outside keeps its own", () => {
+    const test = setup();
+    // `workspace("w1")` lives in `/work/w1`: a debug link's absolute path, then a tool card's relative one.
+    act(() => openFile(test.host, "/work/w1/fe/src/lib.rs", { line: 5 }));
+    expect(tabs()).toEqual(["Chat", "lib.rs"]);
+    expect(shownFile()).toEqual({ path: "fe/src/lib.rs", line: 5, jump: 1 });
+    act(() => openFile(test.host, "fe/src/lib.rs", { line: 8 }));
+    expect(tabs()).toEqual(["Chat", "lib.rs"]);
+    expect(shownFile()).toEqual({ path: "fe/src/lib.rs", line: 8, jump: 2 });
+    act(() => openFile(test.host, "./fe/x/../src//lib.rs/", { line: 2 }));
+    expect(tabs()).toEqual(["Chat", "lib.rs"]);
+    expect(shownFile()).toEqual({ path: "fe/src/lib.rs", line: 2, jump: 3 });
+    expect(storedTab(test.storage, "default")).toBe(fileTabId("fe/src/lib.rs"));
+    // Outside the folder the path stays absolute: another file, another tab.
+    act(() => openFile(test.host, "/work/w2/fe/src/lib.rs"));
+    expect(tabs()).toEqual(["Chat", "lib.rs", "lib.rs"]);
+    expect(shownFile()).toEqual({ path: "/work/w2/fe/src/lib.rs", jump: 1 });
+    // Any spelling closes the workspace file's tab.
+    act(() => closeOpened(test.host, "w1", fileTabId("/work/w1/fe/src/lib.rs")));
+    expect(tabElements().map((tab) => tab.dataset.file)).toEqual([undefined, "/work/w2/fe/src/lib.rs"]);
+  });
+
+  // spec: UI-119, UI-115
+  test("tabs kept with both spellings of a file show once, and opening it again moves that tab", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      "omfp.openFiles",
+      JSON.stringify({
+        w1: {
+          tabs: [
+            { path: "/work/w1/fe/src/lib.rs", line: 5 },
+            { path: "fe/src/lib.rs", line: 8 },
+            { path: "fe/README.md" },
+          ],
+          widgets: [],
+        },
+      }),
+    );
+    const test = setup(undefined, storage);
+    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md"]);
+    act(() => openFile(test.host, "/work/w1/fe/src/lib.rs", { line: 9 }));
+    expect(tabs()).toEqual(["Chat", "lib.rs", "README.md"]);
+    expect(shownFile()).toEqual({ path: "fe/src/lib.rs", line: 9, jump: 1 });
+    const kept = decodeOpenFiles(JSON.parse(storage.getItem("omfp.openFiles") ?? "{}"));
+    expect(kept?.w1?.tabs.map((tab) => tab.path)).toEqual(["fe/src/lib.rs", "fe/README.md"]);
+  });
+
+  // spec: UI-119, UI-372
+  test("a selection kept with the absolute spelling selects that tab, and moves when the missing path's tab is replaced", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      "omfp.openFiles",
+      JSON.stringify({ w1: { tabs: [{ path: "/work/w1/theme.ts", line: 3 }, { path: "fe/README.md" }], widgets: [] } }),
+    );
+    storage.setItem(
+      "omfp.tabChoices",
+      JSON.stringify({ threads: [{ threadId: "t1", views: { default: { main: "file:/work/w1/theme.ts" } } }] }),
+    );
+    const test = setup(undefined, storage);
+    expect(tabs()).toEqual(["Chat", "theme.ts", "README.md"]);
+    expect(shownFile()).toEqual({ path: "theme.ts", line: 3, jump: 0 });
+    // The missing path's tab shows the file it names: the kept selection moves with it.
+    act(() => chooseFile(test.host, "w1", "theme.ts", "lib/theme.ts"));
+    expect(storedTab(storage, "default")).toBe(fileTabId("lib/theme.ts"));
+    expect(shownFile()).toEqual({ path: "lib/theme.ts", line: 3, jump: 1 });
+  });
+
+  // spec: UI-119, UI-372
+  test("closing a tab drops the selections kept with its absolute spelling", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(
+      "omfp.openFiles",
+      JSON.stringify({ w1: { tabs: [{ path: "fe/README.md" }, { path: "/work/w1/fe/src/lib.rs" }], widgets: [] } }),
+    );
+    const old = "file:/work/w1/fe/src/lib.rs/";
+    storage.setItem(
+      "omfp.tabChoices",
+      JSON.stringify({
+        threads: [{ threadId: "t1", views: { default: { main: old } } }],
+        drafts: { w1: { default: { main: old } } },
+      }),
+    );
+    const test = setup(undefined, storage);
+    expect(shownFile()).toEqual({ path: "fe/src/lib.rs", jump: 0 });
+    act(() => closeOpened(test.host, "w1", fileTabId("fe/src/lib.rs")));
+    expect(tabs()).toEqual(["Chat", "README.md"]);
+    expect(storedTab(storage, "default")).toBe(fileTabId("fe/README.md"));
+    expect(shownFile()).toEqual({ path: "fe/README.md", jump: 0 });
+    // The draft thread of the workspace, not shown, goes back to the first tab.
+    const choices = decodeTabChoices(JSON.parse(storage.getItem("omfp.tabChoices") ?? "{}")) ?? NO_TAB_CHOICES;
+    expect(chosenTab(choices, { kind: "draft", workspaceId: "w1" }, "default", "main")).toBeUndefined();
   });
 
   // spec: UI-365
