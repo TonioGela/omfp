@@ -13,6 +13,12 @@ The version's section is also the source of the GitHub release notes.
 - A small image attached to a message is no longer stretched across the transcript's column: images show at most at
   their natural size, scaled down only to fit (#191).
 
+### Changed
+
+- The card of an LSP `rename` shows the old and new symbol name, the total (`6 edits in 3 files`) and each file's
+  edit count; a preview's files open as they are (the renamed file at the call's line) rather than against `HEAD`, and
+  a list of more than 8 files collapses behind a "… N more files" button (#193).
+
 ## 0.3.1 — 2026-11-18
 
 ### Fixed
