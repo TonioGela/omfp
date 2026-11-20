@@ -2946,6 +2946,7 @@ dependencies = [
  "hex",
  "httpdate",
  "jiff",
+ "nix 0.28.0",
  "omfp-core",
  "omfp-protocol",
  "omfp-testkit",
