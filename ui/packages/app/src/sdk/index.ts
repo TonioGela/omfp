@@ -419,6 +419,8 @@ export {
   EMPTY_DRAFT,
   ERRORS,
   FOCUS_COMPOSER,
+  FRAME_LAYOUT,
+  type FrameLayout,
   LOGIN,
   type LoginRequest,
   MODEL_CHANGING,

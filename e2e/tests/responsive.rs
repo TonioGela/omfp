@@ -168,6 +168,35 @@ async fn phone(journey: &Journey) -> anyhow::Result<()> {
         .await?;
     let narrowest = narrowest.as_f64().unwrap_or_default();
     anyhow::ensure!(narrowest >= 44.0, "an icon button is {narrowest} px wide");
+    // The chat's column has the same narrow margin on both sides: no scrollbar's gutter (this browser's are
+    // classic) on either.
+    let margins = journey
+        .eval(
+            "const box = document.querySelector('[data-testid=composer]').getBoundingClientRect();
+             return [box.left, innerWidth - box.right];",
+            Vec::new(),
+        )
+        .await?;
+    let margins: Vec<f64> = serde_json::from_value(margins)?;
+    anyhow::ensure!(
+        matches!(margins[..], [left, right] if (left - right).abs() <= 1.0 && left <= 16.0),
+        "the composer's margins are {margins:?}"
+    );
+    // The actions sit beside the text, at its bottom, not on a row of their own under it; with one line of text the
+    // two share a centre (UI-423).
+    let beside = journey
+        .eval(
+            "const input = document.querySelector('[data-testid=composer-input]').getBoundingClientRect();
+             const send = document.querySelector('[data-testid=send]').getBoundingClientRect();
+             const centre = (r) => r.top + r.height / 2;
+             return send.left >= input.right - 0.5 && Math.abs(centre(send) - centre(input)) <= 2;",
+            Vec::new(),
+        )
+        .await?;
+    anyhow::ensure!(
+        beside.as_bool() == Some(true),
+        "the composer's actions are not beside its text"
+    );
     shots(journey, 390).await?;
     journey
         .click("[data-testid=area-button][data-area=threads]")
@@ -232,22 +261,55 @@ async fn touch_screen(journey: &Journey, width: u32, height: u32) -> anyhow::Res
         .await
 }
 
-/// The chat on a touch phone: the title keeps room in the compact header (UI-419); the header's `⋯` popover, an
-/// overlay portalled out of the app, has touch-sized controls (UI-413). Boxes are measured at rest (TST-110).
+/// The chat on a touch phone (UI-419): no chat header, the mode line at the top in its place with the title keeping
+/// room and the thread's `⋯`, whose popover, an overlay portalled out of the app, holds the model and has touch-sized
+/// controls (UI-413). Boxes are measured at rest (TST-110).
 async fn touch_chat(journey: &Journey) -> anyhow::Result<()> {
     journey
-        .settled("[data-testid=thread-header][data-compact]")
+        .settled("[data-testid=mode-bar] [data-testid=header-more]")
         .await?;
+    anyhow::ensure!(journey.count("[data-testid=thread-header]").await? == 0);
+    // Above the view, the state's mark on the same line as the title (not wrapped away under it).
+    let placed = journey
+        .eval(
+            "const bar = document.querySelector('[data-testid=mode-bar]').getBoundingClientRect();
+             const view = document.querySelector('[data-testid=view]').getBoundingClientRect();
+             const mark = document.querySelector('[data-testid=mode-thread-state] [role=img]').getBoundingClientRect();
+             return bar.bottom <= view.top + 0.5 && mark.width > 0
+               && mark.top >= bar.top - 0.5 && mark.bottom <= bar.bottom + 0.5 && mark.right <= bar.right;",
+            Vec::new(),
+        )
+        .await?;
+    anyhow::ensure!(
+        placed.as_bool() == Some(true),
+        "the mode line is not above the view, or its state mark is cut"
+    );
     let title = journey
         .eval(
-            "return document.querySelector('[data-testid=thread-title]').getBoundingClientRect().width;",
+            "return document.querySelector('[data-testid=mode-thread-title]').getBoundingClientRect().width;",
             Vec::new(),
         )
         .await?;
     let title = title.as_f64().unwrap_or_default();
-    anyhow::ensure!(title >= 120.0, "the chat title is {title} px wide");
+    anyhow::ensure!(title >= 120.0, "the thread title is {title} px wide");
+    // Always shown on touch, "Fork from here" sits on the name line, above the message's text, not over it (UI-660).
+    let clear = journey
+        .eval(
+            "const fork = document.querySelector('[data-testid=message-fork]');
+             const body = fork.closest('.omfp-msg').querySelector('.omfp-msg__body').getBoundingClientRect();
+             return fork.getBoundingClientRect().bottom <= body.top + 0.5;",
+            Vec::new(),
+        )
+        .await?;
+    anyhow::ensure!(
+        clear.as_bool() == Some(true),
+        "Fork from here lies over the message's text"
+    );
     journey.screenshot("touch-412-chat").await?;
     journey.click("[data-testid=header-more]").await?;
+    journey
+        .element(".omfp-popdialog [data-testid=model-select]")
+        .await?;
     journey.settled(".omfp-popdialog").await?;
     none(
         journey,
@@ -355,7 +417,7 @@ async fn a_touch_phone_gets_touch_sizes_in_both_orientations() -> anyhow::Result
     layout(&journey, "mobile").await?;
     journey.element("[data-testid=area-bar]").await?;
     journey
-        .element("[data-testid=thread-header][data-compact]")
+        .element("[data-testid=mode-bar] [data-testid=header-more]")
         .await?;
     journey.fits("[data-testid=app]").await?;
     journey.screenshot("touch-915-landscape").await?;
