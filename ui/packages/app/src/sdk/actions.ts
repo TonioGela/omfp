@@ -20,6 +20,7 @@ import { isObject } from "./json.ts";
 import {
   CLOSE_THREAD,
   type CloseRequest,
+  DRAFT_CREATING,
   DRAFT_MESSAGE,
   DRAFT_THREAD,
   draftKey,
@@ -44,6 +45,14 @@ export interface ThreadActions {
    * creation keeps the draft; a failed first prompt carrying a surviving thread ID transfers the unsent draft there
    * for retry. */
   sendDraft(): Promise<boolean>;
+  /**
+   * The draft thread's mic (UI-023, UI-180): opens the microphone at once, then, once `ready` resolves (the images
+   * being read are in), creates the daemon thread as {@link ThreadActions.sendDraft} does — the draft's message, if
+   * any, its first one — and starts a live session on it (`useLive`'s `start`). A draft left or replaced by another
+   * workspace's meanwhile creates nothing. A failure before the thread exists is reported and keeps the draft; once it
+   * exists, the thread's live panel shows it (UI-186).
+   */
+  startDraftLive(ready?: Promise<unknown>): Promise<void>;
   archive(threadId: string): Promise<void>;
   unarchive(threadId: string): Promise<void>;
   /** Immediately deletes the thread and its history, keeping its workspace (UI-026). */
@@ -222,6 +231,64 @@ function discardDraft(host: OmfpHost): void {
   }
 }
 
+/**
+ * Creates the daemon thread of the draft with its message (text, images or both) as the first one, then selects it;
+ * resolves to its id. Without a message nothing is created, unless `empty` (the draft's mic). A failed creation keeps
+ * the draft; a failed first prompt carrying a surviving thread ID transfers the unsent draft there for retry. Failures
+ * are reported. {@link DRAFT_CREATING} holds the draft read-only meanwhile, also once the mic's live start ended.
+ * `created` hears of the thread before it is selected (the mic's start keeps its session for it).
+ */
+async function createFromDraft(
+  host: OmfpHost,
+  empty: boolean,
+  created?: (threadId: string) => void,
+): Promise<string | undefined> {
+  const { client, window } = host;
+  const draft = window.get(DRAFT_THREAD);
+  const message = window.get(DRAFT_MESSAGE);
+  const prompt = expandPastes(message.text, message.pastes).trim();
+  const images = message.images;
+  // A first message may be images only, as in a thread (UI-060).
+  if (draft === undefined || (!empty && prompt === "" && images.length === 0)) {
+    return undefined;
+  }
+  window.set(DRAFT_CREATING, true);
+  try {
+    const thread = await client.call("threads.create", {
+      workspace: { id: draft.workspaceId },
+      ...(prompt === "" ? {} : { prompt }),
+      ...(images.length === 0 ? {} : { images: [...images] }),
+      ...(draft.model === undefined ? {} : { model: draft.model }),
+    });
+    created?.(thread.id);
+    // The thread keeps the tabs its draft selected (UI-372).
+    window.set(TAB_CHOICES, (choices) => adoptDraft(choices, draft.workspaceId, thread.id));
+    if (window.get(DRAFT_THREAD)?.workspaceId === draft.workspaceId) {
+      discardDraft(host);
+    }
+    window.set(SELECTED_THREAD, thread.id);
+    return thread.id;
+  } catch (error) {
+    if (error instanceof CallError && error.failure.kind === "daemon") {
+      const details = error.failure.error.details;
+      const threadId = isObject(details) ? details.threadId : undefined;
+      if (typeof threadId === "string" && threadId.trim() !== "") {
+        window.set(draftKey(threadId), message);
+        window.set(TAB_CHOICES, (choices) => adoptDraft(choices, draft.workspaceId, threadId));
+        if (window.get(DRAFT_THREAD) === draft) {
+          discardDraft(host);
+        }
+        window.set(SELECTED_THREAD, threadId);
+        window.set(FOCUS_COMPOSER, threadId);
+      }
+    }
+    reportError(host, error);
+    return undefined;
+  } finally {
+    window.set(DRAFT_CREATING, false);
+  }
+}
+
 /** The runs a `conflict` of `threads.archive` or `threads.delete` lists (PRT-208); `undefined` for another failure. */
 function conflictRuns(error: unknown): readonly RunInfo[] | undefined {
   if (!(error instanceof CallError) || error.failure.kind !== "daemon" || error.failure.error.code !== "conflict") {
@@ -306,46 +373,19 @@ export function threadActions(host: OmfpHost): ThreadActions {
       window.set(SELECTED_THREAD, undefined);
     },
     discardDraft: () => discardDraft(host),
-    sendDraft: async () => {
-      const draft = window.get(DRAFT_THREAD);
-      const message = window.get(DRAFT_MESSAGE);
-      const prompt = expandPastes(message.text, message.pastes).trim();
-      const images = message.images;
-      // A first message may be images only, as in a thread (UI-060).
-      if (draft === undefined || (prompt === "" && images.length === 0)) {
-        return false;
-      }
-      try {
-        const thread = await client.call("threads.create", {
-          workspace: { id: draft.workspaceId },
-          ...(prompt === "" ? {} : { prompt }),
-          ...(images.length === 0 ? {} : { images: [...images] }),
-          ...(draft.model === undefined ? {} : { model: draft.model }),
-        });
-        // The thread keeps the tabs its draft selected (UI-372).
-        window.set(TAB_CHOICES, (choices) => adoptDraft(choices, draft.workspaceId, thread.id));
-        if (window.get(DRAFT_THREAD)?.workspaceId === draft.workspaceId) {
-          discardDraft(host);
-        }
-        window.set(SELECTED_THREAD, thread.id);
-        return true;
-      } catch (error) {
-        if (error instanceof CallError && error.failure.kind === "daemon") {
-          const details = error.failure.error.details;
-          const threadId = isObject(details) ? details.threadId : undefined;
-          if (typeof threadId === "string" && threadId.trim() !== "") {
-            window.set(draftKey(threadId), message);
-            window.set(TAB_CHOICES, (choices) => adoptDraft(choices, draft.workspaceId, threadId));
-            if (window.get(DRAFT_THREAD) === draft) {
-              discardDraft(host);
-            }
-            window.set(SELECTED_THREAD, threadId);
-            window.set(FOCUS_COMPOSER, threadId);
-          }
-        }
-        reportError(host, error);
-        return false;
-      }
+    sendDraft: async () => (await createFromDraft(host, false)) !== undefined,
+    startDraftLive: (ready) => {
+      const workspaceId = window.get(DRAFT_THREAD)?.workspaceId;
+      return host.live.start({
+        create: async ({ running, created }) => {
+          await ready;
+          // A start ended meanwhile (the mic pressed again, another thread or draft shown, the page left) creates nothing.
+          return running() ? createFromDraft(host, true, created) : undefined;
+        },
+        fail: (message) => reportError(host, message),
+        // The draft the mic was pressed in: not another workspace's opened since, nor dismissed.
+        shown: () => workspaceId !== undefined && window.get(DRAFT_THREAD)?.workspaceId === workspaceId,
+      });
     },
     archive: (threadId) => closeThread(host, "threads.archive", threadId),
     unarchive: (threadId) => attempt(() => client.call("threads.unarchive", { threadId })),

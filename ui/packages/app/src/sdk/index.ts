@@ -159,6 +159,7 @@ export {
   lineEdit,
 } from "../vm/line-edit.ts";
 export {
+  draftMicButton,
   type LivePanelView,
   type LiveSupport,
   type LocalLive,
@@ -408,6 +409,7 @@ export {
   COLOR_SCHEME,
   type ColorScheme,
   DELETE_WORKSPACE,
+  DRAFT_CREATING,
   DRAFT_MESSAGE,
   DRAFT_THREAD,
   type Draft,
@@ -443,7 +445,16 @@ export {
   Widget,
   type WidgetElementProps,
 } from "./layout.tsx";
-export { LiveClient, type LiveClientOptions, type LiveLink, type LiveMedia, type LiveSnapshot } from "./live.ts";
+export {
+  LiveClient,
+  type LiveClientOptions,
+  type LiveCreation,
+  type LiveLink,
+  type LiveMedia,
+  type LiveSnapshot,
+  type LiveTarget,
+  type NewLiveThread,
+} from "./live.ts";
 export { type Mcp, type McpOptions, mcpText, useMcp, useMcpTool } from "./mcp.ts";
 export type { Importer, LoadedWidget, WidgetLoadError } from "./modules.ts";
 export {

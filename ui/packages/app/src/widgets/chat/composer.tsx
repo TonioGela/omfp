@@ -30,6 +30,7 @@ import {
   canAbort,
   commandsOf,
   complete,
+  DRAFT_CREATING,
   DRAFT_MESSAGE,
   DRAFT_THREAD,
   type Draft,
@@ -68,6 +69,7 @@ import {
   useCall,
   useCommand,
   useHost,
+  useLive,
   useReportError,
   useThread,
   useThreadActions,
@@ -90,7 +92,7 @@ import { Attachments } from "./attachments.tsx";
 import { useCompletions } from "./completion.tsx";
 import { usePromptHistory } from "./history.ts";
 import { useLineKeys } from "./line-keys.ts";
-import { LiveVoicePanel, MicButton } from "./live.tsx";
+import { DraftMicButton, LiveVoicePanel, MicButton } from "./live.tsx";
 import { PasteChips, usePastes } from "./pastes.tsx";
 import { testId, type WidgetProps } from "./props.ts";
 import { QueueChips } from "./queue.tsx";
@@ -145,12 +147,18 @@ export function ComposerWidget(_props: WidgetProps) {
  * The draft thread's composer (UI-023): Enter (or the button) creates the thread with the text and the pasted or
  * dropped images (UI-060) as first message; they stay when that fails. It takes the focus whenever the draft is
  * opened; Esc leaves it, discarding an empty draft. `@` completes the draft workspace's files (UI-732); with no
- * thread yet there are no `/` commands.
+ * thread yet there are no `/` commands. Its mic (UI-180) creates the thread and starts a live session on it at once,
+ * with the draft's message, if any, as first message; nothing is sent while that starts.
  */
 function DraftComposer({ draft }: { draft: DraftThread }) {
   const actions = useThreadActions();
   const [message, setMessage] = useWindowState(DRAFT_MESSAGE);
   const [sending, setSending] = useState(false);
+  const [, live] = useLive();
+  const [creating] = useWindowState(DRAFT_CREATING);
+  /** The message is on its way: sent, taken by the mic making the thread, or in a `threads.create` still pending
+   * after the mic gave up. It is read-only and takes no images meanwhile. */
+  const locked = sending || creating || (live.local.kind === "starting" && live.local.threadId === undefined);
   /** The input has the focus: the keymap is in insert mode (UI-098), drawn as the gradient border (UI-172). */
   const [insert, setInsert] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -163,7 +171,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
     inputRef.current?.focus();
   }, [draft]);
   const send = () => {
-    if (sending || (isBlank(message) && reads.size === 0)) {
+    if (locked || (isBlank(message) && reads.size === 0)) {
       return;
     }
     word.dismiss();
@@ -203,31 +211,42 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
     word.typed();
   };
   useLineKeys(inputRef, typed, message.pastes);
-  const images = imageInput((files) => {
-    // While the thread is created the message is read-only: images pasted or dropped then are ignored.
-    if (sending) {
-      return;
-    }
-    // A read belongs to the draft it started in: once that draft is gone (sent, discarded, its workspace removed),
-    // its images join no other draft, even one opened before the read ends (a sent draft waited for them).
-    const watch = watchDraft(host);
-    const read = attachImages(files, (update) => {
-      if (!watch.gone()) {
-        setMessage(update);
+  const images = imageInput(
+    (files) => {
+      // While the thread is created (sent or by the mic) the message is read-only: images pasted or dropped then are
+      // ignored.
+      if (locked) {
+        return;
       }
-    });
-    reads.add(read);
-    void read.then(() => {
-      watch.stop();
-      reads.delete(read);
-    });
-  }, pastes.onPaste);
+      // A read belongs to the draft it started in: once that draft is gone (sent, discarded, its workspace removed),
+      // its images join no other draft, even one opened before the read ends (a sent draft waited for them).
+      const watch = watchDraft(host);
+      const read = attachImages(files, (update) => {
+        if (!watch.gone()) {
+          setMessage(update);
+        }
+      });
+      reads.add(read);
+      void read.then(() => {
+        watch.stop();
+        reads.delete(read);
+      });
+    },
+    (event) => {
+      // A read-only field takes no paste, a large one included (it would become a chip).
+      if (!locked) {
+        pastes.onPaste(event);
+      }
+    },
+  );
   const onKeyDownCapture = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== inputRef.current || event.nativeEvent.isComposing) {
       return;
     }
     pastes.onKeyDown(event, modifiersOf(event));
-    if (completions.onKeyDown(event, inputRef.current)) {
+    // While locked, the suggestions insert nothing, Alt+Enter breaks no line and no word completion is accepted:
+    // only leaving works.
+    if (!locked && completions.onKeyDown(event, inputRef.current)) {
       return;
     }
     composerKey(event, inputRef.current, {
@@ -237,7 +256,11 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
       onChange: pastes.onChange,
       send,
       leave,
-      accept: (space) => word.accept(space, pastes.onChange),
+      accept: (space) => {
+        if (!locked) {
+          word.accept(space, pastes.onChange);
+        }
+      },
     });
   };
   return (
@@ -261,8 +284,10 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
       onKeyDownCapture={onKeyDownCapture}
     >
       <KitComposer mode={insert ? "insert" : "normal"}>
-        {message.images.length > 0 && <Attachments draft={message} setDraft={setMessage} />}
-        {message.pastes.length > 0 && <PasteChips draft={message} setDraft={setMessage} inputRef={inputRef} />}
+        {message.images.length > 0 && <Attachments draft={message} setDraft={setMessage} locked={locked} />}
+        {message.pastes.length > 0 && (
+          <PasteChips draft={message} setDraft={setMessage} inputRef={inputRef} locked={locked} />
+        )}
         <Autocomplete inputValue={message.text} onInputChange={typed}>
           <ComposerTextArea
             touch={touch}
@@ -273,14 +298,15 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
               setInsert(false);
               word.dismiss();
             }}
-            isReadOnly={sending}
+            isReadOnly={locked}
             inputRef={inputRef}
             onPaste={images.onPaste}
             ghost={word.ghost}
           />
-          {completions.menu}
+          {!locked && completions.menu}
         </Autocomplete>
         <ComposerBar hints={touch ? undefined : <KeyHints abortable={false} interruptHint={false} />}>
+          <DraftMicButton disabled={sending || creating} ready={() => Promise.all(reads)} />
           <Button
             type="submit"
             variant="primary"
@@ -289,7 +315,7 @@ function DraftComposer({ draft }: { draft: DraftThread }) {
             kbd={touch ? undefined : keyLabel("Enter")}
             data-testid="send"
             data-mode="draft"
-            isDisabled={sending}
+            isDisabled={locked}
           >
             {labels.send}
           </Button>
@@ -342,10 +368,14 @@ function KeyHints({
 }
 
 /**
- * Alt+Enter (UI-060): a line break replaces the selection, the caret after it. The field's value and caret are set
- * first so React, finding the same value, leaves the caret where it is.
+ * Alt+Enter (UI-060): a line break replaces the selection, the caret after it; a read-only field (the message on its
+ * way) takes none. The field's value and caret are set first so React, finding the same value, leaves the caret where
+ * it is.
  */
 function insertLineBreak(input: HTMLTextAreaElement, apply: (text: string) => void) {
+  if (input.readOnly) {
+    return;
+  }
   const { selectionStart, selectionEnd, value } = input;
   const text = `${value.slice(0, selectionStart)}\n${value.slice(selectionEnd)}`;
   input.value = text;

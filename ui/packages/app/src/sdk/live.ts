@@ -16,7 +16,7 @@ import { strings } from "../strings/index.ts";
 import { IDLE, type LiveSupport, type LocalLive, liveSupport } from "../vm/live.ts";
 import type { FrameStore } from "./frame-store.ts";
 import type { SdkClient, TopicRefs } from "./host.tsx";
-import { SELECTED_THREAD } from "./keys.ts";
+import { DRAFT_THREAD, SELECTED_THREAD } from "./keys.ts";
 import type { WindowStore } from "./window-store.ts";
 
 /** The remote voice counts as speaking above this RMS … */
@@ -89,6 +89,29 @@ function failureMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** A thread {@link LiveClient.start} makes once the window holds what the session needs: the draft thread's (UI-023). */
+export interface NewLiveThread {
+  /** Creates the thread and selects it: its id, or `undefined` when that failed (`create` reports it) or gave up. */
+  create(start: LiveCreation): Promise<string | undefined>;
+  /** Reports a start that failed before the thread existed: no live path here, the microphone or the peer. */
+  fail(message: string): void;
+  /** Whether the window still shows what the start began from (the draft pressed), asked whenever the draft changes
+   * until the thread exists: false ends the start at once. */
+  shown(): boolean;
+}
+
+/** What {@link NewLiveThread.create} knows of its start. */
+export interface LiveCreation {
+  /** Whether the start still runs: false once it ended (the mic pressed again, another thread shown, the page left),
+   * when nothing may be created. */
+  running(): boolean;
+  /** Says the thread exists, before it is selected: the window may show it; anything else shown ends the start. */
+  created(threadId: string): void;
+}
+
+/** Where {@link LiveClient.start} opens its session: an existing thread, or a new one. */
+export type LiveTarget = string | NewLiveThread;
+
 /** This window's live session (at most one), read by the widgets through {@link LiveClient.subscribe}. */
 export class LiveClient {
   readonly #client: SdkClient;
@@ -140,40 +163,127 @@ export class LiveClient {
   }
 
   /**
-   * Starts a session on `threadId`: microphone, peer and offer, `thread.live_connect`, then omp's answer (UI-181);
-   * without WebRTC on the daemon's machine, `thread.live_start` (UI-188). Ends this window's other session first. A
-   * failure shows in the panel (UI-186).
+   * Starts a session on `target`, a thread or one {@link NewLiveThread} makes: microphone, peer and offer,
+   * `thread.live_connect`, then omp's answer (UI-181); without WebRTC on the daemon's machine, `thread.live_start`
+   * (UI-188). Ends this window's other session first. The microphone opens at once, before anything is awaited:
+   * browsers grant it reliably only within the press (Safari); a new thread is made after it (UI-023). A failure shows
+   * in the thread's panel (UI-186), or through the new thread's `fail` before the thread exists.
    */
-  async start(threadId: string): Promise<void> {
+  async start(target: LiveTarget): Promise<void> {
     const support = this.#media.support();
-    if (support === "host") {
-      await this.#startHost(threadId);
-      return;
-    }
-    if (support !== "webrtc") {
-      this.#set({ kind: "failed", threadId, message: strings.chat.live[support] });
+    if (support !== "webrtc" && support !== "host") {
+      this.#failed(target, strings.chat.live[support]);
       return;
     }
     this.end();
-    const starting: LocalLive = { kind: "starting", threadId };
+    const starting: LocalLive = { kind: "starting", threadId: typeof target === "string" ? target : undefined };
     this.#set(starting);
     this.#seen = false;
     this.#connected = false;
     this.#speakingUntil = 0;
+    // Until the session opens on its thread, showing another thread (a new thread's start: anything but the draft, then
+    // the new thread), dropping the draft pressed or leaving the page ends the start at once (UI-185), the microphone
+    // with it.
+    const watch = this.#watchShown(starting, target);
     let link: LiveLink | undefined;
+    let threadId: string | undefined;
     try {
-      link = await this.#media.open((state) => this.#peerState(link, state));
-    } catch (error) {
-      if (this.#snapshot.local === starting) {
-        const stage = error instanceof LiveOpenError ? error.stage : "peer";
-        this.#set({ kind: "failed", threadId, message: strings.chat.live[stage](failureMessage(error)) });
+      // omp's own session (`live_start`) needs nothing of the window.
+      if (support === "webrtc") {
+        try {
+          link = await this.#media.open((state) => this.#peerState(link, state));
+        } catch (error) {
+          if (this.#snapshot.local === starting) {
+            const stage = error instanceof LiveOpenError ? error.stage : "peer";
+            this.#failed(target, strings.chat.live[stage](failureMessage(error)));
+          }
+          return;
+        }
+        if (this.#snapshot.local !== starting) {
+          link.close();
+          return;
+        }
       }
-      return;
+      threadId = typeof target === "string" ? target : await this.#create(target, starting, link, watch.show);
+    } finally {
+      watch.stop();
     }
-    if (this.#snapshot.local !== starting) {
-      link.close();
-      return;
+    if (threadId !== undefined) {
+      await (link === undefined ? this.#startHost(threadId) : this.#connect(threadId, link));
     }
+  }
+
+  /**
+   * Makes the thread of a start once the window holds what its session needs: its id, now the session's; `undefined`
+   * when that failed or the start ended meanwhile. The window holds `link` meanwhile, so ending the start releases the
+   * microphone at once, not when the thread exists.
+   */
+  async #create(
+    thread: NewLiveThread,
+    starting: LocalLive,
+    link: LiveLink | undefined,
+    show: (threadId: string) => void,
+  ): Promise<string | undefined> {
+    this.#link = link;
+    const threadId = await thread.create({
+      running: () => this.#snapshot.local === starting,
+      created: show,
+    });
+    if (this.#snapshot.local === starting && threadId !== undefined) {
+      this.#set({ kind: "starting", threadId });
+      return threadId;
+    }
+    if (this.#link === link) {
+      this.#close();
+    }
+    if (this.#snapshot.local === starting) {
+      this.#set(IDLE);
+    }
+    return undefined;
+  }
+
+  /**
+   * Ends the start `starting` when the window leaves the page or shows another thread than now (the draft: none) or
+   * than the one `show` names; for a new thread, also once `target.shown()` is false when the draft changes (the draft
+   * pressed replaced or dismissed), until `show` (the thread exists, its draft is done). Until `stop`.
+   */
+  #watchShown(starting: LocalLive, target: LiveTarget): { show(threadId: string): void; stop(): void } {
+    let shown = this.#window.get(SELECTED_THREAD);
+    const end = () => {
+      if (this.#snapshot.local === starting) {
+        this.end();
+      }
+    };
+    const unsubscribe = this.#window.subscribe(SELECTED_THREAD, () => {
+      if (this.#window.get(SELECTED_THREAD) !== shown) {
+        end();
+      }
+    });
+    let unsubscribeDraft =
+      typeof target === "string"
+        ? () => {}
+        : this.#window.subscribe(DRAFT_THREAD, () => {
+            if (!target.shown()) {
+              end();
+            }
+          });
+    window.addEventListener("pagehide", end);
+    return {
+      show: (threadId) => {
+        shown = threadId;
+        unsubscribeDraft();
+        unsubscribeDraft = () => {};
+      },
+      stop: () => {
+        unsubscribe();
+        unsubscribeDraft();
+        window.removeEventListener("pagehide", end);
+      },
+    };
+  }
+
+  /** The peer's session on `threadId`: `thread.live_connect` with `link`'s offer, then omp's answer (UI-181). */
+  async #connect(threadId: string, link: LiveLink): Promise<void> {
     this.#open(threadId, link);
     let answer: string;
     try {
@@ -213,10 +323,6 @@ export class LiveClient {
    * spectrum draws the thread's `live_levels` (UI-189).
    */
   async #startHost(threadId: string): Promise<void> {
-    this.end();
-    const starting: LocalLive = { kind: "starting", threadId };
-    this.#set(starting);
-    this.#seen = false;
     const source = new LevelsSource();
     const topic = threadTopic(threadId);
     const link: LiveHold = {
@@ -245,6 +351,22 @@ export class LiveClient {
     }
   }
 
+  /**
+   * A start that failed before its session ran: in the thread's panel (UI-186); a thread not made yet has no panel,
+   * so its `fail` reports it and the window holds nothing.
+   */
+  #failed(target: LiveTarget, message: string): void {
+    if (typeof target === "string") {
+      this.#set({ kind: "failed", threadId: target, message });
+      return;
+    }
+    const local = this.#snapshot.local;
+    if (local.kind === "starting" && local.threadId === undefined) {
+      this.#set(IDLE);
+    }
+    target.fail(message);
+  }
+
   /** Ends this window's session (the end key, a thread switch, unload, UI-185): `thread.live_stop`, then closes it. */
   end(): void {
     const local = this.#snapshot.local;
@@ -254,7 +376,9 @@ export class LiveClient {
     // A session still starting may reach omp yet: stop it either way.
     this.#close();
     this.#set(IDLE);
-    this.#stop(local.threadId);
+    if (local.threadId !== undefined) {
+      this.#stop(local.threadId);
+    }
   }
 
   /** Ends the session of thread `threadId`, this window's or another's (UI-182). */
