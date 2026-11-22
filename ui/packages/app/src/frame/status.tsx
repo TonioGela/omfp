@@ -35,11 +35,11 @@ export function ConnectionBanner(): ReactNode {
 }
 
 /**
- * The frame's one toast stack (bottom right): errors of failed actions as error toasts (UI-160), each staying until
- * dismissed — when omp says it needs a login, a short sentence with Log in and omp's own output under Details (UI-387,
- * UI-451) —, actions that worked as success toasts going by themselves (UI-385; neutral ones for an action whose
- * outcome shows elsewhere, UI-913), the running login (UI-383; one this window did not start too, UI-640), then the
- * URLs omp opened (UI-346) and the page of a login started elsewhere.
+ * The frame's one toast stack (bottom right): errors of failed actions as error toasts (UI-160), each going by itself
+ * after a while unless hovered or focused (UI-535) — when omp says it needs a login, a short sentence with Log in and
+ * omp's own output under Details (UI-387, UI-451) —, actions that worked as success toasts going by themselves (UI-385;
+ * neutral ones for an action whose outcome shows elsewhere, UI-913), the running login (UI-383; one this window did not
+ * start too, UI-640), then the URLs omp opened (UI-346) and the page of a login started elsewhere.
  */
 export function Toasts(): ReactNode {
   const host = useHost();
@@ -53,13 +53,12 @@ export function Toasts(): ReactNode {
   }
   return (
     <ToastRegion data-testid="toasts">
-      {errors.map((error, index) => {
-        const dismiss = () => setErrors((all) => all.filter((_, at) => at !== index));
-        const problem = loginProblem(error);
+      {errors.map((error) => {
+        const dismiss = () => setErrors((all) => all.filter((other) => other.key !== error.key));
+        const problem = loginProblem(error.text);
         return (
           <Toast
-            // biome-ignore lint/suspicious/noArrayIndexKey: the same message may repeat; its place is its identity
-            key={index}
+            key={error.key}
             tone="error"
             className="omfp-error-toast"
             data-testid="error"
@@ -82,13 +81,13 @@ export function Toasts(): ReactNode {
             }
           >
             {problem === undefined ? (
-              error
+              error.text
             ) : (
               <>
                 <span className="omfp-error-toast__problem">{problem}</span>
                 <Disclosure title={strings.shell.login.details} level={2} toggleTestId="error-details">
                   <span className="omfp-error-toast__raw" data-testid="error-raw">
-                    {error}
+                    {error.text}
                   </span>
                 </Disclosure>
               </>

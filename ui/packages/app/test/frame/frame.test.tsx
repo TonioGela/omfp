@@ -1,13 +1,16 @@
 /** L4: the frame (banner, views, keymap, `:` line, theme, live region, notifications, dialogs) over a fake client. */
 
-import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, spyOn, test } from "bun:test";
 import type { CallMethod } from "@omfp/client";
+import { ERROR_TOAST_MS } from "@omfp/kit";
 import type { BuiltinTheme, Settings, ThreadSummary, ViewsState } from "@omfp/protocol";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Frame, type FrameProps } from "../../src/frame/frame.tsx";
+import { LOGIN_RUN } from "../../src/frame/login.tsx";
 import type { NotificationPort } from "../../src/frame/notifications.ts";
 import { COARSE_POINTER, SHORT_TOUCH_SCREEN } from "../../src/frame/responsive.ts";
+import { Toasts } from "../../src/frame/status.tsx";
 import {
   chooseView,
   currentWorkspaceId,
@@ -15,10 +18,12 @@ import {
   ERRORS,
   FOCUS_COMPOSER,
   type KeyValueStorage,
+  MESSAGES,
   NOTICES,
   type Notice,
   type OmfpHost,
   REVEAL_WIDGET,
+  reportError,
   SELECTED_THREAD,
   SUCCESSES,
   useCommand,
@@ -414,7 +419,7 @@ describe("frame", () => {
     expect(document.documentElement.dataset.theme).toBe("gruvbox");
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "theme dracula{Enter}");
-    expect(host.window.get(ERRORS)).toEqual(["Unknown colour scheme or theme: dracula"]);
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual(["Unknown colour scheme or theme: dracula"]);
     expect(client.callsTo("settings.set").length).toBe(1);
   });
 
@@ -448,7 +453,7 @@ describe("frame", () => {
     expect(client.callsTo("settings.set").map((call) => call.params)).toEqual([{ ui: { liveVoice: "maple" } }]);
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "voice alloy{Enter}");
-    expect(host.window.get(ERRORS)).toEqual(["Invalid value for live_voice: alloy"]);
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual(["Invalid value for live_voice: alloy"]);
     expect(client.callsTo("settings.set").length).toBe(1);
   });
 
@@ -876,15 +881,88 @@ describe("frame", () => {
   });
 
   // spec: UI-092, UI-160
-  test("errors of failed actions show as error toasts until dismissed", async () => {
+  test("errors of failed actions show as error toasts, closed by their ×", async () => {
     const { host, user } = setup();
-    act(() => host.window.set(ERRORS, ["boom"]));
+    act(() => host.window.set(ERRORS, [{ key: 1, text: "boom" }]));
     const shown = screen.getAllByTestId("error");
     expect(shown.map((error) => [error.textContent, error.dataset.tone, error.getAttribute("role")])).toEqual([
       ["boom", "error", "alert"],
     ]);
     await user.click(screen.getByTestId("toast-dismiss"));
     expect(screen.queryByTestId("toasts")).toBeNull();
+  });
+
+  // spec: UI-536
+  test("error toasts go by themselves each on its own clock, held while focused, and stay in the messages", () => {
+    jest.useFakeTimers();
+    try {
+      const { host } = renderWithHost(<Toasts />);
+      const shown = () => screen.queryAllByTestId("error").length;
+      const elapse = (ms: number) =>
+        act(() => {
+          jest.advanceTimersByTime(ms);
+        });
+      act(() => reportError(host, new Error("disk full")));
+      elapse(ERROR_TOAST_MS / 2);
+      act(() => reportError(host, new Error("No API key found for anthropic")));
+      const details = screen.getByTestId("error-details");
+      act(() => details.focus());
+      // The first one goes; the second keeps its toast, its focus and its time.
+      elapse(ERROR_TOAST_MS / 2);
+      expect(shown()).toBe(1);
+      expect(document.activeElement === screen.getByTestId("error-details")).toBe(true);
+      elapse(10 * ERROR_TOAST_MS);
+      expect(shown()).toBe(1);
+      act(() => screen.getByTestId("error-details").blur());
+      elapse(ERROR_TOAST_MS - 1);
+      expect(shown()).toBe(1);
+      elapse(1);
+      expect(screen.queryByTestId("toasts")).toBeNull();
+      expect(host.window.get(MESSAGES).map(({ tone, text }) => [tone, text])).toEqual([
+        ["error", "disk full"],
+        ["error", "No API key found for anthropic"],
+      ]);
+      // The running login's toast has no timer: it stays until the login ends.
+      act(() =>
+        host.window.set(LOGIN_RUN, {
+          id: 1,
+          providerId: "anthropic",
+          name: "Anthropic",
+          progress: undefined,
+          cancelled: false,
+        }),
+      );
+      elapse(60 * 60_000);
+      expect(screen.getAllByTestId("login-progress").length).toBe(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // spec: UI-536
+  test("an error reported twice is two toasts, each going on its own clock", () => {
+    jest.useFakeTimers();
+    try {
+      const { host } = renderWithHost(<Toasts />);
+      const shown = () => screen.queryAllByTestId("error").map((error) => error.textContent);
+      const elapse = (ms: number) =>
+        act(() => {
+          jest.advanceTimersByTime(ms);
+        });
+      act(() => reportError(host, new Error("disk full")));
+      elapse(ERROR_TOAST_MS / 2);
+      act(() => reportError(host, new Error("disk full")));
+      expect(shown()).toEqual(["disk full", "disk full"]);
+      elapse(ERROR_TOAST_MS / 2);
+      expect(shown()).toEqual(["disk full"]);
+      // The second keeps its own time: it goes 12 s after it showed, not 12 s after the first went.
+      elapse(ERROR_TOAST_MS / 2 - 1);
+      expect(shown()).toEqual(["disk full"]);
+      elapse(1);
+      expect(screen.queryByTestId("toasts")).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -1010,7 +1088,7 @@ describe("daemon settings", () => {
     ]);
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "set density=huge{Enter}");
-    expect(host.window.get(ERRORS)).toEqual(["Invalid value for density: huge"]);
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual(["Invalid value for density: huge"]);
   });
 
   // spec: UI-097
@@ -1100,7 +1178,7 @@ describe("views of the current workspace", () => {
     expect(screen.getByTestId("view").dataset.view).toBe("work");
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "view gone{Enter}");
-    expect(host.window.get(ERRORS)).toEqual(["No view gone"]);
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual(["No view gone"]);
   });
 
   // spec: UI-302, UI-431
@@ -1479,20 +1557,20 @@ describe("adding a widget", () => {
     await failing.user.type(screen.getByTestId("command-line-input"), "widget add omfp:header{Enter}");
     const [pending] = failing.client.callsTo("views.set");
     await act(async () => pending?.reject(new Error("views.json: permission denied")));
-    expect(failing.host.window.get(ERRORS)).toEqual(["views.json: permission denied"]);
+    expect(failing.host.window.get(ERRORS).map(({ text }) => text)).toEqual(["views.json: permission denied"]);
     cleanup();
     const invalid = adding({ manifest: null, error: "views: no view" });
     press(":");
     await invalid.user.type(screen.getByTestId("command-line-input"), "widget add omfp:header{Enter}");
     expect(written(invalid)).toEqual([]);
-    expect(invalid.host.window.get(ERRORS)).toEqual([
+    expect(invalid.host.window.get(ERRORS).map(({ text }) => text)).toEqual([
       "The layout cannot change while .omfp/views.json is invalid: fix the file first",
     ]);
     cleanup();
     const none = setup();
     press(":");
     await none.user.type(screen.getByTestId("command-line-input"), "widget add omfp:header{Enter}");
-    expect(none.host.window.get(ERRORS)).toEqual(["No current workspace"]);
+    expect(none.host.window.get(ERRORS).map(({ text }) => text)).toEqual(["No current workspace"]);
   });
 });
 
@@ -1502,7 +1580,7 @@ describe("widget copy", () => {
     const { client, host, user } = setup();
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "widget copy omfp:workspace{Enter}");
-    expect(host.window.get(ERRORS)).toEqual(["No current workspace"]);
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual(["No current workspace"]);
     act(() => host.window.set(ERRORS, []));
     act(() => host.window.set(SELECTED_THREAD, "t1"));
     client.answers.set("widgets.copy", () => ({ name: "board" }));
@@ -1521,10 +1599,10 @@ describe("widget copy", () => {
     const [, failing] = client.callsTo("widgets.copy");
     expect(failing?.params).toEqual({ workspaceId: "w1", widget: "user:clock" });
     await act(async () => failing?.reject(new Error("./widgets/clock already exists")));
-    expect(host.window.get(ERRORS)).toEqual(["./widgets/clock already exists"]);
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual(["./widgets/clock already exists"]);
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "widget paste{Enter}");
-    expect(host.window.get(ERRORS)).toEqual([
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual([
       "./widgets/clock already exists",
       "Usage: :widget add <reference> | :widget copy <reference> [<name>] | :widget save[!] <widget> [<name>]",
     ]);
@@ -1535,7 +1613,7 @@ describe("widget copy", () => {
     const { client, host, user } = setup();
     press(":");
     await user.type(screen.getByTestId("command-line-input"), "view-reset{Enter}");
-    expect(host.window.get(ERRORS)).toEqual(["No current workspace"]);
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual(["No current workspace"]);
     act(() => host.window.set(ERRORS, []));
     act(() => host.window.set(SELECTED_THREAD, "t1"));
     client.views("w1", { manifest: null, error: "views: expected an object of views" });
@@ -1566,7 +1644,7 @@ describe("widget copy", () => {
     await user.click(screen.getByTestId("confirm-view-reset"));
     const [, failing] = client.callsTo("views.set");
     await act(async () => failing?.reject(new Error("disk full")));
-    expect(host.window.get(ERRORS)).toEqual(["disk full"]);
+    expect(host.window.get(ERRORS).map(({ text }) => text)).toEqual(["disk full"]);
   });
 });
 
