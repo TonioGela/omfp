@@ -7,6 +7,8 @@ The version's section is also the source of the GitHub release notes.
 
 ## Unreleased
 
+## 0.4.2 — 2026-11-22
+
 ### Added
 
 - The voice of live sessions is now a setting: `:voice maple` (or `:set live_voice=…`, `[ui] live_voice`) picks one
@@ -85,6 +87,20 @@ The version's section is also the source of the GitHub release notes.
   which no longer scrolls. An image viewer keeps Ctrl with the wheel for its own zoom; Ctrl with the wheel over a row
   of view tabs zooms too, in browsers as well. Ctrl with the wheel over a conversation that follows its newest output
   keeps following it (#202).
+
+### Release limitations
+
+- macOS downloads are signed ad-hoc and are not notarized unless the release explicitly says otherwise. On first
+  launch, allow the app in System Settings → Privacy & Security → Open Anyway. Updates may request microphone
+  permission again.
+- The Flatpak deliberately runs oh-my-pi, git and job commands on the host with your account's permissions; it is
+  not an isolation boundary. Keep workspaces under your home directory. On NixOS, use the Nix package or configure
+  a compatible `omp_bin`. Job processes left behind after their shell exits are not killed on the host.
+- Standalone downloads do not cover Windows, Intel Macs or ARM Linux.
+- Multi-select prompts of the `ask` tool do not show yet which choices are checked: oh-my-pi 18.22 sends that state,
+  but omfp's prompt card does not use it yet.
+- oh-my-pi always loads its own user `agent/mcp.json` from omfp's profile: omfp never writes it and neither lists nor
+  calls its servers, but a thread's agent still sees a hand-written one.
 
 ## 0.4.1 — 2026-11-19
 
