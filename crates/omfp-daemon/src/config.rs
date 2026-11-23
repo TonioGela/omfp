@@ -14,6 +14,10 @@ use crate::server::parse_origin;
 pub const DEFAULT_BIND: SocketAddr =
     SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 7420);
 
+/// The variable naming the data directory of the daemon whose omp runs a process (DMN-393): every daemon-owned omp
+/// gets it, and with it the shells of a thread, where `omfp daemon restart` finds its daemon.
+pub const DATA_DIR_VARIABLE: &str = "OMFP_DATA_DIR";
+
 /// Command line of `omfp daemon`. Options left out come from the config file's `[daemon]` table, else their
 /// defaults (DMN-009).
 #[derive(Debug, Clone, PartialEq, Eq, Parser)]
@@ -98,6 +102,9 @@ pub struct Config {
     pub config_file: Option<PathBuf>,
     /// `[daemon]` as the file held at startup: a reload that changes it needs a restart.
     pub file_options: DaemonOptions,
+    /// The process catches `SIGUSR2` to restart the daemon in place, which `daemon.json` then says (DMN-394).
+    /// [`Config::from_cli`] leaves it `false`; `omfp daemon` ([`crate::run`]) sets it once it caught the signal.
+    pub restarts_in_place: bool,
 }
 
 /// `$XDG_CONFIG_HOME/omfp` when absolute, else `$HOME/.config/omfp`: where the config and theme files live.
@@ -198,6 +205,7 @@ impl Config {
             title_generation: !cli.no_title_generation && options.title_generation.unwrap_or(true),
             config_file: cli.config,
             file_options,
+            restarts_in_place: false,
         })
     }
 }
