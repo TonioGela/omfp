@@ -7,6 +7,8 @@ The version's section is also the source of the GitHub release notes.
 
 ## Unreleased
 
+## 0.4.3 — 2026-11-23
+
 ### Added
 
 - A turn cut by a daemon restart (an upgrade, `omfp desktop` restarting its background daemon, Quit) is no longer
