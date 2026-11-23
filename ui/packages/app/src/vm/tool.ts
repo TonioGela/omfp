@@ -88,7 +88,7 @@ export function expandedByDefault(card: ToolCard, turn: Turn = "past"): boolean 
 /**
  * The card of one tool call. `call` is the assistant's tool-call block (absent when only the run is known), `run` the
  * execution tracked by the reducer, `result` the transcript's tool result message, `calledAt` the calling message's
- * completion timestamp. A `write` to an `xd://` device is the card of the device's tool (UI-915).
+ * completion timestamp. A `bash` call running one tool command (or an 18.x `write` to an `xd://` device) is the card of that tool (UI-915).
  */
 export function toolCard(
   toolCallId: string,
@@ -118,13 +118,24 @@ export function toolCard(
     toolCallId,
     name,
     summary,
-    status: status === "succeeded" && job === null && quietFailure(name, output) !== undefined ? "failed" : status,
+    status:
+      status === "succeeded" &&
+      job === null &&
+      (quietFailure(name, output) !== undefined || (device?.exitCode ?? 0) !== 0)
+        ? "failed"
+        : status,
     durationMs:
       job === null && calledAt !== undefined && finishedAt !== undefined && calledAt > 0 && finishedAt >= calledAt
         ? finishedAt - calledAt
         : undefined,
     args: args !== undefined ? prettyJson(args) : (partial ?? "{}"),
-    result: job === null ? resultOf(run, result) : (job.output ?? undefined),
+    // A tool command's card shows the tool's output, without the exit line of the `bash` call that ran it.
+    result:
+      job === null
+        ? called === "bash" && device !== undefined
+          ? device.output?.text
+          : resultOf(run, result)
+        : (job.output ?? undefined),
     images: cardImages(output?.images ?? [], name, subjectOf(args) ?? summary),
     view: toolView(name, args, output, status === "succeeded", job, status === "succeeded" || status === "failed"),
   };

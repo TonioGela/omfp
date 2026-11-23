@@ -36,15 +36,38 @@ export function streaming(name: FixtureName, id: string): ToolCard {
 }
 
 /**
- * The card of an `lsp` call built by hand in omp 18.22.0's shape (`lsp/tool.ts`, `tools/xdev.ts`): a `write` of the
- * arguments to `xd://lsp` whose result's text is the answer and whose `details.xdev` echo the arguments and carry the
- * tool's own details (`{ action, serverName, success }`). Recorded fixtures need a language server; these do not.
+ * The card of a call omp 18.x ran as an `xd://` device (`tools/xdev.ts`), built by hand since no 19.1 fixture has one:
+ * a `write` of the JSON arguments to `xd://<tool>` whose result's text is the answer and whose `details.xdev` echo the
+ * arguments and carry the tool's own details.
+ */
+export function deviceCard(tool: string, args: JsonObject, answer: string, inner: JsonObject): ToolCard {
+  const run: ToolRun = {
+    tool_call_id: "call_device",
+    tool_name: "write",
+    args: { path: `xd://${tool}`, content: JSON.stringify(args) },
+    intent: null,
+    status: "succeeded",
+    partial_result: null,
+    preview: null,
+    result: {
+      content: [{ type: "text", text: answer }],
+      details: { xdev: { tool, mode: "execute", args, inner } },
+    },
+    background: null,
+  };
+  return toolCard("call_device", undefined, run, undefined, undefined);
+}
+
+/**
+ * The card of an `lsp` call built by hand in omp 19.1.0's shape (`lsp/tool.ts`, `tools/tool-commands.ts`): a `bash`
+ * call running the `lsp` tool command whose result's text is the answer and whose single `details.toolCommands`
+ * dispatch echoes the arguments and carries the tool's own details (`{ action, serverName, success }`). Recorded fixtures need a language server; these do not.
  */
 export function lspCard(args: JsonObject, answer: string, success = true): ToolCard {
   const run: ToolRun = {
     tool_call_id: "call_lsp",
-    tool_name: "write",
-    args: { path: "xd://lsp", content: JSON.stringify(args) },
+    tool_name: "bash",
+    args: { command: `lsp ${Object.values(args).join(" ")}` },
     intent: null,
     status: "succeeded",
     partial_result: null,
@@ -52,12 +75,15 @@ export function lspCard(args: JsonObject, answer: string, success = true): ToolC
     result: {
       content: [{ type: "text", text: answer }],
       details: {
-        xdev: {
-          tool: "lsp",
-          mode: "execute",
-          args,
-          inner: { action: args.action ?? null, serverName: "rust-analyzer", success, request: args },
-        },
+        toolCommands: [
+          {
+            tool: "lsp",
+            mode: "execute",
+            exitCode: success ? 0 : 1,
+            args,
+            inner: { action: args.action ?? null, serverName: "rust-analyzer", success, request: args },
+          },
+        ],
       },
     },
     background: null,

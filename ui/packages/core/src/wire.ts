@@ -1,5 +1,5 @@
 /**
- * The subset of omp's RPC wire types (omp-rpc `wire.rs`, omp 18.22.0) the reducer reads or keeps, in their JSON form.
+ * The subset of omp's RPC wire types (omp-rpc `wire.rs`, omp 19.1.0) the reducer reads or keeps, in their JSON form.
  *
  * omp-rpc has two kinds of records. Closed structs (events, UI requests) decode their declared fields and drop every
  * other key: the reducer keeps them through the decoders below, so they serialize like Rust. Open records (messages,
@@ -625,6 +625,16 @@ export interface AskAnswer {
   customInput?: string;
 }
 
+/** The HTML `<form>` of one `ui.formDialog` call: the `ask` tool's form, or an extension's. */
+export interface FormUiRequest {
+  id: string;
+  html: string;
+  timeout?: number;
+}
+
+/** A `form` answer: the submitted values by control `name`, as an HTML form submits them. */
+export type FormAnswerData = Record<string, string | number | string[]>;
+
 export interface CancelUiRequest {
   id: string;
   targetId: string;
@@ -676,6 +686,7 @@ export type ExtensionUiRequest =
   | UiRequest<"input", InputUiRequest>
   | UiRequest<"editor", EditorUiRequest>
   | UiRequest<"ask", AskUiRequest>
+  | UiRequest<"form", FormUiRequest>
   | UiRequest<"cancel", CancelUiRequest>
   | UiRequest<"notify", NotifyUiRequest>
   | UiRequest<"setStatus", SetStatusUiRequest>
@@ -745,6 +756,7 @@ const UI_REQUESTS: { [M in ExtensionUiRequest["method"]]: Decoder<Extract<Extens
     record<EditorUiRequest>({ id: str, title: str, prefill: optional(str), promptStyle: optional(bool) }),
   ),
   ask: tagged("ask", askUiRequest),
+  form: tagged("form", record<FormUiRequest>({ id: str, html: str, timeout: optional(int) })),
   cancel: tagged("cancel", record<CancelUiRequest>({ id: str, targetId: str })),
   notify: tagged("notify", notifyUiRequest),
   setStatus: tagged("setStatus", record<SetStatusUiRequest>({ id: str, statusKey: str, statusText: optional(str) })),

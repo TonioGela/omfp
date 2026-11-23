@@ -595,6 +595,8 @@ async fn a_thread_whose_saved_model_cannot_start_shows_its_history_and_resumes_w
             SetModelCommand {
                 provider: "fake".into(),
                 model_id: "scripted".into(),
+                thinking_level: None,
+                role: None,
             },
         )
         .await
@@ -636,6 +638,8 @@ async fn a_running_thread_switches_its_model_through_omp_and_stores_it() {
             SetModelCommand {
                 provider: "fake".into(),
                 model_id: "scripted".into(),
+                thinking_level: None,
+                role: None,
             },
         )
         .await

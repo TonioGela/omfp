@@ -10,7 +10,7 @@ mod reducer;
 mod state;
 mod stream;
 
-pub use ask::validate_ask_answers;
+pub use ask::{validate_ask_answers, validate_form_data};
 pub use event::{
     LiveOwner, NotifyRequest, OpenFileRequest, ProcessState, Resolution, SessionInfo, ThreadEvent,
 };
@@ -27,4 +27,4 @@ pub use omp_rpc::wire;
 /// The omp release whose RPC protocol this build speaks.
 ///
 /// Must equal the `omp-rpc` git tag in `Cargo.toml`, the `oh-my-pi` flake input, and `omp --version` (ENV-010).
-pub const OMP_VERSION: &str = "18.22.0";
+pub const OMP_VERSION: &str = "19.1.0";
